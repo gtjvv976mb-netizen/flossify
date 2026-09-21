@@ -591,62 +591,114 @@ p { text-wrap: pretty; }
 }
 
 /* ===========================================================================
-   the tour
+   the tour — a single scrubbed take
 
-   Forward motion, never a zoom. Scrolling advances you along a horizontal
-   track through one clinic — street, reception, corridor, chair, and out
-   again — and the photographs are sequenced by physical depth, so travelling
-   left to right reads as walking in. Nothing scales at any point: a Ken Burns
-   push on a still photograph is exactly what makes these sections feel like a
-   screensaver instead of a walk.
+   One continuous shot walking in from the pavement to the chair. Scroll
+   position maps to the video's currentTime, so the visitor sets their own
+   pace through the clinic: stop, and they stop; scroll back, and they walk
+   back out. The page never takes the wheel.
+
+   The film is a real take rather than five stills cross-faded, which is why
+   nothing here scales or cross-dissolves: the forward motion is in the
+   footage.
    =========================================================================== */
 @layer components {
 
-.tour { height: calc(var(--plates, 5) * 100vh); }
+.film { height: calc(var(--stops, 4) * 100vh); }
 
-.tour-stage {
+.film-stage {
   position: sticky;
   top: 0;
   height: 100vh;
   overflow: hidden;
+  background: var(--c-ink);
 }
 
-.tour-track {
-  display: flex;
+.film-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
   height: 100%;
-  will-change: transform;
+  object-fit: cover;
+  /* Decoding a seek on the compositor rather than repainting the section. */
+  will-change: contents;
 }
 
-/* --vw is the stage's measured width, not 100vw: with a classic scrollbar the
-   two differ by ~15px, and that gap compounds across five plates until the
-   last one is visibly short. */
-.tour-plate {
-  flex: 0 0 var(--vw, 100vw);
-  width: var(--vw, 100vw);
+/* The poster shows until the film can play, so the section is never a black
+   hole on a slow connection. It is the film's own first frame. */
+.film-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
   height: 100%;
+  object-fit: cover;
+  transition: opacity 400ms ease;
+}
+.film-poster[data-hide] { opacity: 0; }
+
+/* Captions sit on the footage, so they need their own ground. A gradient
+   only on the side the text occupies keeps the rest of the frame clean. */
+/* Two passes, not one. A single left-to-right gradient left the caption at
+   about 2:1 against the bright terrazzo floor; the second pass darkens the
+   bottom so the waypoint rail keeps its footing on a lit frame too. */
+.film-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      100deg,
+      color-mix(in srgb, #07100f 88%, transparent) 0%,
+      color-mix(in srgb, #07100f 70%, transparent) 30%,
+      color-mix(in srgb, #07100f 20%, transparent) 58%,
+      transparent 74%
+    ),
+    linear-gradient(
+      to top,
+      color-mix(in srgb, #07100f 72%, transparent) 0%,
+      color-mix(in srgb, #07100f 20%, transparent) 14%,
+      transparent 28%
+    );
 }
 
-.tour-rail {
+.film-caps { position: absolute; inset: 0; }
+.film-cap {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 34rem;
+  padding: 0 1.25rem;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 450ms ease, visibility 450ms;
+  color: #f2f2ef;
+}
+.film-cap[data-on] { opacity: 1; visibility: visible; }
+
+/* The light-mode accent is a deep teal — unreadable on footage. Inside the
+   film the accent has to be the bright one regardless of theme. */
+.film-cap .meta-accent { color: #7df0b4; }
+@media (min-width: 640px) { .film-cap { padding: 0 2rem; } }
+
+.film-rail {
   position: absolute;
   inset-inline: 0;
   bottom: 0;
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
-  border-top: 1px solid var(--c-line);
-  background: color-mix(in srgb, var(--c-bg) 88%, transparent);
-  backdrop-filter: blur(10px);
+  border-top: 1px solid color-mix(in srgb, #f2f2ef 26%, transparent);
 }
-.tour-stop {
+.film-stop {
   position: relative;
   padding: 0.85rem 1rem;
-  border-left: 1px solid var(--c-line);
-  color: var(--c-faint);
+  border-left: 1px solid color-mix(in srgb, #f2f2ef 26%, transparent);
+  color: color-mix(in srgb, #f2f2ef 58%, transparent);
   transition: color 240ms ease;
 }
-.tour-stop:first-child { border-left: 0; }
-.tour-stop[data-on] { color: var(--c-ink); }
-.tour-stop::before {
+.film-stop:first-child { border-left: 0; }
+.film-stop[data-on] { color: #f2f2ef; }
+.film-stop::before {
   content: "";
   position: absolute;
   inset-inline: 0;
@@ -655,28 +707,39 @@ p { text-wrap: pretty; }
   background: var(--c-accent);
   transform: scaleX(0);
   transform-origin: left center;
-  transition: transform 320ms ease;
+  transition: transform 300ms ease;
 }
-.tour-stop[data-on]::before { transform: scaleX(1); }
+.film-stop[data-on]::before { transform: scaleX(1); }
 
-/* Below the breakpoint the track cannot travel sideways without becoming a
-   swipe fight with the page, so it unrolls into an ordinary vertical stack. */
-@media (max-width: 1023px) {
-  .tour { height: auto; }
-  .tour-stage { position: static; height: auto; overflow: visible; }
-  .tour-track { display: block; transform: none !important; }
-  .tour-plate { flex: none; width: 100%; height: auto; }
-  .tour-rail { display: none; }
+/* A hint that the film answers to scrolling, shown only until it does. */
+.film-hint {
+  position: absolute;
+  right: 1.5rem;
+  bottom: 4.5rem;
+  color: color-mix(in srgb, #f2f2ef 72%, transparent);
+  transition: opacity 400ms ease;
 }
+.film-hint[data-hide] { opacity: 0; }
 
 }  /* end @layer components */
 
-/* Someone who has asked for less motion gets the same tour as a stack they
-   scroll normally — the content is identical, only the travel is dropped. */
+/* Without the travel there is nothing to scrub, so the section becomes an
+   ordinary stack: the poster frame, then the same captions as text. */
 @media (prefers-reduced-motion: reduce) {
-  .tour { height: auto; }
-  .tour-stage { position: static; height: auto; overflow: visible; }
-  .tour-track { display: block; transform: none !important; }
-  .tour-plate { flex: none; width: 100%; height: auto; }
-  .tour-rail { display: none; }
+  .film { height: auto; }
+  .film-stage { position: static; height: auto; overflow: visible; background: var(--c-bg); }
+  .film-video, .film-scrim, .film-rail, .film-hint { display: none; }
+  .film-poster { position: static; height: auto; aspect-ratio: 16 / 9; }
+  .film-caps { position: static; }
+  .film-cap {
+    position: static;
+    transform: none;
+    opacity: 1;
+    visibility: visible;
+    max-width: 60ch;
+    color: var(--c-ink);
+    padding: 2rem 1.25rem 0;
+    border-top: 1px solid var(--c-line);
+    margin-top: 2rem;
+  }
 }

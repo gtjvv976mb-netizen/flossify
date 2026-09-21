@@ -8,7 +8,6 @@ import shotSize from '../data/shot-size.json';
 // Two rendered widths exist per photograph. Keeping the pairs in one place
 // stops the srcset strings drifting apart as the page gets edited.
 const W: Record<string, [number, number]> = {
-  braces: [960, 1600],
   aligner: [960, 1600],
   instruments: [960, 1600],
   handpiece: [640, 1000],
@@ -16,11 +15,6 @@ const W: Record<string, [number, number]> = {
   tray: [640, 1000],
   xray: [640, 1000],
   'clinic-tall': [448, 688],
-  'clinic-corridor': [448, 688],
-  'clinic-door': [448, 688],
-  'clinic-desk': [448, 688],
-  'clinic-chair': [448, 688],
-  'clinic-bench': [448, 688],
 };
 
 const set = (k: string) => `/img/${k}-${W[k][0]}.webp ${W[k][0]}w, /img/${k}-${W[k][1]}.webp ${W[k][1]}w`;
@@ -35,53 +29,32 @@ const queue = [
   { no: '004', at: '10:40', state: 'In chair' },
 ];
 
-// The tour. Five plates, sequenced by how deep into the building you are, so
-// travelling along the track reads as walking in rather than as a slideshow.
-const tour = [
+// The tour. Four stops, one per segment of the film, so a caption can never
+// describe a room the footage is not in.
+const stops = [
   {
-    key: 'A',
-    at: '18:40',
-    img: 'clinic-door',
-    alt: 'The lit glass entrance of a small dental clinic at dusk, seen from the wet pavement',
+    key: 'A', at: '18:40', label: 'Outside',
     title: 'The door',
     body: 'You found the clinic the night before and booked the slot yourself, in about ninety seconds.',
     did: 'No phone call, no waiting for the desk to open, no being put on hold.',
   },
   {
-    key: 'B',
-    at: '09:00',
-    img: 'clinic-desk',
-    alt: 'An empty pale-oak reception desk against a blank wall, terrazzo floor below',
+    key: 'B', at: '09:00', label: 'Reception',
     title: 'Reception',
     body: 'Nothing to fill in on arrival. Your history went in at home, and the consent was signed on your phone.',
     did: 'The front desk sees you land on the day list the moment you walk in.',
   },
   {
-    key: 'C',
-    at: '09:12',
-    img: 'clinic-corridor',
-    alt: 'A bright dental clinic corridor with treatment bay doorways receding to a window',
+    key: 'C', at: '09:12', label: 'The corridor',
     title: 'The corridor',
     body: 'Twelve minutes, not forty. The chair was ready because the schedule knew how long you would need.',
     did: 'Your dentist already knows why you are here and what happened last time.',
   },
   {
-    key: 'D',
-    at: '09:15',
-    img: 'clinic-chair',
-    alt: 'A sage-grey dental chair beside a window, overhead light and instrument tray in view',
+    key: 'D', at: '09:15', label: 'The chair',
     title: 'The chair',
     body: 'The finding is charted at the chair — tooth, surface, condition — while it is still in front of them.',
-    did: 'Nothing gets written up later from memory. The note still makes sense next year.',
-  },
-  {
-    key: 'E',
-    at: '09:48',
-    img: 'clinic-bench',
-    alt: 'Sealed instrument cassettes in a row along a stainless sterilisation bench',
-    title: 'After',
-    body: 'The receipt is issued off the correct BIR series before you reach the door, and the HMO claim is already filed.',
-    did: 'The clinic is not chasing that money in three weeks. It went out today.',
+    did: 'The receipt is issued off the correct BIR series before you reach the door, and the HMO claim is already filed.',
   },
 ];
 
@@ -243,40 +216,54 @@ const faqs = [
       </div>
     </section>
 
-    <section id="tour" data-sec="02 / The tour" class="tour relative border-b border-line" data-tour>
-      <div class="tour-stage">
-        <div class="tour-track" data-track>
-          {tour.map((t, i) => (
-            <article class="tour-plate grid grid-cols-1 lg:grid-cols-12">
-              <div class="flex flex-col justify-center px-5 py-14 sm:px-8 lg:col-span-5 lg:py-0 lg:pr-12">
-                <p class="sec-no">{t.key} &mdash; {t.at}</p>
-                <h2 class="mt-5 font-display text-[clamp(2rem,3.4vw,3.4rem)] font-semibold">{t.title}</h2>
-                <p class="mt-6 max-w-[38ch] text-[17px] text-ink-2">{t.body}</p>
-                <div class="rule mt-8 max-w-[38ch]"></div>
-                <p class="meta meta-accent mt-6">What Flossify did</p>
-                <p class="mt-2 max-w-[38ch] text-[15px] text-ink-2">{t.did}</p>
-              </div>
+    <section
+      id="tour"
+      data-sec="02 / The tour"
+      class="film relative border-b border-line"
+      data-film
+      style={`--stops:${stops.length}`}
+      aria-label="A walk through a clinic running Flossify"
+    >
+      <div class="film-stage">
+        <img
+          class="film-poster"
+          src="/video/tour-poster.webp"
+          alt="The lit glass entrance of a dental clinic at dusk, seen from the wet pavement"
+          width="1344"
+          height="752"
+        />
 
-              <figure
-                class="media h-[62vw] border-t border-line sm:h-[52vw] lg:col-span-7 lg:h-full lg:border-t-0 lg:border-l"
-                style={`background-image:url("${blur(t.img)}")`}
-              >
-                <img
-                  src={src(t.img)}
-                  srcset={set(t.img)}
-                  sizes="(min-width: 1024px) 58vw, 100vw"
-                  alt={t.alt}
-                  loading={i === 0 ? 'eager' : 'lazy'}
-                />
-              </figure>
-            </article>
+        <video
+          class="film-video"
+          data-film-video
+          muted
+          playsinline
+          preload="auto"
+          disablepictureinpicture
+          aria-hidden="true"
+        ></video>
+
+        <div class="film-scrim"></div>
+
+        <div class="film-caps">
+          {stops.map((t, i) => (
+            <div class="film-cap" data-cap={i} data-on={i === 0 ? '' : undefined}>
+              <p class="meta" style="color: rgb(242 242 239 / 0.72)">{t.key} &mdash; {t.at}</p>
+              <h2 class="mt-4 font-display text-[clamp(2rem,4.4vw,3.6rem)] font-semibold">{t.title}</h2>
+              <p class="mt-5 max-w-[36ch] text-[17px]" style="color: rgb(242 242 239 / 0.86)">{t.body}</p>
+              <div class="mt-7 h-px max-w-[36ch]" style="background: rgb(242 242 239 / 0.28)"></div>
+              <p class="meta meta-accent mt-5">What Flossify did</p>
+              <p class="mt-2 max-w-[36ch] text-[15px]" style="color: rgb(242 242 239 / 0.8)">{t.did}</p>
+            </div>
           ))}
         </div>
 
-        <div class="tour-rail" aria-hidden="true">
-          {tour.map((t, i) => (
-            <div class="tour-stop" data-stop={i} data-on={i === 0 ? '' : undefined}>
-              <span class="meta block" style="color: inherit">{t.key} &nbsp; {t.title}</span>
+        <p class="meta film-hint" data-film-hint>Scroll to walk in</p>
+
+        <div class="film-rail" aria-hidden="true">
+          {stops.map((t, i) => (
+            <div class="film-stop" data-film-stop={i} data-on={i === 0 ? '' : undefined}>
+              <span class="meta block" style="color: inherit">{t.key} &nbsp; {t.label}</span>
             </div>
           ))}
         </div>
@@ -469,49 +456,65 @@ const faqs = [
     const bar = document.querySelector<HTMLElement>('[data-progress]');
 
     /* --- the tour ---------------------------------------------------------
-       Scroll position maps to distance along a horizontal track. The page
-       scrolls normally the whole time — the track just reads how far down the
-       section you are, which is why this never fights the wheel. */
-    const tourEl = document.querySelector<HTMLElement>('[data-tour]');
-    const track = document.querySelector<HTMLElement>('[data-track]');
-    const stops = Array.from(document.querySelectorAll<HTMLElement>('[data-stop]'));
-    const plates = track ? track.children.length : 0;
-    let stageWidth = 0;
+       Scroll position maps to the film's currentTime. The page scrolls
+       normally throughout — the film just reads how far down the section we
+       are, which is why this never fights the wheel. */
+    const film = document.querySelector<HTMLElement>('[data-film]');
+    const vid = document.querySelector<HTMLVideoElement>('[data-film-video]');
+    const poster = document.querySelector<HTMLElement>('.film-poster');
+    const hint = document.querySelector<HTMLElement>('[data-film-hint]');
+    const caps = Array.from(document.querySelectorAll<HTMLElement>('[data-cap]'));
+    const filmStops = Array.from(document.querySelectorAll<HTMLElement>('[data-film-stop]'));
 
-    const travels = () =>
-      !reduced && window.matchMedia('(min-width: 1024px)').matches;
+    let duration = 0;
 
-    const measure = () => {
-      if (!tourEl || !track) return;
-      const stage = tourEl.querySelector<HTMLElement>('.tour-stage');
-      stageWidth = stage ? stage.clientWidth : 0;
-      tourEl.style.setProperty('--plates', String(plates));
-      tourEl.style.setProperty('--vw', `${stageWidth}px`);
-    };
+    if (vid && !reduced) {
+      /* Chosen after metadata rather than in the markup: a phone should not
+         pull the desktop master over mobile data to scrub it. */
+      const small = window.matchMedia('(max-width: 900px)').matches;
+      vid.src = small ? '/video/tour-960.mp4' : '/video/tour-1440.mp4';
+      vid.load();
 
-    const drawTour = () => {
-      if (!tourEl || !track) return;
-      if (!travels()) {
-        track.style.transform = '';
-        return;
-      }
-      const span = tourEl.offsetHeight - window.innerHeight;
+      vid.addEventListener('loadedmetadata', () => {
+        duration = vid.duration;
+        drawFilm();
+      });
+      /* Only hide the poster once a real frame exists behind it, otherwise
+         the section flashes black between the two. */
+      vid.addEventListener('seeked', () => poster?.setAttribute('data-hide', ''), { once: true });
+      vid.addEventListener('loadeddata', () => poster?.setAttribute('data-hide', ''), { once: true });
+    }
+
+    const drawFilm = () => {
+      if (!film || reduced) return;
+      const span = film.offsetHeight - window.innerHeight;
       const p = span > 0
-        ? Math.min(1, Math.max(0, -tourEl.getBoundingClientRect().top / span))
+        ? Math.min(1, Math.max(0, -film.getBoundingClientRect().top / span))
         : 0;
 
-      track.style.transform = `translate3d(${-p * stageWidth * (plates - 1)}px, 0, 0)`;
+      if (vid && duration) {
+        /* Stop just shy of the end: seeking exactly to duration parks some
+           browsers on a blank frame and fires `ended`. */
+        const t = p * (duration - 0.05);
+        if (Math.abs(vid.currentTime - t) > 1 / 60) vid.currentTime = t;
+      }
 
-      const at = Math.round(p * (plates - 1));
-      stops.forEach((s, i) => s.toggleAttribute('data-on', i === at));
+      const at = Math.min(caps.length - 1, Math.floor(p * caps.length));
+      caps.forEach((c, i) => c.toggleAttribute('data-on', i === at));
+      filmStops.forEach((c, i) => c.toggleAttribute('data-on', i === at));
+      if (p > 0.015) hint?.setAttribute('data-hide', '');
     };
 
+    /* --- the scroll driver -------------------------------------------------
+       One rAF-throttled handler for both the masthead progress hairline and
+       the film, because `scroll` fires far more often than the compositor
+       can use and two independent listeners would double that work. */
     const draw = () => {
       if (bar) {
         const max = document.documentElement.scrollHeight - window.innerHeight;
         bar.style.width = `${max > 0 ? (window.scrollY / max) * 100 : 0}%`;
       }
-      drawTour();
+      drawFilm();
     };
 
     let queued = false;
@@ -521,10 +524,9 @@ const faqs = [
       requestAnimationFrame(() => { draw(); queued = false; });
     };
 
-    measure();
     draw();
     addEventListener('scroll', onScroll, { passive: true });
-    addEventListener('resize', () => { measure(); draw(); });
+    addEventListener('resize', draw);
 
     /* --- reveal on entry --------------------------------------------------
        One observer for the three entry motions: rises, drawn rules and the
