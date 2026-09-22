@@ -34,6 +34,11 @@ src/
   components/Odontogram.astro   the interactive chart
   pages/index.astro         the landing page, content in frontmatter
   pages/websites.astro      the clinic-website service, framing the sample
+  pages/find/…              patients: find a clinic, clinic pages, booking without an account
+  pages/dentists/…          dentist profiles with dated PRC checks
+  pages/coverage.astro      PhilHealth dental benefit and HMO cards, explained
+  data/directory.ts         the directory's invented clinics, dentists, services
+  lib/availability.ts       Manila-time status and open slots
   styles/global.css         design tokens, tooth states, dark mode
 public/
   samples/swiftcare/        a complete sample clinic website (static, no build)

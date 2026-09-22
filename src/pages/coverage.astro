@@ -1,0 +1,93 @@
+---
+import Base from '../layouts/Base.astro';
+import PatientHeader from '../components/PatientHeader.astro';
+import { listings } from '../data/directory';
+
+// PhilHealth Circular 2024-0034, in force since 28 December 2024, and how HMO
+// dental cards work in practice. Written for the patient, not the auditor;
+// every figure traces to the circular, and the page says when to double-check.
+const philhealthClinics = listings.filter((l) => l.philhealth);
+---
+
+<Base title="PhilHealth dental benefit and HMO cards, explained — Flossify" description="PhilHealth pays up to ₱1,000 a year for preventive dental care. What it covers, how to use it, what it costs at a private clinic, and how HMO dental cards work.">
+  <PatientHeader current="coverage" />
+
+  <main id="main" class="mx-auto max-w-[1040px] px-5 py-12 sm:px-8">
+    <p class="meta">Patients &middot; Coverage</p>
+    <h1 class="mt-5 max-w-[760px] font-display text-[clamp(2rem,5vw,3.2rem)] leading-[1.05] font-semibold tracking-[-0.025em]">
+      PhilHealth pays for your dental check-up. Most people don’t know.
+    </h1>
+    <p class="mt-4 max-w-[620px] text-[17px] leading-relaxed text-ink-2">
+      Since December 2024 every PhilHealth member and dependent has up to ₱1,000 a year for preventive dental care. Here is what that buys, how to use it, and how an HMO card works alongside it.
+    </p>
+
+    <div class="mt-12 grid gap-12 lg:grid-cols-2">
+      <section aria-labelledby="ph-title">
+        <div class="flex items-baseline gap-6"><span class="sec-no">01</span><h2 id="ph-title" class="font-display text-[26px] font-semibold tracking-tight">PhilHealth</h2></div>
+        <div class="rule mt-5"></div>
+
+        <h3 class="meta meta-ink mt-6">What it covers, per year</h3>
+        <dl class="mt-3 divide-y divide-line border-y border-line text-[15px]">
+          <div class="grid gap-1 py-3 sm:grid-cols-[9rem_1fr]"><dt class="font-semibold tabular-nums">₱300 × 2 visits</dt><dd class="text-ink-2">Two visits at least four months apart. Each covers an oral screening, a cleaning (prophylaxis) and fluoride varnish.</dd></div>
+          <div class="grid gap-1 py-3 sm:grid-cols-[9rem_1fr]"><dt class="font-semibold tabular-nums">₱200 per tooth</dt><dd class="text-ink-2">Pit-and-fissure sealants or small (Class V) fillings, up to two teeth a year.</dd></div>
+          <div class="grid gap-1 py-3 sm:grid-cols-[9rem_1fr]"><dt class="font-semibold">Emergency extraction</dt><dd class="text-ink-2">When a tooth has to come out urgently.</dd></div>
+          <div class="grid gap-1 py-3 sm:grid-cols-[9rem_1fr]"><dt class="font-semibold tabular-nums">₱1,000 cap</dt><dd class="text-ink-2">The most PhilHealth pays per member per year for all of the above.</dd></div>
+        </dl>
+
+        <h3 class="meta meta-ink mt-8">How to use it</h3>
+        <ol class="mt-3 grid gap-3 text-[15px]">
+          <li class="flex gap-4"><span class="sec-no pt-0.5">1</span><span class="text-ink-2">Be registered with a <strong class="font-semibold text-ink">YAKAP</strong> (formerly Konsulta) primary-care provider. Registration is free at any YAKAP clinic.</span></li>
+          <li class="flex gap-4"><span class="sec-no pt-0.5">2</span><span class="text-ink-2">Ask your YAKAP clinic for a dental referral, or go to a <strong class="font-semibold text-ink">PhilHealth-accredited dental clinic</strong> linked to one.</span></li>
+          <li class="flex gap-4"><span class="sec-no pt-0.5">3</span><span class="text-ink-2">Bring your PhilHealth number and an ID. The clinic files the claim, not you.</span></li>
+          <li class="flex gap-4"><span class="sec-no pt-0.5">4</span><span class="text-ink-2">Space the two visits four months apart so both are paid.</span></li>
+        </ol>
+
+        <h3 class="meta meta-ink mt-8">What you pay</h3>
+        <p class="mt-3 text-[15px] leading-relaxed text-ink-2">
+          At government facilities, nothing. A private clinic may charge the difference above PhilHealth’s rate, but the circular caps it: <strong class="font-semibold text-ink">₱1,500</strong> for the preventive package and <strong class="font-semibold text-ink">₱600</strong> for an emergency extraction.
+        </p>
+
+        <h3 class="meta meta-ink mt-8">Accredited clinics in this directory</h3>
+        <ul class="mt-3 grid gap-2">
+          {philhealthClinics.map((l) => (
+            <li class="flex flex-wrap items-baseline justify-between gap-2 border border-line p-3 text-[15px]">
+              <a href={`/find/${l.slug}/`} class="font-semibold hover:text-accent">{l.name}</a>
+              <span class="meta">{l.area}</span>
+            </li>
+          ))}
+        </ul>
+        <p class="mt-3 text-[13.5px] text-muted">Accreditation is the clinic’s to keep current; ask before you rely on it. Source: PhilHealth Circular 2024-0034.</p>
+      </section>
+
+      <section aria-labelledby="hmo-title">
+        <div class="flex items-baseline gap-6"><span class="sec-no">02</span><h2 id="hmo-title" class="font-display text-[26px] font-semibold tracking-tight">HMO cards</h2></div>
+        <div class="rule mt-5"></div>
+
+        <h3 class="meta meta-ink mt-6">What is usually covered</h3>
+        <p class="mt-3 text-[15px] leading-relaxed text-ink-2">Consultation, a cleaning once or twice a year, simple extractions, temporary fillings and basic gum treatment.</p>
+        <h3 class="meta meta-ink mt-6">What usually is not</h3>
+        <p class="mt-3 text-[15px] leading-relaxed text-ink-2">Whitening, veneers, braces, implants, crowns, bridges and most major restorations.</p>
+        <h3 class="meta meta-ink mt-6">What often needs approval first</h3>
+        <p class="mt-3 text-[15px] leading-relaxed text-ink-2">Anything beyond a cleaning or consult may need a letter of authorization from your HMO before the dentist can start. Tell us your HMO when you book and we say so before you come in.</p>
+
+        <h3 class="meta meta-ink mt-8">At the visit</h3>
+        <ol class="mt-3 grid gap-3 text-[15px]">
+          <li class="flex gap-4"><span class="sec-no pt-0.5">1</span><span class="text-ink-2">Book at a clinic that lists your HMO — the filter on <a href="/find/" class="underline underline-offset-4">Find a clinic</a> does this.</span></li>
+          <li class="flex gap-4"><span class="sec-no pt-0.5">2</span><span class="text-ink-2">Bring the card and a valid ID.</span></li>
+          <li class="flex gap-4"><span class="sec-no pt-0.5">3</span><span class="text-ink-2">The clinic shows you the breakdown — covered, approved, and what is yours to pay — before treatment.</span></li>
+        </ol>
+
+        <p role="note" class="mt-8 border border-line bg-bg-soft p-4 text-[14.5px] leading-relaxed">
+          Your HMO decides what is covered, how often, and up to what amount; the same procedure can be fully covered on one plan and excluded on another. Acceptance on a clinic page is what the clinic reported. <strong class="font-semibold">Always confirm with your HMO.</strong>
+        </p>
+      </section>
+    </div>
+
+    <section id="privacy" class="mt-16 border-t border-line pt-8" aria-labelledby="priv-title">
+      <h2 id="priv-title" class="font-display text-[22px] font-semibold tracking-tight">How we handle your health data</h2>
+      <p class="mt-3 max-w-[70ch] text-[15px] leading-relaxed text-ink-2">
+        Health information is sensitive personal information under the Data Privacy Act of 2012. When you book, we use your name and mobile number for that visit and its reminders, and nothing else — no marketing, no sharing, and consent for each separate purpose is asked separately. You can withdraw as easily as you agreed. If anything ever went wrong with your data, you and the National Privacy Commission would hear from us within 72 hours.
+      </p>
+    </section>
+  </main>
+</Base>

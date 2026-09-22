@@ -1,0 +1,71 @@
+---
+import Base from '../../layouts/Base.astro';
+import PatientHeader from '../../components/PatientHeader.astro';
+import { dentists, dentistBySlug, listingBySlug } from '../../data/directory';
+
+export function getStaticPaths() {
+  return dentists.map((d) => ({ params: { dentist: d.slug } }));
+}
+
+// A profile is a set of claims, each with where it came from. "Verified" on
+// its own means nothing; "PRC licence, checked by a person on 15 Sep" does.
+const d = dentistBySlug(Astro.params.dentist!)!;
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const places = d.clinics.map((c) => ({ ...c, l: listingBySlug(c.slug)! }));
+const checked = new Date(d.prcCheckedOn).toLocaleDateString('en-PH', { day: 'numeric', month: 'long', year: 'numeric' });
+---
+
+<Base title={`${d.name} — dentist in ${places[0].l.area} — Flossify`} description={`${d.name}: ${d.specialty ? 'specialist in ' + d.specialty.toLowerCase() : d.practices.join(', ').toLowerCase()}. PRC licence checked. Where to find them and when.`}>
+  <PatientHeader current="find" />
+
+  <main id="main" class="mx-auto max-w-[1040px] px-5 py-10 sm:px-8">
+    <a href="/find/" class="meta hover:text-ink">&larr; All clinics</a>
+
+    <div class="mt-6 grid gap-10 md:grid-cols-12">
+      <div class="md:col-span-8">
+        <p class="meta">Dentist &middot; practising since {d.since}</p>
+        <h1 class="mt-3 font-display text-[clamp(2rem,4.6vw,3rem)] leading-[1.05] font-semibold tracking-[-0.025em]">{d.name}</h1>
+        <p class="mt-3 text-[17px] text-ink-2">
+          {d.specialty
+            ? <span>Specialist · {d.specialty}</span>
+            : <span>General dentist · practises {d.practices.slice(1).join(', ').toLowerCase() || d.practices[0].toLowerCase()}</span>}
+        </p>
+        <p class="mt-5 max-w-[60ch] text-[16px] leading-relaxed text-ink-2">{d.about}</p>
+
+        <h2 class="meta meta-ink mt-10">Credentials, and where each one comes from</h2>
+        <ul class="mt-3 divide-y divide-line border-y border-line text-[15px]">
+          <li class="flex flex-wrap items-baseline justify-between gap-2 py-3">
+            <span><span class="tag tag-accent">PRC licence</span><span class="ml-3">No. {d.prc}</span></span>
+            <span class="text-[14px] text-muted">Checked by a person at verification.prc.gov.ph on {checked}. Re-checked at each 3-year renewal.</span>
+          </li>
+          <li class="flex flex-wrap items-baseline justify-between gap-2 py-3">
+            <span><span class:list={['tag', d.pda && 'tag-accent']}>{d.pda ? 'PDA member' : 'PDA membership not on file'}</span></span>
+            <span class="text-[14px] text-muted">Philippine Dental Association, self-declared and shown as such.</span>
+          </li>
+          <li class="flex flex-wrap items-baseline justify-between gap-2 py-3">
+            <span><span class:list={['tag', d.specialty && 'tag-accent']}>{d.specialty ? `Recognised specialty · ${d.specialty}` : 'General dentist'}</span></span>
+            <span class="text-[14px] text-muted">{d.specialty ? 'One of the seven fields the Board of Dentistry recognises; credential on file.' : 'Practises the areas listed; “specialist” is used only for Board-recognised fields.'}</span>
+          </li>
+        </ul>
+      </div>
+
+      <aside class="md:col-span-4">
+        <h2 class="meta meta-ink">Where and when</h2>
+        <ul class="mt-3 grid gap-3">
+          {places.map((p) => (
+            <li class="border border-line p-4">
+              <a href={`/find/${p.l.slug}/`} class="font-display text-[18px] font-semibold hover:text-accent">{p.l.name}</a>
+              <p class="mt-1 text-[14px] text-ink-2">{p.l.area} · {p.days.map((n) => DAYS[n]).join(' · ')}</p>
+              <a href={`/find/${p.l.slug}/book/`} class="btn btn-primary mt-4 w-full">{p.l.workspace ? 'Book here' : 'Request here'}</a>
+            </li>
+          ))}
+        </ul>
+      </aside>
+    </div>
+
+    <section class="mt-16 border-t border-line pt-8">
+      <h2 class="meta meta-ink">Reviews</h2>
+      <p class="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-ink-2">Only from completed visits, read before publishing, never removable by the dentist or clinic. None yet.</p>
+    </section>
+  </main>
+</Base>
