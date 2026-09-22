@@ -127,6 +127,7 @@
       <a href="#finder">Smile Finder</a>
       <a href="#pricing">Pricing & estimate</a>
       <a href="#care">Patient care hub</a>
+      <a href="#care" data-open-tab="coverage">PhilHealth &amp; HMO</a>
       <a href="#about">About us</a>
       <a href="#faq">FAQ</a>
       <a href="#contact">Contact</a>
@@ -436,6 +437,7 @@
           <button role="tab" id="tab-aftercare" aria-controls="panel-aftercare" aria-selected="false" tabindex="-1" data-tab="aftercare"><svg class="ic"><use href="#i-heart"/></svg>Aftercare guides</button>
           <button role="tab" id="tab-timer" aria-controls="panel-timer" aria-selected="false" tabindex="-1" data-tab="timer"><svg class="ic"><use href="#i-brush"/></svg>Brushing timer</button>
           <button role="tab" id="tab-reminder" aria-controls="panel-reminder" aria-selected="false" tabindex="-1" data-tab="reminder"><svg class="ic"><use href="#i-bell"/></svg>Check-up reminder</button>
+          <button role="tab" id="tab-coverage" aria-controls="panel-coverage" aria-selected="false" tabindex="-1" data-tab="coverage"><svg class="ic"><use href="#i-shield"/></svg>PhilHealth &amp; HMO</button>
         </div>
 
         <div class="care__panels" data-reveal>
@@ -526,6 +528,11 @@
                 </div>
               </div>
             </div>
+          </div>
+          <!-- PhilHealth & HMO -->
+          <div class="panel" role="tabpanel" id="panel-coverage" aria-labelledby="tab-coverage" data-panel="coverage" hidden>
+            <div class="coverage" data-coverage></div>
+            <p class="disclaimer"><svg class="ic"><use href="#i-info"/></svg>Based on PhilHealth Circular 2024-0034 and typical HMO dental plans. Benefits and accreditation change — confirm with the clinic, PhilHealth or your HMO before your visit.</p>
           </div>
         </div>
       </div>
@@ -694,6 +701,7 @@
           <li><a href="#care" data-open-tab="aftercare">Aftercare guides</a></li>
           <li><a href="#care" data-open-tab="timer">Brushing timer</a></li>
           <li><a href="#care" data-open-tab="reminder">Check-up reminder</a></li>
+          <li><a href="#care" data-open-tab="coverage">PhilHealth &amp; HMO</a></li>
           <li><a href="https://swiftcaredental.com/book">Book appointment</a></li>
           <li><a href="https://swiftcaredental.com/auth/signin">Staff login</a></li>
         </ul>

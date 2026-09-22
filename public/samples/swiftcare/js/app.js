@@ -857,6 +857,26 @@
   roving(acChips, '.chip', selectAftercare);
   selectAftercare(SC.aftercare[0].id);
 
+  /* PhilHealth & HMO coverage guide */
+  const coverageEl = $('[data-coverage]');
+  if (coverageEl && SC.coverage) {
+    const card = (c, tone, iconId) => `
+      <article class="cov-card cov-card--${tone}">
+        <header class="cov-card__head">
+          <span class="cov-card__icon">${icon(iconId)}</span>
+          <h3>${esc(c.title)}</h3>
+        </header>
+        <p class="cov-card__intro">${esc(c.intro)}</p>
+        <p class="cov-card__label">What it covers</p>
+        <ul class="cov-list">${c.covered.map(x => `<li><strong>${esc(x.what)}</strong><span>${esc(x.detail)}</span></li>`).join('')}</ul>
+        <p class="cov-card__label">How to use it</p>
+        <ol class="cov-steps">${c.steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol>
+        <p class="cov-card__pocket">${icon('i-info')}<span>${esc(c.outOfPocket)}</span></p>
+        <p class="cov-card__note">${esc(c.note)}</p>
+      </article>`;
+    coverageEl.innerHTML = card(SC.coverage.philhealth, 'sage', 'i-shield') + card(SC.coverage.hmo, 'gold', 'i-list');
+  }
+
   /* =========================================================
      Brushing timer
      ========================================================= */

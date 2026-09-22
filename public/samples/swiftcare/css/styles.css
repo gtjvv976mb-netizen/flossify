@@ -734,6 +734,28 @@ html.has-dialog { overflow: hidden; }
 .care-col--call li::before { background: #C98A2A; }
 .care-col--call .btn { margin-top: 16px; }
 
+/* PhilHealth & HMO */
+.coverage { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.cov-card { padding: 24px; border-radius: 22px; border: 1px solid var(--line); background: var(--cream); animation: rise .55s var(--ease) both; }
+.cov-card:nth-child(2) { animation-delay: 90ms; }
+.cov-card__head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.cov-card__head h3 { font-family: var(--f-display); font-size: 1.3rem; font-weight: 500; color: var(--espresso); line-height: 1.2; }
+.cov-card__icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 13px; flex: none; }
+.cov-card--sage .cov-card__icon { background: var(--sage-soft); color: var(--sage-deep); }
+.cov-card--gold .cov-card__icon { background: var(--gold-4); color: var(--gold-deep); }
+.cov-card__intro { color: var(--ink-2); font-size: .95rem; }
+.cov-card__label { font-size: .74rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); margin: 18px 0 8px; }
+.cov-list { display: grid; gap: 8px; }
+.cov-list li { padding: 10px 12px; border-radius: 12px; background: var(--paper); border: 1px solid var(--line); font-size: .92rem; color: var(--ink-2); }
+.cov-list strong { display: block; color: var(--espresso); margin-bottom: 2px; }
+.cov-steps { display: grid; gap: 8px; counter-reset: cov; }
+.cov-steps li { position: relative; padding-left: 34px; font-size: .92rem; color: var(--ink-2); }
+.cov-steps li::before { counter-increment: cov; content: counter(cov); position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font-size: .78rem; font-weight: 750; color: var(--espresso); background: var(--gold-grad); }
+.cov-card--sage .cov-steps li::before { background: var(--sage); color: #fff; }
+.cov-card__pocket { display: flex; gap: 10px; margin-top: 16px; padding: 12px 14px; border-radius: 14px; background: var(--paper); font-size: .9rem; color: var(--ink-2); }
+.cov-card__pocket .ic { margin-top: 3px; color: var(--gold-deep); flex: none; }
+.cov-card__note { margin-top: 12px; font-size: .86rem; color: var(--ink-3); }
+
 /* Brushing timer */
 .timer { display: grid; grid-template-columns: auto 1fr; gap: clamp(24px, 5vw, 64px); align-items: center; }
 .timer__stage { position: relative; width: min(340px, 78vw); aspect-ratio: 1; margin-inline: auto; }
@@ -1085,6 +1107,7 @@ html.has-dialog { overflow: hidden; }
   .pillars { grid-template-columns: 1fr; }
   .stat dd { font-size: 2.4rem; }
   .aftercare { grid-template-columns: 1fr; }
+  .coverage { grid-template-columns: 1fr; }
   .quadrants { grid-template-columns: 1fr 1fr; }
   .story { grid-template-columns: 1fr; gap: 12px; }
   .story__quote-mark { width: 44px; height: 44px; }

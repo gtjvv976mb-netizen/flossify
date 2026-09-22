@@ -233,6 +233,46 @@ SC.aftercare = [
     call: ['Sore spots that don’t improve after a few days', 'Dentures feel loose or rock when you chew', 'A crack or chip in the denture'] }
 ];
 
+/* Coverage guide — PhilHealth's preventive dental benefit (PhilHealth Circular 2024-0034,
+   in force since 28 Dec 2024) and how HMO dental cards work. General guidance: the clinic
+   confirms its own accreditation and what your card covers. */
+SC.coverage = {
+  philhealth: {
+    title: 'PhilHealth pays for preventive dental care',
+    intro: 'Since December 2024, PhilHealth covers basic preventive dental services for every registered member and dependent — up to ₱1,000 a year. Most people don’t know this yet.',
+    covered: [
+      { what: 'Two check-up visits a year', detail: 'At least four months apart. Each visit covers an oral screening, a cleaning (prophylaxis) and fluoride varnish — ₱300 per visit.' },
+      { what: 'Sealants or small fillings', detail: 'Pit & fissure sealants or Class V restorations, ₱200 per tooth, up to two teeth a year.' },
+      { what: 'Emergency extraction', detail: 'When a tooth has to come out urgently.' }
+    ],
+    steps: [
+      'Be registered with a YAKAP (formerly Konsulta) primary-care provider. If you’re not, register at any YAKAP clinic — it’s free.',
+      'Ask your YAKAP clinic for a dental referral, or go straight to a PhilHealth-accredited dental clinic linked to one.',
+      'Bring your PhilHealth number and a valid ID. The clinic files the claim; you don’t.',
+      'Space your two visits at least four months apart so both are covered.'
+    ],
+    outOfPocket: 'At government facilities there is no co-payment. Private clinics may ask you to pay the difference, but PhilHealth caps it: ₱1,500 for the preventive package and ₱600 for an emergency extraction.',
+    note: 'Ask us whether the clinic is PhilHealth-accredited for dental benefits before you rely on this. The benefit is delivered only through YAKAP clinics and accredited dental clinics.'
+  },
+  hmo: {
+    title: 'Using your HMO card at the dentist',
+    intro: 'Most company HMO plans include a dental benefit. It usually works differently from your hospital coverage, so a minute of preparation saves a wait at the desk.',
+    covered: [
+      { what: 'Usually covered', detail: 'Consultation, oral prophylaxis (cleaning) once or twice a year, simple extractions, temporary fillings and basic gum treatment.' },
+      { what: 'Usually not covered', detail: 'Cosmetic work such as whitening and veneers, braces, implants, crowns and bridges, and most major restorations.' },
+      { what: 'Often needs approval first', detail: 'Anything beyond a cleaning or consult may need a letter of authorization (LOA) or approval from your HMO before treatment.' }
+    ],
+    steps: [
+      'Tell us your HMO when you book so we can check that the clinic is accredited with it.',
+      'Bring your HMO card and a valid ID to the visit.',
+      'For anything beyond a cleaning, we’ll tell you whether your HMO needs to approve it first and help you request it.',
+      'Pay only the part your plan doesn’t cover — we’ll show you the breakdown before treatment.'
+    ],
+    outOfPocket: 'Your HMO decides what is covered, how often, and up to what amount. The same procedure can be fully covered on one plan and excluded on another.',
+    note: 'Always confirm with your HMO. Coverage tables change, and accreditation is per clinic.'
+  }
+};
+
 /* Patient stories as published on swiftcaredental.com/testimonials. */
 SC.testimonials = [
   { quote: 'The staff is incredibly warm and professional. My kids used to be scared of the dentist, but now they actually look forward to visits! The modern equipment and gentle approach made all the difference.', name: 'Maria Santos', place: 'Tarlac City', tag: 'Pediatric Dentistry' },
