@@ -6,7 +6,7 @@
 // The service catalogue and fee guide mirror the ones the sample clinic site
 // ships with (public/samples/*/js/data.js). Keep the two in step.
 
-import { clinics as workspaceClinics } from './demo';
+import { clinics as workspaceClinics } from './demo.ts';
 
 export type Category = 'prevent' | 'restore' | 'replace' | 'surgery' | 'cosmetic' | 'ortho';
 

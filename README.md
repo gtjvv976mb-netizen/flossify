@@ -6,10 +6,19 @@ Dental practice software marketing site. Astro + Tailwind v4, static output.
 
 ```bash
 npm install
-npm run dev      # http://localhost:4321
-npm run build    # -> dist/
-npm run preview
+cp .env.example .env     # DATABASE_URL and SESSION_SECRET
+npm run db:setup         # creates flossify_dev from schema + migrations, seeds it
+npm run dev              # http://localhost:4321
+npm run build && npm run preview   # the Node server, as deployed
 ```
+
+Needs a local PostgreSQL (Homebrew's is fine). `db:setup` drops and recreates
+the database, runs `src/data/schema.sql` and `src/data/migrations/*.sql`, then
+seeds the invented clinics, dentists and patients. Dev sign-in: each group's
+owner has the password `flossify` — e.g. `liwayway.domingo@example.com`.
+
+The app connects as `flossify_app`, a plain role, so PostgreSQL row-level
+security applies to it; `src/lib/db.ts` refuses to start as a superuser.
 
 ## Why Astro
 
@@ -25,6 +34,23 @@ The odontogram script imports shared types, so Astro emits it as one small
 module rather than inlining it. Keep it that way: before adding a framework,
 check whether a few lines of vanilla JS will do. The whole site — ten pages
 plus assets — is 34 KB gzipped.
+
+## Server and database
+
+Static by default; pages that read the database opt out of prerendering and
+run on the Node adapter. `src/lib/db.ts` has the two ways in: `withClinic(id,
+fn)` runs fn in a transaction with `app.clinic_id` set, so RLS scopes every
+query to one clinic; `publicRead` runs the security-definer functions
+(`public_directory()`, `public_dentist()`, `public_booked_ranges()`) that
+expose a clinic's public face without a tenant. Sessions are signed cookies
+(`src/lib/auth.ts`); `requireWorkspace` (`src/lib/workspace.ts`) gates every
+workspace page and re-checks branch access on each request.
+
+API: `GET /api/availability` (real open slots), `POST /api/bookings` (book or
+request without an account; the slot is re-checked inside the insert's
+transaction), `DELETE /api/bookings/:ref` (undo within three minutes, cancel
+after). A booking queues its confirmation text in `message_log`; nothing sends
+SMS yet.
 
 ## Layout
 

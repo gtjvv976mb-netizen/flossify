@@ -159,14 +159,40 @@ Built from `docs/service-map.md`. Rules that shaped it, and that hold:
 - Bookings live in `localStorage` (`flossify:bookings`) with a three-minute
   undo. On a live clinic the same submit lands in the workspace.
 
+## Backend — Postgres, RLS, sessions
+
+The workspace and the patient directory read from PostgreSQL. Rules:
+
+- **The app is never a superuser.** It connects as `flossify_app`; superusers
+  bypass row-level security and `src/lib/db.ts` refuses to start as one.
+- **Every clinic query goes through `withClinic(clinicId, fn)`.** It sets
+  `app.clinic_id` for one transaction; RLS does the isolating. Do not add a
+  `where clinic_id = …` and think that is the protection — the policy is.
+- **Public reads go through security-definer functions** in
+  `src/data/migrations/003_public_read.sql`, which return a clinic's public
+  face only. Adding a public field means adding it there, not opening a table.
+- **Staff is keyed by group, not clinic**, and is not under RLS; branch access
+  is `staff_access`, re-checked on every workspace request (`requireWorkspace`).
+  Before a tenant exists (sign-in), branches are read through the definer
+  function `staff_branches(staff_id)`, which puts `staff.home_clinic_id` first —
+  that is where sign-in lands when the link did not ask for a branch.
+- Sessions are HMAC-signed cookies (`src/lib/auth.ts`); passwords are scrypt.
+  `SESSION_SECRET` rotation signs everyone out.
+- `npm run db:setup` is destructive: it drops the dev database. Migrations are
+  additive files in `src/data/migrations/`, run in name order after `schema.sql`.
+- Two schema bugs were fixed on the way in: `citext` was used but never
+  enabled, and the RLS policy on `clinic` referenced `clinic_id` (it has `id`).
+
 ## Open — read before shipping
 
-**The clinic workspace has no authentication.** `/c/[clinic]/patients/` exposes
-patient records to anyone who guesses a clinic slug. Under the Data Privacy Act
-of 2012 that is a reportable breach, not a rough edge. `src/data/schema.sql`
-already defines forced row-level security keyed on `app.clinic_id`; the missing
-piece is login and session handling that sets it. Keep the prototype banner on
-every workspace page until that exists.
+- **No SMS goes out.** Bookings queue their text in `message_log`; a sender
+  (registered sender name, no links in the body) is the next piece.
+- **No self-serve clinic onboarding or profile editing yet**; the seed is the
+  only way clinics get in.
+- Only the reader's authentication exists: no password reset, no rate limiting
+  on `/auth/login`, no CSRF token on the workspace forms (same-site cookies
+  only). Add all three before real staff sign in.
+- Odontogram edits are not persisted.
 
 ## Layout
 
@@ -179,8 +205,16 @@ src/pages/find/index.astro     patients: find a clinic by symptom, service, HMO,
 src/pages/find/[clinic]/…      the clinic's public page, and its five-step booking (no account)
 src/pages/dentists/[dentist]   dentist profile: PRC licence checked by a person, dated
 src/pages/coverage.astro       PhilHealth's preventive dental benefit and HMO cards, explained
-src/data/directory.ts          services, symptoms, HMOs, dentists, listings (invented; 555 numbers)
-src/lib/availability.ts        Manila-time status and open slots, computed on the device
+src/data/directory.ts          services, symptoms, HMOs, dentists, listings — types, and the seed's source
+src/data/migrations/           002 public booking (hours, schedules, refs), 003 public read functions
+src/lib/db.ts                  pool, withClinic (RLS transaction), publicRead
+src/lib/auth.ts                scrypt passwords, signed session cookie
+src/lib/workspace.ts           requireWorkspace: session + branch access, every request
+src/lib/directory-db.ts        public_directory() → the shapes the pages render; real open slots
+src/lib/availability.ts        Manila-time status and slot arithmetic
+src/pages/api/                 availability, bookings (create / undo-or-cancel)
+src/pages/auth/                staff sign-in and sign-out
+scripts/db/                    setup.sh (drop, create, schema, migrations, seed), seed.ts
 public/samples/swiftcare/       sample clinic website (see "Sample client sites")
 src/components/Odontogram.astro  32 teeth, FDI/Universal/Palmer, surface-scoped
 src/data/schema.sql            full multi-tenant Postgres model with RLS

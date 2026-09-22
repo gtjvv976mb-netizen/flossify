@@ -9,18 +9,23 @@
     "preview": "astro preview",
     "audit": "node scripts/audit.mjs",
     "shots": "node scripts/shoot.mjs",
-    "sheet": "node scripts/sheet.mjs"
+    "sheet": "node scripts/sheet.mjs",
+    "db:setup": "sh scripts/db/setup.sh",
+    "start": "node ./dist/server/entry.mjs"
   },
   "dependencies": {
+    "@astrojs/node": "^11.1.6",
     "@astrojs/sitemap": "^3.7.4",
     "@tailwindcss/vite": "^4.3.3",
     "astro": "^7.3.3",
+    "pg": "^8.23.0",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@gltf-transform/cli": "^4.5.0",
-    "playwright": "^1.63.0",
+    "@types/pg": "^8.23.1",
     "ffmpeg-static": "^5.2.0",
+    "playwright": "^1.63.0",
     "sharp": "^0.34.0"
   }
 }

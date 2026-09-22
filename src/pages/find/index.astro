@@ -1,24 +1,28 @@
 ---
+// Rendered on the server for every request: the directory comes from Postgres
+// (public_directory(), which exposes a clinic's public face and nothing else)
+// and each card's next open slots are computed from the clinic's real
+// appointments. Filtering stays on the device; so does "open now", read from
+// the visitor's clock in the clinic's time zone.
+export const prerender = false;
+
 import Base from '../../layouts/Base.astro';
 import PatientHeader from '../../components/PatientHeader.astro';
-import { listings, services, symptoms, hmos, hmoById, dentistsOf, feeGuide, priceText, CATEGORY_LABEL } from '../../data/directory';
+import { services, symptoms, hmos, hmoById, priceText, CATEGORY_LABEL } from '../../data/directory';
+import { loadDirectory, openSlots, slotIso } from '../../lib/directory-db';
 
-// Everything a patient can filter by is rendered on the card as data, and a
-// small script on the device does the filtering, the "open now" and the next
-// slots — in the clinic's time zone, from the visitor's clock. No server call,
-// no spinner, no wrong-timezone status.
+const listings = await loadDirectory();
 const areas = [...new Set(listings.map((l) => l.area))];
-const cards = listings.map((l) => {
-  const fees = feeGuide(l);
-  return {
-    l,
-    fees,
-    offered: fees.map((f) => f.id),
-    minPrice: Object.fromEntries(fees.map((f) => [f.id, f.min])),
-    dentists: dentistsOf(l),
-  };
-});
+const cards = await Promise.all(listings.map(async (l) => ({
+  l,
+  fees: l.fees,
+  offered: l.fees.map((f) => f.id),
+  minPrice: Object.fromEntries(l.fees.map((f) => [f.id, f.min])),
+  dentists: l.dentistProfiles,
+  slots: l.workspace ? await openSlots(l, { limit: 3 }) : [],
+})));
 ---
+
 
 <Base
   title="Find a dentist in Baguio — Flossify"
@@ -96,7 +100,7 @@ const cards = listings.map((l) => {
 
     <!-- Results -->
     <ul class="mt-3 grid gap-4" data-results>
-      {cards.map(({ l, dentists, offered, minPrice, fees }) => (
+      {cards.map(({ l, dentists, offered, minPrice, fees, slots }) => (
         <li
           class="result"
           data-slug={l.slug}
@@ -108,6 +112,7 @@ const cards = listings.map((l) => {
           data-offered={offered.join(',')}
           data-minprice={JSON.stringify(minPrice)}
           data-hours={JSON.stringify(l.hours)}
+          data-first-slot={slots[0] ? slotIso(slots[0]) : ''}
         >
           <div class="result-main">
             <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -141,7 +146,9 @@ const cards = listings.map((l) => {
             <p class="meta" data-slots-label>{l.workspace ? 'Next open' : 'Request a time'}</p>
             <div class="mt-2 flex flex-wrap gap-2" data-slots>
               {l.workspace
-                ? <span class="text-[14px] text-muted">Checking the schedule…</span>
+                ? (slots.length
+                    ? slots.map((sl) => <a class="slot" href={`/find/${l.slug}/book/?slot=${slotIso(sl)}`}><span class="meta">{sl.dayLabel}</span>{sl.label}</a>)
+                    : <span class="text-[14px] text-muted">Nothing open in the next two weeks — call the clinic.</span>)
                 : <span class="max-w-[26ch] text-[14px] leading-snug text-ink-2">Not on the live schedule yet. Send a request and the clinic confirms by text.</span>}
             </div>
             <div class="mt-4 flex flex-wrap gap-2">
@@ -164,7 +171,7 @@ const cards = listings.map((l) => {
   </main>
 
   <script>
-    import { statusFor, slotsFor, manilaNow } from '../../lib/availability';
+    import { statusFor, manilaNow } from '../../lib/availability';
 
     const $ = <T extends Element = HTMLElement>(s: string, r: ParentNode = document) => r.querySelector(s) as T | null;
     const $$ = <T extends Element = HTMLElement>(s: string, r: ParentNode = document) => Array.from(r.querySelectorAll(s)) as T[];
@@ -177,27 +184,15 @@ const cards = listings.map((l) => {
 
     const state = { symptom: '', service: '', hmo: '', area: '', sort: 'soonest', philhealth: false, open: false };
 
-    // Per-card facts computed once on the device: live status and the next slots.
+    // Live status, from the visitor's clock in the clinic's time zone. Slots came from the server.
     const now = manilaNow();
     const facts = new Map(results.map((li) => {
-      const hours = JSON.parse(li.dataset.hours!);
-      const st = statusFor(hours, now);
-      const slots = li.dataset.workspace === '1' ? slotsFor(li.dataset.slug!, hours, { limit: 3, now }) : [];
-      return [li, { hours, st, slots }];
-    }));
-
-    // Paint the truth about time onto each card.
-    for (const [li, f] of facts) {
+      const st = statusFor(JSON.parse(li.dataset.hours!), now);
       const pill = $('[data-status]', li)!;
-      pill.dataset.state = f.st.state;
-      $('[data-status-text]', li)!.textContent = f.st.text;
-      const slotsEl = $('[data-slots]', li)!;
-      if (li.dataset.workspace === '1') {
-        slotsEl.innerHTML = f.slots.length
-          ? f.slots.map((s) => `<a class="slot" href="/find/${li.dataset.slug}/book/?slot=${s.date}T${String(Math.floor(s.mins / 60)).padStart(2, '0')}:${String(s.mins % 60).padStart(2, '0')}"><span class="meta">${s.dayLabel}</span>${s.label}</a>`).join('')
-          : '<span class="text-[14px] text-muted">Nothing open in the next two weeks — call the clinic.</span>';
-      }
-    }
+      pill.dataset.state = st.state;
+      $('[data-status-text]', li)!.textContent = st.text;
+      return [li, { st, first: li.dataset.firstSlot || '' }];
+    }));
 
     function readUrl() {
       const q = new URLSearchParams(location.search);
@@ -257,9 +252,8 @@ const cards = listings.map((l) => {
         const f = facts.get(li)!;
         if (state.sort === 'name') return li.dataset.name!;
         if (state.sort === 'price') return String((li as any)._sortPrice).padStart(12, '0');
-        // soonest: workspace clinics with a slot first, by slot; request-only last
-        const s = f.slots[0];
-        return s ? `0${s.date}${String(s.mins).padStart(4, '0')}` : `1${li.dataset.name}`;
+        // soonest: clinics with a real slot first, by slot; request-only last
+        return f.first ? `0${f.first}` : `1${li.dataset.name}`;
       };
       shown.sort((a, b) => key(a).localeCompare(key(b))).forEach((li) => list.append(li));
 

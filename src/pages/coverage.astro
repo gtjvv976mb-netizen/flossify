@@ -1,7 +1,10 @@
 ---
+export const prerender = false;
+
 import Base from '../layouts/Base.astro';
 import PatientHeader from '../components/PatientHeader.astro';
-import { listings } from '../data/directory';
+import { loadDirectory } from '../lib/directory-db';
+const listings = await loadDirectory();
 
 // PhilHealth Circular 2024-0034, in force since 28 December 2024, and how HMO
 // dental cards work in practice. Written for the patient, not the auditor;
