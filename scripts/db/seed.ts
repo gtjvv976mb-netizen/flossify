@@ -79,6 +79,15 @@ for (const l of listings) {
   for (const r of rows) await db.query('insert into staff_access (staff_id, clinic_id, can_view_finance, can_edit_records, can_manage_staff) values ($1,$2,true,true,true) on conflict (staff_id, clinic_id) do update set can_view_finance = true, can_manage_staff = true', [r.id, clinicIds.get(l.slug)]);
 }
 
+// Flossify's own operations account: a group with no clinic, one admin, marked platform_admin.
+{
+  const { rows: [g] } = await db.query(`insert into clinic_group (name, slug) values ('Flossify', 'flossify') returning id`);
+  const { rows: [ops] } = await db.query(
+    `insert into staff (group_id, full_name, email, phone, role, password_hash, password_set_at) values ($1, 'Flossify Operations', 'ops@flossify.example', '0917 555 0001', 'admin', $2, now()) returning id`,
+    [g.id, hash('flossify')]);
+  await db.query('insert into platform_admin (staff_id) values ($1)', [ops.id]);
+}
+
 // Patients, their teeth, today's appointments and the HMO claims, from demo.ts.
 const patientIds = new Map<string, string>();
 for (const p of patients) {

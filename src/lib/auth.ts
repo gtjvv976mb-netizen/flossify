@@ -68,7 +68,7 @@ export function readSession(cookies: AstroCookies): Session | null {
   } catch { return null; }
 }
 
-export interface Who { staffId: string; groupId: string; name: string; role: string; tv: number; homeClinicId: string | null; clinics: { id: string; slug: string; name: string }[] }
+export interface Who { staffId: string; groupId: string; name: string; role: string; tv: number; homeClinicId: string | null; clinics: { id: string; slug: string; name: string }[]; admin: boolean }
 
 /** Email + password → the staff row and the branches they may open. Staff is not under RLS; it is keyed by group. */
 export async function authenticate(email: string, password: string): Promise<Who | null> {
@@ -85,8 +85,9 @@ export async function authenticate(email: string, password: string): Promise<Who
 /** The session-worthy shape of a staff row, with their branches read through the definer function (no tenant yet). */
 export async function whoFor(s: { id: string; group_id: string; full_name: string; role: string; token_version: number; home_clinic_id: string | null }): Promise<Who> {
   const access = await pool.query('select id, slug, name from staff_branches($1)', [s.id]);
+  const admin = await pool.query('select 1 from platform_admin where staff_id = $1', [s.id]);
   await pool.query('update staff set last_seen_at = now() where id = $1', [s.id]).catch(() => {});
-  return { staffId: s.id, groupId: s.group_id, name: s.full_name, role: s.role, tv: s.token_version ?? 0, homeClinicId: s.home_clinic_id, clinics: access.rows };
+  return { staffId: s.id, groupId: s.group_id, name: s.full_name, role: s.role, tv: s.token_version ?? 0, homeClinicId: s.home_clinic_id, clinics: access.rows, admin: (admin.rowCount ?? 0) > 0 };
 }
 const DUMMY_HASH = hashPassword('not-a-real-password');
 

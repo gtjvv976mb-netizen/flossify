@@ -22,7 +22,7 @@ const nav = [
   { id: 'patients', label: 'Patients', href: `/c/${clinic.slug}/patients/` },
   { id: 'messages', label: 'Messages', href: `/c/${clinic.slug}/messages/` },
   { id: 'billing', label: 'Billing', href: `/c/${clinic.slug}/#billing` },
-  { id: 'claims', label: 'HMO claims', href: `/c/${clinic.slug}/#claims` },
+  { id: 'claims', label: 'Claims', href: `/c/${clinic.slug}/claims/` },
   ...(canSetUp ? [{ id: 'settings', label: 'Settings', href: `/c/${clinic.slug}/settings/` }] : []),
 ];
 const others = branches.filter((b) => b.slug !== clinic.slug);
@@ -37,6 +37,9 @@ const others = branches.filter((b) => b.slug !== clinic.slug);
     <!-- A clinic workspace is private by definition; keep it out of indexes. -->
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#f2f2ef" />
+    <script src="/pwa.js" defer></script>
     <link rel="preload" href="/fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/IBMPlexMono-400.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline>

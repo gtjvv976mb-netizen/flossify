@@ -49,4 +49,6 @@ export async function queueText(tx: Tx, m: Outgoing): Promise<string | null> {
 export const texts = {
   reset: (code: string) => `Flossify: your password reset code is ${code}. It works for 15 minutes. If you did not ask for it, ignore this text.`,
   invite: (by: string, clinic: string, code: string) => `Flossify: ${by} added you to ${clinic}. On the Flossify staff sign-in page choose "I have a code" and enter ${code}. It works for 24 hours.`,
+  patientCode: (code: string) => `Flossify: your sign-in code is ${code}. It works for 15 minutes. If you did not ask for it, ignore this text.`,
+  prcMismatch: (dentist: string, prc: string) => `Flossify: we could not match ${dentist}'s PRC licence ${prc} at verification.prc.gov.ph. Until it is sorted the public profile says "PRC check pending". Reply to this text or write to ops at Flossify.`,
 };

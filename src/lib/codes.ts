@@ -44,6 +44,36 @@ export async function redeemCode(staffId: string, purpose: Purpose, code: string
   return 'wrong';
 }
 
+/** A code for a mobile number with no staff row behind it (a patient). Same rules. */
+export type PhonePurpose = 'patient';
+const PHONE_TTL_MIN: Record<PhonePurpose, number> = { patient: 15 };
+const phoneDigest = (phone: string, code: string) => createHmac('sha256', SECRET).update(`phone:${phone}:${code}`).digest('hex');
+
+export async function issuePhoneCode(phone: string, purpose: PhonePurpose): Promise<string> {
+  const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+  await pool.query(`update phone_code set used_at = now() where phone = $1 and purpose = $2 and used_at is null`, [phone, purpose]);
+  await pool.query(
+    `insert into phone_code (phone, purpose, code_hash, expires_at) values ($1, $2, $3, now() + make_interval(mins => $4))`,
+    [phone, purpose, phoneDigest(phone, code), PHONE_TTL_MIN[purpose]]);
+  return code;
+}
+
+export async function redeemPhoneCode(phone: string, purpose: PhonePurpose, code: string): Promise<Redeem> {
+  const { rows } = await pool.query(
+    `select id, code_hash, attempts, expires_at from phone_code
+      where phone = $1 and purpose = $2 and used_at is null order by created_at desc limit 1`, [phone, purpose]);
+  const t = rows[0];
+  if (!t) return 'none';
+  if (new Date(t.expires_at).getTime() < Date.now() || t.attempts >= TRIES) return 'expired';
+  const want = Buffer.from(t.code_hash, 'hex'), got = Buffer.from(phoneDigest(phone, String(code).replace(/\D/g, '')), 'hex');
+  if (want.length === got.length && timingSafeEqual(want, got)) {
+    await pool.query('update phone_code set used_at = now() where id = $1', [t.id]);
+    return 'ok';
+  }
+  await pool.query('update phone_code set attempts = attempts + 1 where id = $1', [t.id]);
+  return 'wrong';
+}
+
 /** What to tell the person. */
 export const REDEEM_TEXT: Record<Exclude<Redeem, 'ok'>, string> = {
   // The same sentence for every miss on the public form, so the answer never says whether a number is known.

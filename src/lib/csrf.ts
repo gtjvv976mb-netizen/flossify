@@ -27,5 +27,13 @@ export function csrfOk(cookies: AstroCookies, form: FormData): boolean {
   return timingSafeEqual(Buffer.from(cookie), Buffer.from(field));
 }
 
+/** For JSON calls from a page's own script: the token travels in the X-CSRF header instead of a field. */
+export function csrfHeaderOk(cookies: AstroCookies, request: Request): boolean {
+  const cookie = cookies.get(CSRF_COOKIE)?.value ?? '';
+  const header = request.headers.get('x-csrf') ?? '';
+  if (!cookie || !header || cookie.length !== header.length) return false;
+  return timingSafeEqual(Buffer.from(cookie), Buffer.from(header));
+}
+
 /** The sentence a page shows when the token did not match. Never blame the person. */
 export const CSRF_MESSAGE = 'The page had gone stale. Try that once more.';

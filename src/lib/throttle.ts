@@ -27,6 +27,9 @@ export const LIMITS = {
   booking: { ip: [20, 60 * 60], phone: [5, 24 * 60 * 60] },
   signup: { ip: [3, 60 * 60] },
   inbound: { ip: [600, 60] },
+  me: { phone: [3, 60 * 60], ip: [10, 60 * 60] },
+  mecode: { phone: [10, 15 * 60], ip: [30, 15 * 60] },
+  chart: { staff: [600, 60] },
 } as const satisfies Record<string, Record<string, readonly [number, number]>>;
 
 /** The caller's address. Behind a proxy that sets X-Forwarded-For, set TRUST_PROXY=1;

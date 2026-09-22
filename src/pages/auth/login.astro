@@ -15,7 +15,7 @@ import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
 
 // Only a workspace path may be a destination; anything else is dropped, so a
 // crafted link cannot bounce a signed-in person to another site.
-const next = (Astro.url.searchParams.get('next') || '').match(/^\/c\/[^/?#]+\/[^\s]*$/)?.[0] ?? '';
+const next = (Astro.url.searchParams.get('next') || '').match(/^\/(?:c\/[^/?#]+|admin)\/[^\s]*$/)?.[0] ?? '';
 const denied = Astro.url.searchParams.get('denied') === '1';
 const done = Astro.url.searchParams.get('done') || '';
 let error = '';
@@ -37,6 +37,12 @@ if (Astro.request.method === 'POST') {
     } else {
       const who = await authenticate(email, password);
       if (!who) { error = 'That email and password don’t match a staff account.'; await authEvent('login.fail', { email, ip, ua }); }
+      else if (!who.clinics.length && who.admin) {
+        // Flossify's own people: no branch, the operations pages instead.
+        setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: '', name: who.name, role: who.role, tv: who.tv });
+        await authEvent('login.ok', { email, staffId: who.staffId, ip, ua });
+        return Astro.redirect(next.startsWith('/admin/') ? next : '/admin/');
+      }
       else if (!who.clinics.length) { error = 'Your account has no branch to open yet. Ask the owner to add you.'; await authEvent('login.fail', { email, staffId: who.staffId, ip, ua }); }
       else {
         const wanted = next.match(/^\/c\/([^/]+)\//)?.[1];
