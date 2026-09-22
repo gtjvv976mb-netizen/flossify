@@ -1,5 +1,7 @@
 # Flossify service map
 
+> **Status, 22 Sept 2026:** the patient side of this map is built as a prototype at `/find/` — symptom-led search with HMO, PhilHealth, area and open-now filters; clinic pages with dentists, fee guide, cards and hours; a five-step account-free booking with real slots, a request path for clinics off the workspace, a three-minute undo and a calendar file; dentist profiles with dated PRC checks; and `/coverage/`. The clinic workspace already existed. See `CLAUDE.md`, “The patient side”.
+
 What to build for clinics, dentists and patients in Baguio and Benguet, and why it will feel better than Molarsoft. Written 22 September 2026 from a survey of Molarsoft, the Philippine market, the best patient-facing directories abroad, clinic-side practice software, and the Philippine rules a dental directory has to live inside. Every page cited was read on that date; sources are numbered at the end. Anything marked *unverified* is a vendor claim or a secondary source we could not confirm.
 
 The yardstick throughout is the owner's: **user experience and user-friendliness, for the patient and for the clinic owner.** "Best" below means fewest steps, nothing shown that is not true, and no surprise at the desk.
