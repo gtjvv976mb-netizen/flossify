@@ -49,20 +49,31 @@ inside that layer or they beat Tailwind utilities on equal specificity.
 
 ## The tour
 
-`#tour` is the opening of the page: one continuous 30s take from the pavement
-to the chair, scrubbed by scroll (`scroll position -> video.currentTime`), with
-the H1 in its first caption. Nothing scales; the forward motion is in the
-footage. Four captions — Outside, Reception, The corridor, The chair — switch at
-the moments the footage arrives in each room (`from` fractions on `stops` in
-`index.astro`, read off a frame sheet), not at equal quarters. Six viewports of
-scroll for 30s of film, the same 5s-per-viewport pace as the earlier 20s take.
+The film is the ground of the **whole home page**: one continuous 30s take from
+the pavement to the chair in a fixed layer (`.film-bg`) behind everything,
+scrubbed by the document's own scroll (`scrollY / (scrollHeight − innerHeight)
+→ video.currentTime`). The top of the page is the pavement, the footer is the
+chair, and every section between is a `.page` standing in whichever room the
+camera has reached, its content on a paper `.pane` so the footage shows in the
+gaps. The owner asked for exactly this — "a video that shoots all the page" —
+after a version that kept the film to the opening section. Do not go back to
+that. Nothing scales; the forward motion is in the footage. The rail at the
+foot of the viewport names the room — Outside, Reception, The corridor, The
+chair — switching at the moments the footage arrives there (`from` fractions
+on `stops` in `index.astro`, read off a frame sheet), not at equal quarters.
 See `docs/generation.md` for how the film was made and how to regenerate it.
 
 - Encoded with a **5-frame GOP** so scrubbing lands on a real frame. This is why
   the files are larger than a streaming encode, and why **VP9 loses** here — it
   was measured at 5.05MB against H.264's 4.77MB at worse quality. Ship H.264.
-- Phones get `tour-960.mp4`; `prefers-reduced-motion` gets **no `src` at all**,
-  so the film is never downloaded for someone who will not see it.
+- Phones get `tour-960.mp4`.
+- **The scrub is not gated by Reduce Motion.** It only moves when the visitor
+  scrolls, so it is their motion, not the page's; the autonomous motions
+  (reveals, the ticker, transitions) stay gated. An earlier version gave the
+  film no `src` under Reduce Motion, and the owner — whose Mac has it on — saw
+  a still and asked why the video was images.
+- `--rail-h` is the rail's height; the hint and the footer clear it with it.
+  Rail captions are two lines at 1024px: keep them under ~105 characters.
 
 ## Verification — measure, do not eyeball
 
@@ -74,14 +85,15 @@ judging correctness.
 - Sample computed colours and compute contrast ratios; do not judge by eye.
   Small mono text is 12px, so it needs **4.5:1**, not 3:1.
 - For video, extract real frames with ffmpeg and measure against those.
-- `node scripts/film.mjs shots http://localhost:4321/` runs the film checks
-  headlessly (scrub mapping, caption switching, reveal, 390px, reduced motion).
-  It needs a VP9 copy at `dist/video/tour-test.webm`; the header of the script
-  says how to make one.
+- `node scripts/film.mjs shots http://localhost:4399/` runs the film checks
+  headlessly (document scroll → currentTime, frame luminance per stop, rail
+  state, panes, rail clearance, 1440px, Reduce Motion, 390px). It needs a VP9
+  copy at `dist/client/video/tour-test.webm`; the header of the script says
+  how to make one. Copy it in after every build — `dist/` is rebuilt clean.
 - Check `prefers-reduced-motion`, keyboard order, and 390px width every time.
-- The owner's Mac has Reduce Motion on. `?motion=on` on any page URL overrides
-  it for that load (class `force-motion` on `<html>`), so the film can be
-  demoed and scrub-tested there. Test both states.
+- The owner's Mac has Reduce Motion on. The film scrubs there regardless (see
+  The tour); `?motion=on` on any page URL (class `force-motion` on `<html>`)
+  turns the autonomous motions back on for that load. Test both states.
 
 ## Traps already hit
 

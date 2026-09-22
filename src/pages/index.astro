@@ -21,7 +21,7 @@ const set = (k: string) => `/img/${k}-${W[k][0]}.webp ${W[k][0]}w, /img/${k}-${W
 const src = (k: string) => `/img/${k}-${W[k][1]}.webp`;
 const blur = (k: string) => lqip[k as keyof typeof lqip];
 
-// The strip under the hero. A real morning, in the order it happens.
+// The strip in the product page. A real morning, in the order it happens.
 const queue = [
   { no: '001', at: '09:00', state: 'Arrived' },
   { no: '002', at: '09:30', state: 'In lobby' },
@@ -29,9 +29,10 @@ const queue = [
   { no: '004', at: '10:40', state: 'In chair' },
 ];
 
-// The tour. Four stops, one per room of the film, each pinned to the moment
-// the footage arrives there (fractions of the 30s take, read off a frame
-// sheet), so a caption can never describe a room the camera is not in.
+// The rooms. Four, one per room of the film, each pinned to the moment the
+// footage arrives there (fractions of the 30s take, read off a frame sheet),
+// so the rail can never name a room the camera is not in. The whole page is
+// the walk: the top of the document is the pavement, the footer is the chair.
 const stops = [
   {
     key: 'A', at: '08:55', from: 0, label: 'Outside',
@@ -42,27 +43,17 @@ const stops = [
   },
   {
     key: 'B', at: '09:00', from: 0.17, label: 'Reception',
-    title: 'Reception',
-    body: 'Nothing to fill in on arrival. Your history went in at home, and the consent was signed on your phone.',
-    did: 'The front desk sees you land on the day list the moment you walk in.',
+    body: 'Nothing to fill in on arrival. Your history went in at home; the desk saw you land on the day list.',
   },
   {
     key: 'C', at: '09:12', from: 0.42, label: 'The corridor',
-    title: 'The corridor',
     body: 'Twelve minutes, not forty. The chair was ready because the schedule knew how long you would need.',
-    did: 'Your dentist already knows why you are here and what happened last time.',
   },
   {
     key: 'D', at: '09:15', from: 0.8, label: 'The chair',
-    title: 'The chair',
-    body: 'The finding is charted at the chair — tooth, surface, condition — while it is still in front of them.',
-    did: 'The invoice is issued off the correct BIR series before you reach the door, and the HMO claim is already filed.',
+    body: 'Charted at the chair, invoiced off the correct BIR series, HMO claim filed — before you reach the door.',
   },
 ];
-
-// How far the visitor scrolls to walk the whole film: 5s of footage per
-// viewport, the pace the 20s take was tuned to.
-const SCREENS = 6;
 
 // Real screens from the clinic workspace in this repo. Nothing mocked up.
 const screens = [
@@ -119,11 +110,20 @@ const faqs = [
   title="Flossify — practice software for Philippine dental clinics"
   description="Walk through a clinic running Flossify. The schedule, the chart, the invoice and the HMO claim, laid out before the door opens."
 >
+  <!-- The film is the ground of the whole page: one fixed layer, one uncut
+       take, scrubbed by the document's own scroll. The top of the page is the
+       pavement, the footer is the chair, and every section between is a page
+       standing in whichever room the camera has reached. -->
+  <div class="film-bg" data-film aria-hidden="true">
+    <img class="film-poster" src="/video/tour-poster.webp" alt="" width="1344" height="756" fetchpriority="high" />
+    <video class="film-video" data-film-video muted playsinline preload="auto" disablepictureinpicture></video>
+  </div>
+
   <header class="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur-md">
     <div class="mx-auto flex max-w-[1480px] items-center justify-between gap-6 px-5 py-4 sm:px-8">
       <a href="/" class="font-display text-[17px] font-bold tracking-[-0.05em]">Flossify</a>
 
-      <span class="meta hidden md:block" aria-hidden="true"><span data-readout>00 / Index</span></span>
+      <span class="meta hidden md:block" aria-hidden="true"><span data-readout>01 / Walk in</span></span>
 
       <nav class="flex items-center gap-6" aria-label="Primary">
         <a href="/find/" class="meta hover:text-ink">Find a clinic</a>
@@ -137,167 +137,183 @@ const faqs = [
     <div class="absolute inset-x-0 bottom-0 h-px"><div class="h-px w-0 bg-accent" data-progress></div></div>
   </header>
 
-  <main id="main">
-    <section
-      id="tour"
-      data-sec="01 / Walk in"
-      class="film relative border-b border-line"
-      data-film
-      style={`--screens:${SCREENS}`}
-      aria-label="A walk through a clinic running Flossify"
-    >
-      <div class="film-stage">
-        <img
-          class="film-poster"
-          src="/video/tour-poster.webp"
-          alt="The open glass entrance of a small dental clinic, a pale oak reception desk and a long corridor beyond"
-          width="1344"
-          height="756"
-        />
-
-        <video
-          class="film-video"
-          data-film-video
-          muted
-          playsinline
-          preload="auto"
-          disablepictureinpicture
-          aria-hidden="true"
-        ></video>
-
-        <div class="film-scrim"></div>
-
-        <div class="film-caps">
-          {stops.map((t, i) => (
-            <div class="film-cap" data-cap={i} data-from={t.from} data-on={i === 0 ? '' : undefined}>
-              <p class="meta" style="color: rgb(242 242 239 / 0.72)">{t.eyebrow ?? `${t.key} — ${t.at}`}</p>
-              {i === 0 ? (
-                <h1 id="hero-title" data-lines class="mt-5 font-display text-[clamp(2.3rem,5.6vw,4.6rem)] font-semibold">
-                  <span class="line-clip"><span>{t.title}</span></span>
-                  <span class="line-clip"><span>{t.title2}</span></span>
-                </h1>
-              ) : (
-                <h2 class="mt-4 font-display text-[clamp(2rem,4.4vw,3.6rem)] font-semibold">{t.title}</h2>
-              )}
-              <p class="mt-5 max-w-[36ch] text-[17px]" style="color: rgb(242 242 239 / 0.86)">{t.body}</p>
-              <div class="mt-7 h-px max-w-[36ch]" style="background: rgb(242 242 239 / 0.28)"></div>
-              <p class="meta meta-accent mt-5">What Flossify did</p>
-              <p class="mt-2 max-w-[36ch] text-[15px]" style="color: rgb(242 242 239 / 0.8)">{t.did}</p>
-              {i === 0 && (
-                <div class="mt-8 flex flex-wrap gap-3">
-                  <a href="/clinics/" class="btn btn-film">Open a workspace</a>
-                  <a href="/find/" class="btn btn-film-quiet">Find a clinic</a>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <p class="meta film-hint" data-film-hint>Scroll to walk in</p>
-
-        <div class="film-rail" aria-hidden="true">
-          {stops.map((t, i) => (
-            <div class="film-stop" data-film-stop={i} data-on={i === 0 ? '' : undefined}>
-              <span class="meta block" style="color: inherit">{t.key}<span class="film-stop-label"> &nbsp; {t.label}</span></span>
-            </div>
-          ))}
+  <main id="main" class="relative z-10">
+    <section id="tour" data-sec="01 / Walk in" class="page page-hero" aria-label="A walk through a clinic running Flossify">
+      <div class="relative mx-auto w-full max-w-[1480px] px-5 sm:px-8">
+        <div class="max-w-[34rem]">
+          <p class="meta" style="color: rgb(242 242 239 / 0.72)">{stops[0].eyebrow}</p>
+          <h1 id="hero-title" data-lines class="mt-5 font-display text-[clamp(2.3rem,5.6vw,4.6rem)] font-semibold">
+            <span class="line-clip"><span>{stops[0].title}</span></span>
+            <span class="line-clip"><span>{stops[0].title2}</span></span>
+          </h1>
+          <p class="mt-5 max-w-[36ch] text-[17px]" style="color: rgb(242 242 239 / 0.86)">{stops[0].body}</p>
+          <div class="mt-7 h-px max-w-[36ch]" style="background: rgb(242 242 239 / 0.28)"></div>
+          <p class="meta meta-accent mt-5">What Flossify did</p>
+          <p class="mt-2 max-w-[36ch] text-[15px]" style="color: rgb(242 242 239 / 0.8)">{stops[0].did}</p>
+          <div class="mt-8 flex flex-wrap gap-3">
+            <a href="/clinics/" class="btn btn-film">Open a workspace</a>
+            <a href="/find/" class="btn btn-film-quiet">Find a clinic</a>
+          </div>
         </div>
       </div>
+      <p class="meta film-hint" data-film-hint>Scroll to walk in</p>
     </section>
-    <div class="relative border-t border-line bg-bg">
-      <ul class="mx-auto grid max-w-[1480px] grid-cols-2 px-5 sm:px-8 md:grid-cols-4" data-ticker>
-        {queue.map((q, i) => (
-          <li class="flex items-baseline gap-3 border-line py-4 md:border-l md:pl-5 md:[&:first-child]:border-l-0" data-tick={i}>
-            <span class="meta tabular-nums">{q.no}</span>
-            <span class="meta tabular-nums">{q.at}</span>
-            <span class="meta" data-tick-state>{q.state}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
 
-    <section id="doors" data-sec="02 / Who it is for" class="border-b border-line">
-      <div class="mx-auto max-w-[1480px] px-5 sm:px-8">
-        <div class="grid grid-cols-1 md:grid-cols-2">
-          <a href="/clinics/" class="door block border-b border-line py-14 md:border-b-0 md:pr-14 lg:py-20">
-            <p class="sec-no">01 &mdash; For clinics</p>
-            <h2 class="mt-6 font-display text-[clamp(1.8rem,3.2vw,2.7rem)] font-semibold">
-              Your clinic gets its own front door.
-            </h2>
-            <p class="mt-5 max-w-[40ch] text-ink-2">
-              One link per branch, open on today. Runs on the tablet at the chair and the
-              desktop at the desk, keeps working through a brownout, and catches up after.
-            </p>
-            <span class="meta meta-accent mt-8 inline-block">Open a workspace &rarr;</span>
-            <span class="door-rule mt-2"></span>
-          </a>
+    <section id="doors" data-sec="02 / Who it is for" class="page">
+      <div class="mx-auto max-w-[1480px] px-4 sm:px-8 lg:grid lg:grid-cols-12">
+        <div class="pane lg:col-span-7 lg:col-start-6">
+          <p class="sec-no">02 &mdash; Who it is for</p>
+          <div class="mt-8 grid grid-cols-1 md:grid-cols-2">
+            <a href="/clinics/" class="door block border-b border-line pb-10 md:border-b-0 md:pr-10 md:pb-0">
+              <p class="meta meta-ink">For clinics</p>
+              <h2 class="mt-5 font-display text-[clamp(1.7rem,2.6vw,2.3rem)] font-semibold">
+                Your clinic gets its own front door.
+              </h2>
+              <p class="mt-5 max-w-[40ch] text-ink-2">
+                One link per branch, open on today. Runs on the tablet at the chair and the
+                desktop at the desk, keeps working through a brownout, and catches up after.
+              </p>
+              <span class="meta meta-accent mt-8 inline-block">Open a workspace &rarr;</span>
+              <span class="door-rule mt-2"></span>
+            </a>
 
-          <a href="/find/" class="door block py-14 md:border-l md:border-line md:pl-14 lg:py-20">
-            <p class="sec-no">02 &mdash; For patients</p>
-            <h2 class="mt-6 font-display text-[clamp(1.8rem,3.2vw,2.7rem)] font-semibold">
-              Or you are the one in the chair.
-            </h2>
-            <p class="mt-5 max-w-[40ch] text-ink-2">
-              Find a dentist by what hurts, see the price and a real open slot, and book at
-              eleven at night without an account. Know what PhilHealth and your HMO will pay.
-            </p>
-            <span class="meta meta-accent mt-8 inline-block">Find a clinic &rarr;</span>
-            <span class="door-rule mt-2"></span>
-          </a>
+            <a href="/find/" class="door block pt-10 md:border-l md:border-line md:pt-0 md:pl-10">
+              <p class="meta meta-ink">For patients</p>
+              <h2 class="mt-5 font-display text-[clamp(1.7rem,2.6vw,2.3rem)] font-semibold">
+                Or you are the one in the chair.
+              </h2>
+              <p class="mt-5 max-w-[40ch] text-ink-2">
+                Find a dentist by what hurts, see the price and a real open slot, and book at
+                eleven at night without an account. Know what PhilHealth and your HMO will pay.
+              </p>
+              <span class="meta meta-accent mt-8 inline-block">Find a clinic &rarr;</span>
+              <span class="door-rule mt-2"></span>
+            </a>
+          </div>
         </div>
       </div>
     </section>
 
+    <section id="product" data-sec="03 / The product" class="page">
+      <div class="mx-auto max-w-[1480px] px-4 sm:px-8">
+        <div class="pane">
+          <div class="flex items-baseline gap-6">
+            <span class="sec-no">03</span>
+            <h2 class="font-display text-[clamp(1.9rem,4vw,3.2rem)] font-semibold">What the staff were looking at.</h2>
+          </div>
+          <div class="rule rule-draw mt-8"></div>
 
-    <section id="product" data-sec="03 / The product" class="border-b border-line">
-      <div class="mx-auto max-w-[1480px] px-5 py-16 sm:px-8 lg:py-28">
-        <div class="flex items-baseline gap-6">
-          <span class="sec-no">03</span>
-          <h2 class="font-display text-[clamp(1.9rem,4vw,3.2rem)] font-semibold">What the staff were looking at.</h2>
-        </div>
-        <div class="rule rule-draw mt-8"></div>
+          <ul class="grid grid-cols-2 border-b border-line md:grid-cols-4" data-ticker>
+            {queue.map((q, i) => (
+              <li class="flex items-baseline gap-3 border-line py-4 md:border-l md:pl-5 md:[&:first-child]:border-l-0 md:[&:first-child]:pl-0" data-tick={i}>
+                <span class="meta tabular-nums">{q.no}</span>
+                <span class="meta tabular-nums">{q.at}</span>
+                <span class="meta" data-tick-state>{q.state}</span>
+              </li>
+            ))}
+          </ul>
 
-        <div class="mt-12 grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-14">
-          <div class="lg:col-span-4">
-            <div role="tablist" aria-label="Product screens" aria-orientation="vertical" class="border-b border-line">
+          <div class="mt-12 grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-14">
+            <div class="lg:col-span-4">
+              <div role="tablist" aria-label="Product screens" aria-orientation="vertical" class="border-b border-line">
+                {screens.map((s, i) => (
+                  <button
+                    type="button"
+                    role="tab"
+                    id={`tab-${s.id}`}
+                    aria-controls={`panel-${s.id}`}
+                    aria-selected={i === 0 ? 'true' : 'false'}
+                    tabindex={i === 0 ? 0 : -1}
+                    class="rail-item border-t border-line"
+                    data-rail
+                  >
+                    <span class="sec-no block">{String(i + 1).padStart(2, '0')}</span>
+                    <span class="mt-2 block font-display text-[1.4rem] font-semibold">{s.label}</span>
+                  </button>
+                ))}
+              </div>
+
               {screens.map((s, i) => (
-                <button
-                  type="button"
-                  role="tab"
-                  id={`tab-${s.id}`}
-                  aria-controls={`panel-${s.id}`}
-                  aria-selected={i === 0 ? 'true' : 'false'}
-                  tabindex={i === 0 ? 0 : -1}
-                  class="rail-item border-t border-line"
-                  data-rail
-                >
-                  <span class="sec-no block">{String(i + 1).padStart(2, '0')}</span>
-                  <span class="mt-2 block font-display text-[1.4rem] font-semibold">{s.label}</span>
-                </button>
+                <p class="mt-8 max-w-[38ch] text-ink-2" data-rail-copy hidden={i !== 0}>{s.body}</p>
               ))}
             </div>
 
-            {screens.map((s, i) => (
-              <p class="mt-8 max-w-[38ch] text-ink-2" data-rail-copy hidden={i !== 0}>{s.body}</p>
-            ))}
-          </div>
-
-          <div class="lg:col-span-8">
-            {screens.map((s, i) => (
-              <div
-                role="tabpanel"
-                id={`panel-${s.id}`}
-                aria-labelledby={`tab-${s.id}`}
-                tabindex="0"
-                class:list={['panel', i === 0 && 'is-shown']}
-                hidden={i !== 0}
-              >
-                <div class="frame">
-                  <div class="frame-bar"><span>{s.file}</span></div>
-                  <figure class="media media-auto" style={`background-image:url("${blur(`shot-${s.id}`)}")`}>
-                    <img src={`/shots/${s.id}.webp`} alt={s.title} width={shotSize[s.id][0]} height={shotSize[s.id][1]} loading="lazy" />
-                  </figure>
+            <div class="lg:col-span-8">
+              {screens.map((s, i) => (
+                <div
+                  role="tabpanel"
+                  id={`panel-${s.id}`}
+                  aria-labelledby={`tab-${s.id}`}
+                  tabindex="0"
+                  class:list={['panel', i === 0 && 'is-shown']}
+                  hidden={i !== 0}
+                >
+                  <div class="frame">
+                    <div class="frame-bar"><span>{s.file}</span></div>
+                    <figure class="media media-auto" style={`background-image:url("${blur(`shot-${s.id}`)}")`}>
+                      <img src={`/shots/${s.id}.webp`} alt={s.title} width={shotSize[s.id][0]} height={shotSize[s.id][1]} loading="lazy" />
+                    </figure>
+                  </div>
                 </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="services" data-sec="04 / What it does" class="page">
+      <div class="mx-auto max-w-[1480px] px-4 sm:px-8">
+        <div class="pane">
+          <div class="flex items-baseline gap-6">
+            <span class="sec-no">04</span>
+            <h2 class="font-display text-[clamp(1.9rem,4vw,3.2rem)] font-semibold">Everything a clinic actually does.</h2>
+          </div>
+          <div class="rule rule-draw mt-8"></div>
+
+          <div class="mt-12 grid grid-cols-1 gap-x-14 lg:grid-cols-12">
+            <div class="lg:col-span-7">
+              {index.map((s, i) => (
+                <button type="button" class="idx-row" data-idx={i} data-active={i === 0 ? '' : undefined}>
+                  <span class="sec-no pt-1">{String(i + 1).padStart(2, '0')}</span>
+                  <span class="block">
+                    <span class="idx-title block font-display text-[clamp(1.5rem,2.6vw,2rem)] font-semibold">{s.title}</span>
+                    <span class="mt-3 block max-w-[46ch] text-[16px] text-ink-2">{s.body}</span>
+                    <figure class="media mt-6 aspect-[16/9] w-full lg:hidden" style={`background-image:url("${blur(s.img)}")`}>
+                      <img src={src(s.img)} srcset={set(s.img)} sizes="100vw" alt={s.alt} loading="lazy" />
+                    </figure>
+                  </span>
+                  <span class="meta pt-1" aria-hidden="true">&rarr;</span>
+                </button>
+              ))}
+              <div class="border-t border-line"></div>
+              <a href="/websites/" class="meta meta-accent mt-6 inline-block">See a sample clinic website &rarr;</a>
+            </div>
+
+            <div class="hidden lg:col-span-5 lg:block">
+              <div class="idx-pane sticky top-28 aspect-[4/5] border border-line">
+                {index.map((s, i) => (
+                  <div class="idx-shot media" data-shot={i} data-active={i === 0 ? '' : undefined} style={`background-image:url("${blur(s.img)}")`}>
+                    <img src={src(s.img)} srcset={set(s.img)} sizes="40vw" alt={s.alt} loading="lazy" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="figures" data-sec="05 / In short" class="page">
+      <div class="mx-auto max-w-[1480px] px-4 sm:px-8 lg:grid lg:grid-cols-12">
+        <div class="pane lg:col-span-8">
+          <p class="sec-no">05 &mdash; In short</p>
+          <div class="mt-8 grid grid-cols-1 md:grid-cols-3">
+            {figures.map((f, i) => (
+              <div class:list={['reveal', `reveal-d${i}`, 'border-t border-line pt-8 pb-4 md:pr-8', i > 0 && 'md:border-l md:pl-8 md:pr-0']}>
+                <p class="font-display text-[clamp(3rem,6vw,5rem)] font-semibold tabular-nums leading-none">{f.n}</p>
+                <p class="meta meta-ink mt-4">{f.unit}</p>
+                <p class="mt-4 max-w-[30ch] text-[15.5px] text-ink-2">{f.body}</p>
               </div>
             ))}
           </div>
@@ -305,71 +321,14 @@ const faqs = [
       </div>
     </section>
 
-    <section id="services" data-sec="04 / What it does" class="border-b border-line">
-      <div class="mx-auto max-w-[1480px] px-5 py-16 sm:px-8 lg:py-28">
-        <div class="flex items-baseline gap-6">
-          <span class="sec-no">04</span>
-          <h2 class="font-display text-[clamp(1.9rem,4vw,3.2rem)] font-semibold">Everything a clinic actually does.</h2>
-        </div>
-        <div class="rule rule-draw mt-8"></div>
-
-        <div class="mt-12 grid grid-cols-1 gap-x-14 lg:grid-cols-12">
-          <div class="lg:col-span-7">
-            {index.map((s, i) => (
-              <button type="button" class="idx-row" data-idx={i} data-active={i === 0 ? '' : undefined}>
-                <span class="sec-no pt-1">{String(i + 1).padStart(2, '0')}</span>
-                <span class="block">
-                  <span class="idx-title block font-display text-[clamp(1.5rem,2.6vw,2rem)] font-semibold">{s.title}</span>
-                  <span class="mt-3 block max-w-[46ch] text-[16px] text-ink-2">{s.body}</span>
-                  <figure class="media mt-6 aspect-[16/9] w-full lg:hidden" style={`background-image:url("${blur(s.img)}")`}>
-                    <img src={src(s.img)} srcset={set(s.img)} sizes="100vw" alt={s.alt} loading="lazy" />
-                  </figure>
-                </span>
-                <span class="meta pt-1" aria-hidden="true">&rarr;</span>
-              </button>
-            ))}
-            <div class="border-t border-line"></div>
-            <a href="/websites/" class="meta meta-accent mt-6 inline-block">See a sample clinic website &rarr;</a>
+    <section id="questions" data-sec="06 / Questions" class="page">
+      <div class="mx-auto max-w-[1480px] px-4 sm:px-8 lg:grid lg:grid-cols-12">
+        <div class="pane lg:col-span-8 lg:col-start-5">
+          <div class="flex items-baseline gap-6">
+            <span class="sec-no">06</span>
+            <h2 class="font-display text-[clamp(1.9rem,4vw,2.8rem)] font-semibold">Questions.</h2>
           </div>
-
-          <div class="hidden lg:col-span-5 lg:block">
-            <div class="idx-pane sticky top-28 aspect-[4/5] border border-line">
-              {index.map((s, i) => (
-                <div class="idx-shot media" data-shot={i} data-active={i === 0 ? '' : undefined} style={`background-image:url("${blur(s.img)}")`}>
-                  <img src={src(s.img)} srcset={set(s.img)} sizes="40vw" alt={s.alt} loading="lazy" />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="figures" data-sec="05 / In short" class="border-b border-line">
-      <div class="mx-auto max-w-[1480px] px-5 py-16 sm:px-8 lg:py-24">
-        <div class="grid grid-cols-1 md:grid-cols-3">
-          {figures.map((f, i) => (
-            <div class:list={['reveal', `reveal-d${i}`, 'border-t border-line pt-8 pb-10 md:pr-10', i > 0 && 'md:border-l md:pl-10 md:pr-0']}>
-              <p class="font-display text-[clamp(3.5rem,7vw,5.5rem)] font-semibold tabular-nums leading-none">{f.n}</p>
-              <p class="meta meta-ink mt-4">{f.unit}</p>
-              <p class="mt-4 max-w-[34ch] text-[16px] text-ink-2">{f.body}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-
-    <section id="questions" data-sec="06 / Questions" class="border-b border-line">
-      <div class="mx-auto max-w-[1480px] px-5 py-16 sm:px-8 lg:py-28">
-        <div class="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-14">
-          <div class="lg:col-span-4">
-            <div class="flex items-baseline gap-6">
-              <span class="sec-no">06</span>
-              <h2 class="font-display text-[clamp(1.9rem,4vw,2.8rem)] font-semibold">Questions.</h2>
-            </div>
-          </div>
-
-          <div class="lg:col-span-8">
+          <div class="mt-8">
             {faqs.map((f) => (
               <details class="q">
                 <summary><span class="font-display text-[1.25rem] font-semibold tracking-[-0.03em]">{f.q}</span></summary>
@@ -382,20 +341,20 @@ const faqs = [
       </div>
     </section>
 
-    <section class="on-invert bg-invert-bg text-invert-ink">
-      <div class="mx-auto max-w-[1480px] px-5 py-20 sm:px-8 lg:py-32">
-        <p class="meta" style="color: var(--c-invert-ink-2)">Start</p>
+    <section id="start" data-sec="07 / Start" class="page page-cta">
+      <div class="relative mx-auto max-w-[1480px] px-5 sm:px-8">
+        <p class="meta" style="color: rgb(242 242 239 / 0.72)">Start</p>
         <h2 class="mt-7 max-w-[18ch] font-display text-[clamp(2.4rem,7vw,5.5rem)] font-semibold">
           Open your clinic and see the day.
         </h2>
         <div class="mt-12 flex flex-wrap gap-3">
-          <a href="/clinics/" class="btn btn-primary">Open a workspace</a>
-          <a href="#tour" class="btn btn-quiet">Walk through it again</a>
+          <a href="/clinics/" class="btn btn-film">Open a workspace</a>
+          <a href="#tour" class="btn btn-film-quiet">Walk in again</a>
         </div>
       </div>
     </section>
 
-    <footer class="border-t border-line">
+    <footer class="film-clear border-t border-line bg-bg">
       <div class="mx-auto max-w-[1480px] px-5 py-14 sm:px-8">
         <div class="grid grid-cols-2 gap-8 md:grid-cols-4">
           <div>
@@ -431,52 +390,48 @@ const faqs = [
     </footer>
   </main>
 
+  <!-- Where the camera is, for the whole walk. The current room carries one
+       line of the patient's morning; the same lines are in the list below for
+       anyone the rail is hidden from. -->
+  <div class="film-rail" aria-hidden="true">
+    {stops.map((t, i) => (
+      <div class="film-stop" data-film-stop={i} data-from={t.from} data-on={i === 0 ? '' : undefined}>
+        <span class="meta block" style="color: inherit">{t.key}<span class="film-stop-time"> &nbsp; {t.at}</span><span class="film-stop-label"> &nbsp; {t.label}</span></span>
+        {i > 0 && <span class="film-stop-body">{t.body}</span>}
+      </div>
+    ))}
+  </div>
+  <ol class="sr-only" aria-label="The walk through the clinic">
+    {stops.map((t) => <li>{t.at}, {t.label.toLowerCase()}: {t.body}</li>)}
+  </ol>
+
   <script>
-    /* `?motion=on` is a demo switch: the owner's Mac has Reduce Motion on, which
-       would otherwise hide the film from the person who commissioned it. It is
-       read once here and once, inline, in Base.astro so the CSS agrees. */
+    /* `?motion=on` is a demo switch that overrides Reduce Motion for the
+       autonomous motions on this page (reveals, the ticker). The film itself
+       is not gated: it only moves when the visitor scrolls, so it runs for
+       everyone. Read once here and once, inline, in Base.astro so the CSS agrees. */
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
       && !document.documentElement.classList.contains('force-motion');
 
-    /* --- scroll progress -------------------------------------------------- */
+    /* --- the walk ----------------------------------------------------------
+       Scroll position over the whole document maps to the film's currentTime.
+       The page scrolls normally throughout — the film just reads how far down
+       we are, which is why this never fights the wheel. The masthead hairline
+       reads the same number. */
     const bar = document.querySelector<HTMLElement>('[data-progress]');
-
-    /* --- the tour ---------------------------------------------------------
-       Scroll position maps to the film's currentTime. The page scrolls
-       normally throughout — the film just reads how far down the section we
-       are, which is why this never fights the wheel. */
-    const film = document.querySelector<HTMLElement>('[data-film]');
     const vid = document.querySelector<HTMLVideoElement>('[data-film-video]');
     const poster = document.querySelector<HTMLElement>('.film-poster');
     const hint = document.querySelector<HTMLElement>('[data-film-hint]');
-    const caps = Array.from(document.querySelectorAll<HTMLElement>('[data-cap]'));
     const filmStops = Array.from(document.querySelectorAll<HTMLElement>('[data-film-stop]'));
+    const froms = filmStops.map((s) => parseFloat(s.dataset.from ?? '0'));
 
     let duration = 0;
 
-    if (vid && !reduced) {
-      /* Chosen after metadata rather than in the markup: a phone should not
-         pull the desktop master over mobile data to scrub it. */
-      const small = window.matchMedia('(max-width: 900px)').matches;
-      vid.src = small ? '/video/tour-960.mp4' : '/video/tour-1440.mp4';
-      vid.load();
+    const draw = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      const p = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
 
-      vid.addEventListener('loadedmetadata', () => {
-        duration = vid.duration;
-        drawFilm();
-      });
-      /* Only hide the poster once a real frame exists behind it, otherwise
-         the section flashes black between the two. */
-      vid.addEventListener('seeked', () => poster?.setAttribute('data-hide', ''), { once: true });
-      vid.addEventListener('loadeddata', () => poster?.setAttribute('data-hide', ''), { once: true });
-    }
-
-    const drawFilm = () => {
-      if (!film || reduced) return;
-      const span = film.offsetHeight - window.innerHeight;
-      const p = span > 0
-        ? Math.min(1, Math.max(0, -film.getBoundingClientRect().top / span))
-        : 0;
+      if (bar) bar.style.width = `${p * 100}%`;
 
       if (vid && duration) {
         /* Stop just shy of the end: seeking exactly to duration parks some
@@ -486,24 +441,31 @@ const faqs = [
       }
 
       let at = 0;
-      caps.forEach((c, i) => { if (p >= parseFloat(c.dataset.from ?? '0')) at = i; });
-      caps.forEach((c, i) => c.toggleAttribute('data-on', i === at));
+      froms.forEach((f, i) => { if (p >= f) at = i; });
       filmStops.forEach((c, i) => c.toggleAttribute('data-on', i === at));
       if (p > 0.015) hint?.setAttribute('data-hide', '');
     };
 
-    /* --- the scroll driver -------------------------------------------------
-       One rAF-throttled handler for both the masthead progress hairline and
-       the film, because `scroll` fires far more often than the compositor
-       can use and two independent listeners would double that work. */
-    const draw = () => {
-      if (bar) {
-        const max = document.documentElement.scrollHeight - window.innerHeight;
-        bar.style.width = `${max > 0 ? (window.scrollY / max) * 100 : 0}%`;
-      }
-      drawFilm();
-    };
+    if (vid) {
+      /* Chosen after layout rather than in the markup: a phone should not
+         pull the desktop master over mobile data to scrub it. */
+      const small = window.matchMedia('(max-width: 900px)').matches;
+      vid.src = small ? '/video/tour-960.mp4' : '/video/tour-1440.mp4';
+      vid.load();
 
+      vid.addEventListener('loadedmetadata', () => {
+        duration = vid.duration;
+        draw();
+      });
+      /* Only hide the poster once a real frame exists behind it, otherwise
+         the page flashes black between the two. */
+      const show = () => poster?.setAttribute('data-hide', '');
+      vid.addEventListener('loadeddata', show, { once: true });
+      vid.addEventListener('seeked', show, { once: true });
+    }
+
+    /* One rAF-throttled handler, because `scroll` fires far more often than
+       the compositor can use. */
     let queued = false;
     const onScroll = () => {
       if (queued) return;
