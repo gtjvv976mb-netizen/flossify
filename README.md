@@ -33,7 +33,10 @@ src/
   layouts/Base.astro        <head>, meta, JSON-LD, theme bootstrap
   components/Odontogram.astro   the interactive chart
   pages/index.astro         the landing page, content in frontmatter
+  pages/websites.astro      the clinic-website service, framing the sample
   styles/global.css         design tokens, tooth states, dark mode
+public/
+  samples/swiftcare/        a complete sample clinic website (static, no build)
 ```
 
 Page copy lives in the frontmatter arrays at the top of `index.astro`
