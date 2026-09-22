@@ -726,10 +726,16 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
    watches the rooms change between one page and the next. */
 .page { position: relative; padding-block: clamp(4rem, 14vh, 9rem); }
 
-/* Paper on the footage. No radius, no shadow: a hairline and the ground. */
+/* Frosted paper on the footage: the room stays visible through every page,
+   blurred just enough that the type reads. No radius, no shadow: a hairline
+   and the ground. The footer takes the same ground without the hairline. */
+.pane, .ground {
+  background: color-mix(in srgb, var(--c-bg) 62%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  backdrop-filter: blur(14px) saturate(1.15);
+}
 .pane {
-  background: var(--c-bg);
-  border: 1px solid var(--c-line);
+  border: 1px solid color-mix(in srgb, var(--c-line) 85%, transparent);
   padding: clamp(1.5rem, 3.5vw, 3.25rem);
 }
 
