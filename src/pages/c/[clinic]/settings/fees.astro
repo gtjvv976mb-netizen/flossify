@@ -1,0 +1,216 @@
+---
+// The fee guide: what patients see on the clinic's page and what the desk
+// quotes. One table, one Save; a second small form adds a service. Prices
+// are pesos. A blank "up to" prints a single price, "from" prints "from
+// ₱300", and a service that is not offered stays in the list but off the
+// page. Rows are updated by id inside withClinic(), so an id from another
+// clinic matches nothing.
+export const prerender = false;
+
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { withClinic } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { CATEGORY_LABEL, type Category } from '../../../../data/directory';
+import { peso } from '../../../../data/demo';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const canSetUp = session.role === 'owner' || session.role === 'admin';
+const q = Astro.url.searchParams;
+const base = `/c/${clinic.slug}/settings/`;
+
+// procedure_catalog.category has no check constraint; these six are the ones the directory renders.
+const CATS = Object.keys(CATEGORY_LABEL) as Category[];
+const UUID = /^[0-9a-f-]{36}$/;
+const CODE = /^[a-z][a-z-]{0,39}$/;
+
+interface Row { id: string; code: string; name: string; local_name: string | null; category: string | null; default_price: string; price_max: string | null; price_from: boolean; unit: string | null; minutes: number | null; active: boolean }
+
+const load = () => withClinic(clinic.id, async (tx) => ({
+  area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null,
+  rows: (await tx.query(
+    `select id, code, name, local_name, category, default_price, price_max, price_from, unit, minutes, active
+     from procedure_catalog
+     order by coalesce(array_position($1::text[], category), 99), default_price, name`, [CATS])).rows as Row[],
+}));
+const { area, rows } = await load();
+
+// "1,500" → 1500; "" → null; anything else → NaN, which is the one sentence below.
+const num = (s: FormDataEntryValue | null): number | null => {
+  const t = String(s ?? '').trim().replace(/[,₱\s]/g, '');
+  if (t === '') return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? n : NaN;
+};
+
+const problems: string[] = [];
+let keep: FormData | null = null;   // the posted values, kept on the form when something needs fixing
+const add = { code: '', name: '', local_name: '', category: 'prevent', price: '', unit: '', minutes: '' };
+
+if (Astro.request.method === 'POST' && canSetUp) {
+  const form = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(base + 'fees/?stale=1', 303);
+
+  if (form.get('do') === 'add') {
+    for (const k of Object.keys(add) as (keyof typeof add)[]) add[k] = String(form.get(k) ?? '').trim();
+    add.code = add.code.toLowerCase();
+    const price = num(add.price), minutes = num(add.minutes);
+    if (!CODE.test(add.code)) problems.push('The code is lowercase letters and hyphens, like root-canal.');
+    if (!add.name) problems.push('The service needs a name.');
+    if (!CATS.includes(add.category as Category)) problems.push('Pick a category.');
+    if (price === null || Number.isNaN(price)) problems.push('The price is a number, zero or more.');
+    if (minutes === null || Number.isNaN(minutes) || minutes < 5 || minutes > 480) problems.push('Minutes is a whole number from 5 to 480: the chair time the schedule blocks.');
+    if (problems.length === 0) {
+      try {
+        await withClinic(clinic.id, async (tx) => {
+          const { rows: made } = await tx.query(
+            `insert into procedure_catalog (clinic_id, code, name, local_name, category, default_price, price_from, unit, minutes, tooth_scoped, active)
+             values ($1, $2, $3, $4, $5, $6, false, $7, $8, $9, true) returning id`,
+            [clinic.id, add.code, add.name, add.local_name || null, add.category, price, add.unit || null, Math.round(minutes as number), /tooth/i.test(add.unit)]);
+          await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'catalog.update', 'procedure_catalog', $3)`, [clinic.id, session.staffId, made[0].id]);
+        });
+        return Astro.redirect(base + 'fees/?added=1', 303);
+      } catch (e: any) {
+        if (e?.code === '23505') problems.push(`There is already a service with the code “${add.code}”. Pick another.`);
+        else throw e;
+      }
+    }
+  } else {
+    const ids = new Set<string>();
+    for (const [k] of form) { const m = /^price\[([0-9a-f-]{36})\]$/.exec(k); if (m && UUID.test(m[1])) ids.add(m[1]); }
+    const updates: { id: string; price: number; max: number | null; from: boolean; active: boolean; minutes: number | null }[] = [];
+    let bad = false;
+    for (const id of ids) {
+      const price = num(form.get(`price[${id}]`)), max = num(form.get(`max[${id}]`)), minutes = num(form.get(`minutes[${id}]`));
+      if (price === null || Number.isNaN(price) || Number.isNaN(max) || Number.isNaN(minutes)) { bad = true; continue; }
+      const row = rows.find((r) => r.id === id);
+      if (max !== null && max < price) problems.push(`“Up to” is less than the price on ${row?.name ?? 'one service'}.`);
+      updates.push({ id, price, max, from: form.get(`from[${id}]`) === 'on', active: form.get(`active[${id}]`) === 'on', minutes: minutes === null ? null : Math.round(minutes) });
+    }
+    if (bad) problems.unshift('Prices and minutes are numbers, zero or more — no letters, no negatives.');
+    if (problems.length === 0) {
+      await withClinic(clinic.id, async (tx) => {
+        for (const u of updates) await tx.query(
+          `update procedure_catalog set default_price = $2, price_max = $3, price_from = $4, active = $5, minutes = $6 where id = $1`,
+          [u.id, u.price, u.max, u.from, u.active, u.minutes]);
+        await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity) values ($1, $2, 'catalog.update', 'procedure_catalog')`, [clinic.id, session.staffId]);
+      });
+      return Astro.redirect(base + 'fees/?saved=1', 303);
+    }
+    keep = form;
+  }
+}
+
+// What the table shows for a row: the typed value while something needs fixing, otherwise the saved one.
+const val = (field: string, r: Row, saved: string) => (keep ? String(keep.get(`${field}[${r.id}]`) ?? '') : saved);
+const on = (field: string, r: Row, saved: boolean) => (keep ? keep.get(`${field}[${r.id}]`) === 'on' : saved);
+const money = (s: string | null) => (s == null ? '' : String(Math.round(Number(s))));
+
+// The line the public page prints, so the desk sees what a patient sees.
+const shows = (r: Row) => {
+  if (!r.active) return 'Not offered';
+  const min = Number(r.default_price);
+  const core = r.price_max != null ? `${peso(min)} – ${peso(Number(r.price_max))}` : r.price_from ? `from ${peso(min)}` : peso(min);
+  return r.unit ? `${core} ${r.unit}` : core;
+};
+
+const saved = q.get('saved') === '1';
+const added = q.get('added') === '1';
+const stale = q.get('stale') === '1';
+const th = 'px-4 py-3 text-xs font-semibold tracking-[0.09em] text-muted uppercase';
+const cell = 'px-4 py-3 align-top';
+const small = 'w-full min-w-[5.5rem] border border-line bg-surface px-2.5 py-2 text-[14.5px] tabular-nums focus:border-ink focus:outline-2 focus:outline-offset-1 focus:outline-accent';
+---
+
+<ClinicLayout clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Fee guide" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
+  <a href={base} class="meta hover:text-ink">&larr; Settings</a>
+  <h1 class="mt-3 font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">The fee guide</h1>
+  <p class="mt-2 max-w-[60ch] text-[15px] text-ink-2">What patients see on your page and what the desk quotes.</p>
+
+  {!canSetUp ? (
+    <p class="mt-6 max-w-[60ch] text-[15.5px] leading-relaxed text-ink-2">Settings are the owner’s and the admin’s. If a price needs changing, ask them.</p>
+  ) : (
+    <>
+      {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
+      {saved && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">Saved.</p>}
+      {added && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">Added. It is offered and on the page from now.</p>}
+      {problems.length > 0 && (
+        <div role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">
+          <p class="font-semibold">Nothing was saved. A few things to fix:</p>
+          <ul class="mt-2 list-disc space-y-1 pl-5">{problems.map((p) => <li>{p}</li>)}</ul>
+        </div>
+      )}
+
+      <form method="post" class="mt-8">
+        <Csrf />
+        <div class="overflow-x-auto border border-line bg-surface">
+          <table class="w-full min-w-[900px] border-collapse text-left">
+            <caption class="sr-only">Services and prices at {clinic.name}</caption>
+            <thead>
+              <tr class="border-b border-line bg-bg-soft">
+                <th scope="col" class={th}>Service</th>
+                <th scope="col" class={th}>Category</th>
+                <th scope="col" class={th}>Offered</th>
+                <th scope="col" class={th}>Price ₱</th>
+                <th scope="col" class={th}>Up to ₱</th>
+                <th scope="col" class={th}>From</th>
+                <th scope="col" class={th}>Minutes</th>
+                <th scope="col" class={th}>Patients see</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && <tr><td colspan="8" class="px-4 py-4 text-[15px] text-muted">No services yet. Add the first one below.</td></tr>}
+              {rows.map((r, i) => (
+                <tr class={i < rows.length - 1 ? 'border-b border-line-2' : ''}>
+                  <th scope="row" class={`${cell} font-medium`}>
+                    <span class="text-[15px]">{r.name}</span>
+                    <span class="meta mt-0.5 block">{r.local_name ?? r.code}</span>
+                  </th>
+                  <td class={`${cell} text-[14.5px] text-ink-2`}>{CATEGORY_LABEL[r.category as Category] ?? r.category ?? '—'}</td>
+                  <td class={cell}><label class="check"><input type="checkbox" name={`active[${r.id}]`} checked={on('active', r, r.active)} /><span class="sr-only">Offered: {r.name}</span></label></td>
+                  <td class={cell}><label><span class="sr-only">Price for {r.name}</span><input class={small} inputmode="decimal" name={`price[${r.id}]`} value={val('price', r, money(r.default_price))} required /></label></td>
+                  <td class={cell}><label><span class="sr-only">Up to, for {r.name}</span><input class={small} inputmode="decimal" name={`max[${r.id}]`} value={val('max', r, money(r.price_max))} placeholder="—" /></label></td>
+                  <td class={cell}><label class="check"><input type="checkbox" name={`from[${r.id}]`} checked={on('from', r, r.price_from)} /><span class="sr-only">Starting price: {r.name}</span></label></td>
+                  <td class={cell}><label><span class="sr-only">Minutes for {r.name}</span><input class={small} inputmode="numeric" name={`minutes[${r.id}]`} value={val('minutes', r, r.minutes == null ? '' : String(r.minutes))} /></label></td>
+                  <td class={`${cell} text-[14px] text-ink-2 tabular-nums`}>{shows(r)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-5 flex flex-wrap items-center gap-4">
+          <button type="submit" class="btn btn-primary">Save</button>
+          <span class="text-[13.5px] text-muted">One save for the whole table. Blank “up to” means a single price; “from” prints as “from ₱300”.</span>
+        </div>
+      </form>
+
+      <hr class="rule my-12" />
+
+      <section class="max-w-[760px]">
+        <p class="sec-no">Add a service</p>
+        <h2 class="mt-1 font-display text-[22px] font-semibold">Something not in the list</h2>
+        <form method="post" class="mt-5 grid gap-4">
+          <Csrf />
+          <input type="hidden" name="do" value="add" />
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="field">
+              <span class="meta">Code</span>
+              <input name="code" value={add.code} required autocapitalize="off" spellcheck="false" placeholder="night-guard" />
+              <span class="text-[13px] leading-snug text-muted">Lowercase letters and hyphens. It never shows to patients.</span>
+            </label>
+            <label class="field"><span class="meta">Category</span><select name="category">{CATS.map((c) => <option value={c} selected={add.category === c}>{CATEGORY_LABEL[c]}</option>)}</select></label>
+            <label class="field"><span class="meta">Name</span><input name="name" value={add.name} required maxlength="80" placeholder="Night guard" /></label>
+            <label class="field"><span class="meta">Local name (optional)</span><input name="local_name" value={add.local_name} maxlength="80" placeholder="What patients call it at the desk" /></label>
+            <label class="field"><span class="meta">Price ₱</span><input name="price" value={add.price} inputmode="decimal" required /></label>
+            <label class="field"><span class="meta">Minutes</span><input name="minutes" value={add.minutes} inputmode="numeric" required placeholder="30" /></label>
+            <label class="field"><span class="meta">Unit (optional)</span><input name="unit" value={add.unit} placeholder="per tooth" /></label>
+          </div>
+          <div><button type="submit" class="btn btn-quiet">Add the service</button></div>
+        </form>
+      </section>
+    </>
+  )}
+</ClinicLayout>

@@ -6,10 +6,11 @@ Dental practice software marketing site. Astro + Tailwind v4, static output.
 
 ```bash
 npm install
-cp .env.example .env     # DATABASE_URL and SESSION_SECRET
+cp .env.example .env     # DATABASE_URL, SESSION_SECRET, the text sender, uploads
 npm run db:setup         # creates flossify_dev from schema + migrations, seeds it
 npm run dev              # http://localhost:4321
 npm run build && npm run preview   # the Node server, as deployed
+npm run sms:worker       # in a second terminal: sends queued texts (console provider in dev)
 ```
 
 Needs a local PostgreSQL (Homebrew's is fine). `db:setup` drops and recreates
@@ -48,9 +49,27 @@ workspace page and re-checks branch access on each request.
 
 API: `GET /api/availability` (real open slots), `POST /api/bookings` (book or
 request without an account; the slot is re-checked inside the insert's
-transaction), `DELETE /api/bookings/:ref` (undo within three minutes, cancel
-after). A booking queues its confirmation text in `message_log`; nothing sends
-SMS yet.
+transaction; twenty an hour per address, five a day per mobile), `DELETE
+/api/bookings/:ref` (undo within three minutes, cancel after), `POST
+/api/sms/inbound` (a patient's reply; `Y` confirms their next visit).
+
+Texts: the app only queues them (`message_log`). `npm run sms:worker` sends
+them — `SMS_PROVIDER=console` prints them in development, `semaphore` sends
+through semaphore.co with a registered sender name — holds patient texts
+between 9 pm and 8 am, queues one reminder per visit the day before, and
+retries three times before marking a text failed. The desk sees every text,
+both directions, on the branch's **Messages** page. No text ever contains a
+link; Philippine telcos drop those.
+
+Sign-in: scrypt passwords, a signed session cookie, a CSRF token on every
+form, rate limits on sign-in, reset and sign-up, and password reset by a
+six-digit code texted to the staff member's mobile (`/auth/forgot/`,
+`/auth/code/`). A password change signs out every other session.
+
+Clinics: `/start/` creates a clinic and its owner in one form. It begins
+unlisted; Settings (profile, hours, HMOs, the fee guide, Team with texted
+invitations, Photos) works down a checklist and the owner flips **Listed on
+Find a clinic** when the page is ready.
 
 ## Layout
 

@@ -3,22 +3,27 @@
 // open, and the way out. Pages behind it have already passed requireWorkspace,
 // so a rendered page always has a staff member; the props say who.
 import '../styles/global.css';
+import Csrf from '../components/Csrf.astro';
 
 interface Props {
   clinic: { slug: string; name: string; area?: string | null };
   title: string;
-  section: 'today' | 'patients' | 'billing' | 'claims';
+  section: 'today' | 'patients' | 'messages' | 'billing' | 'claims' | 'settings';
   staff: { name: string; role: string };
   branches: { slug: string; name: string }[];
 }
 
 const { clinic, title, section, staff, branches } = Astro.props;
 
+// Settings is the owner's and the admin's: hours, fees, the team, the listing.
+const canSetUp = staff.role === 'owner' || staff.role === 'admin';
 const nav = [
   { id: 'today', label: 'Today', href: `/c/${clinic.slug}/` },
   { id: 'patients', label: 'Patients', href: `/c/${clinic.slug}/patients/` },
+  { id: 'messages', label: 'Messages', href: `/c/${clinic.slug}/messages/` },
   { id: 'billing', label: 'Billing', href: `/c/${clinic.slug}/#billing` },
   { id: 'claims', label: 'HMO claims', href: `/c/${clinic.slug}/#claims` },
+  ...(canSetUp ? [{ id: 'settings', label: 'Settings', href: `/c/${clinic.slug}/settings/` }] : []),
 ];
 const others = branches.filter((b) => b.slug !== clinic.slug);
 ---
@@ -59,7 +64,7 @@ const others = branches.filter((b) => b.slug !== clinic.slug);
           </div>
         </div>
 
-        <nav class="flex items-center gap-1" aria-label="Clinic sections">
+        <nav class="flex flex-wrap items-center gap-1" aria-label="Clinic sections">
           {nav.map((n) => (
             <a
               href={n.href}
@@ -84,7 +89,7 @@ const others = branches.filter((b) => b.slug !== clinic.slug);
             </details>
           )}
           <span class="text-[13.5px] text-ink-2"><span class="font-medium text-ink">{staff.name}</span> · {staff.role}</span>
-          <form method="post" action="/auth/logout"><button type="submit" class="meta hover:text-ink">Sign out</button></form>
+          <form method="post" action="/auth/logout"><Csrf /><button type="submit" class="meta hover:text-ink">Sign out</button></form>
         </div>
       </div>
     </header>

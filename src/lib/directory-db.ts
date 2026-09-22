@@ -15,7 +15,9 @@ interface Row {
   fees: { code: string; name: string; local: string | null; category: Category; min: string; max: string | null; from: boolean; unit: string | null; minutes: number | null }[];
 }
 
-export interface DbListing extends Listing { id: string; fees: Service[]; dentistProfiles: Dentist[] }
+/** `photoKeys` is every key the clinic has, in its order; `photos` keeps the two the layout shows, with the house
+ *  stills as the fallback. An 'up:' key resolves to a file under /uploads/<id>/ (src/lib/uploads.ts). */
+export interface DbListing extends Listing { id: string; photoKeys: string[]; fees: Service[]; dentistProfiles: Dentist[] }
 
 const toHours = (h: Record<string, [number, number]>): Hours => {
   const out: Hours = { 0: null, 1: null, 2: null, 3: null, 4: null, 5: null, 6: null };
@@ -26,7 +28,7 @@ const toHours = (h: Record<string, [number, number]>): Hours => {
 const toListing = (r: Row): DbListing => ({
   id: r.id, slug: r.slug, name: r.name, area: r.area, address: r.address, phone: r.phone, about: r.about,
   hours: toHours(r.hours), hmos: r.hmos, philhealth: r.philhealth_dental, workspace: r.booking_mode === 'live',
-  walkIns: r.walk_ins, chairs: r.chairs, since: r.founded, photos: [r.photo_keys[0] ?? 'tray', r.photo_keys[1] ?? 'instruments'],
+  walkIns: r.walk_ins, chairs: r.chairs, since: r.founded, photos: [r.photo_keys[0] ?? 'tray', r.photo_keys[1] ?? 'instruments'], photoKeys: r.photo_keys ?? [],
   prices: {}, dentists: r.dentists.map((d) => d.slug),
   fees: r.fees.map((f) => ({ id: f.code, name: f.name, local: f.local ?? undefined, cat: f.category, min: f.min == null ? null : +f.min, max: f.max == null ? undefined : +f.max, from: f.from, unit: f.unit ?? undefined, minutes: f.minutes ?? 30 })),
   dentistProfiles: r.dentists.map((d) => ({

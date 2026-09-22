@@ -5,19 +5,25 @@
 // that inserts, so two people cannot take the same chair. The patient row is
 // matched by mobile number or created; a reminder is queued in message_log for
 // the SMS sender to pick up. Returns { ref, cancelToken, at, clinic }.
+//
+// Rate limited: twenty bookings an hour from one address, counted before anything
+// is written; five a day from one mobile number at one clinic, counted inside the
+// transaction on bookings that exist. A person never meets either; a script does,
+// and is told to call the clinic.
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import { randomBytes } from 'node:crypto';
 import { withClinic } from '../../../lib/db';
 import { loadListing, openSlots, slotIso } from '../../../lib/directory-db';
+import { hit, clientIp, waitText, LIMITS } from '../../../lib/throttle';
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
 const digits = (s: string) => s.replace(/\D/g, '');
 const PHONE = /^(\+?63|0)9\d{9}$/;
 const ref = (slug: string) => `${slug.slice(0, 2).toUpperCase()}-${randomBytes(3).toString('base64url').replace(/[-_]/g, 'X').slice(0, 4).toUpperCase()}`;
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, clientAddress }) => {
   let b: any;
   try { b = await request.json(); } catch { return json({ error: 'Send JSON.' }, 400); }
 
@@ -33,6 +39,11 @@ export const POST: APIRoute = async ({ request }) => {
   const forOther = b.who === 'other';
   const patientName = forOther ? String(b.patientName ?? '').trim() : name;
   if (!patientName) return json({ error: 'Whose visit is it?' }, 400);
+
+  // The limits, counted only once the fields are sound so a bad form never costs a real person a turn.
+  const ip = clientIp({ request, clientAddress });
+  const byIp = await hit('book:ip:' + ip, ...LIMITS.booking.ip);
+  if (!byIp.allowed) return json({ error: 'Too many bookings from this connection. ' + waitText(byIp.retryAfter) }, 429);
 
   // When. Live clinics must pick a real open slot; request clinics state a preference.
   let startsAt: Date, endsAt: Date, source: 'web' | 'request';
@@ -55,6 +66,13 @@ export const POST: APIRoute = async ({ request }) => {
   const phoneKey = digits(phone).slice(-10);
 
   const result = await withClinic(l.id, async (tx) => {
+    // Five a day from one number at this clinic, counted on bookings that exist — a slot
+    // that was already gone costs the person nothing.
+    const { rows: recent } = await tx.query(
+      `select count(*)::int as n from appointment
+        where source in ('web', 'request') and status <> 'cancelled' and created_at > now() - interval '1 day'
+          and right(regexp_replace(coalesce(booked_by_phone, ''), '\\D', '', 'g'), 10) = $1`, [phoneKey]);
+    if (recent[0].n >= LIMITS.booking.phone[0]) return { tooMany: true as const };
     // A returning patient is their mobile number — when the visit is for the person booking.
     // Booking for someone else never matches on the booker's phone.
     const { rows: found } = forOther ? { rows: [] as any[] } : await tx.query(
@@ -78,10 +96,11 @@ export const POST: APIRoute = async ({ request }) => {
     const body = source === 'web'
       ? `${l.name}: ${service.name} booked for ${when}. Ref ${publicRef}. We'll text the day before; reply Y to confirm or call ${l.phone} to change.`
       : `${l.name}: we received your request for ${service.name} on ${when}. Ref ${publicRef}. We'll text to confirm the time.`;
-    await tx.query(`insert into message_log (clinic_id, patient_id, channel, to_address, body, status) values ($1,$2,'sms',$3,$4,'queued')`, [l.id, patientId, phone, body]);
+    await tx.query(`insert into message_log (clinic_id, patient_id, appointment_id, channel, to_address, body, status, kind) values ($1,$2,$5,'sms',$3,$4,'queued','confirmation')`, [l.id, patientId, phone, body, appt[0].id]);
     await tx.query(`insert into audit_log (clinic_id, action, entity, entity_id) values ($1, 'booking.create', 'appointment', $2)`, [l.id, appt[0].id]);
     return { id: appt[0].id as string, chartNo, returning };
   });
 
+  if ('tooMany' in result) return json({ error: 'That number has booked five times today. Call the clinic instead — they will be glad to help.' }, 429);
   return json({ ref: publicRef, cancelToken, at: startsAt.toISOString(), source, clinic: l.slug, chartNo: result.chartNo, returning: result.returning }, 201);
 };

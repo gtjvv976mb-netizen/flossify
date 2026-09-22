@@ -194,16 +194,59 @@ The workspace and the patient directory read from PostgreSQL. Rules:
   additive files in `src/data/migrations/`, run in name order after `schema.sql`.
 - Two schema bugs were fixed on the way in: `citext` was used but never
   enabled, and the RLS policy on `clinic` referenced `clinic_id` (it has `id`).
+- **Every form post carries `<Csrf />`** (`src/components/Csrf.astro`) and its
+  handler checks `csrfOk()` before touching anything; a miss redirects back
+  with `?stale=1` and the page shows `CSRF_MESSAGE`. Astro's Origin check also
+  runs. JSON APIs are covered by CORS preflight instead.
+- **Rate limits are `hit(key, limit, window)`** (`src/lib/throttle.ts`), a
+  fixed window counted in Postgres by `throttle_hit()` so every instance sees
+  one number. The limits live in `LIMITS`; keys are `what:by:who`
+  (`login:e:<email>`, `book:p:<phone>`). Sign-in, forgot, code, booking,
+  cancel, sign-up and the inbound webhook are all limited. Behind a proxy set
+  `TRUST_PROXY=1` or every caller is one address.
+- **A password change bumps `staff.token_version`**; the session carries `tv`
+  and `canOpen()` compares them on every workspace request, so a reset signs
+  out every other session at once. Sign-in events (ok, fail, locked, logout,
+  reset, invite, signup) go to `auth_event`, which has no tenant and never
+  joins to a patient.
+- **Reset and invitation are six-digit codes texted to `staff.phone`**
+  (`src/lib/codes.ts`: HMAC-stored, 15 min / 24 h, five tries, one live code
+  per purpose). `/auth/forgot/` never says whether a number is known;
+  `/auth/code/` serves both purposes (invite when the row has no password).
+  No email channel exists — a staff member with no mobile on file is reset by
+  the owner from Settings → Team.
+- **Texts are queued, never sent, by the app** (`queueText()` in
+  `src/lib/messages.ts`, inside a clinic transaction). `npm run sms:worker`
+  sends them through `SMS_PROVIDER` (`console` in dev, `semaphore` live),
+  claiming and marking rows only through `sms_claim_due()` / `sms_mark()`,
+  enqueues tomorrow's reminders once each (`sms_enqueue_reminders()`,
+  `dedupe_key = reminder:<appointment id>`), holds patient texts between
+  9 pm and 8 am Manila, and retries 1 m / 5 m / 30 m before `failed`. Replies
+  land on `POST /api/sms/inbound` **as JSON** with header `X-Inbound-Secret`
+  (Astro's Origin check refuses a form-encoded post that carries no Origin,
+  which is what a gateway sends — keep the check on and point the gateway at
+  JSON) and go through `sms_inbound()`: Y confirms the sender's next visit. **No links in any text**
+  — Philippine telcos drop them.
+- **A clinic can create itself** at `/start/`, through the definer function
+  `signup_clinic(jsonb)` (006), because nothing can insert a clinic under RLS
+  before the tenant exists. It starts unlisted with request-mode booking,
+  Mon–Sat 9–5, the default fee guide, and its owner as the only staff;
+  `clinic.listed` is the owner's switch in Settings and `public_directory()`
+  reads only listed clinics. Uploaded photos are `up:<uuid>` keys in
+  `clinic.photo_keys`, stored under `UPLOAD_DIR` and served by
+  `/uploads/[...path]` behind a strict path regex.
 
 ## Open — read before shipping
 
-- **No SMS goes out.** Bookings queue their text in `message_log`; a sender
-  (registered sender name, no links in the body) is the next piece.
-- **No self-serve clinic onboarding or profile editing yet**; the seed is the
-  only way clinics get in.
-- Only the reader's authentication exists: no password reset, no rate limiting
-  on `/auth/login`, no CSRF token on the workspace forms (same-site cookies
-  only). Add all three before real staff sign in.
+- The Semaphore provider is written to their v4 API but has not been run
+  against a live key; the first real send needs a registered sender name and
+  a check of the response shape.
+- No email channel at all: reset, invitations and receipts are text-only.
+- PRC licence checks are still a person's job; `prc_checked_on` stays null for
+  self-added dentists until someone verifies, and the public profile says so.
+- Subscription billing, the PhilHealth claims pipeline, patient accounts, the
+  PWA, and the compliance items (NPC registration, a named DPO, consent
+  records with versions) are not started.
 - Odontogram edits are not persisted.
 
 ## Layout
@@ -218,15 +261,27 @@ src/pages/find/[clinic]/…      the clinic's public page, and its five-step boo
 src/pages/dentists/[dentist]   dentist profile: PRC licence checked by a person, dated
 src/pages/coverage.astro       PhilHealth's preventive dental benefit and HMO cards, explained
 src/data/directory.ts          services, symptoms, HMOs, dentists, listings — types, and the seed's source
-src/data/migrations/           002 public booking (hours, schedules, refs), 003 public read functions
+src/data/migrations/           002 public booking, 003 public read functions, 004 staff_branches,
+                               005 codes / auth events / throttle / text queue / listed, 006 signup_clinic
 src/lib/db.ts                  pool, withClinic (RLS transaction), publicRead
-src/lib/auth.ts                scrypt passwords, signed session cookie
+src/lib/auth.ts                scrypt passwords, signed session cookie with token version, auth events
+src/lib/csrf.ts + components/Csrf.astro   the double-submit token every form carries
+src/lib/throttle.ts            hit(): fixed-window rate limits in Postgres; LIMITS; clientIp
+src/lib/codes.ts               six-digit one-time codes (reset, invite)
+src/lib/messages.ts            queueText(), phone normalising, the text wording
+src/lib/sms.ts                 provider seam: console (dev), semaphore (live)
+src/lib/uploads.ts             clinic photos: sharp → 1600/640 webp under UPLOAD_DIR
 src/lib/workspace.ts           requireWorkspace: session + branch access, every request
 src/lib/directory-db.ts        public_directory() → the shapes the pages render; real open slots
 src/lib/availability.ts        Manila-time status and slot arithmetic
-src/pages/api/                 availability, bookings (create / undo-or-cancel)
-src/pages/auth/                staff sign-in and sign-out
+src/pages/api/                 availability, bookings (create / undo-or-cancel), sms/inbound
+src/pages/auth/                sign-in, sign-out, forgot (text a code), code (set a password)
+src/pages/start/               a clinic sets itself up
+src/pages/c/[clinic]/settings/ profile + hours + HMOs + listing, fees, team (invites), photos
+src/pages/c/[clinic]/messages/ the branch's texts, both directions; send again, cancel, text a patient
+src/pages/uploads/             serves uploaded photos, path-checked
 scripts/db/                    setup.sh (drop, create, schema, migrations, seed), seed.ts
+scripts/sms/worker.ts          the sender: npm run sms:worker (loop) / sms:once
 public/samples/swiftcare/       sample clinic website (see "Sample client sites")
 src/components/Odontogram.astro  32 teeth, FDI/Universal/Palmer, surface-scoped
 src/data/schema.sql            full multi-tenant Postgres model with RLS

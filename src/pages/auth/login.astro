@@ -1,13 +1,21 @@
 ---
 // Staff sign-in. One form, one error message, and straight into the branch
 // they came for. Patients never see this page: booking needs no account.
+//
+// Guarded three ways: the CSRF token on the form, a rate limit per email and
+// per address (a desk mistyping eight times in fifteen minutes waits or
+// resets; a script gets nowhere), and every attempt written to auth_event.
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
-import { authenticate, setSession, readSession } from '../../lib/auth';
+import Csrf from '../../components/Csrf.astro';
+import { authenticate, setSession, readSession, authEvent } from '../../lib/auth';
+import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
+import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
 
 const next = Astro.url.searchParams.get('next') || '';
 const denied = Astro.url.searchParams.get('denied') === '1';
+const done = Astro.url.searchParams.get('done') || '';
 let error = '';
 
 // Already signed in and allowed through? Go where they were going.
@@ -16,17 +24,30 @@ if (existing && Astro.request.method === 'GET' && !denied && next) return Astro.
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const email = String(form.get('email') ?? ''), password = String(form.get('password') ?? '');
-  const who = await authenticate(email, password);
-  if (!who) error = 'That email and password don’t match a staff account.';
-  else if (!who.clinics.length) error = 'Your account has no branch to open yet. Ask the owner to add you.';
+  const email = String(form.get('email') ?? '').trim().toLowerCase(), password = String(form.get('password') ?? '');
+  const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
   else {
-    const wanted = next.match(/^\/c\/([^/]+)\//)?.[1];
-    const clinic = who.clinics.find((c) => c.slug === wanted) ?? who.clinics[0];
-    setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: clinic.id, name: who.name, role: who.role });
-    return Astro.redirect(next && wanted === clinic.slug ? next : `/c/${clinic.slug}/`);
+    const [byEmail, byIp] = await Promise.all([hit(`login:e:${email}`, ...LIMITS.login.email), hit(`login:ip:${ip}`, ...LIMITS.login.ip)]);
+    if (!byEmail.allowed || !byIp.allowed) {
+      error = `Too many sign-in attempts. ${waitText(Math.max(byEmail.retryAfter, byIp.retryAfter))} Or reset your password below.`;
+      await authEvent('login.locked', { email, ip, ua });
+    } else {
+      const who = await authenticate(email, password);
+      if (!who) { error = 'That email and password don’t match a staff account.'; await authEvent('login.fail', { email, ip, ua }); }
+      else if (!who.clinics.length) { error = 'Your account has no branch to open yet. Ask the owner to add you.'; await authEvent('login.fail', { email, staffId: who.staffId, ip, ua }); }
+      else {
+        const wanted = next.match(/^\/c\/([^/]+)\//)?.[1];
+        const clinic = who.clinics.find((c) => c.slug === wanted) ?? who.clinics[0];
+        setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: clinic.id, name: who.name, role: who.role, tv: who.tv });
+        await authEvent('login.ok', { email, staffId: who.staffId, ip, ua });
+        return Astro.redirect(next && wanted === clinic.slug ? next : `/c/${clinic.slug}/`);
+      }
+    }
   }
 }
+
+const notice = done === 'password' ? 'Your password is set. Sign in with it.' : done === 'out' ? 'You are signed out.' : '';
 ---
 
 <Base title="Staff sign-in — Flossify" description="Sign in to your clinic's workspace.">
@@ -35,14 +56,22 @@ if (Astro.request.method === 'POST') {
     <h1 class="mt-6 font-display text-[clamp(1.8rem,4vw,2.4rem)] leading-tight font-semibold tracking-[-0.02em]">Staff sign-in</h1>
     <p class="mt-3 text-[15px] text-ink-2">Your clinic’s workspace. Patients don’t need an account — <a href="/find/" class="underline underline-offset-4">booking is over here</a>.</p>
 
+    {notice && !error && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">{notice}</p>}
     {denied && !error && <p role="alert" class="mt-6 border border-crown/40 bg-crown/10 p-4 text-[14.5px]">You’re signed in, but not for that branch. Sign in as someone who is, or open one of yours.</p>}
     {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
 
     <form method="post" class="mt-8 grid gap-4">
+      <Csrf />
       <label class="field"><span class="meta">Email</span><input type="email" name="email" autocomplete="username" required autofocus /></label>
       <label class="field"><span class="meta">Password</span><input type="password" name="password" autocomplete="current-password" required /></label>
       <button type="submit" class="btn btn-primary mt-2">Sign in</button>
     </form>
+
+    <div class="mt-8 grid gap-2 border-t border-line pt-6 text-[14px]">
+      <a href="/auth/forgot/" class="underline underline-offset-4">Forgot your password? We’ll text you a code.</a>
+      <a href="/auth/code/" class="underline underline-offset-4">Have a code from your clinic? Use it here.</a>
+      <a href="/start/" class="text-ink-2 underline underline-offset-4">New clinic? Set it up in a few minutes.</a>
+    </div>
 
     <p class="mt-8 text-[13.5px] leading-relaxed text-muted">
       Development database: every group owner is seeded with the password <code class="font-mono">flossify</code>, e.g. <code class="font-mono">liwayway.domingo@example.com</code>. Remove this note before anyone real signs in.

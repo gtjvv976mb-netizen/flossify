@@ -1,0 +1,96 @@
+---
+// I have a code: the six digits we texted, and the password to set. Used two
+// ways — after "forgot your password", and by staff a clinic owner has just
+// added, who have no password yet. Which one is decided by the account, not
+// the form: no password on file means the code is an invitation. Either way
+// it ends signed in, on their home branch.
+//
+// Guarded like sign-in: the CSRF token, a rate limit per number and per
+// address, every try written to auth_event, and the code itself dies after
+// five misses (codes.ts). The code field is the only thing that ever says
+// "not right": a number that is not on file gets the same sentence as a
+// wrong code, so the form cannot be used to find out which numbers are staff.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import Csrf from '../../components/Csrf.astro';
+import { staffByPhone, setPassword, whoFor, setSession, passwordProblem, PASSWORD_MIN, authEvent } from '../../lib/auth';
+import { pool } from '../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
+import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
+import { redeemCode, REDEEM_TEXT } from '../../lib/codes';
+import { normalizePhone, PH_MOBILE, prettyPhone } from '../../lib/messages';
+
+const sent = Astro.url.searchParams.get('sent') === '1';
+let typed = prettyPhone(Astro.url.searchParams.get('phone') ?? '');
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  typed = String(form.get('phone') ?? '').trim();
+  const phone = normalizePhone(typed);
+  const code = String(form.get('code') ?? '').replace(/\D/g, '');
+  const password = String(form.get('password') ?? ''), confirm = String(form.get('confirm') ?? '');
+  const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+  else if (!PH_MOBILE.test(phone)) error = 'A Philippine mobile number, like 0917 000 0000.';
+  else {
+    const [byPhone, byIp] = await Promise.all([hit(`code:p:${phone}`, ...LIMITS.code.phone), hit(`code:ip:${ip}`, ...LIMITS.code.ip)]);
+    const problem = passwordProblem(password);
+    if (!byPhone.allowed || !byIp.allowed) {
+      error = `Too many tries. ${waitText(Math.max(byPhone.retryAfter, byIp.retryAfter))}`;
+      await authEvent('code.locked', { ip, ua });
+    }
+    else if (code.length !== 6) error = 'Enter the six digits from the text.';
+    else if (problem) error = problem;
+    else if (password !== confirm) error = 'The two passwords don’t match.';
+    else {
+      const staff = await staffByPhone(phone);
+      // The account decides what the code is for: no password yet means it is an invitation.
+      const purpose = staff?.password_hash ? 'reset' : 'invite';
+      const result = staff ? await redeemCode(staff.id, purpose, code) : 'wrong';
+      if (!staff || result !== 'ok') {
+        error = REDEEM_TEXT[result === 'ok' ? 'wrong' : result];
+        await authEvent('code.fail', { email: staff?.email, staffId: staff?.id, ip, ua });
+      } else {
+        const tv = await setPassword(staff.id, password);
+        if (purpose === 'invite') await pool.query('update staff set invited_at = coalesce(invited_at, now()) where id = $1', [staff.id]);
+        await authEvent(purpose === 'invite' ? 'invite.accept' : 'reset.ok', { email: staff.email, staffId: staff.id, ip, ua });
+        // Sign them in with the new token version; every older session is already out.
+        const who = await whoFor({ id: staff.id, group_id: staff.group_id, full_name: staff.full_name, role: staff.role, token_version: tv, home_clinic_id: staff.home_clinic_id });
+        if (who.clinics.length) {
+          const clinic = who.clinics[0];
+          setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: clinic.id, name: who.name, role: who.role, tv: who.tv });
+          return Astro.redirect(`/c/${clinic.slug}/`, 303);
+        }
+        return Astro.redirect('/auth/login/?done=password', 303);
+      }
+    }
+  }
+}
+---
+
+<Base title="I have a code — Flossify" description="Enter the six-digit code we texted you and set your password.">
+  <main id="main" class="mx-auto max-w-[440px] px-5 py-20 sm:px-8">
+    <a href="/auth/login/" class="meta hover:text-ink">&larr; Staff sign-in</a>
+    <h1 class="mt-6 font-display text-[clamp(1.8rem,4vw,2.4rem)] leading-tight font-semibold tracking-[-0.02em]">I have a code</h1>
+    <p class="mt-3 text-[15px] text-ink-2">Enter the six digits we texted you and choose a password. You’ll be signed in straight away.</p>
+
+    {sent && !error && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">If that number belongs to a staff account, a code is on its way. It works for 15 minutes.</p>}
+    {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
+
+    <form method="post" class="mt-8 grid gap-4">
+      <Csrf />
+      <label class="field"><span class="meta">Mobile number</span><input type="tel" name="phone" autocomplete="tel" placeholder="0917 000 0000" value={typed} required autofocus={!typed} /></label>
+      <label class="field"><span class="meta">Code</span><input type="text" name="code" inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="6 digits" required autofocus={!!typed} /></label>
+      <label class="field"><span class="meta">New password</span><input type="password" name="password" autocomplete="new-password" minlength={PASSWORD_MIN} required /></label>
+      <label class="field"><span class="meta">Confirm password</span><input type="password" name="confirm" autocomplete="new-password" minlength={PASSWORD_MIN} required /></label>
+      <button type="submit" class="btn btn-primary mt-2">Set password and sign in</button>
+    </form>
+
+    <div class="mt-8 grid gap-2 border-t border-line pt-6 text-[14px]">
+      <a href="/auth/forgot/" class="underline underline-offset-4">Didn’t get a text? Ask again.</a>
+      <p class="text-ink-2">An invitation code from your clinic works here too. It sets your first password.</p>
+    </div>
+  </main>
+</Base>

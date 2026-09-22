@@ -1,0 +1,344 @@
+---
+// The clinic's own settings: who it is, when it is open, what it takes, and
+// the switch that lists it on Find a clinic. The owner's and the admin's;
+// everyone else sees one sentence. One form, one Save. Every write runs
+// inside withClinic(), so row-level security is the fence on top of the
+// WHERE, and the checklist at the top is computed from the same rows the
+// form edits — it can only say "done" when the data does.
+//
+// The listing switch is the one thing that is not simply saved: it stays off
+// until the clinic has an about, hours and a dentist with days here, because
+// a listing with none of those is a card patients cannot act on.
+export const prerender = false;
+
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { withClinic } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { hmos } from '../../../../data/directory';
+import { AREAS, placeOf } from '../../../../lib/slug';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const canSetUp = session.role === 'owner' || session.role === 'admin';
+const q = Astro.url.searchParams;
+const base = `/c/${clinic.slug}/settings/`;
+
+const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DOWS = [1, 2, 3, 4, 5, 6, 0];
+const ABOUT_MAX = 600;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// "09:30" ⇄ 570. clinic_hours keeps minutes from midnight.
+const toMin = (s: string): number | null => { const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s); if (!m) return null; const n = +m[1] * 60 + +m[2]; return n >= 0 && n <= 1440 ? n : null; };
+const toTime = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+interface DayRow { closed: boolean; open: string; close: string }
+interface Values {
+  name: string; area: string; address_line: string; phone: string; email: string; maps_url: string; about: string;
+  chairs: number; walk_ins: boolean; philhealth_dental: boolean; booking_mode: string;
+  days: Record<number, DayRow>; hmoIds: string[]; noHmos: boolean; listed: boolean;
+}
+
+const data = await withClinic(clinic.id, async (tx) => ({
+  c: (await tx.query(
+    `select name, area, address_line, city, province, phone, email, maps_url, about, chairs, walk_ins, philhealth_dental, booking_mode, listed, photo_keys
+     from clinic where id = $1`, [clinic.id])).rows[0],
+  hours: (await tx.query('select dow, open_min, close_min from clinic_hours order by dow')).rows as { dow: number; open_min: number; close_min: number }[],
+  hmoIds: (await tx.query('select hmo_id from clinic_hmo order by hmo_id')).rows.map((r) => r.hmo_id as string),
+  // A dentist with a public profile who sits here on at least one day: what the booking page needs to offer a slot.
+  dentist: (await tx.query(
+    `select exists (select 1 from staff_schedule ss join staff s on s.id = ss.staff_id
+                     where ss.clinic_id = $1 and s.slug is not null and s.disabled_at is null) as yes`, [clinic.id])).rows[0].yes as boolean,
+  // "We don't take HMOs" stores no HMO row; the choice is kept as the audit entry the save wrote.
+  saidNoHmos: (await tx.query(`select exists (select 1 from audit_log where action = 'clinic.hmos_none') as yes`)).rows[0].yes as boolean,
+}));
+
+// The listing's prerequisites, from the data as it is now.
+const hasAbout = (data.c.about ?? '').trim().length > 0;
+const hasHours = data.hours.length > 0;
+const missing = [!hasAbout && 'a few sentences about the clinic', !hasHours && 'opening hours', !data.dentist && 'a dentist with days at this branch'].filter((s): s is string => !!s);
+const canList = missing.length === 0;
+const listWords = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+
+const problems: string[] = [];
+let posted: Values | null = null;
+
+if (Astro.request.method === 'POST' && canSetUp) {
+  const form = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(base + '?stale=1', 303);
+  const s = (k: string) => String(form.get(k) ?? '').trim();
+  const p: Values = {
+    name: s('name'), area: s('area'), address_line: s('address_line'), phone: s('phone'), email: s('email'), maps_url: s('maps_url'), about: s('about'),
+    chairs: Number(s('chairs')), walk_ins: s('walk_ins') === 'yes', philhealth_dental: s('philhealth_dental') === 'yes', booking_mode: s('booking_mode'),
+    days: {}, hmoIds: form.getAll('hmo').map(String).filter((id) => hmos.some((h) => h.id === id)),
+    noHmos: form.get('hmo_none') === 'on', listed: form.get('listed') === 'on',
+  };
+  for (const dow of DOWS) p.days[dow] = { closed: form.get(`closed[${dow}]`) === 'on', open: s(`open[${dow}]`), close: s(`close[${dow}]`) };
+
+  if (!p.name) problems.push('The clinic needs a name.');
+  else if (p.name.length > 80) problems.push('Keep the clinic name under 80 characters.');
+  if (!(AREAS as readonly string[]).includes(p.area) && p.area !== (data.c.area ?? '')) problems.push('Pick where the clinic is from the list.');
+  if (!p.address_line) problems.push('Add the clinic’s address, so patients can find the door.');
+  const phoneDigits = p.phone.replace(/\D/g, '');
+  if (phoneDigits.length < 7 || phoneDigits.length > 13) problems.push('The clinic phone needs to be a number patients can call.');
+  if (p.email && !EMAIL.test(p.email)) problems.push('The clinic email does not look like an email address.');
+  if (p.maps_url && !/^https?:\/\/\S{4,500}$/.test(p.maps_url)) problems.push('The map link needs to be a full web address, starting with https://.');
+  if (p.about.length > ABOUT_MAX) problems.push(`Keep the about under ${ABOUT_MAX} characters; it is ${p.about.length} now.`);
+  if (!Number.isInteger(p.chairs) || p.chairs < 1 || p.chairs > 12) problems.push('Chairs is a whole number from 1 to 12.');
+  if (p.booking_mode !== 'live' && p.booking_mode !== 'request') problems.push('Pick how patients book.');
+
+  const hours: { dow: number; open_min: number; close_min: number }[] = [];
+  for (const dow of DOWS) {
+    const d = p.days[dow];
+    if (d.closed) continue;
+    const o = toMin(d.open), c = toMin(d.close);
+    if (o === null || c === null) { problems.push(`${DAY[dow]} needs an opening and a closing time, or tick closed.`); continue; }
+    if (c <= o) { problems.push(`${DAY[dow]} closes before it opens.`); continue; }
+    hours.push({ dow, open_min: o, close_min: c });
+  }
+  if (p.noHmos && p.hmoIds.length > 0) problems.push('You ticked HMOs and also “We don’t take HMOs”. Keep one.');
+
+  if (problems.length === 0) {
+    // The switch needs the about and hours being saved now, and a dentist that is already here.
+    const okToList = p.about.length > 0 && hours.length > 0 && data.dentist;
+    const listed = p.listed && okToList;
+    const held = (p.listed || data.c.listed) && !okToList;
+    const place = placeOf(p.area);
+    await withClinic(clinic.id, async (tx) => {
+      await tx.query(
+        `update clinic set name = $2, area = $3, address_line = $4, city = $5, province = $6, phone = $7, email = $8, maps_url = $9, about = $10,
+                chairs = $11, walk_ins = $12, philhealth_dental = $13, booking_mode = $14, listed = $15
+         where id = $1`,
+        [clinic.id, p.name, p.area, p.address_line, place.city === undefined ? data.c.city : place.city, place.province === undefined ? data.c.province : place.province,
+         p.phone, p.email || null, p.maps_url || null, p.about || null, p.chairs, p.walk_ins, p.philhealth_dental, p.booking_mode, listed]);
+      await tx.query('delete from clinic_hours where clinic_id = $1', [clinic.id]);
+      for (const h of hours) await tx.query('insert into clinic_hours (clinic_id, dow, open_min, close_min) values ($1, $2, $3, $4)', [clinic.id, h.dow, h.open_min, h.close_min]);
+      await tx.query('delete from clinic_hmo where clinic_id = $1', [clinic.id]);
+      for (const id of p.noHmos ? [] : p.hmoIds) await tx.query('insert into clinic_hmo (clinic_id, hmo_id) values ($1, $2)', [clinic.id, id]);
+      await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'clinic.settings', 'clinic', $1)`, [clinic.id, session.staffId]);
+      if (p.noHmos) await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'clinic.hmos_none', 'clinic', $1)`, [clinic.id, session.staffId]);
+    });
+    return Astro.redirect(base + '?saved=1' + (held ? '&held=1' : ''), 303);
+  }
+  posted = p;
+}
+
+// What the form shows: what was typed when there is something to fix, otherwise what is saved.
+const v: Values = posted ?? {
+  name: data.c.name, area: data.c.area ?? '', address_line: data.c.address_line ?? '', phone: data.c.phone ?? '', email: data.c.email ?? '',
+  maps_url: data.c.maps_url ?? '', about: data.c.about ?? '', chairs: data.c.chairs, walk_ins: data.c.walk_ins, philhealth_dental: data.c.philhealth_dental,
+  booking_mode: data.c.booking_mode, hmoIds: data.hmoIds, noHmos: data.hmoIds.length === 0 && data.saidNoHmos, listed: data.c.listed,
+  days: Object.fromEntries(DOWS.map((dow) => {
+    const h = data.hours.find((r) => r.dow === dow);
+    return [dow, h ? { closed: false, open: toTime(h.open_min), close: toTime(h.close_min) } : { closed: true, open: '09:00', close: '17:00' }];
+  })),
+};
+const areaOptions: string[] = (AREAS as readonly string[]).includes(v.area) || !v.area ? [...AREAS] : [v.area, ...AREAS];
+
+const checklist = [
+  { done: hasAbout, text: hasAbout ? 'The about is written.' : 'Nothing about the clinic yet.', href: '#about', link: 'Write it' },
+  { done: hasHours, text: hasHours ? 'Opening hours are set.' : 'No opening hours yet.', href: '#hours', link: 'Set them' },
+  { done: data.dentist, text: data.dentist ? 'A dentist has days at this branch.' : 'No dentist has days at this branch yet.', href: `${base}team/`, link: 'Add one on Team' },
+  { done: data.hmoIds.length > 0 || data.saidNoHmos, text: data.hmoIds.length > 0 ? 'HMOs are chosen.' : data.saidNoHmos ? 'No HMOs, and that is said.' : 'Which HMOs you take is not set.', href: '#hmos', link: 'Pick them' },
+  { done: (data.c.photo_keys ?? []).length > 0, text: (data.c.photo_keys ?? []).length > 0 ? 'A photo is up.' : 'No photo yet.', href: `${base}photos/`, link: 'Add one on Photos' },
+  { done: data.c.listed, text: data.c.listed ? 'Listed on Find a clinic.' : 'Not listed yet, so patients cannot find you.', href: '#listing', link: 'Flip the switch' },
+];
+
+const welcome = q.get('welcome') === '1';
+const saved = q.get('saved') === '1';
+const held = q.get('held') === '1';
+const stale = q.get('stale') === '1';
+
+const sectionTitle = 'font-display text-[22px] font-semibold';
+const help = 'text-[13px] leading-snug text-muted';
+---
+
+<ClinicLayout clinic={{ slug: clinic.slug, name: clinic.name, area: data.c.area }} title="Settings" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Settings</h1>
+    {canSetUp && (
+      <nav class="flex flex-wrap gap-x-5 gap-y-1 text-[14.5px]" aria-label="Also in settings">
+        <a href={`${base}fees/`} class="underline underline-offset-4 hover:text-accent">Fee guide</a>
+        <a href={`${base}team/`} class="underline underline-offset-4 hover:text-accent">Team</a>
+        <a href={`${base}photos/`} class="underline underline-offset-4 hover:text-accent">Photos</a>
+      </nav>
+    )}
+  </div>
+
+  {!canSetUp ? (
+    <p class="mt-6 max-w-[60ch] text-[15.5px] leading-relaxed text-ink-2">Settings are the owner’s and the admin’s. If something here needs changing, ask them; the rest of the workspace is yours as before.</p>
+  ) : (
+    <>
+      {welcome && (
+        <p class="mt-6 max-w-[64ch] border border-accent/40 bg-accent/10 p-4 text-[15px] leading-relaxed">
+          Your clinic exists. Nobody can find it yet — work down this list and flip the switch at the end. Nothing is final; every line can be changed later.
+        </p>
+      )}
+      {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
+      {saved && !held && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">Saved.</p>}
+      {saved && held && (
+        <p role="status" class="mt-6 border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
+          Saved. The listing switch stayed off: the clinic still needs {listWords(missing) || 'a moment'}.
+        </p>
+      )}
+      {problems.length > 0 && (
+        <div role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">
+          <p class="font-semibold">Nothing was saved. A few things to fix:</p>
+          <ul class="mt-2 list-disc space-y-1 pl-5">{problems.map((p) => <li>{p}</li>)}</ul>
+        </div>
+      )}
+
+      <section class="mt-8" aria-labelledby="checklist-title">
+        <h2 id="checklist-title" class="sec-no">Ready to be found?</h2>
+        <ol class="mt-3 divide-y divide-line-2 border border-line bg-surface">
+          {checklist.map((row) => (
+            <li class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 py-3.5">
+              <span class={`meta w-16 shrink-0 ${row.done ? 'meta-accent' : ''}`}>{row.done ? 'Done' : 'Not yet'}</span>
+              <span class={`flex-1 text-[15px] ${row.done ? 'text-ink-2' : 'text-ink'}`}>{row.text}</span>
+              {!row.done && <a href={row.href} class="text-[14px] underline underline-offset-4 hover:text-accent">{row.link}</a>}
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <form method="post" class="mt-12 max-w-[760px]">
+        <Csrf />
+
+        <section>
+          <p class="sec-no">01 &mdash; Profile</p>
+          <h2 class={`mt-1 ${sectionTitle}`}>Who you are</h2>
+          <div class="mt-5 grid gap-4">
+            <label class="field"><span class="meta">Clinic name</span><input name="name" value={v.name} required maxlength="80" /></label>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="field"><span class="meta">Where</span><select name="area">{areaOptions.map((a) => <option value={a} selected={v.area === a}>{a}</option>)}</select></label>
+              <label class="field"><span class="meta">Address</span><input name="address_line" value={v.address_line} required /></label>
+              <label class="field"><span class="meta">Phone</span><input type="tel" name="phone" value={v.phone} required /></label>
+              <label class="field"><span class="meta">Email</span><input type="email" name="email" value={v.email} /></label>
+            </div>
+            <label class="field">
+              <span class="meta">Map link</span>
+              <input type="url" name="maps_url" value={v.maps_url} placeholder="https://maps.app.goo.gl/…" />
+              <span class={help}>Open the clinic on Google Maps, tap Share, and paste the link. Patients get a “Directions” button.</span>
+            </label>
+            <label class="field scroll-mt-24" id="about">
+              <span class="meta">About</span>
+              <textarea name="about" rows="5" maxlength={ABOUT_MAX} data-about-field>{v.about}</textarea>
+              <span class={help}>The first thing patients read. What you do, who you see, what to expect. <span data-about-count>{v.about.length}</span>/{ABOUT_MAX}</span>
+            </label>
+          </div>
+        </section>
+
+        <hr class="rule my-10" />
+
+        <section>
+          <p class="sec-no">02 &mdash; The chairs</p>
+          <h2 class={`mt-1 ${sectionTitle}`}>How the clinic runs</h2>
+          <div class="mt-5 grid gap-6">
+            <label class="field sm:max-w-[12rem]">
+              <span class="meta">Chairs</span>
+              <input type="number" name="chairs" value={v.chairs} min="1" max="12" step="1" required />
+              <span class={help}>How many patients can be seen at once.</span>
+            </label>
+            <fieldset>
+              <legend class="meta">Walk-ins</legend>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <label class="chip-radio"><input type="radio" name="walk_ins" value="yes" checked={v.walk_ins} /><span>Welcome</span></label>
+                <label class="chip-radio"><input type="radio" name="walk_ins" value="no" checked={!v.walk_ins} /><span>Appointments only</span></label>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend class="meta">PhilHealth</legend>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <label class="chip-radio"><input type="radio" name="philhealth_dental" value="yes" checked={v.philhealth_dental} /><span>Accredited for the preventive dental benefit</span></label>
+                <label class="chip-radio"><input type="radio" name="philhealth_dental" value="no" checked={!v.philhealth_dental} /><span>Not accredited</span></label>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend class="meta">How patients book</legend>
+              <div class="mt-2 grid gap-2">
+                <label class="row-radio"><input type="radio" name="booking_mode" value="live" checked={v.booking_mode === 'live'} /><span><strong class="font-semibold">Live</strong><span class="block text-[14px] text-ink-2">Patients pick a real open slot; the desk confirms.</span></span></label>
+                <label class="row-radio"><input type="radio" name="booking_mode" value="request" checked={v.booking_mode !== 'live'} /><span><strong class="font-semibold">Request</strong><span class="block text-[14px] text-ink-2">Patients send a request; the desk texts back a time.</span></span></label>
+              </div>
+            </fieldset>
+          </div>
+        </section>
+
+        <hr class="rule my-10" />
+
+        <section id="hours" class="scroll-mt-24">
+          <p class="sec-no">03 &mdash; Hours</p>
+          <h2 class={`mt-1 ${sectionTitle}`}>When you are open</h2>
+          <p class="mt-2 text-[14.5px] text-ink-2">Open slots are cut from these. A closed day offers nothing.</p>
+          <div class="mt-5 divide-y divide-line-2 border border-line bg-surface">
+            {DOWS.map((dow) => {
+              const d = v.days[dow];
+              return (
+                <div class="grid grid-cols-[6.5rem_1fr_1fr] items-center gap-x-4 gap-y-2 px-4 py-3 sm:grid-cols-[7rem_8rem_1fr_1fr]" data-day-row>
+                  <span class="text-[15px] font-medium">{DAY[dow]}</span>
+                  <label class="check col-span-2 sm:col-span-1"><input type="checkbox" name={`closed[${dow}]`} checked={d.closed} data-day-closed /><span>Closed</span></label>
+                  <label class="field"><span class="sr-only">{DAY[dow]} opens</span><input type="time" name={`open[${dow}]`} value={d.open} step="900" /></label>
+                  <label class="field"><span class="sr-only">{DAY[dow]} closes</span><input type="time" name={`close[${dow}]`} value={d.close} step="900" /></label>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <hr class="rule my-10" />
+
+        <section id="hmos" class="scroll-mt-24">
+          <p class="sec-no">04 &mdash; HMOs</p>
+          <h2 class={`mt-1 ${sectionTitle}`}>Cards you take</h2>
+          <p class="mt-2 text-[14.5px] text-ink-2">Shown on your page as what the clinic reported; every card says “confirm with your HMO”.</p>
+          <div class="mt-5 grid gap-2.5 sm:grid-cols-2">
+            {hmos.map((h) => <label class="check"><input type="checkbox" name="hmo" value={h.id} checked={v.hmoIds.includes(h.id)} /><span>{h.name}</span></label>)}
+          </div>
+          <label class="check mt-5 border-t border-line-2 pt-5"><input type="checkbox" name="hmo_none" checked={v.noHmos} /><span>We don’t take HMOs.</span></label>
+        </section>
+
+        <hr class="rule my-10" />
+
+        <section id="listing" class="scroll-mt-24">
+          <p class="sec-no">05 &mdash; Listing</p>
+          <h2 class={`mt-1 ${sectionTitle}`}>Find a clinic</h2>
+          <label class="check mt-4 items-start">
+            <input type="checkbox" name="listed" checked={v.listed} disabled={!canList} />
+            <span>
+              List this clinic on Find a clinic.
+              {!canList && <span class="block text-muted">Not yet: the clinic still needs {listWords(missing)}. Save those first and this switches on.</span>}
+              {canList && <span class="block text-muted">Patients in your area see the card, the fee guide and the open slots.</span>}
+            </span>
+          </label>
+        </section>
+
+        <div class="mt-10 flex flex-wrap items-center gap-4">
+          <button type="submit" class="btn btn-primary">Save</button>
+          <span class="text-[13.5px] text-muted">Saves every section on this page at once.</span>
+        </div>
+      </form>
+
+      <script is:inline>
+        // Two conveniences the server does not need: the about counter, and
+        // time fields that grey out while a day is ticked closed. The server
+        // treats a closed day as closed whatever the times say, so without
+        // this script the times are simply ignored.
+        (() => {
+          const field = document.querySelector('[data-about-field]');
+          const count = document.querySelector('[data-about-count]');
+          if (field && count) field.addEventListener('input', () => { count.textContent = String(field.value.length); });
+          for (const row of document.querySelectorAll('[data-day-row]')) {
+            const closed = row.querySelector('[data-day-closed]');
+            const times = row.querySelectorAll('input[type="time"]');
+            if (!closed) continue;
+            const sync = () => { for (const t of times) t.disabled = closed.checked; };
+            closed.addEventListener('change', sync);
+            sync();
+          }
+        })();
+      </script>
+    </>
+  )}
+</ClinicLayout>

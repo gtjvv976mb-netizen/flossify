@@ -3,9 +3,10 @@ export const prerender = false;
 
 import Base from '../../../layouts/Base.astro';
 import PatientHeader from '../../../components/PatientHeader.astro';
-import { priceText, hmoById, photo, PHOTO_ALT, CATEGORY_LABEL } from '../../../data/directory';
+import { priceText, hmoById, CATEGORY_LABEL } from '../../../data/directory';
 import { hoursRows } from '../../../lib/availability';
 import { loadListing } from '../../../lib/directory-db';
+import { publicPhoto } from '../../../lib/uploads';
 import lqip from '../../../data/lqip.json';
 const blur = (k: string) => lqip[k as keyof typeof lqip];
 
@@ -48,11 +49,15 @@ const directions = `https://www.google.com/maps/search/${encodeURIComponent(l.ad
       </div>
 
       <div class="grid grid-cols-2 gap-3 lg:col-span-5">
-        {l.photos.map((k, i) => (
-          <figure class:list={['media aspect-[3/4] border border-line', i === 1 && 'mt-10']} style={`background-image:url("${blur(k)}")`}>
-            <img src={photo(k).src} srcset={photo(k).srcset} sizes="(min-width:1024px) 20vw, 45vw" alt={PHOTO_ALT[k]} loading="lazy" width="640" height="853" />
-          </figure>
-        ))}
+        {l.photos.map((k, i) => {
+          // A clinic's own upload has no blur placeholder, so its figure starts as a plain soft box and the photo fades in over that.
+          const p = publicPhoto(k, l.id, l.name);
+          return (
+            <figure class:list={['media aspect-[3/4] border border-line', i === 1 && 'mt-10', p.upload && 'bg-bg-soft']} style={p.upload ? undefined : `background-image:url("${blur(k)}")`}>
+              <img src={p.src} srcset={p.srcset} sizes="(min-width:1024px) 20vw, 45vw" alt={p.alt} loading="lazy" width="640" height="853" />
+            </figure>
+          );
+        })}
       </div>
     </div>
 

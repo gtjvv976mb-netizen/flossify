@@ -15,7 +15,7 @@ const checked = new Date(d.prcCheckedOn).toLocaleDateString('en-PH', { day: 'num
 ---
 
 
-<Base title={`${d.name} — dentist in ${places[0].l.area} — Flossify`} description={`${d.name}: ${d.specialty ? 'specialist in ' + d.specialty.toLowerCase() : d.practices.join(', ').toLowerCase()}. PRC licence checked. Where to find them and when.`}>
+<Base title={`${d.name} — dentist in ${places[0]?.l.area ?? 'Benguet'} — Flossify`} description={`${d.name}: ${d.specialty ? 'specialist in ' + d.specialty.toLowerCase() : d.practices.join(', ').toLowerCase()}. PRC licence checked. Where to find them and when.`}>
   <PatientHeader current="find" />
 
   <main id="main" class="mx-auto max-w-[1040px] px-5 py-10 sm:px-8">

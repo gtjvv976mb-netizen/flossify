@@ -1,0 +1,242 @@
+---
+// The branch's texts: what left, what came back, and what is still waiting on
+// the sender. Both directions, newest first, the last hundred. Every query
+// runs inside withClinic(): row-level security keeps it to this branch.
+//
+// Three posts, each a form with the CSRF token: text a patient who is in
+// today or tomorrow, send a failed text again, and cancel one that has not
+// left yet. A post without a matching token changes nothing and comes back
+// here with ?stale=1, which shows the sentence to try again.
+//
+// No links in a text. Philippine telcos drop messages with a URL in them, so
+// the desk's free text is refused when it looks like one, with the reason.
+export const prerender = false;
+
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { withClinic } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { queueText, prettyPhone } from '../../../../lib/messages';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+
+const UUID = /^[0-9a-f-]{36}$/i;
+const LINK = /http|www\.|\.ph\b|\.com\b/i;
+const BODY_MAX = 300;
+
+let error = Astro.url.searchParams.get('stale') === '1' ? CSRF_MESSAGE : '';
+const done = Astro.url.searchParams.get('done') || '';
+// What they typed, kept on the form when the post is refused.
+let draft = { patient: '', body: '' };
+
+// Who can be texted: anyone on the book today or tomorrow with a mobile on file.
+// The number is the booker's when the visit is for someone else, as the reminder does.
+const RECIPIENTS = `
+  select distinct on (p.id) p.id, p.first_name, p.last_name, p.chart_no,
+         coalesce(nullif(a.booked_by_phone, ''), p.phone) as phone, a.starts_at
+  from appointment a join patient p on p.id = a.patient_id
+  where (a.starts_at at time zone 'Asia/Manila')::date
+          between (now() at time zone 'Asia/Manila')::date and (now() at time zone 'Asia/Manila')::date + 1
+    and a.status not in ('cancelled', 'no_show')
+    and coalesce(nullif(a.booked_by_phone, ''), p.phone) is not null
+    and p.archived_at is null
+  order by p.id, a.starts_at`;
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(Astro.url.pathname + '?stale=1', 303);
+  const act = String(f.get('act') ?? '');
+
+  if (act === 'retry' || act === 'cancel') {
+    const id = String(f.get('id') ?? '');
+    if (UUID.test(id)) {
+      await withClinic(clinic.id, async (tx) => {
+        const r = act === 'retry'
+          ? await tx.query(`update message_log set status = 'queued', next_attempt_at = now(), failed_reason = null
+                             where id = $1 and status = 'failed' and direction = 'out'`, [id])
+          : await tx.query(`update message_log set status = 'cancelled' where id = $1 and status = 'queued' and direction = 'out'`, [id]);
+        if (r.rowCount) {
+          await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'message_log', $4)`,
+            [clinic.id, session.staffId, act === 'retry' ? 'message.retry' : 'message.cancel', id]);
+        }
+      });
+    }
+    return Astro.redirect(`${Astro.url.pathname}?done=${act}`, 303);
+  }
+
+  if (act === 'send') {
+    const patient = String(f.get('patient') ?? '');
+    const body = String(f.get('body') ?? '').replace(/\s+/g, ' ').trim();
+    draft = { patient, body };
+    if (!UUID.test(patient)) error = 'Pick who the text is for.';
+    else if (!body) error = 'Write the text first.';
+    else if (body.length > BODY_MAX) error = `Keep it under ${BODY_MAX} characters; that is about two texts.`;
+    else if (LINK.test(body)) error = 'Take the link out. Philippine telcos drop texts that contain one, so it would never arrive. Say it in words instead.';
+    else {
+      const outcome = await withClinic(clinic.id, async (tx) => {
+        const p = (await tx.query(`select * from (${RECIPIENTS}) r where r.id = $1`, [patient])).rows[0];
+        if (!p) return 'That patient is not on the book today or tomorrow. Pick one from the list.';
+        let id: string | null;
+        try {
+          id = await queueText(tx, { clinicId: clinic.id, to: p.phone, body: `${clinic.name}: ${body}`, kind: 'manual', patientId: p.id });
+        } catch {
+          return `${prettyPhone(p.phone)} is not a mobile number, so a text cannot reach it. Check the number on their record.`;
+        }
+        await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'message.manual', 'message_log', $3)`,
+          [clinic.id, session.staffId, id]);
+        return null;
+      });
+      if (outcome) error = outcome;
+      else return Astro.redirect(`${Astro.url.pathname}?done=sent`, 303);
+    }
+  }
+}
+
+const { area, texts, recipients } = await withClinic(clinic.id, async (tx) => ({
+  area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area,
+  texts: (await tx.query(
+    `select m.id, m.direction, m.kind, m.status, m.to_address, m.body, m.failed_reason, m.sent_at, m.created_at,
+            p.id as patient_id, p.first_name, p.last_name, p.chart_no, s.full_name as staff_name
+     from message_log m
+     left join patient p on p.id = m.patient_id
+     left join staff s on s.id = m.staff_id
+     where m.channel = 'sms'
+     order by m.created_at desc limit 100`)).rows,
+  recipients: (await tx.query(`select * from (${RECIPIENTS}) r order by r.starts_at, r.last_name, r.first_name`)).rows,
+}));
+
+const KIND: Record<string, string> = {
+  confirmation: 'Booking confirmation', reminder: 'Reminder', reset: 'Password code', invite: 'Invitation', reply: 'Reply', manual: 'Note',
+};
+
+// "Thu 24 Sep, 9:12 am", composed from parts: the locale strings put the comma and the case elsewhere.
+const parts = (d: Date, opts: Intl.DateTimeFormatOptions) =>
+  Object.fromEntries(new Intl.DateTimeFormat('en-US', { ...opts, timeZone: 'Asia/Manila' }).formatToParts(d).map((p) => [p.type, p.value]));
+const time = (d: Date) => { const p = parts(d, { hour: 'numeric', minute: '2-digit' }); return `${p.hour}:${p.minute} ${p.dayPeriod.toLowerCase()}`; };
+const when = (d: Date) => { const p = parts(d, { weekday: 'short', day: 'numeric', month: 'short' }); return `${p.weekday} ${p.day} ${p.month}, ${time(d)}`; };
+
+// Status is never colour alone: the failed row carries its reason in words.
+function statusOf(m: (typeof texts)[number]): { label: string; failed: boolean } {
+  if (m.direction === 'in') return { label: 'Received', failed: false };
+  switch (m.status) {
+    case 'queued': return { label: 'Waiting to send', failed: false };
+    case 'sending': return { label: 'Sending', failed: false };
+    case 'sent': return { label: `Sent ${m.sent_at ? time(m.sent_at) : ''}`.trim(), failed: false };
+    case 'delivered': return { label: 'Delivered', failed: false };
+    case 'failed': return { label: `Failed: ${m.failed_reason ?? 'the sender gave no reason'}`, failed: true };
+    case 'cancelled': return { label: 'Cancelled', failed: false };
+    default: return { label: m.status, failed: false };
+  }
+}
+
+const manilaDay = (d: Date) => { const p = parts(d, { year: 'numeric', month: '2-digit', day: '2-digit' }); return `${p.year}-${p.month}-${p.day}`; };
+const isToday = (d: Date) => manilaDay(d) === manilaDay(new Date());
+const notice = done === 'sent' ? 'Queued. It leaves with the next pass of the sender.'
+  : done === 'retry' ? 'Queued again. It leaves with the next pass of the sender.'
+  : done === 'cancel' ? 'Cancelled. It will not be sent.' : '';
+---
+
+<ClinicLayout clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Messages" section="messages" staff={{ name: session.name, role: session.role }} branches={branches}>
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Messages</h1>
+    <p class="text-[14.5px] text-muted">{texts.length === 100 ? 'the last 100' : `${texts.length} on file`}</p>
+  </div>
+  <p class="mt-3 max-w-[60ch] text-[15px] text-ink-2">Texts leave through the sender every ten seconds. Reminders and your own texts wait for 8 am; booking confirmations and codes go out at any hour.</p>
+
+  {notice && !error && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">{notice}</p>}
+  {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
+
+  <section class="mt-8" aria-labelledby="send-title">
+    <h2 id="send-title" class="font-display text-[22px] font-semibold">Text a patient</h2>
+    {recipients.length === 0 ? (
+      <p class="mt-2 text-[15px] text-muted">Nobody is on the book today or tomorrow with a mobile number on file.</p>
+    ) : (
+      <form method="post" class="mt-4 grid gap-4 border border-line bg-surface p-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] sm:items-start">
+        <Csrf />
+        <input type="hidden" name="act" value="send" />
+        <label class="field">
+          <span class="meta">Who</span>
+          <select name="patient" required>
+            <option value="" disabled selected={!draft.patient}>Choose a patient</option>
+            {recipients.map((r) => (
+              <option value={r.id} selected={draft.patient === r.id}>
+                {r.last_name}, {r.first_name} · {r.chart_no} · {prettyPhone(r.phone)} · {isToday(r.starts_at) ? 'today' : 'tomorrow'} {time(r.starts_at)}
+              </option>
+            ))}
+          </select>
+          <span class="text-[13px] text-muted">On the book today or tomorrow.</span>
+        </label>
+        <label class="field">
+          <span class="meta">Text</span>
+          <textarea name="body" rows="3" maxlength={BODY_MAX} required placeholder="Your 2 pm is moved to 3 pm. Reply Y if that works.">{draft.body}</textarea>
+          <span class="text-[13px] text-muted">Starts with “{clinic.name}:” so they know who it is from. Under {BODY_MAX} characters, no links.</span>
+        </label>
+        <div class="sm:col-span-2"><button type="submit" class="btn btn-primary">Queue the text</button></div>
+      </form>
+    )}
+  </section>
+
+  <section class="mt-10" aria-labelledby="log-title">
+    <h2 id="log-title" class="font-display text-[22px] font-semibold">Sent and received</h2>
+    <div class="mt-4 overflow-x-auto border border-line bg-surface">
+      <table class="w-full min-w-[820px] border-collapse text-left">
+        <caption class="sr-only">Texts sent and received by {clinic.name}, newest first</caption>
+        <thead>
+          <tr class="border-b border-line bg-bg-soft">
+            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">When</th>
+            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Who</th>
+            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Kind</th>
+            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Status</th>
+            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Text</th>
+            <th scope="col" class="px-5 py-3.5"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {texts.length === 0 && <tr><td colspan="6" class="px-5 py-4 text-[15px] text-muted">No texts yet. The first booking confirmation will show here.</td></tr>}
+          {texts.map((m, i) => {
+            const s = statusOf(m);
+            return (
+              <tr class:list={[i < texts.length - 1 && 'border-b border-line-2', s.failed && 'bg-caries/10']}>
+                <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{when(m.created_at)}</td>
+                <td class="px-5 py-4 align-top">
+                  {m.patient_id ? (
+                    <a href={`/c/${clinic.slug}/patients/${m.patient_id}/`} class="text-[15px] font-semibold hover:text-accent">{m.first_name} {m.last_name}</a>
+                  ) : m.staff_name ? (
+                    <span class="text-[15px] font-semibold">{m.staff_name}</span>
+                  ) : (
+                    <span class="text-[15px] font-semibold tabular-nums">{prettyPhone(m.to_address)}</span>
+                  )}
+                  <p class="text-[13px] tabular-nums text-muted">{m.patient_id ? `${m.chart_no} · ` : ''}{prettyPhone(m.to_address)}</p>
+                </td>
+                <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap text-ink-2">{m.direction === 'in' ? 'Reply' : (KIND[m.kind ?? ''] ?? 'Text')}</td>
+                <td class:list={['px-5 py-4 align-top text-[14.5px] font-semibold', s.failed ? 'text-caries' : 'text-ink-2']}>{s.label}</td>
+                <td class="max-w-[30rem] px-5 py-4 align-top text-[14.5px] leading-relaxed break-words whitespace-pre-wrap">{m.body}</td>
+                <td class="px-5 py-4 align-top text-right whitespace-nowrap">
+                  {m.direction === 'out' && m.status === 'failed' && (
+                    <form method="post" id={`retry-${m.id}`}>
+                      <Csrf />
+                      <input type="hidden" name="act" value="retry" />
+                      <input type="hidden" name="id" value={m.id} />
+                      <button type="submit" class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Send again</button>
+                    </form>
+                  )}
+                  {m.direction === 'out' && m.status === 'queued' && (
+                    <form method="post" id={`cancel-${m.id}`}>
+                      <Csrf />
+                      <input type="hidden" name="act" value="cancel" />
+                      <input type="hidden" name="id" value={m.id} />
+                      <button type="submit" class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Cancel</button>
+                    </form>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</ClinicLayout>

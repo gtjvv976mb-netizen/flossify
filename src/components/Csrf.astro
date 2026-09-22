@@ -1,0 +1,7 @@
+---
+// The hidden field every form post carries. Pair with csrfOk() in the handler.
+import { csrfToken } from '../lib/csrf';
+const token = csrfToken(Astro.cookies);
+---
+
+<input type="hidden" name="_csrf" value={token} />
