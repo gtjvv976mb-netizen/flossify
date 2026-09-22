@@ -2,7 +2,8 @@
 //
 // Body: { clinic, service, dentist?, at, who, name, patientName?, phone, hmo?, notes?, consent }
 // The slot is re-checked against the live schedule inside the same transaction
-// that inserts, so two people cannot take the same chair. The patient row is
+// that inserts, under the same advisory lock the schedule takes, so neither two
+// patients nor a patient and the front desk can take one chair. The patient row is
 // matched by mobile number or created; a reminder is queued in message_log for
 // the SMS sender to pick up. Returns { ref, cancelToken, at, clinic }.
 //
@@ -16,6 +17,7 @@ import type { APIRoute } from 'astro';
 import { randomBytes } from 'node:crypto';
 import { withClinic } from '../../../lib/db';
 import { loadListing, openSlots, slotIso } from '../../../lib/directory-db';
+import { findClash } from '../../../lib/schedule';
 import { hit, clientIp, waitText, LIMITS } from '../../../lib/throttle';
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
@@ -66,6 +68,28 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   const phoneKey = digits(phone).slice(-10);
 
   const result = await withClinic(l.id, async (tx) => {
+    // One booker at a time per clinic, the same gate the schedule takes: the check below
+    // and the insert have to be one step, or two people who looked at the same free slot
+    // both get it. Released when the transaction ends.
+    await tx.query('select pg_advisory_xact_lock(hashtext($1))', [l.id]);
+
+    // The slot, re-read now that nobody else can be inserting. openSlots ran before the
+    // transaction and only narrowed the offer; this is what actually holds the chair.
+    if (l.workspace) {
+      const { rows: dentRow } = dentist ? await tx.query('select id from staff where slug = $1', [dentist.slug]) : { rows: [] as any[] };
+      if (dentist) {
+        const clash = await findClash(tx, l.id, { startsAt, endsAt, chair: null, dentistId: dentRow[0]?.id ?? null });
+        if (clash) return { gone: true as const };
+      } else {
+        // No dentist asked for: the clinic can take as many at once as it has chairs.
+        const { rows: busy } = await tx.query<{ n: number }>(
+          `select count(*)::int as n from appointment a
+            where a.status not in ('cancelled', 'no_show', 'completed')
+              and a.starts_at < $2 and a.ends_at > $1`, [startsAt, endsAt]);
+        if (busy[0].n >= l.chairs) return { gone: true as const };
+      }
+    }
+
     // Five a day from one number at this clinic, counted on bookings that exist — a slot
     // that was already gone costs the person nothing.
     const { rows: recent } = await tx.query(
@@ -107,6 +131,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     return { id: appt[0].id as string, chartNo, returning };
   });
 
+  if ('gone' in result) return json({ error: 'That slot has just gone. Pick another.' }, 409);
   if ('tooMany' in result) return json({ error: 'That number has booked five times today. Call the clinic instead — they will be glad to help.' }, 429);
   return json({ ref: publicRef, cancelToken, at: startsAt.toISOString(), source, clinic: l.slug, chartNo: result.chartNo, returning: result.returning }, 201);
 };

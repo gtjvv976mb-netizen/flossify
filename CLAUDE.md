@@ -278,8 +278,11 @@ The workspace and the patient directory read from PostgreSQL. Rules:
   clinic and one PhilHealth payor, enforced by index (017); the accreditation
   trigger switches the PhilHealth payor on and off.
 - **A request is not a booking until the desk sets a time.** `patient_act`
-  and `sms_inbound` refuse to confirm a `source = 'request'` row (017); the
-  page hides the button, the function enforces it. The billing strip in the
+  and `sms_inbound` refuse to confirm a request the desk has not placed —
+  `source = 'request' and moved_at is null` (018); `patient_visits` exposes
+  that as `placed` so `/me/` shows Confirm the moment the clinic gives the
+  request a real time. Gating on `source` alone (017) locked the patient out
+  for good, because nothing ever clears it. The billing strip in the
   workspace is owner/admin only, like the Billing page. The sign-in lock
   counts first, atomically, and refunds on success (`throttle_refund`).
 - The privacy notice promises text logs go after two years; `retention_purge()`
@@ -288,6 +291,19 @@ The workspace and the patient directory read from PostgreSQL. Rules:
 
 ## The schedule — `/c/<slug>/schedule/`
 
+- **The status machine is the server's.** `NEXT_STATUS` in
+  `src/lib/schedule.ts` says where a visit may go from where it is, and
+  `applyStatus` refuses the rest: a cancelled or completed visit cannot walk
+  back into a chair another patient now holds, and cannot be moved. The
+  pages' buttons follow it; they do not define it.
+- **One booker at a time per clinic.** `/api/schedule` *and* `/api/bookings`
+  take `pg_advisory_xact_lock(hashtext(clinic_id))` and re-check the slot
+  **inside** the transaction. The public booking API used to check with
+  `openSlots()` before opening one, so a patient and the front desk could
+  both take a dentist's minute — measured, twice.
+- **A move drops the texts that named the old time** (`dropStaleTexts`),
+  including the reminder's dedupe key, so the day-before pass writes a fresh
+  one for the new day.
 - One day, one column per chair (or per dentist with `?by=dentist`), 15-minute
   rows over the clinic's hours; a week view for the shape of the week. Web
   bookings and seeded visits arrive with `chair = null` and sit in an

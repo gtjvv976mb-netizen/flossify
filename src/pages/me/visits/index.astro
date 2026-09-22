@@ -29,6 +29,8 @@ const phone = session.phone;
 interface Visit {
   appointment_id: string; clinic_id: string; clinic_name: string; clinic_slug: string; clinic_phone: string | null; clinic_area: string | null;
   dentist: string | null; starts_at: Date; ends_at: Date; reason: string | null; status: string; source: string; public_ref: string | null;
+  /** False only while a request is still waiting for the clinic to set a time (migration 018). */
+  placed: boolean;
   patient_name: string; booked_by_name: string | null; created_at: Date;
 }
 
@@ -69,7 +71,7 @@ const thisYear = yearOf(new Date());
 // Status in plain words, never colour alone.
 function statusWords(v: Visit): string {
   switch (v.status) {
-    case 'booked': return v.source === 'request' ? 'Requested — the clinic will text a time' : 'Booked — please confirm';
+    case 'booked': return v.placed ? 'Booked — please confirm' : 'Requested — the clinic will text a time';
     case 'confirmed': return 'Confirmed';
     case 'arrived': case 'in_lobby': case 'in_chair': return 'At the clinic';
     case 'completed': return 'Done';
@@ -80,7 +82,7 @@ function statusWords(v: Visit): string {
 }
 const isAhead = (v: Visit) => v.starts_at.getTime() > now && (v.status === 'booked' || v.status === 'confirmed');
 // A request has no agreed time yet, so there is nothing to confirm; the clinic texts one first.
-const canConfirm = (v: Visit) => isAhead(v) && v.status === 'booked' && v.source !== 'request';
+const canConfirm = (v: Visit) => isAhead(v) && v.status === 'booked' && v.placed;
 
 // The calendar file, same shape as the booking page writes: local Manila time, one event, the reference in the notes.
 const stamp = (d: Date) => { const p = parts(d, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }); return `${p.year}${p.month}${p.day}T${p.hour}${p.minute}${p.second}`; };

@@ -53,6 +53,42 @@ export type Range = {
 /** The statuses the desk may move a visit to — the Today page's set, copied, not forked. 'booked' is where a visit starts and is not a destination. */
 export const ALLOWED = new Set(['confirmed', 'arrived', 'in_lobby', 'in_chair', 'completed', 'no_show', 'cancelled']);
 
+/** What each status is called in a sentence. */
+export const WORDS: Record<string, string> = {
+  booked: 'booked', confirmed: 'confirmed', arrived: 'arrived', in_lobby: 'in the lobby',
+  in_chair: 'in the chair', completed: 'done', no_show: 'a no-show', cancelled: 'cancelled',
+};
+
+/** Thrown when a status change is not one the book allows; the route turns it into a 400. */
+export class StatusRefused extends Error {}
+
+/** Queued texts about a visit that no longer describe it: drop them before sending a new one.
+ *  The reminder's dedupe key goes too, so the day-before pass can write a fresh one. */
+export async function dropStaleTexts(tx: Tx, id: string): Promise<void> {
+  await tx.query(
+    `update message_log set status = 'cancelled', dedupe_key = null
+      where appointment_id = $1 and status = 'queued' and direction = 'out'`, [id]);
+  await tx.query(
+    `update message_log set dedupe_key = null where appointment_id = $1 and kind = 'reminder' and dedupe_key is not null`, [id]);
+}
+
+/** A visit that has left the book: it holds no chair, and nothing more happens to it. */
+export const DONE = new Set(['cancelled', 'no_show', 'completed']);
+
+/** Where a visit may go from where it is. The Today page's buttons, plus the two ways a
+ *  visit ends early, and nothing else: a cancelled visit cannot walk back into a chair
+ *  another patient now holds. Re-booking is a new visit. */
+export const NEXT_STATUS: Record<string, string[]> = {
+  booked: ['confirmed', 'arrived', 'in_lobby', 'in_chair', 'no_show', 'cancelled'],
+  confirmed: ['arrived', 'in_lobby', 'in_chair', 'no_show', 'cancelled'],
+  arrived: ['in_lobby', 'in_chair', 'completed', 'no_show', 'cancelled'],
+  in_lobby: ['in_chair', 'completed', 'no_show', 'cancelled'],
+  in_chair: ['completed', 'cancelled'],
+  completed: [],
+  no_show: [],
+  cancelled: [],
+};
+
 /** A visit in these states still holds its chair and its dentist. Anything else has left the room. */
 const HOLDS_SLOT = `a.status not in ('cancelled', 'no_show', 'completed')`;
 
@@ -162,8 +198,15 @@ export async function findClash(tx: Tx, clinicId: string, p: Proposed): Promise<
 // reminder goes out for a visit that is not happening (patient_act in 010
 // does the same from the patient's side).
 // ---------------------------------------------------------------------------
-export async function applyStatus(tx: Tx, clinicId: string, staffId: string, id: string, to: string): Promise<void> {
+export async function applyStatus(tx: Tx, clinicId: string, staffId: string, id: string, to: string, from?: string): Promise<void> {
   if (!ALLOWED.has(to)) throw new Error(`Not a status the book knows: ${to}`);
+  // The state machine is the server's, not the page's: a hand-written request cannot
+  // jump a visit from done back into a chair.
+  if (from !== undefined && !(NEXT_STATUS[from] ?? []).includes(to)) {
+    throw new StatusRefused(DONE.has(from)
+      ? `That visit is already marked ${WORDS[from] ?? from}. Book a new visit instead.`
+      : `A visit cannot go from ${WORDS[from] ?? from} to ${WORDS[to] ?? to}.`);
+  }
   await tx.query(
     `update appointment set status = $2,
        arrived_at = case when $2 in ('arrived', 'in_lobby') then coalesce(arrived_at, now()) else arrived_at end,

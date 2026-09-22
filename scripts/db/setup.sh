@@ -14,6 +14,7 @@ cd "$(dirname "$0")/../.."
 psql -v ON_ERROR_STOP=1 -d postgres -qc "drop database if exists \"$DB\""
 psql -v ON_ERROR_STOP=1 -d postgres -qc "create database \"$DB\""
 psql -v ON_ERROR_STOP=1 -d "$DB" -qf src/data/schema.sql
-for m in src/data/migrations/*.sql; do psql -v ON_ERROR_STOP=1 -d "$DB" -qf "$m"; done
+# -1: each migration is one transaction, so a failure part-way leaves nothing half-applied.
+for m in src/data/migrations/*.sql; do psql -v ON_ERROR_STOP=1 -1 -d "$DB" -qf "$m"; done
 DB="$DB" node --experimental-strip-types scripts/db/seed.ts
 echo "ok: $DB ready. Connect as postgres://flossify_app:flossify_dev@localhost:5432/$DB"

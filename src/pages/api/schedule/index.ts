@@ -29,8 +29,8 @@ import { readSession, canOpen } from '../../../lib/auth';
 import { withClinic, type Tx } from '../../../lib/db';
 import { csrfHeaderOk, CSRF_MESSAGE } from '../../../lib/csrf';
 import { hit, waitText, LIMITS } from '../../../lib/throttle';
-import { queueText } from '../../../lib/messages';
-import { loadRange, findClash, applyStatus, readAppt, canText, scheduleTexts, ALLOWED, type Appt } from '../../../lib/schedule';
+import { queueText, normalizePhone, PH_MOBILE } from '../../../lib/messages';
+import { loadRange, findClash, applyStatus, dropStaleTexts, readAppt, canText, scheduleTexts, ALLOWED, DONE, WORDS, StatusRefused, type Appt } from '../../../lib/schedule';
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -54,7 +54,10 @@ async function gate(cookies: AstroCookies, slug: string) {
   return { session, clinic };
 }
 
-const answer = (e: unknown) => (e instanceof Refusal ? json({ error: e.error }, e.status) : Promise.reject(e));
+const answer = (e: unknown) =>
+  e instanceof Refusal ? json({ error: e.error }, e.status)
+  : e instanceof StatusRefused ? json({ error: e.message }, 400)
+  : Promise.reject(e);
 
 // ---------------------------------------------------------------------------
 // Reading the body
@@ -66,9 +69,13 @@ async function body(request: Request): Promise<Record<string, unknown>> {
   return b as Record<string, unknown>;
 }
 
+// A book covers the years a clinic works in. Anything outside them is a mistake or a
+// probe, and a date at the edge of what a Date can hold makes arithmetic on it useless.
+const EARLIEST = Date.parse('2000-01-01T00:00:00Z'), LATEST_AHEAD = 3 * 365 * 86_400_000;
 function isoDate(v: unknown, what: string): Date {
   const d = new Date(typeof v === 'string' || typeof v === 'number' ? v : NaN);
   if (Number.isNaN(d.getTime())) throw refuse(400, `${what} needs a date and time.`);
+  if (d.getTime() < EARLIEST || d.getTime() > Date.now() + LATEST_AHEAD) throw refuse(400, `${what} is outside the years this book covers.`);
   return d;
 }
 
@@ -88,7 +95,9 @@ function chairOf(v: unknown): number | null {
 
 function idOf(v: unknown, what: string): string | null {
   if (v === null || v === undefined || v === '') return null;
-  const s = String(v);
+  // Postgres writes uuids in lower case; comparing the caller's spelling would read an
+  // unchanged dentist as a change and write a move that never happened.
+  const s = String(v).toLowerCase();
   if (!UUID.test(s)) throw refuse(400, `${what} was not recognised.`);
   return s;
 }
@@ -181,7 +190,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       const np = b.newPatient;
       const name = np && typeof np === 'object' ? text((np as any).name, NAME_MAX) : null;
       if (!name) throw refuse(400, 'Whose visit is it? Pick a patient or give a name.');
-      newPatient = { name, phone: text((np as any).phone, PHONE_MAX) };
+      const typed = text((np as any).phone, PHONE_MAX);
+      // The same rule as the booking form: a number we cannot text is not worth keeping,
+      // because every reminder, code and sign-in keys on it.
+      const phone = typed ? normalizePhone(typed) : null;
+      if (typed && !PH_MOBILE.test(phone!)) throw refuse(400, 'A Philippine mobile number, like 0917 000 0000, or leave it blank.');
+      newPatient = { name, phone };
     }
 
     const appointment = await withClinic(clinic.id, async (tx) => {
@@ -267,14 +281,17 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
       const moved = timeChanged || chair !== cur.chair || dentistId !== cur.dentist_id;
 
       if (moved) {
-        if (cur.status === 'cancelled') throw refuse(400, 'That visit was cancelled. Book it again instead.');
+        // A visit that has left the book keeps its history; it does not get a new time.
+        if (DONE.has(cur.status)) throw refuse(400, `That visit is marked ${WORDS[cur.status] ?? cur.status}. Book a new visit instead.`);
         checkChair(chair, c);
         if (dentistId !== cur.dentist_id) await checkDentist(tx, clinic.id, dentistId);
         const clash = await findClash(tx, clinic.id, { id, startsAt, endsAt, chair, dentistId });
         if (clash) throw refuse(409, clash);
         await tx.query('update appointment set starts_at = $2, ends_at = $3, chair = $4, dentist_id = $5, moved_at = now() where id = $1', [id, startsAt, endsAt, chair, dentistId]);
         await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.move', 'appointment', $3)`, [clinic.id, session.staffId, id]);
-        // A new time for a visit still ahead, and a number to reach: tell them.
+        // A new time for a visit still ahead, and a number to reach: tell them — after
+        // dropping the texts that still name the old time, so nobody gets both.
+        if (timeChanged) await dropStaleTexts(tx, id);
         if (startsAt.getTime() !== new Date(cur.starts_at).getTime() && startsAt.getTime() > Date.now() && canText(cur.phone)) {
           await queueText(tx, { clinicId: clinic.id, to: cur.phone!, body: scheduleTexts.moved(c.name, startsAt, cur.public_ref, c.phone), kind: 'confirmation', patientId: cur.patient_id, appointmentId: id, staffId: session.staffId });
         }
@@ -286,7 +303,7 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
         if (!moved) await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.edit', 'appointment', $3)`, [clinic.id, session.staffId, id]);
       }
 
-      if (status !== null && status !== cur.status) await applyStatus(tx, clinic.id, session.staffId, id, status);
+      if (status !== null && status !== cur.status) await applyStatus(tx, clinic.id, session.staffId, id, status, cur.status);
       return mustRead(tx, id);
     });
     return json({ appointment });
