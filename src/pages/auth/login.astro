@@ -13,7 +13,9 @@ import { authenticate, setSession, readSession, authEvent } from '../../lib/auth
 import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
 import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
 
-const next = Astro.url.searchParams.get('next') || '';
+// Only a workspace path may be a destination; anything else is dropped, so a
+// crafted link cannot bounce a signed-in person to another site.
+const next = (Astro.url.searchParams.get('next') || '').match(/^\/c\/[^/?#]+\/[^\s]*$/)?.[0] ?? '';
 const denied = Astro.url.searchParams.get('denied') === '1';
 const done = Astro.url.searchParams.get('done') || '';
 let error = '';
