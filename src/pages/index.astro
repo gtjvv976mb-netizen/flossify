@@ -91,6 +91,7 @@ const index = [
   { img: 'xray', alt: 'A panoramic dental radiograph on a softly glowing light box', title: 'HMO claims', body: 'Filed, followed and aged. You can see which payor has been sitting on your money, and for how long.' },
   { img: 'model', alt: 'A white dental study model of upper and lower teeth', title: 'Documents', body: 'Consent, certificates, clearances, prescriptions. The details you already hold get filled in for you.' },
   { img: 'aligner', alt: 'A clear orthodontic aligner standing on a pale stone surface', title: 'Treatment plans', body: 'The plan, the cost and what the HMO covers, in something a patient can take home.' },
+  { img: 'clinic-tall', alt: 'A tall, bright treatment room with a sage-grey chair beside the window', title: 'Clinic websites', body: 'The site a patient finds at eleven at night. A request there is a booking here, and the price list is the one the desk quotes.' },
 ];
 
 const figures = [
@@ -121,6 +122,7 @@ const faqs = [
       <nav class="flex items-center gap-6" aria-label="Primary">
         <a href="#tour" class="meta hover:text-ink">Tour</a>
         <a href="#product" class="meta hidden hover:text-ink sm:block">Product</a>
+        <a href="/websites/" class="meta hidden hover:text-ink sm:block">Websites</a>
         <a href="/clinics/" class="meta meta-ink underline decoration-line underline-offset-4 hover:decoration-accent">
           Workspaces
         </a>
@@ -350,6 +352,7 @@ const faqs = [
               </button>
             ))}
             <div class="border-t border-line"></div>
+            <a href="/websites/" class="meta meta-accent mt-6 inline-block">See a sample clinic website &rarr;</a>
           </div>
 
           <div class="hidden lg:col-span-5 lg:block">
@@ -434,6 +437,7 @@ const faqs = [
             <p class="meta meta-ink">More</p>
             <ul class="mt-3 space-y-2">
               <li><a href="#services" class="meta hover:text-ink">Services</a></li>
+              <li><a href="/websites/" class="meta hover:text-ink">Clinic websites</a></li>
               <li><a href="#questions" class="meta hover:text-ink">Questions</a></li>
             </ul>
           </div>

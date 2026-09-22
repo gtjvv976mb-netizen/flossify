@@ -89,6 +89,40 @@ judging correctness.
 - Do not `pkill -f 'astro preview'`; it kills the agent's own shell. Use a new
   port instead.
 
+## Sample client sites — `public/samples/`
+
+`public/samples/swiftcare/` is a self-contained clinic website (plain HTML, CSS
+and JS, no build step) that shows the site-building service. It is framed on
+`/websites/` and served as-is, so it is exactly the folder a clinic would
+receive.
+
+It is a **concept redesign of a real clinic's site** — SwiftCare Dental Clinic,
+Tarlac City (swiftcaredental.com) — made with the clinic's public branding,
+photographs and price list at the owner's direction. Its Book and Staff links
+open the clinic's real booking flow and staff login. If that relationship ever
+changes, swap the folder for a fictional clinic rather than editing it in place.
+
+It is a **client deliverable, not a Flossify page**, and it deliberately does
+not follow the Swiss rules above: a patient expects a clinic site to feel warm,
+so the sample is rounded, shadowed and set in a serif, in the clinic's own gold
+and espresso. Keep that exception inside the folder. Its CSS is scoped to its
+own document and imports nothing from `global.css`. The clinic's service
+photographs are its own stock images and some show people; the no-faces rule
+governs Flossify's imagery, not a client's.
+
+Rules that still hold there:
+
+- **No third-party fonts or scripts.** Fraunces and Plus Jakarta Sans are
+  self-hosted in `assets/fonts/` (latin subset, variable). The one embed is the
+  Google Maps iframe in the contact section, lazy-loaded.
+- **`noindex`, and labelled as a concept** in the top bar, footer and on
+  `/websites/`, so it never competes with or passes for the clinic's live site.
+- Health copy (first aid, aftercare, the Smile Finder) is general guidance and
+  says so on the page. A dentist reviews it before any real client ships.
+- Content lives in `js/data.js`; the palette is the token block at the top of
+  `css/styles.css`. `?motion=on` on the URL forces the animations on for demos
+  on a machine with Reduce Motion enabled.
+
 ## Open — read before shipping
 
 **The clinic workspace has no authentication.** `/c/[clinic]/patients/` exposes
@@ -104,6 +138,8 @@ every workspace page until that exists.
 src/pages/index.astro          the marketing page (tour, product, services, FAQ)
 src/pages/clinics.astro        workspace directory
 src/pages/c/[clinic]/…         prototype clinic workspace
+src/pages/websites.astro       the clinic-website service, with the sample framed
+public/samples/swiftcare/       sample clinic website (see "Sample client sites")
 src/components/Odontogram.astro  32 teeth, FDI/Universal/Palmer, surface-scoped
 src/data/schema.sql            full multi-tenant Postgres model with RLS
 src/data/lqip.json             blur placeholders, keyed by image name
