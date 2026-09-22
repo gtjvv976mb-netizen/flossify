@@ -114,7 +114,7 @@ const time = (d: Date) => new Intl.DateTimeFormat('en-PH', { hour: 'numeric', mi
 const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(d);
 ---
 
-<ClinicLayout clinic={{ slug: clinic.slug, name: clinic.name, area: data.me.area }} title="Today" section="today" staff={{ name: session.name, role: session.role }} branches={branches}>
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.me.area }} title="Today" section="today" staff={{ name: session.name, role: session.role }} branches={branches}>
   <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Today</h1>
 
   {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
@@ -188,7 +188,7 @@ const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', d
 
   <section id="claims" class="mt-12 scroll-mt-24">
     <h2 class="font-display text-[22px] font-semibold">HMO claims</h2>
-    <p class="mt-1.5 text-[14.5px] text-ink-2">Filed, approved, and still waiting. Anything past sixty days is money already earned.</p>
+    <p class="mt-1.5 text-[14.5px] text-ink-2">Filed, approved, and still waiting. Anything past sixty days is money already earned. <a href={`/c/${clinic.slug}/claims/`} class="underline underline-offset-4 hover:text-accent">All claims, PhilHealth included &rarr;</a></p>
     <div class="mt-4 overflow-x-auto border border-line bg-surface">
       <table class="w-full min-w-[620px] border-collapse text-left">
         <thead>

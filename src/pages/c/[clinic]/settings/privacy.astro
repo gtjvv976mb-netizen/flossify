@@ -1,0 +1,175 @@
+---
+// Settings › Privacy. The group's Data Protection Officer and NPC
+// registration, and what consent the clinic holds. The owner's and the
+// admin's; everyone else sees one sentence.
+//
+// The DPO belongs to the clinic group — one officer for every branch — and
+// clinic_group is not under row-level security, so the save is a plain pool
+// query keyed on this clinic's group id, which requireWorkspace() has already
+// checked this person may open. The audit entry and the consent counts are
+// clinic data and go through withClinic().
+export const prerender = false;
+
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { pool, withClinic } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { normalizePhone, PH_MOBILE, prettyPhone } from '../../../../lib/messages';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const canSetUp = session.role === 'owner' || session.role === 'admin';
+const q = Astro.url.searchParams;
+const base = `/c/${clinic.slug}/settings/`;
+const here = base + 'privacy/';
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+interface Values { dpo_name: string; dpo_email: string; dpo_phone: string; npc_registration_no: string }
+
+// What is saved now. clinic_group has no tenant; the group id came from requireWorkspace().
+const group = (await pool.query(
+  `select dpo_name, dpo_email, dpo_phone, npc_registration_no, dpo_updated_at from clinic_group where id = $1`, [clinic.group_id])).rows[0] as
+  { dpo_name: string | null; dpo_email: string | null; dpo_phone: string | null; npc_registration_no: string | null; dpo_updated_at: Date | null };
+
+// The notice in force, through the definer function. No row means nothing is in force yet.
+const version = (await pool.query(
+  `select v.id, v.title, to_char(v.effective_from, 'FMDD FMMonth YYYY') as effective from current_consent_version() v where v.id is not null`)).rows[0] as
+  { id: string; title: string; effective: string } | undefined;
+
+const problems: string[] = [];
+let posted: Values | null = null;
+
+if (Astro.request.method === 'POST' && canSetUp) {
+  const form = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(here + '?stale=1', 303);
+  const s = (k: string) => String(form.get(k) ?? '').trim().replace(/\s+/g, ' ');
+  const p: Values = { dpo_name: s('dpo_name'), dpo_email: s('dpo_email').toLowerCase(), dpo_phone: s('dpo_phone'), npc_registration_no: s('npc_registration_no') };
+
+  if (p.dpo_name.length > 120) problems.push('Keep the officer’s name under 120 characters.');
+  if (p.dpo_email && !EMAIL.test(p.dpo_email)) problems.push('The officer’s email does not look like an email address.');
+  const phone = p.dpo_phone ? normalizePhone(p.dpo_phone) : '';
+  if (p.dpo_phone && !PH_MOBILE.test(phone)) problems.push('The officer’s mobile needs to be a Philippine mobile number, like 0917 000 0000.');
+  if (p.npc_registration_no.length > 60) problems.push('Keep the registration number under 60 characters.');
+  if ((p.dpo_email || p.dpo_phone) && !p.dpo_name) problems.push('Name the officer the email or mobile belongs to.');
+
+  if (problems.length === 0) {
+    await pool.query(
+      `update clinic_group set dpo_name = $2, dpo_email = $3, dpo_phone = $4, npc_registration_no = $5, dpo_updated_at = now() where id = $1`,
+      [clinic.group_id, p.dpo_name || null, p.dpo_email || null, phone || null, p.npc_registration_no || null]);
+    await withClinic(clinic.id, (tx) =>
+      tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'group.privacy', 'clinic_group', $3)`, [clinic.id, session.staffId, clinic.group_id]));
+    return Astro.redirect(here + '?saved=1', 303);
+  }
+  posted = p;
+}
+
+// What the form shows: what was typed when there is something to fix, otherwise what is saved.
+const v: Values = posted ?? {
+  dpo_name: group.dpo_name ?? '', dpo_email: group.dpo_email ?? '', dpo_phone: group.dpo_phone ? prettyPhone(group.dpo_phone) : '', npc_registration_no: group.npc_registration_no ?? '',
+};
+
+// Consent on record, counted on the patients of this branch that are not archived.
+const data = await withClinic(clinic.id, async (tx) => ({
+  area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null,
+  counts: (await tx.query(
+    `select count(*) filter (where exists (select 1 from patient_consent c where c.patient_id = p.id and c.version_id = $1))::int as agreed,
+            count(*) filter (where not exists (select 1 from patient_consent c where c.patient_id = p.id and c.version_id = $1))::int as none
+       from patient p where p.archived_at is null`, [version?.id ?? ''])).rows[0] as { agreed: number; none: number },
+}));
+
+const saved = q.get('saved') === '1';
+const stale = q.get('stale') === '1';
+// "23 September 2026", day first, the way the notice's own date reads on this page.
+const when = (d: Date) => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Manila' }).format(d);
+const people = (n: number) => `${n} patient${n === 1 ? '' : 's'}`;
+
+const sectionTitle = 'font-display text-[22px] font-semibold';
+const help = 'text-[13px] leading-snug text-muted';
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title="Privacy" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
+  <p class="meta"><a href={base} class="hover:text-ink">Settings</a> &rsaquo; Privacy</p>
+  <h1 class="mt-3 font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Privacy</h1>
+  <p class="mt-2 max-w-[60ch] text-[15px] text-ink-2">Who answers for the group’s patient data, and what consent the clinic holds.</p>
+
+  {!canSetUp ? (
+    <p class="mt-6 max-w-[60ch] text-[15.5px] leading-relaxed text-ink-2">Settings are the owner’s and the admin’s. If the Data Protection Officer’s details need changing, ask them.</p>
+  ) : (
+    <>
+      {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
+      {saved && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">Saved.</p>}
+      {problems.length > 0 && (
+        <div role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">
+          <p class="font-semibold">Nothing was saved. A few things to fix:</p>
+          <ul class="mt-2 list-disc space-y-1 pl-5">{problems.map((p) => <li>{p}</li>)}</ul>
+        </div>
+      )}
+
+      <form method="post" class="mt-10 max-w-[760px]">
+        <Csrf />
+
+        <section>
+          <p class="sec-no">01 &mdash; Data Protection Officer</p>
+          <h2 class={`mt-1 ${sectionTitle}`}>Who answers for patient data</h2>
+          <p class="mt-2 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
+            One officer for the whole group, every branch. Patients are told to write to this person when they use a right under the Data Privacy Act; the name goes on the clinic’s public page once it is here.
+          </p>
+          <div class="mt-5 grid gap-4">
+            <label class="field"><span class="meta">Name</span><input name="dpo_name" value={v.dpo_name} maxlength="120" autocomplete="off" /></label>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="field"><span class="meta">Email</span><input type="email" name="dpo_email" value={v.dpo_email} autocomplete="off" /></label>
+              <label class="field"><span class="meta">Mobile</span><input type="tel" name="dpo_phone" value={v.dpo_phone} placeholder="0917 000 0000" autocomplete="off" /></label>
+            </div>
+          </div>
+        </section>
+
+        <hr class="rule my-10" />
+
+        <section>
+          <p class="sec-no">02 &mdash; Registration</p>
+          <h2 class={`mt-1 ${sectionTitle}`}>National Privacy Commission</h2>
+          <div class="mt-5 grid gap-4">
+            <label class="field sm:max-w-[24rem]">
+              <span class="meta">NPC registration number</span>
+              <input name="npc_registration_no" value={v.npc_registration_no} maxlength="60" autocomplete="off" />
+              <span class={help}>The National Privacy Commission requires clinics that process health data to register and name a Data Protection Officer. Enter the number only once you have it.</span>
+            </label>
+          </div>
+        </section>
+
+        <div class="mt-10 flex flex-wrap items-center gap-4">
+          <button type="submit" class="btn btn-primary">Save</button>
+          {group.dpo_updated_at && <span class="text-[13.5px] text-muted">Last saved {when(group.dpo_updated_at)}.</span>}
+        </div>
+      </form>
+
+      <hr class="rule my-12 max-w-[760px]" />
+
+      <section class="max-w-[760px]" aria-labelledby="consent-title">
+        <p class="sec-no">03 &mdash; Consent</p>
+        <h2 id="consent-title" class={`mt-1 ${sectionTitle}`}>Consent on record</h2>
+        {version ? (
+          <p class="mt-2 text-[14.5px] text-ink-2">The notice in force is <span class="font-mono text-[14px] text-ink">{version.id}</span>, “{version.title}”, from {version.effective}. <a href="/privacy/" target="_blank" rel="noopener" class="underline underline-offset-4 hover:text-accent">Read it</a>.</p>
+        ) : (
+          <p class="mt-2 text-[14.5px] text-ink-2">No privacy notice is in force yet, so nothing can be counted against one.</p>
+        )}
+        <ul class="mt-4 divide-y divide-line-2 border border-line bg-surface">
+          <li class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 py-3.5">
+            <span class="meta meta-accent w-24 shrink-0">Agreed</span>
+            <span class="flex-1 text-[15px]">{people(data.counts.agreed)} {data.counts.agreed === 1 ? 'has' : 'have'} agreed to the current notice.</span>
+          </li>
+          <li class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 py-3.5">
+            <span class={`meta w-24 shrink-0 ${data.counts.none > 0 ? 'meta-ink' : ''}`}>Nothing yet</span>
+            <span class="flex-1 text-[15px]">{people(data.counts.none)} {data.counts.none === 1 ? 'has' : 'have'} no consent on record for it.</span>
+          </li>
+        </ul>
+        <p class="mt-4 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
+          A patient who books online agrees on the form and it is recorded. For walk-ins, record it on paper for now; a desk capture is next. Each patient’s record shows what is on file for them.
+        </p>
+      </section>
+    </>
+  )}
+</ClinicLayout>

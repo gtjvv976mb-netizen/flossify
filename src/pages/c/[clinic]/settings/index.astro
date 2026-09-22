@@ -156,7 +156,7 @@ const sectionTitle = 'font-display text-[22px] font-semibold';
 const help = 'text-[13px] leading-snug text-muted';
 ---
 
-<ClinicLayout clinic={{ slug: clinic.slug, name: clinic.name, area: data.c.area }} title="Settings" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.c.area }} title="Settings" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
   <div class="flex flex-wrap items-end justify-between gap-4">
     <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Settings</h1>
     {canSetUp && (
@@ -164,6 +164,8 @@ const help = 'text-[13px] leading-snug text-muted';
         <a href={`${base}fees/`} class="underline underline-offset-4 hover:text-accent">Fee guide</a>
         <a href={`${base}team/`} class="underline underline-offset-4 hover:text-accent">Team</a>
         <a href={`${base}photos/`} class="underline underline-offset-4 hover:text-accent">Photos</a>
+        <a href={`${base}privacy/`} class="underline underline-offset-4 hover:text-accent">Privacy</a>
+        <a href={`${base}billing/`} class="underline underline-offset-4 hover:text-accent">Billing</a>
       </nav>
     )}
   </div>

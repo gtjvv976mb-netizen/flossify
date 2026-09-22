@@ -244,6 +244,38 @@ The workspace and the patient directory read from PostgreSQL. Rules:
   `clinic.photo_keys`, stored under `UPLOAD_DIR` and served by
   `/uploads/[...path]` behind a strict path regex.
 
+## Round three — operations, patients, billing, compliance, chart, PWA, claims
+
+- **Flossify's own people are `platform_admin` rows** (008) in a group with no
+  clinic; `requireAdmin()` gates `/admin/`, sign-in lands them there. They have
+  no tenant, so every cross-clinic read is a definer function named `admin_*`
+  that returns exactly the columns a page shows. Seeded: `ops@flossify.example`.
+- **PRC licences are checked by a person** on `/admin/prc/`: `staff.prc_status`
+  pending → checked (sets `prc_checked_on`) or mismatch (clears it and texts the
+  owner). Public pages say "PRC check pending" until then.
+- **A patient is their mobile number** (`/me/`): a texted code (`phone_code`,
+  `issuePhoneCode`), a separate cookie (`fl_patient`), and visits across every
+  clinic through `patient_visits(phone)` / `patient_act(phone, id, action)` —
+  matched on the number only, never on a name.
+- **Billing is a subscription per group** (011): 30-day trial, monthly
+  invoices, manual payment (GCash / Maya / bank) marked paid by operations.
+  Prices and pay-to details are **placeholders** in `src/lib/billing.ts`.
+  Nothing is switched off for a late payment; patients' records come first.
+- **Consent is a record, not a boolean** (012): `patient_consent` says which
+  `consent_version` a patient agreed to, when, how. Booking writes one. The
+  notice is `/privacy/`; the DPO and NPC registration number live on the
+  group (`Settings → Privacy`). Do not claim NPC registration before it is true.
+- **Chart edits save as they are made** (`POST /api/chart`, CSRF in the
+  `X-CSRF` header, `tooth_state` rows superseded, audit `chart.update`).
+- **The workspace installs** (`/manifest.webmanifest`, `/sw.js`): the service
+  worker caches the shell and fonts only — **never patient data or /c/ pages**
+  — and shows `/offline/` when the line is gone. Offline charting is not built;
+  the home page says so.
+- **Claims have their own page** (`/c/<slug>/claims/`, 013): HMO and
+  PhilHealth providers, draft → filed → approved / partly / denied → paid,
+  aging against `expected_days`, CSV export. Coverage wording comes from
+  `coverage.astro`; do not invent PhilHealth rules.
+
 ## Open — read before shipping
 
 - The Semaphore provider is written to their v4 API but has not been run
@@ -252,10 +284,15 @@ The workspace and the patient directory read from PostgreSQL. Rules:
 - No email channel at all: reset, invitations and receipts are text-only.
 - PRC licence checks are still a person's job; `prc_checked_on` stays null for
   self-added dentists until someone verifies, and the public profile says so.
-- Subscription billing, the PhilHealth claims pipeline, patient accounts, the
-  PWA, and the compliance items (NPC registration, a named DPO, consent
-  records with versions) are not started.
-- Odontogram edits are not persisted.
+- Billing is manual payment marked paid by operations; no gateway. Prices,
+  pay-to details and the pause policy are placeholders in
+  `src/lib/billing.ts` and on the Billing pages until the owner sets them.
+- `/privacy/` hardcodes the current `consent_version` id; publish a new
+  version and the page together.
+- Offline charting with catch-up sync is not built; the service worker
+  caches the shell only.
+- Desk-side consent capture (walk-ins) is paper for now; only web bookings
+  write `patient_consent`.
 
 ## Layout
 
@@ -271,7 +308,9 @@ src/pages/coverage.astro       PhilHealth's preventive dental benefit and HMO ca
 src/data/directory.ts          services, symptoms, HMOs, dentists, listings — types, and the seed's source
 src/data/migrations/           002 public booking, 003 public read functions, 004 staff_branches,
                                005 codes / auth events / throttle / text queue / listed, 006 signup_clinic,
-                               007 review fixes (inbound tenant, global slug, listed-only dentist profiles)
+                               007 review fixes (inbound tenant, global slug, listed-only dentist profiles),
+                               008 platform admins + phone codes, 009 PRC checks, 010 patient visits, 011 billing,
+                               012 consent + DPO, 013 claims, 014 DPO on the public listing
 src/lib/db.ts                  pool, withClinic (RLS transaction), publicRead
 src/lib/auth.ts                scrypt passwords, signed session cookie with token version, auth events
 src/lib/csrf.ts + components/Csrf.astro   the double-submit token every form carries
@@ -283,10 +322,15 @@ src/lib/uploads.ts             clinic photos: sharp → 1600/640 webp under UPLO
 src/lib/workspace.ts           requireWorkspace: session + branch access, every request
 src/lib/directory-db.ts        public_directory() → the shapes the pages render; real open slots
 src/lib/availability.ts        Manila-time status and slot arithmetic
-src/pages/api/                 availability, bookings (create / undo-or-cancel), sms/inbound
+src/pages/api/                 availability, bookings (create / undo-or-cancel), chart (tooth_state), sms/inbound
 src/pages/auth/                sign-in, sign-out, forgot (text a code), code (set a password)
 src/pages/start/               a clinic sets itself up
-src/pages/c/[clinic]/settings/ profile + hours + HMOs + listing, fees, team (invites), photos
+src/pages/c/[clinic]/settings/ profile + hours + HMOs + listing, fees, team (invites), photos, privacy (DPO), billing
+src/pages/c/[clinic]/claims/   HMO and PhilHealth claims: file, approve, deny, pay, notes, aging, CSV
+src/pages/me/                  patients: my visits by mobile (code → list; confirm / cancel / calendar)
+src/pages/admin/               Flossify operations: overview, PRC checks, clinics, billing
+src/pages/privacy.astro        the versioned privacy notice; src/pages/offline.astro the PWA's offline page
+src/lib/billing.ts             plans and pay-to placeholders; src/lib/admin.ts requireAdmin; src/lib/patient-auth.ts
 src/pages/c/[clinic]/messages/ the branch's texts, both directions; send again, cancel, text a patient
 src/pages/uploads/             serves uploaded photos, path-checked
 scripts/db/                    setup.sh (drop, create, schema, migrations, seed), seed.ts

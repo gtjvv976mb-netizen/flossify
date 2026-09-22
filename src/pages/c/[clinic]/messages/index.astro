@@ -116,7 +116,7 @@ const { area, texts, recipients } = await withClinic(clinic.id, async (tx) => ({
 }));
 
 const KIND: Record<string, string> = {
-  confirmation: 'Booking confirmation', reminder: 'Reminder', reset: 'Password code', invite: 'Invitation', reply: 'Reply', manual: 'Note',
+  confirmation: 'Booking confirmation', reminder: 'Reminder', reset: 'Sign-in code', invite: 'Invitation', reply: 'Reply', manual: 'Note',
 };
 
 // "Thu 24 Sep, 9:12 am", composed from parts: the locale strings put the comma and the case elsewhere.
@@ -148,7 +148,7 @@ const notice = done === 'sent' ? 'Queued. It leaves with the next pass of the se
   : missed === 'retry' ? 'That text is no longer marked failed, so there was nothing to send again.' : '';
 ---
 
-<ClinicLayout clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Messages" section="messages" staff={{ name: session.name, role: session.role }} branches={branches}>
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Messages" section="messages" staff={{ name: session.name, role: session.role }} branches={branches}>
   <div class="flex flex-wrap items-end justify-between gap-4">
     <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Messages</h1>
     <p class="text-[14.5px] text-muted">{texts.length === 100 ? 'the last 100' : `${texts.length} on file`}</p>

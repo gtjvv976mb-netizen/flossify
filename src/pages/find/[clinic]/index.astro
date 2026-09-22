@@ -41,6 +41,7 @@ const directions = l.mapsUrl ?? `https://www.google.com/maps/search/${encodeURIC
           <a href={directions} class="btn btn-quiet" rel="noopener">Directions &nearr;</a>
         </div>
         <p class="mt-3 text-[14px] text-muted">{l.address}{l.walkIns ? ' · Walk-ins welcome' : ' · By appointment'}</p>
+        <p class="mt-1 text-[13.5px] text-muted">{l.dpoName ? `Data Protection Officer: ${l.dpoName}.` : 'Data Protection Officer: ask the clinic; the name is being added.'} <a href="/privacy/" class="underline underline-offset-4">Privacy notice</a></p>
 
         {!l.workspace && (
           <p role="note" class="mt-6 max-w-[64ch] border border-line bg-bg-soft p-4 text-[14.5px] leading-relaxed">

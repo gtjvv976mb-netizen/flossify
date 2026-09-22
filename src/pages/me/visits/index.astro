@@ -1,0 +1,218 @@
+---
+// The list. Every visit under this mobile number, at every clinic on
+// Flossify, read through patient_visits() (migration 010): the function runs
+// as its owner because a patient has no tenant, and matches on the phone and
+// nothing else. Coming up first, then past; a cancelled visit stays for
+// thirty days with the word Cancelled on it.
+//
+// Two things a person can do from here, both through patient_act(): confirm
+// a booked visit, and cancel one more than two hours ahead. Cancelling is two
+// steps with no script — the first post asks, the page shows "Cancel this
+// visit?" on that row, the second post does it — so a slip of the thumb
+// keeps the chair. Every post carries the CSRF token; a miss comes back with
+// ?stale=1 and the sentence to try again. Moving a visit is a phone call:
+// the clinic's number is on the row.
+export const prerender = false;
+
+import Base from '../../../layouts/Base.astro';
+import PatientHeader from '../../../components/PatientHeader.astro';
+import Csrf from '../../../components/Csrf.astro';
+import { readPatientSession } from '../../../lib/patient-auth';
+import { publicRead } from '../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../lib/csrf';
+import { prettyPhone } from '../../../lib/messages';
+
+const session = readPatientSession(Astro.cookies);
+if (!session) return Astro.redirect('/me/', 303);
+const phone = session.phone;
+
+interface Visit {
+  appointment_id: string; clinic_id: string; clinic_name: string; clinic_slug: string; clinic_phone: string | null; clinic_area: string | null;
+  dentist: string | null; starts_at: Date; ends_at: Date; reason: string | null; status: string; source: string; public_ref: string | null;
+  patient_name: string; booked_by_name: string | null; created_at: Date;
+}
+
+const UUID = /^[0-9a-f-]{36}$/i;
+let notice = '';
+let error = Astro.url.searchParams.get('stale') === '1' ? CSRF_MESSAGE : '';
+// The row whose "Cancel this visit?" question is open, after the first of the two posts.
+let asking = '';
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, f)) return Astro.redirect('/me/visits/?stale=1', 303);
+  const act = String(f.get('act') ?? '');
+  const id = String(f.get('id') ?? '');
+  if (!UUID.test(id)) error = 'That visit could not be found. The list below is current.';
+  else if (act === 'ask-cancel') asking = id;
+  else if (act === 'confirm' || act === 'cancel') {
+    const r = (await publicRead<{ ok: boolean; message: string }>('select ok, message from patient_act($1, $2, $3)', [phone, id, act]))[0];
+    if (r?.ok) notice = r.message;
+    else error = r?.message ?? 'Nothing was changed. The list below is current.';
+  } else error = 'Nothing was changed. The list below is current.';
+}
+
+const visits = await publicRead<Visit>('select * from patient_visits($1)', [phone]);
+const now = Date.now();
+// Soonest first ahead; most recent first behind.
+const upcoming = visits.filter((v) => v.starts_at.getTime() >= now).sort((a, b) => a.starts_at.getTime() - b.starts_at.getTime());
+const past = visits.filter((v) => v.starts_at.getTime() < now);
+
+// "Thu 24 Sep, 9:00 am", Manila time, composed from parts: the locale strings put the comma and the case elsewhere.
+const parts = (d: Date, opts: Intl.DateTimeFormatOptions) =>
+  Object.fromEntries(new Intl.DateTimeFormat('en-US', { ...opts, timeZone: 'Asia/Manila' }).formatToParts(d).map((p) => [p.type, p.value]));
+const time = (d: Date) => { const p = parts(d, { hour: 'numeric', minute: '2-digit' }); return `${p.hour}:${p.minute} ${p.dayPeriod.toLowerCase()}`; };
+const when = (d: Date) => { const p = parts(d, { weekday: 'short', day: 'numeric', month: 'short' }); return `${p.weekday} ${p.day} ${p.month}, ${time(d)}`; };
+const yearOf = (d: Date) => parts(d, { year: 'numeric' }).year;
+const thisYear = yearOf(new Date());
+
+// Status in plain words, never colour alone.
+function statusWords(v: Visit): string {
+  switch (v.status) {
+    case 'booked': return v.source === 'request' ? 'Requested — the clinic will text a time' : 'Booked — please confirm';
+    case 'confirmed': return 'Confirmed';
+    case 'arrived': case 'in_lobby': case 'in_chair': return 'At the clinic';
+    case 'completed': return 'Done';
+    case 'no_show': return 'Missed';
+    case 'cancelled': return 'Cancelled';
+    default: return v.status;
+  }
+}
+const isAhead = (v: Visit) => v.starts_at.getTime() > now && (v.status === 'booked' || v.status === 'confirmed');
+// A request has no agreed time yet, so there is nothing to confirm; the clinic texts one first.
+const canConfirm = (v: Visit) => isAhead(v) && v.status === 'booked' && v.source !== 'request';
+
+// The calendar file, same shape as the booking page writes: local Manila time, one event, the reference in the notes.
+const stamp = (d: Date) => { const p = parts(d, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }); return `${p.year}${p.month}${p.day}T${p.hour}${p.minute}${p.second}`; };
+const esc = (s: string) => s.replace(/([\\,;])/g, '\\$1').replace(/\r?\n/g, ' ');
+function ics(v: Visit): string {
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Flossify//Visit//EN', 'BEGIN:VEVENT',
+    `UID:${v.appointment_id}@flossify`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,
+    `DTSTART;TZID=Asia/Manila:${stamp(v.starts_at)}`, `DTEND;TZID=Asia/Manila:${stamp(v.ends_at)}`,
+    `SUMMARY:${esc(`Dentist — ${v.clinic_name}`)}`,
+    `DESCRIPTION:${esc([v.reason, v.dentist ? `with ${v.dentist}` : '', v.public_ref ? `Ref ${v.public_ref}.` : ''].filter(Boolean).join(' '))}`,
+    `LOCATION:${esc([v.clinic_name, v.clinic_area].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
+  return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(lines.join('\r\n'));
+}
+const tel = (s: string) => `tel:${s.replace(/[^\d+]/g, '')}`;
+---
+
+<Base title="My visits — Flossify" description="Your visits at every clinic on Flossify, under your mobile number. Confirm, cancel, or add one to your calendar.">
+  <PatientHeader current="me" />
+
+  <main id="main" class="mx-auto max-w-[880px] px-5 py-10 sm:px-8">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="meta">Patients &middot; My visits</p>
+        <h1 class="mt-3 font-display text-[clamp(1.8rem,4vw,2.6rem)] leading-[1.05] font-semibold tracking-[-0.025em]">My visits</h1>
+        <p class="mt-3 text-[15px] text-ink-2">Under <span class="font-semibold tabular-nums text-ink">{prettyPhone(phone)}</span>, at every clinic on Flossify.</p>
+      </div>
+      <form method="post" action="/me/logout" class="flex items-baseline gap-3 text-[14px] text-ink-2">
+        <Csrf />
+        <span>Not you?</span>
+        <button type="submit" class="underline underline-offset-4 hover:text-ink">Sign out</button>
+      </form>
+    </div>
+
+    {notice && !error && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">{notice}</p>}
+    {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
+
+    {visits.length === 0 ? (
+      <section class="mt-10 border border-line bg-surface p-6 sm:p-8">
+        <p class="text-[16px] leading-relaxed text-ink-2">No visits under this number yet. When you book on <a href="/find/" class="underline underline-offset-4 text-ink">Find a clinic</a> with it, they show here.</p>
+        <a href="/find/" class="btn btn-primary mt-6">Find a clinic</a>
+      </section>
+    ) : (
+      <>
+        <section class="mt-10" aria-labelledby="up-title">
+          <div class="flex items-baseline gap-6"><span class="sec-no">01</span><h2 id="up-title" class="font-display text-[22px] font-semibold tracking-tight">Coming up</h2></div>
+          <div class="rule mt-4"></div>
+          {upcoming.length === 0 ? (
+            <p class="mt-4 text-[15px] text-muted">Nothing booked ahead. <a href="/find/" class="underline underline-offset-4 text-ink-2">Find a clinic</a> when you need one.</p>
+          ) : (
+            <ul class="divide-y divide-line">
+              {upcoming.map((v) => (
+                <li class="grid gap-4 py-6 sm:grid-cols-[13rem_1fr]">
+                  <div>
+                    <p class="text-[17px] font-semibold tabular-nums">{when(v.starts_at)}</p>
+                    {yearOf(v.starts_at) !== thisYear && <p class="text-[13px] tabular-nums text-muted">{yearOf(v.starts_at)}</p>}
+                    <p class:list={['mt-1 text-[14.5px] font-semibold', v.status === 'cancelled' ? 'text-muted' : 'text-ink-2']}>{statusWords(v)}</p>
+                    {v.public_ref && <p class="meta mt-2">Ref {v.public_ref}</p>}
+                  </div>
+                  <div>
+                    <p class="text-[16px]"><a href={`/find/${v.clinic_slug}/`} class="font-semibold hover:text-accent">{v.clinic_name}</a>{v.clinic_area && <span class="text-ink-2"> &middot; {v.clinic_area}</span>}</p>
+                    <p class="mt-1 text-[15px] text-ink-2">{[v.reason, v.dentist ? `with ${v.dentist}` : ''].filter(Boolean).join(' ') || 'Visit'}</p>
+                    <p class="mt-1 text-[14px] text-muted">For {v.patient_name}{v.booked_by_name && v.booked_by_name !== v.patient_name ? ` · booked by ${v.booked_by_name}` : ''}</p>
+
+                    {isAhead(v) && (asking === v.appointment_id ? (
+                      <div class="mt-4 flex flex-wrap items-center gap-3 border border-line bg-bg-soft p-4" role="group" aria-label="Cancel this visit?">
+                        <p class="text-[15px] font-semibold">Cancel this visit?</p>
+                        <form method="post">
+                          <Csrf />
+                          <input type="hidden" name="act" value="cancel" />
+                          <input type="hidden" name="id" value={v.appointment_id} />
+                          <button type="submit" class="btn btn-primary !px-4 !py-2 text-[14px]" autofocus>Yes, cancel</button>
+                        </form>
+                        <a href="/me/visits/" class="btn btn-quiet !px-4 !py-2 text-[14px]">Keep it</a>
+                      </div>
+                    ) : (
+                      <div class="mt-4 flex flex-wrap items-center gap-2">
+                        {canConfirm(v) && (
+                          <form method="post">
+                            <Csrf />
+                            <input type="hidden" name="act" value="confirm" />
+                            <input type="hidden" name="id" value={v.appointment_id} />
+                            <button type="submit" class="btn btn-primary !px-4 !py-2 text-[14px]">Confirm</button>
+                          </form>
+                        )}
+                        <form method="post">
+                          <Csrf />
+                          <input type="hidden" name="act" value="ask-cancel" />
+                          <input type="hidden" name="id" value={v.appointment_id} />
+                          <button type="submit" class="btn btn-quiet !px-4 !py-2 text-[14px]">Cancel</button>
+                        </form>
+                        <a href={ics(v)} download="flossify-visit.ics" class="btn btn-quiet !px-4 !py-2 text-[14px]">Add to calendar</a>
+                        {v.clinic_phone && <a href={tel(v.clinic_phone)} class="btn btn-quiet !px-4 !py-2 text-[14px]">Call to move it</a>}
+                      </div>
+                    ))}
+                    {isAhead(v) && asking !== v.appointment_id && v.clinic_phone && (
+                      <p class="mt-2 text-[13px] text-muted">Cancel here up to two hours before. Closer than that, call {v.clinic_phone}.</p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section class="mt-12" aria-labelledby="past-title">
+          <div class="flex items-baseline gap-6"><span class="sec-no">02</span><h2 id="past-title" class="font-display text-[22px] font-semibold tracking-tight">Past</h2></div>
+          <div class="rule mt-4"></div>
+          {past.length === 0 ? (
+            <p class="mt-4 text-[15px] text-muted">No past visits under this number.</p>
+          ) : (
+            <ul class="divide-y divide-line">
+              {past.map((v) => (
+                <li class="grid gap-2 py-5 sm:grid-cols-[13rem_1fr]">
+                  <div>
+                    <p class="text-[15px] font-semibold tabular-nums text-ink-2">{when(v.starts_at)}</p>
+                    {yearOf(v.starts_at) !== thisYear && <p class="text-[13px] tabular-nums text-muted">{yearOf(v.starts_at)}</p>}
+                    <p class:list={['mt-1 text-[14px]', v.status === 'cancelled' || v.status === 'no_show' ? 'text-muted' : 'text-ink-2']}>{statusWords(v)}</p>
+                    {v.public_ref && <p class="meta mt-2">Ref {v.public_ref}</p>}
+                  </div>
+                  <div>
+                    <p class="text-[15px]"><a href={`/find/${v.clinic_slug}/`} class="font-semibold hover:text-accent">{v.clinic_name}</a>{v.clinic_area && <span class="text-ink-2"> &middot; {v.clinic_area}</span>}</p>
+                    <p class="mt-1 text-[14.5px] text-ink-2">{[v.reason, v.dentist ? `with ${v.dentist}` : ''].filter(Boolean).join(' ') || 'Visit'}</p>
+                    <p class="mt-1 text-[13.5px] text-muted">For {v.patient_name}{v.booked_by_name && v.booked_by_name !== v.patient_name ? ` · booked by ${v.booked_by_name}` : ''}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </>
+    )}
+
+    <p class="mt-14 border-t border-line pt-6 text-[14px] leading-relaxed text-muted">We keep this list for the mobile number only; the clinic’s records stay with the clinic.</p>
+  </main>
+</Base>

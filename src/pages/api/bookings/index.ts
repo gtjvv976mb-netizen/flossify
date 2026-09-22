@@ -91,6 +91,12 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
       `insert into appointment (clinic_id, patient_id, dentist_id, starts_at, ends_at, reason, status, source, public_ref, cancel_token, booked_by_name, booked_by_phone, catalog_id, hmo_id, notes)
        values ($1,$2,$3,$4,$5,$6,'booked',$7,$8,$9,$10,$11,$12,$13,$14) returning id`,
       [l.id, patientId, dent[0]?.id ?? null, startsAt, endsAt, service.name, source, publicRef, cancelToken, name, phone, cat[0]?.id ?? null, b.hmo || null, String(b.notes ?? '').slice(0, 500) || null]);
+    // The box the booker ticked, recorded against the notice in force: which words, when, from where,
+    // and for which visit. The booker's name, not the patient's — for someone else's visit they differ.
+    await tx.query(
+      `insert into patient_consent (clinic_id, patient_id, version_id, channel, given_by_name, ip, appointment_id)
+       select $1, $2, v.id, 'web', $3, $4::inet, $5 from current_consent_version() v where v.id is not null`,
+      [l.id, patientId, name, ip, appt[0].id]);
     // The confirmation text, queued. No link in it: telcos block them.
     const when = startsAt.toLocaleString('en-PH', { timeZone: 'Asia/Manila', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
     const body = source === 'web'

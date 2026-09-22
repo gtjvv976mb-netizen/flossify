@@ -19,6 +19,14 @@ export async function hit(key: string, limit: number, windowSeconds: number): Pr
   return { allowed: r.allowed, hits: r.hits, retryAfter: r.retry_after };
 }
 
+/** Read the window without spending a hit: is this key locked right now? */
+export async function peek(key: string, limit: number, windowSeconds: number): Promise<Hit> {
+  const { rows } = await pool.query(
+    'select allowed, hits, retry_after from throttle_peek($1, $2, make_interval(secs => $3))', [key, limit, windowSeconds]);
+  const r = rows[0];
+  return { allowed: r.allowed, hits: r.hits, retryAfter: r.retry_after };
+}
+
 /** [limit, window seconds] per thing. Spread into hit(): `hit(key, ...LIMITS.login.email)`. */
 export const LIMITS = {
   login: { email: [8, 15 * 60], ip: [40, 15 * 60] },

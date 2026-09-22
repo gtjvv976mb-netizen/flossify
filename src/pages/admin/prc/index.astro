@@ -1,0 +1,211 @@
+---
+// The PRC licence queue. A dentist's licence number is checked by a person at
+// verification.prc.gov.ph; this page is where they record what they found.
+// Until someone does, the public profile says "PRC check pending". A mismatch
+// clears the date again, so the public pages fall back to pending, and texts
+// the clinic's owner so it can be sorted.
+//
+// Admins have no tenant. The queue is admin_prc_queue() (009) and the mark is
+// admin_prc_mark(), both definer functions. The audit entry and the owner's
+// text are written inside withClinic(<the dentist's home clinic>), so they
+// belong to that clinic and the text shows on its Messages page like any
+// other. Every form carries the CSRF token; a miss changes nothing and comes
+// back here with ?stale=1.
+export const prerender = false;
+
+import AdminLayout from '../../../layouts/Admin.astro';
+import Csrf from '../../../components/Csrf.astro';
+import { requireAdmin } from '../../../lib/admin';
+import { pool, publicRead, withClinic } from '../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../lib/csrf';
+import { queueText, normalizePhone, prettyPhone, PH_MOBILE, texts } from '../../../lib/messages';
+
+const admin = await requireAdmin(Astro);
+if (admin instanceof Response) return admin;
+const { session } = admin;
+
+interface Row {
+  staff_id: string; full_name: string; prc_licence: string | null;
+  prc_status: 'pending' | 'checked' | 'mismatch'; prc_checked_on: Date | null;
+  prc_checked_by_name: string | null; prc_note: string | null; role: string;
+  clinic_id: string | null; clinic_name: string | null; clinic_slug: string | null; clinic_listed: boolean | null;
+  owner_id: string | null; owner_name: string | null; owner_phone: string | null; added_at: Date;
+}
+
+const UUID = /^[0-9a-f-]{36}$/i;
+const STATUS = new Set(['checked', 'mismatch', 'pending']);
+const NOTE_MAX = 200;
+const q = Astro.url.searchParams;
+
+// Timestamps are shown in Manila time. prc_checked_on is a calendar date: pg
+// hands it over as local midnight, so it is read back in local time, no zone.
+const day = (d: Date) => new Intl.DateTimeFormat('en-PH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(d);
+const calDay = (d: Date) => new Intl.DateTimeFormat('en-PH', { day: 'numeric', month: 'short', year: 'numeric' }).format(d);
+const manilaDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Manila' }).format(d);
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(Astro.url.pathname + '?stale=1', 303);
+  const staffId = String(f.get('staff_id') ?? '');
+  const status = String(f.get('status') ?? '');
+  const note = String(f.get('note') ?? '').replace(/\s+/g, ' ').trim().slice(0, NOTE_MAX) || null;
+  if (!UUID.test(staffId) || !STATUS.has(status)) return Astro.redirect(Astro.url.pathname, 303);
+
+  const row = (await publicRead<Row>('select * from admin_prc_queue() where staff_id = $1', [staffId]))[0];
+  if (!row) return Astro.redirect(Astro.url.pathname + '?missed=1', 303);
+
+  const MARK = 'select admin_prc_mark($1, $2, $3, $4) as ok';
+  const args = [staffId, status, note, session.staffId];
+  // What happened to the owner's text: sent | again (already texted today) | nophone | noclinic; missed when the row had gone.
+  let texted = 'noclinic';
+  if (row.clinic_id) {
+    texted = await withClinic(row.clinic_id, async (tx) => {
+      const ok = (await tx.query(MARK, args)).rows[0]?.ok as boolean;
+      if (!ok) return 'missed';
+      await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'staff', $4)`,
+        [row.clinic_id, session.staffId, `prc.${status}`, staffId]);
+      if (status !== 'mismatch') return 'none';
+      if (!row.owner_phone || !PH_MOBILE.test(normalizePhone(row.owner_phone))) return 'nophone';
+      // Once a day per dentist: a second press does not text the owner twice.
+      const id = await queueText(tx, {
+        clinicId: row.clinic_id!, to: row.owner_phone, body: texts.prcMismatch(row.full_name, row.prc_licence ?? '(none on file)'),
+        kind: 'manual', staffId: row.owner_id, dedupeKey: `prc-mismatch:${staffId}:${manilaDay(new Date())}`,
+      });
+      return id ? 'sent' : 'again';
+    });
+  } else {
+    const ok = (await pool.query(MARK, args)).rows[0]?.ok as boolean;
+    if (!ok) texted = 'missed';
+  }
+  if (texted === 'missed') return Astro.redirect(Astro.url.pathname + '?missed=1', 303);
+  return Astro.redirect(`${Astro.url.pathname}?done=${status}${status === 'mismatch' ? `&texted=${texted}` : ''}`, 303);
+}
+
+const rows = await publicRead<Row>('select * from admin_prc_queue()');
+const waiting = rows.filter((r) => r.prc_status === 'pending');
+const decided = rows.filter((r) => r.prc_status !== 'pending');
+
+const ROLE: Record<string, string> = { owner: 'Owner', admin: 'Admin', dentist: 'Dentist', associate: 'Associate', secretary: 'Secretary', assistant: 'Assistant' };
+// The outcome is never colour alone: the words carry it, the colour agrees.
+const STATE: Record<Row['prc_status'], { label: string; tone: string }> = {
+  pending: { label: 'Waiting', tone: 'text-ink-2' },
+  checked: { label: 'Checked — matches', tone: 'text-accent' },
+  mismatch: { label: 'Did not match', tone: 'text-caries' },
+};
+
+const stale = q.get('stale') === '1';
+const done = q.get('done') ?? '';
+const texted = q.get('texted') ?? '';
+const missed = q.get('missed') === '1';
+const mismatchTail =
+  texted === 'sent' ? 'The clinic’s owner is texted with the next pass of the sender.'
+  : texted === 'again' ? 'The clinic’s owner was already texted about this today, so no second text went out.'
+  : texted === 'noclinic' ? 'This dentist has no home clinic on file, so there was no owner to text.'
+  : 'The clinic’s owner has no mobile on file, so nobody was texted; reach them another way.';
+const notice =
+  done === 'checked' ? 'Marked as checked. The public profile now says the licence was checked today.'
+  : done === 'pending' ? 'Back in the waiting list. The public profile says “PRC check pending” again.'
+  : done === 'mismatch' ? `Marked as not matching. The public profile says “PRC check pending” until it is sorted. ${mismatchTail}`
+  : missed ? 'That dentist is no longer in the queue. The lists below are current.'
+  : '';
+const btn = 'btn !px-4 !py-2 text-[13.5px]';
+---
+
+<AdminLayout title="PRC licence checks" section="prc" admin={{ name: admin.name }}>
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">PRC licence checks</h1>
+    <p class="text-[14.5px] text-muted">{waiting.length} waiting · {decided.length} decided</p>
+  </div>
+  <p class="mt-3 max-w-[64ch] text-[15px] leading-relaxed text-ink-2">
+    A person checks each number at <a href="https://verification.prc.gov.ph/" rel="noopener noreferrer" target="_blank" class="underline underline-offset-4 hover:text-accent">verification.prc.gov.ph</a>. Until then the public profile says “PRC check pending”.
+  </p>
+
+  {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
+  {notice && !stale && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px] leading-relaxed">{notice}</p>}
+
+  <section class="mt-10" aria-labelledby="waiting-title">
+    <h2 id="waiting-title" class="font-display text-[22px] font-semibold">Waiting <span class="ml-2 font-mono text-[13px] font-normal tracking-[0.08em] text-muted">{waiting.length}</span></h2>
+    {waiting.length === 0 ? (
+      <p class="mt-3 text-[15px] text-muted">Nobody is waiting. Every dentist with a public profile has been checked.</p>
+    ) : (
+      <ul class="mt-4 divide-y divide-line-2 border border-line bg-surface">
+        {waiting.map((r) => (
+          <li class="grid gap-5 p-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+            <div class="min-w-0">
+              <p class="text-[16px] font-semibold">{r.full_name} <span class="ml-1 text-[13.5px] font-normal text-ink-2">{ROLE[r.role] ?? r.role}</span></p>
+              <p class="mt-1 text-[14.5px]"><span class="text-muted">PRC No.</span> <span class="font-mono text-[14px] tabular-nums">{r.prc_licence ?? 'not on file'}</span></p>
+              <p class="mt-1 text-[14px] text-ink-2">
+                {r.clinic_slug ? (
+                  <><a href={`/find/${r.clinic_slug}/`} class="underline underline-offset-4 hover:text-accent">{r.clinic_name}</a> · {r.clinic_listed ? 'listed' : 'not listed'}</>
+                ) : 'No home clinic on file'}
+              </p>
+              <p class="mt-1 text-[14px] text-ink-2">
+                Owner: {r.owner_name ? <>{r.owner_name}{r.owner_phone && <> · <span class="tabular-nums">{prettyPhone(r.owner_phone)}</span></>}</> : 'none on file'}
+              </p>
+              <p class="mt-1 text-[13px] text-muted">Added {day(r.added_at)}</p>
+            </div>
+            <form method="post" class="grid gap-3">
+              <Csrf />
+              <input type="hidden" name="staff_id" value={r.staff_id} />
+              <label class="field"><span class="meta">Note</span><input name="note" maxlength={NOTE_MAX} placeholder="Optional: what the PRC page showed" /></label>
+              <div class="flex flex-wrap gap-2">
+                <button name="status" value="checked" class={`${btn} btn-primary`}>Checked — matches</button>
+                <button name="status" value="mismatch" class={`${btn} btn-quiet`}>Doesn’t match</button>
+              </div>
+              <p class="text-[13px] leading-snug text-muted">“Doesn’t match” texts the clinic’s owner{r.owner_phone ? '' : ' — none on file here, so nobody would be texted'}.</p>
+            </form>
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+
+  <details id="decided" class="q mt-12 scroll-mt-24" open={done === 'checked' || done === 'mismatch'}>
+    <summary>
+      <h2 class="font-display text-[22px] font-semibold">Checked and mismatch <span class="ml-2 font-mono text-[13px] font-normal tracking-[0.08em] text-muted">{decided.length}</span></h2>
+    </summary>
+    {decided.length === 0 ? (
+      <p class="pb-6 text-[15px] text-muted">Nothing decided yet.</p>
+    ) : (
+      <ul class="mb-6 divide-y divide-line-2 border border-line bg-surface">
+        {decided.map((r) => (
+          <li class="grid gap-5 p-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+            <div class="min-w-0">
+              <p class="text-[16px] font-semibold">{r.full_name} <span class="ml-1 text-[13.5px] font-normal text-ink-2">{ROLE[r.role] ?? r.role}</span></p>
+              <p class="mt-1 text-[14.5px]"><span class="text-muted">PRC No.</span> <span class="font-mono text-[14px] tabular-nums">{r.prc_licence ?? 'not on file'}</span></p>
+              <p class={`mt-1 text-[14.5px] font-semibold ${STATE[r.prc_status].tone}`}>
+                {STATE[r.prc_status].label}{r.prc_checked_on && ` on ${calDay(r.prc_checked_on)}`}{r.prc_checked_by_name && ` by ${r.prc_checked_by_name}`}
+              </p>
+              {r.prc_note && <p class="mt-1 text-[14px] text-ink-2">Note: {r.prc_note}</p>}
+              <p class="mt-1 text-[14px] text-ink-2">
+                {r.clinic_slug ? (
+                  <><a href={`/find/${r.clinic_slug}/`} class="underline underline-offset-4 hover:text-accent">{r.clinic_name}</a> · {r.clinic_listed ? 'listed' : 'not listed'}</>
+                ) : 'No home clinic on file'}
+              </p>
+              <p class="mt-1 text-[14px] text-ink-2">
+                Owner: {r.owner_name ? <>{r.owner_name}{r.owner_phone && <> · <span class="tabular-nums">{prettyPhone(r.owner_phone)}</span></>}</> : 'none on file'}
+              </p>
+              <p class="mt-1 text-[13px] text-muted">Added {day(r.added_at)}</p>
+            </div>
+            <form method="post" class="grid gap-3">
+              <Csrf />
+              <input type="hidden" name="staff_id" value={r.staff_id} />
+              <label class="field"><span class="meta">Note</span><input name="note" maxlength={NOTE_MAX} value={r.prc_note ?? ''} placeholder="Optional: what the PRC page showed" /></label>
+              <div class="flex flex-wrap gap-2">
+                <button name="status" value="checked" class={`${btn} btn-primary`}>Checked — matches</button>
+                <button name="status" value="mismatch" class={`${btn} btn-quiet`}>Doesn’t match</button>
+                <button name="status" value="pending" class={`${btn} btn-quiet`}>Back to pending</button>
+              </div>
+              <p class="text-[13px] leading-snug text-muted">“Doesn’t match” texts the clinic’s owner{r.owner_phone ? '' : ' — none on file here, so nobody would be texted'}.</p>
+            </form>
+          </li>
+        ))}
+      </ul>
+    )}
+  </details>
+
+  <script is:inline>
+    // The overview links here with #decided; the list is collapsed by default, so open it when that is where the link pointed.
+    if (location.hash === '#decided') document.getElementById('decided')?.setAttribute('open', '');
+  </script>
+</AdminLayout>

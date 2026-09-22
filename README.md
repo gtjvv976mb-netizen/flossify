@@ -68,8 +68,22 @@ six-digit code texted to the staff member's mobile (`/auth/forgot/`,
 
 Clinics: `/start/` creates a clinic and its owner in one form. It begins
 unlisted; Settings (profile, hours, HMOs, the fee guide, Team with texted
-invitations, Photos) works down a checklist and the owner flips **Listed on
-Find a clinic** when the page is ready.
+invitations, Photos, Privacy, Billing) works down a checklist and the owner
+flips **Listed on Find a clinic** when the page is ready. Claims (HMO and
+PhilHealth) have their own page with aging and a CSV export; the tooth chart
+saves every change under the staff member's name.
+
+Patients: `/me/` — a texted code and nothing else — shows every visit under
+that mobile across clinics, with confirm and cancel. `/privacy/` is the
+versioned notice; each booking records which version was agreed to.
+
+Operations (`/admin/`, Flossify staff only): the PRC licence check queue,
+the clinics list, and billing — trials, monthly invoices, manual payments
+marked paid. Prices and pay-to details are placeholders in
+`src/lib/billing.ts` until you set them.
+
+The workspace installs as an app (`manifest.webmanifest`, `sw.js`); the
+service worker caches only the shell and fonts, never patient data.
 
 ## Layout
 
@@ -154,5 +168,10 @@ try/catch because private mode throws.
       practices — one letter away, same buyer. `flossify.io`, `flossify.co`
       and `flossify.ph` were free as of September 2026.
 - [ ] Point `site` in `astro.config.mjs` at the real domain.
+- [ ] Set the plan prices, the GCash / Maya / bank pay-to details, the billing
+      email and the listing-pause policy in `src/lib/billing.ts` (all marked
+      as placeholders on the Billing pages until then).
+- [ ] Name Flossify's Data Protection Officer and enter the NPC registration
+      number in `src/pages/privacy.astro` — only once they are real.
 - [ ] Add real product screenshots. The chart is currently the only real
       product surface on the page.

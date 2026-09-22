@@ -1,0 +1,170 @@
+---
+// Settings › Billing. What this group pays Flossify: the plan, the branches
+// it is counted on, the month's total, every invoice, and how to pay. There
+// is no gateway and no card form — a clinic pays by GCash, Maya or bank
+// transfer with the invoice number as the reference, and a person on our
+// side marks it paid. There is nothing to submit here: plan changes are a
+// note to us, not a button, until self-service is worth building.
+//
+// The owner's and the admin's, like the rest of Settings. The subscription
+// rows are group data outside row-level security (like staff); the branch
+// count reads clinic through the definer function in migration 011.
+export const prerender = false;
+
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { withClinic } from '../../../../lib/db';
+import { peso } from '../../../../data/demo';
+import {
+  PLANS, PAY_TO, WRITE_TO, PAUSE_AFTER_DAYS, STATUS_WORDS,
+  state, describe, daysLeft, invoiceWords, monthText, dayText, whenText, manilaDate,
+} from '../../../../lib/billing';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const canSetUp = session.role === 'owner' || session.role === 'admin';
+
+const area = await withClinic(clinic.id, async (tx) => (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null);
+
+const billing = canSetUp ? await state(clinic.group_id) : null;
+const plan = billing ? PLANS[billing.sub.plan] : null;
+const notice = billing ? describe(billing.sub, billing.invoices) : null;
+const trialLeft = billing?.sub.status === 'trial' ? daysLeft(billing.sub.trial_ends_at) : null;
+const owed = billing ? billing.invoices.filter((i) => i.status === 'due').reduce((n, i) => n + i.amount, 0) : 0;
+
+// The card's fourth line: where the subscription stands, in words.
+const standing = !billing ? ''
+  : billing.sub.status === 'trial'
+    ? trialLeft === 0 ? 'Trial ended' : `Trial: ${trialLeft} day${trialLeft === 1 ? '' : 's'} left`
+    : STATUS_WORDS[billing.sub.status];
+
+const payTo = [
+  { name: 'GCash', value: PAY_TO.gcash },
+  { name: 'Maya', value: PAY_TO.maya },
+  { name: 'Bank transfer', value: PAY_TO.bank },
+];
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Billing" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
+  <p class="meta"><a href={`/c/${clinic.slug}/settings/`} class="hover:text-ink">Settings</a> &rsaquo; Billing</p>
+  <h1 class="mt-3 font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Billing</h1>
+
+  {!canSetUp || !billing || !plan ? (
+    <p class="mt-4 max-w-[60ch] text-[15px] leading-relaxed text-ink-2">Billing is the owner’s and the admin’s. If a payment question comes up, ask them; nothing here affects the day’s work.</p>
+  ) : (
+    <>
+      <p class="mt-3 max-w-[64ch] text-[15px] leading-relaxed text-ink-2">
+        What {billing.branches === 1 ? 'this clinic' : 'the group'} pays Flossify. One invoice a month, paid by GCash, Maya or bank transfer; a person on our side marks it paid.
+      </p>
+
+      <p role="note" class="mt-6 max-w-[64ch] border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
+        The prices on this page are placeholders while Flossify is being set up. They are not what you will be charged until the owner of the service has set them and told you.
+      </p>
+
+      {notice && (
+        <p role={notice.alert ? 'alert' : 'status'} class:list={['mt-6 border p-4 text-[14.5px] leading-relaxed', notice.alert ? 'border-caries/40 bg-caries/10' : 'border-accent/40 bg-accent/10']}>
+          {notice.text}
+        </p>
+      )}
+
+      <section class="mt-8" aria-labelledby="plan-title">
+        <h2 id="plan-title" class="sec-no">Your plan</h2>
+        <dl class="mt-3 grid gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
+          <div class="bg-surface p-5">
+            <dt class="meta">Plan</dt>
+            <dd class="mt-2 font-display text-[26px] leading-none font-bold">{plan.name}</dd>
+            <p class="mt-1.5 text-[13px] text-muted">{plan.blurb}</p>
+          </div>
+          <div class="bg-surface p-5">
+            <dt class="meta">Per branch, per month</dt>
+            <dd class="mt-2 font-display text-[26px] leading-none font-bold tabular-nums">{peso(billing.sub.price_per_branch)}</dd>
+            <p class="mt-1.5 text-[13px] text-muted">placeholder price</p>
+          </div>
+          <div class="bg-surface p-5">
+            <dt class="meta">Branches counted</dt>
+            <dd class="mt-2 font-display text-[26px] leading-none font-bold tabular-nums">{billing.branches}</dd>
+            <p class="mt-1.5 text-[13px] text-muted">{billing.branches === 1 ? 'one open branch' : 'open branches in the group'}</p>
+          </div>
+          <div class="bg-surface p-5">
+            <dt class="meta">Monthly total</dt>
+            <dd class="mt-2 font-display text-[26px] leading-none font-bold tabular-nums">{peso(billing.monthly)}</dd>
+            <p class="mt-1.5 text-[13px] text-muted">{standing}{billing.sub.status === 'trial' ? ` · ends ${whenText(billing.sub.trial_ends_at)}` : ''}</p>
+          </div>
+        </dl>
+        <p class="mt-3 text-[14px] text-ink-2">
+          To change plan, write to us at <a href={`mailto:${WRITE_TO}`} class="underline underline-offset-4 hover:text-accent">{WRITE_TO}</a>. Say which plan and from which month; we change it and confirm by reply.
+        </p>
+      </section>
+
+      <section class="mt-10" aria-labelledby="invoices-title">
+        <div class="flex flex-wrap items-baseline justify-between gap-4">
+          <h2 id="invoices-title" class="font-display text-[22px] font-semibold">Invoices</h2>
+          {owed > 0 && <p class="text-[14.5px] text-ink-2">Still to pay: <span class="font-semibold tabular-nums">{peso(owed)}</span></p>}
+        </div>
+        <div class="mt-4 overflow-x-auto border border-line bg-surface">
+          <table class="w-full min-w-[760px] border-collapse text-left">
+            <caption class="sr-only">Invoices from Flossify to this group, newest first</caption>
+            <thead>
+              <tr class="border-b border-line bg-bg-soft">
+                <th scope="col" class="meta px-5 py-3.5">Number</th>
+                <th scope="col" class="meta px-5 py-3.5">Period</th>
+                <th scope="col" class="meta px-5 py-3.5 text-right">Branches</th>
+                <th scope="col" class="meta px-5 py-3.5 text-right">Amount</th>
+                <th scope="col" class="meta px-5 py-3.5">Due</th>
+                <th scope="col" class="meta px-5 py-3.5">Status</th>
+                <th scope="col" class="meta px-5 py-3.5">Paid with</th>
+              </tr>
+            </thead>
+            <tbody>
+              {billing.invoices.length === 0 && (
+                <tr><td colspan="7" class="px-5 py-4 text-[15px] text-muted">
+                  {billing.sub.status === 'trial' ? 'No invoices yet. The first one comes with the monthly run after the trial ends.' : 'No invoices yet.'}
+                </td></tr>
+              )}
+              {billing.invoices.map((inv, i) => {
+                const overdue = inv.status === 'due' && manilaDate(inv.due_at) < manilaDate(new Date());
+                return (
+                  <tr class:list={[i < billing.invoices.length - 1 && 'border-b border-line-2', overdue && 'bg-caries/10']}>
+                    <th scope="row" class="px-5 py-3.5 font-mono text-[13px] tracking-[0.04em] tabular-nums">{inv.number}</th>
+                    <td class="px-5 py-3.5 text-[15px] text-ink-2">{monthText(inv.period_start)}</td>
+                    <td class="px-5 py-3.5 text-right text-[15px] tabular-nums">{inv.branches}</td>
+                    <td class="px-5 py-3.5 text-right text-[15px] font-semibold tabular-nums">{peso(inv.amount)}</td>
+                    <td class="px-5 py-3.5 text-[15px] whitespace-nowrap tabular-nums text-ink-2">{dayText(manilaDate(inv.due_at))}</td>
+                    <td class:list={['px-5 py-3.5 text-[14.5px] font-semibold', overdue ? 'text-caries' : inv.status === 'paid' ? 'text-accent' : 'text-ink-2']}>{invoiceWords(inv)}</td>
+                    <td class="px-5 py-3.5 text-[14px] text-ink-2">{inv.paid_ref ?? '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="mt-10" aria-labelledby="pay-title">
+        <h2 id="pay-title" class="font-display text-[22px] font-semibold">How to pay</h2>
+        <p class="mt-1.5 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
+          Send the amount on the invoice to any of these, and put the invoice number (FL-…) as the reference or message. A person checks the account and marks it paid within one working day; the row above turns to “Paid”.
+        </p>
+        <dl class="mt-4 max-w-[760px] divide-y divide-line-2 border border-line bg-surface">
+          {payTo.map((p) => (
+            <div class="grid gap-1 px-5 py-3.5 sm:grid-cols-[10rem_1fr]">
+              <dt class="text-[15px] font-medium">{p.name}</dt>
+              <dd class="text-[15px] tabular-nums text-ink-2">{p.value}</dd>
+            </div>
+          ))}
+        </dl>
+        <p class="mt-3 max-w-[64ch] text-[13.5px] leading-relaxed text-muted">
+          The pay-to details above are placeholders until the owner of the service fills them in. Do not send money to a placeholder.
+        </p>
+      </section>
+
+      <section class="mt-10 max-w-[64ch]" aria-labelledby="late-title">
+        <h2 id="late-title" class="font-display text-[22px] font-semibold">If a payment is late</h2>
+        <p class="mt-1.5 text-[15px] leading-relaxed text-ink-2">
+          Nothing is switched off. Your patients’ records, the day list and your texts keep working whatever the state of the bill — patients come first. After an invoice is more than {PAUSE_AFTER_DAYS} days overdue the public listing on Find a clinic may be paused until it is settled [YOUR policy]. If something has gone wrong on your side, write to us before then; a note is enough.
+        </p>
+      </section>
+    </>
+  )}
+</ClinicLayout>

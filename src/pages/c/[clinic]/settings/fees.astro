@@ -127,7 +127,7 @@ const cell = 'px-4 py-3 align-top';
 const small = 'w-full min-w-[5.5rem] border border-line bg-surface px-2.5 py-2 text-[14.5px] tabular-nums focus:border-ink focus:outline-2 focus:outline-offset-1 focus:outline-accent';
 ---
 
-<ClinicLayout clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Fee guide" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Fee guide" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
   <a href={base} class="meta hover:text-ink">&larr; Settings</a>
   <h1 class="mt-3 font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">The fee guide</h1>
   <p class="mt-2 max-w-[60ch] text-[15px] text-ink-2">What patients see on your page and what the desk quotes.</p>

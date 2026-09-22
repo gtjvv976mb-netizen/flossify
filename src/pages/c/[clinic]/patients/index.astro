@@ -26,7 +26,7 @@ const age = (birth: Date | null) => (birth ? Math.floor((Date.now() - new Date(b
 const day = (d: Date | null) => (d ? new Intl.DateTimeFormat('en-PH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(d) : '—');
 ---
 
-<ClinicLayout clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Patients" section="patients" staff={{ name: session.name, role: session.role }} branches={branches}>
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Patients" section="patients" staff={{ name: session.name, role: session.role }} branches={branches}>
   <div class="flex flex-wrap items-end justify-between gap-4">
     <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Patients</h1>
     <p class="text-[14.5px] text-muted">{patients.length} on file</p>

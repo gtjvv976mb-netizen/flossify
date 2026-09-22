@@ -60,8 +60,8 @@ for (const d of dentists) {
   const home = d.clinics[0].slug; const g = groupOf(home); const gid = groupIds.get(g)!;
   const isOwner = !owners.has(gid); if (isOwner) owners.add(gid);
   const { rows } = await db.query(
-    `insert into staff (group_id, full_name, email, prc_licence, role, password_hash, slug, prc_checked_on, pda_member, specialty, practices, practising_since, about, home_clinic_id, phone, password_set_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now()) returning id`,
+    `insert into staff (group_id, full_name, email, prc_licence, role, password_hash, slug, prc_checked_on, pda_member, specialty, practices, practising_since, about, home_clinic_id, phone, password_set_at, prc_status)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now(), case when $8::date is not null then 'checked' else 'pending' end) returning id`,
     [gid, d.name, email(d.name), d.prc, isOwner ? 'owner' : 'dentist', hash('flossify'), d.slug, d.prcCheckedOn, d.pda, d.specialty, d.practices, d.since, d.about, clinicIds.get(home),
      // A 555 mobile per dentist, so the reset-by-text flow can be tried against the dev database.
      `0917 555 2${String(staffIds.size + 1).padStart(3, '0')}`]);
@@ -87,6 +87,9 @@ for (const l of listings) {
     [g.id, hash('flossify')]);
   await db.query('insert into platform_admin (staff_id) values ($1)', [ops.id]);
 }
+
+// Every group with a clinic starts its 30-day trial at the placeholder price (src/lib/billing.ts).
+await db.query(`select billing_ensure(g.id, 1990) from clinic_group g where exists (select 1 from clinic c where c.group_id = g.id)`);
 
 // Patients, their teeth, today's appointments and the HMO claims, from demo.ts.
 const patientIds = new Map<string, string>();
