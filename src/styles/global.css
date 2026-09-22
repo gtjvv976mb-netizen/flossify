@@ -550,7 +550,7 @@ p { text-wrap: pretty; }
   color: var(--c-ink); font-size: 0.95rem; border-radius: 0;
 }
 .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--c-accent); outline-offset: 1px; border-color: var(--c-ink); }
-.field input:invalid:not(:placeholder-shown) { border-color: var(--c-caries); }
+.field input:user-invalid { border-color: var(--c-caries); }
 .check { display: inline-flex; align-items: center; gap: 0.6rem; font-size: 0.92rem; color: var(--c-ink-2); cursor: pointer; }
 .check input { width: 1.05rem; height: 1.05rem; margin: 0; accent-color: var(--c-accent); flex: none; margin-top: 0.15rem; }
 

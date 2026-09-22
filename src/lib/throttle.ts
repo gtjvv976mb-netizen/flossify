@@ -6,6 +6,7 @@
 // that mistypes a password eight times in fifteen minutes is told to wait or
 // reset; a patient booking five times a day from one number is asked to call.
 
+import { isIP } from 'node:net';
 import { pool } from './db';
 
 export interface Hit { allowed: boolean; hits: number; retryAfter: number }
@@ -33,8 +34,10 @@ export const LIMITS = {
 export function clientIp(ctx: { request: Request; clientAddress: string }): string {
   const trust = (import.meta.env.TRUST_PROXY ?? process.env.TRUST_PROXY) === '1';
   if (trust) {
-    const xf = ctx.request.headers.get('x-forwarded-for');
-    if (xf) return xf.split(',')[0].trim();
+    // The entry nearest the proxy (rightmost) is the one it wrote; anything left of it is the caller's own claim.
+    const parts = (ctx.request.headers.get('x-forwarded-for') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const ip = parts[parts.length - 1];
+    if (ip && isIP(ip)) return ip;
   }
   try { return ctx.clientAddress; } catch { return '0.0.0.0'; }
 }

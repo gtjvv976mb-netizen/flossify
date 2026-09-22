@@ -88,6 +88,8 @@ if (Astro.request.method === 'POST' && canSetUp) {
       if (price === null || Number.isNaN(price) || Number.isNaN(max) || Number.isNaN(minutes)) { bad = true; continue; }
       const row = rows.find((r) => r.id === id);
       if (max !== null && max < price) problems.push(`“Up to” is less than the price on ${row?.name ?? 'one service'}.`);
+      if (minutes !== null && (minutes < 5 || minutes > 480)) problems.push(`Minutes is a whole number from 5 to 480 on ${row?.name ?? 'one service'}.`);
+      if (price > 9_999_999_999 || (max !== null && max > 9_999_999_999)) problems.push(`The price on ${row?.name ?? 'one service'} is more than the fee guide can hold.`);
       updates.push({ id, price, max, from: form.get(`from[${id}]`) === 'on', active: form.get(`active[${id}]`) === 'on', minutes: minutes === null ? null : Math.round(minutes) });
     }
     if (bad) problems.unshift('Prices and minutes are numbers, zero or more — no letters, no negatives.');
@@ -120,7 +122,7 @@ const shows = (r: Row) => {
 const saved = q.get('saved') === '1';
 const added = q.get('added') === '1';
 const stale = q.get('stale') === '1';
-const th = 'px-4 py-3 text-xs font-semibold tracking-[0.09em] text-muted uppercase';
+const th = 'meta px-4 py-3';
 const cell = 'px-4 py-3 align-top';
 const small = 'w-full min-w-[5.5rem] border border-line bg-surface px-2.5 py-2 text-[14.5px] tabular-nums focus:border-ink focus:outline-2 focus:outline-offset-1 focus:outline-accent';
 ---
@@ -146,7 +148,7 @@ const small = 'w-full min-w-[5.5rem] border border-line bg-surface px-2.5 py-2 t
 
       <form method="post" class="mt-8">
         <Csrf />
-        <div class="overflow-x-auto border border-line bg-surface">
+        <div class="relative overflow-x-auto border border-line bg-surface">
           <table class="w-full min-w-[900px] border-collapse text-left">
             <caption class="sr-only">Services and prices at {clinic.name}</caption>
             <thead>

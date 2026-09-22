@@ -29,6 +29,7 @@ const BODY_MAX = 300;
 
 let error = Astro.url.searchParams.get('stale') === '1' ? CSRF_MESSAGE : '';
 const done = Astro.url.searchParams.get('done') || '';
+const missed = Astro.url.searchParams.get('missed') ?? '';
 // What they typed, kept on the form when the post is refused.
 let draft = { patient: '', body: '' };
 
@@ -53,7 +54,7 @@ if (Astro.request.method === 'POST') {
   if (act === 'retry' || act === 'cancel') {
     const id = String(f.get('id') ?? '');
     if (UUID.test(id)) {
-      await withClinic(clinic.id, async (tx) => {
+      const changed = await withClinic(clinic.id, async (tx) => {
         const r = act === 'retry'
           ? await tx.query(`update message_log set status = 'queued', next_attempt_at = now(), failed_reason = null
                              where id = $1 and status = 'failed' and direction = 'out'`, [id])
@@ -62,9 +63,12 @@ if (Astro.request.method === 'POST') {
           await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'message_log', $4)`,
             [clinic.id, session.staffId, act === 'retry' ? 'message.retry' : 'message.cancel', id]);
         }
+        return r.rowCount ?? 0;
       });
+      // Only say it happened when it did: the row may have moved on since the page was drawn.
+      return Astro.redirect(`${Astro.url.pathname}?${changed ? 'done' : 'missed'}=${act}`, 303);
     }
-    return Astro.redirect(`${Astro.url.pathname}?done=${act}`, 303);
+    return Astro.redirect(Astro.url.pathname, 303);
   }
 
   if (act === 'send') {
@@ -98,7 +102,10 @@ if (Astro.request.method === 'POST') {
 const { area, texts, recipients } = await withClinic(clinic.id, async (tx) => ({
   area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area,
   texts: (await tx.query(
-    `select m.id, m.direction, m.kind, m.status, m.to_address, m.body, m.failed_reason, m.sent_at, m.created_at,
+    `select m.id, m.direction, m.kind, m.status, m.to_address,
+            -- A live sign-in code is for the phone it was texted to, never for the page.
+            case when m.kind in ('reset', 'invite') then null else m.body end as body,
+            m.failed_reason, m.sent_at, m.created_at,
             p.id as patient_id, p.first_name, p.last_name, p.chart_no, s.full_name as staff_name
      from message_log m
      left join patient p on p.id = m.patient_id
@@ -136,7 +143,9 @@ const manilaDay = (d: Date) => { const p = parts(d, { year: 'numeric', month: '2
 const isToday = (d: Date) => manilaDay(d) === manilaDay(new Date());
 const notice = done === 'sent' ? 'Queued. It leaves with the next pass of the sender.'
   : done === 'retry' ? 'Queued again. It leaves with the next pass of the sender.'
-  : done === 'cancel' ? 'Cancelled. It will not be sent.' : '';
+  : done === 'cancel' ? 'Cancelled. It will not be sent.'
+  : missed === 'cancel' ? 'That text had already left the sender, so it could not be cancelled. Check its status in the list.'
+  : missed === 'retry' ? 'That text is no longer marked failed, so there was nothing to send again.' : '';
 ---
 
 <ClinicLayout clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Messages" section="messages" staff={{ name: session.name, role: session.role }} branches={branches}>
@@ -181,16 +190,16 @@ const notice = done === 'sent' ? 'Queued. It leaves with the next pass of the se
 
   <section class="mt-10" aria-labelledby="log-title">
     <h2 id="log-title" class="font-display text-[22px] font-semibold">Sent and received</h2>
-    <div class="mt-4 overflow-x-auto border border-line bg-surface">
+    <div class="relative mt-4 overflow-x-auto border border-line bg-surface">
       <table class="w-full min-w-[820px] border-collapse text-left">
         <caption class="sr-only">Texts sent and received by {clinic.name}, newest first</caption>
         <thead>
           <tr class="border-b border-line bg-bg-soft">
-            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">When</th>
-            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Who</th>
-            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Kind</th>
-            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Status</th>
-            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Text</th>
+            <th scope="col" class="meta px-5 py-3.5">When</th>
+            <th scope="col" class="meta px-5 py-3.5">Who</th>
+            <th scope="col" class="meta px-5 py-3.5">Kind</th>
+            <th scope="col" class="meta px-5 py-3.5">Status</th>
+            <th scope="col" class="meta px-5 py-3.5">Text</th>
             <th scope="col" class="px-5 py-3.5"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -213,7 +222,7 @@ const notice = done === 'sent' ? 'Queued. It leaves with the next pass of the se
                 </td>
                 <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap text-ink-2">{m.direction === 'in' ? 'Reply' : (KIND[m.kind ?? ''] ?? 'Text')}</td>
                 <td class:list={['px-5 py-4 align-top text-[14.5px] font-semibold', s.failed ? 'text-caries' : 'text-ink-2']}>{s.label}</td>
-                <td class="max-w-[30rem] px-5 py-4 align-top text-[14.5px] leading-relaxed break-words whitespace-pre-wrap">{m.body}</td>
+                <td class="max-w-[30rem] px-5 py-4 align-top text-[14.5px] leading-relaxed break-words whitespace-pre-wrap">{m.body ?? <span class="text-muted">A sign-in code, texted to the number on file. It is not shown here.</span>}</td>
                 <td class="px-5 py-4 align-top text-right whitespace-nowrap">
                   {m.direction === 'out' && m.status === 'failed' && (
                     <form method="post" id={`retry-${m.id}`}>

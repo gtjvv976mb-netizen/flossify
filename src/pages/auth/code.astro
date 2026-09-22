@@ -33,7 +33,7 @@ if (Astro.request.method === 'POST') {
   const password = String(form.get('password') ?? ''), confirm = String(form.get('confirm') ?? '');
   const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
   if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
-  else if (!PH_MOBILE.test(phone)) error = 'A Philippine mobile number, like 0917 000 0000.';
+  else if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
   else {
     const [byPhone, byIp] = await Promise.all([hit(`code:p:${phone}`, ...LIMITS.code.phone), hit(`code:ip:${ip}`, ...LIMITS.code.ip)]);
     const problem = passwordProblem(password);
@@ -50,7 +50,8 @@ if (Astro.request.method === 'POST') {
       const purpose = staff?.password_hash ? 'reset' : 'invite';
       const result = staff ? await redeemCode(staff.id, purpose, code) : 'wrong';
       if (!staff || result !== 'ok') {
-        error = REDEEM_TEXT[result === 'ok' ? 'wrong' : result];
+        // One sentence for every miss, whether or not the number is on file: the form cannot be used to find staff numbers.
+        error = REDEEM_TEXT.wrong;
         await authEvent('code.fail', { email: staff?.email, staffId: staff?.id, ip, ua });
       } else {
         const tv = await setPassword(staff.id, password);

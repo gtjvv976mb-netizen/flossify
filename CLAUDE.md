@@ -215,6 +215,14 @@ The workspace and the patient directory read from PostgreSQL. Rules:
   `/auth/code/` serves both purposes (invite when the row has no password).
   No email channel exists — a staff member with no mobile on file is reset by
   the owner from Settings → Team.
+- **A sign-in code is for the phone it was texted to, never for a page.** The
+  Messages page blanks the body of `reset` and `invite` rows (the review
+  found a dentist could read the owner's reset code there and take the
+  account). Nothing that renders `message_log.body` may show those kinds.
+- **A reply belongs to the clinic that last texted that number**
+  (`sms_inbound()` in 007 looks the sender up in outgoing texts first), and a
+  sender with fewer than ten digits matches nothing. `clinic.slug` is unique
+  across the service (007), not per group.
 - **Texts are queued, never sent, by the app** (`queueText()` in
   `src/lib/messages.ts`, inside a clinic transaction). `npm run sms:worker`
   sends them through `SMS_PROVIDER` (`console` in dev, `semaphore` live),
@@ -262,7 +270,8 @@ src/pages/dentists/[dentist]   dentist profile: PRC licence checked by a person,
 src/pages/coverage.astro       PhilHealth's preventive dental benefit and HMO cards, explained
 src/data/directory.ts          services, symptoms, HMOs, dentists, listings — types, and the seed's source
 src/data/migrations/           002 public booking, 003 public read functions, 004 staff_branches,
-                               005 codes / auth events / throttle / text queue / listed, 006 signup_clinic
+                               005 codes / auth events / throttle / text queue / listed, 006 signup_clinic,
+                               007 review fixes (inbound tenant, global slug, listed-only dentist profiles)
 src/lib/db.ts                  pool, withClinic (RLS transaction), publicRead
 src/lib/auth.ts                scrypt passwords, signed session cookie with token version, auth events
 src/lib/csrf.ts + components/Csrf.astro   the double-submit token every form carries

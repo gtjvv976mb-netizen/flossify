@@ -46,7 +46,8 @@ export async function redeemCode(staffId: string, purpose: Purpose, code: string
 
 /** What to tell the person. */
 export const REDEEM_TEXT: Record<Exclude<Redeem, 'ok'>, string> = {
-  wrong: 'That code is not right. Check the text and try again.',
-  expired: 'That code has expired or been tried too many times. Ask for a new one.',
-  none: 'There is no code waiting for that number. Ask for one first.',
+  // The same sentence for every miss on the public form, so the answer never says whether a number is known.
+  wrong: 'That code is not right, or it has expired. Check the text, or ask for a new one.',
+  expired: 'That code is not right, or it has expired. Check the text, or ask for a new one.',
+  none: 'That code is not right, or it has expired. Check the text, or ask for a new one.',
 };

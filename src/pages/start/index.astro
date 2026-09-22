@@ -60,6 +60,12 @@ if (Astro.request.method === 'POST') {
     if (pw) problems.push(pw);
     else if (password !== confirm) problems.push('The two passwords are not the same.');
     if (!consent) problems.push('Tick the box to confirm you are authorised to set this clinic up.');
+    // Sign-in and reset pick the earliest staff row for an email or a mobile, so a second account on either would never be reachable.
+    if (problems.length === 0 && (await pool.query(
+      `select 1 from staff where email = $1 or right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $2 limit 1`,
+      [v.owner_email, mobile.slice(-10)])).rowCount) {
+      problems.push('That email or mobile already belongs to a staff account. Sign in with it instead, or use a different one for the new clinic.');
+    }
   }
 
   if (!failed && problems.length === 0) {
@@ -140,7 +146,7 @@ if (Astro.request.method === 'POST') {
           <label class="field">
             <span class="meta">PRC licence number (optional)</span>
             <input name="owner_prc" value={v.owner_prc} inputmode="numeric" autocomplete="off" />
-            <span class="text-[13px] leading-snug text-muted">It prints on prescriptions and appears on your public profile once we’ve checked it.</span>
+            <span class="text-[13px] leading-snug text-muted">It appears on your public profile, marked as checked once a person at Flossify has verified it.</span>
           </label>
         </div>
       </section>

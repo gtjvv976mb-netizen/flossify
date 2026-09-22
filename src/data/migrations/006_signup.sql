@@ -65,9 +65,9 @@ begin
   insert into clinic_hours (clinic_id, dow, open_min, close_min)
   select v_clinic, d, 9 * 60, 17 * 60 from generate_series(1, 6) d;
 
-  insert into staff (group_id, full_name, email, phone, prc_licence, role, password_hash, slug, home_clinic_id, password_set_at)
+  insert into staff (group_id, full_name, email, phone, prc_licence, role, password_hash, slug, home_clinic_id, password_set_at, practices)
   values (v_group, p->>'owner_name', p->>'owner_email', nullif(p->>'owner_phone', ''), nullif(p->>'owner_prc', ''),
-          'owner', p->>'password_hash', p->>'owner_slug', v_clinic, now())
+          'owner', p->>'password_hash', p->>'owner_slug', v_clinic, now(), '{General dentistry}')
   returning id into v_staff;
 
   insert into staff_access (staff_id, clinic_id, can_view_finance, can_edit_records, can_manage_staff)

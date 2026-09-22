@@ -276,9 +276,9 @@ const help = 'text-[13px] leading-snug text-muted';
             {DOWS.map((dow) => {
               const d = v.days[dow];
               return (
-                <div class="grid grid-cols-[6.5rem_1fr_1fr] items-center gap-x-4 gap-y-2 px-4 py-3 sm:grid-cols-[7rem_8rem_1fr_1fr]" data-day-row>
+                <div class="grid grid-cols-2 items-center gap-x-4 gap-y-2 px-4 py-3 sm:grid-cols-[7rem_8rem_1fr_1fr]" data-day-row>
                   <span class="text-[15px] font-medium">{DAY[dow]}</span>
-                  <label class="check col-span-2 sm:col-span-1"><input type="checkbox" name={`closed[${dow}]`} checked={d.closed} data-day-closed /><span>Closed</span></label>
+                  <label class="check"><input type="checkbox" name={`closed[${dow}]`} checked={d.closed} data-day-closed /><span>Closed</span></label>
                   <label class="field"><span class="sr-only">{DAY[dow]} opens</span><input type="time" name={`open[${dow}]`} value={d.open} step="900" /></label>
                   <label class="field"><span class="sr-only">{DAY[dow]} closes</span><input type="time" name={`close[${dow}]`} value={d.close} step="900" /></label>
                 </div>
@@ -308,8 +308,8 @@ const help = 'text-[13px] leading-snug text-muted';
             <input type="checkbox" name="listed" checked={v.listed} disabled={!canList} />
             <span>
               List this clinic on Find a clinic.
-              {!canList && <span class="block text-muted">Not yet: the clinic still needs {listWords(missing)}. Save those first and this switches on.</span>}
-              {canList && <span class="block text-muted">Patients in your area see the card, the fee guide and the open slots.</span>}
+              {!canList && <span class="block text-muted">Not yet: the clinic still needs {listWords(missing)}. Save those first, then tick this and save again.</span>}
+              {canList && <span class="block text-muted">Patients in your area see the card, the fee guide and {v.booking_mode === 'live' ? 'the open slots' : 'a “Request a time” button; the desk confirms by text'}.</span>}
             </span>
           </label>
         </section>
