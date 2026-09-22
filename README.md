@@ -73,6 +73,11 @@ flips **Listed on Find a clinic** when the page is ready. Claims (HMO and
 PhilHealth) have their own page with aging and a CSV export; the tooth chart
 saves every change under the staff member's name.
 
+Schedule: `/c/<slug>/schedule/` — the day by chair or by dentist, a week
+view, drag a visit to another time or chair, one sentence when it clashes,
+web bookings land in an Unplaced lane, print the day list. JSON API at
+`/api/schedule` and `/api/patients`.
+
 Patients: `/me/` — a texted code and nothing else — shows every visit under
 that mobile across clinics, with confirm and cancel. `/privacy/` is the
 versioned notice; each booking records which version was agreed to.

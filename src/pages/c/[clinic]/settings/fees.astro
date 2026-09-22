@@ -24,7 +24,7 @@ const base = `/c/${clinic.slug}/settings/`;
 
 // procedure_catalog.category has no check constraint; these six are the ones the directory renders.
 const CATS = Object.keys(CATEGORY_LABEL) as Category[];
-const UUID = /^[0-9a-f-]{36}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CODE = /^[a-z][a-z-]{0,39}$/;
 
 interface Row { id: string; code: string; name: string; local_name: string | null; category: string | null; default_price: string; price_max: string | null; price_from: boolean; unit: string | null; minutes: number | null; active: boolean }

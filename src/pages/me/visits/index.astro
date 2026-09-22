@@ -32,7 +32,7 @@ interface Visit {
   patient_name: string; booked_by_name: string | null; created_at: Date;
 }
 
-const UUID = /^[0-9a-f-]{36}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 let notice = '';
 let error = Astro.url.searchParams.get('stale') === '1' ? CSRF_MESSAGE : '';
 // The row whose "Cancel this visit?" question is open, after the first of the two posts.

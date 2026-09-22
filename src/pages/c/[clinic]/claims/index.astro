@@ -33,7 +33,7 @@ const canMoney = clinic.can_view_finance || session.role === 'owner' || session.
 const q = Astro.url.searchParams;
 const base = `/c/${clinic.slug}/claims/`;
 
-const UUID = /^[0-9a-f-]{36}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TEXT_MAX = 80;
 const REASON_MAX = 200;
 const NOTE_MAX = 600;
@@ -135,7 +135,7 @@ if (Astro.request.method === 'POST') {
           const takes = known && (await tx.query(`select 1 from clinic_hmo where hmo_id = $1`, [known.id])).rowCount;
           if (known && takes) {
             const have = (await tx.query(`select id from hmo_provider where kind = 'hmo' and lower(name) = lower($1) order by active desc limit 1`, [known.name])).rows[0];
-            providerId = have?.id ?? (await tx.query(`insert into hmo_provider (clinic_id, name, expected_days, kind) values ($1, $2, 60, 'hmo') returning id`, [clinic.id, known.name])).rows[0].id;
+            providerId = have?.id ?? (await tx.query(`insert into hmo_provider (clinic_id, name, expected_days, kind) values ($1, $2, 60, 'hmo') on conflict (clinic_id, lower(name)) do update set active = true returning id`, [clinic.id, known.name])).rows[0].id;
           }
         }
         if (!providerId) return 'That payor is not on this branch’s list. Pick one from the list.';
@@ -425,7 +425,7 @@ const chip = (on: boolean) => ['px-3 py-1.5 text-[13.5px] font-medium', on ? 'bg
     <a href={href(view, payor, { export: 'csv' })} class="meta hover:text-ink sm:ml-auto">Download CSV</a>
   </nav>
 
-  <div class="mt-4 overflow-x-auto border border-line bg-surface">
+  <div class="relative mt-4 overflow-x-auto border border-line bg-surface">
     <table class="w-full min-w-[1040px] border-collapse text-left">
       <caption class="sr-only">{VIEWS[view].label} claims at {clinic.name}{payorName && `, ${payorName} only`}</caption>
       <thead>

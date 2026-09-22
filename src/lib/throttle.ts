@@ -27,6 +27,11 @@ export async function peek(key: string, limit: number, windowSeconds: number): P
   return { allowed: r.allowed, hits: r.hits, retryAfter: r.retry_after };
 }
 
+/** Give a hit back: a successful sign-in is not a failed one. */
+export async function refund(key: string): Promise<void> {
+  await pool.query('select throttle_refund($1)', [key]).catch(() => {});
+}
+
 /** [limit, window seconds] per thing. Spread into hit(): `hit(key, ...LIMITS.login.email)`. */
 export const LIMITS = {
   login: { email: [8, 15 * 60], ip: [40, 15 * 60] },
@@ -38,6 +43,7 @@ export const LIMITS = {
   me: { phone: [3, 60 * 60], ip: [10, 60 * 60] },
   mecode: { phone: [10, 15 * 60], ip: [30, 15 * 60] },
   chart: { staff: [600, 60] },
+  schedule: { staff: [600, 60] },
 } as const satisfies Record<string, Record<string, readonly [number, number]>>;
 
 /** The caller's address. Behind a proxy that sets X-Forwarded-For, set TRUST_PROXY=1;

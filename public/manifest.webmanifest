@@ -2,7 +2,7 @@
   "name": "Flossify",
   "short_name": "Flossify",
   "description": "The clinic workspace: today, patients, messages, claims.",
-  "start_url": "/clinics/",
+  "start_url": "/today/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f2f2ef",
@@ -16,7 +16,7 @@
   "shortcuts": [
     {
       "name": "Today",
-      "url": "/clinics/",
+      "url": "/today/",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {

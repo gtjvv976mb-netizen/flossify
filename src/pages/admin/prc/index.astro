@@ -32,7 +32,7 @@ interface Row {
   owner_id: string | null; owner_name: string | null; owner_phone: string | null; added_at: Date;
 }
 
-const UUID = /^[0-9a-f-]{36}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STATUS = new Set(['checked', 'mismatch', 'pending']);
 const NOTE_MAX = 200;
 const q = Astro.url.searchParams;

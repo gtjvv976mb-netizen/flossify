@@ -274,7 +274,34 @@ The workspace and the patient directory read from PostgreSQL. Rules:
 - **Claims have their own page** (`/c/<slug>/claims/`, 013): HMO and
   PhilHealth providers, draft → filed → approved / partly / denied → paid,
   aging against `expected_days`, CSV export. Coverage wording comes from
-  `coverage.astro`; do not invent PhilHealth rules.
+  `coverage.astro`; do not invent PhilHealth rules. One payor per name per
+  clinic and one PhilHealth payor, enforced by index (017); the accreditation
+  trigger switches the PhilHealth payor on and off.
+- **A request is not a booking until the desk sets a time.** `patient_act`
+  and `sms_inbound` refuse to confirm a `source = 'request'` row (017); the
+  page hides the button, the function enforces it. The billing strip in the
+  workspace is owner/admin only, like the Billing page. The sign-in lock
+  counts first, atomically, and refunds on success (`throttle_refund`).
+- The privacy notice promises text logs go after two years; `retention_purge()`
+  runs on every worker pass to keep that true. Change the words and the
+  function together.
+
+## The schedule — `/c/<slug>/schedule/`
+
+- One day, one column per chair (or per dentist with `?by=dentist`), 15-minute
+  rows over the clinic's hours; a week view for the shape of the week. Web
+  bookings and seeded visits arrive with `chair = null` and sit in an
+  **Unplaced** lane until the desk drags them onto a chair — that lane is the
+  inbox, do not hide it.
+- Every change is one JSON call to `/api/schedule` (POST create, PATCH
+  move/status) with the `X-CSRF` header; `findClash()` in `src/lib/schedule.ts`
+  refuses a chair or a dentist double-booking with one sentence naming who is
+  in the way. Status changes follow the Today page's state machine; copy it,
+  do not fork it. Moving a future visit texts the patient the new time.
+- Molarsoft's calendar is behind a login; what clinics praise in any scheduler
+  is few taps, colours that mean status, a visible flow, and never a slot the
+  clinic cannot honour. The `QUEUE` colour classes on the Today page are the
+  only status colours; the schedule reuses them exactly.
 
 ## Open — read before shipping
 

@@ -1,0 +1,21 @@
+---
+// /today/ — where the installed app opens. Whoever is signed in goes to their
+// day: a clinic's staff to the branch they have open, Flossify's people to
+// operations, everyone else to sign-in. No page of its own.
+export const prerender = false;
+
+import { readSession } from '../lib/auth';
+import { pool } from '../lib/db';
+
+const s = readSession(Astro.cookies);
+if (!s) return Astro.redirect('/auth/login/');
+
+if (s.clinicId) {
+  const { rows } = await pool.query('select slug from staff_branches($1) where id = $2', [s.staffId, s.clinicId]);
+  if (rows[0]) return Astro.redirect(`/c/${rows[0].slug}/`);
+  const first = await pool.query('select slug from staff_branches($1) limit 1', [s.staffId]);
+  if (first.rows[0]) return Astro.redirect(`/c/${first.rows[0].slug}/`);
+}
+const admin = await pool.query('select 1 from platform_admin where staff_id = $1', [s.staffId]);
+return Astro.redirect((admin.rowCount ?? 0) > 0 ? '/admin/' : '/auth/login/');
+---

@@ -85,6 +85,8 @@ function intervalText(minutes: number): string {
 async function enqueueReminders() {
   const { rows } = await pool.query('select sms_enqueue_reminders() as n');
   log(`reminders queued: ${rows[0].n}`);
+  // Retention rides along too: text logs older than two years go, as the privacy notice says.
+  try { const r = await pool.query('select retention_purge() as n'); if (r.rows[0].n) log(`retention: ${r.rows[0].n} old text rows deleted`); } catch (e) { log(`retention pass failed: ${(e as Error).message}`); }
   // Billing rides along: once a pass, issue the month's invoices and flip past-due states (idempotent).
   try { const inv = await pool.query("select billing_issue_invoices((now() at time zone 'Asia/Manila')::date) as n"); if (inv.rows[0].n) log(`invoices issued: ${inv.rows[0].n}`); } catch (e) { log(`billing pass failed: ${(e as Error).message}`); }
 }

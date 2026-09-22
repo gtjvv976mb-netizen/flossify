@@ -11,7 +11,7 @@ import Base from '../../layouts/Base.astro';
 import Csrf from '../../components/Csrf.astro';
 import { authenticate, setSession, readSession, authEvent } from '../../lib/auth';
 import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
-import { hit, peek, clientIp, waitText, LIMITS } from '../../lib/throttle';
+import { hit, refund, clientIp, waitText, LIMITS } from '../../lib/throttle';
 
 // Only a workspace path may be a destination; anything else is dropped, so a
 // crafted link cannot bounce a signed-in person to another site.
@@ -30,18 +30,19 @@ if (Astro.request.method === 'POST') {
   const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
   if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
   else {
-    // The email lock counts failed attempts only, so a desk signing in from several devices is never locked by its own success.
-    const [byEmail, byIp] = await Promise.all([peek(`login:e:${email}`, ...LIMITS.login.email), hit(`login:ip:${ip}`, ...LIMITS.login.ip)]);
+    // Counted first, atomically, then given back on success: the lock counts failures only,
+    // and a burst of parallel guesses cannot slip past a check-then-count.
+    const [byEmail, byIp] = await Promise.all([hit(`login:e:${email}`, ...LIMITS.login.email), hit(`login:ip:${ip}`, ...LIMITS.login.ip)]);
     if (!byEmail.allowed || !byIp.allowed) {
       error = `Too many sign-in attempts. ${waitText(Math.max(byEmail.retryAfter, byIp.retryAfter))} Or reset your password below.`;
       await authEvent('login.locked', { email, ip, ua });
     } else {
       const who = await authenticate(email, password);
-      if (!who) { error = 'That email and password don’t match a staff account.'; await hit(`login:e:${email}`, ...LIMITS.login.email); await authEvent('login.fail', { email, ip, ua }); }
+      if (!who) { error = 'That email and password don’t match a staff account.'; await authEvent('login.fail', { email, ip, ua }); }
       else if (!who.clinics.length && who.admin) {
         // Flossify's own people: no branch, the operations pages instead.
         setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: '', name: who.name, role: who.role, tv: who.tv });
-        await authEvent('login.ok', { email, staffId: who.staffId, ip, ua });
+        await refund(`login:e:${email}`); await authEvent('login.ok', { email, staffId: who.staffId, ip, ua });
         return Astro.redirect(next.startsWith('/admin/') ? next : '/admin/');
       }
       else if (!who.clinics.length) { error = 'Your account has no branch to open yet. Ask the owner to add you.'; await authEvent('login.fail', { email, staffId: who.staffId, ip, ua }); }
@@ -49,7 +50,7 @@ if (Astro.request.method === 'POST') {
         const wanted = next.match(/^\/c\/([^/]+)\//)?.[1];
         const clinic = who.clinics.find((c) => c.slug === wanted) ?? who.clinics[0];
         setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: clinic.id, name: who.name, role: who.role, tv: who.tv });
-        await authEvent('login.ok', { email, staffId: who.staffId, ip, ua });
+        await refund(`login:e:${email}`); await authEvent('login.ok', { email, staffId: who.staffId, ip, ua });
         return Astro.redirect(next && wanted === clinic.slug ? next : `/c/${clinic.slug}/`);
       }
     }
