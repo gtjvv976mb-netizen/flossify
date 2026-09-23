@@ -13,6 +13,7 @@
 // whether this is someone's own device or a shared one at the clinic. Every
 // readout is true; none is decoration.
 import Base from '../layouts/Base.astro';
+import { SIGNIN_WALK } from '../data/film';
 
 interface Props {
   title: string;
@@ -31,7 +32,7 @@ const day = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', weekday:
 ---
 
 <Base title={title} description={description}>
-  <div class="entrance" data-entrance data-walk={walk ? '' : undefined}>
+  <div class="entrance" data-entrance data-walk={walk ? '' : undefined} data-walk-from={SIGNIN_WALK.from} data-walk-to={SIGNIN_WALK.to} data-walk-rate={SIGNIN_WALK.rate}>
     <!-- The clinic. Decorative: everything it says is said in words on the pane. -->
     <div class="entrance-film" aria-hidden="true">
       <img
@@ -176,7 +177,8 @@ const day = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', weekday:
      the page is never empty while the video arrives. */
   const root = document.querySelector<HTMLElement>('[data-entrance]');
   const vid = document.querySelector<HTMLVideoElement>('[data-walk-video]');
-  const FROM = 2.0, TO = 9.0, RATE = 0.85;
+  // From src/data/film.ts, through the markup: the film's times live in one place.
+  const FROM = Number(root?.dataset.walkFrom ?? 2), TO = Number(root?.dataset.walkTo ?? 9), RATE = Number(root?.dataset.walkRate ?? 0.85);
   if (root?.hasAttribute('data-walk') && vid) {
     vid.src = window.matchMedia('(max-width: 900px)').matches ? '/video/tour-960.mp4' : '/video/tour-1440.mp4';
     vid.addEventListener('loadedmetadata', () => { vid.currentTime = FROM; }, { once: true });

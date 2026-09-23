@@ -4,6 +4,7 @@ import lqip from '../data/lqip.json';
 // Written by shoot.mjs when the screenshots are recaptured, so the reserved
 // box can never drift out of step with the actual files.
 import shotSize from '../data/shot-size.json';
+import { ROOM_FROM } from '../data/film';
 
 // Two rendered widths exist per photograph. Keeping the pairs in one place
 // stops the srcset strings drifting apart as the page gets edited.
@@ -35,22 +36,22 @@ const queue = [
 // the walk: the top of the document is the pavement, the footer is the chair.
 const stops = [
   {
-    key: 'A', at: '08:55', from: 0, label: 'Outside',
+    key: 'A', at: '08:55', from: ROOM_FROM.outside, label: 'Outside',
     eyebrow: 'Practice software for Philippine dental clinics',
     title: 'The whole clinic,', title2: 'laid out before the door opens.',
     body: 'You found this clinic last night and booked the slot yourself, in about ninety seconds. Walk in.',
     did: 'The website, the booking and the reminder are Flossify. No phone call, no waiting for the desk to open.',
   },
   {
-    key: 'B', at: '09:00', from: 0.17, label: 'Reception',
+    key: 'B', at: '09:00', from: ROOM_FROM.reception, label: 'Reception',
     body: 'Nothing to fill in on arrival. Your history went in at home; the desk saw you land on the day list.',
   },
   {
-    key: 'C', at: '09:12', from: 0.42, label: 'The corridor',
+    key: 'C', at: '09:12', from: ROOM_FROM.corridor, label: 'The corridor',
     body: 'Twelve minutes, not forty. The chair was ready because the schedule knew how long you would need.',
   },
   {
-    key: 'D', at: '09:15', from: 0.8, label: 'The chair',
+    key: 'D', at: '09:15', from: ROOM_FROM.chair, label: 'The chair',
     body: 'Charted at the chair, invoiced off the correct BIR series, HMO claim filed — before you reach the door.',
   },
 ];

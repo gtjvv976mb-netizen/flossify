@@ -751,10 +751,10 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
   background:
     linear-gradient(
       100deg,
-      color-mix(in srgb, #07100f 88%, transparent) 0%,
-      color-mix(in srgb, #07100f 70%, transparent) 30%,
-      color-mix(in srgb, #07100f 20%, transparent) 58%,
-      transparent 74%
+      color-mix(in srgb, #07100f 90%, transparent) 0%,
+      color-mix(in srgb, #07100f 82%, transparent) 32%,
+      color-mix(in srgb, #07100f 42%, transparent) 50%,
+      transparent 68%
     ),
     linear-gradient(
       to top,
@@ -762,6 +762,25 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
       color-mix(in srgb, #07100f 20%, transparent) 14%,
       transparent 28%
     );
+}
+/* The film now opens on a white façade, far brighter than the interior the
+   scrim was first tuned for (measured: the laptop eyebrow fell to 4:1). On a
+   phone the text runs the full width, so a left-to-right scrim leaves the end
+   of every line over the bright glass; there it rises from the bottom
+   instead, behind the whole block, and stops short of the tooth sign. */
+@media (max-width: 639px) {
+  /* The text settles to the foot of the screen so the building's top and the
+     tooth sign stand clear above it; the scrim stops at the top of the text. */
+  .page-hero { align-items: end; }
+  .page-hero::before {
+    background: linear-gradient(
+      to top,
+      color-mix(in srgb, #07100f 90%, transparent) 0%,
+      color-mix(in srgb, #07100f 84%, transparent) 64%,
+      color-mix(in srgb, #07100f 30%, transparent) 74%,
+      transparent 84%
+    );
+  }
 }
 /* The light-mode accent is a deep teal — unreadable on footage. On the film
    the accent has to be the bright one regardless of theme. */

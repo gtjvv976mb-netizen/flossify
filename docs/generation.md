@@ -165,72 +165,66 @@ Two widths per photograph, never upscaled past the source, plus a 20px blurred
 copy inlined as the figure background so a photo resolves out of its own colours
 instead of snapping in over an empty box. `src/data/lqip.json` holds those.
 
-## The exterior approach — prepared, not yet run (2026-09-23)
+## The exterior approach — the 39.8-second film shipped now (2026-09-23)
 
-The owner asked for the film to open on the clinic building seen from the
-street, walk inside, and continue as now. Method, so it joins without a cut:
+The owner asked for the film to open on the clinic **from the street** and
+walk inside, then continue as before, and for the exterior to **look like a
+real dental clinic**. The interior take was kept exactly; a 10-second approach
+was generated to end on its first frame and joined on, uncut.
 
-1. **The join frame is fixed.** Frame 0 of the shipped take (the open
-   oak-and-glass entrance, dead-on, a box shrub in a white planter at each
-   edge) is uploaded to Higgsfield as media `608c653f-f667-4461-a6eb-94bfef779608`
-   and becomes the video's `end_image`. The new shot ends on it; the old take
-   starts on it.
-2. **The exterior still is generated from that frame** (`image_references`),
-   so it is the same building. First draft, job
-   `e171320b-6ce7-448b-9a17-8934b6488bf1` (`docs/exterior-draft.png`): a
-   single-storey chalk-white flat-roofed clinic, the entrance centred, a tall
-   oak-framed window each side, grey slab forecourt, a hedge with a gap on the
-   axis, Benguet pines behind. Its entrance proportions (21/48/21%) are the
-   closest to the join frame's (25/45/25%).
-3. **The owner then asked that it look like a real dental clinic.** Every
-   dental cue goes where the camera loses it before the join frame, so the
-   join cannot morph: a backlit sign high on the façade above the entrance
-   (a white tooth pictogram on a sage-teal face — a symbol, not a brand; no
-   letters), a sage-grey dental chair and operatory light seen through the
-   right window, frosted privacy film on the left window, an empty oak bench
-   beneath it. Nothing added near the entrance or the planters.
+1. **Pin the join frame.** Frame 0 of the interior take (`take-a.mp4`, the
+   1920×1080 source) — the open oak-and-glass entrance dead-on, a box shrub in
+   a white planter at each edge — uploaded as media
+   `608c653f-f667-4461-a6eb-94bfef779608`.
+2. **The building, generated from that frame** (`image_references`), so it is
+   the same building: `gpt_image_2_5`, 16:9, two variants, 0.25 credits each.
+   Job `e171320b-6ce7-448b-9a17-8934b6488bf1` — the one whose entrance
+   proportions (side panels 21/48/21% of its width) were nearest the join
+   frame's 25/45/25%.
+3. **Make it a dental clinic, where the camera loses it before the join.**
+   Four variants from both references (job above + join frame), 0.25 each.
+   Every dental cue sits where the approach carries it out of frame before
+   the door: a backlit sign high on the façade with a white tooth pictogram
+   on a sage-teal face (a symbol, not a brand — no letters anywhere), a
+   sage-grey dental chair under an operatory light through the right window,
+   frosted privacy film on the left window, an empty slatted oak bench.
+   Nothing added near the entrance or the planters, so nothing can morph at
+   the join. Chosen: job `175dde09-c6ca-4dff-92a4-15695f3c7f84`
+   (`docs/exterior-dental.png`) — its sign is mounted flush under the parapet
+   (another variant perched it on the roof edge) and its bench is slatted.
+4. **The approach.** `wan3_0`, 16:9, 1080p, `duration: 10`,
+   `generate_audio: false`, `enable_thinking: true`, `count: 4`,
+   `start_image` = the chosen exterior, `end_image` = the join frame,
+   `declined_preset_id: 24bae836-2c4a-48e0-89b6-49fcc0b21612` (the "IN THE
+   DARK" preset is suggested for this kind of prompt every time; decline it).
+   **140 credits.** `get_cost` ignores `count`: the real price is 3.5 credits
+   a second at 1080p *per variant*. Prompt: one continuous steadicam take
+   straight along the axis, through the hedge gap, across the forecourt, to
+   rest close in front of the open entrance; "ONE building with a FIXED,
+   UNCHANGING design"; and the order things leave the frame — pines and
+   roofline first, then the tooth sign out of the top, then the windows and
+   the bench out of the sides — "naturally, by perspective alone".
+5. **Choose by measurement, not by eye.** Last frame against the join frame
+   (SSIM at 480×270): 0.933 / 0.934 / 0.925 / **0.621** — the fourth never
+   arrived and was dropped. One-second sheets of the other three: one
+   building throughout, no dissolve. Frame-to-frame SSIM over all 300
+   frames: the worst pair 0.881 / 0.869 / 0.876 — each dip is the fine
+   granite paving re-rendering under the moving camera, not the building.
+   Chosen `0ce323e6-e664-4fb2-ac43-eb50bbc973e9`: best end match, smoothest
+   worst frame.
+6. **Join** with `scripts/film-join.py <approach> <take> <out>`: it finds the
+   approach frame nearest the take's frame 0 (here the very last one,
+   SSIM 0.945, climbing steadily over the final eight frames — the camera
+   converges on the door rather than jumping to it), checks colour (within
+   0.6% — no correction), blends 0.2s across the seam, and encodes both
+   widths, the poster and the VP9 test copy. Frame-to-frame SSIM across the
+   seam never drops below 0.964, the same as inside the interior take.
+7. **Wire it.** The interior now starts at **9.767s** of a 39.8s film. That
+   one number is `LEAD` in `src/data/film.ts`; the home page's rooms
+   (`ROOM_FROM`) and the sign-in walk (`SIGNIN_WALK`) are computed from it.
 
-Prompt for step 3 (`gpt_image_2_5`, 16:9, `count: 2`, 0.25 credits each;
-`image_references`: the draft job id, then the join-frame media id):
-
-> Image 1 is this dental clinic seen from its forecourt; image 2 is its
-> entrance seen close up. Keep the SAME building, the same camera position,
-> framing and dead-on one-point perspective as image 1: the same flat-roofed
-> single-storey chalk-white building, the same pale white-oak framed glass
-> entrance exactly in the centre with its single door leaf standing open to
-> the left, the same two round clipped box shrubs in white cylindrical planters
-> beside it, the same grey stone forecourt, the same hedge with the gap on the
-> axis of the door, the same pine trees and hills behind. Leave the entrance
-> and the two planters exactly as they are. Make it unmistakably a real,
-> working dental clinic, with these additions only: (1) a square backlit sign
-> mounted high on the white façade, centred above the entrance: a soft
-> sage-teal face with a single simple white tooth pictogram (a molar outline)
-> and nothing else on it; (2) the right-hand window shows, through clear glass,
-> an empty treatment room with a sage-grey dental chair and a slim overhead
-> operatory light; (3) the left-hand window has frosted privacy film on its
-> lower two thirds, clear glass above; (4) an empty pale-oak slatted bench
-> stands against the wall beneath the left-hand window. The sign carries only
-> the tooth symbol: no letters, no words, no name, no numbers anywhere.
-> [house-style clause, verbatim, plus "No cars, no vehicles."]
-
-4. **The approach video** (`wan3_0`, 16:9, 1080p, `duration: 8`,
-   `generate_audio: false`, `enable_thinking: true`, `count: 1`,
-   `declined_preset_id: 24bae836-2c4a-48e0-89b6-49fcc0b21612` because the
-   "IN THE DARK" preset is suggested again): `start_image` = the chosen step-3
-   job, `end_image` = `608c653f-…`. **28 credits.** The preflight ignores
-   `count`; real price is 3.5 credits a second at 1080p per version.
-   Prompt: "ONE continuous unbroken steadicam take … walks straight forward
-   … through the gap in the low clipped hedge, crosses the forecourt … comes
-   to rest close in front of the open entrance … CRITICAL CONSISTENCY: ONE
-   building with a FIXED, UNCHANGING design … As it gets closer, the roofline,
-   the sign, the side windows and the pine trees pass naturally out of the top
-   and sides of the frame" (full text in the session transcript of 23 Sep).
-5. **Joining:** trim the approach to end on its frame that best matches frame
-   0 (compare with `ffmpeg -lavfi ssim`), then the shipped take from 0.0s,
-   re-encode both widths with GOP 5. New length ≈ 38s; every time in the site
-   shifts by the approach length L: stops `from` = (L + 0, 5.1, 12.6, 24) / (L
-   + 30), and the sign-in walk's `FROM`/`TO` become L + 2.0 / L + 9.0.
-
-**Blocked on credits.** The account's balance is shared with another project
-that spends 17.5 a Kling clip; it reached 0 at 04:14 UTC on 23 Sep before the
-video could run. Total still needed: about 28.5 credits.
+Encoded at crf 30, the same as before, so the interior looks exactly as it
+did: `tour-1440.mp4` 9.0MB (was 5.7MB for the interior alone — pines, hedges
+and granite are expensive at GOP 5), `tour-960.mp4` 3.9MB. crf 32 would save
+1.7MB for a measurable softening (SSIM 0.980 → 0.975 inside, 0.962 → 0.954
+outside); not taken.

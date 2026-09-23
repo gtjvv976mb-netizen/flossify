@@ -49,8 +49,15 @@ inside that layer or they beat Tailwind utilities on equal specificity.
 
 ## The tour
 
-The film is the ground of the **whole home page**: one continuous 30s take from
-the pavement to the chair in a fixed layer (`.film-bg`) behind everything,
+The film is the ground of the **whole home page**: one continuous 39.8s film
+from the street to the chair in a fixed layer (`.film-bg`) behind everything.
+It opens on the clinic building from outside — a white single-storey clinic
+with a backlit tooth sign, a dental chair seen through a window, Baguio pines
+behind — walks through the hedge gap and across the forecourt, through the
+door, and continues as the original 30s interior take. The two shots are
+joined on the same frame with no cut (docs/generation.md, "The exterior
+approach"); the interior begins at `LEAD` (9.767s) in `src/data/film.ts`,
+which is the only place the film's times live. It is
 scrubbed by the document's own scroll (`scrollY / (scrollHeight − innerHeight)
 → video.currentTime`). The top of the page is the pavement, the footer is the
 chair, and every section between is a `.page` standing in whichever room the
@@ -59,8 +66,8 @@ gaps. The owner asked for exactly this — "a video that shoots all the page" �
 after a version that kept the film to the opening section. Do not go back to
 that. Nothing scales; the forward motion is in the footage. The rail at the
 foot of the viewport names the room — Outside, Reception, The corridor, The
-chair — switching at the moments the footage arrives there (`from` fractions
-on `stops` in `index.astro`, read off a frame sheet), not at equal quarters.
+chair — switching at the moments the footage arrives there (`ROOM_FROM` in
+`src/data/film.ts`, from times read off a frame sheet), not at equal quarters.
 See `docs/generation.md` for how the film was made and how to regenerate it.
 
 - Encoded with a **5-frame GOP** so scrubbing lands on a real frame. This is why
