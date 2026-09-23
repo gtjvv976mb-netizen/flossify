@@ -718,7 +718,7 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
 
 /* Frosted paper on the footage: the room stays visible through every page,
    blurred just enough that the type reads. No radius, no shadow: a hairline
-   and the ground. The footer takes the same ground without the hairline. */
+   and the ground. */
 .pane, .ground {
   background: color-mix(in srgb, var(--c-bg) 58%, transparent);
   -webkit-backdrop-filter: blur(8px) saturate(1.1);
@@ -732,15 +732,15 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
 /* The opening and the close sit straight on the footage in light type, with
    a scrim only where the type is. Two passes, not one: a single left-to-right
    gradient left the caption at about 2:1 against the bright terrazzo floor;
-   the second pass darkens the bottom so the rail keeps its footing on a lit
-   frame too. */
+   the second pass darkens the bottom so the scroll hint keeps its footing on
+   a lit frame too. */
 .page-hero, .page-cta { color: #f2f2ef; }
 .page-hero {
   min-height: 100vh;
   min-height: 100svh;
   display: grid;
   align-items: center;
-  padding-block: 5rem calc(var(--rail-h) + 2rem);
+  padding-block: 5rem 3rem;
 }
 .page-cta { padding-block: clamp(6rem, 22vh, 14rem); }
 .page-hero::before, .page-cta::before {
@@ -781,6 +781,17 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
       transparent 84%
     );
   }
+  /* The last page the same way: its closing line runs the full width, over
+     the lit chair (measured 1.2:1 with the side scrim). */
+  .page-cta::before {
+    background: linear-gradient(
+      to top,
+      color-mix(in srgb, #07100f 88%, transparent) 0%,
+      color-mix(in srgb, #07100f 84%, transparent) 72%,
+      color-mix(in srgb, #07100f 30%, transparent) 84%,
+      transparent 94%
+    );
+  }
 }
 /* The light-mode accent is a deep teal — unreadable on footage. On the film
    the accent has to be the bright one regardless of theme. */
@@ -797,153 +808,112 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
 .film-hint {
   position: absolute;
   right: 1.5rem;
-  bottom: calc(var(--rail-h) + 1rem);
+  bottom: 1.5rem;
   color: color-mix(in srgb, #f2f2ef 72%, transparent);
   transition: opacity 400ms ease;
 }
 .film-hint[data-hide] { opacity: 0; }
 
-/* The rail: where the camera is, fixed to the foot of the viewport for the
-   whole walk. The current room carries one line of the patient's morning. */
-.film-rail {
-  position: fixed;
-  inset-inline: 0;
-  bottom: 0;
-  z-index: 30;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  min-height: var(--rail-h);
-  border-top: 1px solid color-mix(in srgb, #f2f2ef 26%, transparent);
-  background: color-mix(in srgb, #07100f 80%, transparent);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  color: #f2f2ef;
-}
-.film-stop {
-  position: relative;
-  padding: 0.85rem 1rem;
-  border-left: 1px solid color-mix(in srgb, #f2f2ef 26%, transparent);
-  color: color-mix(in srgb, #f2f2ef 58%, transparent);
-  transition: color 240ms ease;
-}
-.film-stop:first-child { border-left: 0; }
-.film-stop[data-on] { color: #f2f2ef; }
-.film-stop::before {
-  content: "";
-  position: absolute;
-  inset-inline: 0;
-  top: -1px;
-  height: 1px;
-  background: #7df0b4;
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 300ms ease;
-}
-.film-stop[data-on]::before { transform: scaleX(1); }
-.film-stop-body {
-  display: none;
-  margin-top: 0.45rem;
-  max-width: 44ch;
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: color-mix(in srgb, #f2f2ef 84%, transparent);
-}
-@media (min-width: 1024px) {
-  .film-stop { padding: 1rem 1.25rem; }
-  .film-stop[data-on] .film-stop-body { display: block; }
-}
-/* Four labels do not fit a phone's width without wrapping into the hint, so
-   the rail keeps only its letters there; the letters are the waypoints. */
-@media (max-width: 639px) {
-  .film-stop { padding: 0.75rem 0.9rem; }
-  .film-stop-label, .film-stop-time { display: none; }
-  .film-hint { right: 1rem; }
-}
-
-/* The last thing on the page clears the rail. */
-.film-clear { padding-bottom: var(--rail-h); }
+/* The room the camera is in, beside the page label in the header. */
+.film-room { color: var(--c-muted); }
+@media (max-width: 639px) { .film-hint { right: 1rem; } }
 
 
 /* ===========================================================================
    The staff entrance — sign-in, forgot, I have a code (StaffEntrance.astro)
    ---------------------------------------------------------------------------
-   Built for a front desk between patients and a dentist with gloves just
-   off: 16px fields that phones do not zoom into, targets at least 52px tall,
-   a Show button on the password, a Caps Lock line, and one choice that
-   matters on a clinic computer — shared or my own.
-   =========================================================================== */
-.entry-title { font-size: clamp(1.9rem, 3.2vw, 2.45rem); line-height: 1.08; font-weight: 600; letter-spacing: -0.025em; }
+   The clinic is the background, not a picture behind a sheet of paper. The
+   form sits on dark smoked glass — the same material as the home page's
+   opening text — compact enough that the reception desk and
+   the corridor fill the screen around it. Dark, not pale: the footage is a
+   white, brightly lit interior, and pale glass over it washes out both the
+   picture and the words. Fixed light-on-dark in both themes, like every
+   overlay on the film.
 
-.entry-field { display: grid; gap: 0.45rem; }
+   Still built for a front desk between patients: 16px fields that phones do
+   not zoom into, targets at least 48px tall, a Show button, a Caps Lock line,
+   and one choice that matters on a clinic computer — shared or my own.
+   =========================================================================== */
+.entrance-pane, .entrance-pane * { --g-ink: #f2f2ef; --g-ink-2: rgb(242 242 239 / 0.82); --g-muted: rgb(242 242 239 / 0.68); --g-line: rgb(242 242 239 / 0.24); --g-accent: #7df0b4; }
+.entrance-pane { color: var(--g-ink); }
+.entrance-pane .meta { color: var(--g-muted); }
+.entrance-pane a.meta:hover { color: var(--g-ink); }
+/* Own classes, not the colour utilities: utilities outrank this layer by design,
+   so a text-ink-2 left in the markup paints dark grey on the dark glass (1.2:1). */
+.entry-dim { color: var(--g-ink-2); }
+.entry-rule { border-color: var(--g-line); }
+
+.entry-title { font-size: clamp(1.65rem, 2.4vw, 2rem); line-height: 1.06; font-weight: 600; letter-spacing: -0.025em; }
+
+.entry-field { display: grid; gap: 0.4rem; }
 .entry-field input {
-  width: 100%; min-height: 3.35rem; padding: 0.75rem 0.95rem;
+  width: 100%; min-height: 3.1rem; padding: 0.7rem 0.9rem;
   font-size: 1rem; /* 16px: phones do not zoom into the field */
-  color: var(--c-ink); background: var(--c-surface);
-  border: 1px solid var(--c-line); border-radius: 0;
+  color: var(--g-ink); background: rgb(242 242 239 / 0.07);
+  border: 1px solid var(--g-line); border-radius: 0;
+  caret-color: var(--g-accent);
 }
-.entry-field input:hover { border-color: var(--c-muted); }
-.entry-field input:focus { outline: 2px solid var(--c-accent); outline-offset: 1px; border-color: var(--c-ink); }
-.entry-field input[aria-invalid="true"] { border-color: var(--c-caries); }
+.entry-field input::placeholder { color: rgb(242 242 239 / 0.5); }
+.entry-field input:hover { border-color: rgb(242 242 239 / 0.45); }
+.entry-field input:focus { outline: 2px solid var(--g-accent); outline-offset: 1px; border-color: var(--g-ink); background: rgb(242 242 239 / 0.1); }
+.entry-field input[aria-invalid="true"] { border-color: #fb923c; }
+/* A browser's saved-password fill paints its own pale background; keep the glass. */
+.entry-field input:-webkit-autofill { -webkit-text-fill-color: var(--g-ink); caret-color: var(--g-accent); transition: background-color 600000s 0s, color 600000s 0s; }
+.entry-field input.entry-code { font-family: var(--font-mono); font-size: 1.3rem; letter-spacing: 0.35em; }
 
 .entry-secret { position: relative; }
-.entry-secret input { padding-right: 5rem; }
+.entry-secret input { padding-right: 4.75rem; }
 .entry-show {
-  position: absolute; top: 0.4rem; right: 0.4rem; bottom: 0.4rem;
-  padding: 0 0.9rem; border: 1px solid var(--c-line); background: var(--c-bg-soft);
-  font-size: 13.5px; font-weight: 600; color: var(--c-ink); cursor: pointer;
+  position: absolute; top: 0.35rem; right: 0.35rem; bottom: 0.35rem;
+  padding: 0 0.85rem; border: 1px solid var(--g-line); background: rgb(242 242 239 / 0.1);
+  font-size: 13.5px; font-weight: 600; color: var(--g-ink); cursor: pointer;
 }
-.entry-show:hover { border-color: var(--c-ink); }
-.entry-show:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
-.entry-field input.entry-code { font-family: var(--font-mono); font-size: 1.35rem; letter-spacing: 0.35em; }
-.entry-caps { font-size: 13.5px; font-weight: 600; color: var(--c-crown); }
+.entry-show:hover { border-color: var(--g-ink); }
+.entry-show:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 1px; }
+.entry-caps { font-size: 13.5px; font-weight: 600; color: #fcd34d; }
 
-.entry-link { justify-self: start; font-size: 13.5px; color: var(--c-ink-2); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; background: none; border: 0; padding: 0.15rem 0; }
-.entry-link:hover { color: var(--c-accent); }
+.entry-link { justify-self: start; font-size: 13.5px; color: var(--g-ink-2); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; background: none; border: 0; padding: 0.15rem 0; }
+.entry-link:hover { color: var(--g-accent); }
 
-.entry-devices { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; border: 0; padding: 0; margin: 0; }
-.entry-devices legend { margin-bottom: 0.45rem; }
-.entry-device {
-  display: grid; gap: 0.25rem; align-content: start;
-  padding: 0.85rem 0.95rem 0.9rem; min-height: 5.25rem;
-  border: 1px solid var(--c-line); background: var(--c-surface); cursor: pointer;
-  transition: border-color 160ms ease, background-color 160ms ease;
+/* This device: two halves of one control, and one line saying what the chosen half does. */
+.entry-devices { border: 0; padding: 0; margin: 0; display: grid; gap: 0.45rem; }
+.entry-devices legend { margin-bottom: 0.45rem; padding: 0; }
+.entry-seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--g-line); }
+.entry-seg label {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; padding: 0 0.75rem;
+  font-size: 14.5px; font-weight: 600; color: var(--g-ink); cursor: pointer; text-align: center;
+  transition: background-color 160ms ease, color 160ms ease;
 }
-.entry-device:hover { border-color: var(--c-muted); }
-.entry-device-title { display: flex; align-items: center; gap: 0.5rem; font-size: 15px; font-weight: 600; color: var(--c-ink); }
-/* The mark: an empty square, filled when chosen. Square, like everything here. */
-.entry-device-title::before { content: ""; width: 0.8rem; height: 0.8rem; border: 1.5px solid var(--c-muted); flex: none; }
-.entry-device-body { font-size: 13.5px; line-height: 1.4; color: var(--c-ink-2); }
-.entry-device:has(:checked) { border-color: var(--c-accent); background: color-mix(in srgb, var(--c-accent) 7%, var(--c-surface)); }
-.entry-device:has(:checked) .entry-device-title::before { background: var(--c-accent); border-color: var(--c-accent); }
-.entry-device:has(:focus-visible) { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.entry-seg label + label { border-left: 1px solid var(--g-line); }
+.entry-seg label:hover { color: var(--g-ink); background: rgb(242 242 239 / 0.06); }
+.entry-seg label:has(:checked) { background: var(--g-ink); color: #0e0f0f; }
+.entry-seg label:has(:focus-visible) { outline: 2px solid var(--g-accent); outline-offset: 2px; position: relative; z-index: 1; }
+.entry-hint { font-size: 13.5px; line-height: 1.4; color: var(--g-ink-2); }
 
-.entry-go { width: 100%; min-height: 3.6rem; font-size: 1rem; }
+/* The light button on the glass, like the film's own call to action. */
+.entry-go { width: 100%; min-height: 3.35rem; font-size: 1rem; background: var(--g-ink); color: #0e0f0f; border: 1px solid var(--g-ink); }
+.entry-go:hover { background: var(--g-accent); border-color: var(--g-accent); color: #0e0f0f; }
+.entry-go:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
 .entry-go[disabled] { opacity: 0.55; cursor: progress; }
 
-.entry-note { border: 1px solid; padding: 0.85rem 1rem; font-size: 14.5px; line-height: 1.45; }
-.entry-note-ok { border-color: color-mix(in srgb, var(--c-accent) 45%, transparent); background: color-mix(in srgb, var(--c-accent) 9%, transparent); }
-.entry-note-warn { border-color: color-mix(in srgb, var(--c-crown) 45%, transparent); background: color-mix(in srgb, var(--c-crown) 10%, transparent); }
-.entry-note-bad { border-color: color-mix(in srgb, var(--c-caries) 45%, transparent); background: color-mix(in srgb, var(--c-caries) 9%, transparent); }
+.entry-note { border: 1px solid; padding: 0.75rem 0.9rem; font-size: 14px; line-height: 1.45; color: var(--g-ink); }
+.entry-note-ok { border-color: rgb(125 240 180 / 0.55); background: rgb(125 240 180 / 0.12); }
+.entry-note-warn { border-color: rgb(252 211 77 / 0.55); background: rgb(252 211 77 / 0.12); }
+.entry-note-bad { border-color: rgb(251 146 60 / 0.65); background: rgb(251 146 60 / 0.16); }
 
-.entry-way { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.95rem 0.1rem; }
-.entry-way-arrow { font-size: 1.1rem; color: var(--c-muted); transition: transform 180ms ease, color 180ms ease; }
-.entry-way:hover .entry-way-arrow, .entry-way:focus-visible .entry-way-arrow { transform: translateX(4px); color: var(--c-accent); }
-.entry-way:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+/* Other ways in: one line each, the arrow says it is a door. */
+.entry-way { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; min-height: 2.75rem; padding: 0.55rem 0.05rem; color: var(--g-ink); }
+.entry-way-hint { font-size: 13px; color: var(--g-muted); }
+.entry-way-arrow { font-size: 1rem; color: var(--g-muted); transition: transform 180ms ease, color 180ms ease; }
+.entry-way:hover .entry-way-arrow, .entry-way:focus-visible .entry-way-arrow { transform: translateX(4px); color: var(--g-accent); }
+.entry-way:hover { color: var(--g-accent); }
+.entry-way:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
 
 .entry-dev summary { cursor: pointer; list-style: none; }
 .entry-dev summary::-webkit-details-marker { display: none; }
 .entry-dev summary::after { content: " +"; }
 .entry-dev[open] summary::after { content: " \2212"; }
-
-@media (max-width: 420px) {
-  .entry-devices { grid-template-columns: 1fr; }
-  .entry-device { min-height: 0; }
-}
-  
+.entry-dev code { color: var(--g-ink); }
 
 }  /* end @layer components */
 
-/* The rail's height, read by everything that has to clear it. */
-:root { --rail-h: 3rem; }
-@media (min-width: 1024px) { :root { --rail-h: 6.5rem; } }

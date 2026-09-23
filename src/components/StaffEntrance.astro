@@ -7,28 +7,23 @@
 // two pages open already at the desk. Motion is always on, as everywhere on
 // this site (CLAUDE.md, "The tour").
 //
-// The form sits on a paper pane on the right. Along the foot runs a readout
-// rail, the same rail as the home page's film: the time in Manila, whether
-// this device is online (sign-in needs a signal, and brownouts are real), and
-// whether this is someone's own device or a shared one at the clinic. Every
-// readout is true; none is decoration.
+// The form sits on a compact pane of smoked glass on the right, so the clinic
+// stays the background, not a picture behind paper. Nothing runs along the
+// foot: the top bar names the page, and the pane says the rest.
 import Base from '../layouts/Base.astro';
 import { SIGNIN_WALK } from '../data/film';
 
 interface Props {
   title: string;
   description: string;
+  /** The page's name in the top bar: "Sign in", "Forgot password", … */
+  page: string;
   /** Walk from the door to the desk (sign-in). Otherwise open at the desk. */
   walk?: boolean;
 }
 
-const { title, description, walk = false } = Astro.props;
+const { title, description, page, walk = false } = Astro.props;
 
-// Rendered on the server in Manila time so the first paint is already right;
-// the script keeps it ticking.
-const now = new Date();
-const clock = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true }).format(now).toLowerCase();
-const day = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', weekday: 'short', day: 'numeric', month: 'short' }).format(now);
 ---
 
 <Base title={title} description={description}>
@@ -49,8 +44,8 @@ const day = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', weekday:
     </div>
 
     <header class="entrance-top">
-      <a href="/" class="font-display text-[17px] font-bold tracking-[-0.05em]">Flossify</a>
-      <span class="meta meta-ink">Staff entrance</span>
+      <a href="/" class="font-display text-[17px] font-bold tracking-[-0.05em] text-[#f2f2ef]">Flossify</a>
+      <span class="meta">Staff entrance <span class="meta-ink">/ {page}</span></span>
       <a href="/find/" class="meta ml-auto hover:text-ink">Patients: find a clinic &rarr;</a>
     </header>
 
@@ -60,34 +55,19 @@ const day = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', weekday:
       </div>
     </main>
 
-    <!-- The readouts. Mono, like the home page's rail; each one is live. -->
-    <div class="entrance-rail" role="group" aria-label="Status">
-      <div class="entrance-read">
-        <span class="meta">Time<span class="rail-long"> · Manila</span></span>
-        <span class="entrance-val" data-clock><time data-clock-time>{clock}</time> <span class="entrance-sub">{day}</span></span>
-      </div>
-      <div class="entrance-read" data-net>
-        <span class="meta">Connection</span>
-        <span class="entrance-val"><span class="entrance-dot" data-net-dot></span><span data-net-text>Online</span></span>
-      </div>
-      <div class="entrance-read">
-        <span class="meta">This device</span>
-        <span class="entrance-val" data-device-read><span class="rail-long" data-device-long>Shared at the clinic</span><span class="rail-short" data-device-short>Shared</span></span>
-      </div>
-    </div>
   </div>
 </Base>
 
 <style>
   @layer components {
-    /* The page is one screen: film behind, top bar, the pane, the rail. */
+    /* One screen: the clinic behind everything, a glass bar at the top and
+       the glass pane. On every width. */
     .entrance {
-      --rail: 4.5rem;
       position: relative;
       min-height: 100vh;
       min-height: 100dvh;
       display: grid;
-      grid-template-rows: auto 1fr auto;
+      grid-template-rows: auto 1fr;
       background: #e6e2da; /* the film's own mean tone, so nothing flashes before it paints */
     }
     .entrance-film { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: #e6e2da; }
@@ -100,72 +80,43 @@ const day = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', weekday:
     .entrance-video { opacity: 0; transition: opacity 500ms ease; }
     .entrance-video[data-on] { opacity: 1; }
 
+    /* Smoked glass: the same material as the home page's opening. */
+    .entrance-top, .entrance-pane {
+      background: rgb(7 16 15 / 0.62);
+      -webkit-backdrop-filter: blur(14px) saturate(1.15); backdrop-filter: blur(14px) saturate(1.15);
+      color: #f2f2ef;
+    }
     .entrance-top {
       position: relative; z-index: 2;
       display: flex; align-items: baseline; gap: 1rem;
-      padding: 1.1rem 1.25rem;
-      border-bottom: 1px solid var(--c-line);
-      background: color-mix(in srgb, var(--c-bg) 78%, transparent);
-      -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid rgb(242 242 239 / 0.18);
+      background: rgb(7 16 15 / 0.5);
     }
-    .entrance-top .meta-ink { color: var(--c-ink); }
+    .entrance-top .meta { color: rgb(242 242 239 / 0.7); }
+    .entrance-top .meta-ink { color: #f2f2ef; }
+    .entrance-top a:hover { color: #f2f2ef; }
 
     .entrance-main {
       position: relative; z-index: 1;
       display: grid; align-items: center; justify-items: end;
-      padding: clamp(1.25rem, 4vh, 3rem) clamp(1rem, 5vw, 4.5rem);
-      /* The rail is fixed to the foot; the last thing on the pane clears it. */
-      padding-bottom: calc(var(--rail) + clamp(1.25rem, 4vh, 3rem));
+      padding: clamp(1rem, 4vh, 2.5rem) clamp(1rem, 5vw, 4.5rem);
     }
 
-    /* Paper on the clinic: dense enough that a form reads like a form. */
+    /* Compact: the form and nothing else, so the clinic fills the screen. */
     .entrance-pane {
-      width: min(100%, 30rem);
-      padding: clamp(1.5rem, 3.2vw, 2.75rem);
-      background: color-mix(in srgb, var(--c-bg) 92%, transparent);
-      -webkit-backdrop-filter: blur(16px) saturate(1.1); backdrop-filter: blur(16px) saturate(1.1);
-      border: 1px solid var(--c-line);
+      width: min(100%, 25rem);
+      padding: clamp(1.25rem, 2.2vw, 1.85rem);
+      border: 1px solid rgb(242 242 239 / 0.2);
     }
 
-    .entrance-rail {
-      position: fixed; left: 0; right: 0; bottom: 0; z-index: 3;
-      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-      min-height: var(--rail);
-      border-top: 1px solid color-mix(in srgb, #f2f2ef 22%, transparent);
-      background: color-mix(in srgb, #07100f 84%, transparent);
-      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-      color: #f2f2ef;
-    }
-    .entrance-read {
-      display: flex; flex-direction: column; justify-content: center; gap: 0.3rem;
-      padding: 0.8rem 1.25rem;
-      border-left: 1px solid color-mix(in srgb, #f2f2ef 18%, transparent);
-    }
-    .entrance-read:first-child { border-left: 0; }
-    .entrance-read .meta { color: color-mix(in srgb, #f2f2ef 66%, transparent); }
-    .entrance-val { display: flex; align-items: center; gap: 0.5rem; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: #f2f2ef; }
-    .entrance-sub { font-weight: 400; color: color-mix(in srgb, #f2f2ef 72%, transparent); }
-    .rail-short { display: none; }
-    /* A square, not a dot: nothing on this site is round. */
-    .entrance-dot { width: 0.55rem; height: 0.55rem; background: #7df0b4; flex: none; }
-    [data-net][data-offline] .entrance-dot { background: #f97316; }
-    [data-net][data-offline] .entrance-val { color: #fdba74; }
 
     @media (max-width: 767px) {
-      /* On a phone the clinic becomes a band at the top and the pane owns the page. */
-      .entrance { grid-template-rows: auto auto 1fr auto; }
-      .entrance-film { position: relative; height: 34vh; min-height: 13rem; grid-row: 2; }
-      .entrance-top { grid-row: 1; }
+      /* On a phone the clinic is still the background: the desk shows above the
+         pane, and the pane scrolls over the clinic. */
       .entrance-top a.ml-auto { display: none; }
-      .entrance-main { grid-row: 3; padding: 0; justify-items: stretch; align-items: start; background: var(--c-bg); }
-      .entrance-pane { width: 100%; border: 0; border-top: 1px solid var(--c-line); background: var(--c-bg); -webkit-backdrop-filter: none; backdrop-filter: none; padding: 1.5rem 1rem 2rem; }
-      .entrance-rail { grid-row: 4; position: relative; }
-      .entrance-main { padding-bottom: 0; }
-      .rail-long { display: none; }
-      .rail-short { display: inline; }
-      .entrance-read { padding: 0.7rem 0.75rem; }
-      .entrance-val { font-size: 13.5px; }
-      .entrance-sub { display: none; }
+      .entrance-main { align-items: start; justify-items: stretch; padding: 30vh 1rem 1.5rem; }
+      .entrance-pane { width: 100%; padding: 1.25rem 1rem 1.5rem; }
     }
   }
 </style>
@@ -196,22 +147,8 @@ const day = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', weekday:
     vid.addEventListener('timeupdate', hold);
   }
 
-  /* --- the clock ---------------------------------------------------------- */
-  const clockEl = document.querySelector<HTMLElement>('[data-clock-time]');
-  const fmt = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true });
-  const tick = () => { if (clockEl) clockEl.textContent = fmt.format(new Date()).toLowerCase(); };
-  setInterval(tick, 15_000);
-
-  /* --- the connection: honest about brownouts ---------------------------- */
-  const net = document.querySelector<HTMLElement>('[data-net]');
-  const netText = document.querySelector<HTMLElement>('[data-net-text]');
-  const paintNet = () => {
-    const off = !navigator.onLine;
-    net?.toggleAttribute('data-offline', off);
-    if (netText) netText.textContent = off ? 'Offline — sign-in needs a signal' : 'Online';
-    document.dispatchEvent(new CustomEvent('entrance:net', { detail: { offline: off } }));
-  };
+  /* --- the connection: sign-in needs a signal, and brownouts are real ---- */
+  const paintNet = () => document.dispatchEvent(new CustomEvent('entrance:net', { detail: { offline: !navigator.onLine } }));
   addEventListener('online', paintNet);
   addEventListener('offline', paintNet);
-  paintNet();
 </script>

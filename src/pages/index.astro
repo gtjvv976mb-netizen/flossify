@@ -32,8 +32,8 @@ const queue = [
 
 // The rooms. Four, one per room of the film, each pinned to the moment the
 // footage arrives there (fractions of the 30s take, read off a frame sheet),
-// so the rail can never name a room the camera is not in. The whole page is
-// the walk: the top of the document is the pavement, the footer is the chair.
+// so the header can never name a room the camera is not in. The whole page is
+// the walk: the top of the document is the pavement, the last page is the chair.
 const stops = [
   {
     key: 'A', at: '08:55', from: ROOM_FROM.outside, label: 'Outside',
@@ -124,12 +124,14 @@ const faqs = [
     <div class="mx-auto flex max-w-[1480px] items-center justify-between gap-6 px-5 py-4 sm:px-8">
       <a href="/" class="font-display text-[17px] font-bold tracking-[-0.05em]">Flossify</a>
 
-      <span class="meta hidden md:block" aria-hidden="true"><span data-readout>01 / Walk in</span></span>
+      <!-- Where you are: the page, and the room the camera is in. -->
+      <span class="meta hidden md:block" aria-hidden="true"><span data-readout>01 / Walk in</span><span class="film-room" data-room data-rooms={JSON.stringify(stops.map((t) => [t.from, t.label]))}> &middot; {stops[0].label}</span></span>
 
       <nav class="flex items-center gap-6" aria-label="Primary">
         <a href="/find/" class="meta hover:text-ink">Find a clinic</a>
         <a href="#product" class="meta hidden hover:text-ink sm:block">Product</a>
         <a href="/websites/" class="meta hidden hover:text-ink sm:block">Websites</a>
+        <a href="/coverage/" class="meta hidden hover:text-ink lg:block">PhilHealth &amp; HMO</a>
         <a href="/clinics/" class="meta meta-ink underline decoration-line underline-offset-4 hover:decoration-accent">
           Workspaces
         </a>
@@ -352,56 +354,13 @@ const faqs = [
           <a href="/start/" class="btn btn-film">Open your clinic</a>
           <a href="#tour" class="btn btn-film-quiet">Walk in again</a>
         </div>
+        <p class="meta mt-16" style="color: rgb(242 242 239 / 0.72)">&copy; 2026 Flossify &middot; Baguio City, Philippines</p>
       </div>
     </section>
 
-    <footer class="film-clear ground border-t border-line">
-      <div class="mx-auto max-w-[1480px] px-5 py-14 sm:px-8">
-        <div class="grid grid-cols-2 gap-8 md:grid-cols-4">
-          <div>
-            <p class="font-display text-[17px] font-bold tracking-[-0.05em]">Flossify</p>
-            <p class="meta mt-3">Baguio City &middot; Philippines</p>
-          </div>
-          <div>
-            <p class="meta meta-ink">Product</p>
-            <ul class="mt-3 space-y-2">
-              <li><a href="/find/" class="meta hover:text-ink">Find a clinic</a></li>
-              <li><a href="/coverage/" class="meta hover:text-ink">PhilHealth &amp; HMO</a></li>
-              <li><a href="#product" class="meta hover:text-ink">Screens</a></li>
-              <li><a href="/clinics/" class="meta hover:text-ink">Workspaces</a></li>
-            </ul>
-          </div>
-          <div>
-            <p class="meta meta-ink">More</p>
-            <ul class="mt-3 space-y-2">
-              <li><a href="#services" class="meta hover:text-ink">Services</a></li>
-              <li><a href="/websites/" class="meta hover:text-ink">Clinic websites</a></li>
-              <li><a href="#questions" class="meta hover:text-ink">Questions</a></li>
-            </ul>
-          </div>
-          <div>
-            <p class="meta meta-ink">Colophon</p>
-            <p class="meta mt-3">Set in Archivo and IBM&nbsp;Plex&nbsp;Mono. Built with Astro.</p>
-          </div>
-        </div>
-
-        <div class="rule mt-12"></div>
-        <p class="meta mt-6">&copy; 2026 Flossify</p>
-      </div>
-    </footer>
   </main>
 
-  <!-- Where the camera is, for the whole walk. The current room carries one
-       line of the patient's morning; the same lines are in the list below for
-       anyone the rail is hidden from. -->
-  <div class="film-rail" aria-hidden="true">
-    {stops.map((t, i) => (
-      <div class="film-stop" data-film-stop={i} data-from={t.from} data-on={i === 0 ? '' : undefined}>
-        <span class="meta block" style="color: inherit">{t.key}<span class="film-stop-time"> &nbsp; {t.at}</span><span class="film-stop-label"> &nbsp; {t.label}</span></span>
-        {i > 0 && <span class="film-stop-body">{t.body}</span>}
-      </div>
-    ))}
-  </div>
+  <!-- The walk in words, for anyone the film is hidden from. -->
   <ol class="sr-only" aria-label="The walk through the clinic">
     {stops.map((t) => <li>{t.at}, {t.label.toLowerCase()}: {t.body}</li>)}
   </ol>
@@ -420,8 +379,8 @@ const faqs = [
     const vid = document.querySelector<HTMLVideoElement>('[data-film-video]');
     const poster = document.querySelector<HTMLElement>('.film-poster');
     const hint = document.querySelector<HTMLElement>('[data-film-hint]');
-    const filmStops = Array.from(document.querySelectorAll<HTMLElement>('[data-film-stop]'));
-    const froms = filmStops.map((s) => parseFloat(s.dataset.from ?? '0'));
+    const room = document.querySelector<HTMLElement>('[data-room]');
+    const rooms: [number, string][] = JSON.parse(room?.dataset.rooms ?? '[]');
 
     let duration = 0;
 
@@ -439,8 +398,11 @@ const faqs = [
       }
 
       let at = 0;
-      froms.forEach((f, i) => { if (p >= f) at = i; });
-      filmStops.forEach((c, i) => c.toggleAttribute('data-on', i === at));
+      rooms.forEach(([f], i) => { if (p >= f) at = i; });
+      if (room && rooms[at] && room.dataset.at !== String(at)) {
+        room.dataset.at = String(at);
+        room.textContent = ` · ${rooms[at][1]}`;
+      }
       if (p > 0.015) hint?.setAttribute('data-hide', '');
     };
 

@@ -1,6 +1,7 @@
 // Measures the whole-page film against a running preview: document scroll ->
 // currentTime, the frame actually shown at each stop (mean luminance, so two
-// stops on the same frame would be caught), rail state, panes, rail clearance,
+// stops on the same frame would be caught), the header's room, panes, that
+// nothing is fixed to the foot,
 // under normal and Reduce Motion at 1440px, and at 390px.
 // Headless Chromium has no H.264, so the two MP4s are redirected to a VP9 copy
 // the server itself serves (a fulfilled body has no byte ranges and cannot be
@@ -23,7 +24,7 @@ const scrub = async (p, tag) => {
     await p.waitForTimeout(400);
     rows.push(await p.evaluate((f) => {
       const v = document.querySelector('video');
-      const stop = [...document.querySelectorAll('[data-film-stop]')].findIndex((c) => c.hasAttribute('data-on'));
+      const stop = document.querySelector('[data-room]')?.textContent.trim();
       const sec = document.querySelector('[data-readout]')?.textContent;
       const vr = v.getBoundingClientRect();
       const c = document.createElement('canvas'); c.width = 32; c.height = 18; const g = c.getContext('2d');
@@ -37,20 +38,17 @@ const scrub = async (p, tag) => {
 };
 
 const layout = (p) => p.evaluate(() => {
-  const rail = document.querySelector('.film-rail').getBoundingClientRect();
   scrollTo(0, document.documentElement.scrollHeight);
-  const copy = document.querySelector('footer p.meta:last-child').getBoundingClientRect();
-  const railEnd = document.querySelector('.film-rail').getBoundingClientRect();
+  // The owner removed the footer and the bottom rail: nothing may sit fixed at the foot.
+  const fixedAtFoot = [...document.querySelectorAll('body *')].filter((e) => { const cs = getComputedStyle(e); if (cs.position !== 'fixed') return false; const r = e.getBoundingClientRect(); return r.height > 0 && r.height < innerHeight && r.bottom >= innerHeight - 1; }).map((e) => e.className);
   return {
     overflowX: document.documentElement.scrollWidth - innerWidth,
-    railH: Math.round(rail.height), railHAtEnd: Math.round(railEnd.height), railAtBottom: Math.abs(rail.bottom - innerHeight) < 1,
-    footerCopyClearOfRail: copy.bottom <= railEnd.top,
+    footers: document.querySelectorAll('footer').length, fixedAtFoot,
     panes: [...document.querySelectorAll('.pane')].map((el) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return { w: Math.round(r.width), bg: cs.backgroundColor, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow }; }),
     filmFixed: getComputedStyle(document.querySelector('.film-bg')).position,
     posterHidden: document.querySelector('.film-poster').hasAttribute('data-hide'),
     hintHidden: document.querySelector('[data-film-hint]').hasAttribute('data-hide'),
     docScreens: +(document.documentElement.scrollHeight / innerHeight).toFixed(1),
-    stopBodyShown: [...document.querySelectorAll('.film-stop-body')].map((el) => getComputedStyle(el).display),
   };
 });
 

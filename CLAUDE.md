@@ -59,15 +59,24 @@ joined on the same frame with no cut (docs/generation.md, "The exterior
 approach"); the interior begins at `LEAD` (9.767s) in `src/data/film.ts`,
 which is the only place the film's times live. It is
 scrubbed by the document's own scroll (`scrollY / (scrollHeight − innerHeight)
-→ video.currentTime`). The top of the page is the pavement, the footer is the
-chair, and every section between is a `.page` standing in whichever room the
+→ video.currentTime`). The top of the page is the pavement, the last page is
+the chair, and every section between is a `.page` standing in whichever room the
 camera has reached, its content on a paper `.pane` so the footage shows in the
 gaps. The owner asked for exactly this — "a video that shoots all the page" —
 after a version that kept the film to the opening section. Do not go back to
-that. Nothing scales; the forward motion is in the footage. The rail at the
-foot of the viewport names the room — Outside, Reception, The corridor, The
-chair — switching at the moments the footage arrives there (`ROOM_FROM` in
-`src/data/film.ts`, from times read off a frame sheet), not at equal quarters.
+that. Nothing scales; the forward motion is in the footage. The header names
+the page and the room — "04 / What it does · Reception" — the room switching
+at the moments the footage arrives there (`ROOM_FROM` in `src/data/film.ts`,
+from times read off a frame sheet), not at equal quarters.
+
+**No footer and nothing fixed at the foot** — on the home page or the staff
+entrance. There used to be a readout rail fixed to the bottom of the viewport
+and a link footer after the last page; the owner removed both ("the footer
+takes too much space … label each page on the site itself"). Pages are
+labelled where they are: the header readout, each section's own number, and
+the staff entrance's top bar ("Staff entrance / Sign in"). The footer's links
+are in the header nav; the copyright is one line on the last page. Do not put
+a footer or a bottom bar back.
 See `docs/generation.md` for how the film was made and how to regenerate it.
 
 - Encoded with a **5-frame GOP** so scrubbing lands on a real frame. This is why
@@ -84,8 +93,6 @@ See `docs/generation.md` for how the film was made and how to regenerate it.
   `?motion=on` parameter are all gone from Flossify **and** from the sample
   site. Do not put them back; if accessibility comes up, raise it with the
   owner rather than quietly re-adding a media query.
-- `--rail-h` is the rail's height; the hint and the footer clear it with it.
-  Rail captions are two lines at 1024px: keep them under ~105 characters.
 
 ## Verification — measure, do not eyeball
 
@@ -163,27 +170,30 @@ Rules that still hold there:
 ## The staff entrance — `/auth/login/`, `/auth/forgot/`, `/auth/code/`
 
 All three share `src/components/StaffEntrance.astro`: the clinic from the
-home page's film behind, a paper pane with the form on the right, a readout
-rail fixed to the foot. On sign-in the camera walks from the front door
+home page's film behind, a compact pane of dark smoked glass with the form
+on the right (the owner: "make the boxes translucent and compact so that the
+video background is still emphasized"), and nothing along the foot. On sign-in the camera walks from the front door
 (2.0s) to the reception desk (9.0s) at 0.85× and holds there — you sign in
 at the front desk; a form shown again after a miss, and the other two pages,
 open already at the desk (`signin-door-1440.webp`, `signin-desk-*.webp` are
 the film's own frames).
 
 Built for a front desk between patients and a dentist with gloves just off:
-- **Fields 54px tall at 16px** (phones do not zoom), the button 59px, all
-  measured. A **Show** button on every password, a **Caps Lock** line.
-- **This device: Shared at the clinic / My own.** Shared signs out after 12
+- **Fields 50px tall at 16px** (phones do not zoom), the button 59px, all
+  measured. Text on the glass is light in both themes (≥5.3:1 measured against
+  the brightest pixel behind it). Use `.entry-dim` / `.entry-rule` inside the
+  pane, never `text-ink-2` / `border-line`: utilities outrank the component
+  layer, so a theme utility paints dark grey on the dark glass (it did: 1.2:1). A **Show** button on every password, a **Caps Lock** line.
+- **This device: Shared at the clinic / My own**, a two-half switch with one
+  line under it saying what the chosen half does. Shared signs out after 12
   hours and remembers nothing; own lasts 14 days and remembers the email on
   that device only (`SESSION_HOURS` in `auth.ts`, the cookie's `maxAge`
   follows). Shared is the default, because a clinic computer usually is.
 - After a wrong password the email stays, the password empties, the cursor
   is in it, and the sentence sits right above the button.
-- **The rail is true or it is not there:** Manila time, whether this device is
-  online (offline disables the button and says why — brownouts are real),
-  and which device choice is in force. No invented status.
-- Fits a 1366×768 clinic monitor without scrolling to the button; the rail
-  goes back into the flow on phones so it never sits over the keyboard.
+- Offline disables the button and says why in the pane — brownouts are real.
+- Fits a 1366×768 clinic monitor without scrolling to the button, and 1440×900
+  without scrolling at all.
 - `entrance-check.mjs` in the session scratchpad measures all of it.
 
 ## The patient side — `/find/`
