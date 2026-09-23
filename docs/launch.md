@@ -39,23 +39,27 @@ you do not need to read it. Written 23 September 2026.
 
 ## Only you can do these
 
-- [ ] **Hosting account and payment.** Recommended: Render, Singapore region
-      (`docs/deploy.md` explains the choice). Put a card on it and turn on
-      two-step sign-in. The monthly cost depends on who deploys:
-  - **you deploy it yourself**: the free Hobby workspace is enough, about
-    US$21 a month with Render's database (about US$30 with a DigitalOcean
-    database);
-  - **someone else deploys**: never share your password. Hobby allows only
-    one person, so upgrade to Pro (US$25 a month more) and add them as a
-    member: about US$46 a month (about US$55 with DigitalOcean). Pro also
-    keeps 7 days of database restore points instead of 3.
+- [ ] **Hosting accounts and payment.** Two accounts, both in Singapore
+      (`docs/deploy.md` explains the choice):
+  - **Render** for the website, the text sender and the photo disk;
+  - **DigitalOcean Managed PostgreSQL 17** for the database. Render's own
+    database is not documented to allow what Flossify's data isolation
+    needs (its admin must be able to bypass row-level security);
+    DigitalOcean's admin (`doadmin`) is.
+  Put a card on each and turn on two-step sign-in. About **US$30 a month**
+  if you deploy it yourself (Render's free Hobby workspace, one login).
+  If someone else deploys, never share your password: upgrade Render to Pro
+  (US$25 a month more) and add them as a member, and add them to the
+  DigitalOcean team.
 - [ ] **Domain.** `flossify.ph` registered in your name, with access to its
       DNS settings for whoever deploys. The site is already set up for
       `flossify.ph` and `www.flossify.ph`. On 23 September 2026 the name is
       registered, its DNS is at Namecheap, and it shows Namecheap's parking
       page: nothing points at Flossify yet. That happens on launch day.
       Check that the registration is yours.
-- [ ] **Semaphore** (semaphore.co), the text sender.
+- [x] **Semaphore** (semaphore.co), the text sender. Account open and sender
+      name registered (owner, 23 Sep 2026). The API key and sender name go
+      into Render's environment (`SMS_API_KEY`, `SMS_SENDER`) on launch day.
   - Open an account and buy credits: ₱0.56 per text before VAT.
   - Register a sender name (11 characters at most, for example `FLOSSIFY`)
     and wait for approval. Nothing goes out without it.
@@ -66,7 +70,9 @@ you do not need to read it. Written 23 September 2026.
     *"To move it, call* (the clinic's number)*."* Patients confirm by
     calling or at "My visits". If you want replies one day, ask Semaphore
     or another gateway for a number that receives them.
-- [ ] **NPC and a Data Protection Officer.** Name Flossify's DPO. Ask the
+- [x] **NPC and a Data Protection Officer** (owner, 23 Sep 2026: done). Still
+      to do: give the developer the DPO's name and email and the NPC number
+      for `/privacy/`. Name Flossify's DPO. Ask the
       lawyer whether Flossify must register with the National Privacy
       Commission (it holds patients' health records for clinics). Give the
       developer the DPO's name and email, and the NPC number once the
@@ -75,7 +81,10 @@ you do not need to read it. Written 23 September 2026.
       place, which must not go live. Never claim registration early.
       (Settings → Privacy, inside each clinic's workspace, is for the
       clinic's own DPO, not Flossify's.)
-- [ ] **Lawyer review**, before any real patient's data goes in:
+- [x] **Lawyer review** (owner, 23 Sep 2026: done). Give the developer the
+      approved privacy notice wording: it is published as a new consent
+      version, and confirm the lawyer is content with Singapore hosting.
+      What was asked for review:
   - the privacy notice (`/privacy/`), including the DPO's name and email,
     which are still placeholders;
   - terms of service — there are none yet;
@@ -83,11 +92,13 @@ you do not need to read it. Written 23 September 2026.
     patients' records; Flossify keeps them on its behalf);
   - storing patient records in **Singapore**, outside the Philippines, and
     naming the host, the database provider and Semaphore as subprocessors.
-- [ ] **SwiftCare.** The sample website on `/websites/` is a redesign of
+- [x] **SwiftCare.** The sample website on `/websites/` is a redesign of
       SwiftCare Dental Clinic's real site, using their name, photos and
-      price list. Get their written permission before launch, or have it
-      replaced with an invented clinic.
-- [ ] **Prices and where clinics pay.** These are placeholders in
+      price list. Written permission received (owner, 23 Sep 2026); keep a
+      copy with the business records.
+- [ ] **Prices and where clinics pay.** For the pilot the sample prices
+      stand as they are (owner, 23 Sep 2026) and invoicing stays off. These
+      are placeholders in
       `src/lib/billing.ts`. Until the developer marks them final
       (`BILLING_FINAL` in `src/lib/billing-config.ts`), clinics see them
       labelled "not final yet", the pay-to details and billing email are

@@ -88,13 +88,18 @@ tax.
 **Recommendation for a 2–3 clinic pilot:** run the web service, the worker
 and the photo disk on **Render** in Singapore — one dashboard, Docker
 deploys, a pre-deploy step for `db:migrate`, health checks, a web Shell,
-and daily disk snapshots — about $14 a month plus the database. For the
-database, try **Render Postgres** first (about $21 a month in all): the first
-deploy tells you within minutes whether its admin role can bypass row-level
-security, which Flossify needs. If it cannot, create **DigitalOcean Managed
-PostgreSQL 17** in Singapore instead (about $30 a month in all), whose admin
-role documents that permission and which keeps daily backups for 7 days.
-Either way, all patient data sits in Singapore.
+and daily disk snapshots — about $14 a month. Put the database on
+**DigitalOcean Managed PostgreSQL 17** in Singapore (`SGP1`, $15): its
+admin role `doadmin` has Bypass RLS and Create role
+([documented](https://docs.digitalocean.com/products/databases/postgresql/how-to/modify-user-privileges/)),
+which Flossify needs — the security-definer functions run as the admin,
+and with forced row-level security an admin without Bypass RLS sees no
+rows (measured: the directory went from 5 clinics to 0, sign-up failed,
+and pg_dump refused to run). Render's own Postgres documents neither
+(checked 23 Sep 2026: its default user can create users, it is not a
+superuser, and Bypass RLS is not mentioned), and `db:migrate` refuses an
+admin without it, so do not start there. About **$30 a month** in all,
+with daily backups kept 7 days. All patient data sits in Singapore.
 
 Those totals are for a **Hobby** workspace, which has one login: the owner's.
 If someone else deploys, do not share that password: upgrade the workspace
@@ -127,15 +132,17 @@ and Semaphore must be named as subprocessors.
    the Dockerfile declares it). That lets you try the whole site before DNS
    is switched. Otherwise use the host's address for the health check only,
    and sign in once the domain works (step 7).
-2. **Create the database**: PostgreSQL **17**, Singapore. Add a database
-   named `flossify` and copy its admin connection string: that is
+2. **Create the database** on DigitalOcean (section 3): Databases →
+   PostgreSQL **17**, Singapore (`SGP1`), one node. Add a database named
+   `flossify` and copy the `doadmin` connection string for it: that is
    `DATABASE_ADMIN_URL`. Write `DATABASE_URL` from it: same host, port and
    database, user `flossify_app`, password `APP_DB_PASSWORD`.
-   - Render Postgres: use the **Internal** Database URL (a private network;
-     leave `DATABASE_SSL` unset).
-   - DigitalOcean: remove `?sslmode=require` from the string, set
-     `DATABASE_SSL=1`, and under Trusted Sources add the web and worker's
-     outbound addresses (Render: the service → Connect → Outbound).
+   - Remove `?sslmode=require` from both strings and set `DATABASE_SSL=1`.
+   - Under Trusted Sources, add the web and worker's outbound addresses
+     (Render: the service → Connect → Outbound).
+   - (Render Postgres instead: use its **Internal** Database URL and leave
+     `DATABASE_SSL` unset — but expect step 3 to stop at *"neither a
+     superuser nor BYPASSRLS"*; see section 3.)
    - Any provider: pick PostgreSQL 17. The image's `pg_dump` is 17 and
      cannot back up a newer server.
 3. **Create the web service** (Render: New → Web Service → the repo;
