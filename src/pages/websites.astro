@@ -4,7 +4,7 @@ import Base from '../layouts/Base.astro';
 // What every clinic site ships with. The sample under /samples/swiftcare/ is
 // the reference build; keep this list honest to what is actually in it.
 const included = [
-  { title: 'Booking, one tap away', body: 'Every screen ends in the clinic’s booking flow. Returning patients rebook in about fifteen seconds; new patients in about two minutes.' },
+  { title: 'Booking, one tap away', body: 'Every screen ends in the clinic’s booking flow: for a Flossify clinic, the five-step booking with no account. The sample keeps SwiftCare’s own.' },
   { title: 'Live clinic hours', body: 'Open, closing soon or closed, worked out in Manila time and shown at the top of every screen. Sunday reads “by appointment”.' },
   { title: 'Services and prices', body: 'Every service with a range or a starting price, filterable by kind, plus a running estimate a patient can copy and bring to the desk.' },
   { title: 'Smile Finder', body: 'Pick what hurts. It shows which services usually help, what they cost, how urgent it is, and what to do tonight.' },
@@ -27,7 +27,7 @@ const included = [
     <p class="mt-4 max-w-[640px] text-[17px] leading-relaxed text-ink-2">
       The workspace runs the clinic. The website is what a patient finds at eleven at night
       with a toothache. We build both, so a booking on the site is a booking in the
-      workspace and the price list online is the one the desk quotes.
+      workspace, and the price list online is copied from the fee guide the desk uses.
     </p>
 
     <div class="mt-8 flex flex-wrap gap-3">
@@ -69,7 +69,7 @@ const included = [
       <strong class="font-semibold">Each clinic site carries the clinic’s own look.</strong>
       The sample is gold and espresso because that is SwiftCare’s logo and lobby; Flossify’s
       own pages stay flat and Swiss. What crosses over is the rule that matters on a page a
-      patient reads: no third-party fonts or scripts. Health guidance on the site is general
+      patient reads: no third-party fonts or scripts; the one embed is a map that loads when a patient reaches it. Health guidance on the site is general
       first aid and aftercare, labelled as such, and the clinic’s dentist signs off on the copy
       before it goes live.
     </div>

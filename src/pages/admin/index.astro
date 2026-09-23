@@ -3,14 +3,23 @@
 // with the way to it. Admins have no tenant, so the numbers come from
 // admin_overview() (009), a definer function that returns these eight counts
 // and nothing behind them — no patient, no text, no clinic's books.
+//
+// The line under the heading says how this account's password is reset,
+// because Forgot password cannot do it: a text is a clinic's row
+// (message_log.clinic_id is not null, under RLS) and an operations account
+// has no clinic, so /auth/forgot/ queues nothing for it. Whoever runs the
+// server sets a new one with the operations-account script in docs/deploy.md,
+// which takes the account's email, so the line shows it.
 export const prerender = false;
 
 import AdminLayout from '../../layouts/Admin.astro';
 import { requireAdmin } from '../../lib/admin';
-import { publicRead } from '../../lib/db';
+import { pool, publicRead } from '../../lib/db';
 
 const admin = await requireAdmin(Astro);
 if (admin instanceof Response) return admin;
+// Staff has no tenant (not under RLS), so the email is a plain read by id.
+const email: string = (await pool.query('select email from staff where id = $1', [admin.session.staffId])).rows[0]?.email ?? '';
 
 interface Overview {
   dentists_pending: number; dentists_mismatch: number;
@@ -26,7 +35,7 @@ const tiles: { label: string; value: number; note: string; href?: string; link?:
   { label: 'PRC mismatches', value: o.dentists_mismatch, note: 'licences that did not match at the PRC', href: '/admin/prc/#decided', link: 'See them' },
   { label: 'Clinics', value: o.clinics_total, note: `${o.clinics_listed} listed on Find a clinic`, href: '/admin/clinics/', link: 'All clinics' },
   { label: 'Signed up this month', value: o.clinics_this_month, note: 'new clinics, by Manila calendar', href: '/admin/clinics/?show=month', link: 'See them' },
-  { label: 'Texts waiting', value: o.texts_queued, note: 'queued across every clinic. No texts page here: run the sender and they leave.' },
+  { label: 'Texts waiting', value: o.texts_queued, note: 'queued across every clinic. Reminders and clinic-written texts wait from 9 pm to 8 am; confirmations and codes go at any hour.' },
   { label: 'Texts failed, 7 days', value: o.texts_failed_7d, note: 'each clinic sees its own on Messages and can send again. No texts page here.' },
   { label: 'Web bookings, 7 days', value: o.bookings_web_7d, note: 'booked or requested on the public site', href: '/admin/clinics/', link: 'By clinic, 30 days' },
 ];
@@ -35,6 +44,7 @@ const tiles: { label: string; value: number; note: string; href?: string; link?:
 <AdminLayout title="Operations" section="home" admin={{ name: admin.name }}>
   <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Operations</h1>
   <p class="mt-3 max-w-[60ch] text-[15px] text-ink-2">Across every clinic, as of now. Each number says where the work is.</p>
+  <p class="mt-2 max-w-[100ch] text-[14px] text-ink-2">Signed in as {admin.name}{email && <> ({email})</>}. Forgot your password? A text can’t reset it: whoever runs the server sets a new one with the script in docs/deploy.md.</p>
 
   <dl class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
     {tiles.map((t) => (
@@ -52,7 +62,9 @@ const tiles: { label: string; value: number; note: string; href?: string; link?:
   <section class="mt-12 max-w-[64ch]" aria-labelledby="texts-title">
     <h2 id="texts-title" class="font-display text-[22px] font-semibold">Texts</h2>
     <p class="mt-2 text-[15px] leading-relaxed text-ink-2">
-      There is no texts page on this side. Queued texts leave when the sender runs: <code class="text-[14px]">npm run sms:worker</code> keeps it running, <code class="text-[14px]">npm run sms:once</code> makes one pass.
+      There is no texts page on this side. Queued texts leave through the sender, a separate process that runs beside the app (<code class="text-[14px]">npm run sms:worker</code>).
+      It holds reminders and clinic-written texts from 9 pm to 8 am; booking confirmations and sign-in codes go out at any hour, so they do not stay in Texts waiting for long.
+      If the count climbs during the day, or through the night as patients book, the sender has stopped: check that it is running.
       A failed text is the clinic’s to send again from its Messages page. A reset or invitation code is shown nowhere, on either side.
     </p>
   </section>

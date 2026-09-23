@@ -8,11 +8,12 @@
 // it and every cookie carrying the old number stops opening anything, checked
 // on every workspace request by canOpen(). The two-week expiry is the ceiling.
 
+import './dotenv';
 import { scryptSync, randomBytes, timingSafeEqual, createHmac } from 'node:crypto';
 import type { AstroCookies } from 'astro';
 import { pool } from './db';
 
-const SECRET = import.meta.env.SESSION_SECRET ?? process.env.SESSION_SECRET;
+const SECRET = process.env.SESSION_SECRET;
 if (!SECRET || SECRET.length < 32) throw new Error('SESSION_SECRET must be set to at least 32 characters. See .env.example.');
 
 export const COOKIE = 'fl_session';

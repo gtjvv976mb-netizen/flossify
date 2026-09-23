@@ -6,6 +6,7 @@
 // that mistypes a password eight times in fifteen minutes is told to wait or
 // reset; a patient booking five times a day from one number is asked to call.
 
+import './dotenv';
 import { isIP } from 'node:net';
 import { pool } from './db';
 
@@ -49,7 +50,7 @@ export const LIMITS = {
 /** The caller's address. Behind a proxy that sets X-Forwarded-For, set TRUST_PROXY=1;
  *  otherwise that header is whatever the caller wrote in it and is ignored. */
 export function clientIp(ctx: { request: Request; clientAddress: string }): string {
-  const trust = (import.meta.env.TRUST_PROXY ?? process.env.TRUST_PROXY) === '1';
+  const trust = (process.env.TRUST_PROXY ?? '').trim() === '1';
   if (trust) {
     // The entry nearest the proxy (rightmost) is the one it wrote; anything left of it is the caller's own claim.
     const parts = (ctx.request.headers.get('x-forwarded-for') ?? '').split(',').map((s) => s.trim()).filter(Boolean);

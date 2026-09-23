@@ -71,7 +71,7 @@ const thisYear = yearOf(new Date());
 // Status in plain words, never colour alone.
 function statusWords(v: Visit): string {
   switch (v.status) {
-    case 'booked': return v.placed ? 'Booked — please confirm' : 'Requested — the clinic will text a time';
+    case 'booked': return v.placed ? 'Booked — please confirm' : 'Requested — the clinic will confirm a time';
     case 'confirmed': return 'Confirmed';
     case 'arrived': case 'in_lobby': case 'in_chair': return 'At the clinic';
     case 'completed': return 'Done';

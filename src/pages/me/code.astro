@@ -7,6 +7,11 @@
 // miss gets the same one sentence, whether the code was wrong, expired, or
 // never issued for that number, so the form cannot be used to find out which
 // numbers have visits.
+//
+// The number is never in the address. /me/ leaves it in a 15-minute httpOnly
+// cookie sent to this page only; it fills the field and is cleared once the
+// code is used. No cookie and the person types the number. Old links that
+// carried ?phone= still fill the field for now; nothing makes new ones.
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
@@ -20,8 +25,12 @@ import { normalizePhone, PH_MOBILE, prettyPhone } from '../../lib/messages';
 
 if (readPatientSession(Astro.cookies)) return Astro.redirect('/me/visits/', 303);
 
+// Set by /me/ (same name, same path).
+const PHONE_COOKIE = 'fl_me_phone', PHONE_COOKIE_PATH = '/me/code';
+
 const sent = Astro.url.searchParams.get('sent') === '1';
-let typed = prettyPhone(Astro.url.searchParams.get('phone') ?? '');
+const remembered = Astro.cookies.get(PHONE_COOKIE)?.value ?? '';
+let typed = prettyPhone(PH_MOBILE.test(remembered) ? remembered : (Astro.url.searchParams.get('phone') ?? ''));
 let error = '';
 
 if (Astro.request.method === 'POST') {
@@ -42,6 +51,8 @@ if (Astro.request.method === 'POST') {
       if (result !== 'ok') error = REDEEM_TEXT.wrong;
       else {
         setPatientSession(Astro.cookies, phone);
+        // The code is spent: the number now lives in the signed session, not in this cookie.
+        Astro.cookies.delete(PHONE_COOKIE, { path: PHONE_COOKIE_PATH });
         return Astro.redirect('/me/visits/', 303);
       }
     }
@@ -73,3 +84,12 @@ if (Astro.request.method === 'POST') {
     </div>
   </main>
 </Base>
+
+<script>
+  // An old link may still carry the number as ?phone=. The field has it now; take it out of the address bar.
+  const here = new URL(location.href);
+  if (here.searchParams.has('phone')) {
+    here.searchParams.delete('phone');
+    history.replaceState(history.state, '', here.pathname + here.search + here.hash);
+  }
+</script>

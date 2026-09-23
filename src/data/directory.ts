@@ -149,7 +149,7 @@ export const dentists: Dentist[] = [
   { id: 'd7', slug: 'elena-sarmiento', name: 'Dr. Elena Sarmiento', prc: '0038765', prcCheckedOn: '2026-09-15', pda: true, specialty: null,
     practices: ['General dentistry', 'Restorations'], since: 2006,
     clinics: [{ slug: 'marikina-heights', days: [1, 2, 3, 4, 5, 6] }],
-    about: 'Runs Marikina Heights Dental. Same group as Session Road; same records if you move between them.' },
+    about: 'Runs Marikina Heights Dental, in the same group as Session Road.' },
 ];
 
 export const dentistBySlug = (slug: string) => dentists.find((d) => d.slug === slug);
@@ -169,7 +169,7 @@ export interface Listing {
   /** PhilHealth-accredited for the preventive oral health benefit. */
   philhealth: boolean;
   /** On the Flossify workspace: the schedule is live and a booking is a booking.
-   *  Off it: the patient sends a request and the clinic confirms by text. */
+   *  Off it: the patient sends a request and the clinic confirms the time with them. */
   workspace: boolean;
   walkIns: boolean;
   chairs: number;
@@ -227,7 +227,7 @@ export const listings: Listing[] = [
     philhealth: true, workspace: false, walkIns: true, chairs: 2, since: 2016,
     photos: ['xray', 'tray'],
     prices: { consultation: { min: 250 }, prophylaxis: { min: 1200, max: 2000 }, rootcanal: null, crown: null, whitening: null, veneers: null, braces: null, wisdom: null },
-    about: 'A family clinic three days a week. Not yet on the Flossify workspace, so bookings here are requests the clinic confirms by text.',
+    about: 'A family clinic three days a week. Not on the live schedule yet, so bookings here are requests the clinic confirms with you.',
     dentists: ['hazel-tabanao', 'marites-alangdeo'],
   },
   {
@@ -238,7 +238,7 @@ export const listings: Listing[] = [
     philhealth: false, workspace: true, walkIns: true, chairs: 2, since: 2018,
     photos: ['model', 'instruments'],
     prices: { braces: null, veneers: null },
-    about: 'The group’s Marikina branch. Your Session Road records follow you here.',
+    about: 'Session Road’s sister clinic in Marikina, in the same group.',
     dentists: ['elena-sarmiento'],
   },
 ];

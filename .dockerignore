@@ -1,0 +1,40 @@
+# What never goes into the Docker build context (and so never into the image).
+# Patterns are relative to the repository root: `shots` here is /shots only,
+# not public/shots, which the home page needs.
+
+# Settings and secrets. Astro writes .env values into the build, so .env must
+# never reach it; a server gets its settings from the host's environment.
+.env
+.env.*
+
+# Rebuilt inside the image.
+node_modules
+dist
+.astro
+
+# Data that belongs to a running server, not to the code.
+uploads
+backups
+
+# The repository and local tools.
+.git
+.claude
+**/.DS_Store
+**/*.log
+
+# Check output and scratch from the verify scripts (scripts/shoot.mjs, film.mjs, audit.mjs).
+shots
+test-results
+playwright-report
+scratch
+tmp
+
+# Raw generated masters kept out of git (see .gitignore). The film that ships
+# is public/video/ (tour-1440.mp4, tour-960.mp4, tour-poster.webp) and stays in.
+**/raw-models
+**/raw-clinic
+**/raw-walk
+
+# Notes for people, not needed to build or run.
+docs
+*.md

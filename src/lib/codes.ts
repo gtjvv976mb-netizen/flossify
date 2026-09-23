@@ -4,10 +4,11 @@
 // the table is not a copy of the codes. One live code per purpose per person:
 // asking again voids the last one.
 
+import './dotenv';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { pool } from './db';
 
-const SECRET = import.meta.env.SESSION_SECRET ?? process.env.SESSION_SECRET ?? '';
+const SECRET = process.env.SESSION_SECRET ?? '';
 
 export type Purpose = 'reset' | 'invite';
 export const CODE_TTL_MIN: Record<Purpose, number> = { reset: 15, invite: 24 * 60 };

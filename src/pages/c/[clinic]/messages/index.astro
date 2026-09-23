@@ -125,6 +125,14 @@ const parts = (d: Date, opts: Intl.DateTimeFormatOptions) =>
 const time = (d: Date) => { const p = parts(d, { hour: 'numeric', minute: '2-digit' }); return `${p.hour}:${p.minute} ${p.dayPeriod.toLowerCase()}`; };
 const when = (d: Date) => { const p = parts(d, { weekday: 'short', day: 'numeric', month: 'short' }); return `${p.weekday} ${p.day} ${p.month}, ${time(d)}`; };
 
+// failed_reason is written for the sender's log: the provider's own answer (its JSON, a network
+// error, an HTTP status). The desk gets what it can act on — a number to correct, or a text to
+// send again — and the raw reason stays in the database and the worker's log for Flossify.
+function failedWords(reason: string | null): string {
+  if (reason?.startsWith('Not a Philippine mobile number')) return 'not a Philippine mobile number';
+  return 'the text service did not take it. Send it again; if it fails again, tell Flossify';
+}
+
 // Status is never colour alone: the failed row carries its reason in words.
 function statusOf(m: (typeof texts)[number]): { label: string; failed: boolean } {
   if (m.direction === 'in') return { label: 'Received', failed: false };
@@ -133,7 +141,7 @@ function statusOf(m: (typeof texts)[number]): { label: string; failed: boolean }
     case 'sending': return { label: 'Sending', failed: false };
     case 'sent': return { label: `Sent ${m.sent_at ? time(m.sent_at) : ''}`.trim(), failed: false };
     case 'delivered': return { label: 'Delivered', failed: false };
-    case 'failed': return { label: `Failed: ${m.failed_reason ?? 'the sender gave no reason'}`, failed: true };
+    case 'failed': return { label: `Failed: ${failedWords(m.failed_reason)}`, failed: true };
     case 'cancelled': return { label: 'Cancelled', failed: false };
     default: return { label: m.status, failed: false };
   }
@@ -180,7 +188,7 @@ const notice = done === 'sent' ? 'Queued. It leaves with the next pass of the se
         </label>
         <label class="field">
           <span class="meta">Text</span>
-          <textarea name="body" rows="3" maxlength={BODY_MAX} required placeholder="Your 2 pm is moved to 3 pm. Reply Y if that works.">{draft.body}</textarea>
+          <textarea name="body" rows="3" maxlength={BODY_MAX} required placeholder="Your 2 pm is moved to 3 pm. Call us if that does not work.">{draft.body}</textarea>
           <span class="text-[13px] text-muted">Starts with “{clinic.name}:” so they know who it is from. Under {BODY_MAX} characters, no links.</span>
         </label>
         <div class="sm:col-span-2"><button type="submit" class="btn btn-primary">Queue the text</button></div>

@@ -16,7 +16,7 @@ import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
 import { peso } from '../../../../data/demo';
 import {
-  PLANS, PAY_TO, WRITE_TO, PAUSE_AFTER_DAYS, STATUS_WORDS,
+  PLANS, PAY_TO, WRITE_TO, PAUSE_AFTER_DAYS, STATUS_WORDS, BILLING_FINAL,
   state, describe, daysLeft, invoiceWords, monthText, dayText, whenText, manilaDate,
 } from '../../../../lib/billing';
 
@@ -31,19 +31,31 @@ const billing = canSetUp ? await state(clinic.group_id) : null;
 const plan = billing ? PLANS[billing.sub.plan] : null;
 const notice = billing ? describe(billing.sub, billing.invoices) : null;
 const trialLeft = billing?.sub.status === 'trial' ? daysLeft(billing.sub.trial_ends_at) : null;
-const owed = billing ? billing.invoices.filter((i) => i.status === 'due').reduce((n, i) => n + i.amount, 0) : 0;
+// Prices and the late-payment policy cannot be checked for a "[": a placeholder price is a
+// number like any other. So they count as final only when BILLING_FINAL (src/lib/billing-config.ts,
+// re-exported by billing.ts) says so outright. Until then the prices carry "not final yet", the
+// pause policy, which nothing implements, is not stated to a clinic, no invoice is issued, and an
+// invoice made earlier at placeholder prices is marked "do not pay": nothing is owed or overdue.
+const pricesFinal = BILLING_FINAL;
+const owed = billing && pricesFinal ? billing.invoices.filter((i) => i.status === 'due').reduce((n, i) => n + i.amount, 0) : 0;
 
 // The card's fourth line: where the subscription stands, in words.
 const standing = !billing ? ''
   : billing.sub.status === 'trial'
     ? trialLeft === 0 ? 'Trial ended' : `Trial: ${trialLeft} day${trialLeft === 1 ? '' : 's'} left`
+    : billing.sub.status === 'past_due' && !pricesFinal ? 'Nothing to pay yet'
     : STATUS_WORDS[billing.sub.status];
 
+// billing.ts marks what the owner of the service has not filled in yet as "[YOUR …]". Those are
+// notes for us, never text for a clinic: an unset address or pay-to line is left out, and with no
+// pay-to line at all the page says not to send money yet.
+const isSet = (v: string) => !!v.trim() && !v.trim().startsWith('[');
 const payTo = [
-  { name: 'GCash', value: PAY_TO.gcash },
-  { name: 'Maya', value: PAY_TO.maya },
-  { name: 'Bank transfer', value: PAY_TO.bank },
-];
+  { name: 'GCash', value: PAY_TO.gcash as string },
+  { name: 'Maya', value: PAY_TO.maya as string },
+  { name: 'Bank transfer', value: PAY_TO.bank as string },
+].filter((p) => isSet(p.value));
+const writeTo = isSet(WRITE_TO) ? WRITE_TO : '';
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Billing" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
@@ -58,9 +70,11 @@ const payTo = [
         What {billing.branches === 1 ? 'this clinic' : 'the group'} pays Flossify. One invoice a month, paid by GCash, Maya or bank transfer; a person on our side marks it paid.
       </p>
 
-      <p role="note" class="mt-6 max-w-[64ch] border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
-        The prices on this page are placeholders while Flossify is being set up. They are not what you will be charged until the owner of the service has set them and told you.
-      </p>
+      {!pricesFinal && (
+        <p role="note" class="mt-6 max-w-[64ch] border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
+          The prices on this page are not final yet. You will not be charged them until Flossify has set the real prices and told you.
+        </p>
+      )}
 
       {notice && (
         <p role={notice.alert ? 'alert' : 'status'} class:list={['mt-6 border p-4 text-[14.5px] leading-relaxed', notice.alert ? 'border-caries/40 bg-caries/10' : 'border-accent/40 bg-accent/10']}>
@@ -79,7 +93,7 @@ const payTo = [
           <div class="bg-surface p-5">
             <dt class="meta">Per branch, per month</dt>
             <dd class="mt-2 font-display text-[26px] leading-none font-bold tabular-nums">{peso(billing.sub.price_per_branch)}</dd>
-            <p class="mt-1.5 text-[13px] text-muted">placeholder price</p>
+            {!pricesFinal && <p class="mt-1.5 text-[13px] text-muted">not final yet</p>}
           </div>
           <div class="bg-surface p-5">
             <dt class="meta">Branches counted</dt>
@@ -89,11 +103,13 @@ const payTo = [
           <div class="bg-surface p-5">
             <dt class="meta">Monthly total</dt>
             <dd class="mt-2 font-display text-[26px] leading-none font-bold tabular-nums">{peso(billing.monthly)}</dd>
-            <p class="mt-1.5 text-[13px] text-muted">{standing}{billing.sub.status === 'trial' ? ` · ends ${whenText(billing.sub.trial_ends_at)}` : ''}</p>
+            <p class="mt-1.5 text-[13px] text-muted">{standing}{billing.sub.status === 'trial' ? `${trialLeft === 0 ? ' on' : ' · ends'} ${whenText(billing.sub.trial_ends_at)}` : ''}</p>
           </div>
         </dl>
         <p class="mt-3 text-[14px] text-ink-2">
-          To change plan, write to us at {WRITE_TO.startsWith('[') ? <span class="bg-crown/15 px-1 text-ink">{WRITE_TO}</span> : <a href={`mailto:${WRITE_TO}`} class="underline underline-offset-4 hover:text-accent">{WRITE_TO}</a>}. Say which plan and from which month; we change it and confirm by reply.
+          {writeTo
+            ? <>To change plan, write to us at <a href={`mailto:${writeTo}`} class="underline underline-offset-4 hover:text-accent">{writeTo}</a>. Say which plan and from which month; we change it and confirm by reply.</>
+            : <>To change plan, write to us; the address goes up here before your first invoice. Say which plan and from which month; we change it and confirm by reply.</>}
         </p>
       </section>
 
@@ -119,11 +135,12 @@ const payTo = [
             <tbody>
               {billing.invoices.length === 0 && (
                 <tr><td colspan="7" class="px-5 py-4 text-[15px] text-muted">
-                  {billing.sub.status === 'trial' ? 'No invoices yet. The first one comes with the monthly run after the trial ends.' : 'No invoices yet.'}
+                  {!pricesFinal ? 'No invoices yet. None comes until we have told you the real prices.'
+                    : billing.sub.status === 'trial' ? 'No invoices yet. The first one comes with the monthly run after the trial ends.' : 'No invoices yet.'}
                 </td></tr>
               )}
               {billing.invoices.map((inv, i) => {
-                const overdue = inv.status === 'due' && manilaDate(inv.due_at) < manilaDate(new Date());
+                const overdue = pricesFinal && inv.status === 'due' && manilaDate(inv.due_at) < manilaDate(new Date());
                 return (
                   <tr class:list={[i < billing.invoices.length - 1 && 'border-b border-line-2', overdue && 'bg-caries/10']}>
                     <th scope="row" class="px-5 py-3.5 font-mono text-[13px] tracking-[0.04em] tabular-nums">{inv.number}</th>
@@ -143,26 +160,34 @@ const payTo = [
 
       <section class="mt-10" aria-labelledby="pay-title">
         <h2 id="pay-title" class="font-display text-[22px] font-semibold">How to pay</h2>
-        <p class="mt-1.5 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
-          Send the amount on the invoice to any of these, and put the invoice number (FL-…) as the reference or message. A person checks the account and marks it paid within one working day; the row above turns to “Paid”.
-        </p>
-        <dl class="mt-4 max-w-[760px] divide-y divide-line-2 border border-line bg-surface">
-          {payTo.map((p) => (
-            <div class="grid gap-1 px-5 py-3.5 sm:grid-cols-[10rem_1fr]">
-              <dt class="text-[15px] font-medium">{p.name}</dt>
-              <dd class="text-[15px] tabular-nums text-ink-2">{p.value}</dd>
-            </div>
-          ))}
-        </dl>
-        <p class="mt-3 max-w-[64ch] text-[13.5px] leading-relaxed text-muted">
-          The pay-to details above are placeholders until the owner of the service fills them in. Do not send money to a placeholder.
-        </p>
+        {payTo.length > 0 ? (
+          <>
+            <p class="mt-1.5 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
+              {pricesFinal ? 'Send the amount on the invoice' : 'Once the prices are final, send the amount on each invoice'} {payTo.length > 1 ? 'to any of these' : 'to the account below'}, and put the invoice number (FL-…) as the reference or message. A person checks the account and marks it paid within one working day; the row above turns to “Paid”.
+            </p>
+            <dl class="mt-4 max-w-[760px] divide-y divide-line-2 border border-line bg-surface">
+              {payTo.map((p) => (
+                <div class="grid gap-1 px-5 py-3.5 sm:grid-cols-[10rem_1fr]">
+                  <dt class="text-[15px] font-medium">{p.name}</dt>
+                  <dd class="text-[15px] tabular-nums text-ink-2">{p.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </>
+        ) : (
+          <p role="note" class="mt-3 max-w-[64ch] border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
+            Where to pay goes up here before your first invoice. Until then, do not send money to anyone for Flossify.
+          </p>
+        )}
       </section>
 
       <section class="mt-10 max-w-[64ch]" aria-labelledby="late-title">
         <h2 id="late-title" class="font-display text-[22px] font-semibold">If a payment is late</h2>
         <p class="mt-1.5 text-[15px] leading-relaxed text-ink-2">
-          Nothing is switched off. Your patients’ records, the day list and your texts keep working whatever the state of the bill — patients come first. After an invoice is more than {PAUSE_AFTER_DAYS} days overdue the public listing on Find a clinic may be paused until it is settled <span class="bg-crown/15 px-1 text-ink">[YOUR policy]</span>. If something has gone wrong on your side, write to us before then; a note is enough.
+          Nothing is switched off. Your patients’ records, the day list and your texts keep working whatever the state of the bill — patients come first.{' '}
+          {!pricesFinal
+            ? <>If something has gone wrong on your side, tell us; a note is enough.</>
+            : <>After an invoice is more than {PAUSE_AFTER_DAYS} days overdue the public listing on Find a clinic may be paused until it is settled. If something has gone wrong on your side, write to us before then; a note is enough.</>}
         </p>
       </section>
     </>

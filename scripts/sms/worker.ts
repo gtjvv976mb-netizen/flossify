@@ -16,9 +16,20 @@
 //
 // Log lines all start with "[sms] ": one per outcome, one per pass of the
 // reminder pass, and the console provider's own "[sms] → number (kind) body".
+//
+// Settings. Before anything else the worker runs the same check as the web
+// server (assertEnv('worker') in src/lib/env.ts): with NODE_ENV=production it
+// refuses to start on the development database password or console texts,
+// listing every problem under "[env] "; anywhere else it warns and carries on.
+//
+// Billing. Invoices are issued here, once a pass, only when BILLING_FINAL
+// (src/lib/billing-config.ts) is true. Until the prices are real it says so
+// once when it starts and issues nothing.
 
 import pg from 'pg';
 import { providerFromEnv, localNumber, type SmsProvider } from '../../src/lib/sms.ts';
+import { assertEnv } from '../../src/lib/env.ts';
+import { BILLING_FINAL } from '../../src/lib/billing-config.ts';
 
 const ONCE = process.argv.includes('--once');
 const TICK_MS = 10_000;
@@ -35,12 +46,29 @@ const QUIET_UNTIL = 8; // 8 am Manila
 
 interface Claimed { id: string; clinic_id: string; to_address: string; body: string; kind: string | null; attempts: number }
 
+// Before the pool: a production worker must not connect with settings the web server would refuse.
+try {
+  assertEnv('worker');
+} catch (e) {
+  // A refusal has already printed every problem under "[env] ".
+  if ((e as Error).name !== 'FlossifyConfigError') console.error(`[sms] ${(e as Error).message}`);
+  console.error('[sms] not starting: fix the settings above and start the worker again.');
+  process.exit(1);
+}
+
 const url = process.env.DATABASE_URL;
 if (!url) {
   console.error('[sms] DATABASE_URL is not set. See .env.example.');
   process.exit(1);
 }
-const pool = new pg.Pool({ connectionString: url, max: 2 });
+// DATABASE_SSL=1: TLS without certificate verification, as src/lib/db.ts does
+// (an sslmode on the URL wins). Without it a TLS-only managed Postgres refuses
+// every pass, and no text and no retention purge ever runs.
+const pool = new pg.Pool({
+  connectionString: url,
+  max: 2,
+  ssl: (process.env.DATABASE_SSL ?? '').trim() === '1' ? { rejectUnauthorized: false } : undefined,
+});
 pool.on('error', (e) => log(`pool: ${e.message}`));
 
 function log(line: string) {
@@ -88,7 +116,10 @@ async function enqueueReminders() {
   // Retention rides along too: text logs older than two years go, as the privacy notice says.
   try { const r = await pool.query('select retention_purge() as n'); if (r.rows[0].n) log(`retention: ${r.rows[0].n} old text rows deleted`); } catch (e) { log(`retention pass failed: ${(e as Error).message}`); }
   // Billing rides along: once a pass, issue the month's invoices and flip past-due states (idempotent).
-  try { const inv = await pool.query("select billing_issue_invoices((now() at time zone 'Asia/Manila')::date) as n"); if (inv.rows[0].n) log(`invoices issued: ${inv.rows[0].n}`); } catch (e) { log(`billing pass failed: ${(e as Error).message}`); }
+  // Not while the prices are placeholders (BILLING_FINAL); main() says so once.
+  if (BILLING_FINAL) {
+    try { const inv = await pool.query("select billing_issue_invoices((now() at time zone 'Asia/Manila')::date) as n"); if (inv.rows[0].n) log(`invoices issued: ${inv.rows[0].n}`); } catch (e) { log(`billing pass failed: ${(e as Error).message}`); }
+  }
 }
 
 async function claim(): Promise<Claimed[]> {
@@ -183,6 +214,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => {
 
 async function main() {
   const provider = providerFromEnv();
+  if (!BILLING_FINAL) log('billing: not issuing invoices — BILLING_FINAL is false in src/lib/billing-config.ts');
   if (ONCE) {
     log(`one pass through ${provider.name}`);
     try {

@@ -85,7 +85,8 @@ versioned notice; each booking records which version was agreed to.
 Operations (`/admin/`, Flossify staff only): the PRC licence check queue,
 the clinics list, and billing — trials, monthly invoices, manual payments
 marked paid. Prices and pay-to details are placeholders in
-`src/lib/billing.ts` until you set them.
+`src/lib/billing.ts` until you set them; nothing is invoiced until
+`BILLING_FINAL` in `src/lib/billing-config.ts` is true.
 
 The workspace installs as an app (`manifest.webmanifest`, `sw.js`); the
 service worker caches only the shell and fonts, never patient data.
@@ -168,14 +169,14 @@ try/catch because private mode throws.
 - [ ] Re-verify every row of the comparison table against the competitor's
       live site, and keep the date on the claim. Comparative marketing is
       fine; being wrong about a competitor is not.
-- [ ] Settle the name. `flossify.com`, `flossify.app` and `getflossify.com`
-      are taken, and Flossy (flossy.com) sells AI software to dental
-      practices — one letter away, same buyer. `flossify.io`, `flossify.co`
-      and `flossify.ph` were free as of September 2026.
-- [ ] Point `site` in `astro.config.mjs` at the real domain.
+- [x] The domain is **flossify.ph** (the owner, September 2026); `site` in
+      `astro.config.mjs` points at it. Flossy (flossy.com) sells AI software
+      to dental practices — one letter away, same buyer.
 - [ ] Set the plan prices, the GCash / Maya / bank pay-to details, the billing
       email and the listing-pause policy in `src/lib/billing.ts` (all marked
-      as placeholders on the Billing pages until then).
+      as placeholders on the Billing pages until then), then set
+      `BILLING_FINAL = true` in `src/lib/billing-config.ts`. Until then no
+      invoice is issued.
 - [ ] Name Flossify's Data Protection Officer and enter the NPC registration
       number in `src/pages/privacy.astro` — only once they are real.
 - [ ] Add real product screenshots. The chart is currently the only real

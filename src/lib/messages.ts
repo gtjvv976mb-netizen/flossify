@@ -3,7 +3,12 @@
 // provider said. Every text is written inside a clinic transaction, so the
 // row belongs to a clinic and the desk can see it on their Messages page.
 //
-// No links in any text. Philippine telcos drop messages with URLs in them.
+// No links in any text. Philippine telcos drop messages with URLs in them, and
+// a bare domain (anything.gov.ph) can read as one to their filters: name the
+// place in words instead.
+//
+// No text asks for a reply. Semaphore sends from a registered sender name, one
+// way; a reply reaches nobody. Say what happens and whom to call.
 
 import type { Tx } from './db';
 
@@ -50,5 +55,15 @@ export const texts = {
   reset: (code: string) => `Flossify: your password reset code is ${code}. It works for 15 minutes. If you did not ask for it, ignore this text.`,
   invite: (by: string, clinic: string, code: string) => `Flossify: ${by} added you to ${clinic}. On the Flossify staff sign-in page choose "I have a code" and enter ${code}. It works for 24 hours.`,
   patientCode: (code: string) => `Flossify: your sign-in code is ${code}. It works for 15 minutes. If you did not ask for it, ignore this text.`,
-  prcMismatch: (dentist: string, prc: string) => `Flossify: we could not match ${dentist}'s PRC licence ${prc} at verification.prc.gov.ph. Until it is sorted the public profile says "PRC check pending". Reply to this text or write to ops at Flossify.`,
+  /**
+   * To the clinic's owner, after a person at Flossify found the licence did not match
+   * PRC's records. `prc` may be '(none on file)': then the text says there is no number.
+   * No domain (a filter can read one as a link) and no reply asked for (none arrives).
+   * It promises nothing Flossify has not set up: there is no call-back step and no
+   * in-app way to change the number, so it says what to check and whom to tell.
+   */
+  prcMismatch: (dentist: string, prc: string) =>
+    /\d/.test(prc)
+      ? `Flossify: ${dentist}'s PRC licence ${prc} did not match PRC's records. Their profile says "PRC check pending". Check the number and tell Flossify.`
+      : `Flossify: ${dentist} has no PRC licence number on file, so their profile says "PRC check pending". Tell Flossify the number on their PRC ID.`,
 };

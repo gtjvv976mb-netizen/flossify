@@ -8,6 +8,12 @@
 // address (three asks an hour for one number; a script gets nowhere), and
 // every ask written to auth_event. Nothing is sent from here: the text is
 // queued in message_log under the person's home branch and the worker sends it.
+//
+// The number goes on to the code page in a cookie, never in the address: a
+// URL with a mobile in it sits in proxy logs and in the history of a shared
+// clinic computer. The cookie is httpOnly, lives 15 minutes (as long as the
+// code), is sent to the code page only, and is set whether or not the number
+// is on file, like everything else here.
 export const prerender = false;
 
 import StaffEntrance from '../../components/StaffEntrance.astro';
@@ -18,6 +24,9 @@ import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
 import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
 import { issueCode } from '../../lib/codes';
 import { normalizePhone, PH_MOBILE, queueText, texts } from '../../lib/messages';
+
+// Read back by /auth/code/, which clears it once the code is used.
+const CODE_PHONE_COOKIE = 'fl_code_phone';
 
 let typed = '';
 let error = '';
@@ -38,14 +47,18 @@ if (Astro.request.method === 'POST') {
       const staff = await staffByPhone(phone);
       if (staff) {
         const code = await issueCode(staff.id, 'reset');
-        // A text is a clinic's row (RLS), so it needs a clinic: their home branch, else the first one they may open.
+        // A text is a clinic's row (message_log.clinic_id is not null, and RLS), so it needs a clinic: their home
+        // branch, else the first one they may open. Flossify's operations accounts have no clinic, so nothing is
+        // queued for them and the answer stays the same; whoever runs the server resets those (see /admin/).
         const clinicId: string | null = staff.home_clinic_id
           ?? (await pool.query('select id from staff_branches($1)', [staff.id])).rows[0]?.id ?? null;
         if (clinicId) await withClinic(clinicId, (tx) => queueText(tx, { clinicId, to: phone, body: texts.reset(code), kind: 'reset', staffId: staff.id }));
         await authEvent('reset.request', { email: staff.email, staffId: staff.id, ip, ua });
       }
-      // Found or not, the same answer: the code page, told a text may be coming.
-      return Astro.redirect(`/auth/code/?phone=${phone}&sent=1`, 303);
+      // Found or not, the same answer: the code page, told a text may be coming, with the number
+      // carried in the cookie so it never appears in a URL.
+      Astro.cookies.set(CODE_PHONE_COOKIE, phone, { httpOnly: true, sameSite: 'lax', secure: import.meta.env.PROD, path: '/auth/code', maxAge: 15 * 60 });
+      return Astro.redirect('/auth/code/?sent=1', 303);
     }
   }
 }

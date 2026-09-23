@@ -90,8 +90,10 @@ if (Astro.request.method === 'POST') {
     else if (!EMAIL.test(add.email) || add.email.length > 120) error = 'That email doesn’t look complete.';
     else if (dentist && !/^\d{4,10}$/.test(add.prc)) error = 'A dentist needs their PRC licence number: digits only, usually seven.';
     else if (dentist && add.specialty && !SPECIALTIES.includes(add.specialty)) error = 'Pick a specialty from the list, or leave it blank for a general dentist.';
-    else if ((await pool.query('select 1 from staff where group_id = $1 and email = $2', [clinic.group_id, add.email])).rowCount) error = 'Someone in this group already has that email.';
-    else if ((await pool.query(`select 1 from staff where group_id = $1 and right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $2`, [clinic.group_id, phone.slice(-10)])).rowCount) error = 'Someone in this group already has that mobile number.';
+    // Across the whole service, not just this group: sign-in finds a person by email and a reset
+    // finds them by mobile, so each may belong to one staff account only (as /start/ checks).
+    else if ((await pool.query('select 1 from staff where email = $1', [add.email])).rowCount) error = 'That email is already on a Flossify staff account. Use another one for them.';
+    else if ((await pool.query(`select 1 from staff where right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $1`, [phone.slice(-10)])).rowCount) error = 'That mobile number is already on a Flossify staff account. Use another one for them.';
     else {
       // The staff row and its access are group data and commit first; the code
       // references the row, so it is minted after. Days, the text and the
@@ -133,6 +135,7 @@ if (Astro.request.method === 'POST') {
       // The mobile is where codes go. An owner adds or corrects it here, then texts a code.
       const phone = normalizePhone(String(form.get('phone') ?? ''));
       if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
+      else if ((await pool.query(`select 1 from staff where id <> $1 and right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $2`, [t.id, phone.slice(-10)])).rowCount) error = 'That mobile number is already on another Flossify staff account. Codes go to one person only.';
       else {
         await pool.query('update staff set phone = $2 where id = $1', [t.id, phone]);
         await withClinic(clinic.id, (tx) => audit(tx, 'staff.phone', t.id));

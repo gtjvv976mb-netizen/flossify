@@ -18,6 +18,7 @@
 import type { Tx } from './db';
 import { withClinic } from './db';
 import { normalizePhone, PH_MOBILE } from './messages';
+import { willRemind } from './availability';
 
 export type Appt = {
   id: string;
@@ -255,12 +256,13 @@ export function shortName(full: string): string {
 /** True when a text can reach this number. */
 export const canText = (phone: string | null | undefined) => !!phone && PH_MOBILE.test(normalizePhone(phone));
 
-/** The texts the schedule sends. Clinic name first, then the fact, then what to do; no link in any of them. */
+/** The texts the schedule sends. Clinic name first, then the fact, then what to do; no link in any of them,
+ *  and no "reply Y": the sender (Semaphore) is one-way, so a reply reaches nobody. */
 export const scheduleTexts = {
   /** A desk booking's confirmation — the same words a web booking gets, so a patient sees one voice. */
   confirmation: (clinic: string, reason: string | null, at: Date, ref: string | null, clinicPhone: string | null) =>
-    `${clinic}: ${reason ?? 'your visit'} booked for ${whenText(at)}.${ref ? ` Ref ${ref}.` : ''} We'll text the day before; reply Y to confirm or call ${clinicPhone ?? 'the clinic'} to change.`,
+    `${clinic}: ${reason ?? 'your visit'} booked for ${whenText(at)}.${ref ? ` Ref ${ref}.` : ''}${willRemind(at) ? ` We'll remind you the day before.` : ''} To change it, call ${clinicPhone ?? 'the clinic'}.`,
   /** The desk moved a future visit to a new time. */
   moved: (clinic: string, at: Date, ref: string | null, clinicPhone: string | null) =>
-    `${clinic}: your visit moved to ${whenText(at)}.${ref ? ` Ref ${ref}.` : ''} Reply Y to confirm or call ${clinicPhone ?? 'the clinic'}.`,
+    `${clinic}: your visit moved to ${whenText(at)}.${ref ? ` Ref ${ref}.` : ''} To change it, call ${clinicPhone ?? 'the clinic'}.`,
 };

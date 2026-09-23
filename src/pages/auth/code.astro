@@ -10,6 +10,12 @@
 // five misses (codes.ts). The code field is the only thing that ever says
 // "not right": a number that is not on file gets the same sentence as a
 // wrong code, so the form cannot be used to find out which numbers are staff.
+//
+// The number is never in the address. /auth/forgot/ leaves it in a 15-minute
+// httpOnly cookie sent to this page only; it fills the field and is cleared
+// once the code is used. No cookie (expired, another device, a link from an
+// invitation text) and the person types the number. Old links that carried
+// ?phone= still fill the field for now; nothing makes new ones.
 export const prerender = false;
 
 import StaffEntrance from '../../components/StaffEntrance.astro';
@@ -21,8 +27,12 @@ import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
 import { redeemCode, REDEEM_TEXT } from '../../lib/codes';
 import { normalizePhone, PH_MOBILE, prettyPhone } from '../../lib/messages';
 
+// Set by /auth/forgot/ (same name, same path).
+const PHONE_COOKIE = 'fl_code_phone', PHONE_COOKIE_PATH = '/auth/code';
+
 const sent = Astro.url.searchParams.get('sent') === '1';
-let typed = prettyPhone(Astro.url.searchParams.get('phone') ?? '');
+const remembered = Astro.cookies.get(PHONE_COOKIE)?.value ?? '';
+let typed = prettyPhone(PH_MOBILE.test(remembered) ? remembered : (Astro.url.searchParams.get('phone') ?? ''));
 let error = '';
 let device: Device = 'shared';
 
@@ -57,6 +67,8 @@ if (Astro.request.method === 'POST') {
         await authEvent('code.fail', { email: staff?.email, staffId: staff?.id, ip, ua });
       } else {
         const tv = await setPassword(staff.id, password);
+        // The code is spent: the number has no more reason to be on this computer.
+        Astro.cookies.delete(PHONE_COOKIE, { path: PHONE_COOKIE_PATH });
         if (purpose === 'invite') await pool.query('update staff set invited_at = coalesce(invited_at, now()) where id = $1', [staff.id]);
         await authEvent(purpose === 'invite' ? 'invite.accept' : 'reset.ok', { email: staff.email, staffId: staff.id, ip, ua });
         // Sign them in with the new token version; every older session is already out.
@@ -131,6 +143,12 @@ if (Astro.request.method === 'POST') {
 </StaffEntrance>
 
 <script>
+  // An old link may still carry the number as ?phone=. The field has it now; take it out of the address bar.
+  const here = new URL(location.href);
+  if (here.searchParams.has('phone')) {
+    here.searchParams.delete('phone');
+    history.replaceState(history.state, '', here.pathname + here.search + here.hash);
+  }
   // Show the password, and warn about Caps Lock: the same help as sign-in.
   document.querySelectorAll<HTMLButtonElement>('[data-show]').forEach((btn) => {
     const input = document.getElementById(btn.getAttribute('aria-controls') ?? '') as HTMLInputElement | null;

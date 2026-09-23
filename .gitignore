@@ -21,3 +21,7 @@ raw-clinic/
 
 raw-walk/
 /uploads/
+
+# npm run db:backup's default BACKUP_DIR: database dumps and photo archives
+# hold patients' records. Anchored like /uploads/ above.
+/backups/

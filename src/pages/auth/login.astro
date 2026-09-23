@@ -71,6 +71,13 @@ const notice = done === 'password' ? 'Your password is set. Sign in with it now.
 const hour = +new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false }).format(new Date());
 const hello = hour >= 5 && hour < 12 ? 'Good morning.' : hour >= 12 && hour < 18 ? 'Good afternoon.' : hour >= 18 && hour < 22 ? 'Good evening.' : 'Working late.';
 
+// The seeded test logins, on the owner's own machine only (SHOW_DEMO_LOGINS=1). Read from the
+// server's environment on every request: import.meta.env is fixed at build time, and a build made
+// where the flag is set must not carry a known password onto a real clinic's sign-in page. The
+// import.meta.env half is for `astro dev` alone, which reads .env but not into process.env; a build
+// turns import.meta.env.DEV into false, so that half compiles away and nothing is baked in.
+const demoLogins = process.env.SHOW_DEMO_LOGINS === '1' || (import.meta.env.DEV && import.meta.env.SHOW_DEMO_LOGINS === '1');
+
 const ways = [
   { href: '/auth/forgot/', title: 'Forgot your password?', body: 'We text a code.' },
   { href: '/auth/code/', title: 'I have a code', body: 'From your clinic or a reset.' },
@@ -136,12 +143,14 @@ const ways = [
     ))}
   </ul>
 
-  <details class="entry-dev mt-5">
-    <summary class="meta">Development database</summary>
-    <p class="mt-2 text-[13.5px] leading-relaxed entry-dim">
-      Every group owner is seeded with the password <code class="font-mono">flossify</code> — for example <code class="font-mono">liwayway.domingo@example.com</code>. Operations: <code class="font-mono">ops@flossify.example</code>. Remove this before anyone real signs in.
-    </p>
-  </details>
+  {demoLogins && (
+    <details class="entry-dev mt-5">
+      <summary class="meta">Development database</summary>
+      <p class="mt-2 text-[13.5px] leading-relaxed entry-dim">
+        Every group owner is seeded with the password <code class="font-mono">flossify</code> — for example <code class="font-mono">liwayway.domingo@example.com</code>. Operations: <code class="font-mono">ops@flossify.example</code>. Shown because this server has <code class="font-mono">SHOW_DEMO_LOGINS=1</code>; never set it on a live one.
+      </p>
+    </details>
+  )}
 </StaffEntrance>
 
 <script>

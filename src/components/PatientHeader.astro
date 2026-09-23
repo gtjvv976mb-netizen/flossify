@@ -4,6 +4,13 @@
 // one hairline, nothing rounded.
 interface Props { current?: 'find' | 'coverage' | 'me' }
 const { current } = Astro.props;
+
+// The seeded directory is invented clinics, invented dentists and 555 numbers, so on the owner's own
+// machine (SHOW_DEMO_LOGINS=1, read at request time; from .env under `astro dev` only, a half a build
+// compiles away) every patient page says so, and nobody drives to Session Road expecting a chair. A
+// live directory is real clinics taking real bookings: no line. A prerendered page never shows it,
+// because a build reads .env into its environment and would bake it in.
+const devData = (process.env.SHOW_DEMO_LOGINS === '1' || (import.meta.env.DEV && import.meta.env.SHOW_DEMO_LOGINS === '1')) && !Astro.isPrerendered;
 ---
 
 <header class="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur-md">
@@ -18,8 +25,8 @@ const { current } = Astro.props;
   </div>
 </header>
 
-<!-- Invented clinics, invented dentists, 555 numbers. Said once, up top, on
-     every patient page, so nobody drives to Session Road expecting a chair. -->
-<p role="note" class="border-b border-crown/40 bg-crown/10 px-5 py-2 text-center text-[13px] text-ink sm:px-8">
-  Prototype. The clinics and dentists are invented and the phone numbers are 555 numbers; nothing here books a real visit.
-</p>
+{devData && (
+  <p role="note" class="border-b border-crown/40 bg-crown/10 px-5 py-2 text-center text-[13px] text-ink sm:px-8">
+    Prototype. The clinics and dentists are invented and the phone numbers are 555 numbers; nothing here books a real visit.
+  </p>
+)}
