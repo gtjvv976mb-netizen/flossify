@@ -570,16 +570,16 @@ p { text-wrap: pretty; }
 .line-clip:nth-of-type(3) > span { transition-delay: 140ms; }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal { opacity: 1; transform: none; transition: none; }
-  .rule-draw { transform: none; transition: none; }
-  .line-clip > span { transform: none; transition: none; }
-  .media > img { transition: none; opacity: 1; }
-  .idx-shot { transition: none; }
-  .idx-row:hover, .idx-row[data-active] { padding-left: 0; }
+  html:not(.force-motion) .reveal { opacity: 1; transform: none; transition: none; }
+  html:not(.force-motion) .rule-draw { transform: none; transition: none; }
+  html:not(.force-motion) .line-clip > span { transform: none; transition: none; }
+  html:not(.force-motion) .media > img { transition: none; opacity: 1; }
+  html:not(.force-motion) .idx-shot { transition: none; }
+  html:not(.force-motion) .idx-row:hover, html:not(.force-motion) .idx-row[data-active] { padding-left: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  html:not(.force-motion) *, html:not(.force-motion) *::before, html:not(.force-motion) *::after {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
@@ -593,7 +593,7 @@ p { text-wrap: pretty; }
 /* ===========================================================================
    the tour — a single scrubbed take
 
-   One continuous shot walking in from the pavement to the chair. Scroll
+   One continuous 30-second shot walking in from the pavement to the chair. Scroll
    position maps to the video's currentTime, so the visitor sets their own
    pace through the clinic: stop, and they stop; scroll back, and they walk
    back out. The page never takes the wheel.
@@ -604,7 +604,7 @@ p { text-wrap: pretty; }
    =========================================================================== */
 @layer components {
 
-.film { height: calc(var(--stops, 4) * 100vh); }
+.film { height: calc(var(--screens, 6) * 100vh); }
 
 .film-stage {
   position: sticky;
@@ -710,6 +710,20 @@ p { text-wrap: pretty; }
   transition: transform 300ms ease;
 }
 .film-stop[data-on]::before { transform: scaleX(1); }
+/* Four labels do not fit a phone's width without wrapping into the hint, so
+   the rail keeps only its letters there; the letters are the waypoints. */
+@media (max-width: 639px) {
+  .film-stop { padding: 0.75rem 0.9rem; }
+  .film-stop-label { display: none; }
+  .film-hint { right: 1rem; bottom: 3.6rem; }
+}
+
+/* The two buttons inside the opening caption sit on footage under the scrim,
+   so they take the light ground regardless of theme. Still square, still flat. */
+.btn-film { background: #f2f2ef; color: #0e0f0f; border-color: #f2f2ef; }
+.btn-film:hover { background: #7df0b4; border-color: #7df0b4; color: #0e0f0f; }
+.btn-film-quiet { background: transparent; color: #f2f2ef; border-color: color-mix(in srgb, #f2f2ef 46%, transparent); }
+.btn-film-quiet:hover { border-color: #f2f2ef; }
 
 /* A hint that the film answers to scrolling, shown only until it does. */
 .film-hint {
@@ -726,12 +740,12 @@ p { text-wrap: pretty; }
 /* Without the travel there is nothing to scrub, so the section becomes an
    ordinary stack: the poster frame, then the same captions as text. */
 @media (prefers-reduced-motion: reduce) {
-  .film { height: auto; }
-  .film-stage { position: static; height: auto; overflow: visible; background: var(--c-bg); }
-  .film-video, .film-scrim, .film-rail, .film-hint { display: none; }
-  .film-poster { position: static; height: auto; aspect-ratio: 16 / 9; }
-  .film-caps { position: static; }
-  .film-cap {
+  html:not(.force-motion) .film { height: auto; }
+  html:not(.force-motion) .film-stage { position: static; height: auto; overflow: visible; background: var(--c-bg); }
+  html:not(.force-motion) .film-video, html:not(.force-motion) .film-scrim, html:not(.force-motion) .film-rail, html:not(.force-motion) .film-hint { display: none; }
+  html:not(.force-motion) .film-poster { position: static; height: auto; aspect-ratio: 16 / 9; }
+  html:not(.force-motion) .film-caps { position: static; }
+  html:not(.force-motion) .film-cap {
     position: static;
     transform: none;
     opacity: 1;
@@ -742,4 +756,7 @@ p { text-wrap: pretty; }
     border-top: 1px solid var(--c-line);
     margin-top: 2rem;
   }
+  /* Back on the page ground, the film buttons become the ordinary pair. */
+  html:not(.force-motion) .btn-film { background: var(--c-ink); color: var(--c-bg); border-color: var(--c-ink); }
+  html:not(.force-motion) .btn-film-quiet { color: var(--c-ink); border-color: var(--c-line); }
 }

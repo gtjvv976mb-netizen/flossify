@@ -47,6 +47,8 @@ const org = {
       } catch (e) {
         /* private mode or blocked storage: fall back to the OS preference */
       }
+      /* Demo switch: `?motion=on` overrides Reduce Motion for this page load only. */
+      if (/[?&]motion=on\b/.test(location.search)) document.documentElement.classList.add('force-motion');
     </script>
 
     <script type="application/ld+json" set:html={JSON.stringify(org)} />

@@ -29,34 +29,40 @@ const queue = [
   { no: '004', at: '10:40', state: 'In chair' },
 ];
 
-// The tour. Four stops, one per segment of the film, so a caption can never
-// describe a room the footage is not in.
+// The tour. Four stops, one per room of the film, each pinned to the moment
+// the footage arrives there (fractions of the 30s take, read off a frame
+// sheet), so a caption can never describe a room the camera is not in.
 const stops = [
   {
-    key: 'A', at: '08:58', label: 'The door',
-    title: 'The door',
-    body: 'You booked this slot yourself last night, from the sofa, in about ninety seconds.',
-    did: 'No phone call, no waiting for the desk to open, no being put on hold.',
+    key: 'A', at: '08:55', from: 0, label: 'Outside',
+    eyebrow: 'Practice software for Philippine dental clinics',
+    title: 'The whole clinic,', title2: 'laid out before the door opens.',
+    body: 'You found this clinic last night and booked the slot yourself, in about ninety seconds. Walk in.',
+    did: 'The website, the booking and the reminder are Flossify. No phone call, no waiting for the desk to open.',
   },
   {
-    key: 'B', at: '09:00', label: 'Reception',
+    key: 'B', at: '09:00', from: 0.17, label: 'Reception',
     title: 'Reception',
     body: 'Nothing to fill in on arrival. Your history went in at home, and the consent was signed on your phone.',
     did: 'The front desk sees you land on the day list the moment you walk in.',
   },
   {
-    key: 'C', at: '09:12', label: 'The corridor',
+    key: 'C', at: '09:12', from: 0.42, label: 'The corridor',
     title: 'The corridor',
     body: 'Twelve minutes, not forty. The chair was ready because the schedule knew how long you would need.',
     did: 'Your dentist already knows why you are here and what happened last time.',
   },
   {
-    key: 'D', at: '09:15', label: 'The chair',
+    key: 'D', at: '09:15', from: 0.8, label: 'The chair',
     title: 'The chair',
     body: 'The finding is charted at the chair — tooth, surface, condition — while it is still in front of them.',
-    did: 'The receipt is issued off the correct BIR series before you reach the door, and the HMO claim is already filed.',
+    did: 'The invoice is issued off the correct BIR series before you reach the door, and the HMO claim is already filed.',
   },
 ];
+
+// How far the visitor scrolls to walk the whole film: 5s of footage per
+// viewport, the pace the 20s take was tuned to.
+const SCREENS = 6;
 
 // Real screens from the clinic workspace in this repo. Nothing mocked up.
 const screens = [
@@ -87,7 +93,7 @@ const screens = [
 const index = [
   { img: 'instruments', alt: 'Stainless dental instruments laid out in a row on a folded cloth', title: 'Scheduling', body: 'Chairs, not calendars. Drag an appointment and the reminder, the room and the dentist move with it.' },
   { img: 'handpiece', alt: 'A dental handpiece and bur resting on a pale worktop', title: 'Charting', body: 'Tooth, surfaces, finding — in that order, the way you would say it out loud.' },
-  { img: 'tray', alt: 'A stainless instrument tray with a mouth mirror and probe', title: 'Billing and BIR', body: 'Official receipts off the correct series, with the ATP dates watched for you. Nothing to reconcile by hand.' },
+  { img: 'tray', alt: 'A stainless instrument tray with a mouth mirror and probe', title: 'Billing and BIR', body: 'Numbered invoices off the correct series — the document BIR has asked for since 2024 — with the permit dates watched for you. Nothing to reconcile by hand.' },
   { img: 'xray', alt: 'A panoramic dental radiograph on a softly glowing light box', title: 'HMO claims', body: 'Filed, followed and aged. You can see which payor has been sitting on your money, and for how long.' },
   { img: 'model', alt: 'A white dental study model of upper and lower teeth', title: 'Documents', body: 'Consent, certificates, clearances, prescriptions. The details you already hold get filled in for you.' },
   { img: 'aligner', alt: 'A clear orthodontic aligner standing on a pale stone surface', title: 'Treatment plans', body: 'The plan, the cost and what the HMO covers, in something a patient can take home.' },
@@ -111,7 +117,7 @@ const faqs = [
 
 <Base
   title="Flossify — practice software for Philippine dental clinics"
-  description="Walk through a clinic running Flossify. The schedule, the chart, the receipt and the HMO claim, laid out before the door opens."
+  description="Walk through a clinic running Flossify. The schedule, the chart, the invoice and the HMO claim, laid out before the door opens."
 >
   <header class="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur-md">
     <div class="mx-auto flex max-w-[1480px] items-center justify-between gap-6 px-5 py-4 sm:px-8">
@@ -132,61 +138,85 @@ const faqs = [
   </header>
 
   <main id="main">
-    <section class="relative border-b border-line" aria-labelledby="hero-title">
-      <div class="grid-frame mx-auto max-w-[1480px] px-5 sm:px-8">
-        <div class="grid grid-cols-1 lg:grid-cols-12">
-          <div class="py-16 sm:py-24 lg:col-span-7 lg:py-32 lg:pr-16">
-            <p class="meta reveal">Practice management &middot; Philippines &middot; 2026</p>
+    <section
+      id="tour"
+      data-sec="01 / Walk in"
+      class="film relative border-b border-line"
+      data-film
+      style={`--screens:${SCREENS}`}
+      aria-label="A walk through a clinic running Flossify"
+    >
+      <div class="film-stage">
+        <img
+          class="film-poster"
+          src="/video/tour-poster.webp"
+          alt="The open glass entrance of a small dental clinic, a pale oak reception desk and a long corridor beyond"
+          width="1344"
+          height="756"
+        />
 
-            <h1 id="hero-title" data-lines class="mt-8 font-display text-[clamp(2.6rem,8.4vw,6.8rem)] font-semibold">
-              <span class="line-clip"><span>Nobody hunting</span></span>
-              <span class="line-clip"><span>for a folder.</span></span>
-            </h1>
+        <video
+          class="film-video"
+          data-film-video
+          muted
+          playsinline
+          preload="auto"
+          disablepictureinpicture
+          aria-hidden="true"
+        ></video>
 
-            <p class="reveal reveal-d1 mt-9 max-w-[46ch] text-[18px] leading-relaxed text-ink-2">
-              Flossify runs the whole clinic — the schedule, the chart, the receipt and the
-              HMO claim. By the time the first patient walks in, the day is already laid out.
-            </p>
+        <div class="film-scrim"></div>
 
-            <div class="reveal reveal-d2 mt-10 flex flex-wrap gap-3">
-              <a href="#tour" class="btn btn-primary">Walk through a clinic</a>
-              <a href="/clinics/" class="btn btn-quiet">Open a workspace</a>
+        <div class="film-caps">
+          {stops.map((t, i) => (
+            <div class="film-cap" data-cap={i} data-from={t.from} data-on={i === 0 ? '' : undefined}>
+              <p class="meta" style="color: rgb(242 242 239 / 0.72)">{t.eyebrow ?? `${t.key} — ${t.at}`}</p>
+              {i === 0 ? (
+                <h1 id="hero-title" data-lines class="mt-5 font-display text-[clamp(2.3rem,5.6vw,4.6rem)] font-semibold">
+                  <span class="line-clip"><span>{t.title}</span></span>
+                  <span class="line-clip"><span>{t.title2}</span></span>
+                </h1>
+              ) : (
+                <h2 class="mt-4 font-display text-[clamp(2rem,4.4vw,3.6rem)] font-semibold">{t.title}</h2>
+              )}
+              <p class="mt-5 max-w-[36ch] text-[17px]" style="color: rgb(242 242 239 / 0.86)">{t.body}</p>
+              <div class="mt-7 h-px max-w-[36ch]" style="background: rgb(242 242 239 / 0.28)"></div>
+              <p class="meta meta-accent mt-5">What Flossify did</p>
+              <p class="mt-2 max-w-[36ch] text-[15px]" style="color: rgb(242 242 239 / 0.8)">{t.did}</p>
+              {i === 0 && (
+                <div class="mt-8 flex flex-wrap gap-3">
+                  <a href="/clinics/" class="btn btn-film">Open a workspace</a>
+                  <a href="#doors" class="btn btn-film-quiet">Who it is for</a>
+                </div>
+              )}
             </div>
-          </div>
+          ))}
+        </div>
 
-          <div class="lg:col-span-5"></div>
+        <p class="meta film-hint" data-film-hint>Scroll to walk in</p>
+
+        <div class="film-rail" aria-hidden="true">
+          {stops.map((t, i) => (
+            <div class="film-stop" data-film-stop={i} data-on={i === 0 ? '' : undefined}>
+              <span class="meta block" style="color: inherit">{t.key}<span class="film-stop-label"> &nbsp; {t.label}</span></span>
+            </div>
+          ))}
         </div>
       </div>
-
-      <figure
-        class="media block aspect-[4/3] w-full border-t border-line lg:absolute lg:inset-y-0 lg:right-0 lg:aspect-auto lg:h-full lg:w-[34vw] lg:border-t-0 lg:border-l"
-        style={`background-image:url("${blur('clinic-tall')}")`}
-      >
-        <img
-          src={src('clinic-tall')}
-          srcset={set('clinic-tall')}
-          sizes="(min-width: 1024px) 34vw, 100vw"
-          alt="A modern dental treatment room with daylight falling across a terrazzo floor"
-          width="688"
-          height="1024"
-          fetchpriority="high"
-        />
-      </figure>
-
-      <div class="relative border-t border-line bg-bg">
-        <ul class="mx-auto grid max-w-[1480px] grid-cols-2 px-5 sm:px-8 md:grid-cols-4" data-ticker>
-          {queue.map((q, i) => (
-            <li class="flex items-baseline gap-3 border-line py-4 md:border-l md:pl-5 md:[&:first-child]:border-l-0" data-tick={i}>
-              <span class="meta tabular-nums">{q.no}</span>
-              <span class="meta tabular-nums">{q.at}</span>
-              <span class="meta" data-tick-state>{q.state}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
     </section>
+    <div class="relative border-t border-line bg-bg">
+      <ul class="mx-auto grid max-w-[1480px] grid-cols-2 px-5 sm:px-8 md:grid-cols-4" data-ticker>
+        {queue.map((q, i) => (
+          <li class="flex items-baseline gap-3 border-line py-4 md:border-l md:pl-5 md:[&:first-child]:border-l-0" data-tick={i}>
+            <span class="meta tabular-nums">{q.no}</span>
+            <span class="meta tabular-nums">{q.at}</span>
+            <span class="meta" data-tick-state>{q.state}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
 
-    <section id="doors" data-sec="01 / Who it is for" class="border-b border-line">
+    <section id="doors" data-sec="02 / Who it is for" class="border-b border-line">
       <div class="mx-auto max-w-[1480px] px-5 sm:px-8">
         <div class="grid grid-cols-1 md:grid-cols-2">
           <a href="/clinics/" class="door block border-b border-line py-14 md:border-b-0 md:pr-14 lg:py-20">
@@ -218,59 +248,6 @@ const faqs = [
       </div>
     </section>
 
-    <section
-      id="tour"
-      data-sec="02 / The tour"
-      class="film relative border-b border-line"
-      data-film
-      style={`--stops:${stops.length}`}
-      aria-label="A walk through a clinic running Flossify"
-    >
-      <div class="film-stage">
-        <img
-          class="film-poster"
-          src="/video/tour-poster.webp"
-          alt="The lit glass entrance of a dental clinic at dusk, seen from the wet pavement"
-          width="1344"
-          height="752"
-        />
-
-        <video
-          class="film-video"
-          data-film-video
-          muted
-          playsinline
-          preload="auto"
-          disablepictureinpicture
-          aria-hidden="true"
-        ></video>
-
-        <div class="film-scrim"></div>
-
-        <div class="film-caps">
-          {stops.map((t, i) => (
-            <div class="film-cap" data-cap={i} data-on={i === 0 ? '' : undefined}>
-              <p class="meta" style="color: rgb(242 242 239 / 0.72)">{t.key} &mdash; {t.at}</p>
-              <h2 class="mt-4 font-display text-[clamp(2rem,4.4vw,3.6rem)] font-semibold">{t.title}</h2>
-              <p class="mt-5 max-w-[36ch] text-[17px]" style="color: rgb(242 242 239 / 0.86)">{t.body}</p>
-              <div class="mt-7 h-px max-w-[36ch]" style="background: rgb(242 242 239 / 0.28)"></div>
-              <p class="meta meta-accent mt-5">What Flossify did</p>
-              <p class="mt-2 max-w-[36ch] text-[15px]" style="color: rgb(242 242 239 / 0.8)">{t.did}</p>
-            </div>
-          ))}
-        </div>
-
-        <p class="meta film-hint" data-film-hint>Scroll to walk in</p>
-
-        <div class="film-rail" aria-hidden="true">
-          {stops.map((t, i) => (
-            <div class="film-stop" data-film-stop={i} data-on={i === 0 ? '' : undefined}>
-              <span class="meta block" style="color: inherit">{t.key} &nbsp; {t.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
 
     <section id="product" data-sec="03 / The product" class="border-b border-line">
       <div class="mx-auto max-w-[1480px] px-5 py-16 sm:px-8 lg:py-28">
@@ -454,7 +431,11 @@ const faqs = [
   </main>
 
   <script>
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    /* `?motion=on` is a demo switch: the owner's Mac has Reduce Motion on, which
+       would otherwise hide the film from the person who commissioned it. It is
+       read once here and once, inline, in Base.astro so the CSS agrees. */
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      && !document.documentElement.classList.contains('force-motion');
 
     /* --- scroll progress -------------------------------------------------- */
     const bar = document.querySelector<HTMLElement>('[data-progress]');
@@ -503,7 +484,8 @@ const faqs = [
         if (Math.abs(vid.currentTime - t) > 1 / 60) vid.currentTime = t;
       }
 
-      const at = Math.min(caps.length - 1, Math.floor(p * caps.length));
+      let at = 0;
+      caps.forEach((c, i) => { if (p >= parseFloat(c.dataset.from ?? '0')) at = i; });
       caps.forEach((c, i) => c.toggleAttribute('data-on', i === at));
       filmStops.forEach((c, i) => c.toggleAttribute('data-on', i === at));
       if (p > 0.015) hint?.setAttribute('data-hide', '');

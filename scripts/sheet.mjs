@@ -1,13 +1,13 @@
 // Samples a take at even intervals and lays the frames out as one grid, so
 // architectural drift (floors, doors, ceiling height) is visible side by side
-// rather than having to be remembered across a 20-second playback.
+// rather than having to be remembered across a 30-second playback.
 import { execFileSync } from 'node:child_process';
 import sharp from 'sharp';
 import ffmpeg from 'ffmpeg-static';
 
 const src = process.argv[2];
 const out = process.argv[3];
-const N = 10, DUR = 20;
+const N = 12, DUR = 30;
 const tiles = [];
 const W = 440, H = 248;
 

@@ -96,12 +96,48 @@ The `start_image` was a daylight frame looking straight through the open
 entrance: desk on the left, corridor receding to a bright window, one-point
 perspective. The `end_image` was the treatment room with the chair centred.
 
+### The 30-second take that is shipped now
+
+The second version starts outside, so the first thing a visitor sees is the
+clinic itself. Two changes to the method above, both of which held:
+
+1. **Generate the start frame, do not photograph one.** A dead-on exterior in
+   exact one-point perspective, with the door open and the interior floor plan
+   visible through it, gives the take a straight axis from the first frame.
+   `gpt_image_2_5`, 16:9, two variants, 1 credit. Pick the one whose door leaf
+   is folded back against the glass and out of the camera's path — the other
+   variant had the leaf standing in the centre of the frame.
+2. **Ask for 30 seconds and describe the first five.** "For the first five
+   seconds the camera approaches the entrance across the honed grey terrazzo
+   paving; the two clipped shrubs in white planters pass out of frame on either
+   side. It crosses the threshold through the open doorway with no step and no
+   change of floor." Then the interior floor plan as before, and the turn in the
+   final four seconds. `wan3_0`, 16:9, 1080p, `generate_audio: false`,
+   `duration: 30`, `count: 2` — 105 credits, preflighted with `get_cost: true`.
+   `start_image` = the generated exterior's job id; `end_image` = the
+   house-style treatment-room still (`operatory-1600.webp`, in the git history).
+   The call was refused once with the "IN THE DARK" preset recommendation and
+   resubmitted with `declined_preset_id`.
+
+Both variants held the vanishing point — the window and its plant — from 0.0s
+to 21.6s. They differed at the turn: one variant **dissolved** from the corridor
+into the treatment room at about 25.5s (the plant ghosted over the cabinets for
+half a second), which is exactly the cut the film must not have. The other
+passed through the last doorway as real geometry. Frame sheets show it; playback
+does not. Always sheet the turn at one-second intervals before choosing.
+
+Stops for the captions, read off the sheet: outside 0–5s, reception 5–12.5s,
+corridor 12.5–24s, chair 24–30s → `from: 0, 0.17, 0.42, 0.8`.
+
+Encoded as below: `tour-1440.mp4` 5.7MB, `tour-960.mp4` 2.4MB, 180 I-frames in
+900 (GOP 5 confirmed). Poster is frame 0 at 1344×756.
+
 ### Checking it
 
 Drift is invisible across 20 seconds of playback and obvious in a grid:
 
 ```bash
-node scripts/sheet.mjs raw/take.mp4 raw/sheet.png   # 10 frames, labelled, 2-up
+node scripts/sheet.mjs raw/take.mp4 raw/sheet.png   # 12 frames, labelled, 2-up
 ```
 
 Look for a fixed vanishing point. In the shipped take the window at the end of
