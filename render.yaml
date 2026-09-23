@@ -1,0 +1,68 @@
+# Render Blueprint: Flossify's web server, text sender and photo disk, in
+# Singapore. In Render: New → Blueprint → this repository → Apply.
+#
+# Render makes SESSION_SECRET and SMS_INBOUND_SECRET itself (random, 256-bit).
+# It asks once, while creating the Blueprint, for every value marked
+# `sync: false`: the database addresses (DigitalOcean Managed PostgreSQL 17,
+# Singapore — docs/deploy.md, section 3) and the Semaphore key and sender
+# name. `sh scripts/deploy/render-values.sh` on the owner's Mac hands them
+# over one at a time through the clipboard, without showing them.
+#
+# The worker starts at the same time as the web server; until the web
+# server's pre-deploy step (npm run db:migrate) has created flossify_app, it
+# cannot sign in to the database and Render restarts it. That settles by
+# itself within a minute or two of the first deploy.
+services:
+  - type: web
+    name: flossify
+    runtime: docker
+    region: singapore
+    plan: starter
+    branch: main
+    healthCheckPath: /healthz
+    preDeployCommand: npm run db:migrate
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_ADMIN_URL
+        sync: false
+      - key: APP_DB_PASSWORD
+        sync: false
+      - key: DATABASE_SSL
+        value: "1"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SMS_INBOUND_SECRET
+        generateValue: true
+      - key: SMS_PROVIDER
+        value: semaphore
+      - key: SMS_API_KEY
+        sync: false
+      - key: SMS_SENDER
+        sync: false
+      - key: TRUST_PROXY
+        value: "1"
+
+  - type: worker
+    name: flossify-worker
+    runtime: docker
+    region: singapore
+    plan: starter
+    branch: main
+    dockerCommand: npm run sms:worker
+    envVars:
+      # Never the admin address or APP_DB_PASSWORD here: the worker is the app.
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL
+        value: "1"
+      - key: SMS_PROVIDER
+        value: semaphore
+      - key: SMS_API_KEY
+        sync: false
+      - key: SMS_SENDER
+        sync: false
