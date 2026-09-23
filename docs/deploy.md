@@ -118,6 +118,27 @@ and Semaphore must be named as subprocessors.
 
 ## 4. First deploy
 
+**The short way on Render: the Blueprint.** `render.yaml` describes the web
+service (Singapore, Starter, `/healthz`, `npm run db:migrate` before each
+deploy, a 1 GB disk at `/data`) and the text sender, and Render generates
+`SESSION_SECRET` and `SMS_INBOUND_SECRET` itself.
+
+1. Create the DigitalOcean database (step 2 below) and copy its `doadmin`
+   connection string for the `flossify` database.
+2. On the Mac, from the repository: `sh scripts/deploy/render-values.sh`.
+   It builds `DATABASE_ADMIN_URL`, `APP_DB_PASSWORD` and `DATABASE_URL`
+   from that string and puts each on the clipboard in turn, then the
+   Semaphore key; nothing is shown or saved.
+3. Render: **New → Blueprint** → the repository → paste each value into the
+   field of the same name (and your password manager), type `SMS_SENDER`
+   on both services → **Apply**.
+4. Wait for `/healthz` to answer `{"ok":true}`, then continue at step 6.
+   The worker may restart once or twice at first: it waits for the web
+   server's first migration to create `flossify_app`.
+
+The long way, by hand, on Render or any other host:
+
+
 1. **Push.** Push the repository to GitHub (private). The host builds the
    image from `Dockerfile`; no build happens on your Mac. Nothing to edit
    first: the host's proxy handles HTTPS and passes plain http to the

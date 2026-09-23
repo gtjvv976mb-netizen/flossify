@@ -507,6 +507,8 @@ src/lib/env.ts, dotenv.ts      production settings check; .env into process.env 
 src/middleware.ts              security headers + the settings check; src/pages/healthz.ts
 src/lib/billing-config.ts      BILLING_FINAL — no invoice is issued until it is true
 Dockerfile, Procfile           one image: web (npm start), worker (sms:worker), release (db:migrate)
+render.yaml                    Render Blueprint (web + worker + disk, Singapore); scripts/deploy/render-values.sh
+                               hands its secret values over through the clipboard
 docs/deploy.md, docs/launch.md how to deploy; the owner's launch checklist
 scripts/sms/worker.ts          the sender: npm run sms:worker (loop) / sms:once
 public/samples/swiftcare/       sample clinic website (see "Sample client sites")
