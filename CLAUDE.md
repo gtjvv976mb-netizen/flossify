@@ -135,6 +135,30 @@ Rules that still hold there:
   `css/styles.css`. `?motion=on` on the URL forces the animations on for demos
   on a machine with Reduce Motion enabled.
 
+## The patient side — `/find/`
+
+Built from `docs/service-map.md`. Rules that shaped it, and that hold:
+
+- **Only availability the clinic can honour.** Slots come from the clinic's
+  hours, the chosen dentist's days and the service's chair time; clinics not on
+  the workspace get a labelled *request* path, never a calendar. The "taken"
+  slots are a stable hash of the slot until a real schedule exists.
+- **No account.** Name, mobile, reason. A known mobile is greeted by name.
+- **Status is Manila time and never colour alone** — the dot changes and the
+  words change with it (`statusFor` in `src/lib/availability.ts`).
+- **Every trust claim names its source.** "PRC licence · checked <date>" means a
+  person looked it up; there is no API. Specialty is shown only for the seven
+  Board-recognised fields. HMO chips are what the clinic reported and say
+  "confirm with your HMO".
+- **Hooks are `data-*` attributes and must not collide.** Two bugs came from
+  `$('[data-tip]')` matching the chips' own `data-tip` and `$('[data-done]')`
+  matching progress marks. A hook that is queried with `querySelector` gets a
+  name nothing else uses.
+- **Toggle the `hidden` attribute, never the `hidden` utility class**, on
+  anything JavaScript shows later; the class wins and the element stays gone.
+- Bookings live in `localStorage` (`flossify:bookings`) with a three-minute
+  undo. On a live clinic the same submit lands in the workspace.
+
 ## Open — read before shipping
 
 **The clinic workspace has no authentication.** `/c/[clinic]/patients/` exposes
@@ -151,6 +175,12 @@ src/pages/index.astro          the marketing page (tour, product, services, FAQ)
 src/pages/clinics.astro        workspace directory
 src/pages/c/[clinic]/…         prototype clinic workspace
 src/pages/websites.astro       the clinic-website service, with the sample framed
+src/pages/find/index.astro     patients: find a clinic by symptom, service, HMO, PhilHealth, open now
+src/pages/find/[clinic]/…      the clinic's public page, and its five-step booking (no account)
+src/pages/dentists/[dentist]   dentist profile: PRC licence checked by a person, dated
+src/pages/coverage.astro       PhilHealth's preventive dental benefit and HMO cards, explained
+src/data/directory.ts          services, symptoms, HMOs, dentists, listings (invented; 555 numbers)
+src/lib/availability.ts        Manila-time status and open slots, computed on the device
 public/samples/swiftcare/       sample clinic website (see "Sample client sites")
 src/components/Odontogram.astro  32 teeth, FDI/Universal/Palmer, surface-scoped
 src/data/schema.sql            full multi-tenant Postgres model with RLS
