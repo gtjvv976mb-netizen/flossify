@@ -24,6 +24,9 @@ const { patients, area } = await withClinic(clinic.id, async (tx) => ({
 
 const age = (birth: Date | null) => (birth ? Math.floor((Date.now() - new Date(birth).getTime()) / 31_557_600_000) : null);
 const day = (d: Date | null) => (d ? new Intl.DateTimeFormat('en-PH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(d) : '—');
+// Invoices and payments cannot be recorded in Flossify yet (only the development
+// seed writes them), so the Balance column shows only when some patient has one.
+const anyBalance = patients.some((p) => Number(p.balance) !== 0);
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Patients" section="patients" staff={{ name: session.name, role: session.role }} branches={branches}>
@@ -37,15 +40,16 @@ const day = (d: Date | null) => (d ? new Intl.DateTimeFormat('en-PH', { day: 'nu
       <caption class="sr-only">Patients registered at {clinic.name}</caption>
       <thead>
         <tr class="border-b border-line bg-bg-soft">
-          <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Chart</th>
-          <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Name</th>
-          <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Age</th>
-          <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Alerts</th>
-          <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Last visit</th>
-          <th scope="col" class="px-5 py-3.5 text-right text-xs font-semibold tracking-[0.09em] text-muted uppercase">Balance</th>
+          <th scope="col" class="meta px-5 py-3.5 font-normal">Chart</th>
+          <th scope="col" class="meta px-5 py-3.5 font-normal">Name</th>
+          <th scope="col" class="meta px-5 py-3.5 font-normal">Age</th>
+          <th scope="col" class="meta px-5 py-3.5 font-normal">Alerts</th>
+          <th scope="col" class="meta px-5 py-3.5 font-normal">Last visit</th>
+          {anyBalance && <th scope="col" class="meta px-5 py-3.5 text-right font-normal">Balance</th>}
         </tr>
       </thead>
       <tbody>
+        {patients.length === 0 && <tr><td colspan="6" class="px-5 py-5 text-[15px] text-muted">No patients yet. They appear here after their first booking, from the website or the desk.</td></tr>}
         {patients.map((p, i) => (
           <tr class={i < patients.length - 1 ? 'border-b border-line-2' : ''}>
             <td class="px-5 py-4 text-[14.5px] tabular-nums text-muted">{p.chart_no}</td>
@@ -61,7 +65,7 @@ const day = (d: Date | null) => (d ? new Intl.DateTimeFormat('en-PH', { day: 'nu
               </div>
             </td>
             <td class="px-5 py-4 text-[15px] tabular-nums text-ink-2">{day(p.last_visit)}</td>
-            <td class="px-5 py-4 text-right text-[15px] font-semibold tabular-nums">{Number(p.balance) === 0 ? <span class="text-muted">—</span> : peso(Number(p.balance))}</td>
+            {anyBalance && <td class="px-5 py-4 text-right text-[15px] font-semibold tabular-nums">{Number(p.balance) === 0 ? <span class="text-muted">—</span> : peso(Number(p.balance))}</td>}
           </tr>
         ))}
       </tbody>

@@ -11,6 +11,11 @@
 // RLS), so it is queued under the clinic that most recently dealt with the
 // number, and not at all when there is none. Guarded like the staff door:
 // the CSRF token, a limit per number and per address.
+//
+// The number goes on to the code page in a cookie, never in the address: a
+// URL with a mobile in it sits in proxy logs and in the history of a shared
+// computer. httpOnly, 15 minutes (as long as the code), sent to the code page
+// only, and set whether or not any clinic knows the number.
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
@@ -25,6 +30,9 @@ import { normalizePhone, PH_MOBILE, queueText, texts } from '../../lib/messages'
 
 // Already in: straight to the list.
 if (readPatientSession(Astro.cookies)) return Astro.redirect('/me/visits/', 303);
+
+// Read back by /me/code/, which clears it once the code is used.
+const ME_PHONE_COOKIE = 'fl_me_phone';
 
 let typed = '';
 let error = '';
@@ -48,7 +56,8 @@ if (Astro.request.method === 'POST') {
       // Kind 'reset' on purpose: the Messages page blanks the body of reset and invite rows, and a
       // sign-in code is for the phone it was texted to, never for a page.
       if (clinicId) await withClinic(clinicId, (tx) => queueText(tx, { clinicId, to: phone, body: texts.patientCode(code), kind: 'reset' }));
-      return Astro.redirect(`/me/code/?phone=${phone}&sent=1`, 303);
+      Astro.cookies.set(ME_PHONE_COOKIE, phone, { httpOnly: true, sameSite: 'lax', secure: import.meta.env.PROD, path: '/me/code', maxAge: 15 * 60 });
+      return Astro.redirect('/me/code/?sent=1', 303);
     }
   }
 }

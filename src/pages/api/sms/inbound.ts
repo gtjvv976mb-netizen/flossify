@@ -15,6 +15,7 @@
 // with 403; a gateway that posts JSON gets through as-is. Prefer JSON.
 export const prerender = false;
 
+import '../../../lib/dotenv';
 import type { APIRoute } from 'astro';
 import { timingSafeEqual } from 'node:crypto';
 import { pool } from '../../../lib/db';
@@ -23,7 +24,7 @@ import { hit, clientIp, LIMITS } from '../../../lib/throttle';
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(body, { status, headers: { 'cache-control': 'no-store', ...headers } });
 
-const SECRET = import.meta.env.SMS_INBOUND_SECRET ?? process.env.SMS_INBOUND_SECRET ?? '';
+const SECRET = process.env.SMS_INBOUND_SECRET ?? '';
 
 /** Constant-time match against the configured secret. An unset secret admits nobody. */
 function secretOk(given: string | null): boolean {

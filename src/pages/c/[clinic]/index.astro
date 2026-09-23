@@ -14,6 +14,7 @@ import { requireWorkspace } from '../../../lib/workspace';
 import { withClinic } from '../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../lib/csrf';
 import { peso } from '../../../data/demo';
+import { hmoById } from '../../../data/directory';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -48,7 +49,7 @@ if (Astro.request.method === 'POST') {
 }
 
 const data = await withClinic(clinic.id, async (tx) => {
-  const me = (await tx.query(`select chairs, tin, bir_branch_code, area from clinic where id = $1`, [clinic.id])).rows[0];
+  const me = (await tx.query(`select chairs, area from clinic where id = $1`, [clinic.id])).rows[0];
   const today = (await tx.query(
     `select a.id, a.starts_at, a.reason, a.status, a.source, a.public_ref, a.booked_by_phone,
             p.id as patient_id, p.first_name, p.last_name, p.chart_no,
@@ -83,10 +84,14 @@ const open = data.claims.filter((c) => c.status === 'filed' || c.status === 'par
 const overdue = open.filter((c) => c.days > 60);
 const stuck = overdue.reduce((n, c) => n + (Number(c.claimed) - Number(c.approved ?? 0)), 0);
 
+// Patient invoices and payments cannot be recorded in Flossify yet (only the
+// development seed writes them), so a real clinic would see a made-up ₱0:
+// the balances tile shows only when there is something behind it.
+const hasLedger = Number(data.money.billed) > 0 || Number(data.money.paid) > 0;
 const tiles = [
-  { label: 'In the chair', value: String(inChair), note: `${data.me.chairs} chairs` },
+  { label: 'In the chair', value: String(inChair), note: `${data.me.chairs} ${data.me.chairs === 1 ? 'chair' : 'chairs'}` },
   { label: 'Waiting', value: String(waiting), note: 'arrived or in lobby' },
-  { label: 'Patient balances', value: peso(receivable), note: `${data.counts.patients} patients` },
+  ...(hasLedger ? [{ label: 'Patient balances', value: peso(receivable), note: `${data.counts.patients} patients` }] : []),
   { label: 'Stuck with HMOs', value: peso(stuck), note: `${overdue.length} past 60 days` },
 ];
 
@@ -119,10 +124,10 @@ const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', d
 
   {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
 
-  <dl class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  <dl class={`mt-6 grid gap-4 sm:grid-cols-2 ${tiles.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
     {tiles.map((t) => (
       <div class="border border-line bg-surface p-5">
-        <dt class="text-xs font-semibold tracking-[0.09em] text-muted uppercase">{t.label}</dt>
+        <dt class="meta">{t.label}</dt>
         <dd class="mt-2 font-display text-[32px] leading-none font-bold tabular-nums">{t.value}</dd>
         <p class="mt-1.5 text-[13px] text-muted">{t.note}</p>
       </div>
@@ -132,13 +137,13 @@ const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', d
   {data.fromWeb.length > 0 && (
     <section class="mt-10" aria-labelledby="web-title">
       <h2 id="web-title" class="font-display text-[22px] font-semibold">From the website</h2>
-      <p class="mt-1.5 text-[14.5px] text-ink-2">Booked or requested online and not yet confirmed. Confirm sends the day-before text.</p>
+      <p class="mt-1.5 text-[14.5px] text-ink-2">Booked or requested online, not yet confirmed. Confirming sends no text. A request gets its reminder once it is placed on the Schedule.</p>
       <ul class="mt-4 divide-y divide-line-2 overflow-hidden border border-line bg-surface">
         {data.fromWeb.map((a) => (
           <li class="flex flex-wrap items-center gap-4 p-4 sm:px-6">
             <div class="min-w-0 flex-1">
-              <p class="text-[15.5px] font-semibold">{a.first_name} {a.last_name} <span class="font-mono text-[12px] tracking-[0.08em] text-muted uppercase">{a.public_ref}</span></p>
-              <p class="text-[13.5px] text-ink-2">{when(a.starts_at)} · {a.reason} · {a.dentist ?? 'any dentist'}{a.hmo_id && ` · HMO: ${a.hmo_id}`}</p>
+              <p class="text-[15.5px] font-semibold">{a.first_name} {a.last_name} <span class="font-mono text-[12px] tracking-[0.08em] text-muted">{a.public_ref}</span></p>
+              <p class="text-[13.5px] text-ink-2">{when(a.starts_at)} · {a.reason} · {a.dentist ?? 'any dentist'}{a.hmo_id && ` · HMO: ${hmoById(a.hmo_id)?.name ?? a.hmo_id}`}</p>
               <p class="text-[13.5px] text-muted">{a.source === 'request' ? 'Requested time — confirm or call' : 'Booked online'} · text {a.booked_by_phone}{a.booked_by_name && a.booked_by_name !== `${a.first_name} ${a.last_name}` ? ` (${a.booked_by_name})` : ''}{a.notes && ` · “${a.notes}”`}</p>
             </div>
             <form method="post" class="flex gap-2">
@@ -193,11 +198,11 @@ const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', d
       <table class="w-full min-w-[620px] border-collapse text-left">
         <thead>
           <tr class="border-b border-line bg-bg-soft">
-            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Patient</th>
-            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Provider</th>
-            <th scope="col" class="px-5 py-3.5 text-right text-xs font-semibold tracking-[0.09em] text-muted uppercase">Claimed</th>
-            <th scope="col" class="px-5 py-3.5 text-right text-xs font-semibold tracking-[0.09em] text-muted uppercase">Approved</th>
-            <th scope="col" class="px-5 py-3.5 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Status</th>
+            <th scope="col" class="meta px-5 py-3.5 font-normal">Patient</th>
+            <th scope="col" class="meta px-5 py-3.5 font-normal">Provider</th>
+            <th scope="col" class="meta px-5 py-3.5 text-right font-normal">Claimed</th>
+            <th scope="col" class="meta px-5 py-3.5 text-right font-normal">Approved</th>
+            <th scope="col" class="meta px-5 py-3.5 font-normal">Status</th>
           </tr>
         </thead>
         <tbody>
@@ -217,16 +222,5 @@ const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', d
         </tbody>
       </table>
     </div>
-  </section>
-
-  <section id="billing" class="mt-12 scroll-mt-24">
-    <h2 class="font-display text-[22px] font-semibold">Billing</h2>
-    {data.me.tin ? (
-      <p class="mt-2 text-[15px] text-ink-2">Invoicing enabled. TIN <span class="font-semibold tabular-nums">{data.me.tin}</span>, branch code {data.me.bir_branch_code ?? '00000'}.</p>
-    ) : (
-      <p class="mt-2 border border-crown/40 bg-crown/10 p-4 text-[15px] leading-relaxed">
-        <strong class="font-semibold">Invoicing is blocked.</strong> This branch has no TIN on file, and issuing a numbered invoice without one produces a document the Bureau will not accept. Add it in settings before the first sale.
-      </p>
-    )}
   </section>
 </ClinicLayout>

@@ -18,7 +18,7 @@ const practises = d.practices?.length ? (d.practices.slice(1).join(', ').toLower
 ---
 
 
-<Base title={`${d.name} — dentist in ${places[0]?.l.area ?? 'Benguet'} — Flossify`} description={`${d.name}: ${d.specialty ? 'specialist in ' + d.specialty.toLowerCase() : d.practices.join(', ').toLowerCase()}. PRC licence checked. Where to find them and when.`}>
+<Base title={`${d.name} — dentist in ${places[0]?.l.area ?? 'Benguet'} — Flossify`} description={`${d.name}: ${d.specialty ? 'specialist in ' + d.specialty.toLowerCase() : d.practices.join(', ').toLowerCase()}. ${d.prcCheckedOn ? 'PRC licence checked' : 'PRC check pending'}. Where to find them and when.`}>
   <PatientHeader current="find" />
 
   <main id="main" class="mx-auto max-w-[1040px] px-5 py-10 sm:px-8">
@@ -26,28 +26,28 @@ const practises = d.practices?.length ? (d.practices.slice(1).join(', ').toLower
 
     <div class="mt-6 grid gap-10 md:grid-cols-12">
       <div class="md:col-span-8">
-        <p class="meta">Dentist &middot; practising since {d.since}</p>
+        <p class="meta">Dentist{d.since ? ` · practising since ${d.since}` : ''}</p>
         <h1 class="mt-3 font-display text-[clamp(2rem,4.6vw,3rem)] leading-[1.05] font-semibold tracking-[-0.025em]">{d.name}</h1>
         <p class="mt-3 text-[17px] text-ink-2">
           {d.specialty
             ? <span>Specialist · {d.specialty}</span>
             : <span>General dentist · practises {practises}</span>}
         </p>
-        <p class="mt-5 max-w-[60ch] text-[16px] leading-relaxed text-ink-2">{d.about}</p>
+        {d.about && <p class="mt-5 max-w-[60ch] text-[16px] leading-relaxed text-ink-2">{d.about}</p>}
 
         <h2 class="meta meta-ink mt-10">Credentials, and where each one comes from</h2>
         <ul class="mt-3 divide-y divide-line border-y border-line text-[15px]">
           <li class="flex flex-wrap items-baseline justify-between gap-2 py-3">
-            <span><span class="tag tag-accent">PRC licence</span><span class="ml-3">No. {d.prc}</span></span>
-            <span class="text-[14px] text-muted">{checked ? `Checked by a person at verification.prc.gov.ph on ${checked}. Re-checked at each 3-year renewal.` : 'Not yet checked by a person at Flossify. Until it is, treat the number as the dentist’s own statement.'}</span>
+            <span><span class="tag tag-accent">PRC licence</span><span class="ml-3">{d.prc ? `No. ${d.prc}` : 'No number given yet'}</span></span>
+            <span class="text-[14px] text-muted">{checked ? `Checked by a person at verification.prc.gov.ph on ${checked}.` : d.prc ? 'Not yet checked by a person at Flossify. Until it is, treat the number as the dentist’s own statement.' : 'The clinic has not given us a licence number yet, so there is nothing to check.'}</span>
           </li>
           <li class="flex flex-wrap items-baseline justify-between gap-2 py-3">
             <span><span class:list={['tag', d.pda && 'tag-accent']}>{d.pda ? 'PDA member' : 'PDA membership not on file'}</span></span>
-            <span class="text-[14px] text-muted">Philippine Dental Association, self-declared and shown as such.</span>
+            <span class="text-[14px] text-muted">{d.pda ? 'Philippine Dental Association, as the clinic declared it; not checked by us.' : 'Philippine Dental Association. Not declared here; ask the dentist.'}</span>
           </li>
           <li class="flex flex-wrap items-baseline justify-between gap-2 py-3">
             <span><span class:list={['tag', d.specialty && 'tag-accent']}>{d.specialty ? `Recognised specialty · ${d.specialty}` : 'General dentist'}</span></span>
-            <span class="text-[14px] text-muted">{d.specialty ? 'One of the seven fields the Board of Dentistry recognises; credential on file.' : 'Practises the areas listed; “specialist” is used only for Board-recognised fields.'}</span>
+            <span class="text-[14px] text-muted">{d.specialty ? 'One of the seven fields the Board of Dentistry recognises, as the clinic listed it.' : 'Practises the areas listed; “specialist” is used only for Board-recognised fields.'}</span>
           </li>
         </ul>
       </div>
@@ -68,7 +68,7 @@ const practises = d.practices?.length ? (d.practices.slice(1).join(', ').toLower
 
     <section class="mt-16 border-t border-line pt-8">
       <h2 class="meta meta-ink">Reviews</h2>
-      <p class="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-ink-2">Only from completed visits, read before publishing, never removable by the dentist or clinic. None yet.</p>
+      <p class="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-ink-2">None yet: reviews are not open. When they are: only from completed visits, read before publishing, never removable by the dentist or clinic.</p>
     </section>
   </main>
 </Base>

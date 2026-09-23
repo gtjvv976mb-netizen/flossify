@@ -130,10 +130,9 @@ const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', d
   </section>
 
   <section class="mt-10 border border-line-2 bg-bg-soft p-6">
-    <h2 class="font-display text-[19px] font-semibold">Not built yet</h2>
+    <h2 class="font-display text-[19px] font-semibold">Not on this record yet</h2>
     <p class="mt-2 max-w-[640px] text-[15px] leading-relaxed text-ink-2">
-      Procedures, treatment plans, prescriptions, consent forms, X-ray attachments and invoices have tables in
-      <code class="bg-surface px-1.5 py-0.5 text-[13.5px]">src/data/schema.sql</code> and no screens yet. Reading this record, and every change to the chart, is written to the audit log.
+      Procedures, treatment plans, prescriptions, signed consent forms, X-rays and invoices are not kept here yet; keep them the way the clinic does now. Reading this record, and every change to the chart, is written to the audit log.
     </p>
   </section>
   <Consents consents={data.consents} />

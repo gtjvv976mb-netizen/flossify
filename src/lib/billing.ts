@@ -7,8 +7,10 @@
 // PLACEHOLDERS. Every peso amount below, the pay-to details and the address
 // to write to are stand-ins for the owner to set before launch. The README's
 // "Before this goes live" list names them. Do not present them as final.
+// Nothing is invoiced until BILLING_FINAL (below) is true.
 
 import { pool } from './db';
+import { BILLING_FINAL } from './billing-config';
 
 /** Per branch per month, in pesos. PLACEHOLDER numbers — the owner sets the real ones. */
 export const PLANS = {
@@ -31,6 +33,9 @@ export const PAY_TO = {
 export const WRITE_TO = '[YOUR billing email]';
 /** Days after which the public listing may be paused. Policy text only; nothing implements it. PLACEHOLDER. */
 export const PAUSE_AFTER_DAYS = 30;
+// Set true only once the prices, the pay-to details, the billing email and the pause policy above are the real ones.
+// It lives in billing-config.ts, which has no imports, so the SMS worker can read it under plain Node; change it there.
+export { BILLING_FINAL };
 
 export type SubStatus = 'trial' | 'active' | 'past_due' | 'cancelled';
 export type InvoiceStatus = 'due' | 'paid' | 'void';
@@ -140,6 +145,16 @@ export function describe(sub: Subscription, invoices: Invoice[], now: Date = new
   if (sub.status === 'cancelled') return { text: 'The subscription is cancelled. Write to us to start it again.', alert: false };
   const today = manilaDate(now);
   const due = oldestDue(invoices);
+  if (due && !BILLING_FINAL) {
+    // An invoice made at placeholder prices (before the switch, or by hand) is never asked for: not due, not overdue.
+    const n = invoices.filter((i) => i.status === 'due').length;
+    return {
+      text: n === 1
+        ? `Invoice ${due.number} was made before the prices were final. Do not pay it: there is nothing to pay yet.`
+        : `${n} invoices were made before the prices were final. Do not pay them: there is nothing to pay yet.`,
+      alert: false,
+    };
+  }
   if (due) {
     const over = daysBetween(manilaDate(due.due_at), today);
     if (over > 0) {
@@ -149,7 +164,11 @@ export function describe(sub: Subscription, invoices: Invoice[], now: Date = new
   }
   if (sub.status === 'trial') {
     const n = daysLeft(sub.trial_ends_at, now);
-    if (n === 0) return { text: 'The trial has ended. The first invoice comes with the next monthly run.', alert: false };
+    if (n === 0) {
+      // Until the prices are final no invoice is issued (see BILLING_FINAL), so do not promise one.
+      if (!BILLING_FINAL) return { text: 'The trial has ended. There is nothing to pay yet: we will tell you the prices before the first invoice.', alert: false };
+      return { text: 'The trial has ended. The first invoice comes with the next monthly run.', alert: false };
+    }
     return { text: `Trial: ${n} day${n === 1 ? '' : 's'} left.`, alert: false };
   }
   return null;
@@ -159,6 +178,7 @@ export function describe(sub: Subscription, invoices: Invoice[], now: Date = new
 export function invoiceWords(inv: Invoice, now: Date = new Date()): string {
   if (inv.status === 'paid') return inv.paid_at ? `Paid ${whenText(inv.paid_at)}` : 'Paid';
   if (inv.status === 'void') return 'Cancelled';
+  if (!BILLING_FINAL) return 'Do not pay: prices not final';
   const over = daysBetween(manilaDate(inv.due_at), manilaDate(now));
   if (over > 0) return `Overdue by ${over} day${over === 1 ? '' : 's'}`;
   return 'Not yet paid';
@@ -197,8 +217,9 @@ export async function allDue(): Promise<Invoice[]> {
   return rows.map(toInvoice);
 }
 
-/** The monthly run for a Manila date ('YYYY-MM-DD'). Returns how many invoices it created; running it twice creates none. */
+/** The monthly run for a Manila date ('YYYY-MM-DD'). Returns how many invoices it created; running it twice creates none. Refuses while BILLING_FINAL is false. */
 export async function issueInvoices(today: string): Promise<number> {
+  if (!BILLING_FINAL) throw new Error('Invoices are not issued while BILLING_FINAL is false (src/lib/billing-config.ts): the prices are placeholders.');
   const { rows } = await pool.query('select billing_issue_invoices($1::date) as n', [today]);
   return Number(rows[0].n);
 }

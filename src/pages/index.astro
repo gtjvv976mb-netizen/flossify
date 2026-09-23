@@ -39,20 +39,20 @@ const stops = [
     key: 'A', at: '08:55', from: ROOM_FROM.outside, label: 'Outside',
     eyebrow: 'Practice software for Philippine dental clinics',
     title: 'The whole clinic,', title2: 'laid out before the door opens.',
-    body: 'You found this clinic last night and booked the slot yourself, in about ninety seconds. Walk in.',
+    body: 'You found this clinic last night and booked the slot yourself, in five short steps. Walk in.',
     did: 'The website, the booking and the reminder are Flossify. No phone call, no waiting for the desk to open.',
   },
   {
     key: 'B', at: '09:00', from: ROOM_FROM.reception, label: 'Reception',
-    body: 'Nothing to fill in on arrival. Your history went in at home; the desk saw you land on the day list.',
+    body: 'No spelling out your name at the desk. You booked at home, and the desk saw you land on the day list.',
   },
   {
     key: 'C', at: '09:12', from: ROOM_FROM.corridor, label: 'The corridor',
-    body: 'Twelve minutes, not forty. The chair was ready because the schedule knew how long you would need.',
+    body: 'Twelve minutes in the lobby. The chair was ready because the schedule knew how long each visit takes.',
   },
   {
     key: 'D', at: '09:15', from: ROOM_FROM.chair, label: 'The chair',
-    body: 'Charted at the chair, invoiced off the correct BIR series, HMO claim filed — before you reach the door.',
+    body: 'Charted at the chair, marked done on the day list, HMO claim logged to chase — before you reach the door.',
   },
 ];
 
@@ -63,21 +63,21 @@ const screens = [
     label: 'The day',
     file: 'workspace / today',
     title: 'Who has arrived, who is waiting, who is in the chair',
-    body: 'The front desk stops asking you, and you stop asking them. Allergies and alerts sit on the row, not three clicks away.',
+    body: 'The front desk stops asking you, and you stop asking them. The reason and the dentist sit on the row, not three clicks away.',
   },
   {
     id: 'patients',
     label: 'Patients',
     file: 'workspace / patients',
-    title: 'Every record, one search away',
-    body: 'Chart number, name, age, alerts, last visit, balance. Nothing to open before you know what you are looking at.',
+    title: 'Every record on one list',
+    body: 'Chart number, name, last visit. Nothing to open before you know who you are looking at.',
   },
   {
     id: 'tiles',
     label: 'At a glance',
     file: 'workspace / overview',
-    title: 'The four numbers that change your week',
-    body: 'In the chair, waiting, owed by patients, stuck with HMOs. The last one is money you have already earned.',
+    title: 'The numbers that change your week',
+    body: 'In the chair, waiting, stuck with HMOs. The last one is money you have already earned.',
   },
 ];
 
@@ -85,31 +85,31 @@ const screens = [
 const index = [
   { img: 'instruments', alt: 'Stainless dental instruments laid out in a row on a folded cloth', title: 'Scheduling', body: 'Chairs, not calendars. Drag an appointment and the reminder, the room and the dentist move with it.' },
   { img: 'handpiece', alt: 'A dental handpiece and bur resting on a pale worktop', title: 'Charting', body: 'Tooth, surfaces, finding — in that order, the way you would say it out loud.' },
-  { img: 'tray', alt: 'A stainless instrument tray with a mouth mirror and probe', title: 'Billing and BIR', body: 'Numbered invoices off the correct series — the document BIR has asked for since 2024 — with the permit dates watched for you. Nothing to reconcile by hand.' },
-  { img: 'xray', alt: 'A panoramic dental radiograph on a softly glowing light box', title: 'HMO claims', body: 'Filed, followed and aged. You can see which payor has been sitting on your money, and for how long.' },
-  { img: 'model', alt: 'A white dental study model of upper and lower teeth', title: 'Documents', body: 'Consent, certificates, clearances, prescriptions. The details you already hold get filled in for you.' },
-  { img: 'aligner', alt: 'A clear orthodontic aligner standing on a pale stone surface', title: 'Treatment plans', body: 'The plan, the cost and what the HMO covers, in something a patient can take home.' },
-  { img: 'clinic-tall', alt: 'A tall, bright treatment room with a sage-grey chair beside the window', title: 'Clinic websites', body: 'The site a patient finds at eleven at night. A request there is a booking here, and the price list is the one the desk quotes.' },
+  { img: 'tray', alt: 'A stainless instrument tray with a mouth mirror and probe', title: 'Billing and BIR', body: 'Not in Flossify yet, and we would rather say so. Keep issuing BIR invoices from your booklet or POS for now.' },
+  { img: 'xray', alt: 'A panoramic dental radiograph on a softly glowing light box', title: 'HMO claims', body: 'Logged, followed and aged. You file with the payor as you do now; Flossify shows who has been sitting on your money, and for how long.' },
+  { img: 'model', alt: 'A white dental study model of upper and lower teeth', title: 'Documents', body: 'Consent forms, certificates, clearances, prescriptions: still on paper for now. The record does keep each online booking’s privacy consent, dated.' },
+  { img: 'aligner', alt: 'A clear orthodontic aligner standing on a pale stone surface', title: 'Treatment plans', body: 'The plan, the cost, what the HMO covers — still on paper for now. Your fee guide is online, where a patient reads it before they come in.' },
+  { img: 'clinic-tall', alt: 'A tall, bright treatment room with a sage-grey chair beside the window', title: 'Clinic websites', body: 'The site a patient finds at eleven at night. A booking there is a booking here, and its price list is copied from your fee guide.' },
 ];
 
 const figures = [
   { n: '1', unit: 'link per clinic', body: 'Bookmark it once. It opens on today, on whatever device is nearest.' },
   { n: '32', unit: 'teeth, five surfaces each', body: 'A finding on the mesial is not a finding on the whole tooth. The chart knows the difference.' },
-  { n: '0', unit: 'minutes of setup', body: 'Send us the spreadsheet, the old system, the shelf of index cards. Migration is our job.' },
+  { n: '0', unit: 'calls to open a clinic', body: 'One form, no card. Send us the spreadsheet or the index cards; migration is our job.' },
 ];
 
 const faqs = [
   { q: 'Do I need to be good with computers?', a: 'No. If you can use a phone, you can use this. The parts you touch every day are the ones we worked hardest to make obvious, and we sit with you for the first week.' },
-  { q: 'I already use something else. Is moving painful?', a: 'It is our job, not yours. Send us whatever you have — another system, a spreadsheet, a shelf of index cards — and we bring the patients, charts and balances across while you carry on working.' },
-  { q: 'What happens to my records if I ever leave?', a: 'You take everything with you, in a format you can open without us. No exit fee. They were always yours.' },
-  { q: 'Does it work when the internet is down?', a: 'It installs on the tablet and opens instantly, and it tells you plainly when the connection is gone rather than losing a note. Records themselves still need a signal today; charting that catches up on its own when the line returns is the next thing we are building.' },
+  { q: 'I already use something else. Is moving painful?', a: 'It is our job, not yours. Send us whatever you have — another system, a spreadsheet, a shelf of index cards — and we bring your patients and their charts across while you carry on working.' },
+  { q: 'What happens to my records if I ever leave?', a: 'Ask, and we hand you everything in files you can open without us. No exit fee. They were always yours.' },
+  { q: 'Does it work when the internet is down?', a: 'It installs on the tablet like an app, and it tells you plainly when the connection is gone rather than losing a note. Records themselves still need a signal today; charting that catches up on its own when the line returns is the next thing we are building.' },
   { q: 'Who is behind it?', a: 'A small team in Baguio City. You talk to the people who build it, which is why things get fixed quickly.' },
 ];
 ---
 
 <Base
   title="Flossify — practice software for Philippine dental clinics"
-  description="Walk through a clinic running Flossify. The schedule, the chart, the invoice and the HMO claim, laid out before the door opens."
+  description="Walk through a clinic running Flossify. The schedule, the chart, the reminder and the HMO claim, laid out before the door opens."
 >
   <!-- The film is the ground of the whole page: one fixed layer, one uncut
        take, scrubbed by the document's own scroll. The top of the page is the
@@ -174,7 +174,7 @@ const faqs = [
               </h2>
               <p class="mt-5 max-w-[40ch] text-ink-2">
                 One link per branch, open on today. Runs on the tablet at the chair and the
-                desktop at the desk, keeps working through a brownout, and catches up after.
+                desktop at the desk, and says so plainly when a brownout takes the line.
               </p>
               <span class="meta meta-accent mt-8 inline-block">Open your clinic &rarr;</span>
               <span class="door-rule mt-2"></span>
@@ -187,7 +187,7 @@ const faqs = [
               </h2>
               <p class="mt-5 max-w-[40ch] text-ink-2">
                 Find a dentist by what hurts, see the price and a real open slot, and book at
-                eleven at night without an account. Know what PhilHealth and your HMO will pay.
+                eleven at night without an account. See what PhilHealth covers and who takes your HMO.
               </p>
               <span class="meta meta-accent mt-8 inline-block">Find a clinic &rarr;</span>
               <span class="door-rule mt-2"></span>

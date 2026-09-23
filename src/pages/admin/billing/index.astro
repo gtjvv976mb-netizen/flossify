@@ -6,7 +6,8 @@
 // the CSRF token, each written through a definer function and recorded as an
 // auth_event ('billing.<action>', with the admin's staff id and no tenant):
 // issue this month's invoices, mark one paid against the reference they saw
-// in the account, and set a group's terms.
+// in the account, and set a group's terms. Issuing is off while BILLING_FINAL
+// (src/lib/billing-config.ts) is false: the prices are placeholders.
 //
 // A miss (a stale token, an invoice already marked, a bad number) shows one
 // plain sentence and changes nothing; a success redirects with ?done=.
@@ -20,7 +21,7 @@ import { authEvent } from '../../../lib/auth';
 import { clientIp } from '../../../lib/throttle';
 import { peso } from '../../../data/demo';
 import {
-  PLANS, PLAN_IDS, SUB_STATUSES, STATUS_WORDS, DEFAULT_PLAN, TRIAL_DAYS,
+  PLANS, PLAN_IDS, SUB_STATUSES, STATUS_WORDS, DEFAULT_PLAN, TRIAL_DAYS, BILLING_FINAL,
   adminRows, allDue, notesByGroup, issueInvoices, markPaid, adminSet,
   manilaToday, manilaDate, monthText, dayText, whenText, type PlanId, type SubStatus,
 } from '../../../lib/billing';
@@ -46,7 +47,10 @@ if (Astro.request.method === 'POST') {
   const s = (k: string) => String(form.get(k) ?? '').trim();
 
   if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
-  else if (action === 'issue') {
+  else if (action === 'issue' && !BILLING_FINAL) {
+    // A form from before the switch, or a hand-made post: the button is not on the page while prices are placeholders.
+    error = 'Invoices are not issued yet: the prices are still placeholders. Nothing was created.';
+  } else if (action === 'issue') {
     const n = await issueInvoices(today);
     await authEvent('billing.issue', { staffId: session.staffId, ip, ua });
     return Astro.redirect(`${here}?done=issue&n=${n}`, 303);
@@ -112,6 +116,9 @@ const overdueCount = rows.filter((r) => r.status === 'past_due').length;
 const owedTotal = rows.reduce((n, r) => n + r.due_amount, 0);
 const plus30 = manilaDate(new Date(Date.now() + TRIAL_DAYS * 86_400_000));
 const priceHint = PLAN_IDS.map((p) => `${PLANS[p].name} ${peso(PLANS[p].perBranch)}`).join(' · ');
+// The same switch as the clinic's Billing page and the SMS worker: until BILLING_FINAL is true
+// the plan prices are placeholders and no invoice is issued, by the worker or from here.
+const pricesFinal = BILLING_FINAL;
 
 // Status is never colour alone: every state has its words.
 const standing = (r: (typeof rows)[number]) =>
@@ -131,17 +138,28 @@ const standing = (r: (typeof rows)[number]) =>
         Every group, what it is on and what it owes. Payments arrive by GCash, Maya or bank transfer with the invoice number as the reference; when you see one in the account, mark it here.
       </p>
     </div>
-    <form method="post" class="flex flex-wrap items-center gap-3">
-      <Csrf />
-      <input type="hidden" name="action" value="issue" />
-      <button type="submit" class="btn btn-primary">Issue this month’s invoices</button>
-      <span class="max-w-[28ch] text-[13px] leading-snug text-muted">For {monthText(today)}, for every group past its trial that has none yet. Safe to press twice.</span>
-    </form>
+    {pricesFinal ? (
+      <form method="post" class="flex flex-wrap items-center gap-3">
+        <Csrf />
+        <input type="hidden" name="action" value="issue" />
+        <button type="submit" class="btn btn-primary">Issue this month’s invoices</button>
+        <span class="max-w-[28ch] text-[13px] leading-snug text-muted">For {monthText(today)}, for every group past its trial that has none yet. Safe to press twice.</span>
+      </form>
+    ) : (
+      <p class="max-w-[34ch] text-[13.5px] leading-snug text-ink-2">No invoices are issued while the prices are placeholders, here or by the text worker.</p>
+    )}
   </div>
 
-  <p role="note" class="mt-6 max-w-[64ch] border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
-    Prices are placeholders from <span class="font-mono text-[13px]">src/lib/billing.ts</span> until the owner sets them. Per branch, per month: {priceHint}.
-  </p>
+  {!pricesFinal && (
+    <p role="note" class="mt-6 max-w-[64ch] border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
+      Prices are placeholders from <span class="font-mono text-[13px]">src/lib/billing.ts</span> until the owner sets them, with the pay-to details, the billing email and the pause policy, and then sets <span class="font-mono text-[13px]">BILLING_FINAL</span> to true in <span class="font-mono text-[13px]">src/lib/billing-config.ts</span>. Until then no new invoice is issued. Per branch, per month: {priceHint}.
+    </p>
+  )}
+  {!pricesFinal && due.length > 0 && (
+    <p role="note" class="mt-3 max-w-[64ch] border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
+      {due.length === 1 ? 'One invoice was' : `${due.length} invoices were`} made earlier at these placeholder prices and {due.length === 1 ? 'is' : 'are'} still marked due ({peso(owedTotal)}). Clinics are told not to pay {due.length === 1 ? 'it' : 'them'}. Before <span class="font-mono text-[13px]">BILLING_FINAL</span> goes true, set {due.length === 1 ? 'it' : 'them'} to void in the database; this page has no button for that yet. Otherwise {due.length === 1 ? 'it is' : 'they are'} asked for at these prices.
+    </p>
+  )}
 
   {notice && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">{notice}</p>}
   {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
@@ -158,6 +176,7 @@ const standing = (r: (typeof rows)[number]) =>
     <div class="border border-line bg-surface p-5">
       <dt class="meta">Owed in total</dt>
       <dd class="mt-2 font-display text-[32px] leading-none font-bold tabular-nums">{peso(owedTotal)}</dd>
+      {!pricesFinal && owedTotal > 0 && <p class="mt-1.5 text-[13px] text-muted">at placeholder prices; clinics are told not to pay</p>}
     </div>
   </dl>
 
@@ -253,12 +272,12 @@ const standing = (r: (typeof rows)[number]) =>
                         <label class="field">
                           <span class="meta">Trial ends</span>
                           <input type="date" name="trial_ends" value={r.trial_ends_at ? manilaDate(r.trial_ends_at) : plus30} required />
-                          <span class="text-[13px] text-muted">Invoices start with the first monthly run after this day, for that whole month.</span>
+                          <span class="text-[13px] text-muted">{pricesFinal ? 'Invoices start with the first monthly run after this day, for that whole month.' : 'No invoice follows this day while the prices are placeholders.'}</span>
                         </label>
                         <label class="field">
                           <span class="meta">Price per branch</span>
                           <input type="number" name="price" min="0" max={PRICE_MAX} step="0.01" inputmode="decimal" value={(r.price_per_branch ?? PLANS[r.plan ?? DEFAULT_PLAN].perBranch).toFixed(2)} required />
-                          <span class="text-[13px] text-muted">Placeholders: {priceHint}.</span>
+                          <span class="text-[13px] text-muted">{pricesFinal ? 'Plan prices' : 'Placeholders'}: {priceHint}.</span>
                         </label>
                         <label class="field sm:col-span-2">
                           <span class="meta">Notes</span>
@@ -278,6 +297,6 @@ const standing = (r: (typeof rows)[number]) =>
   </div>
 
   <p class="mt-4 max-w-[64ch] text-[13.5px] leading-relaxed text-muted">
-    Nothing here switches a clinic off. A late payment changes the status and the sentence the owner sees on their Billing page; every action is recorded under your name.
+    Nothing here switches a clinic off. {pricesFinal ? 'A late payment changes the status and the sentence the owner sees on their Billing page; every' : 'Every'} action is recorded under your name.
   </p>
 </AdminLayout>

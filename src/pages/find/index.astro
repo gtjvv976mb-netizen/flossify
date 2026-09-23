@@ -51,7 +51,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
       </div>
       <p class="mt-4 max-w-[70ch] border-l-2 border-accent pl-4 text-[15px] leading-relaxed text-ink-2" data-tip-box hidden></p>
       <div class="mt-4 border border-caries/40 bg-caries/10 p-4 text-[15px] leading-relaxed" data-urgent hidden>
-        <strong class="font-semibold">This can’t wait for a booking.</strong> Call a clinic that is open now — the numbers are on each card — or go to the nearest emergency room if there is trouble breathing or swallowing.
+        <strong class="font-semibold">This can’t wait for a booking.</strong> Call a clinic that is open now — each card has a Call button — or go to the nearest emergency room if there is trouble breathing or swallowing.
       </div>
     </section>
 
@@ -129,7 +129,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
               </div>
               <div>
                 <dt class="meta">Dentists</dt>
-                <dd class="mt-1">{dentists.length} &middot; <span class="text-accent">PRC checked</span>{dentists.some((d) => d.specialty) && <span> &middot; {dentists.filter((d) => d.specialty).map((d) => d.specialty).join(', ')}</span>}</dd>
+                <dd class="mt-1">{dentists.length} &middot; {dentists.length > 0 && dentists.every((d) => d.prcCheckedOn) ? <span class="text-accent">PRC checked</span> : dentists.some((d) => d.prcCheckedOn) ? <span>{dentists.filter((d) => d.prcCheckedOn).length} PRC checked</span> : <span>PRC check pending</span>}{dentists.some((d) => d.specialty) && <span> &middot; {dentists.filter((d) => d.specialty).map((d) => d.specialty).join(', ')}</span>}</dd>
               </div>
               <div>
                 <dt class="meta">Cards</dt>
@@ -149,7 +149,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
                 ? (slots.length
                     ? slots.map((sl) => <a class="slot" href={`/find/${l.slug}/book/?slot=${slotIso(sl)}`}><span class="meta">{sl.dayLabel}</span>{sl.label}</a>)
                     : <span class="text-[14px] text-muted">Nothing open in the next two weeks — call the clinic.</span>)
-                : <span class="max-w-[26ch] text-[14px] leading-snug text-ink-2">Not on the live schedule yet. Send a request and the clinic confirms by text.</span>}
+                : <span class="max-w-[26ch] text-[14px] leading-snug text-ink-2">Not on the live schedule yet. Send a request and the clinic confirms the time with you.</span>}
             </div>
             <div class="mt-4 flex flex-wrap gap-2">
               <a href={`/find/${l.slug}/book/`} class="btn btn-primary" data-book>{l.workspace ? 'Book' : 'Request'}</a>
@@ -162,7 +162,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
     </ul>
 
     <p class="mt-8 border border-line p-6 text-[15px] text-ink-2" data-empty hidden>
-      No clinic matches all of that. Try a wider area, or clear the HMO — every clinic here takes walk-ins or requests.
+      No clinic matches all of that. Try a wider area, or clear the HMO — every clinic here takes a booking or a request.
     </p>
 
     <p class="mt-10 max-w-[70ch] text-[14px] leading-relaxed text-muted">

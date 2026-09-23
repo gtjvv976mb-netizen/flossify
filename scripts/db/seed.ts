@@ -4,15 +4,60 @@
 //
 //   DB=flossify_dev node --experimental-strip-types scripts/db/seed.ts
 //
+// scripts/db/setup.sh (npm run db:setup) runs it right after migrating a
+// database it has just created; on its own it refuses any other database.
+//
 // Dev logins (owner of each group): <first dentist's email> / "flossify"
+//
+// Development only. Every account it makes signs in with that published
+// password, ops@flossify.example included, so it refuses, before writing
+// anything, unless all of these hold:
+//   - NODE_ENV is not production;
+//   - the client connects to this machine (PGHOST unset, localhost, 127.0.0.1,
+//     ::1 or a socket path);
+//   - the server says so too: inet_server_addr() is a socket (null) or
+//     loopback. A tunnel on a localhost port (cloud-sql-proxy, fly proxy) to a
+//     managed or remote server shows that server's own address here;
+//   - scripts/db/setup.sh has just built the database: schema_migrations was
+//     started less than FRESH_MINUTES ago. A production database migrated
+//     yesterday, still empty of staff until the first clinic signs up at
+//     /start/, fails this;
+//   - it has no staff yet.
+// Not caught: `ssh -L` to a server's own localhost within FRESH_MINUTES of
+// that server's first migration. Never run this by hand against a tunnel.
+// Production gets its tables from `npm run db:migrate` and its people from /start/.
 
 import pg from 'pg';
 import { scryptSync, randomBytes } from 'node:crypto';
 import { clinics as demoClinics, patients, appointments, claims } from '../../src/data/demo.ts';
 import { listings, dentists, services } from '../../src/data/directory.ts';
 
+const refuse = (why: string): never => { console.error(`seed: refused. ${why}`); process.exit(1); };
+
+if (process.env.NODE_ENV === 'production') refuse('NODE_ENV is production; the seed makes accounts with a known password and is for a local development database only.');
+
 const db = new pg.Client({ database: process.env.DB ?? 'flossify_dev' });
+// pg has already resolved the host from its config and PGHOST; a path is a Unix socket on this machine.
+const host = String(db.host ?? '');
+if (!['localhost', '127.0.0.1', '::1'].includes(host) && !host.startsWith('/')) refuse(`It would connect to "${host}", not this machine; the seed is for a local development database only.`);
+
 await db.connect();
+{
+  // The server's side of the same questions: a tunnel makes any server look local to the check above.
+  const FRESH_MINUTES = 5;
+  const stop = async (why: string) => { await db.end(); refuse(why); };
+  const { rows: [at] } = await db.query(`
+    select host(inet_server_addr()) as addr,
+           inet_server_addr() is null or inet_server_addr() <<= inet '127.0.0.0/8'
+             or inet_server_addr() <<= inet '::1/128' or inet_server_addr() <<= inet '::ffff:127.0.0.0/104' as loopback,
+           to_regclass('public.schema_migrations') is not null as tracked,
+           to_regclass('public.staff') is not null as has_staff_table`);
+  if (!at.loopback) await stop(`The server answering is at ${at.addr}, not this machine (a tunnel?); the seed is for a local development database only.`);
+  if (!at.tracked || !at.has_staff_table) await stop(`${db.database} has no migrated schema; the seed only fills a database that scripts/db/setup.sh has just built.`);
+  const { rows: [m] } = await db.query(`select extract(epoch from now() - min(applied_at))::int as age, (select count(*)::int from staff) as staff from schema_migrations`);
+  if (m.age === null || m.age > FRESH_MINUTES * 60) await stop(`${db.database} was first migrated ${m.age === null ? 'at an unknown time' : `${Math.round(m.age / 60)} minutes ago`}; the seed only fills a database that scripts/db/setup.sh has just built.`);
+  if (m.staff > 0) await stop(`${db.database} already has ${m.staff} staff account${m.staff === 1 ? '' : 's'}; the seed only fills a database that scripts/db/setup.sh has just built.`);
+}
 
 // Same scheme as src/lib/auth.ts: scrypt, "salt:hash", both hex.
 const hash = (pw: string) => { const salt = randomBytes(16); return `${salt.toString('hex')}:${scryptSync(pw, salt, 64).toString('hex')}`; };

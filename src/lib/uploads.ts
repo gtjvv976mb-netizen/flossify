@@ -12,14 +12,15 @@
 // Nothing here joins a string it was handed into a path without matching it
 // against the uuid shape first; the route that serves the files does the same.
 
+import './dotenv';
 import { mkdir, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { photo, PHOTO_ALT } from '../data/directory.ts';
 
-/** Where the files go, resolved from the process's working directory. `import.meta.env` is Vite's; a plain
- *  Node script (a worker, a check) has only process.env, hence the optional chain. */
-export const UPLOAD_DIR = resolve(process.cwd(), import.meta.env?.UPLOAD_DIR ?? process.env.UPLOAD_DIR ?? './uploads');
+/** Where the files go, resolved from the process's working directory. Read from process.env when the
+ *  server starts, never import.meta.env, which the build would freeze (src/lib/dotenv.ts). */
+export const UPLOAD_DIR = resolve(process.cwd(), process.env.UPLOAD_DIR || './uploads');
 
 export const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 export const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);

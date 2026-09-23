@@ -4,10 +4,11 @@
 // the staff session (HMAC-SHA256 with SESSION_SECRET, constant-time compare),
 // a different cookie, a shorter life.
 
+import './dotenv';
 import { timingSafeEqual, createHmac } from 'node:crypto';
 import type { AstroCookies } from 'astro';
 
-const SECRET = import.meta.env.SESSION_SECRET ?? process.env.SESSION_SECRET ?? '';
+const SECRET = process.env.SESSION_SECRET ?? '';
 export const PATIENT_COOKIE = 'fl_patient';
 const DAYS = 30;
 

@@ -100,3 +100,21 @@ export function slotsFor(slug: string, hours: Hours, opts: { days?: number; dent
 
 export const hoursRows = (hours: Hours) =>
   [1, 2, 3, 4, 5, 6, 0].map((d) => ({ day: d, name: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d], text: hours[d] ? `${fmtHour(hours[d]![0])} – ${fmtHour(hours[d]![1])}` : 'By appointment' }));
+
+/**
+ * Booked by 8:30 pm Manila the day before, a visit's reminder goes out that
+ * evening: the worker writes tomorrow's reminders every ten minutes
+ * (sms_enqueue_reminders, 019) and holds them from 9 pm to 8 am. Later than
+ * that, it waits for 8 am on the visit day, or, booked in the last minutes
+ * before midnight, misses the pass altogether.
+ */
+const REMIND_BY_MIN = 20 * 60 + 30;
+/**
+ * Whether the day-before text will come for a visit booked now. Never for a
+ * visit today; for one tomorrow only when booked before REMIND_BY_MIN; always
+ * for a later day. Manila keeps one offset all year, so +24 h is tomorrow.
+ */
+export function willRemind(startsAt: Date, now = new Date()): boolean {
+  const visit = manilaNow(startsAt).ymd, today = manilaNow(now), tomorrow = manilaNow(new Date(now.getTime() + 86_400_000)).ymd;
+  return visit > tomorrow || (visit === tomorrow && today.mins < REMIND_BY_MIN);
+}

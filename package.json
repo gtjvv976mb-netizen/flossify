@@ -11,9 +11,12 @@
     "shots": "node scripts/shoot.mjs",
     "sheet": "node scripts/sheet.mjs",
     "db:setup": "sh scripts/db/setup.sh",
+    "db:migrate": "node --env-file-if-exists=.env --experimental-strip-types scripts/db/migrate.ts",
+    "db:backup": "sh scripts/db/backup.sh",
+    "admin:create": "node --env-file-if-exists=.env --experimental-strip-types scripts/db/admin-create.ts",
     "start": "node ./dist/server/entry.mjs",
-    "sms:worker": "node --env-file=.env --experimental-strip-types scripts/sms/worker.ts",
-    "sms:once": "node --env-file=.env --experimental-strip-types scripts/sms/worker.ts --once"
+    "sms:worker": "node --env-file-if-exists=.env --experimental-strip-types scripts/sms/worker.ts",
+    "sms:once": "node --env-file-if-exists=.env --experimental-strip-types scripts/sms/worker.ts --once"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.6",

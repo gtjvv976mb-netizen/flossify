@@ -239,8 +239,15 @@ The workspace and the patient directory read from PostgreSQL. Rules:
   that is where sign-in lands when the link did not ask for a branch.
 - Sessions are HMAC-signed cookies (`src/lib/auth.ts`); passwords are scrypt.
   `SESSION_SECRET` rotation signs everyone out.
-- `npm run db:setup` is destructive: it drops the dev database. Migrations are
-  additive files in `src/data/migrations/`, run in name order after `schema.sql`.
+- `npm run db:setup` is destructive: it drops the dev database (and refuses a
+  database that is not on this machine). Migrations are additive files in
+  `src/data/migrations/`, applied by `npm run db:migrate`
+  (`scripts/db/migrate.ts`), which setup.sh also uses: each file once, in its
+  own transaction, recorded in `schema_migrations`. So **never edit an
+  applied migration or `schema.sql`** — a change is a new numbered file. No
+  BEGIN/COMMIT inside a file (the runner refuses them). A database built
+  before the runner existed is adopted with
+  `npm run db:migrate -- --baseline=<newest file it really has>`.
 - Two schema bugs were fixed on the way in: `citext` was used but never
   enabled, and the RLS policy on `clinic` referenced `clinic_id` (it has `id`).
 - **Every form post carries `<Csrf />`** (`src/components/Csrf.astro`) and its
@@ -283,7 +290,13 @@ The workspace and the patient directory read from PostgreSQL. Rules:
   (Astro's Origin check refuses a form-encoded post that carries no Origin,
   which is what a gateway sends — keep the check on and point the gateway at
   JSON) and go through `sms_inbound()`: Y confirms the sender's next visit. **No links in any text**
-  — Philippine telcos drop them.
+  — Philippine telcos drop them. **And no text asks for a reply**: Semaphore
+  sends one-way from a sender name, so a reply reaches nobody. The reminder
+  (019) names the day ("Thu 24 Sep, 9:00 am", never "tomorrow": quiet hours
+  can hold it to the visit day), says to call the clinic to move it, and
+  skips requests the desk has not placed; confirmations promise a reminder
+  only when one will come (`willRemind` in `src/lib/availability.ts`). The
+  inbound route stays for a future two-way gateway.
 - **A clinic can create itself** at `/start/`, through the definer function
   `signup_clinic(jsonb)` (006), because nothing can insert a clinic under RLS
   before the tenant exists. It starts unlisted with request-mode booking,
@@ -292,6 +305,54 @@ The workspace and the patient directory read from PostgreSQL. Rules:
   reads only listed clinics. Uploaded photos are `up:<uuid>` keys in
   `clinic.photo_keys`, stored under `UPLOAD_DIR` and served by
   `/uploads/[...path]` behind a strict path regex.
+
+## Production — settings, database, deploy
+
+`docs/deploy.md` is the procedure and `docs/launch.md` the owner's checklist.
+The rules that live in code:
+
+- **Settings are read from `process.env` when the server runs, never from
+  `import.meta.env`.** Astro writes `import.meta.env.X` into the build as a
+  literal: a build on the Mac carried its `DATABASE_URL` and
+  `SESSION_SECRET` in `dist/server` (measured), and on a server the host's
+  values were ignored. `src/lib/dotenv.ts` loads `.env` into `process.env`
+  at runtime on the owner's machine (never overriding the environment);
+  import it first in any module that reads a setting when it loads.
+  `import.meta.env.DEV` / `PROD` are fine — they are build facts, not settings.
+- **`src/lib/env.ts` refuses an unsafe production start** — the dev database
+  password, a short or placeholder `SESSION_SECRET` / `SMS_INBOUND_SECRET`,
+  console SMS (unless `ALLOW_CONSOLE_SMS=1`), `SHOW_DEMO_LOGINS`, no
+  `UPLOAD_DIR` — with one error listing every problem. Production means
+  `NODE_ENV=production`, or the built server (`npm start`) unless NODE_ENV
+  says development; never the astro CLI. The middleware calls it before any
+  page; the SMS worker calls `assertEnv('worker')` at start.
+- `src/middleware.ts` adds the security headers (HSTS in production, nosniff,
+  `frame-ancestors 'none'` + X-Frame-Options, Referrer-Policy,
+  Permissions-Policy) to every page the server renders. Prerendered pages and
+  public files come from the adapter's static handler and do not get them
+  (docs/deploy.md section 9). `GET /healthz` is 200/503 on a `select 1`.
+- **Behind the host's HTTPS proxy** Astro trusts X-Forwarded-Proto/Host only
+  for `security.allowedDomains` in `astro.config.mjs` (flossify.ph, www, plus
+  `EXTRA_HOSTS` read at build time). Without that every form post was 403
+  (measured). The domain is **flossify.ph**.
+- `SHOW_DEMO_LOGINS=1` (local `.env` only) shows the seeded logins on the
+  sign-in page and the "development database" banners; production refuses it.
+  `seed.ts` refuses production, a non-local host, and a database with staff.
+- Flossify's own operations account on a server comes from
+  `npm run admin:create -- <email> "<Name>"` (prompts for the password; run
+  again to reset it). It stores no mobile, so a forgotten operations
+  password is reset that way, not by text.
+- **No clinic is invoiced while `BILLING_FINAL` is false**
+  (`src/lib/billing-config.ts`): the worker skips `billing_issue_invoices`,
+  `/admin/billing/` hides the issue button, and every price is labelled "not
+  final yet". Flip it only when the prices, pay-to details, billing email
+  and pause policy in `src/lib/billing.ts` are the owner's real ones.
+- The reset / patient code pages never put a mobile number in a URL: it rides
+  in a 15-minute httpOnly cookie (`fl_code_phone`, `fl_me_phone`) scoped to
+  the code page and cleared once the code works.
+- One email and one mobile per staff account **across the whole service**
+  (sign-in finds people by email, resets by mobile); Settings → Team and
+  `/start/` both check globally.
 
 ## Round three — operations, patients, billing, compliance, chart, PWA, claims
 
@@ -378,7 +439,21 @@ The workspace and the patient directory read from PostgreSQL. Rules:
   self-added dentists until someone verifies, and the public profile says so.
 - Billing is manual payment marked paid by operations; no gateway. Prices,
   pay-to details and the pause policy are placeholders in
-  `src/lib/billing.ts` and on the Billing pages until the owner sets them.
+  `src/lib/billing.ts`, and `BILLING_FINAL` (`src/lib/billing-config.ts`)
+  stays false until the owner sets them: nothing is invoiced before that.
+- **Not recordable yet, for real patients:** medical history / allergies,
+  birth date, and patient invoices and payments (only `seed.ts` writes
+  `medical_history`, `birth_date`, `invoice`, `payment`). The screens hide
+  what would be empty (balances tile, Balance column) and the marketing copy
+  no longer claims them. These are the next features a clinic will ask for.
+- Nothing is deployed: no host is chosen, flossify.ph is parked at Namecheap.
+- "Any available dentist" slots count chairs, not which days dentists work.
+- Settings → Team cannot edit a staff member's name, email or PRC number after
+  the invite, and the clinic's founding year / PDA membership / staff bios
+  have no form (the public pages hide them when empty).
+- The privacy notice (consent version privacy-2026-09) says texts let patients
+  "confirm or cancel by text" and does not mention the IP address stored with
+  consent: a new consent version, reviewed by the owner's lawyer, is needed.
 - `/privacy/` hardcodes the current `consent_version` id; publish a new
   version and the page together.
 - Offline charting with catch-up sync is not built; the service worker
@@ -402,7 +477,8 @@ src/data/migrations/           002 public booking, 003 public read functions, 00
                                005 codes / auth events / throttle / text queue / listed, 006 signup_clinic,
                                007 review fixes (inbound tenant, global slug, listed-only dentist profiles),
                                008 platform admins + phone codes, 009 PRC checks, 010 patient visits, 011 billing,
-                               012 consent + DPO, 013 claims, 014 DPO on the public listing
+                               012 consent + DPO, 013 claims, 014 DPO on the public listing, 015–018 review
+                               fixes + schedule, 019 truthful reminders, 020 request wording
 src/lib/db.ts                  pool, withClinic (RLS transaction), publicRead
 src/lib/auth.ts                scrypt passwords, signed session cookie with token version, auth events
 src/lib/csrf.ts + components/Csrf.astro   the double-submit token every form carries
@@ -425,7 +501,13 @@ src/pages/privacy.astro        the versioned privacy notice; src/pages/offline.a
 src/lib/billing.ts             plans and pay-to placeholders; src/lib/admin.ts requireAdmin; src/lib/patient-auth.ts
 src/pages/c/[clinic]/messages/ the branch's texts, both directions; send again, cancel, text a patient
 src/pages/uploads/             serves uploaded photos, path-checked
-scripts/db/                    setup.sh (drop, create, schema, migrations, seed), seed.ts
+scripts/db/                    setup.sh (dev: drop, create, migrate, seed), migrate.ts (npm run db:migrate),
+                               backup.sh (db:backup), admin-create.ts (admin:create), seed.ts (dev only)
+src/lib/env.ts, dotenv.ts      production settings check; .env into process.env at runtime
+src/middleware.ts              security headers + the settings check; src/pages/healthz.ts
+src/lib/billing-config.ts      BILLING_FINAL — no invoice is issued until it is true
+Dockerfile, Procfile           one image: web (npm start), worker (sms:worker), release (db:migrate)
+docs/deploy.md, docs/launch.md how to deploy; the owner's launch checklist
 scripts/sms/worker.ts          the sender: npm run sms:worker (loop) / sms:once
 public/samples/swiftcare/       sample clinic website (see "Sample client sites")
 docs/service-map.md            what to build for patients, dentists and clinics, and why (Sept 2026)
