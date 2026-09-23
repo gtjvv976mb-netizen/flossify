@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SwiftCare Dental Clinic · Gentle dental care in Tarlac City</title>
+  <meta name="description" content="Gentle, professional dental care in Tarlac City. Consultations from ₱300, cleanings, fillings, braces, dentures and more. Walk-ins welcome, Monday to Saturday 9 AM – 6 PM.">
+  <meta name="theme-color" content="#2A1B14">
+  <!-- Concept redesign hosted as a Flossify sample: keep it out of search results so it never competes with the clinic's live site. -->
+  <meta name="robots" content="noindex, nofollow">
+  <meta property="og:title" content="SwiftCare Dental Clinic · Tarlac City">
+  <meta property="og:description" content="A healthier smile starts here. Book online in minutes. Walk-ins welcome.">
+  <meta property="og:image" content="https://swiftcaredental.com/clinic/reception-front.jpg">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="assets/clinic/logo-mark.png">
+
+  <link rel="stylesheet" href="css/styles.css">
+
+</head>
+<body>
+  <!-- ============ Icon sprite ============ -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <path id="tooth-path" d="M24 11.5c-3-2.2-7-3.2-9.8-1.7C10 12 9.3 16.8 10.2 21.6c.8 4 2 8 3.1 11.8.8 2.8 1.5 6.3 2.6 8.4.8 1.4 2.5 1.4 3.1 0 .9-2.3 1.4-6.3 2.5-8.1.6-1 1.4-1.5 2.5-1.5s1.9.5 2.5 1.5c1.1 1.8 1.6 5.8 2.5 8.1.6 1.4 2.3 1.4 3.1 0 1.1-2.1 1.8-5.6 2.6-8.4 1.1-3.8 2.3-7.8 3.1-11.8.9-4.8.2-9.6-4-11.8-2.8-1.5-6.8-.5-9.8 1.7Z"/>
+    </defs>
+    <!-- UI icons (24) -->
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+    <symbol id="i-message" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5z"/><path d="M16 9a5 5 0 0 1 0 6M19.36 18.36a9 9 0 0 0 0-12.73"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5z"/><path d="m22 9-6 6M16 9l6 6"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></symbol>
+    <symbol id="i-facebook" viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></symbol>
+    <symbol id="i-nav" viewBox="0 0 24 24"><path d="M3 11 22 2l-9 19-2-8-8-2z"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M12 11h4M12 16h4M8 11h.01M8 16h.01"/></symbol>
+    <symbol id="i-login" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></symbol>
+    <symbol id="i-user-check" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/></symbol>
+    <symbol id="i-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></symbol>
+    <symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></symbol>
+    <symbol id="i-brush" viewBox="0 0 24 24"><path d="M4 20 14.5 9.5"/><rect x="13" y="2.5" width="6" height="9" rx="1.5" transform="rotate(45 16 7)"/><path d="M15 4.5l1 1M17 6.5l1 1M13 6.5l1 1"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 0C12.9 7.5 16.5 11.1 24 12 16.5 12.9 12.9 16.5 12 24 11.1 16.5 7.5 12.9 0 12 7.5 11.1 11.1 7.5 12 0Z"/></symbol>
+    <symbol id="i-quote" viewBox="0 0 48 48"><path d="M20 12c-7.2 2.4-12 8.6-12 16.4V36h12V24h-6c0-4.6 2.6-7.9 6-9.4zM40 12c-7.2 2.4-12 8.6-12 16.4V36h12V24h-6c0-4.6 2.6-7.9 6-9.4z"/></symbol>
+
+    <!-- Dental icons (48) -->
+    <symbol id="d-tooth" viewBox="0 0 48 48"><use href="#tooth-path"/></symbol>
+    <symbol id="d-consult" viewBox="0 0 48 48"><use href="#tooth-path" transform="translate(-2 -3) scale(.88)"/><circle cx="34" cy="33" r="6.5"/><path d="m38.8 37.8 5.2 5.2"/></symbol>
+    <symbol id="d-clean" viewBox="0 0 48 48"><use href="#tooth-path" transform="translate(-3 3) scale(.92)"/><path d="M38 3c.5 4 2.3 5.8 6.3 6.3-4 .5-5.8 2.3-6.3 6.3-.5-4-2.3-5.8-6.3-6.3 4-.5 5.8-2.3 6.3-6.3Z"/><path d="M16 17c-1.2 1.6-1.6 3.6-1.2 5.8"/></symbol>
+    <symbol id="d-xray" viewBox="0 0 48 48"><rect x="5" y="5" width="38" height="38" rx="7"/><use href="#tooth-path" transform="translate(9.1 8.6) scale(.62)"/></symbol>
+    <symbol id="d-fluoride" viewBox="0 0 48 48"><path d="M24 5c6.5 8.4 12 14.8 12 21.5a12 12 0 0 1-24 0C12 19.8 17.5 13.4 24 5Z"/><path d="M18.5 28a6 6 0 0 0 5.5 5"/></symbol>
+    <symbol id="d-sealant" viewBox="0 0 48 48"><use href="#tooth-path" transform="translate(0 2)"/><path d="M13.5 18.5c3.5-2.6 7 1.8 10.5-.6s7 1.8 10.5-.6" stroke-dasharray="0"/></symbol>
+    <symbol id="d-filling" viewBox="0 0 48 48"><use href="#tooth-path"/><path d="M17 15.5c2.2-1.5 5-1.3 6.5.6 1 1.3.7 3.4-.9 4.4-2 1.3-4.9 1.1-6.3-.6-1-1.2-.9-3.3.7-4.4Z" fill="currentColor" stroke="none" opacity=".9"/></symbol>
+    <symbol id="d-rootcanal" viewBox="0 0 48 48"><use href="#tooth-path"/><path d="M20.5 20v13M27.5 20v13"/><circle cx="24" cy="18" r="2.2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="d-crown" viewBox="0 0 48 48"><use href="#tooth-path" transform="translate(4.8 9) scale(.8)"/><path d="m14 12.5-2-8 6.5 4.5L24 3l5.5 6 6.5-4.5-2 8Z"/></symbol>
+    <symbol id="d-dentures" viewBox="0 0 48 48"><path d="M5 16c4 11.5 11.5 17 19 17s15-5.5 19-17"/><path d="M5 16c6 3 12.5 4.5 19 4.5S37 19 43 16"/><path d="M11.5 19.5v6.5M17.5 20.3v8.5M24 20.5v9.5M30.5 20.3v8.5M36.5 19.5v6.5"/><path d="M12 36c3.5 3.2 7.6 5 12 5s8.5-1.8 12-5"/></symbol>
+    <symbol id="d-bridge" viewBox="0 0 48 48"><use href="#tooth-path" transform="translate(1 13) scale(.42)"/><use href="#tooth-path" transform="translate(13.9 13) scale(.42)"/><use href="#tooth-path" transform="translate(26.8 13) scale(.42)"/><path d="M7 12h34"/><path d="M7 12v4M41 12v4"/></symbol>
+    <symbol id="d-extraction" viewBox="0 0 48 48"><use href="#tooth-path" transform="translate(4.8 10) scale(.8)"/><path d="M24 14V2.5M18.5 8 24 2.5 29.5 8"/></symbol>
+    <symbol id="d-wisdom" viewBox="0 0 48 48"><use href="#tooth-path" transform="translate(-3 -2) scale(.9)"/><circle cx="36" cy="35" r="8"/><path d="M36 31v4.5M36 39h.01"/></symbol>
+    <symbol id="d-whitening" viewBox="0 0 48 48"><use href="#tooth-path" transform="translate(4.8 11) scale(.8)"/><path d="M24 2v5M9.5 7.5l3.2 3.2M38.5 7.5l-3.2 3.2M3 19h4.5M40.5 19H45"/></symbol>
+    <symbol id="d-veneers" viewBox="0 0 48 48"><use href="#tooth-path" transform="translate(3 0)"/><path d="M8.5 14.5C6 21 7.6 29 10 36"/><path d="M20 15c-1.4 2-1.7 4.4-1.2 6.8"/></symbol>
+    <symbol id="d-braces" viewBox="0 0 48 48"><rect x="4.5" y="12" width="11" height="24" rx="5"/><rect x="18.5" y="11" width="11" height="26" rx="5"/><rect x="32.5" y="12" width="11" height="24" rx="5"/><path d="M2 24h44"/><rect x="7.5" y="21" width="5" height="6" rx="1" fill="currentColor"/><rect x="21.5" y="21" width="5" height="6" rx="1" fill="currentColor"/><rect x="35.5" y="21" width="5" height="6" rx="1" fill="currentColor"/></symbol>
+  </svg>
+
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="scroll-progress" aria-hidden="true"><span></span></div>
+
+  <!-- ============ Top bar ============ -->
+  <div class="topbar">
+    <div class="container topbar__inner">
+      <span class="status-pill" data-hours-status><span class="status-pill__dot"></span><span class="status-pill__text">Mon–Sat 9 AM – 6 PM</span></span>
+      <span class="topbar__item topbar__hide-sm"><svg class="ic"><use href="#i-clock"/></svg>Mon–Sat 9:00 AM – 6:00 PM · Sun by appointment</span>
+      <span class="topbar__item topbar__hide-md"><svg class="ic"><use href="#i-users"/></svg>Walk-ins welcome</span>
+      <a class="topbar__item topbar__phone" href="tel:09950902633"><svg class="ic"><use href="#i-phone"/></svg>0995 090 2633</a>
+      <a class="topbar__item topbar__sample topbar__hide-sm" href="/">Concept by Flossify</a>
+    </div>
+  </div>
+
+  <!-- ============ Header ============ -->
+  <header class="header" data-header>
+    <div class="container header__inner">
+      <a href="#top" class="brand" aria-label="SwiftCare Dental Clinic home">
+        <img src="assets/clinic/logo-mark.png" alt="SwiftCare Dental Clinic" width="600" height="457">
+      </a>
+      <nav class="nav" aria-label="Main">
+        <a href="#services" data-spy>Services</a>
+        <a href="#pricing" data-spy>Pricing</a>
+        <a href="#care" data-spy>Patient care</a>
+        <a href="#about" data-spy>About</a>
+        <a href="#contact" data-spy>Contact</a>
+        <span class="nav__indicator" aria-hidden="true"></span>
+      </nav>
+      <div class="header__actions">
+        <a class="header__login" href="https://swiftcaredental.com/auth/signin"><svg class="ic"><use href="#i-login"/></svg>Staff</a>
+        <a class="btn btn--gold btn--sm" data-magnetic href="https://swiftcaredental.com/book"><svg class="ic"><use href="#i-calendar"/></svg><span>Book now</span></a>
+        <button class="burger" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu" data-burger><span></span><span></span><span></span></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="mobile-menu" id="mobile-menu" data-mobile-menu hidden>
+    <nav aria-label="Mobile">
+      <a href="#services">Services</a>
+      <a href="#finder">Smile Finder</a>
+      <a href="#pricing">Pricing & estimate</a>
+      <a href="#care">Patient care hub</a>
+      <a href="#care" data-open-tab="coverage">PhilHealth &amp; HMO</a>
+      <a href="#about">About us</a>
+      <a href="#faq">FAQ</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <div class="mobile-menu__foot">
+      <a class="btn btn--gold btn--block" href="https://swiftcaredental.com/book"><svg class="ic"><use href="#i-calendar"/></svg>Book an appointment</a>
+      <a class="btn btn--ghost btn--block" href="tel:09950902633"><svg class="ic"><use href="#i-phone"/></svg>Call 0995 090 2633</a>
+      <a class="mobile-menu__login" href="https://swiftcaredental.com/auth/signin">Staff login</a>
+    </div>
+  </div>
+
+  <main id="main">
+    <!-- ============ Hero ============ -->
+    <section class="hero" id="top">
+      <div class="hero__bg" aria-hidden="true">
+        <span class="blob blob--1"></span><span class="blob blob--2"></span>
+      </div>
+      <div class="container hero__grid">
+        <div class="hero__copy">
+          <p class="eyebrow hero__eyebrow" data-reveal><svg class="ic ic--sparkle"><use href="#i-sparkle"/></svg>Your trusted dental partner in Tarlac</p>
+          <h1 class="hero__title" data-split>A healthier smile <em>starts here.</em></h1>
+          <p class="hero__lead" data-reveal style="--d:.35s">Gentle, professional dental care in a warm and welcoming clinic. From routine cleanings to advanced treatments, we’ve got your smile covered.</p>
+          <div class="hero__cta" data-reveal style="--d:.45s">
+            <a class="btn btn--gold btn--lg" data-magnetic href="https://swiftcaredental.com/book"><svg class="ic"><use href="#i-calendar"/></svg><span>Book an appointment</span></a>
+            <a class="btn btn--ghost btn--lg" href="#finder"><svg class="ic"><use href="#i-search"/></svg><span>Not sure what you need?</span></a>
+          </div>
+          <a class="returning" href="https://swiftcaredental.com/book" data-reveal style="--d:.55s">
+            <span class="returning__icon"><svg class="ic"><use href="#i-user-check"/></svg></span>
+            <span><strong>Been here before?</strong> Rebook in about 15 seconds with your Patient No.</span>
+            <svg class="ic returning__arrow"><use href="#i-arrow-right"/></svg>
+          </a>
+          <ul class="trust" data-reveal data-stagger style="--d:.65s">
+            <li><svg class="ic"><use href="#i-shield"/></svg>Licensed dentists</li>
+            <li><svg class="ic"><use href="#i-zap"/></svg>Same-day appointments</li>
+            <li><svg class="ic"><use href="#i-heart"/></svg>Patient-first care</li>
+          </ul>
+        </div>
+
+        <div class="hero__visual" data-hero-visual>
+          <svg class="hero__tooth" viewBox="0 0 200 200" aria-hidden="true">
+            <defs>
+              <linearGradient id="gold-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#F1D593"/><stop offset=".45" stop-color="#C29545"/><stop offset="1" stop-color="#8A6424"/>
+              </linearGradient>
+            </defs>
+            <path d="M100 38C80 22 52 14 36 24 14 38 12 72 20 102c8 30 16 58 26 82 6 12 20 12 24-2 6-22 12-42 30-44 18 2 24 22 30 44 4 14 18 14 24 2 10-24 18-52 26-82 8-30 6-64-16-78-16-10-44-2-64 14Z" />
+          </svg>
+          <div class="hero__frame" data-parallax="-0.06">
+            <img src="assets/clinic/reception-front.jpg" alt="SwiftCare Dental Clinic reception with marble desk and wood-slat ceiling" width="1200" height="1200" fetchpriority="high">
+          </div>
+          <div class="hero__thumb" data-parallax="0.08">
+            <img src="assets/clinic/treatment-room.jpg" alt="Bright, modern treatment room" width="900" height="1200" loading="lazy">
+          </div>
+          <svg class="sparkle sparkle--1" aria-hidden="true"><use href="#i-sparkle"/></svg>
+          <svg class="sparkle sparkle--2" aria-hidden="true"><use href="#i-sparkle"/></svg>
+          <svg class="sparkle sparkle--3" aria-hidden="true"><use href="#i-sparkle"/></svg>
+
+          <div class="float-card float-card--status" data-float>
+            <span class="float-card__icon float-card__icon--live"><svg class="ic"><use href="#i-clock"/></svg></span>
+            <span><small>Clinic status</small><strong data-hours-short>Mon–Sat, 9–6</strong></span>
+          </div>
+          <div class="float-card float-card--price" data-float>
+            <span class="float-card__icon"><svg class="ic ic--dental"><use href="#d-consult"/></svg></span>
+            <span><small>Consultation</small><strong>from ₱300</strong></span>
+          </div>
+          <div class="float-card float-card--safe" data-float>
+            <span class="float-card__icon float-card__icon--sage"><svg class="ic"><use href="#i-shield"/></svg></span>
+            <span><small>Strict sterilization</small><strong>Safe &amp; sterile</strong></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Marquee ============ -->
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee__track" data-marquee>
+        <span>Konsulta</span><svg><use href="#i-sparkle"/></svg>
+        <span>Linis</span><svg><use href="#i-sparkle"/></svg>
+        <span>Pasta</span><svg><use href="#i-sparkle"/></svg>
+        <span>Bunot</span><svg><use href="#i-sparkle"/></svg>
+        <span>Pustiso</span><svg><use href="#i-sparkle"/></svg>
+        <span>Braces</span><svg><use href="#i-sparkle"/></svg>
+        <span>Root Canal</span><svg><use href="#i-sparkle"/></svg>
+        <span>Whitening</span><svg><use href="#i-sparkle"/></svg>
+        <span>Veneers</span><svg><use href="#i-sparkle"/></svg>
+        <span>Crowns</span><svg><use href="#i-sparkle"/></svg>
+      </div>
+    </div>
+
+    <!-- ============ Quick paths ============ -->
+    <section class="section quick" id="help" aria-labelledby="help-title">
+      <div class="container">
+        <div class="section-head section-head--center" data-reveal>
+          <p class="eyebrow">Start here</p>
+          <h2 id="help-title" class="h2">How can we help you today?</h2>
+        </div>
+        <div class="quick__grid" data-stagger>
+          <a class="quick-card quick-card--rose" href="#care" data-open-tab="emergency" data-reveal data-tilt>
+            <span class="quick-card__icon"><svg class="ic"><use href="#i-alert"/></svg></span>
+            <span class="quick-card__title">I’m in pain or it’s an emergency</span>
+            <span class="quick-card__text">Step-by-step first aid, and when to call us or go to the ER.</span>
+            <span class="quick-card__go">Get help now <svg class="ic"><use href="#i-arrow-right"/></svg></span>
+          </a>
+          <a class="quick-card" href="#finder" data-reveal data-tilt>
+            <span class="quick-card__icon"><svg class="ic"><use href="#i-search"/></svg></span>
+            <span class="quick-card__title">Find the right treatment</span>
+            <span class="quick-card__text">Tell us what’s bothering you and see which services can help.</span>
+            <span class="quick-card__go">Try the Smile Finder <svg class="ic"><use href="#i-arrow-right"/></svg></span>
+          </a>
+          <a class="quick-card" href="#pricing" data-reveal data-tilt>
+            <span class="quick-card__icon"><svg class="ic"><use href="#i-list"/></svg></span>
+            <span class="quick-card__title">Check prices</span>
+            <span class="quick-card__text">Transparent price ranges and a cost estimator for your treatment.</span>
+            <span class="quick-card__go">Estimate my cost <svg class="ic"><use href="#i-arrow-right"/></svg></span>
+          </a>
+          <a class="quick-card quick-card--gold" href="https://swiftcaredental.com/book" data-reveal data-tilt>
+            <span class="quick-card__icon"><svg class="ic"><use href="#i-calendar"/></svg></span>
+            <span class="quick-card__title">Book a visit</span>
+            <span class="quick-card__text">New patients take about 2 minutes. Returning patients, about 15 seconds.</span>
+            <span class="quick-card__go">Book online <svg class="ic"><use href="#i-arrow-right"/></svg></span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Smile Finder ============ -->
+    <section class="section finder" id="finder" aria-labelledby="finder-title">
+      <div class="container finder__grid">
+        <div class="finder__ask">
+          <div class="section-head" data-reveal>
+            <p class="eyebrow"><svg class="ic ic--sparkle"><use href="#i-sparkle"/></svg>Smile Finder</p>
+            <h2 id="finder-title" class="h2">What’s bothering your smile?</h2>
+            <p class="lead">Pick what fits best. We’ll suggest the services that usually help, what they cost, and what you can do right now.</p>
+          </div>
+          <div class="chips" role="radiogroup" aria-label="Choose a symptom" data-finder-chips data-reveal></div>
+        </div>
+        <div class="finder__result" data-reveal>
+          <div class="result-card" data-finder-result aria-live="polite">
+            <div class="result-empty">
+              <div class="result-empty__art" aria-hidden="true">
+                <svg class="result-empty__tooth"><use href="#d-tooth"/></svg>
+                <svg class="sparkle sparkle--a"><use href="#i-sparkle"/></svg>
+                <svg class="sparkle sparkle--b"><use href="#i-sparkle"/></svg>
+              </div>
+              <p class="result-empty__title">Choose a symptom to get started</p>
+              <p class="result-empty__text">Your suggestions will appear here.</p>
+            </div>
+          </div>
+          <p class="disclaimer"><svg class="ic"><use href="#i-info"/></svg>General guidance only, not a diagnosis. Your dentist will confirm the right treatment during your consultation.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Services ============ -->
+    <section class="section services" id="services" aria-labelledby="services-title">
+      <div class="container">
+        <div class="section-head section-head--split" data-reveal>
+          <div>
+            <p class="eyebrow">Our services</p>
+            <h2 id="services-title" class="h2">Complete dental care for the whole family</h2>
+          </div>
+          <p class="lead">From preventive to restorative, here are all 15 services under one roof. Tap any service to see what to expect.</p>
+        </div>
+        <div class="tabs-pill" role="tablist" aria-label="Filter services" data-service-filters data-reveal></div>
+        <div class="services__grid" data-services-grid></div>
+      </div>
+    </section>
+
+    <!-- ============ Pricing / estimator ============ -->
+    <section class="section pricing" id="pricing" aria-labelledby="pricing-title">
+      <div class="container">
+        <div class="section-head section-head--split" data-reveal>
+          <div>
+            <p class="eyebrow">Transparent pricing</p>
+            <h2 id="pricing-title" class="h2">Know what to expect before you visit</h2>
+          </div>
+          <p class="lead">Add treatments to build a quick estimate. Prices are guides, and your final fee is confirmed at your consultation.</p>
+        </div>
+        <div class="pricing__grid">
+          <div class="price-list" data-reveal>
+            <label class="search">
+              <svg class="ic"><use href="#i-search"/></svg>
+              <span class="sr-only">Search treatments</span>
+              <input type="search" placeholder="Search e.g. “pasta”, “braces”, “linis”" data-price-search autocomplete="off">
+            </label>
+            <ul class="price-rows" data-price-rows></ul>
+            <p class="price-empty" data-price-empty hidden>No treatments match. Try “bunot”, “crown” or “cleaning”.</p>
+          </div>
+          <aside class="estimate" data-reveal style="--d:.1s" aria-labelledby="estimate-title">
+            <div class="estimate__card">
+              <div class="estimate__head">
+                <span class="estimate__icon"><svg class="ic"><use href="#i-list"/></svg></span>
+                <div>
+                  <h3 id="estimate-title">Your estimate</h3>
+                  <p data-estimate-count>No treatments added yet</p>
+                </div>
+              </div>
+              <ul class="estimate__items" data-estimate-items></ul>
+              <div class="estimate__total">
+                <span>Estimated total</span>
+                <strong data-estimate-total aria-live="polite">₱0</strong>
+              </div>
+              <p class="estimate__note" data-estimate-note>Add treatments from the list to see a price range.</p>
+              <div class="estimate__actions">
+                <a class="btn btn--gold btn--block" href="https://swiftcaredental.com/book" data-magnetic><svg class="ic"><use href="#i-calendar"/></svg><span>Book a consultation</span></a>
+                <div class="estimate__row">
+                  <button class="btn btn--ghost btn--sm" type="button" data-estimate-copy disabled><svg class="ic"><use href="#i-copy"/></svg>Copy summary</button>
+                  <button class="btn btn--text btn--sm" type="button" data-estimate-clear disabled>Clear</button>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ First visit journey ============ -->
+    <section class="section journey" id="visit" aria-labelledby="visit-title">
+      <div class="container">
+        <div class="section-head section-head--center" data-reveal>
+          <p class="eyebrow">Your visit, step by step</p>
+          <h2 id="visit-title" class="h2">Easy from booking to aftercare</h2>
+          <div class="segmented" role="tablist" aria-label="Patient type" data-journey-toggle>
+            <button role="tab" aria-selected="true" data-journey="new"><svg class="ic"><use href="#i-user-plus"/></svg>New patient</button>
+            <button role="tab" aria-selected="false" data-journey="existing"><svg class="ic"><use href="#i-user-check"/></svg>Existing patient</button>
+            <span class="segmented__thumb" aria-hidden="true"></span>
+          </div>
+        </div>
+        <ol class="steps" data-steps>
+          <li class="step" data-reveal>
+            <span class="step__num">1</span>
+            <h3 class="step__title" data-new="Book in about 2 minutes" data-existing="Book in about 15 seconds">Book in about 2 minutes</h3>
+            <p class="step__text" data-new="Choose “I’m a New Patient” and fill in a few details to set up your profile. Walk-ins are welcome too." data-existing="Choose “I’m an Existing Patient” and enter your Patient Number and Last Name. No forms to fill again.">Choose “I’m a New Patient” and fill in a few details to set up your profile. Walk-ins are welcome too.</p>
+          </li>
+          <li class="step" data-reveal style="--d:.1s">
+            <span class="step__num">2</span>
+            <h3 class="step__title" data-new="Meet your dentist" data-existing="Quick check-in">Meet your dentist</h3>
+            <p class="step__text" data-new="A full oral exam, plus X-rays if needed. Tell us about any pain, worries or medical conditions." data-existing="Let us know if anything has changed since your last visit, like new medicines, pain or sensitivity.">A full oral exam, plus X-rays if needed. Tell us about any pain, worries or medical conditions.</p>
+          </li>
+          <li class="step" data-reveal style="--d:.2s">
+            <span class="step__num">3</span>
+            <h3 class="step__title">A clear plan and price</h3>
+            <p class="step__text">We explain your options in plain language and confirm the fee before any treatment begins.</p>
+          </li>
+          <li class="step" data-reveal style="--d:.3s">
+            <span class="step__num">4</span>
+            <h3 class="step__title">Gentle treatment and aftercare</h3>
+            <p class="step__text">Comfortable care in a sterile room, then aftercare tips so you heal well. They’re also saved in our <a href="#care" data-open-tab="aftercare">care hub</a>.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============ About ============ -->
+    <section class="section about" id="about" aria-labelledby="about-title">
+      <div class="container about__grid">
+        <div class="about__media">
+          <figure class="about__photo about__photo--a" data-reveal data-parallax="-0.05">
+            <img src="assets/clinic/reception-1.jpg" alt="Welcoming SwiftCare reception area" loading="lazy" width="1200" height="1200">
+          </figure>
+          <figure class="about__photo about__photo--b" data-reveal style="--d:.15s" data-parallax="0.07">
+            <img src="assets/clinic/treatment-area.jpg" alt="Modern dental chair in a glass-walled treatment area" loading="lazy" width="1200" height="800">
+          </figure>
+          <div class="about__badge" data-reveal style="--d:.3s">
+            <svg class="about__badge-ring" viewBox="0 0 120 120" aria-hidden="true">
+              <defs><path id="badge-circle" d="M60 60m-44 0a44 44 0 1 1 88 0a44 44 0 1 1-88 0"/></defs>
+              <text><textPath href="#badge-circle">GENTLE · SAFE · STERILE · PATIENT-FIRST · </textPath></text>
+            </svg>
+            <svg class="about__badge-tooth" aria-hidden="true"><use href="#d-tooth"/></svg>
+          </div>
+        </div>
+        <div class="about__copy">
+          <div class="section-head" data-reveal>
+            <p class="eyebrow">Why SwiftCare</p>
+            <h2 id="about-title" class="h2">Dental care that puts <em>you</em> first</h2>
+            <p class="lead">At SwiftCare Dental Clinic, we combine modern technology with compassionate care. Our team works to make every visit comfortable and stress-free.</p>
+          </div>
+          <ul class="pillars" data-stagger>
+            <li data-reveal><span class="pillar__icon"><svg class="ic"><use href="#i-users"/></svg></span><div><h3>Experienced team</h3><p>Licensed dentists with years of clinical experience</p></div></li>
+            <li data-reveal><span class="pillar__icon"><svg class="ic"><use href="#i-shield"/></svg></span><div><h3>Safe &amp; sterile</h3><p>Strict sterilization protocols and modern equipment</p></div></li>
+            <li data-reveal><span class="pillar__icon"><svg class="ic"><use href="#i-heart"/></svg></span><div><h3>Gentle approach</h3><p>Anxiety-free dental care for patients of all ages</p></div></li>
+            <li data-reveal><span class="pillar__icon"><svg class="ic"><use href="#i-calendar"/></svg></span><div><h3>Flexible scheduling</h3><p>Easy online booking with same-day availability</p></div></li>
+          </ul>
+        </div>
+      </div>
+      <div class="container">
+        <dl class="stats" data-stagger>
+          <div class="stat" data-reveal><dt>Dental services</dt><dd><span data-count="15">15</span></dd></div>
+          <div class="stat" data-reveal><dt>Days open each week</dt><dd><span data-count="6">6</span><small>+ Sun by appt.</small></dd></div>
+          <div class="stat" data-reveal><dt>Consultations from</dt><dd><small class="stat__pre">₱</small><span data-count="300">300</span></dd></div>
+          <div class="stat" data-reveal><dt>To rebook as a returning patient</dt><dd><span data-count="15">15</span><small>sec</small></dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- ============ Patient care hub ============ -->
+    <section class="section care" id="care" aria-labelledby="care-title">
+      <div class="container">
+        <div class="section-head section-head--center" data-reveal>
+          <p class="eyebrow">Patient care hub</p>
+          <h2 id="care-title" class="h2">Help for your smile, between visits</h2>
+          <p class="lead">Emergency first aid, aftercare guides and everyday tools to keep your teeth healthy.</p>
+        </div>
+
+        <div class="care__tabs tabs-pill tabs-pill--lg" role="tablist" aria-label="Patient care tools" data-tabs="care" data-reveal>
+          <button role="tab" id="tab-emergency" aria-controls="panel-emergency" aria-selected="true" data-tab="emergency"><svg class="ic"><use href="#i-alert"/></svg>Emergency first aid</button>
+          <button role="tab" id="tab-aftercare" aria-controls="panel-aftercare" aria-selected="false" tabindex="-1" data-tab="aftercare"><svg class="ic"><use href="#i-heart"/></svg>Aftercare guides</button>
+          <button role="tab" id="tab-timer" aria-controls="panel-timer" aria-selected="false" tabindex="-1" data-tab="timer"><svg class="ic"><use href="#i-brush"/></svg>Brushing timer</button>
+          <button role="tab" id="tab-reminder" aria-controls="panel-reminder" aria-selected="false" tabindex="-1" data-tab="reminder"><svg class="ic"><use href="#i-bell"/></svg>Check-up reminder</button>
+          <button role="tab" id="tab-coverage" aria-controls="panel-coverage" aria-selected="false" tabindex="-1" data-tab="coverage"><svg class="ic"><use href="#i-shield"/></svg>PhilHealth &amp; HMO</button>
+        </div>
+
+        <div class="care__panels" data-reveal>
+          <!-- Emergency -->
+          <div class="panel" role="tabpanel" id="panel-emergency" aria-labelledby="tab-emergency" data-panel="emergency">
+            <div class="er-banner">
+              <span class="er-banner__icon"><svg class="ic"><use href="#i-alert"/></svg></span>
+              <p><strong>Call 911 or go to the nearest ER</strong> if you have trouble breathing or swallowing, swelling spreading to your eye or neck, a possible broken jaw, or bleeding that won’t stop.</p>
+            </div>
+            <div class="emergency">
+              <div class="emergency__list" role="tablist" aria-label="Emergency type" aria-orientation="vertical" data-emergency-list></div>
+              <div class="emergency__detail" data-emergency-detail aria-live="polite"></div>
+            </div>
+          </div>
+
+          <!-- Aftercare -->
+          <div class="panel" role="tabpanel" id="panel-aftercare" aria-labelledby="tab-aftercare" data-panel="aftercare" hidden>
+            <div class="chips chips--scroll" role="tablist" aria-label="Treatment" data-aftercare-chips></div>
+            <div class="aftercare" data-aftercare-detail aria-live="polite"></div>
+          </div>
+
+          <!-- Brushing timer -->
+          <div class="panel" role="tabpanel" id="panel-timer" aria-labelledby="tab-timer" data-panel="timer" hidden>
+            <div class="timer">
+              <div class="timer__stage">
+                <svg class="timer__ring" viewBox="0 0 320 320" aria-hidden="true">
+                  <circle class="timer__ring-bg" cx="160" cy="160" r="148"/>
+                  <circle class="timer__ring-fg" cx="160" cy="160" r="148" data-timer-ring/>
+                </svg>
+                <svg class="mouth" viewBox="0 0 240 240" aria-hidden="true" data-mouth>
+                  <text x="22" y="124" class="mouth__side">L</text>
+                  <text x="218" y="124" class="mouth__side" text-anchor="end">R</text>
+                  <path class="mouth__q" data-q="1" d="M120 38C88 38 64 56 54 100"/>
+                  <path class="mouth__q" data-q="0" d="M120 38c32 0 56 18 66 62"/>
+                  <path class="mouth__q" data-q="2" d="M54 142c10 38 34 60 66 60"/>
+                  <path class="mouth__q" data-q="3" d="M186 142c-10 38-34 60-66 60"/>
+                  <g class="mouth__bubbles" data-bubbles></g>
+                </svg>
+                <div class="timer__readout">
+                  <span class="timer__time" data-timer-time>2:00</span>
+                  <span class="timer__label" data-timer-label>Ready when you are</span>
+                </div>
+              </div>
+              <div class="timer__side">
+                <h3 class="h3">The 2-minute brush</h3>
+                <p class="muted">Brush twice a day for two full minutes. Spend 30 seconds on each part of your mouth. We’ll tell you when to move on.</p>
+                <ol class="quadrants" data-quadrants>
+                  <li data-q="0"><span class="quadrants__dot"></span>Upper right</li>
+                  <li data-q="1"><span class="quadrants__dot"></span>Upper left</li>
+                  <li data-q="2"><span class="quadrants__dot"></span>Lower left</li>
+                  <li data-q="3"><span class="quadrants__dot"></span>Lower right</li>
+                </ol>
+                <div class="timer__controls">
+                  <button class="btn btn--gold" type="button" data-timer-toggle><svg class="ic"><use href="#i-play"/></svg><span>Start brushing</span></button>
+                  <button class="icon-btn" type="button" data-timer-reset aria-label="Reset timer"><svg class="ic"><use href="#i-reset"/></svg></button>
+                  <button class="icon-btn" type="button" data-timer-sound aria-pressed="true" aria-label="Chime between sections"><svg class="ic"><use href="#i-volume"/></svg></button>
+                </div>
+                <p class="timer__tip" data-timer-tip><svg class="ic ic--sparkle"><use href="#i-sparkle"/></svg><span>Hold your brush at a 45° angle to the gumline and use gentle circles.</span></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reminder -->
+          <div class="panel" role="tabpanel" id="panel-reminder" aria-labelledby="tab-reminder" data-panel="reminder" hidden>
+            <div class="reminder">
+              <form class="reminder__form" data-reminder-form>
+                <h3 class="h3">When was your last check-up?</h3>
+                <p class="muted">Most people are advised to see the dentist about every 6 months. Your dentist may suggest a different schedule.</p>
+                <div class="field">
+                  <label for="last-visit">Last check-up or cleaning</label>
+                  <input type="date" id="last-visit" data-last-visit required>
+                </div>
+                <fieldset class="field">
+                  <legend>Recommended interval</legend>
+                  <div class="radio-pills">
+                    <label><input type="radio" name="interval" value="3"><span>3 months</span></label>
+                    <label><input type="radio" name="interval" value="6" checked><span>6 months</span></label>
+                    <label><input type="radio" name="interval" value="12"><span>12 months</span></label>
+                  </div>
+                </fieldset>
+                <p class="reminder__quick">Can’t remember? <button type="button" class="link-btn" data-reminder-unsure>It’s been over a year</button></p>
+              </form>
+              <div class="reminder__result" data-reminder-result aria-live="polite">
+                <div class="result-empty">
+                  <div class="result-empty__art" aria-hidden="true"><svg class="result-empty__cal"><use href="#i-calendar"/></svg></div>
+                  <p class="result-empty__title">Enter your last visit</p>
+                  <p class="result-empty__text">We’ll work out when you’re due and help you add it to your calendar.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- PhilHealth & HMO -->
+          <div class="panel" role="tabpanel" id="panel-coverage" aria-labelledby="tab-coverage" data-panel="coverage" hidden>
+            <div class="coverage" data-coverage></div>
+            <p class="disclaimer"><svg class="ic"><use href="#i-info"/></svg>Based on PhilHealth Circular 2024-0034 and typical HMO dental plans. Benefits and accreditation change — confirm with the clinic, PhilHealth or your HMO before your visit.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Testimonials ============ -->
+    <section class="section stories" id="stories" aria-labelledby="stories-title">
+      <div class="container">
+        <div class="section-head section-head--split" data-reveal>
+          <div>
+            <p class="eyebrow">Patient stories</p>
+            <h2 id="stories-title" class="h2">Trusted by families across Tarlac</h2>
+          </div>
+          <div class="carousel__nav">
+            <button class="icon-btn" type="button" data-carousel-prev aria-label="Previous story"><svg class="ic"><use href="#i-chevron-left"/></svg></button>
+            <button class="icon-btn" type="button" data-carousel-next aria-label="Next story"><svg class="ic"><use href="#i-chevron-right"/></svg></button>
+          </div>
+        </div>
+        <div class="carousel" data-carousel data-reveal aria-roledescription="carousel" aria-label="Patient stories">
+          <div class="carousel__viewport">
+            <div class="carousel__track" data-carousel-track></div>
+          </div>
+          <div class="carousel__dots" data-carousel-dots></div>
+        </div>
+        <p class="stories__more" data-reveal><a href="https://swiftcaredental.com/testimonials">Read all patient stories</a> · <a href="https://www.facebook.com/swiftcaredentalclinic" rel="noopener" target="_blank">See us on Facebook</a></p>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section class="section faq" id="faq" aria-labelledby="faq-title">
+      <div class="container faq__grid">
+        <div class="faq__intro" data-reveal>
+          <p class="eyebrow">FAQ</p>
+          <h2 id="faq-title" class="h2">Questions, answered</h2>
+          <p class="lead">Can’t find what you’re looking for? We’re happy to help.</p>
+          <div class="faq__contact">
+            <a class="btn btn--ghost" href="https://m.me/swiftcaredentalclinic" target="_blank" rel="noopener"><svg class="ic"><use href="#i-message"/></svg>Message us</a>
+            <a class="btn btn--text" href="tel:09950902633"><svg class="ic"><use href="#i-phone"/></svg>0995 090 2633</a>
+          </div>
+        </div>
+        <div class="accordion" data-accordion data-stagger></div>
+      </div>
+    </section>
+
+    <!-- ============ CTA ============ -->
+    <section class="cta" aria-labelledby="cta-title">
+      <div class="container">
+        <div class="cta__card" data-reveal>
+          <div class="cta__sparkles" aria-hidden="true" data-cta-sparkles></div>
+          <svg class="cta__tooth" viewBox="0 0 200 200" aria-hidden="true"><path d="M100 38C80 22 52 14 36 24 14 38 12 72 20 102c8 30 16 58 26 82 6 12 20 12 24-2 6-22 12-42 30-44 18 2 24 22 30 44 4 14 18 14 24 2 10-24 18-52 26-82 8-30 6-64-16-78-16-10-44-2-64 14Z"/></svg>
+          <p class="eyebrow eyebrow--light">Walk-ins welcome</p>
+          <h2 id="cta-title" class="cta__title">Ready for a brighter smile?</h2>
+          <p class="cta__text">Book your appointment today and take the first step toward better dental health.</p>
+          <div class="cta__actions">
+            <a class="btn btn--gold btn--lg" data-magnetic href="https://swiftcaredental.com/book"><svg class="ic"><use href="#i-calendar"/></svg><span>Book an appointment</span></a>
+            <a class="btn btn--light btn--lg" href="https://www.facebook.com/swiftcaredentalclinic" target="_blank" rel="noopener"><svg class="ic"><use href="#i-facebook"/></svg><span>Message us on Facebook</span></a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Contact ============ -->
+    <section class="section contact" id="contact" aria-labelledby="contact-title">
+      <div class="container">
+        <div class="section-head section-head--center" data-reveal>
+          <p class="eyebrow">Contact</p>
+          <h2 id="contact-title" class="h2">Visit us in Tarlac City</h2>
+          <p class="lead">Drop by, call or send a message. We’re happy to help with any questions.</p>
+        </div>
+        <div class="contact__grid">
+          <div class="contact__cards" data-stagger>
+            <div class="contact-card" data-reveal>
+              <span class="contact-card__icon"><svg class="ic"><use href="#i-pin"/></svg></span>
+              <div class="contact-card__body">
+                <h3>Location</h3>
+                <p>2nd Floor, Sicangco Building, MacArthur Highway, San Rafael, Tarlac City 2300</p>
+                <div class="contact-card__actions">
+                  <a class="chip-link" href="https://www.google.com/maps/search/Sicangco+Building+MacArthur+Highway+San+Rafael+Tarlac+Philippines" target="_blank" rel="noopener"><svg class="ic"><use href="#i-nav"/></svg>Get directions</a>
+                  <button class="chip-link" type="button" data-copy="2nd Floor, Sicangco Building, MacArthur Highway, San Rafael, Tarlac City 2300"><svg class="ic"><use href="#i-copy"/></svg>Copy</button>
+                </div>
+              </div>
+            </div>
+            <div class="contact-card" data-reveal>
+              <span class="contact-card__icon"><svg class="ic"><use href="#i-phone"/></svg></span>
+              <div class="contact-card__body">
+                <h3>Call us</h3>
+                <p><a href="tel:09950902633">0995 090 2633</a></p>
+                <div class="contact-card__actions">
+                  <a class="chip-link" href="tel:09950902633"><svg class="ic"><use href="#i-phone"/></svg>Call now</a>
+                  <button class="chip-link" type="button" data-copy="0995 090 2633"><svg class="ic"><use href="#i-copy"/></svg>Copy</button>
+                </div>
+              </div>
+            </div>
+            <div class="contact-card" data-reveal>
+              <span class="contact-card__icon"><svg class="ic"><use href="#i-mail"/></svg></span>
+              <div class="contact-card__body">
+                <h3>Email</h3>
+                <p><a href="mailto:info@swiftcaredental.com">info@swiftcaredental.com</a></p>
+              </div>
+            </div>
+            <div class="contact-card" data-reveal>
+              <span class="contact-card__icon"><svg class="ic"><use href="#i-facebook"/></svg></span>
+              <div class="contact-card__body">
+                <h3>Facebook</h3>
+                <p><a href="https://www.facebook.com/swiftcaredentalclinic" target="_blank" rel="noopener">SwiftCare Dental Clinic</a></p>
+              </div>
+            </div>
+            <div class="hours-card" data-reveal>
+              <div class="hours-card__head">
+                <h3><svg class="ic"><use href="#i-clock"/></svg>Clinic hours</h3>
+                <span class="status-pill status-pill--solid" data-hours-status><span class="status-pill__dot"></span><span class="status-pill__text">Mon–Sat 9 AM – 6 PM</span></span>
+              </div>
+              <table class="hours-table" data-hours-table>
+                <tbody>
+                  <tr data-day="1"><th>Monday</th><td>9:00 AM – 6:00 PM</td></tr>
+                  <tr data-day="2"><th>Tuesday</th><td>9:00 AM – 6:00 PM</td></tr>
+                  <tr data-day="3"><th>Wednesday</th><td>9:00 AM – 6:00 PM</td></tr>
+                  <tr data-day="4"><th>Thursday</th><td>9:00 AM – 6:00 PM</td></tr>
+                  <tr data-day="5"><th>Friday</th><td>9:00 AM – 6:00 PM</td></tr>
+                  <tr data-day="6"><th>Saturday</th><td>9:00 AM – 6:00 PM</td></tr>
+                  <tr data-day="0"><th>Sunday</th><td>By appointment only</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="map" data-reveal style="--d:.15s">
+            <iframe title="Map to SwiftCare Dental Clinic" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3838.7!2d120.5972!3d15.4511!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2sSicangco+Building%2C+MacArthur+Hwy%2C+San+Rafael%2C+Tarlac!5e0!3m2!1sen!2sph!4v1700000000000"></iframe>
+            <div class="map__card">
+              <img src="assets/clinic/logo-mark.png" alt="" width="600" height="457">
+              <div><strong>SwiftCare Dental Clinic</strong><span>2nd Floor, Sicangco Building</span></div>
+              <a class="icon-btn icon-btn--gold" href="https://www.google.com/maps/search/Sicangco+Building+MacArthur+Highway+San+Rafael+Tarlac+Philippines" target="_blank" rel="noopener" aria-label="Get directions"><svg class="ic"><use href="#i-nav"/></svg></a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ Footer ============ -->
+  <footer class="footer">
+    <div class="container footer__grid">
+      <div class="footer__brand">
+        <span class="footer__logo"><img src="assets/clinic/logo-mark.png" alt="SwiftCare Dental Clinic" width="600" height="457" loading="lazy"></span>
+        <p>Premium dental care in a warm, welcoming environment, right here in Tarlac City.</p>
+        <div class="footer__social">
+          <a class="icon-btn icon-btn--dark" href="https://www.facebook.com/swiftcaredentalclinic" target="_blank" rel="noopener" aria-label="Facebook"><svg class="ic"><use href="#i-facebook"/></svg></a>
+          <a class="icon-btn icon-btn--dark" href="https://m.me/swiftcaredentalclinic" target="_blank" rel="noopener" aria-label="Messenger"><svg class="ic"><use href="#i-message"/></svg></a>
+          <a class="icon-btn icon-btn--dark" href="mailto:info@swiftcaredental.com" aria-label="Email"><svg class="ic"><use href="#i-mail"/></svg></a>
+        </div>
+      </div>
+      <div>
+        <h3 class="footer__title">Explore</h3>
+        <ul class="footer__links">
+          <li><a href="#services">Services</a></li>
+          <li><a href="#pricing">Pricing &amp; estimate</a></li>
+          <li><a href="#finder">Smile Finder</a></li>
+          <li><a href="#about">About us</a></li>
+          <li><a href="https://swiftcaredental.com/testimonials">Patient stories</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="footer__title">Patient care</h3>
+        <ul class="footer__links">
+          <li><a href="#care" data-open-tab="emergency">Emergency first aid</a></li>
+          <li><a href="#care" data-open-tab="aftercare">Aftercare guides</a></li>
+          <li><a href="#care" data-open-tab="timer">Brushing timer</a></li>
+          <li><a href="#care" data-open-tab="reminder">Check-up reminder</a></li>
+          <li><a href="#care" data-open-tab="coverage">PhilHealth &amp; HMO</a></li>
+          <li><a href="https://swiftcaredental.com/book">Book appointment</a></li>
+          <li><a href="https://swiftcaredental.com/auth/signin">Staff login</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="footer__title">Clinic hours</h3>
+        <p class="footer__hours">Monday – Saturday<br><strong>9:00 AM – 6:00 PM</strong></p>
+        <p class="footer__hours">Sunday<br><strong>By appointment only</strong></p>
+        <p class="footer__hours"><a href="tel:09950902633">0995 090 2633</a></p>
+      </div>
+    </div>
+    <div class="container footer__bottom">
+      <p>© <span data-year>2026</span> SwiftCare Dental Clinic. All rights reserved.</p>
+      <p>Online information is general guidance and doesn’t replace a dental examination.</p>
+      <p>Concept redesign by <a href="/">Flossify</a>. The clinic’s live site is at <a href="https://swiftcaredental.com" rel="noopener">swiftcaredental.com</a>.</p>
+    </div>
+  </footer>
+
+  <!-- ============ Mobile action bar ============ -->
+  <nav class="action-bar" aria-label="Quick actions">
+    <a href="tel:09950902633"><svg class="ic"><use href="#i-phone"/></svg><span>Call</span></a>
+    <a href="https://www.google.com/maps/search/Sicangco+Building+MacArthur+Highway+San+Rafael+Tarlac+Philippines" target="_blank" rel="noopener"><svg class="ic"><use href="#i-nav"/></svg><span>Directions</span></a>
+    <a href="https://m.me/swiftcaredentalclinic" target="_blank" rel="noopener"><svg class="ic"><use href="#i-message"/></svg><span>Message</span></a>
+    <a class="action-bar__book" href="https://swiftcaredental.com/book"><svg class="ic"><use href="#i-calendar"/></svg><span>Book now</span></a>
+  </nav>
+
+  <!-- ============ Back to top ============ -->
+  <a href="#top" class="to-top" aria-label="Back to top" data-to-top>
+    <svg class="to-top__ring" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22"/><circle cx="24" cy="24" r="22" data-to-top-ring/></svg>
+    <svg class="ic"><use href="#i-arrow-up"/></svg>
+  </a>
+
+  <!-- ============ Service drawer ============ -->
+  <dialog class="drawer" data-drawer aria-labelledby="drawer-title">
+    <div class="drawer__inner" data-drawer-body></div>
+  </dialog>
+
+  <div class="toast" role="status" aria-live="polite" data-toast></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

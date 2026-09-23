@@ -1,21 +1,35 @@
 ---
+// The frame around every workspace page: who is signed in, which branch is
+// open, and the way out. Pages behind it have already passed requireWorkspace,
+// so a rendered page always has a staff member; the props say who.
 import '../styles/global.css';
-import type { Clinic } from '../data/demo';
+import Csrf from '../components/Csrf.astro';
+import BillingNotice from '../components/BillingNotice.astro';
 
 interface Props {
-  clinic: Clinic;
+  clinic: { slug: string; name: string; area?: string | null };
   title: string;
-  section: 'today' | 'patients' | 'billing' | 'claims';
+  section: 'today' | 'schedule' | 'patients' | 'messages' | 'billing' | 'claims' | 'settings';
+  staff: { name: string; role: string };
+  branches: { slug: string; name: string }[];
+  /** The clinic's group, for the billing notice. Pages pass clinic.group_id. */
+  groupId?: string;
 }
 
-const { clinic, title, section } = Astro.props;
+const { clinic, title, section, staff, branches, groupId } = Astro.props;
 
+// Settings is the owner's and the admin's: hours, fees, the team, the listing.
+const canSetUp = staff.role === 'owner' || staff.role === 'admin';
 const nav = [
   { id: 'today', label: 'Today', href: `/c/${clinic.slug}/` },
+  { id: 'schedule', label: 'Schedule', href: `/c/${clinic.slug}/schedule/` },
   { id: 'patients', label: 'Patients', href: `/c/${clinic.slug}/patients/` },
+  { id: 'messages', label: 'Messages', href: `/c/${clinic.slug}/messages/` },
   { id: 'billing', label: 'Billing', href: `/c/${clinic.slug}/#billing` },
-  { id: 'claims', label: 'HMO claims', href: `/c/${clinic.slug}/#claims` },
+  { id: 'claims', label: 'Claims', href: `/c/${clinic.slug}/claims/` },
+  ...(canSetUp ? [{ id: 'settings', label: 'Settings', href: `/c/${clinic.slug}/settings/` }] : []),
 ];
+const others = branches.filter((b) => b.slug !== clinic.slug);
 ---
 
 <!doctype html>
@@ -24,15 +38,15 @@ const nav = [
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{title} — {clinic.name} — Flossify</title>
-    <!-- A clinic workspace is private by definition. Keep it out of indexes
-         even before auth exists, so nothing is ever discoverable by search. -->
+    <!-- A clinic workspace is private by definition; keep it out of indexes. -->
     <meta name="robots" content="noindex, nofollow" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600&display=swap"
-    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="theme-color" content="#f2f2ef" />
+    <script src="/pwa.js" defer></script>
+    <link rel="preload" href="/fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-400.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline>
       try {
         const saved = localStorage.getItem('theme');
@@ -43,36 +57,29 @@ const nav = [
     </script>
   </head>
   <body>
-    <div
-      role="alert"
-      class="border-b border-crown/40 bg-crown/10 px-5 py-2.5 text-center text-[13px] font-medium text-ink sm:px-8"
-    >
-      Prototype with invented data. No authentication yet — do not put real patient records in this.
-    </div>
+    <p role="note" class="border-b border-crown/40 bg-crown/10 px-5 py-2 text-center text-[13px] text-ink sm:px-8">
+      Development database with invented patients. Do not enter real patient records.
+    </p>
+    {groupId && canSetUp && <BillingNotice groupId={groupId} slug={clinic.slug} />}
 
     <header class="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur">
       <div class="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-8">
         <div class="flex items-center gap-3">
-          <a href="/" class="flex items-center gap-2" aria-label="Flossify, home">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="text-accent" aria-hidden="true">
-              <path d="M5.5 4.5c0 6.5 13 4 13 10.5 0 3.2-2.8 5-6 4.5"></path>
-              <circle cx="5.5" cy="4.5" r="1.7" fill="currentColor" stroke="none"></circle>
-            </svg>
-          </a>
+          <a href="/" class="font-display text-[17px] font-bold tracking-[-0.05em]" aria-label="Flossify, home">Flossify</a>
           <span class="h-5 w-px bg-line"></span>
           <div>
             <p class="font-display text-[17px] leading-tight font-bold">{clinic.name}</p>
-            <p class="text-[11px] text-muted">{clinic.group} &middot; {clinic.city}</p>
+            <p class="meta">{clinic.area}</p>
           </div>
         </div>
 
-        <nav class="flex items-center gap-1" aria-label="Clinic sections">
+        <nav class="flex flex-wrap items-center gap-1" aria-label="Clinic sections">
           {nav.map((n) => (
             <a
               href={n.href}
               aria-current={n.id === section ? 'page' : undefined}
               class:list={[
-                ' px-3.5 py-2 text-[13.5px] font-medium',
+                'px-3.5 py-2 text-[13.5px] font-medium',
                 n.id === section ? 'bg-accent text-surface' : 'text-ink-2 hover:bg-bg-soft hover:text-accent',
               ]}
             >
@@ -80,6 +87,20 @@ const nav = [
             </a>
           ))}
         </nav>
+
+        <div class="flex items-center gap-3">
+          {others.length > 0 && (
+            <details class="relative">
+              <summary class="meta cursor-pointer list-none hover:text-ink">Branch &darr;</summary>
+              <ul class="absolute right-0 z-50 mt-2 min-w-[14rem] border border-line bg-surface p-1">
+                {others.map((b) => <li><a href={`/c/${b.slug}/`} class="block px-3 py-2 text-[14px] hover:bg-bg-soft">{b.name}</a></li>)}
+              </ul>
+            </details>
+          )}
+          <span class="text-[13.5px] text-ink-2"><span class="font-medium text-ink">{staff.name}</span> · {staff.role}</span>
+          <button type="button" hidden data-install class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Install on this device</button>
+          <form method="post" action="/auth/logout"><Csrf /><button type="submit" class="meta hover:text-ink">Sign out</button></form>
+        </div>
       </div>
     </header>
 

@@ -1,0 +1,75 @@
+---
+// The code we texted. Six digits and the number it went to; a match signs the
+// phone in for thirty days and lands on the list of visits.
+//
+// Guarded like the staff code page: the CSRF token, a limit per number and
+// per address, and the code itself dies after five misses (codes.ts). Every
+// miss gets the same one sentence, whether the code was wrong, expired, or
+// never issued for that number, so the form cannot be used to find out which
+// numbers have visits.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import PatientHeader from '../../components/PatientHeader.astro';
+import Csrf from '../../components/Csrf.astro';
+import { readPatientSession, setPatientSession } from '../../lib/patient-auth';
+import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
+import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
+import { redeemPhoneCode, REDEEM_TEXT } from '../../lib/codes';
+import { normalizePhone, PH_MOBILE, prettyPhone } from '../../lib/messages';
+
+if (readPatientSession(Astro.cookies)) return Astro.redirect('/me/visits/', 303);
+
+const sent = Astro.url.searchParams.get('sent') === '1';
+let typed = prettyPhone(Astro.url.searchParams.get('phone') ?? '');
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  typed = String(form.get('phone') ?? '').trim();
+  const phone = normalizePhone(typed);
+  const code = String(form.get('code') ?? '').replace(/\D/g, '');
+  const ip = clientIp(Astro);
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+  else if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
+  else {
+    const [byPhone, byIp] = await Promise.all([hit(`mecode:p:${phone}`, ...LIMITS.mecode.phone), hit(`mecode:ip:${ip}`, ...LIMITS.mecode.ip)]);
+    if (!byPhone.allowed || !byIp.allowed) error = `Too many tries. ${waitText(Math.max(byPhone.retryAfter, byIp.retryAfter))}`;
+    else if (code.length !== 6) error = 'Enter the six digits from the text.';
+    else {
+      const result = await redeemPhoneCode(phone, 'patient', code);
+      // One sentence for every miss: the form never says whether a number is known.
+      if (result !== 'ok') error = REDEEM_TEXT.wrong;
+      else {
+        setPatientSession(Astro.cookies, phone);
+        return Astro.redirect('/me/visits/', 303);
+      }
+    }
+  }
+}
+---
+
+<Base title="Enter your code — Flossify" description="Enter the six-digit code we texted to see your visits.">
+  <PatientHeader current="me" />
+
+  <main id="main" class="mx-auto max-w-[440px] px-5 py-16 sm:px-8">
+    <a href="/me/" class="meta hover:text-ink">&larr; My visits</a>
+    <h1 class="mt-6 font-display text-[clamp(1.8rem,4vw,2.4rem)] leading-tight font-semibold tracking-[-0.02em]">Enter your code</h1>
+    <p class="mt-3 text-[15px] leading-relaxed text-ink-2">Type the six digits from the text. It works for 15 minutes, and you stay signed in on this phone for a month.</p>
+
+    {sent && !error && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">If that number has visits on Flossify, a code is on its way. It works for 15 minutes.</p>}
+    {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
+
+    <form method="post" class="mt-8 grid gap-4">
+      <Csrf />
+      <label class="field"><span class="meta">Mobile number</span><input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="0917 000 0000" value={typed} required autofocus={!typed} /></label>
+      <label class="field"><span class="meta">Code</span><input type="text" name="code" inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="6 digits" required autofocus={!!typed} /></label>
+      <button type="submit" class="btn btn-primary mt-2">See my visits</button>
+    </form>
+
+    <div class="mt-8 grid gap-2 border-t border-line pt-6 text-[14px]">
+      <a href="/me/" class="underline underline-offset-4">Didn’t get a text? Ask again.</a>
+      <p class="text-ink-2">Texts can take a minute to arrive. Asking again voids the earlier code.</p>
+    </div>
+  </main>
+</Base>

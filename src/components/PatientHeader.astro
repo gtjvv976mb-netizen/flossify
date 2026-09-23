@@ -1,0 +1,25 @@
+---
+// The masthead for the patient side: find, coverage, and the door back to the
+// clinic side. Same rules as the home page — mono uppercase for the links,
+// one hairline, nothing rounded.
+interface Props { current?: 'find' | 'coverage' | 'me' }
+const { current } = Astro.props;
+---
+
+<header class="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur-md">
+  <div class="mx-auto flex max-w-[1280px] items-center justify-between gap-6 px-5 py-4 sm:px-8">
+    <a href="/" class="font-display text-[17px] font-bold tracking-[-0.05em]">Flossify</a>
+    <nav class="flex items-center gap-5" aria-label="Patients">
+      <a href="/find/" class:list={['meta hover:text-ink', current === 'find' && 'meta-ink underline decoration-accent underline-offset-4']}>Find a clinic</a>
+      <a href="/coverage/" class:list={['meta hover:text-ink', current === 'coverage' && 'meta-ink underline decoration-accent underline-offset-4']}>PhilHealth &amp; HMO</a>
+      <a href="/me/" class:list={['meta hover:text-ink', current === 'me' && 'meta-ink underline decoration-accent underline-offset-4']}>My visits</a>
+      <a href="/clinics/" class="meta hidden hover:text-ink sm:block">Workspaces</a>
+    </nav>
+  </div>
+</header>
+
+<!-- Invented clinics, invented dentists, 555 numbers. Said once, up top, on
+     every patient page, so nobody drives to Session Road expecting a chair. -->
+<p role="note" class="border-b border-crown/40 bg-crown/10 px-5 py-2 text-center text-[13px] text-ink sm:px-8">
+  Prototype. The clinics and dentists are invented and the phone numbers are 555 numbers; nothing here books a real visit.
+</p>

@@ -1,0 +1,415 @@
+---
+// Settings › Team. Everyone who can open this branch, and what an owner does
+// about them: add a person (we text them a code and they choose their own
+// password), send that code again, text a reset code, set the days they sit
+// here, decide who sees finance, switch an account off.
+//
+// staff and staff_access are group tables outside row-level security, so the
+// list is a plain pool query keyed on this clinic's id. Days (staff_schedule),
+// the text queue and the audit trail are clinic data and go through
+// withClinic(). Every action looks the target up through staff_access for
+// this clinic before touching the row, so an id lifted from another branch's
+// page changes nothing here.
+export const prerender = false;
+
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { pool, withClinic, type Tx } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { issueCode } from '../../../../lib/codes';
+import { queueText, texts, normalizePhone, prettyPhone, PH_MOBILE } from '../../../../lib/messages';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const isOwner = session.role === 'owner';
+const canSetUp = isOwner || session.role === 'admin';
+const here = Astro.url.pathname;
+
+// The roles an owner hands out. 'owner' is not on the list: a second owner is a sign-up matter, not a team one.
+const ROLES: Record<string, string> = { dentist: 'Dentist', associate: 'Associate dentist', secretary: 'Secretary', assistant: 'Dental assistant', admin: 'Admin' };
+const ROLE_LABEL: Record<string, string> = { owner: 'Owner', ...ROLES };
+// The seven Board-recognised fields, exactly as staff.specialty's check constraint spells them (migration 002).
+const SPECIALTIES = ['Endodontics', 'Oral & maxillofacial surgery', 'Orthodontics', 'Pediatric dentistry', 'Periodontics', 'Prosthodontics', 'Dental public health'];
+const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']] as const;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const clinician = (role: string) => role === 'dentist' || role === 'associate';
+
+let error = '';
+let notice = '';
+// What the add form holds; kept when it comes back with an error.
+const add = { name: '', role: 'dentist', phone: '', email: '', prc: '', specialty: '', days: [1, 2, 3, 4, 5, 6] as number[], finance: false };
+
+const dows = (form: FormData) => [...new Set(form.getAll('dow').map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))];
+
+/** The target of a per-person action, only if they have access to this branch. */
+async function member(id: string) {
+  if (!UUID.test(id)) return undefined;
+  const { rows } = await pool.query(
+    `select s.id, s.full_name, s.role, s.phone, s.password_hash is not null as has_password, s.disabled_at, a.can_view_finance
+       from staff_access a join staff s on s.id = a.staff_id
+      where a.clinic_id = $1 and s.id = $2`, [clinic.id, id]);
+  return rows[0] as { id: string; full_name: string; role: string; phone: string | null; has_password: boolean; disabled_at: Date | null; can_view_finance: boolean } | undefined;
+}
+const audit = (tx: Tx, action: string, staffId: string) =>
+  tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'staff', $4)`, [clinic.id, session.staffId, action, staffId]);
+
+/** 'Dr. Ana Reyes-Cariño' → 'ana-reyes-carino', then -2, -3… until no staff row has it. */
+function slugify(name: string) {
+  return name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/^dra?\.?\s+/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'dentist';
+}
+async function uniqueSlug(name: string) {
+  const base = slugify(name);
+  for (let n = 1; ; n++) {
+    const slug = n === 1 ? base : `${base}-${n}`;
+    if (!(await pool.query('select 1 from staff where slug = $1', [slug])).rowCount) return slug;
+  }
+}
+
+if (Astro.request.method === 'POST') {
+  if (!canSetUp) return Astro.redirect(here, 303);
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+  else if (action === 'add') {
+    add.name = String(form.get('name') ?? '').trim().replace(/\s+/g, ' ');
+    add.role = String(form.get('role') ?? '');
+    add.phone = String(form.get('phone') ?? '').trim();
+    add.email = String(form.get('email') ?? '').trim().toLowerCase();
+    add.prc = String(form.get('prc') ?? '').trim();
+    add.specialty = String(form.get('specialty') ?? '');
+    add.days = dows(form);
+    add.finance = isOwner && form.get('finance') === 'on';
+    const phone = normalizePhone(add.phone);
+    const dentist = clinician(add.role);
+    if (add.name.length < 2 || add.name.length > 80) error = 'Give us their full name, as patients should see it.';
+    else if (!Object.hasOwn(ROLES, add.role)) error = 'Choose a role.';
+    else if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000. The code goes there by text.';
+    else if (!EMAIL.test(add.email) || add.email.length > 120) error = 'That email doesn’t look complete.';
+    else if (dentist && !/^\d{4,10}$/.test(add.prc)) error = 'A dentist needs their PRC licence number: digits only, usually seven.';
+    else if (dentist && add.specialty && !SPECIALTIES.includes(add.specialty)) error = 'Pick a specialty from the list, or leave it blank for a general dentist.';
+    else if ((await pool.query('select 1 from staff where group_id = $1 and email = $2', [clinic.group_id, add.email])).rowCount) error = 'Someone in this group already has that email.';
+    else if ((await pool.query(`select 1 from staff where group_id = $1 and right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $2`, [clinic.group_id, phone.slice(-10)])).rowCount) error = 'Someone in this group already has that mobile number.';
+    else {
+      // The staff row and its access are group data and commit first; the code
+      // references the row, so it is minted after. Days, the text and the
+      // audit line are clinic data and go in one clinic transaction.
+      const slug = dentist ? await uniqueSlug(add.name) : null;
+      const specialty = dentist && add.specialty ? add.specialty : null;
+      const { rows: [created] } = await pool.query(
+        `insert into staff (group_id, full_name, email, phone, prc_licence, role, specialty, slug, practices, home_clinic_id, invited_at, invited_by)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), $11) returning id`,
+        [clinic.group_id, add.name, add.email, phone, dentist ? add.prc : null, add.role, specialty, slug, dentist && !specialty ? ['General dentistry'] : [], clinic.id, session.staffId]);
+      await pool.query(
+        'insert into staff_access (staff_id, clinic_id, can_view_finance, can_edit_records, can_manage_staff) values ($1, $2, $3, true, $4)',
+        [created.id, clinic.id, add.finance, add.role === 'admin']);
+      const code = await issueCode(created.id, 'invite');
+      await withClinic(clinic.id, async (tx) => {
+        for (const d of add.days) await tx.query('insert into staff_schedule (staff_id, clinic_id, dow) values ($1, $2, $3)', [created.id, clinic.id, d]);
+        await queueText(tx, { clinicId: clinic.id, to: phone, body: texts.invite(session.name, clinic.name, code), kind: 'invite', staffId: created.id });
+        await audit(tx, 'staff.invite', created.id);
+      });
+      return Astro.redirect(`${here}?saved=1&id=${created.id}`, 303);
+    }
+  } else {
+    const t = await member(String(form.get('id') ?? ''));
+    if (!t) error = 'That person is not on this branch.';
+    else if (action === 'invite') {
+      if (t.disabled_at) error = `${t.full_name} is disabled. Enable them first.`;
+      else if (t.has_password) error = `${t.full_name} already has a password. Text a reset code instead.`;
+      else if (!t.phone) error = `${t.full_name} has no mobile number on file, so there is nowhere to send the code.`;
+      else {
+        const code = await issueCode(t.id, 'invite');
+        await pool.query('update staff set invited_at = now(), invited_by = $2 where id = $1', [t.id, session.staffId]);
+        await withClinic(clinic.id, async (tx) => {
+          await queueText(tx, { clinicId: clinic.id, to: t.phone!, body: texts.invite(session.name, clinic.name, code), kind: 'invite', staffId: t.id });
+          await audit(tx, 'staff.invite', t.id);
+        });
+        return Astro.redirect(`${here}?done=invite&id=${t.id}`, 303);
+      }
+    } else if (action === 'phone') {
+      // The mobile is where codes go. An owner adds or corrects it here, then texts a code.
+      const phone = normalizePhone(String(form.get('phone') ?? ''));
+      if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
+      else {
+        await pool.query('update staff set phone = $2 where id = $1', [t.id, phone]);
+        await withClinic(clinic.id, (tx) => audit(tx, 'staff.phone', t.id));
+        return Astro.redirect(`${here}?done=phone&id=${t.id}`, 303);
+      }
+    } else if (action === 'reset') {
+      if (t.disabled_at) error = `${t.full_name} is disabled. Enable them first.`;
+      else if (!t.has_password) error = `${t.full_name} hasn’t set a password yet. Resend the invitation instead.`;
+      else if (!t.phone) error = `${t.full_name} has no mobile number on file, so there is nowhere to send the code.`;
+      else {
+        const code = await issueCode(t.id, 'reset');
+        await withClinic(clinic.id, async (tx) => {
+          await queueText(tx, { clinicId: clinic.id, to: t.phone!, body: texts.reset(code), kind: 'reset', staffId: t.id });
+          await audit(tx, 'staff.reset', t.id);
+        });
+        return Astro.redirect(`${here}?done=reset&id=${t.id}`, 303);
+      }
+    } else if (action === 'disable') {
+      if (t.id === session.staffId) error = 'You can’t disable your own account. Ask another owner.';
+      else if (t.role === 'owner' && !isOwner) error = 'Only an owner can disable an owner.';
+      else {
+        // disabled_at is checked on every workspace request, so they are out at once, at every branch.
+        await pool.query('update staff set disabled_at = coalesce(disabled_at, now()) where id = $1', [t.id]);
+        await withClinic(clinic.id, (tx) => audit(tx, 'staff.disable', t.id));
+        return Astro.redirect(`${here}?done=disable&id=${t.id}`, 303);
+      }
+    } else if (action === 'enable') {
+      if (t.role === 'owner' && !isOwner) error = 'Only an owner can enable an owner.';
+      else {
+        await pool.query('update staff set disabled_at = null where id = $1', [t.id]);
+        await withClinic(clinic.id, (tx) => audit(tx, 'staff.enable', t.id));
+        return Astro.redirect(`${here}?done=enable&id=${t.id}`, 303);
+      }
+    } else if (action === 'schedule') {
+      const days = dows(form);
+      await withClinic(clinic.id, async (tx) => {
+        await tx.query('delete from staff_schedule where staff_id = $1 and clinic_id = $2', [t.id, clinic.id]);
+        for (const d of days) await tx.query('insert into staff_schedule (staff_id, clinic_id, dow) values ($1, $2, $3)', [t.id, clinic.id, d]);
+        await audit(tx, 'staff.schedule', t.id);
+      });
+      return Astro.redirect(`${here}?done=schedule&id=${t.id}`, 303);
+    } else if (action === 'finance') {
+      if (!isOwner) error = 'Only an owner can change who sees finance.';
+      else if (t.id === session.staffId) error = 'You always see finance here.';
+      else {
+        await pool.query('update staff_access set can_view_finance = $3 where staff_id = $1 and clinic_id = $2', [t.id, clinic.id, form.get('sees') === '1']);
+        await withClinic(clinic.id, (tx) => audit(tx, 'staff.finance', t.id));
+        return Astro.redirect(`${here}?done=finance&id=${t.id}`, 303);
+      }
+    }
+  }
+}
+
+interface Person {
+  id: string; full_name: string; role: string; prc_licence: string | null; prc_checked_on: Date | null; phone: string | null; email: string; slug: string | null;
+  has_password: boolean; disabled_at: Date | null; last_seen_at: Date | null; invited_at: Date | null; can_view_finance: boolean;
+}
+const people = (await pool.query(
+  `select s.id, s.full_name, s.role, s.prc_licence, s.prc_checked_on, s.phone, s.email, s.slug,
+          s.password_hash is not null as has_password, s.disabled_at, s.last_seen_at, s.invited_at, a.can_view_finance
+     from staff_access a join staff s on s.id = a.staff_id
+    where a.clinic_id = $1
+    order by s.role = 'owner' desc, s.disabled_at is not null, s.full_name`, [clinic.id])).rows as Person[];
+
+const { area, schedule } = await withClinic(clinic.id, async (tx) => ({
+  area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null,
+  schedule: (await tx.query('select staff_id, dow from staff_schedule')).rows as { staff_id: string; dow: number }[],
+}));
+const daysOf = (id: string) => schedule.filter((r) => r.staff_id === id).map((r) => r.dow);
+
+const q = Astro.url.searchParams;
+if (!error) {
+  const who = people.find((p) => p.id === q.get('id'))?.full_name ?? 'them';
+  const done = q.get('saved') === '1' ? 'saved' : q.get('done') ?? '';
+  const NOTICES: Record<string, string> = {
+  phone: 'Mobile saved. You can text them a code now.',
+    saved: `Added. We texted ${who} a code that works for 24 hours.`,
+    invite: `We texted ${who} a new code. It works for 24 hours.`,
+    reset: `We texted ${who} a reset code. It works for 15 minutes.`,
+    disable: `${who} can no longer sign in.`,
+    enable: `${who} can sign in again.`,
+    schedule: `Saved ${who}’s days.`,
+    finance: `Saved what ${who} can see.`,
+  };
+  notice = NOTICES[done] ?? '';
+}
+
+const dayFmt = new Intl.DateTimeFormat('en-PH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' });
+/** 'Just now', '3 hours ago', 'Yesterday', then a Manila date. */
+function ago(d: Date | null) {
+  if (!d) return 'never';
+  const m = Math.round((Date.now() - new Date(d).getTime()) / 60_000);
+  if (m < 2) return 'just now';
+  if (m < 60) return `${m} minutes ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
+  const days = Math.round(h / 24);
+  if (days === 1) return 'yesterday';
+  if (days < 14) return `${days} days ago`;
+  return dayFmt.format(new Date(d));
+}
+
+// Status is never colour alone: every badge carries its words.
+const statusOf = (p: Person) =>
+  p.disabled_at ? { label: 'Disabled', cls: 'bg-bg-soft text-muted' }
+  : !p.has_password ? { label: 'Invited, hasn’t set a password', cls: 'bg-crown/20 text-crown' }
+  : { label: 'Active', cls: 'bg-accent/15 text-accent' };
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Team" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
+  <p class="meta"><a href={`/c/${clinic.slug}/settings/`} class="hover:text-ink">Settings</a> &rsaquo; Team</p>
+  <h1 class="mt-3 font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Team</h1>
+
+  {!canSetUp ? (
+    <p class="mt-4 text-[15px] text-ink-2">Only the owner or an admin can manage the team.</p>
+  ) : (
+    <>
+      <p class="mt-3 max-w-[64ch] text-[15px] leading-relaxed text-ink-2">
+        Everyone who can open {clinic.name}. Disabling someone signs them out of every branch; the days set here are where patients see them.
+      </p>
+
+      {notice && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">{notice}</p>}
+      {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
+
+      <ul class="mt-8 divide-y divide-line-2 border border-line bg-surface">
+        {people.map((p) => {
+          const st = statusOf(p);
+          const days = daysOf(p.id);
+          const me = p.id === session.staffId;
+          const mayDisable = !me && (isOwner || p.role !== 'owner');
+          return (
+            <li class="p-5 sm:px-6">
+              <div class="flex flex-wrap items-start justify-between gap-4">
+                <div class="min-w-0">
+                  <p class="text-[16px] font-semibold">
+                    {p.full_name} <span class="font-normal text-ink-2">· {ROLE_LABEL[p.role] ?? p.role}</span>
+                    {me && <span class="meta ml-2">you</span>}
+                  </p>
+                  <p class="mt-1 text-[13.5px] text-ink-2">
+                    {p.prc_licence && <span>PRC {p.prc_licence} · </span>}
+                    {p.phone ? prettyPhone(p.phone) : 'No mobile on file'} · {p.email}
+                  </p>
+                  <p class="mt-1 text-[13.5px] text-muted">
+                    Last seen {ago(p.last_seen_at)} · Sees finance: {p.can_view_finance ? 'yes' : 'no'}
+                    {p.slug && days.length > 0 && <span> · <a href={`/dentists/${p.slug}/`} class="underline underline-offset-4 hover:text-accent">Public profile</a></span>}
+                    {p.slug && days.length === 0 && <span> · Not on the public page until they have days here</span>}
+                    {p.slug && !p.prc_checked_on && <span class="ml-2 bg-crown/20 px-2 py-0.5 text-[12px] font-semibold text-crown">PRC check pending</span>}
+                  </p>
+                </div>
+                <span class={`px-3 py-1.5 text-xs font-semibold ${st.cls}`}>{st.label}</span>
+              </div>
+
+              <div class="mt-4 flex flex-wrap items-center justify-between gap-x-8 gap-y-3">
+                <form method="post" class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <Csrf />
+                  <input type="hidden" name="action" value="schedule" />
+                  <input type="hidden" name="id" value={p.id} />
+                  <span class="meta mr-1">Days here</span>
+                  {DAYS.map(([n, label]) => (
+                    <label class="check"><input type="checkbox" name="dow" value={n} checked={days.includes(n)} /><span>{label}</span></label>
+                  ))}
+                  <button type="submit" class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Save days</button>
+                </form>
+
+                <div class="flex flex-wrap gap-1.5">
+                  {!p.has_password && !p.disabled_at && (
+                    <form method="post">
+                      <Csrf />
+                      <input type="hidden" name="action" value="invite" />
+                      <input type="hidden" name="id" value={p.id} />
+                      <button type="submit" class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Resend invitation</button>
+                    </form>
+                  )}
+                  {!p.disabled_at && (
+                    <form method="post" class="flex items-center gap-1.5">
+                      <Csrf />
+                      <input type="hidden" name="action" value="phone" />
+                      <input type="hidden" name="id" value={p.id} />
+                      <label class="sr-only" for={`phone-${p.id}`}>Mobile number for {p.full_name}</label>
+                      <input id={`phone-${p.id}`} type="tel" name="phone" value={p.phone ?? ''} placeholder="0917 000 0000" autocomplete="off" class="w-[10.5rem] border border-line bg-surface px-2.5 py-1.5 text-[13px] tabular-nums focus:border-ink focus:outline-2 focus:outline-offset-1 focus:outline-accent" />
+                      <button type="submit" class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Save mobile</button>
+                    </form>
+                  )}
+                  {p.has_password && p.phone && !p.disabled_at && (
+                    <form method="post">
+                      <Csrf />
+                      <input type="hidden" name="action" value="reset" />
+                      <input type="hidden" name="id" value={p.id} />
+                      <button type="submit" class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Text a reset code</button>
+                    </form>
+                  )}
+                  {isOwner && !me && (
+                    <form method="post">
+                      <Csrf />
+                      <input type="hidden" name="action" value="finance" />
+                      <input type="hidden" name="id" value={p.id} />
+                      <button type="submit" name="sees" value={p.can_view_finance ? '0' : '1'} class="btn btn-quiet !px-3 !py-1.5 text-[13px]">
+                        {p.can_view_finance ? 'Hide finance' : 'Let them see finance'}
+                      </button>
+                    </form>
+                  )}
+                  {mayDisable && (
+                    <form method="post">
+                      <Csrf />
+                      <input type="hidden" name="action" value={p.disabled_at ? 'enable' : 'disable'} />
+                      <input type="hidden" name="id" value={p.id} />
+                      <button type="submit" class="btn btn-quiet !px-3 !py-1.5 text-[13px]">{p.disabled_at ? 'Enable' : 'Disable'}</button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      <section class="mt-12" aria-labelledby="add-title">
+        <h2 id="add-title" class="font-display text-[22px] font-semibold">Add a person</h2>
+        <p class="mt-1.5 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
+          We text them a six-digit code. On the staff sign-in page they choose “I have a code”, enter it, and pick their own password. No password passes through you.
+        </p>
+
+        <form method="post" class="mt-5 grid gap-4 border border-line bg-surface p-5 sm:grid-cols-2 sm:p-6">
+          <Csrf />
+          <input type="hidden" name="action" value="add" />
+          <label class="field"><span class="meta">Full name</span><input name="name" value={add.name} required maxlength="80" autocomplete="off" placeholder="Dr. Ana Reyes" /></label>
+          <label class="field">
+            <span class="meta">Role</span>
+            <select name="role" data-team-role>
+              {Object.entries(ROLES).map(([v, l]) => <option value={v} selected={add.role === v}>{l}</option>)}
+            </select>
+          </label>
+          <label class="field"><span class="meta">Mobile</span><input name="phone" type="tel" inputmode="numeric" value={add.phone} required autocomplete="off" placeholder="0917 000 0000" /></label>
+          <label class="field"><span class="meta">Email</span><input name="email" type="email" value={add.email} required maxlength="120" autocomplete="off" /></label>
+          <label class="field" data-team-dentist hidden={!clinician(add.role)}>
+            <span class="meta">PRC licence</span>
+            <input name="prc" inputmode="numeric" value={add.prc} maxlength="10" autocomplete="off" placeholder="0043321" required={clinician(add.role)} />
+          </label>
+          <label class="field" data-team-dentist hidden={!clinician(add.role)}>
+            <span class="meta">Specialty</span>
+            <select name="specialty">
+              <option value="">General dentist</option>
+              {SPECIALTIES.map((s) => <option value={s} selected={add.specialty === s}>{s}</option>)}
+            </select>
+          </label>
+          <fieldset class="sm:col-span-2">
+            <legend class="meta">Days at this branch</legend>
+            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+              {DAYS.map(([n, label]) => (
+                <label class="check"><input type="checkbox" name="dow" value={n} checked={add.days.includes(n)} /><span>{label}</span></label>
+              ))}
+            </div>
+          </fieldset>
+          {isOwner && (
+            <label class="check sm:col-span-2"><input type="checkbox" name="finance" checked={add.finance} /><span>Sees finance: balances, payments and the day’s takings at this branch</span></label>
+          )}
+          <div class="sm:col-span-2">
+            <button type="submit" class="btn btn-primary">Add and text the code</button>
+          </div>
+        </form>
+      </section>
+    </>
+  )}
+
+  <script>
+    // The PRC and specialty fields belong to dentists only. The server checks the same rule; this only keeps the form short.
+    const role = document.querySelector<HTMLSelectElement>('[data-team-role]');
+    const dentistOnly = Array.from(document.querySelectorAll<HTMLElement>('[data-team-dentist]'));
+    const sync = () => {
+      const on = role?.value === 'dentist' || role?.value === 'associate';
+      dentistOnly.forEach((el) => {
+        el.hidden = !on;
+        const input = el.querySelector<HTMLInputElement>('input');
+        if (input) input.required = on;
+      });
+    };
+    role?.addEventListener('change', sync);
+    sync();
+  </script>
+</ClinicLayout>

@@ -1,95 +1,104 @@
 ---
-import ClinicLayout from '../../../../layouts/Clinic.astro';
-import Odontogram from '../../../../components/Odontogram.astro';
-import {
-  clinics, clinicBySlug, patientsOf, peso, CONDITION_LABEL, surfaceSummary,
-  type ToothCondition, type ToothMark,
-} from '../../../../data/demo';
+export const prerender = false;
 
-export function getStaticPaths() {
-  return clinics.flatMap((c) =>
-    patientsOf(c.slug).map((p) => ({
-      params: { clinic: c.slug, patient: p.id },
-      props: { patient: p },
-    }))
-  );
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Consents from '../../../../components/Consents.astro';
+import Odontogram from '../../../../components/Odontogram.astro';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { withClinic } from '../../../../lib/db';
+import { csrfToken } from '../../../../lib/csrf';
+import { peso, CONDITION_LABEL, surfaceSummary, type ToothCondition, type ToothMark, type Surface, type Notation } from '../../../../data/demo';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const me = (await tx.query('select area, notation from clinic where id = $1', [clinic.id])).rows[0];
+  const p = (await tx.query(
+    `select p.*,
+            (select h.allergies from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as allergies,
+            (select h.conditions from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as conditions,
+            coalesce((select sum(i.total) from invoice i where i.patient_id = p.id and i.status in ('issued', 'partly_paid')), 0)
+              - coalesce((select sum(y.amount) from payment y where y.patient_id = p.id), 0) as balance
+     from patient p where p.id = $1 and p.archived_at is null`, [Astro.params.patient])).rows[0];
+  if (!p) return null;
+  const teeth = (await tx.query(`select fdi, surface, condition from tooth_state where patient_id = $1 and superseded_at is null order by fdi`, [p.id])).rows;
+  const visits = (await tx.query(`select starts_at, reason, status from appointment a where patient_id = $1 order by starts_at desc limit 8`, [p.id])).rows;
+  // Who looked. Required to answer a subject-access request.
+  await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'patient.view', 'patient', $3)`, [clinic.id, session.staffId, p.id]);
+  const consents = (await tx.query(`select version_id, given_at, channel, given_by_name from patient_consent where patient_id = $1 order by given_at desc`, [p.id])).rows;
+  return { me, p, teeth, visits, consents };
+});
+if (!data) return new Response('No such patient', { status: 404 });
+const { me, p: patient, visits } = data;
+
+// Rows per (tooth, surface) become one mark per tooth for the chart. The chart
+// keeps one biting-surface slot and names it incisal on anteriors itself, so an
+// 'incisal' row lands in that slot.
+const marks: Partial<Record<number, ToothMark>> = {};
+for (const t of data.teeth) {
+  const m = (marks[t.fdi] ??= { condition: t.condition as ToothCondition });
+  if (!t.surface) continue;
+  const surface = (t.surface === 'incisal' ? 'occlusal' : t.surface) as Surface;
+  if (!(m.surfaces ??= []).includes(surface)) m.surfaces.push(surface);
 }
 
-const { clinic: slug } = Astro.params;
-const { patient } = Astro.props;
-const clinic = clinicBySlug(slug!)!;
+// The chart posts each change to /api/chart with this token in the X-CSRF header.
+const csrf = csrfToken(Astro.cookies);
 
-const age = Math.floor(
-  (new Date('2026-09-21').getTime() - new Date(patient.birthDate).getTime()) / 31_557_600_000
-);
-const minor = age < 18;
+const age = patient.birth_date ? Math.floor((Date.now() - new Date(patient.birth_date).getTime()) / 31_557_600_000) : null;
+const minor = age !== null && age < 18;
+const allergies: string[] = patient.allergies ?? [];
+const conditions: string[] = patient.conditions ?? [];
 
-// Existing findings, newest concern first so the dentist reads problems before
-// completed work.
-const ORDER: ToothCondition[] = [
-  'caries', 'missing', 'impacted', 'unerupted', 'root_canal',
-  'crown', 'bridge', 'implant', 'veneer', 'filled', 'sealant', 'sound',
-];
-const findings = Object.entries(patient.teeth)
-  .map(([fdi, mark]) => {
-    const m = mark as ToothMark;
-    return { fdi: Number(fdi), condition: m.condition, codes: surfaceSummary(Number(fdi), m.surfaces) };
-  })
+// Existing findings, newest concern first so the dentist reads problems before completed work.
+const ORDER: ToothCondition[] = ['caries', 'missing', 'impacted', 'unerupted', 'root_canal', 'crown', 'bridge', 'implant', 'veneer', 'filled', 'sealant', 'sound'];
+const findings = Object.entries(marks)
+  .map(([fdi, m]) => ({ fdi: Number(fdi), condition: m!.condition, codes: surfaceSummary(Number(fdi), m!.surfaces) }))
   .sort((a, b) => ORDER.indexOf(a.condition) - ORDER.indexOf(b.condition) || a.fdi - b.fdi);
+
+const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(d);
 ---
 
-<ClinicLayout clinic={clinic} title={`${patient.firstName} ${patient.lastName}`} section="patients">
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: me.area }} title={`${patient.first_name} ${patient.last_name}`} section="patients" staff={{ name: session.name, role: session.role }} branches={branches}>
   <a href={`/c/${clinic.slug}/patients/`} class="text-[14.5px] font-medium text-accent">&larr; All patients</a>
 
   <div class="mt-4 flex flex-wrap items-start justify-between gap-6">
     <div>
-      <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] leading-tight font-semibold tracking-[-0.02em]">
-        {patient.firstName} {patient.lastName}
-      </h1>
-      <p class="mt-1.5 text-[15px] text-muted">
-        {patient.chartNo} &middot; {age} years old &middot; {patient.phone}
-      </p>
+      <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] leading-tight font-semibold tracking-[-0.02em]">{patient.first_name} {patient.last_name}</h1>
+      <p class="mt-1.5 text-[15px] text-muted">{patient.chart_no}{age !== null && ` · ${age} years old`}{patient.phone && ` · ${patient.phone}`}</p>
     </div>
     <div class="text-right">
       <p class="text-xs font-semibold tracking-[0.09em] text-muted uppercase">Balance</p>
-      <p class="mt-1 font-display text-[30px] leading-none font-bold tabular-nums">
-        {patient.balance === 0 ? '—' : peso(patient.balance)}
-      </p>
+      <p class="mt-1 font-display text-[30px] leading-none font-bold tabular-nums">{Number(patient.balance) === 0 ? '—' : peso(Number(patient.balance))}</p>
     </div>
   </div>
 
-  {(patient.allergies.length > 0 || patient.conditions.length > 0 || minor) && (
+  {(allergies.length > 0 || conditions.length > 0 || minor) && (
     <div role="alert" class="mt-6 flex flex-wrap gap-2.5">
-      {patient.allergies.map((a) => (
-        <span class="bg-caries/15 px-4 py-2 text-[13.5px] font-semibold text-caries">
-          Allergy: {a}
-        </span>
-      ))}
-      {patient.conditions.map((c) => (
-        <span class="bg-crown/15 px-4 py-2 text-[13.5px] font-semibold text-crown">{c}</span>
-      ))}
-      {minor && (
-        <span class="bg-crown/15 px-4 py-2 text-[13.5px] font-semibold text-crown">
-          Minor — guardian consent required
-        </span>
-      )}
+      {allergies.map((a) => <span class="bg-caries/15 px-4 py-2 text-[13.5px] font-semibold text-caries">Allergy: {a}</span>)}
+      {conditions.map((c) => <span class="bg-crown/15 px-4 py-2 text-[13.5px] font-semibold text-crown">{c}</span>)}
+      {minor && <span class="bg-crown/15 px-4 py-2 text-[13.5px] font-semibold text-crown">Minor — guardian consent required</span>}
     </div>
   )}
 
   <section class="mt-8">
     <div class="flex flex-wrap items-end justify-between gap-3">
-      <h2 class="font-display text-[22px] font-semibold">Odontogram</h2>
-      <p class="text-[13.5px] text-muted">
-        Stored in FDI; displayed in this clinic's preference. Click a tooth to change a finding.
-      </p>
+      <div>
+        <h2 class="font-display text-[22px] font-semibold">Odontogram</h2>
+        <p class="mt-1 text-[13.5px] text-muted">Every change is saved as you make it, under your name.</p>
+      </div>
+      <p class="text-[13.5px] text-muted">Stored in FDI; displayed in this clinic's preference. Click a tooth to change a finding.</p>
     </div>
     <div class="mt-4">
-      <Odontogram marks={patient.teeth} notation={clinic.notation} />
+      <Odontogram marks={marks} notation={me.notation as Notation} saveUrl="/api/chart" patientId={patient.id} clinic={clinic.slug} csrf={csrf} />
     </div>
   </section>
 
   <section class="mt-10">
     <h2 class="font-display text-[22px] font-semibold">Findings on record</h2>
+    <p class="mt-1 text-[13.5px] text-muted">As they stood when this page opened. The chart note above follows your changes as you make them.</p>
     {findings.length === 0 ? (
       <p class="mt-3 text-[15px] text-muted">Nothing charted yet.</p>
     ) : (
@@ -98,9 +107,7 @@ const findings = Object.entries(patient.teeth)
           <li class="flex items-center gap-3 border border-line bg-surface px-4 py-3.5">
             <span class="tooth h-8! w-6! shrink-0" data-state={f.condition} aria-hidden="true"></span>
             <div>
-              <p class="text-[15px] font-semibold tabular-nums">
-                Tooth {f.fdi}{f.codes && <span class="text-accent"> {f.codes}</span>}
-              </p>
+              <p class="text-[15px] font-semibold tabular-nums">Tooth {f.fdi}{f.codes && <span class="text-accent"> {f.codes}</span>}</p>
               <p class="text-[13.5px] text-ink-2">{CONDITION_LABEL[f.condition]}</p>
             </div>
           </li>
@@ -109,13 +116,25 @@ const findings = Object.entries(patient.teeth)
     )}
   </section>
 
+  <section class="mt-10">
+    <h2 class="font-display text-[22px] font-semibold">Visits</h2>
+    {visits.length === 0 ? (
+      <p class="mt-3 text-[15px] text-muted">No visits on record.</p>
+    ) : (
+      <ul class="mt-4 divide-y divide-line-2 border border-line bg-surface">
+        {visits.map((v) => (
+          <li class="flex flex-wrap items-baseline justify-between gap-3 px-4 py-3 text-[15px]"><span>{when(v.starts_at)} · {v.reason}</span><span class="meta">{String(v.status).replace('_', ' ')}</span></li>
+        ))}
+      </ul>
+    )}
+  </section>
+
   <section class="mt-10 border border-line-2 bg-bg-soft p-6">
     <h2 class="font-display text-[19px] font-semibold">Not built yet</h2>
     <p class="mt-2 max-w-[640px] text-[15px] leading-relaxed text-ink-2">
-      Procedures, treatment plans, prescriptions, consent forms, X-ray attachments, invoices and the
-      audit trail all have tables in <code class="bg-surface px-1.5 py-0.5 text-[13.5px]">src/data/schema.sql</code>
-      and no screens yet. Changes here are not saved — there is no database wired up, and no login in
-      front of it.
+      Procedures, treatment plans, prescriptions, consent forms, X-ray attachments and invoices have tables in
+      <code class="bg-surface px-1.5 py-0.5 text-[13.5px]">src/data/schema.sql</code> and no screens yet. Reading this record, and every change to the chart, is written to the audit log.
     </p>
   </section>
+  <Consents consents={data.consents} />
 </ClinicLayout>

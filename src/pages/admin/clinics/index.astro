@@ -1,0 +1,111 @@
+---
+// Every clinic on the service, newest first, with its owner and three counts.
+// Nothing is done from here yet; it is the list operations reads before
+// picking up the phone. Admins have no tenant: admin_clinics() (009) returns
+// these columns and nothing else — no patient, no appointment, no invoice.
+export const prerender = false;
+
+import AdminLayout from '../../../layouts/Admin.astro';
+import { requireAdmin } from '../../../lib/admin';
+import { publicRead } from '../../../lib/db';
+import { prettyPhone } from '../../../lib/messages';
+
+const admin = await requireAdmin(Astro);
+if (admin instanceof Response) return admin;
+
+interface Row {
+  id: string; name: string; slug: string; area: string | null; listed: boolean; booking_mode: string; created_at: Date;
+  owner_name: string | null; owner_email: string | null; owner_phone: string | null;
+  dentists: number; patients: number; bookings_web_30d: number;
+}
+const rows = await publicRead<Row>('select * from admin_clinics()');
+
+// Dates are Manila dates; "this month" is the Manila calendar month.
+const day = (d: Date) => new Intl.DateTimeFormat('en-PH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(d);
+const month = (d: Date) => new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', timeZone: 'Asia/Manila' }).format(d);
+const thisMonth = month(new Date());
+
+const FILTERS: { id: string; label: string; keep: (r: Row) => boolean; empty: string }[] = [
+  { id: 'all', label: 'All', keep: () => true, empty: 'No clinics yet.' },
+  { id: 'listed', label: 'Listed', keep: (r) => r.listed, empty: 'No clinic is listed yet.' },
+  { id: 'unlisted', label: 'Not listed', keep: (r) => !r.listed, empty: 'Every clinic is listed.' },
+  { id: 'month', label: 'Signed up this month', keep: (r) => month(r.created_at) === thisMonth, empty: 'Nothing signed up this month yet.' },
+];
+const filter = FILTERS.find((f) => f.id === (Astro.url.searchParams.get('show') ?? 'all')) ?? FILTERS[0];
+const shown = rows.filter(filter.keep);
+
+const MODE: Record<string, string> = { live: 'Live', request: 'Request' };
+const th = 'meta px-5 py-3.5';
+const td = 'px-5 py-4 align-top text-[14.5px]';
+---
+
+<AdminLayout title="Clinics" section="clinics" admin={{ name: admin.name }}>
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Clinics</h1>
+    <p class="text-[14.5px] text-muted">{shown.length === rows.length ? `${rows.length} on the service` : `${shown.length} of ${rows.length}`}</p>
+  </div>
+
+  <nav class="mt-6 flex flex-wrap gap-2" aria-label="Which clinics to show">
+    {FILTERS.map((f) => (
+      <a
+        href={f.id === 'all' ? '/admin/clinics/' : `/admin/clinics/?show=${f.id}`}
+        aria-current={f.id === filter.id ? 'page' : undefined}
+        class:list={['border px-3.5 py-2 text-[13.5px] font-medium', f.id === filter.id ? 'border-ink bg-ink text-bg' : 'border-line text-ink-2 hover:border-ink hover:text-ink']}
+      >
+        {f.label}
+      </a>
+    ))}
+  </nav>
+
+  <div class="mt-6 overflow-x-auto border border-line bg-surface">
+    <table class="w-full min-w-[980px] border-collapse text-left">
+      <caption class="sr-only">Clinics on Flossify, newest first</caption>
+      <thead>
+        <tr class="border-b border-line bg-bg-soft">
+          <th scope="col" class={th}>Clinic</th>
+          <th scope="col" class={th}>Owner</th>
+          <th scope="col" class={th}>Listed</th>
+          <th scope="col" class={th}>Booking</th>
+          <th scope="col" class={`${th} text-right`}>Dentists</th>
+          <th scope="col" class={`${th} text-right`}>Patients</th>
+          <th scope="col" class={`${th} text-right`}>Web bookings, 30 days</th>
+          <th scope="col" class={th}>Signed up</th>
+        </tr>
+      </thead>
+      <tbody>
+        {shown.length === 0 && <tr><td colspan="8" class="px-5 py-4 text-[15px] text-muted">{filter.empty}</td></tr>}
+        {shown.map((c, i) => (
+          <tr class={i < shown.length - 1 ? 'border-b border-line-2' : ''}>
+            <th scope="row" class="px-5 py-4 align-top">
+              {c.listed ? (
+                <a href={`/find/${c.slug}/`} class="text-[15.5px] font-semibold hover:text-accent">{c.name}</a>
+              ) : (
+                <span class="text-[15.5px] font-semibold">{c.name}</span>
+              )}
+              <p class="text-[13px] font-normal text-muted">{c.area ?? 'Area not set'} · <span class="font-mono">{c.slug}</span></p>
+            </th>
+            <td class={td}>
+              {c.owner_name ? (
+                <>
+                  <span class="font-medium">{c.owner_name}</span>
+                  <p class="text-[13px] text-muted">
+                    {c.owner_email && <a href={`mailto:${c.owner_email}`} class="underline underline-offset-4 hover:text-accent">{c.owner_email}</a>}
+                    {c.owner_phone && <span class="tabular-nums">{c.owner_email ? ' · ' : ''}{prettyPhone(c.owner_phone)}</span>}
+                  </p>
+                </>
+              ) : (
+                <span class="text-muted">No owner on file</span>
+              )}
+            </td>
+            <td class={`${td} text-ink-2`}>{c.listed ? 'Yes' : 'No'}</td>
+            <td class={`${td} text-ink-2`}>{MODE[c.booking_mode] ?? c.booking_mode}</td>
+            <td class={`${td} text-right tabular-nums`}>{c.dentists}</td>
+            <td class={`${td} text-right tabular-nums`}>{c.patients}</td>
+            <td class={`${td} text-right tabular-nums`}>{c.bookings_web_30d}</td>
+            <td class={`${td} whitespace-nowrap tabular-nums text-ink-2`}>{day(c.created_at)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</AdminLayout>

@@ -1,0 +1,33 @@
+---
+// What the service worker shows when a navigation fails. Static on purpose:
+// it is precached at install and must never need the database. The reload
+// handler is inline so the page has no script bundle to fetch offline.
+import Base from '../layouts/Base.astro';
+---
+
+<Base
+  title="You're offline — Flossify"
+  description="The Flossify workspace needs a connection for patient records. Nothing typed offline is saved, and this page says so."
+>
+  <main id="main" class="mx-auto max-w-[1280px] px-5 py-16 sm:px-8">
+    <p class="meta">Flossify &middot; Offline</p>
+    <h1 class="mt-6 max-w-[760px] font-display text-[clamp(2rem,5vw,3rem)] leading-tight font-semibold tracking-[-0.025em]">
+      You're offline.
+    </h1>
+    <p class="mt-4 max-w-[620px] text-[17px] leading-relaxed text-ink-2">
+      The workspace needs a connection for patient records, so nothing you type here would be saved — and we would rather tell you than lose it. The page you last opened may still be in the back button.
+    </p>
+    <div class="mt-8">
+      <button type="button" class="btn btn-primary" data-retry>Try again</button>
+    </div>
+    <p class="mt-12 max-w-[620px] border-t border-line pt-4 text-[13.5px] leading-relaxed text-ink-2">
+      Charting that catches up on its own when the line returns is the next thing we are building.
+    </p>
+  </main>
+</Base>
+
+<script is:inline>
+  document.querySelector('[data-retry]').addEventListener('click', function () {
+    location.reload();
+  });
+</script>

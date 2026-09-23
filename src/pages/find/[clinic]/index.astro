@@ -1,0 +1,176 @@
+---
+export const prerender = false;
+
+import Base from '../../../layouts/Base.astro';
+import PatientHeader from '../../../components/PatientHeader.astro';
+import { priceText, hmoById, CATEGORY_LABEL } from '../../../data/directory';
+import { hoursRows } from '../../../lib/availability';
+import { loadListing } from '../../../lib/directory-db';
+import { publicPhoto } from '../../../lib/uploads';
+import lqip from '../../../data/lqip.json';
+const blur = (k: string) => lqip[k as keyof typeof lqip];
+
+const l = await loadListing(Astro.params.clinic!);
+if (!l) return new Response('No such clinic', { status: 404 });
+const dentists = l.dentistProfiles;
+const fees = l.fees;
+const rows = hoursRows(l.hours);
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const daysAt = (slug: string, d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === slug)?.days.map((n) => DAYS[n]).join(' · ') ?? '';
+// The clinic's own map link when they pasted one in Settings; a search on the address otherwise.
+const directions = l.mapsUrl ?? `https://www.google.com/maps/search/${encodeURIComponent(l.address)}`;
+---
+
+
+<Base title={`${l.name} — dentists, prices, hours — Flossify`} description={`${l.name}, ${l.area}. Open slots, fee guide, dentists with PRC licences checked, and which HMO cards are taken. Book without an account.`}>
+  <PatientHeader current="find" />
+
+  <main id="main" class="mx-auto max-w-[1280px] px-5 py-10 sm:px-8" data-hours={JSON.stringify(l.hours)} data-slug={l.slug} data-workspace={l.workspace ? '1' : '0'}>
+    <a href="/find/" class="meta hover:text-ink">&larr; All clinics</a>
+
+    <div class="mt-6 grid gap-10 lg:grid-cols-12">
+      <div class="lg:col-span-7">
+        <p class="meta">{l.area} &middot; since {l.since} &middot; {l.chairs} chairs</p>
+        <h1 class="mt-3 font-display text-[clamp(2rem,4.6vw,3rem)] leading-[1.05] font-semibold tracking-[-0.025em]">{l.name}</h1>
+        <p class="status meta mt-4" data-status><span class="status-dot"></span><span data-status-text>Hours below</span></p>
+        <p class="mt-4 max-w-[60ch] text-[17px] leading-relaxed text-ink-2">{l.about}</p>
+
+        <div class="mt-6 flex flex-wrap gap-3">
+          <a href={`/find/${l.slug}/book/`} class="btn btn-primary">{l.workspace ? 'Book a slot' : 'Request a time'}</a>
+          <a href={`tel:${l.phone.replace(/\s/g, '')}`} class="btn btn-quiet">Call {l.phone}</a>
+          <a href={directions} class="btn btn-quiet" rel="noopener">Directions &nearr;</a>
+        </div>
+        <p class="mt-3 text-[14px] text-muted">{l.address}{l.walkIns ? ' · Walk-ins welcome' : ' · By appointment'}</p>
+        <p class="mt-1 text-[13.5px] text-muted">{l.dpoName ? `Data Protection Officer: ${l.dpoName}.` : 'Data Protection Officer: ask the clinic; the name is being added.'} <a href="/privacy/" class="underline underline-offset-4">Privacy notice</a></p>
+
+        {!l.workspace && (
+          <p role="note" class="mt-6 max-w-[64ch] border border-line bg-bg-soft p-4 text-[14.5px] leading-relaxed">
+            This clinic is not on the live schedule yet, so you send a <strong class="font-semibold">request</strong> with the day and time that suits you and the clinic confirms by text. Clinics on Flossify show real open slots instead.
+          </p>
+        )}
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 lg:col-span-5">
+        {l.photos.map((k, i) => {
+          // A clinic's own upload has no blur placeholder, so its figure starts as a plain soft box and the photo fades in over that.
+          const p = publicPhoto(k, l.id, l.name);
+          return (
+            <figure class:list={['media aspect-[3/4] border border-line', i === 1 && 'mt-10', p.upload && 'bg-bg-soft']} style={p.upload ? undefined : `background-image:url("${blur(k)}")`}>
+              <img src={p.src} srcset={p.srcset} sizes="(min-width:1024px) 20vw, 45vw" alt={p.alt} loading="lazy" width="640" height="853" />
+            </figure>
+          );
+        })}
+      </div>
+    </div>
+
+    <!-- Dentists -->
+    <section class="mt-16" aria-labelledby="dent-title">
+      <div class="flex items-baseline gap-6"><span class="sec-no">01</span><h2 id="dent-title" class="font-display text-[26px] font-semibold tracking-tight">Dentists</h2></div>
+      <div class="rule mt-5"></div>
+      <ul class="grid gap-x-10 md:grid-cols-2">
+        {dentists.map((d) => (
+          <li class="border-b border-line py-6">
+            <h3 class="font-display text-[20px] font-semibold"><a href={`/dentists/${d.slug}/`} class="hover:text-accent">{d.name}</a></h3>
+            <p class="mt-1 text-[15px] text-ink-2">{d.specialty ? <span>Specialist · {d.specialty}</span> : <span>General dentist · {d.practices.slice(1).join(', ') || d.practices[0]}</span>}</p>
+            <div class="mt-3 flex flex-wrap gap-1.5">
+              {d.prcCheckedOn
+                ? <span class="tag tag-accent" title="Checked by a person against verification.prc.gov.ph">PRC licence · checked {new Date(d.prcCheckedOn).toLocaleDateString('en-PH', { day: 'numeric', month: 'short' })}</span>
+                : <span class="tag" title="A person at Flossify has not yet checked this licence against verification.prc.gov.ph">PRC check pending</span>}
+              {d.pda && <span class="tag">PDA member</span>}
+              <span class="tag">Here {daysAt(l.slug, d)}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+
+    <!-- Fees -->
+    <section class="mt-16" aria-labelledby="fee-title">
+      <div class="flex flex-wrap items-baseline justify-between gap-4">
+        <div class="flex items-baseline gap-6"><span class="sec-no">02</span><h2 id="fee-title" class="font-display text-[26px] font-semibold tracking-tight">Fee guide</h2></div>
+        <label class="field w-full sm:w-64"><span class="sr-only">Filter services</span><input type="search" placeholder="Filter: pasta, bunot, braces…" data-fee-filter /></label>
+      </div>
+      <div class="rule mt-5"></div>
+      <table class="w-full text-[15px]" data-fees>
+        <tbody>
+          {fees.map((f) => (
+            <tr class="border-b border-line" data-text={`${f.name} ${f.local ?? ''} ${CATEGORY_LABEL[f.cat]}`.toLowerCase()}>
+              <td class="py-3 pr-4"><span class="font-medium">{f.name}</span>{f.local && <span class="text-muted"> · {f.local}</span>}<span class="meta ml-3 hidden sm:inline">{CATEGORY_LABEL[f.cat]}</span></td>
+              <td class="py-3 text-right tabular-nums">{priceText(f)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p class="mt-3 text-[13.5px] text-muted">A fee guide, not a quotation. The dentist confirms the fee at consultation, before any work begins.</p>
+    </section>
+
+    <div class="mt-16 grid gap-12 lg:grid-cols-2">
+      <!-- Coverage -->
+      <section aria-labelledby="cov-title">
+        <div class="flex items-baseline gap-6"><span class="sec-no">03</span><h2 id="cov-title" class="font-display text-[26px] font-semibold tracking-tight">Cards and PhilHealth</h2></div>
+        <div class="rule mt-5"></div>
+        <div class="mt-5 flex flex-wrap gap-1.5">
+          {l.philhealth
+            ? <span class="tag tag-accent">PhilHealth preventive dental · accredited</span>
+            : <span class="tag">Not PhilHealth-accredited for dental</span>}
+          {l.hmos.map((id) => <span class="tag">{hmoById(id)?.name}</span>)}
+        </div>
+        <p class="mt-4 text-[14.5px] leading-relaxed text-ink-2">
+          HMO acceptance is what the clinic reported. Bring your card and an ID, and confirm with your HMO — approval may be needed for anything beyond a cleaning.
+          {l.philhealth && ' PhilHealth pays for two preventive visits a year here (up to ₱1,000).'}
+          <a href="/coverage/" class="meta meta-accent ml-1">How coverage works &rarr;</a>
+        </p>
+      </section>
+
+      <!-- Hours -->
+      <section aria-labelledby="hrs-title">
+        <div class="flex items-baseline gap-6"><span class="sec-no">04</span><h2 id="hrs-title" class="font-display text-[26px] font-semibold tracking-tight">Hours</h2></div>
+        <div class="rule mt-5"></div>
+        <table class="mt-2 w-full text-[15px]" data-hours-table>
+          <tbody>
+            {rows.map((r) => (
+              <tr class="border-b border-line-2" data-day={r.day}><th class="py-2.5 text-left font-medium">{r.name}</th><td class="py-2.5 text-right tabular-nums text-ink-2">{r.text}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </div>
+
+    <!-- Reviews -->
+    <section class="mt-16" aria-labelledby="rev-title">
+      <div class="flex items-baseline gap-6"><span class="sec-no">05</span><h2 id="rev-title" class="font-display text-[26px] font-semibold tracking-tight">Reviews</h2></div>
+      <div class="rule mt-5"></div>
+      <p class="mt-5 max-w-[64ch] text-[15px] leading-relaxed text-ink-2">
+        Reviews here come only from patients whose visit was completed, are read before they are published, and cannot be removed by the clinic. There are none yet.
+      </p>
+    </section>
+
+    <div class="mt-16 flex flex-wrap gap-3 border-t border-line pt-8">
+      <a href={`/find/${l.slug}/book/`} class="btn btn-primary">{l.workspace ? 'Book a slot' : 'Request a time'}</a>
+      <a href="/find/" class="btn btn-quiet">Other clinics</a>
+    </div>
+  </main>
+
+  <script>
+    import { statusFor, manilaNow } from '../../../lib/availability';
+    const main = document.querySelector('main')!;
+    const now = manilaNow();
+    const st = statusFor(JSON.parse(main.dataset.hours!), now);
+    const pill = main.querySelector<HTMLElement>('[data-status]')!;
+    pill.dataset.state = st.state;
+    main.querySelector('[data-status-text]')!.textContent = st.text;
+    main.querySelector(`[data-hours-table] tr[data-day="${now.day}"]`)?.classList.add('is-today');
+
+    // Blur-up: the photo fades in over its own colours. `complete` covers cached images.
+    main.querySelectorAll<HTMLImageElement>('.media > img').forEach((img) => {
+      if (img.complete) img.classList.add('is-loaded');
+      else img.addEventListener('load', () => img.classList.add('is-loaded'), { once: true });
+    });
+
+    const filter = main.querySelector<HTMLInputElement>('[data-fee-filter]');
+    filter?.addEventListener('input', () => {
+      const q = filter.value.trim().toLowerCase();
+      main.querySelectorAll<HTMLTableRowElement>('[data-fees] tr').forEach((tr) => { tr.hidden = !!q && !tr.dataset.text!.includes(q); });
+    });
+  </script>
+</Base>

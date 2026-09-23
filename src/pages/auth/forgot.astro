@@ -1,0 +1,105 @@
+---
+// Forgot your password. Give us the mobile on your staff account and we text
+// a six-digit code; the next page takes the code and the new password. The
+// answer is the same whether or not the number is on file, so the form cannot
+// be used to find out which numbers belong to staff.
+//
+// Guarded like sign-in: the CSRF token, a rate limit per number and per
+// address (three asks an hour for one number; a script gets nowhere), and
+// every ask written to auth_event. Nothing is sent from here: the text is
+// queued in message_log under the person's home branch and the worker sends it.
+export const prerender = false;
+
+import StaffEntrance from '../../components/StaffEntrance.astro';
+import Csrf from '../../components/Csrf.astro';
+import { staffByPhone, authEvent } from '../../lib/auth';
+import { pool, withClinic } from '../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
+import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
+import { issueCode } from '../../lib/codes';
+import { normalizePhone, PH_MOBILE, queueText, texts } from '../../lib/messages';
+
+let typed = '';
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  typed = String(form.get('phone') ?? '').trim();
+  const phone = normalizePhone(typed);
+  const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+  else if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
+  else {
+    const [byPhone, byIp] = await Promise.all([hit(`forgot:p:${phone}`, ...LIMITS.forgot.phone), hit(`forgot:ip:${ip}`, ...LIMITS.forgot.ip)]);
+    if (!byPhone.allowed || !byIp.allowed) {
+      error = `Too many requests. ${waitText(Math.max(byPhone.retryAfter, byIp.retryAfter))}`;
+      await authEvent('reset.locked', { ip, ua });
+    } else {
+      const staff = await staffByPhone(phone);
+      if (staff) {
+        const code = await issueCode(staff.id, 'reset');
+        // A text is a clinic's row (RLS), so it needs a clinic: their home branch, else the first one they may open.
+        const clinicId: string | null = staff.home_clinic_id
+          ?? (await pool.query('select id from staff_branches($1)', [staff.id])).rows[0]?.id ?? null;
+        if (clinicId) await withClinic(clinicId, (tx) => queueText(tx, { clinicId, to: phone, body: texts.reset(code), kind: 'reset', staffId: staff.id }));
+        await authEvent('reset.request', { email: staff.email, staffId: staff.id, ip, ua });
+      }
+      // Found or not, the same answer: the code page, told a text may be coming.
+      return Astro.redirect(`/auth/code/?phone=${phone}&sent=1`, 303);
+    }
+  }
+}
+---
+
+<StaffEntrance title="Reset your password — Flossify" description="We text a six-digit code to the mobile number on your staff account." page="Forgot password">
+  <a href="/auth/login/" class="meta hover:text-ink">&larr; Staff sign-in</a>
+  <h1 class="entry-title font-display mt-4">
+    <span class="block">Locked out?</span>
+    <span class="block entry-dim">We’ll text you a code.</span>
+  </h1>
+  <p class="mt-2 text-[14.5px] leading-relaxed entry-dim">Type the mobile number on your staff account. The code works for 15 minutes.</p>
+
+  <form method="post" class="mt-5 grid gap-4" data-entry-form>
+    <Csrf />
+    <div class="entry-field">
+      <label for="phone" class="meta">Mobile number</label>
+      <input id="phone" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0917 000 0000" value={typed} required autofocus
+        aria-invalid={error ? 'true' : undefined} aria-describedby={error ? 'forgot-error' : undefined} />
+    </div>
+    {error && <p id="forgot-error" role="alert" class="entry-note entry-note-bad">{error}</p>}
+    <button type="submit" class="btn btn-primary entry-go" data-go data-busy="Sending…">Text me a code</button>
+  </form>
+
+  <p class="mt-4 text-[13.5px] leading-relaxed entry-dim">No mobile on file? Your clinic owner can add it on <strong class="font-semibold">Settings → Team</strong> and text you a code from there.</p>
+
+  <ul class="mt-6 border-t entry-rule" aria-label="Other ways in">
+    <li class="border-b entry-rule"><a href="/auth/code/" class="entry-way"><span><span class="text-[14.5px] font-semibold">Already have a code?</span> <span class="entry-way-hint">Enter it and choose a new password.</span></span><span aria-hidden="true" class="entry-way-arrow">&rarr;</span></a></li>
+    <li class="border-b entry-rule"><a href="/auth/login/" class="entry-way"><span><span class="text-[14.5px] font-semibold">Remembered it?</span> <span class="entry-way-hint">Back to sign-in.</span></span><span aria-hidden="true" class="entry-way-arrow">&rarr;</span></a></li>
+  </ul>
+</StaffEntrance>
+
+<script>
+  // Show the password, and warn about Caps Lock: the same help as sign-in.
+  document.querySelectorAll<HTMLButtonElement>('[data-show]').forEach((btn) => {
+    const input = document.getElementById(btn.getAttribute('aria-controls') ?? '') as HTMLInputElement | null;
+    btn.addEventListener('click', () => {
+      if (!input) return;
+      const on = input.type === 'password';
+      input.type = on ? 'text' : 'password';
+      btn.textContent = on ? 'Hide' : 'Show';
+      btn.setAttribute('aria-pressed', String(on));
+      input.focus();
+    });
+  });
+  const caps = document.querySelector<HTMLElement>('[data-caps]');
+  document.querySelectorAll<HTMLInputElement>('input[type=password]').forEach((input) => {
+    const check = (e: KeyboardEvent) => { if (caps && typeof e.getModifierState === 'function') caps.hidden = !e.getModifierState('CapsLock'); };
+    input.addEventListener('keydown', check);
+    input.addEventListener('keyup', check);
+  });
+  // One press.
+  document.querySelector<HTMLFormElement>('[data-entry-form]')?.addEventListener('submit', (e) => {
+    const go = (e.currentTarget as HTMLFormElement).querySelector<HTMLButtonElement>('[data-go]');
+    if (go) { go.disabled = true; go.textContent = go.dataset.busy ?? 'Working…'; }
+  });
+</script>

@@ -1,0 +1,352 @@
+---
+export const prerender = false;
+
+import Base from '../../../layouts/Base.astro';
+import PatientHeader from '../../../components/PatientHeader.astro';
+import { priceText, symptoms, hmoById } from '../../../data/directory';
+import { loadListing } from '../../../lib/directory-db';
+
+// Five screens, no account. Reason → dentist → when → who → confirm. Every
+// screen can be reached with Tab and answered with Enter; nothing is hidden
+// behind a hover. The slots are the clinic's real ones (GET /api/availability)
+// and the booking is a row in the clinic's schedule (POST /api/bookings),
+// re-checked inside the same transaction so two people cannot take one chair.
+const l = await loadListing(Astro.params.clinic!);
+if (!l) return new Response('No such clinic', { status: 404 });
+const dentists = l.dentistProfiles;
+const fees = l.fees;
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
+---
+
+
+<Base title={`Book at ${l.name} — Flossify`} description={`Book a dental visit at ${l.name} in under a minute. No account: your name, a mobile number, and a real open slot.`}>
+  <PatientHeader current="find" />
+
+  <main id="main" class="mx-auto max-w-[880px] px-5 py-10 sm:px-8"
+    data-slug={l.slug} data-name={l.name} data-phone={l.phone} data-workspace={l.workspace ? '1' : '0'}
+    data-hours={JSON.stringify(l.hours)}
+    data-dentists={JSON.stringify(dentists.map((d) => ({ slug: d.slug, name: d.name, days: d.clinics.find((c) => c.slug === l.slug)?.days ?? [] })))}
+    data-services={JSON.stringify(fees.map((f) => ({ id: f.id, name: f.name, minutes: f.minutes, price: priceText(f) })))}
+  >
+    <a href={`/find/${l.slug}/`} class="meta hover:text-ink">&larr; {l.name}</a>
+    <h1 class="mt-5 font-display text-[clamp(1.8rem,4vw,2.6rem)] leading-[1.05] font-semibold tracking-[-0.025em]">
+      {l.workspace ? 'Book a visit' : 'Request a visit'}
+    </h1>
+    <p class="mt-3 text-[16px] text-ink-2">{l.name} &middot; {l.area}{l.workspace ? '' : ' · the clinic confirms by text'}</p>
+
+    <!-- Progress -->
+    <ol class="mt-8 grid grid-cols-5 border-b border-line" data-progress aria-label="Steps">
+      {steps.map((s, i) => (
+        <li class="wiz-step" data-step-mark={i} aria-current={i === 0 ? 'step' : undefined}>
+          <span class="sec-no">{String(i + 1).padStart(2, '0')}</span>
+          <span class="mt-1 block text-[13px] font-medium">{s}</span>
+        </li>
+      ))}
+    </ol>
+
+    <form class="mt-8" data-wizard novalidate>
+      <!-- 1 Reason -->
+      <fieldset class="wiz" data-step="0">
+        <legend class="font-display text-[22px] font-semibold">What is the visit for?</legend>
+        <p class="mt-2 text-[15px] text-ink-2">Pick what is closest. “Not sure” is a fine answer — the dentist will look.</p>
+        <div class="mt-5 flex flex-wrap gap-2" role="radiogroup" aria-label="Reason">
+          <label class="chip-radio"><input type="radio" name="reason" value="consultation" checked /><span>Not sure — a check-up</span></label>
+          {symptoms.filter((s) => s.urgency !== 'urgent').map((s) => {
+            const svc = s.services.find((id) => fees.some((f) => f.id === id)) ?? 'consultation';
+            return <label class="chip-radio"><input type="radio" name="reason" value={svc} data-label={s.label} /><span>{s.label}</span></label>;
+          })}
+        </div>
+        <details class="mt-5">
+          <summary class="meta meta-accent cursor-pointer">Or choose the service directly</summary>
+          <div class="mt-3 flex flex-wrap gap-2">
+            {fees.map((f) => <label class="chip-radio"><input type="radio" name="reason" value={f.id} data-label={f.name} /><span>{f.name}<span class="ml-2 text-muted">{priceText(f)}</span></span></label>)}
+          </div>
+        </details>
+        <p class="mt-5 border-l-2 border-accent pl-4 text-[14.5px] text-ink-2" data-reason-price></p>
+      </fieldset>
+
+      <!-- 2 Dentist -->
+      <fieldset class="wiz" data-step="1" hidden>
+        <legend class="font-display text-[22px] font-semibold">Any dentist, or someone in particular?</legend>
+        <p class="mt-2 text-[15px] text-ink-2">Choosing one limits the days you can pick.</p>
+        <div class="mt-5 grid gap-2" role="radiogroup" aria-label="Dentist">
+          <label class="row-radio"><input type="radio" name="dentist" value="" checked /><span><strong class="font-semibold">Any available dentist</strong><span class="block text-[14px] text-ink-2">Soonest slot at the clinic</span></span></label>
+          {dentists.map((d) => (
+            <label class="row-radio"><input type="radio" name="dentist" value={d.slug} /><span><strong class="font-semibold">{d.name}</strong><span class="block text-[14px] text-ink-2">{d.specialty ?? d.practices.slice(0, 2).join(', ')} · {d.clinics.find((c) => c.slug === l.slug)?.days.map((n) => DAYS[n]).join(' · ')} · <span class="text-accent">PRC checked</span></span></span></label>
+          ))}
+        </div>
+      </fieldset>
+
+      <!-- 3 When -->
+      <fieldset class="wiz" data-step="2" hidden>
+        <legend class="font-display text-[22px] font-semibold">{l.workspace ? 'When?' : 'When would suit you?'}</legend>
+        {l.workspace
+          ? <p class="mt-2 text-[15px] text-ink-2">These are the clinic’s real open slots for the next two weeks, in Baguio time. Tap one.</p>
+          : <p class="mt-2 text-[15px] text-ink-2">This clinic is not on the live schedule. Tell us a day and a time of day; they confirm by text.</p>}
+        <div class="mt-5" data-slot-area>
+          {l.workspace
+            ? <div class="grid gap-6" data-slot-days></div>
+            : <div class="grid gap-4 sm:grid-cols-2">
+                <label class="field"><span class="meta">Preferred day</span><input type="date" name="reqDate" required /></label>
+                <label class="field"><span class="meta">Time of day</span><select name="reqTime"><option>Morning</option><option>Midday</option><option>Afternoon</option></select></label>
+              </div>}
+        </div>
+        <input type="hidden" name="slot" />
+        <button type="button" class="meta meta-accent mt-4" data-slot-more hidden>Show more days &darr;</button>
+        <p class="mt-4 text-[14px] text-muted" data-slot-note></p>
+      </fieldset>
+
+      <!-- 4 Who -->
+      <fieldset class="wiz" data-step="3" hidden>
+        <legend class="font-display text-[22px] font-semibold">Who is the visit for?</legend>
+        <div class="mt-5 flex flex-wrap gap-2" role="radiogroup" aria-label="For whom">
+          <label class="chip-radio"><input type="radio" name="who" value="me" checked /><span>Me</span></label>
+          <label class="chip-radio"><input type="radio" name="who" value="other" /><span>Someone else</span></label>
+        </div>
+        <div class="mt-6 grid gap-4 sm:grid-cols-2">
+          <label class="field"><span class="meta" data-name-label>Your name</span><input type="text" name="name" autocomplete="name" required /></label>
+          <label class="field"><span class="meta">Mobile number</span><input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="0917 000 0000" required pattern="^(\+?63|0)9\d{2}[ \-]?\d{3}[ \-]?\d{4}$" /></label>
+          <label class="field sm:col-span-2" data-patient-name-field hidden><span class="meta">Patient’s name</span><input type="text" name="patientName" /></label>
+          <label class="field"><span class="meta">HMO card (optional)</span>
+            <select name="hmo"><option value="">None / I’ll pay</option>{l.hmos.map((id) => <option value={id}>{hmoById(id)?.name}</option>)}{l.philhealth && <option value="philhealth">PhilHealth preventive visit</option>}</select>
+          </label>
+          <label class="field"><span class="meta">Anything we should know? (optional)</span><input type="text" name="notes" placeholder="Pain, allergies, a time that works best" /></label>
+        </div>
+        <label class="check mt-6 items-start"><input type="checkbox" name="consent" required /><span>I agree that {l.name} and Flossify keep my details for this visit and text me about it, as the <a href="/privacy/" target="_blank" rel="noopener" class="underline underline-offset-4">privacy notice</a> explains.</span></label>
+      </fieldset>
+
+      <!-- 5 Confirm -->
+      <fieldset class="wiz" data-step="4" hidden>
+        <legend class="font-display text-[22px] font-semibold">Check and confirm</legend>
+        <dl class="mt-5 grid gap-y-3 border border-line p-5 text-[15px] sm:grid-cols-[10rem_1fr]" data-summary></dl>
+        <p class="mt-4 text-[14.5px] leading-relaxed text-ink-2">
+          {l.workspace
+            ? 'The slot is held the moment you confirm. You get a text now, and one the day before: reply Y to confirm, or cancel from the link in it up to 24 hours ahead.'
+            : 'The clinic gets your request now and texts you to confirm the time, usually the same day.'}
+        </p>
+      </fieldset>
+
+      <!-- Nav -->
+      <div class="mt-8 flex items-center justify-between gap-3 border-t border-line pt-6" data-nav>
+        <button type="button" class="btn btn-quiet" data-back hidden>&larr; Back</button>
+        <span class="text-[13.5px] text-caries" data-error role="alert"></span>
+        <button type="button" class="btn btn-primary" data-next>Continue &rarr;</button>
+      </div>
+    </form>
+
+    <!-- Done -->
+    <section class="mt-8" data-done-panel hidden aria-live="polite">
+      <p class="meta meta-accent">{l.workspace ? 'Booked' : 'Request sent'}</p>
+      <h2 class="mt-3 font-display text-[clamp(1.8rem,4vw,2.4rem)] leading-tight font-semibold tracking-tight" data-done-title></h2>
+      <p class="mt-3 text-[16px] text-ink-2" data-done-text></p>
+      <p class="mt-5 font-mono text-[13px] tracking-[0.08em] uppercase text-muted">Reference <span class="text-ink" data-ref></span></p>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <button type="button" class="btn btn-quiet" data-undo>Undo <span class="tabular-nums" data-undo-secs>3:00</span></button>
+        <a class="btn btn-quiet" download="flossify-visit.ics" data-ics>Add to calendar</a>
+        <a href="/find/" class="btn btn-quiet">Find another clinic</a>
+      </div>
+      <p class="mt-4 text-[14px] text-caries" data-undo-error role="alert" hidden></p>
+      <p class="mt-6 max-w-[62ch] text-[14px] leading-relaxed text-muted">
+        Changed your mind within three minutes? Undo leaves no trace and sends no text. After that, cancel from the reminder or by calling {l.phone}. The clinic sees this booking on its day list the moment you confirm.
+      </p>
+    </section>
+
+    <!-- Bookings on this device -->
+    <section class="mt-16 border-t border-line pt-8" data-mine hidden>
+      <h2 class="meta meta-ink">Your bookings on this device</h2>
+      <ul class="mt-4 divide-y divide-line" data-mine-list></ul>
+    </section>
+  </main>
+
+  <script>
+
+    const main = document.querySelector('main')!;
+    const ws = main.dataset.workspace === '1';
+    const slug = main.dataset.slug!, clinicName = main.dataset.name!;
+    const dentists = JSON.parse(main.dataset.dentists!) as { slug: string; name: string; days: number[] }[];
+    const services = JSON.parse(main.dataset.services!) as { id: string; name: string; minutes: number; price: string }[];
+    const form = main.querySelector<HTMLFormElement>('[data-wizard]')!;
+    const $ = <T extends Element = HTMLElement>(s: string, r: ParentNode = main) => r.querySelector(s) as T;
+    const steps = Array.from(form.querySelectorAll<HTMLFieldSetElement>('[data-step]'));
+    const marks = Array.from(main.querySelectorAll<HTMLElement>('[data-step-mark]'));
+    const back = $('[data-back]') as HTMLButtonElement, next = $('[data-next]') as HTMLButtonElement, err = $('[data-error]');
+    let at = 0;
+
+    const val = (n: string) => (form.elements.namedItem(n) as RadioNodeList | HTMLInputElement | null)?.value ?? '';
+    const chosenLabel = (n: string) => { const el = form.querySelector<HTMLInputElement>(`input[name="${n}"]:checked`); return el?.dataset.label ?? el?.nextElementSibling?.textContent?.trim() ?? ''; };
+    const service = () => services.find((s) => s.id === val('reason')) ?? services[0];
+
+    // Step 1: the price follows the reason.
+    const reasonPrice = $('[data-reason-price]');
+    const paintReason = () => { const s = service(); reasonPrice.textContent = `${s.name}: ${s.price}. About ${s.minutes} minutes in the chair.`; };
+    form.addEventListener('change', (e) => { if ((e.target as HTMLInputElement).name === 'reason') paintReason(); });
+    paintReason();
+
+    // Step 3: the clinic's real open slots, grouped by day, for the chosen dentist and the chair time the service needs.
+    const slotDays = $('[data-slot-days]') as HTMLElement | null;
+    const more = $('[data-slot-more]') as HTMLButtonElement, note = $('[data-slot-note]');
+    let shownDays = 4;
+    let lastSlots: { at: string; date: string; label: string; dayLabel: string }[] = [];
+    async function fetchSlots() {
+      const d = val('dentist');
+      const q = new URLSearchParams({ clinic: slug, minutes: String(service().minutes), days: '14' });
+      if (d) q.set('dentist', d);
+      const r = await fetch(`/api/availability?${q}`, { headers: { accept: 'application/json' } });
+      if (!r.ok) throw new Error('availability');
+      lastSlots = (await r.json()).slots;
+    }
+    function paintSlots() {
+      if (!ws || !slotDays) return;
+      const d = dentists.find((x) => x.slug === val('dentist'));
+      const byDay = new Map<string, typeof lastSlots>();
+      for (const s of lastSlots) (byDay.get(s.date) ?? byDay.set(s.date, []).get(s.date)!).push(s);
+      const days = Array.from(byDay.entries());
+      slotDays.innerHTML = days.slice(0, shownDays).map(([, ss]) => `
+        <div>
+          <p class="meta meta-ink">${ss[0].dayLabel}</p>
+          <div class="mt-2 flex flex-wrap gap-2">${ss.map((s) => `<label class="slot-radio"><input type="radio" name="slotpick" value="${s.at}" data-label="${s.dayLabel}, ${s.label}"><span>${s.label}</span></label>`).join('')}</div>
+        </div>`).join('') || '<p class="text-[15px] text-ink-2">Nothing open in the next two weeks for that choice. Try “any dentist”, or call the clinic.</p>';
+      more.hidden = days.length <= shownDays;
+      note.textContent = d ? `${d.name} is in on ${d.days.map((n) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][n]).join(', ')}.` : `${lastSlots.length} open slots in the next two weeks.`;
+      // A slot passed in from the search page is preselected if it is still free.
+      const pre = new URLSearchParams(location.search).get('slot');
+      const hit = pre && slotDays.querySelector<HTMLInputElement>(`input[value="${pre}"]`);
+      if (hit) hit.checked = true;
+    }
+    async function refreshSlots() {
+      if (!ws || !slotDays) return;
+      slotDays.innerHTML = '<p class="text-[15px] text-muted">Checking the schedule…</p>';
+      try { await fetchSlots(); paintSlots(); }
+      catch { slotDays.innerHTML = '<p class="text-[15px] text-caries">Could not reach the schedule. Try again, or call the clinic.</p>'; }
+    }
+    more.addEventListener('click', () => { shownDays += 4; paintSlots(); });
+    form.addEventListener('change', (e) => { const n = (e.target as HTMLInputElement).name; if (n === 'dentist' || n === 'reason') { shownDays = 4; refreshSlots(); } });
+    refreshSlots();
+
+    // Step 4: someone else → a second name. (Whether the mobile is on file is
+    // decided on the server when the booking is made — never shown before.)
+    const whoLabel = $('[data-name-label]'), patientField = $('[data-patient-name-field]');
+    form.addEventListener('change', (e) => {
+      const t = e.target as HTMLInputElement;
+      if (t.name === 'who') { const other = t.value === 'other'; patientField.hidden = !other; whoLabel.textContent = other ? 'Your name (the one we text)' : 'Your name'; }
+    });
+
+    // Validation per step, in plain words.
+    function validate(i: number): string {
+      if (i === 2) {
+        if (ws) { const pick = form.querySelector<HTMLInputElement>('input[name="slotpick"]:checked'); if (!pick) return 'Pick a slot.'; (form.elements.namedItem('slot') as HTMLInputElement).value = pick.value; }
+        else if (!val('reqDate')) return 'Pick a day.';
+      }
+      if (i === 3) {
+        const name = form.elements.namedItem('name') as HTMLInputElement, phone = form.elements.namedItem('phone') as HTMLInputElement, consent = form.elements.namedItem('consent') as HTMLInputElement;
+        if (!name.value.trim()) { name.focus(); return 'We need a name.'; }
+        if (!phone.checkValidity()) { phone.focus(); return 'A Philippine mobile number, like 0917 000 0000.'; }
+        if (val('who') === 'other' && !(form.elements.namedItem('patientName') as HTMLInputElement).value.trim()) return 'Whose visit is it?';
+        if (!consent.checked) return 'Tick the box so we can use your details for this booking.';
+      }
+      return '';
+    }
+
+    function summary() {
+      const d = dentists.find((x) => x.slug === val('dentist'));
+      const when = ws ? chosenLabel('slotpick') : `${val('reqDate')}, ${val('reqTime').toLowerCase()} (to be confirmed)`;
+      const who = val('who') === 'other' ? `${val('patientName')} (booked by ${val('name')})` : val('name');
+      const rows: [string, string][] = [
+        ['Clinic', clinicName], ['Visit', `${chosenLabel('reason') || service().name} · ${service().price}`],
+        ['Dentist', d?.name ?? 'Any available dentist'], ['When', when], ['Patient', who], ['Text to', val('phone')],
+        ['Card', (form.elements.namedItem('hmo') as HTMLSelectElement).selectedOptions[0]?.textContent ?? 'None'],
+      ];
+      if (val('notes')) rows.push(['Notes', val('notes')]);
+      $('[data-summary]').innerHTML = rows.map(([k, v]) => `<dt class="meta">${k}</dt><dd class="text-ink">${v}</dd>`).join('');
+    }
+
+    function show(i: number) {
+      at = i;
+      steps.forEach((s, n) => { s.hidden = n !== i; });
+      marks.forEach((m, n) => { m.toggleAttribute('data-passed', n < i); if (n === i) m.setAttribute('aria-current', 'step'); else m.removeAttribute('aria-current'); });
+      back.hidden = i === 0;
+      next.textContent = i === steps.length - 1 ? (ws ? 'Confirm booking' : 'Send request') : 'Continue →';
+      err.textContent = '';
+      if (i === steps.length - 1) summary();
+      steps[i].querySelector<HTMLElement>('legend')?.focus?.();
+      main.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    back.addEventListener('click', () => show(Math.max(0, at - 1)));
+    next.addEventListener('click', () => {
+      const e = validate(at); if (e) { err.textContent = e; return; }
+      if (at < steps.length - 1) show(at + 1); else finish();
+    });
+    form.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') { e.preventDefault(); next.click(); } });
+
+    // Done: hold it on this device, offer undo, write a calendar file.
+    const KEY = 'flossify:bookings';
+    const load = (): any[] => { try { return JSON.parse(localStorage.getItem(KEY) ?? '[]'); } catch { return []; } };
+    const save = (list: any[]) => { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch { /* private mode */ } };
+    let undoTimer = 0;
+
+    async function finish() {
+      next.disabled = true; next.textContent = ws ? 'Booking…' : 'Sending…'; err.textContent = '';
+      const d = dentists.find((x) => x.slug === val('dentist'));
+      const payload = { clinic: slug, service: val('reason'), dentist: val('dentist') || null, at: val('slot'), reqDate: val('reqDate'), reqTime: val('reqTime'), who: val('who'), name: val('name'), patientName: val('patientName'), phone: val('phone'), hmo: val('hmo'), notes: val('notes'), consent: (form.elements.namedItem('consent') as HTMLInputElement).checked };
+      let res: any;
+      try {
+        const r = await fetch('/api/bookings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+        // The server's own sentence when it sent one: a slot just gone, a number that has
+        // booked five times today, a busy connection. A gateway answering in HTML gets the plain one.
+        res = r.ok ? await r.json() : await r.json().catch(() => ({}));
+        if (!r.ok) {
+          next.disabled = false; next.textContent = ws ? 'Confirm booking' : 'Send request';
+          if (r.status === 409) { show(2); refreshSlots(); }
+          err.textContent = res.error || 'Something went wrong. Try again.'; // after show(): it clears the error area
+          return;
+        }
+      } catch {
+        err.textContent = 'Could not reach the clinic’s schedule. Check your connection and try again.';
+        next.disabled = false; next.textContent = ws ? 'Confirm booking' : 'Send request'; return;
+      }
+      const ref = res.ref as string;
+      const booking = { ref, cancelToken: res.cancelToken, slug, clinic: clinicName, service: chosenLabel('reason') || service().name, dentist: d?.name ?? 'Any dentist', slot: ws ? val('slot') : `${val('reqDate')} ${val('reqTime')}`, label: ws ? chosenLabel('slotpick') : `${val('reqDate')}, ${val('reqTime')} (requested)`, name: val('who') === 'other' ? val('patientName') : val('name'), phone: val('phone'), status: ws ? 'booked' : 'requested', madeAt: Date.now(), returning: !!res.returning, chartNo: res.chartNo };
+      save([booking, ...load()]);
+      form.hidden = true; $('[data-progress]').hidden = true;
+      const done = $('[data-done-panel]'); done.hidden = false;
+      main.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      $('[data-done-title]').textContent = ws ? `${booking.label}, ${clinicName}.` : `Request sent to ${clinicName}.`;
+      $('[data-done-text]').textContent = (ws ? `We texted ${booking.phone}. The day before, reply Y to confirm.` : `They will text ${booking.phone} to confirm ${booking.label.replace(' (requested)', '')}.`) + (booking.returning ? ` Welcome back — your record ${booking.chartNo} is on file, no forms to fill again.` : '');
+      $('[data-ref]').textContent = ref;
+      // Calendar file: an all-day marker for requests, the exact half hour for bookings.
+      const start = ws ? booking.slot.replace(/[-:]/g, '') + '00' : booking.slot.slice(0, 10).replace(/-/g, '');
+      const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Flossify//Visit//EN', 'BEGIN:VEVENT', `UID:${ref}@flossify`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,
+        ws ? `DTSTART;TZID=Asia/Manila:${start}` : `DTSTART;VALUE=DATE:${start}`, `SUMMARY:Dentist — ${clinicName}`, `DESCRIPTION:${booking.service} with ${booking.dentist}. Ref ${ref}.`, `LOCATION:${clinicName}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+      ($('[data-ics]') as HTMLAnchorElement).href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
+      // Three-minute undo, counted down where the patient can see it.
+      let left = 180; const secs = $('[data-undo-secs]'), undo = $('[data-undo]') as HTMLButtonElement, undoErr = $('[data-undo-error]');
+      clearInterval(undoTimer);
+      undoTimer = window.setInterval(() => { left--; secs.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`; if (left <= 0) { clearInterval(undoTimer); undo.hidden = true; } }, 1000);
+      undo.onclick = async () => {
+        undo.disabled = true; undo.textContent = 'Undoing…'; undoErr.hidden = true;
+        // The booking stands until the server says otherwise. When it refuses (too many
+        // requests, or it cannot be reached) say so in its words and leave the clock running.
+        let problem = '';
+        try {
+          const r = await fetch(`/api/bookings/${encodeURIComponent(ref)}?token=${encodeURIComponent(booking.cancelToken)}&clinic=${encodeURIComponent(slug)}`, { method: 'DELETE' });
+          if (!r.ok) problem = (await r.json().catch(() => ({}))).error || 'Could not undo just now. Try once more, or cancel from the reminder text.';
+        } catch { problem = 'Could not reach the clinic. Check your connection and try again.'; }
+        if (problem) {
+          undo.replaceChildren('Undo ', secs); undo.disabled = false;
+          undoErr.hidden = false; undoErr.textContent = problem;
+          return;
+        }
+        clearInterval(undoTimer); save(load().filter((b) => b.ref !== ref)); location.href = location.pathname;
+      };
+      paintMine();
+    }
+
+    function paintMine() {
+      const mine = load(); const sec = $('[data-mine]'); sec.hidden = mine.length === 0;
+      $('[data-mine-list]').innerHTML = mine.map((b) => `<li class="flex flex-wrap items-baseline justify-between gap-3 py-3 text-[15px]"><span><strong class="font-semibold">${b.clinic}</strong> · ${b.service} · ${b.label}</span><span class="meta">${b.status} · ${b.ref}</span></li>`).join('');
+    }
+    paintMine();
+    show(0);
+  </script>
+</Base>

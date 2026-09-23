@@ -1,65 +1,123 @@
 ---
-import ClinicLayout from '../../../layouts/Clinic.astro';
-import {
-  clinics, clinicBySlug, patientsOf, appointmentsOf, claimsOf,
-  patientById, peso, daysWaiting,
-} from '../../../data/demo';
+// Today, for one branch, for a signed-in staff member. Every query runs inside
+// withClinic(): row-level security scopes it to this clinic, so a forgotten
+// WHERE cannot show another clinic's patients. The status buttons are the
+// front desk's state machine, each press notifying the next role in a later
+// step; for now each press is a form post that redirects back here. Every
+// form carries the CSRF token; a post without a matching one changes nothing
+// and comes back here with ?stale=1, which shows the sentence to try again.
+export const prerender = false;
 
-export function getStaticPaths() {
-  return clinics.map((c) => ({ params: { clinic: c.slug } }));
+import ClinicLayout from '../../../layouts/Clinic.astro';
+import Csrf from '../../../components/Csrf.astro';
+import { requireWorkspace } from '../../../lib/workspace';
+import { withClinic } from '../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../lib/csrf';
+import { peso } from '../../../data/demo';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const stale = Astro.url.searchParams.get('stale') === '1';
+
+const NEXT: Record<string, { label: string; to: string }[]> = {
+  booked: [{ label: 'Confirm', to: 'confirmed' }, { label: 'Arrived', to: 'arrived' }],
+  confirmed: [{ label: 'Arrived', to: 'arrived' }],
+  arrived: [{ label: 'To lobby', to: 'in_lobby' }, { label: 'Seat', to: 'in_chair' }],
+  in_lobby: [{ label: 'Seat', to: 'in_chair' }],
+  in_chair: [{ label: 'Complete', to: 'completed' }],
+};
+const ALLOWED = new Set(['confirmed', 'arrived', 'in_lobby', 'in_chair', 'completed', 'no_show', 'cancelled']);
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(Astro.url.pathname + '?stale=1', 303);
+  const id = String(f.get('id') ?? ''), to = String(f.get('status') ?? '');
+  if (id && ALLOWED.has(to)) {
+    await withClinic(clinic.id, async (tx) => {
+      await tx.query(
+        `update appointment set status = $2,
+           arrived_at = case when $2 in ('arrived', 'in_lobby') then coalesce(arrived_at, now()) else arrived_at end,
+           seated_at = case when $2 = 'in_chair' then coalesce(seated_at, now()) else seated_at end,
+           cancelled_at = case when $2 = 'cancelled' then now() else cancelled_at end
+         where id = $1`, [id, to]);
+      await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'appointment', $4)`, [clinic.id, session.staffId, `appointment.${to}`, id]);
+    });
+  }
+  return Astro.redirect(Astro.url.pathname, 303);
 }
 
-const { clinic: slug } = Astro.params;
-const clinic = clinicBySlug(slug!)!;
+const data = await withClinic(clinic.id, async (tx) => {
+  const me = (await tx.query(`select chairs, tin, bir_branch_code, area from clinic where id = $1`, [clinic.id])).rows[0];
+  const today = (await tx.query(
+    `select a.id, a.starts_at, a.reason, a.status, a.source, a.public_ref, a.booked_by_phone,
+            p.id as patient_id, p.first_name, p.last_name, p.chart_no,
+            (select h.allergies from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as allergies,
+            s.full_name as dentist
+     from appointment a join patient p on p.id = a.patient_id left join staff s on s.id = a.dentist_id
+     where (a.starts_at at time zone 'Asia/Manila')::date = (now() at time zone 'Asia/Manila')::date
+       and a.status <> 'cancelled'
+     order by a.starts_at`)).rows;
+  const fromWeb = (await tx.query(
+    `select a.id, a.starts_at, a.reason, a.status, a.source, a.public_ref, a.booked_by_name, a.booked_by_phone, a.hmo_id, a.notes, a.created_at,
+            p.first_name, p.last_name, p.chart_no, s.full_name as dentist
+     from appointment a join patient p on p.id = a.patient_id left join staff s on s.id = a.dentist_id
+     where a.source in ('web', 'request') and a.status = 'booked' and a.starts_at >= now() - interval '1 day'
+     order by a.created_at desc limit 25`)).rows;
+  const counts = (await tx.query(`select (select count(*) from patient where archived_at is null)::int as patients`)).rows[0];
+  const money = (await tx.query(
+    `select coalesce((select sum(total) from invoice where status in ('issued', 'partly_paid')), 0)::numeric as billed,
+            coalesce((select sum(amount) from payment), 0)::numeric as paid`)).rows[0];
+  const claims = (await tx.query(
+    `select c.id, c.claimed, c.approved, c.status, c.filed_at, extract(day from now() - c.filed_at)::int as days,
+            pr.name as provider, p.first_name, p.last_name
+     from hmo_claim c join hmo_provider pr on pr.id = c.provider_id join patient p on p.id = c.patient_id
+     order by c.filed_at`)).rows;
+  return { me, today, fromWeb, counts, money, claims };
+});
 
-const patients = patientsOf(slug!);
-const today = appointmentsOf(slug!).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-const claims = claimsOf(slug!);
-
-const inChair = today.filter((a) => a.status === 'in_chair').length;
-const waiting = today.filter((a) => a.status === 'in_lobby' || a.status === 'arrived').length;
-const receivable = patients.reduce((n, p) => n + p.balance, 0);
-
-// A filed claim past its provider's expected window is money the clinic has
-// already earned and nobody is chasing. This is the number to put up front.
-const open = claims.filter((c) => c.status === 'filed' || c.status === 'partly_approved');
-const overdue = open.filter((c) => daysWaiting(c.filedAt) > 60);
-const stuck = overdue.reduce((n, c) => n + (c.claimed - (c.approved ?? 0)), 0);
+const inChair = data.today.filter((a) => a.status === 'in_chair').length;
+const waiting = data.today.filter((a) => a.status === 'in_lobby' || a.status === 'arrived').length;
+const receivable = Number(data.money.billed) - Number(data.money.paid);
+const open = data.claims.filter((c) => c.status === 'filed' || c.status === 'partly_approved');
+const overdue = open.filter((c) => c.days > 60);
+const stuck = overdue.reduce((n, c) => n + (Number(c.claimed) - Number(c.approved ?? 0)), 0);
 
 const tiles = [
-  { label: 'In the chair', value: String(inChair), note: `${clinic.chairs} chairs` },
+  { label: 'In the chair', value: String(inChair), note: `${data.me.chairs} chairs` },
   { label: 'Waiting', value: String(waiting), note: 'arrived or in lobby' },
-  { label: 'Patient balances', value: peso(receivable), note: `${patients.length} patients` },
+  { label: 'Patient balances', value: peso(receivable), note: `${data.counts.patients} patients` },
   { label: 'Stuck with HMOs', value: peso(stuck), note: `${overdue.length} past 60 days` },
 ];
 
 const QUEUE: Record<string, { label: string; cls: string }> = {
-  in_chair:  { label: 'In chair',  cls: 'bg-accent text-surface' },
-  in_lobby:  { label: 'In lobby',  cls: 'bg-crown/20 text-crown' },
-  arrived:   { label: 'Arrived',   cls: 'bg-crown/20 text-crown' },
+  in_chair: { label: 'In chair', cls: 'bg-accent text-surface' },
+  in_lobby: { label: 'In lobby', cls: 'bg-crown/20 text-crown' },
+  arrived: { label: 'Arrived', cls: 'bg-crown/20 text-crown' },
   confirmed: { label: 'Confirmed', cls: 'bg-bg-soft text-ink-2' },
-  booked:    { label: 'Booked',    cls: 'bg-bg-soft text-ink-2' },
+  booked: { label: 'Booked', cls: 'bg-bg-soft text-ink-2' },
   completed: { label: 'Completed', cls: 'bg-bg-soft text-muted' },
-  no_show:   { label: 'No show',   cls: 'bg-caries/15 text-caries' },
+  no_show: { label: 'No show', cls: 'bg-caries/15 text-caries' },
   cancelled: { label: 'Cancelled', cls: 'bg-bg-soft text-muted' },
 };
 
 // Status is never colour alone: every badge carries its word.
-function claimStatus(c: (typeof claims)[number]) {
-  const days = daysWaiting(c.filedAt);
+function claimStatus(c: (typeof data.claims)[number]) {
   if (c.status === 'paid') return { label: 'Paid', tone: 'text-accent', dot: 'bg-accent' };
   if (c.status === 'denied') return { label: 'Denied', tone: 'text-caries', dot: 'bg-caries' };
-  if (days > 120) return { label: `Overdue ${days}d`, tone: 'text-caries', dot: 'bg-caries' };
-  if (days > 60) return { label: `Late ${days}d`, tone: 'text-crown', dot: 'bg-crown' };
-  return { label: `Filed ${days}d`, tone: 'text-ink-2', dot: 'bg-muted' };
+  if (c.days > 120) return { label: `Overdue ${c.days}d`, tone: 'text-caries', dot: 'bg-caries' };
+  if (c.days > 60) return { label: `Late ${c.days}d`, tone: 'text-crown', dot: 'bg-crown' };
+  return { label: `Filed ${c.days}d`, tone: 'text-ink-2', dot: 'bg-muted' };
 }
 
-const time = (iso: string) =>
-  new Intl.DateTimeFormat('en-PH', { hour: 'numeric', minute: '2-digit', timeZone: clinic.timezone ?? 'Asia/Manila' }).format(new Date(iso));
+const time = (d: Date) => new Intl.DateTimeFormat('en-PH', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(d);
+const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(d);
 ---
 
-<ClinicLayout clinic={clinic} title="Today" section="today">
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.me.area }} title="Today" section="today" staff={{ name: session.name, role: session.role }} branches={branches}>
   <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Today</h1>
+
+  {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
 
   <dl class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
     {tiles.map((t) => (
@@ -71,38 +129,66 @@ const time = (iso: string) =>
     ))}
   </dl>
 
+  {data.fromWeb.length > 0 && (
+    <section class="mt-10" aria-labelledby="web-title">
+      <h2 id="web-title" class="font-display text-[22px] font-semibold">From the website</h2>
+      <p class="mt-1.5 text-[14.5px] text-ink-2">Booked or requested online and not yet confirmed. Confirm sends the day-before text.</p>
+      <ul class="mt-4 divide-y divide-line-2 overflow-hidden border border-line bg-surface">
+        {data.fromWeb.map((a) => (
+          <li class="flex flex-wrap items-center gap-4 p-4 sm:px-6">
+            <div class="min-w-0 flex-1">
+              <p class="text-[15.5px] font-semibold">{a.first_name} {a.last_name} <span class="font-mono text-[12px] tracking-[0.08em] text-muted uppercase">{a.public_ref}</span></p>
+              <p class="text-[13.5px] text-ink-2">{when(a.starts_at)} · {a.reason} · {a.dentist ?? 'any dentist'}{a.hmo_id && ` · HMO: ${a.hmo_id}`}</p>
+              <p class="text-[13.5px] text-muted">{a.source === 'request' ? 'Requested time — confirm or call' : 'Booked online'} · text {a.booked_by_phone}{a.booked_by_name && a.booked_by_name !== `${a.first_name} ${a.last_name}` ? ` (${a.booked_by_name})` : ''}{a.notes && ` · “${a.notes}”`}</p>
+            </div>
+            <form method="post" class="flex gap-2">
+              <Csrf />
+              <input type="hidden" name="id" value={a.id} />
+              <button name="status" value="confirmed" class="btn btn-primary !px-4 !py-2 text-[13.5px]">Confirm</button>
+              <button name="status" value="cancelled" class="btn btn-quiet !px-4 !py-2 text-[13.5px]">Decline</button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )}
+
   <section class="mt-10">
     <h2 class="font-display text-[22px] font-semibold">Queue</h2>
-    <ul class="mt-4 divide-y divide-line-2 overflow-hidden border border-line bg-surface">
-      {today.map((a) => {
-        const p = patientById(a.patientId)!;
-        const q = QUEUE[a.status];
-        return (
-          <li class="flex flex-wrap items-center gap-4 p-4 sm:px-6">
-            <span class="w-16 shrink-0 text-[15px] font-semibold tabular-nums">{time(a.startsAt)}</span>
-            <div class="min-w-0 flex-1">
-              <a href={`/c/${clinic.slug}/patients/${p.id}/`} class="text-[15.5px] font-semibold hover:text-accent">
-                {p.firstName} {p.lastName}
-              </a>
-              <p class="text-[13.5px] text-muted">{a.reason} &middot; {p.chartNo}</p>
-            </div>
-            {p.allergies.length > 0 && (
-              <span class="bg-caries/15 px-3 py-1 text-xs font-semibold text-caries">
-                Allergy: {p.allergies.join(', ')}
-              </span>
-            )}
-            <span class={` px-3 py-1.5 text-xs font-semibold ${q.cls}`}>{q.label}</span>
-          </li>
-        );
-      })}
-    </ul>
+    {data.today.length === 0 ? (
+      <p class="mt-3 text-[15px] text-muted">Nothing on the book today.</p>
+    ) : (
+      <ul class="mt-4 divide-y divide-line-2 overflow-hidden border border-line bg-surface">
+        {data.today.map((a) => {
+          const q = QUEUE[a.status];
+          return (
+            <li class="flex flex-wrap items-center gap-4 p-4 sm:px-6">
+              <span class="w-16 shrink-0 text-[15px] font-semibold tabular-nums">{time(a.starts_at)}</span>
+              <div class="min-w-0 flex-1">
+                <a href={`/c/${clinic.slug}/patients/${a.patient_id}/`} class="text-[15.5px] font-semibold hover:text-accent">{a.first_name} {a.last_name}</a>
+                <p class="text-[13.5px] text-muted">{a.reason} &middot; {a.chart_no}{a.dentist && ` · ${a.dentist}`}{a.source !== 'staff' && ` · ${a.source === 'web' ? 'booked online' : 'requested online'}`}</p>
+              </div>
+              {a.allergies?.length > 0 && (
+                <span class="bg-caries/15 px-3 py-1 text-xs font-semibold text-caries">Allergy: {a.allergies.join(', ')}</span>
+              )}
+              <span class={`px-3 py-1.5 text-xs font-semibold ${q.cls}`}>{q.label}</span>
+              {NEXT[a.status] && (
+                <form method="post" class="flex gap-1.5">
+                  <Csrf />
+                  <input type="hidden" name="id" value={a.id} />
+                  {NEXT[a.status].map((n) => <button name="status" value={n.to} class="btn btn-quiet !px-3 !py-1.5 text-[13px]">{n.label}</button>)}
+                </form>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    )}
   </section>
 
   <section id="claims" class="mt-12 scroll-mt-24">
     <h2 class="font-display text-[22px] font-semibold">HMO claims</h2>
-    <p class="mt-1.5 text-[14.5px] text-ink-2">
-      Filed, approved, and still waiting. Anything past sixty days is money already earned.
-    </p>
+    <p class="mt-1.5 text-[14.5px] text-ink-2">Filed, approved, and still waiting. Anything past sixty days is money already earned. <a href={`/c/${clinic.slug}/claims/`} class="underline underline-offset-4 hover:text-accent">All claims, PhilHealth included &rarr;</a></p>
     <div class="mt-4 overflow-x-auto border border-line bg-surface">
       <table class="w-full min-w-[620px] border-collapse text-left">
         <thead>
@@ -115,22 +201,16 @@ const time = (iso: string) =>
           </tr>
         </thead>
         <tbody>
-          {claims.map((c, i) => {
-            const p = patientById(c.patientId)!;
+          {data.claims.length === 0 && <tr><td colspan="5" class="px-5 py-4 text-[15px] text-muted">No claims on file.</td></tr>}
+          {data.claims.map((c, i) => {
             const s = claimStatus(c);
             return (
-              <tr class={i < claims.length - 1 ? 'border-b border-line-2' : ''}>
-                <th scope="row" class="px-5 py-3.5 text-[15px] font-medium">{p.firstName} {p.lastName}</th>
+              <tr class={i < data.claims.length - 1 ? 'border-b border-line-2' : ''}>
+                <th scope="row" class="px-5 py-3.5 text-[15px] font-medium">{c.first_name} {c.last_name}</th>
                 <td class="px-5 py-3.5 text-[15px] text-ink-2">{c.provider}</td>
-                <td class="px-5 py-3.5 text-right text-[15px] tabular-nums">{peso(c.claimed)}</td>
-                <td class="px-5 py-3.5 text-right text-[15px] tabular-nums text-ink-2">
-                  {c.approved === null ? '—' : peso(c.approved)}
-                </td>
-                <td class={`px-5 py-3.5 text-[14.5px] font-semibold ${s.tone}`}>
-                  <span class="flex items-center gap-2">
-                    <span class={`h-2.5 w-2.5 shrink-0  ${s.dot}`}></span>{s.label}
-                  </span>
-                </td>
+                <td class="px-5 py-3.5 text-right text-[15px] tabular-nums">{peso(Number(c.claimed))}</td>
+                <td class="px-5 py-3.5 text-right text-[15px] tabular-nums text-ink-2">{c.approved === null ? '—' : peso(Number(c.approved))}</td>
+                <td class={`px-5 py-3.5 text-[14.5px] font-semibold ${s.tone}`}><span class="flex items-center gap-2"><span class={`h-2.5 w-2.5 shrink-0 ${s.dot}`}></span>{s.label}</span></td>
               </tr>
             );
           })}
@@ -141,16 +221,11 @@ const time = (iso: string) =>
 
   <section id="billing" class="mt-12 scroll-mt-24">
     <h2 class="font-display text-[22px] font-semibold">Billing</h2>
-    {clinic.tin ? (
-      <p class="mt-2 text-[15px] text-ink-2">
-        Invoicing enabled. TIN <span class="font-semibold tabular-nums">{clinic.tin}</span>, branch
-        code {clinic.bir_branch_code ?? '00000'}.
-      </p>
+    {data.me.tin ? (
+      <p class="mt-2 text-[15px] text-ink-2">Invoicing enabled. TIN <span class="font-semibold tabular-nums">{data.me.tin}</span>, branch code {data.me.bir_branch_code ?? '00000'}.</p>
     ) : (
       <p class="mt-2 border border-crown/40 bg-crown/10 p-4 text-[15px] leading-relaxed">
-        <strong class="font-semibold">Invoicing is blocked.</strong> This branch has no TIN on file,
-        and issuing a numbered invoice without one produces a document the Bureau will not accept.
-        Add it in settings before the first sale.
+        <strong class="font-semibold">Invoicing is blocked.</strong> This branch has no TIN on file, and issuing a numbered invoice without one produces a document the Bureau will not accept. Add it in settings before the first sale.
       </p>
     )}
   </section>

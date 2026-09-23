@@ -1,0 +1,544 @@
+---
+// Claims, for one branch: HMO and PhilHealth, from filing to payment. Every
+// query runs inside withClinic(): row-level security keeps it to this clinic.
+// The aging column is the point of the page — it says who is sitting on the
+// clinic's money, measured against each payor's own expected days rather
+// than one number for everyone.
+//
+// Everyone with access sees the list; the amounts, the filing and payment
+// forms and the CSV's money columns are for those who may see finance (the
+// branch flag, or the owner and admin roles). A note can be left by anyone.
+//
+// Every form post carries the CSRF token; a post without a matching one
+// changes nothing and comes back here with ?stale=1. Each write is guarded
+// by the status it expects, so two people acting on one claim cannot move it
+// twice: the second post comes back with ?missed=<action> and a sentence.
+//
+// ?export=csv returns the current filter as a file instead of a page: BOM,
+// CRLF, quoted cells, so Excel opens it cleanly.
+export const prerender = false;
+
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { withClinic, type Tx } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { peso } from '../../../../data/demo';
+import { hmos } from '../../../../data/directory';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const canMoney = clinic.can_view_finance || session.role === 'owner' || session.role === 'admin';
+const q = Astro.url.searchParams;
+const base = `/c/${clinic.slug}/claims/`;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TEXT_MAX = 80;
+const REASON_MAX = 200;
+const NOTE_MAX = 600;
+const MONEY_MAX = 9_999_999.99;
+
+// The filter, as GET links. Open is what the desk has to chase.
+const VIEWS = {
+  open: { label: 'Open', one: 'open claim', noun: 'open claims', statuses: ['filed', 'partly_approved'] },
+  drafts: { label: 'Drafts', one: 'draft', noun: 'drafts', statuses: ['draft'] },
+  resolved: { label: 'Resolved', one: 'resolved claim', noun: 'resolved claims', statuses: ['approved', 'denied', 'paid'] },
+  all: { label: 'All', one: 'claim', noun: 'claims', statuses: ['draft', 'filed', 'partly_approved', 'approved', 'denied', 'paid'] },
+} as const;
+type View = keyof typeof VIEWS;
+const viewParam = q.get('view') ?? 'open';
+const view: View = Object.hasOwn(VIEWS, viewParam) ? (viewParam as View) : 'open';
+const payorParam = q.get('payor') ?? '';
+const payor = UUID.test(payorParam) ? payorParam : '';
+
+/** This page, with the filter kept and anything extra appended. */
+const href = (v: View, p: string, extra: Record<string, string> = {}) => {
+  const s = new URLSearchParams();
+  if (v !== 'open') s.set('view', v);
+  if (p) s.set('payor', p);
+  for (const [k, val] of Object.entries(extra)) if (val) s.set(k, val);
+  const str = s.toString();
+  return base + (str ? `?${str}` : '');
+};
+
+/** "1,500" / "₱1500.50" → 1500.5; anything that is not a peso amount → null. */
+const money = (s: string): number | null => {
+  const t = s.replace(/[₱,\s]/g, '');
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return null;
+  const n = Number(t);
+  return n <= MONEY_MAX ? n : null;
+};
+
+// Manila time, composed from parts: the locale strings put the comma elsewhere.
+const parts = (d: Date, opts: Intl.DateTimeFormatOptions) =>
+  Object.fromEntries(new Intl.DateTimeFormat('en-US', { ...opts, timeZone: 'Asia/Manila' }).formatToParts(d).map((p) => [p.type, p.value]));
+const day = (d: Date | null) => { if (!d) return '—'; const p = parts(d, { day: 'numeric', month: 'short', year: 'numeric' }); return `${p.day} ${p.month} ${p.year}`; };
+const isoDay = (d: Date | null) => { if (!d) return ''; const p = parts(d, { year: 'numeric', month: '2-digit', day: '2-digit' }); return `${p.year}-${p.month}-${p.day}`; };
+const stamp = (d: Date) => { const p = parts(d, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }); return `${p.day} ${p.month} ${p.year}, ${p.hour}:${p.minute} ${p.dayPeriod.toLowerCase()}`; };
+/** A note line as it goes on the record: when, who, what. */
+const noteLine = (text: string) => `${stamp(new Date())} · ${session.name}: ${text}`;
+
+const audit = (tx: Tx, action: string, id: string) =>
+  tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'hmo_claim', $4)`, [clinic.id, session.staffId, `claim.${action}`, id]);
+
+let error = q.get('stale') === '1' ? CSRF_MESSAGE : '';
+const done = q.get('done') ?? '';
+const missed = q.get('missed') ?? '';
+// What they typed into New claim, kept on the form when the post is refused.
+let draft = { patient: '', payor: '', loa: '', member: '', claimed: '', notes: '' };
+let openNew = false;
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(href(view, payor, { stale: '1' }), 303);
+  const act = String(f.get('act') ?? '');
+  const s = (k: string) => String(f.get(k) ?? '').replace(/\s+/g, ' ').trim();
+  const id = String(f.get('id') ?? '');
+
+  if (act === 'note') {
+    // Anyone with access may leave a note; it is appended, never edited.
+    const note = s('note');
+    if (!UUID.test(id)) return Astro.redirect(href(view, payor), 303);
+    if (!note) error = 'Write the note first.';
+    else if (note.length > NOTE_MAX) error = `Keep a note under ${NOTE_MAX} characters.`;
+    else {
+      const changed = await withClinic(clinic.id, async (tx) => {
+        const r = await tx.query(`update hmo_claim set notes = concat_ws(E'\n', notes, $2::text), updated_at = now() where id = $1`, [id, noteLine(note)]);
+        if (r.rowCount) await audit(tx, 'note', id);
+        return r.rowCount ?? 0;
+      });
+      return Astro.redirect(href(view, payor, changed ? { done: 'note' } : { missed: 'note' }), 303);
+    }
+  } else if (!canMoney) {
+    // Money moves are for finance. The page did not offer the form; the post changes nothing.
+    return Astro.redirect(href(view, payor), 303);
+  } else if (act === 'new') {
+    draft = { patient: s('patient'), payor: s('payor'), loa: s('loa'), member: s('member'), claimed: s('claimed'), notes: s('notes') };
+    openNew = true;
+    const amount = money(draft.claimed);
+    if (!UUID.test(draft.patient)) error = 'Pick the patient the claim is for.';
+    else if (!draft.payor) error = 'Pick the payor.';
+    else if (amount === null || amount <= 0) error = 'The claimed amount needs to be a number above zero, like 1500 or 1500.50.';
+    else if (draft.loa.length > TEXT_MAX || draft.member.length > TEXT_MAX) error = `Keep the LOA and member numbers under ${TEXT_MAX} characters.`;
+    else if (draft.notes.length > NOTE_MAX) error = `Keep the note under ${NOTE_MAX} characters.`;
+    else {
+      const outcome = await withClinic(clinic.id, async (tx) => {
+        const p = (await tx.query(`select id from patient where id = $1 and archived_at is null`, [draft.patient])).rows[0];
+        if (!p) return 'That patient is not on this branch’s list. Pick one from the list.';
+        let providerId: string | null = null;
+        if (UUID.test(draft.payor)) {
+          providerId = (await tx.query(`select id from hmo_provider where id = $1 and active`, [draft.payor])).rows[0]?.id ?? null;
+        } else if (draft.payor.startsWith('hmo:')) {
+          // An HMO the clinic takes (Settings → HMOs) that has never had a claim here: its payor row starts now.
+          const known = hmos.find((h) => h.id === draft.payor.slice(4));
+          const takes = known && (await tx.query(`select 1 from clinic_hmo where hmo_id = $1`, [known.id])).rowCount;
+          if (known && takes) {
+            const have = (await tx.query(`select id from hmo_provider where kind = 'hmo' and lower(name) = lower($1) order by active desc limit 1`, [known.name])).rows[0];
+            providerId = have?.id ?? (await tx.query(`insert into hmo_provider (clinic_id, name, expected_days, kind) values ($1, $2, 60, 'hmo') on conflict (clinic_id, lower(name)) do update set active = true returning id`, [clinic.id, known.name])).rows[0].id;
+          }
+        }
+        if (!providerId) return 'That payor is not on this branch’s list. Pick one from the list.';
+        const { rows } = await tx.query(
+          `insert into hmo_claim (clinic_id, provider_id, patient_id, loa_number, member_no, claimed, status, notes)
+           values ($1, $2, $3, $4, $5, $6, 'draft', $7) returning id`,
+          [clinic.id, providerId, draft.patient, draft.loa || null, draft.member || null, amount, draft.notes ? noteLine(draft.notes) : null]);
+        await audit(tx, 'new', rows[0].id);
+        return '';
+      });
+      if (outcome) error = outcome;
+      else return Astro.redirect(href('drafts', '', { done: 'new' }), 303);
+    }
+  } else if (['file', 'approve', 'partly', 'deny', 'paid'].includes(act) && UUID.test(id)) {
+    const amount = money(s('amount'));
+    const reason = s('reason'), ref = s('ref');
+    if (act === 'file' && ref.length > TEXT_MAX) error = `Keep the payor’s reference under ${TEXT_MAX} characters.`;
+    else if ((act === 'approve' || act === 'partly') && (amount === null || amount <= 0)) error = 'Enter the amount the payor approved, in pesos.';
+    else if (act === 'deny' && !reason) error = 'Say why it was denied, in a few words. It goes on the record and helps the next filing.';
+    else if (act === 'deny' && reason.length > REASON_MAX) error = `Keep the reason under ${REASON_MAX} characters.`;
+    else {
+      const outcome = await withClinic(clinic.id, async (tx): Promise<'ok' | 'missed' | string> => {
+        // Lock the row, check it is where the button said it was, then move it.
+        const c = (await tx.query(`select status, claimed from hmo_claim where id = $1 for update`, [id])).rows[0];
+        if (!c) return 'missed';
+        const from: Record<string, string[]> = { file: ['draft'], approve: ['filed'], partly: ['filed'], deny: ['filed'], paid: ['approved', 'partly_approved'] };
+        if (!from[act].includes(c.status)) return 'missed';
+        if (act === 'partly' && amount! >= Number(c.claimed)) return 'A partly approved amount is less than what was claimed. If they approved all of it, use Approved.';
+        if (act === 'file') await tx.query(`update hmo_claim set status = 'filed', filed_at = now(), submitted_ref = coalesce(nullif($2, ''), submitted_ref), updated_at = now() where id = $1`, [id, ref]);
+        if (act === 'approve') await tx.query(`update hmo_claim set status = 'approved', approved = $2, resolved_at = now(), denial_reason = null, updated_at = now() where id = $1`, [id, amount]);
+        if (act === 'partly') await tx.query(`update hmo_claim set status = 'partly_approved', approved = $2, updated_at = now() where id = $1`, [id, amount]);
+        if (act === 'deny') await tx.query(`update hmo_claim set status = 'denied', denial_reason = $2, resolved_at = now(), updated_at = now() where id = $1`, [id, reason]);
+        if (act === 'paid') await tx.query(`update hmo_claim set status = 'paid', approved = coalesce(approved, claimed), resolved_at = now(), updated_at = now() where id = $1`, [id]);
+        await audit(tx, act, id);
+        return 'ok';
+      });
+      if (outcome === 'ok') return Astro.redirect(href(view, payor, { done: act }), 303);
+      if (outcome === 'missed') return Astro.redirect(href(view, payor, { missed: act }), 303);
+      error = outcome;
+    }
+  } else {
+    return Astro.redirect(href(view, payor), 303);
+  }
+}
+
+interface Claim {
+  id: string; status: string; claimed: string; approved: string | null;
+  loa_number: string | null; member_no: string | null; submitted_ref: string | null; notes: string | null; denial_reason: string | null;
+  filed_at: Date | null; resolved_at: Date | null; created_at: Date; days: number | null;
+  provider_id: string; provider: string; provider_kind: string; expected_days: number;
+  patient_id: string; first_name: string; last_name: string; chart_no: string;
+}
+interface Provider { id: string; name: string; kind: string; expected_days: number; active: boolean }
+
+const OPEN = `c.status in ('filed', 'partly_approved')`;
+const QUIET = `${OPEN} and c.filed_at + make_interval(days => pr.expected_days) < now()`;
+
+const data = await withClinic(clinic.id, async (tx) => ({
+  me: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0],
+  providers: (await tx.query(`select id, name, kind, expected_days, active from hmo_provider order by kind = 'philhealth', name`)).rows as Provider[],
+  // Open first, oldest filing on top (the most aged is the most urgent); then drafts; then resolved, newest first.
+  claims: (await tx.query(
+    `select c.id, c.status, c.claimed, c.approved, c.loa_number, c.member_no, c.submitted_ref, c.notes, c.denial_reason,
+            c.filed_at, c.resolved_at, c.created_at,
+            case when c.filed_at is null then null
+                 else extract(day from coalesce(case when c.status in ('paid', 'denied') then c.resolved_at end, now()) - c.filed_at)::int end as days,
+            pr.id as provider_id, pr.name as provider, pr.kind as provider_kind, pr.expected_days,
+            p.id as patient_id, p.first_name, p.last_name, p.chart_no
+       from hmo_claim c
+       join hmo_provider pr on pr.id = c.provider_id
+       join patient p on p.id = c.patient_id
+      where c.status = any($1::text[]) and ($2::uuid is null or c.provider_id = $2)
+      order by case when ${OPEN} then 0 when c.status = 'draft' then 1 else 2 end,
+               case when c.status in ('approved', 'denied', 'paid') then -extract(epoch from coalesce(c.resolved_at, c.updated_at))
+                    else extract(epoch from coalesce(c.filed_at, c.created_at)) end`,
+    [VIEWS[view].statuses, payor || null])).rows as Claim[],
+  // The tiles follow the payor filter, not the status filter: they are the whole picture for that payor.
+  tiles: (await tx.query(
+    `select count(*) filter (where ${OPEN})::int as open_n,
+            coalesce(sum(c.claimed) filter (where ${OPEN}), 0) as open_sum,
+            count(*) filter (where ${QUIET})::int as quiet_n,
+            coalesce(sum(c.claimed - coalesce(c.approved, 0)) filter (where ${QUIET}), 0) as quiet_sum,
+            coalesce(sum(c.approved) filter (where c.status in ('approved', 'partly_approved')), 0) as approved_unpaid,
+            count(*) filter (where c.status in ('approved', 'partly_approved') and c.approved > 0)::int as approved_n,
+            coalesce(sum(coalesce(c.approved, c.claimed)) filter (where c.status = 'paid'
+              and date_trunc('month', c.resolved_at at time zone 'Asia/Manila') = date_trunc('month', now() at time zone 'Asia/Manila')), 0) as paid_month,
+            count(*) filter (where c.status = 'paid'
+              and date_trunc('month', c.resolved_at at time zone 'Asia/Manila') = date_trunc('month', now() at time zone 'Asia/Manila'))::int as paid_n
+       from hmo_claim c join hmo_provider pr on pr.id = c.provider_id
+      where ($1::uuid is null or c.provider_id = $1)`, [payor || null])).rows[0],
+  // Who a new claim can be for: anyone seen here in the last 90 days, today included.
+  recent: canMoney ? (await tx.query(
+    `select p.id, p.first_name, p.last_name, p.chart_no, max(a.starts_at) as last_visit
+       from patient p join appointment a on a.patient_id = p.id
+      where p.archived_at is null and a.status not in ('cancelled', 'no_show')
+        and a.starts_at between now() - interval '90 days' and now() + interval '1 day'
+      group by p.id order by p.last_name, p.first_name`)).rows : [],
+  takes: canMoney ? (await tx.query('select hmo_id from clinic_hmo order by hmo_id')).rows.map((r) => r.hmo_id as string) : [],
+}));
+
+const STATUS: Record<string, string> = { draft: 'Draft', filed: 'Filed', partly_approved: 'Partly approved', approved: 'Approved', denied: 'Denied', paid: 'Paid' };
+const nDays = (n: number) => `${n} day${n === 1 ? '' : 's'}`;
+
+/** How long the payor has had it, against their own expected days. */
+function aging(c: Claim): { text: string; late: boolean } {
+  if (c.days === null) return { text: c.status === 'draft' ? 'Not filed yet' : '—', late: false };
+  if (c.status === 'paid') return { text: `Paid after ${nDays(c.days)}`, late: false };
+  if (c.status === 'denied') return { text: `Denied after ${nDays(c.days)}`, late: false };
+  const past = c.days - c.expected_days;
+  if (past > 0) return { text: `${nDays(past)} past expected`, late: true };
+  return { text: `${nDays(c.days)} · expected within ${c.expected_days}`, late: false };
+}
+
+// Status is never colour alone: every mark carries its word. Same words as the Today page.
+function statusOf(c: Claim, late: boolean) {
+  if (c.status === 'paid') return { label: 'Paid', tone: 'text-accent', dot: 'bg-accent' };
+  if (c.status === 'denied') return { label: 'Denied', tone: 'text-caries', dot: 'bg-caries' };
+  if (c.status === 'draft') return { label: 'Draft', tone: 'text-muted', dot: 'bg-line' };
+  return { label: STATUS[c.status] ?? c.status, tone: late ? 'text-caries' : 'text-ink-2', dot: late ? 'bg-caries' : 'bg-muted' };
+}
+
+// The file, instead of the page.
+if (q.get('export') === 'csv') {
+  const cell = (v: unknown) => {
+    let s = v == null ? '' : String(v);
+    // A cell that starts like a formula is text, not a formula, when Excel opens it.
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const head = ['Patient', 'Chart no', 'Payor', 'Kind', 'LOA', 'Member no', ...(canMoney ? ['Claimed', 'Approved'] : []), 'Status', 'Filed', 'Resolved', 'Aging', 'Submitted ref', 'Notes'];
+  const rows = data.claims.map((c) => [
+    `${c.last_name}, ${c.first_name}`, c.chart_no, c.provider, c.provider_kind === 'philhealth' ? 'PhilHealth' : 'HMO', c.loa_number, c.member_no,
+    ...(canMoney ? [Number(c.claimed).toFixed(2), c.approved === null ? '' : Number(c.approved).toFixed(2)] : []),
+    STATUS[c.status] ?? c.status, isoDay(c.filed_at), isoDay(c.resolved_at), aging(c).text, c.submitted_ref, c.notes,
+  ]);
+  const body = '﻿' + [head, ...rows].map((r) => r.map(cell).join(',')).join('\r\n') + '\r\n';
+  const name = `claims-${clinic.slug}-${view}${payor ? '-' + (data.providers.find((p) => p.id === payor)?.name ?? 'payor').toLowerCase().replace(/[^a-z0-9]+/g, '-') : ''}-${isoDay(new Date())}.csv`;
+  return new Response(body, {
+    headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${name}"`, 'cache-control': 'no-store' },
+  });
+}
+
+const activeProviders = data.providers.filter((p) => p.active);
+const payorName = payor ? data.providers.find((p) => p.id === payor)?.name ?? 'that payor' : '';
+const hasPhilhealth = activeProviders.some((p) => p.kind === 'philhealth');
+// New claim can go to any active payor, or to an HMO the clinic takes that has no payor row yet.
+const payorOptions = [
+  ...activeProviders.map((p) => ({ value: p.id, label: p.kind === 'philhealth' ? `${p.name} (preventive dental benefit)` : p.name })),
+  ...data.takes
+    .map((id) => hmos.find((h) => h.id === id))
+    .filter((h): h is (typeof hmos)[number] => !!h && !data.providers.some((p) => p.name.toLowerCase() === h.name.toLowerCase()))
+    .map((h) => ({ value: `hmo:${h.id}`, label: h.name })),
+];
+
+const tiles = [
+  { label: 'Filed', value: String(data.tiles.open_n), note: canMoney ? `${peso(Number(data.tiles.open_sum))} claimed, waiting on the payor` : 'waiting on the payor' },
+  { label: 'Quiet past expected', value: String(data.tiles.quiet_n), note: canMoney ? `${peso(Number(data.tiles.quiet_sum))} still unpaid past the payor’s days` : 'past the payor’s expected days' },
+  ...(canMoney ? [
+    { label: 'Approved, not yet paid', value: peso(Number(data.tiles.approved_unpaid)), note: `${data.tiles.approved_n} claim${data.tiles.approved_n === 1 ? '' : 's'} approved, money not in` },
+    { label: 'Paid this month', value: peso(Number(data.tiles.paid_month)), note: `${data.tiles.paid_n} claim${data.tiles.paid_n === 1 ? '' : 's'} paid since the 1st` },
+  ] : []),
+];
+
+const DONE: Record<string, string> = {
+  new: 'Saved as a draft. File it when the papers have gone to the payor.',
+  file: 'Filed. The clock on this claim starts today.',
+  approve: 'Marked approved. It sits under Resolved; mark it paid when the money lands.',
+  partly: 'Marked partly approved. It stays open until the money lands.',
+  deny: 'Marked denied, with the reason on the record.',
+  paid: 'Marked paid.',
+  note: 'Note added.',
+};
+const notice = DONE[done] ?? '';
+const missedText = missed ? 'That claim had already moved on since the page was drawn, so nothing changed. The list is current now.' : '';
+
+const EMPTY: Record<View, string> = {
+  open: 'No open claims. Everything filed has been answered.',
+  drafts: 'No drafts. A new claim starts above and waits here until it is filed.',
+  resolved: 'Nothing resolved yet. Approved, denied and paid claims collect here.',
+  all: 'No claims on file yet.',
+};
+const empty = payor ? `No ${VIEWS[view].noun} with ${payorName}.` : EMPTY[view];
+const countText = `${data.claims.length} ${data.claims.length === 1 ? VIEWS[view].one : VIEWS[view].noun}${payorName ? ` with ${payorName}` : ''}`;
+const cols = 8 + (canMoney ? 2 : 0);
+
+const inp = 'min-w-0 border border-line bg-surface px-2.5 py-1.5 text-[13.5px] text-ink focus:border-ink focus:outline-2 focus:outline-accent';
+const small = 'btn btn-quiet !px-3 !py-1.5 text-[13px]';
+const chip = (on: boolean) => ['px-3 py-1.5 text-[13.5px] font-medium', on ? 'bg-ink text-bg' : 'text-ink-2 hover:bg-bg-soft hover:text-accent'];
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.me.area }} title="Claims" section="claims" staff={{ name: session.name, role: session.role }} branches={branches}>
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Claims</h1>
+    <p class="text-[14.5px] text-muted">{countText}</p>
+  </div>
+  <p class="mt-3 max-w-[64ch] text-[15px] text-ink-2">HMO and PhilHealth claims from filing to payment. The aging column measures each claim against its payor’s usual turnaround, so the ones sitting on the clinic’s money stand out and can be followed up.</p>
+
+  {notice && !error && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">{notice}</p>}
+  {missedText && !error && <p role="status" class="mt-6 border border-crown/40 bg-crown/10 p-4 text-[14.5px]">{missedText}</p>}
+  {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
+
+  <dl class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    {tiles.map((t) => (
+      <div class="border border-line bg-surface p-5">
+        <dt class="meta">{t.label}</dt>
+        <dd class="mt-2 font-display text-[32px] leading-none font-bold tabular-nums">{t.value}</dd>
+        <p class="mt-1.5 text-[13px] text-muted">{t.note}</p>
+      </div>
+    ))}
+  </dl>
+
+  {canMoney ? (
+    <details class="mt-8 border border-line bg-surface" open={openNew}>
+      <summary class="cursor-pointer list-none px-5 py-4 font-display text-[18px] font-semibold hover:text-accent">New claim</summary>
+      {payorOptions.length === 0 ? (
+        <p class="border-t border-line px-5 py-4 text-[15px] text-ink-2">No payor to file to yet. Tick the HMOs the clinic takes in Settings, or mark it PhilHealth-accredited there, and they appear here.</p>
+      ) : data.recent.length === 0 ? (
+        <p class="border-t border-line px-5 py-4 text-[15px] text-ink-2">Nobody has had a visit in the last 90 days, so there is no one to file a claim for yet. A claim starts from a visit.</p>
+      ) : (
+        <form method="post" class="grid gap-4 border-t border-line p-5 sm:grid-cols-2">
+          <Csrf />
+          <input type="hidden" name="act" value="new" />
+          <div class="field sm:col-span-2">
+            <label class="meta" for="claim-search">Patient</label>
+            <input id="claim-search" type="search" placeholder="Type a name or chart number to narrow the list" autocomplete="off" data-claim-search />
+            <select name="patient" required aria-label="Patient" data-claim-patients>
+              <option value="" disabled selected={!draft.patient}>Choose a patient</option>
+              {data.recent.map((r) => (
+                <option value={r.id} selected={draft.patient === r.id}>{r.last_name}, {r.first_name} · {r.chart_no} · last seen {day(r.last_visit)}</option>
+              ))}
+            </select>
+            <span class="text-[13px] text-muted">Patients seen here in the last 90 days. A claim starts from a visit.</span>
+          </div>
+          <label class="field">
+            <span class="meta">Payor</span>
+            <select name="payor" required>
+              <option value="" disabled selected={!draft.payor}>Choose the payor</option>
+              {payorOptions.map((o) => <option value={o.value} selected={draft.payor === o.value}>{o.label}</option>)}
+            </select>
+            {hasPhilhealth && (
+              <span class="text-[13px] leading-snug text-muted">PhilHealth pays up to ₱1,000 a year per member for preventive dental care: ₱300 for each of two visits at least four months apart, ₱200 per tooth for sealants or small fillings up to two teeth, and an emergency extraction. Source: PhilHealth Circular 2024-0034.</span>
+            )}
+          </label>
+          <label class="field">
+            <span class="meta">Claimed amount</span>
+            <input name="claimed" inputmode="decimal" value={draft.claimed} required placeholder="1500" />
+            <span class="text-[13px] text-muted">In pesos: what the clinic is asking the payor for.</span>
+          </label>
+          <label class="field">
+            <span class="meta">LOA number</span>
+            <input name="loa" value={draft.loa} maxlength={TEXT_MAX} placeholder="From the HMO’s letter of authorization" />
+            <span class="text-[13px] text-muted">Leave it blank for PhilHealth.</span>
+          </label>
+          <label class="field">
+            <span class="meta">PhilHealth PIN or HMO card no.</span>
+            <input name="member" value={draft.member} maxlength={TEXT_MAX} />
+          </label>
+          <label class="field sm:col-span-2">
+            <span class="meta">Notes</span>
+            <textarea name="notes" rows="2" maxlength={NOTE_MAX} placeholder="What was done, and anything the payor asked for">{draft.notes}</textarea>
+          </label>
+          <div class="flex flex-wrap items-center gap-4 sm:col-span-2">
+            <button type="submit" class="btn btn-primary">Save as draft</button>
+            <span class="text-[13.5px] text-muted">It goes to Drafts. File it when the papers have gone to the payor.</span>
+          </div>
+        </form>
+      )}
+    </details>
+  ) : (
+    <p class="mt-8 max-w-[64ch] text-[14.5px] text-ink-2">Amounts, filing and payment are for the owner, the admin and anyone with finance access on this branch. The list is yours to read, and you can leave a note on any claim.</p>
+  )}
+
+  <nav class="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3" aria-label="Filter claims">
+    <ul class="flex flex-wrap gap-1">
+      {(Object.keys(VIEWS) as View[]).map((v) => (
+        <li><a href={href(v, payor)} aria-current={v === view ? 'page' : undefined} class:list={chip(v === view)}>{VIEWS[v].label}</a></li>
+      ))}
+    </ul>
+    {activeProviders.length > 0 && (
+      <ul class="flex flex-wrap gap-1 border-line sm:border-l sm:pl-6">
+        <li><a href={href(view, '')} aria-current={!payor ? 'page' : undefined} class:list={chip(!payor)}>All payors</a></li>
+        {activeProviders.map((p) => (
+          <li><a href={href(view, p.id)} aria-current={payor === p.id ? 'page' : undefined} class:list={chip(payor === p.id)}>{p.name}</a></li>
+        ))}
+      </ul>
+    )}
+    <a href={href(view, payor, { export: 'csv' })} class="meta hover:text-ink sm:ml-auto">Download CSV</a>
+  </nav>
+
+  <div class="relative mt-4 overflow-x-auto border border-line bg-surface">
+    <table class="w-full min-w-[1040px] border-collapse text-left">
+      <caption class="sr-only">{VIEWS[view].label} claims at {clinic.name}{payorName && `, ${payorName} only`}</caption>
+      <thead>
+        <tr class="border-b border-line bg-bg-soft">
+          <th scope="col" class="meta px-4 py-3.5">Patient</th>
+          <th scope="col" class="meta px-4 py-3.5">Payor</th>
+          <th scope="col" class="meta px-4 py-3.5">LOA / member no</th>
+          {canMoney && <th scope="col" class="meta px-4 py-3.5 text-right">Claimed</th>}
+          {canMoney && <th scope="col" class="meta px-4 py-3.5 text-right">Approved</th>}
+          <th scope="col" class="meta px-4 py-3.5">Status</th>
+          <th scope="col" class="meta px-4 py-3.5">Filed</th>
+          <th scope="col" class="meta px-4 py-3.5">Aging</th>
+          <th scope="col" class="meta px-4 py-3.5">Notes</th>
+          <th scope="col" class="px-4 py-3.5"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {data.claims.length === 0 && <tr><td colspan={cols} class="px-5 py-4 text-[15px] text-muted">{empty}</td></tr>}
+        {data.claims.map((c, i) => {
+          const a = aging(c);
+          const st = statusOf(c, a.late);
+          return (
+            <tr class={i < data.claims.length - 1 ? 'border-b border-line-2' : ''}>
+              <th scope="row" class="px-4 py-3.5 align-top">
+                <a href={`/c/${clinic.slug}/patients/${c.patient_id}/`} class="text-[15px] font-semibold hover:text-accent">{c.last_name}, {c.first_name}</a>
+                <p class="text-[13px] tabular-nums text-muted">{c.chart_no}</p>
+              </th>
+              <td class="px-4 py-3.5 align-top text-[14.5px] text-ink-2">
+                {c.provider}
+                <span class="meta block">{c.provider_kind === 'philhealth' ? 'PhilHealth' : 'HMO'} · {c.expected_days} days</span>
+              </td>
+              <td class="px-4 py-3.5 align-top font-mono text-[12.5px] leading-relaxed tabular-nums text-ink-2">
+                {c.loa_number && <span class="block">LOA {c.loa_number}</span>}
+                {c.member_no && <span class="block">{c.member_no}</span>}
+                {c.submitted_ref && <span class="block text-muted">ref {c.submitted_ref}</span>}
+                {!c.loa_number && !c.member_no && !c.submitted_ref && <span class="text-muted">—</span>}
+              </td>
+              {canMoney && <td class="px-4 py-3.5 align-top text-right text-[15px] tabular-nums">{peso(Number(c.claimed))}</td>}
+              {canMoney && <td class="px-4 py-3.5 align-top text-right text-[15px] tabular-nums text-ink-2">{c.approved === null ? '—' : peso(Number(c.approved))}</td>}
+              <td class={`px-4 py-3.5 align-top text-[14.5px] font-semibold ${st.tone}`}>
+                <span class="flex items-center gap-2"><span class={`h-2.5 w-2.5 shrink-0 ${st.dot}`}></span>{st.label}</span>
+                {c.status === 'denied' && c.denial_reason && <span class="mt-1 block text-[13px] font-normal text-ink-2">{c.denial_reason}</span>}
+              </td>
+              <td class="px-4 py-3.5 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{day(c.filed_at)}</td>
+              <td class={`px-4 py-3.5 align-top text-[14.5px] whitespace-nowrap tabular-nums ${a.late ? 'font-semibold text-caries' : 'text-ink-2'}`}>{a.text}</td>
+              <td class="max-w-[22rem] px-4 py-3.5 align-top text-[13.5px] leading-relaxed break-words whitespace-pre-wrap text-ink-2">{c.notes ?? <span class="text-muted">—</span>}</td>
+              <td class="px-4 py-3.5 align-top">
+                <div class="grid min-w-[16rem] gap-2">
+                  {canMoney && c.status === 'draft' && (
+                    <form method="post" class="flex gap-1.5">
+                      <Csrf />
+                      <input type="hidden" name="id" value={c.id} />
+                      <input name="ref" maxlength={TEXT_MAX} placeholder="Payor’s reference, if any" aria-label="Payor’s reference" class={`flex-1 ${inp}`} />
+                      <button name="act" value="file" class="btn btn-primary !px-3 !py-1.5 text-[13px]">File</button>
+                    </form>
+                  )}
+                  {canMoney && c.status === 'filed' && (
+                    <form method="post" class="grid gap-1.5">
+                      <Csrf />
+                      <input type="hidden" name="id" value={c.id} />
+                      <div class="flex flex-wrap gap-1.5">
+                        <input name="amount" inputmode="decimal" value={Number(c.claimed).toFixed(2)} aria-label="Approved amount in pesos" class={`w-28 ${inp}`} />
+                        <button name="act" value="approve" class={small}>Approved</button>
+                        <button name="act" value="partly" class={small}>Partly approved</button>
+                      </div>
+                      <div class="flex gap-1.5">
+                        <input name="reason" maxlength={REASON_MAX} placeholder="Why it was denied" aria-label="Reason for denial" class={`flex-1 ${inp}`} />
+                        <button name="act" value="deny" class={`${small} text-caries`}>Denied</button>
+                      </div>
+                    </form>
+                  )}
+                  {canMoney && (c.status === 'approved' || c.status === 'partly_approved') && (
+                    <form method="post">
+                      <Csrf />
+                      <input type="hidden" name="id" value={c.id} />
+                      <button name="act" value="paid" class="btn btn-primary !px-3 !py-1.5 text-[13px]">Paid</button>
+                    </form>
+                  )}
+                  <details>
+                    <summary class="meta cursor-pointer list-none hover:text-ink">Note +</summary>
+                    <form method="post" class="mt-1.5 flex gap-1.5">
+                      <Csrf />
+                      <input type="hidden" name="id" value={c.id} />
+                      <input name="note" maxlength={NOTE_MAX} required placeholder="Called the payor, resent the LOA" aria-label="Note" class={`flex-1 ${inp}`} />
+                      <button name="act" value="note" class={small}>Add</button>
+                    </form>
+                  </details>
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+
+  {canMoney && data.recent.length > 0 && (
+    <script is:inline>
+      // One convenience the server does not need: the search box narrows the
+      // patient list as you type. The options are rebuilt from the full list
+      // each time, because a hidden <option> is not hidden in every browser.
+      (() => {
+        const search = document.querySelector('[data-claim-search]');
+        const select = document.querySelector('[data-claim-patients]');
+        if (!search || !select) return;
+        const all = Array.from(select.options).slice(1);
+        search.addEventListener('input', () => {
+          const q = search.value.trim().toLowerCase();
+          const keep = q ? all.filter((o) => o.textContent.toLowerCase().includes(q)) : all;
+          select.replaceChildren(select.options[0], ...keep);
+          if (keep.length === 1) select.value = keep[0].value;
+        });
+      })();
+    </script>
+  )}
+</ClinicLayout>

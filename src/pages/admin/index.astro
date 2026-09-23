@@ -1,0 +1,59 @@
+---
+// Flossify's own front page: the numbers that say where the work is, each
+// with the way to it. Admins have no tenant, so the numbers come from
+// admin_overview() (009), a definer function that returns these eight counts
+// and nothing behind them — no patient, no text, no clinic's books.
+export const prerender = false;
+
+import AdminLayout from '../../layouts/Admin.astro';
+import { requireAdmin } from '../../lib/admin';
+import { publicRead } from '../../lib/db';
+
+const admin = await requireAdmin(Astro);
+if (admin instanceof Response) return admin;
+
+interface Overview {
+  dentists_pending: number; dentists_mismatch: number;
+  clinics_total: number; clinics_listed: number; clinics_this_month: number;
+  texts_failed_7d: number; texts_queued: number; bookings_web_7d: number;
+}
+const o = (await publicRead<Overview>('select * from admin_overview()'))[0];
+
+// Each tile names the page where that work is done. Texts have no page on
+// this side: the sender moves them, and each clinic reads its own on Messages.
+const tiles: { label: string; value: number; note: string; href?: string; link?: string }[] = [
+  { label: 'PRC checks waiting', value: o.dentists_pending, note: 'dentists whose licence nobody has looked up yet', href: '/admin/prc/', link: 'Check them' },
+  { label: 'PRC mismatches', value: o.dentists_mismatch, note: 'licences that did not match at the PRC', href: '/admin/prc/#decided', link: 'See them' },
+  { label: 'Clinics', value: o.clinics_total, note: `${o.clinics_listed} listed on Find a clinic`, href: '/admin/clinics/', link: 'All clinics' },
+  { label: 'Signed up this month', value: o.clinics_this_month, note: 'new clinics, by Manila calendar', href: '/admin/clinics/?show=month', link: 'See them' },
+  { label: 'Texts waiting', value: o.texts_queued, note: 'queued across every clinic. No texts page here: run the sender and they leave.' },
+  { label: 'Texts failed, 7 days', value: o.texts_failed_7d, note: 'each clinic sees its own on Messages and can send again. No texts page here.' },
+  { label: 'Web bookings, 7 days', value: o.bookings_web_7d, note: 'booked or requested on the public site', href: '/admin/clinics/', link: 'By clinic, 30 days' },
+];
+---
+
+<AdminLayout title="Operations" section="home" admin={{ name: admin.name }}>
+  <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Operations</h1>
+  <p class="mt-3 max-w-[60ch] text-[15px] text-ink-2">Across every clinic, as of now. Each number says where the work is.</p>
+
+  <dl class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    {tiles.map((t) => (
+      <div class="border border-line bg-surface p-5">
+        <dt class="meta">{t.label}</dt>
+        <dd class="mt-2">
+          <span class="block font-display text-[32px] leading-none font-bold tabular-nums">{t.value}</span>
+          <span class="mt-1.5 block text-[13px] leading-snug text-muted">{t.note}</span>
+          {t.href && <a href={t.href} class="mt-3 inline-block text-[14px] underline underline-offset-4 hover:text-accent">{t.link}</a>}
+        </dd>
+      </div>
+    ))}
+  </dl>
+
+  <section class="mt-12 max-w-[64ch]" aria-labelledby="texts-title">
+    <h2 id="texts-title" class="font-display text-[22px] font-semibold">Texts</h2>
+    <p class="mt-2 text-[15px] leading-relaxed text-ink-2">
+      There is no texts page on this side. Queued texts leave when the sender runs: <code class="text-[14px]">npm run sms:worker</code> keeps it running, <code class="text-[14px]">npm run sms:once</code> makes one pass.
+      A failed text is the clinic’s to send again from its Messages page. A reset or invitation code is shown nowhere, on either side.
+    </p>
+  </section>
+</AdminLayout>

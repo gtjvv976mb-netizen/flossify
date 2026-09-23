@@ -1,0 +1,179 @@
+---
+// A clinic opens its own workspace. One page, one form, and the owner is
+// signed in and looking at their settings. Nothing here needs a tenant: the
+// clinic does not exist until signup_clinic() makes it, in one transaction,
+// so a failure halfway leaves nothing behind. Slugs are issued here, once,
+// and never renamed (see src/lib/slug.ts).
+//
+// Guarded like sign-in: the CSRF token, three sign-ups an hour per address,
+// every problem a plain sentence with the typed values kept, and the event
+// written to auth_event.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import Csrf from '../../components/Csrf.astro';
+import { pool } from '../../lib/db';
+import { hashPassword, passwordProblem, PASSWORD_MIN, setSession, authEvent } from '../../lib/auth';
+import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
+import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
+import { normalizePhone, prettyPhone, PH_MOBILE } from '../../lib/messages';
+import { slugify, uniqueClinicSlug, uniqueStaffSlug, AREAS, placeOf } from '../../lib/slug';
+
+const FIELDS = ['name', 'area', 'address', 'phone', 'email', 'owner_name', 'owner_phone', 'owner_email', 'owner_prc'] as const;
+const v: Record<(typeof FIELDS)[number], string> = { name: '', area: 'Baguio City', address: '', phone: '', email: '', owner_name: '', owner_phone: '', owner_email: '', owner_prc: '' };
+let consent = false;
+// One sentence per thing to fix, in the order of the form; `failed` is the one that stops everything.
+const problems: string[] = [];
+let failed = '';
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
+  for (const k of FIELDS) v[k] = String(form.get(k) ?? '').trim();
+  v.owner_email = v.owner_email.toLowerCase();
+  consent = form.get('consent') === 'on';
+  const password = String(form.get('password') ?? ''), confirm = String(form.get('confirm') ?? '');
+
+  if (!csrfOk(Astro.cookies, form)) failed = CSRF_MESSAGE;
+  else {
+    const byIp = await hit(`signup:ip:${ip}`, ...LIMITS.signup.ip);
+    if (!byIp.allowed) failed = `Too many sign-ups from this connection. ${waitText(byIp.retryAfter)}`;
+  }
+
+  const mobile = normalizePhone(v.owner_phone);
+  const prc = v.owner_prc.replace(/[\s-]/g, '');
+  if (!failed) {
+    if (!v.name) problems.push('The clinic needs a name.');
+    else if (v.name.length > 80) problems.push('Keep the clinic name under 80 characters.');
+    if (!(AREAS as readonly string[]).includes(v.area)) problems.push('Pick where the clinic is from the list.');
+    if (!v.address) problems.push('Add the clinic’s address, so patients can find the door.');
+    const phoneDigits = v.phone.replace(/\D/g, '');
+    if (phoneDigits.length < 7 || phoneDigits.length > 13) problems.push('The clinic phone needs to be a number patients can call, like 0917 555 0100 or (074) 442 1234.');
+    if (v.email && !EMAIL.test(v.email)) problems.push('The clinic email does not look like an email address.');
+    if (!v.owner_name) problems.push('We need your name.');
+    if (!PH_MOBILE.test(mobile)) problems.push('Your mobile needs to be a Philippine number, like 0917 000 0000. Password reset codes are texted to it.');
+    if (!EMAIL.test(v.owner_email)) problems.push('Your email does not look like an email address.');
+    if (prc && !/^\d{4,12}$/.test(prc)) problems.push('A PRC licence number is digits only.');
+    const pw = passwordProblem(password);
+    if (pw) problems.push(pw);
+    else if (password !== confirm) problems.push('The two passwords are not the same.');
+    if (!consent) problems.push('Tick the box to confirm you are authorised to set this clinic up.');
+    // Sign-in and reset pick the earliest staff row for an email or a mobile, so a second account on either would never be reachable.
+    if (problems.length === 0 && (await pool.query(
+      `select 1 from staff where email = $1 or right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $2 limit 1`,
+      [v.owner_email, mobile.slice(-10)])).rowCount) {
+      problems.push('That email or mobile already belongs to a staff account. Sign in with it instead, or use a different one for the new clinic.');
+    }
+  }
+
+  if (!failed && problems.length === 0) {
+    try {
+      const slug = await uniqueClinicSlug(slugify(v.name));
+      const ownerSlug = await uniqueStaffSlug(slugify(v.owner_name));
+      const place = placeOf(v.area);
+      const { rows } = await pool.query('select clinic_id, staff_id, slug from signup_clinic($1::jsonb)', [JSON.stringify({
+        name: v.name, slug, area: v.area, address: v.address, city: place.city ?? null, province: place.province ?? null,
+        phone: v.phone, email: v.email || null,
+        owner_name: v.owner_name, owner_slug: ownerSlug, owner_email: v.owner_email, owner_phone: prettyPhone(mobile),
+        owner_prc: prc || null, password_hash: hashPassword(password),
+      })]);
+      const made = rows[0];
+      const { rows: [who] } = await pool.query('select group_id from staff where id = $1', [made.staff_id]);
+      await authEvent('signup', { email: v.owner_email, staffId: made.staff_id, ip, ua });
+      setSession(Astro.cookies, { staffId: made.staff_id, groupId: who.group_id, clinicId: made.clinic_id, name: v.owner_name, role: 'owner', tv: 0 });
+      return Astro.redirect(`/c/${made.slug}/settings/?welcome=1`, 303);
+    } catch (e) {
+      console.error('signup_clinic failed:', e);
+      failed = 'Something on our side went wrong. Nothing was created; try again in a moment.';
+    }
+  }
+}
+---
+
+<Base title="Open your clinic — Flossify" description="Set up your clinic on Flossify in a few minutes: a workspace for the desk and a page patients can find, when you say it is ready.">
+  <main id="main" class="mx-auto max-w-[640px] px-5 py-16 sm:px-8">
+    <a href="/" class="meta hover:text-ink">&larr; Flossify</a>
+    <h1 class="mt-6 font-display text-[clamp(1.8rem,4vw,2.6rem)] leading-tight font-semibold tracking-[-0.02em]">Open your clinic on Flossify</h1>
+    <p class="mt-3 text-[15px] leading-relaxed text-ink-2">
+      A few minutes, no card, no call with us. You get a workspace for the desk and a page patients can find — once you say it is ready.
+      Already set up? <a href="/auth/login/" class="underline underline-offset-4">Sign in</a>.
+    </p>
+
+    {failed && <p role="alert" class="mt-8 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{failed}</p>}
+    {problems.length > 0 && (
+      <div role="alert" class="mt-8 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">
+        <p class="font-semibold">A few things to fix first.</p>
+        <ul class="mt-2 list-disc space-y-1 pl-5">{problems.map((p) => <li>{p}</li>)}</ul>
+      </div>
+    )}
+
+    <form method="post" class="mt-10">
+      <Csrf />
+
+      <section>
+        <p class="sec-no">01 &mdash; The clinic</p>
+        <div class="mt-4 grid gap-4">
+          <label class="field"><span class="meta">Clinic name</span><input name="name" value={v.name} required maxlength="80" autocomplete="organization" autofocus /></label>
+          <label class="field">
+            <span class="meta">Where</span>
+            <select name="area">{AREAS.map((a) => <option value={a} selected={v.area === a}>{a}</option>)}</select>
+          </label>
+          <label class="field"><span class="meta">Address</span><input name="address" value={v.address} required autocomplete="street-address" placeholder="2/F, 88 Session Road" /></label>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="field"><span class="meta">Clinic phone</span><input type="tel" name="phone" value={v.phone} required autocomplete="tel" /></label>
+            <label class="field"><span class="meta">Clinic email (optional)</span><input type="email" name="email" value={v.email} /></label>
+          </div>
+        </div>
+      </section>
+
+      <hr class="rule my-10" />
+
+      <section>
+        <p class="sec-no">02 &mdash; You</p>
+        <p class="mt-2 text-[14.5px] text-ink-2">You will be the owner: the one who adds staff, sets fees and lists the clinic.</p>
+        <div class="mt-4 grid gap-4">
+          <label class="field"><span class="meta">Full name</span><input name="owner_name" value={v.owner_name} required autocomplete="name" placeholder="Dr. Liwayway Domingo" /></label>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="field">
+              <span class="meta">Mobile</span>
+              <input type="tel" name="owner_phone" value={v.owner_phone} required autocomplete="tel" placeholder="0917 000 0000" />
+              <span class="text-[13px] leading-snug text-muted">Password reset codes are texted here.</span>
+            </label>
+            <label class="field"><span class="meta">Email</span><input type="email" name="owner_email" value={v.owner_email} required autocomplete="email" /></label>
+          </div>
+          <label class="field">
+            <span class="meta">PRC licence number (optional)</span>
+            <input name="owner_prc" value={v.owner_prc} inputmode="numeric" autocomplete="off" />
+            <span class="text-[13px] leading-snug text-muted">It appears on your public profile, marked as checked once a person at Flossify has verified it.</span>
+          </label>
+        </div>
+      </section>
+
+      <hr class="rule my-10" />
+
+      <section>
+        <p class="sec-no">03 &mdash; Password</p>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <label class="field">
+            <span class="meta">Password</span>
+            <input type="password" name="password" required minlength={PASSWORD_MIN} autocomplete="new-password" />
+            <span class="text-[13px] leading-snug text-muted">At least {PASSWORD_MIN} characters. A short sentence you will remember works well.</span>
+          </label>
+          <label class="field"><span class="meta">Once more</span><input type="password" name="confirm" required minlength={PASSWORD_MIN} autocomplete="new-password" /></label>
+        </div>
+      </section>
+
+      <hr class="rule my-10" />
+
+      <label class="check items-start">
+        <input type="checkbox" name="consent" required checked={consent} />
+        <span>I’m authorised to set this clinic up, and I’ve read <a href="/coverage/#privacy" class="underline underline-offset-4">how Flossify handles patient data</a> (Data Privacy Act of 2012).</span>
+      </label>
+
+      <button type="submit" class="btn btn-primary mt-8 w-full sm:w-auto">Open the workspace</button>
+      <p class="mt-4 text-[13.5px] leading-relaxed text-muted">Nobody can find the clinic until you switch the listing on. Everything here can be changed later.</p>
+    </form>
+  </main>
+</Base>

@@ -479,6 +479,96 @@ p { text-wrap: pretty; }
 }  /* end @layer components */
 
 /* ===========================================================================
+   patient side — find, clinic page, booking
+   Same three rules. Chips are squares with a hairline; a pressed chip is ink.
+   Status is never colour alone: the dot changes and the words change with it.
+   =========================================================================== */
+@layer components {
+
+.chip {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.6rem 0.9rem; border: 1px solid var(--c-line); background: var(--c-surface);
+  font-size: 0.9rem; font-weight: 500; color: var(--c-ink-2); border-radius: 0;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.chip:hover { border-color: var(--c-ink); color: var(--c-ink); }
+.chip[aria-pressed="true"] { background: var(--c-ink); border-color: var(--c-ink); color: var(--c-bg); }
+.chip-urgent { border-color: color-mix(in srgb, var(--c-caries) 50%, transparent); }
+.chip-urgent::before { content: ""; width: 7px; height: 7px; background: var(--c-caries); }
+.chip-urgent[aria-pressed="true"] { background: var(--c-caries); border-color: var(--c-caries); color: #fff; }
+
+/* Radio and slot chips: the input is visually hidden, the label is the control. */
+.chip-radio, .slot-radio, .row-radio { position: relative; display: inline-flex; cursor: pointer; }
+.chip-radio input, .slot-radio input, .row-radio input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.chip-radio > span, .slot-radio > span {
+  display: inline-flex; align-items: center; padding: 0.6rem 0.9rem; border: 1px solid var(--c-line);
+  background: var(--c-surface); font-size: 0.9rem; font-weight: 500; color: var(--c-ink-2);
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.slot-radio > span { min-width: 5.5rem; justify-content: center; font-variant-numeric: tabular-nums; }
+.chip-radio:hover > span, .slot-radio:hover > span { border-color: var(--c-ink); color: var(--c-ink); }
+.chip-radio input:checked + span, .slot-radio input:checked + span { background: var(--c-ink); border-color: var(--c-ink); color: var(--c-bg); }
+.chip-radio input:checked + span .text-muted { color: color-mix(in srgb, var(--c-bg) 70%, transparent); }
+.chip-radio input:focus-visible + span, .slot-radio input:focus-visible + span, .row-radio input:focus-visible + span { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.row-radio { display: flex; }
+.row-radio > span { flex: 1; padding: 0.9rem 1rem; border: 1px solid var(--c-line); background: var(--c-surface); }
+.row-radio:hover > span { border-color: var(--c-ink); }
+.row-radio input:checked + span { border-color: var(--c-ink); box-shadow: inset 0 0 0 1px var(--c-ink); }
+
+/* Next-slot links on a result card. */
+.slot {
+  display: inline-flex; flex-direction: column; gap: 0.15rem; padding: 0.55rem 0.8rem;
+  border: 1px solid var(--c-line); background: var(--c-surface); text-decoration: none;
+  font-size: 0.9rem; font-weight: 600; color: var(--c-ink); font-variant-numeric: tabular-nums;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+.slot:hover { border-color: var(--c-ink); background: var(--c-bg-soft); }
+.slot .meta { font-size: 0.65rem; }
+
+/* Chips that state a fact: HMO names, PhilHealth, PRC. Square, quiet. */
+.tag { display: inline-block; padding: 0.2rem 0.55rem; border: 1px solid var(--c-line); font-size: 0.78rem; font-weight: 500; color: var(--c-ink-2); background: var(--c-surface); }
+.tag-accent { border-color: color-mix(in srgb, var(--c-accent) 50%, transparent); color: var(--c-accent-deep); background: color-mix(in srgb, var(--c-accent) 8%, transparent); }
+
+/* Live status. The dot carries the state; the words carry it too. */
+.status { display: inline-flex; align-items: center; gap: 0.5rem; }
+.status-dot { width: 8px; height: 8px; background: var(--c-muted); }
+.status[data-state="open"] .status-dot { background: var(--c-accent); }
+.status[data-state="open"] { color: var(--c-accent); }
+.status[data-state="closing"] .status-dot { background: var(--c-crown); }
+.status[data-state="closing"] { color: var(--c-crown); }
+.status[data-state="closed"] .status-dot, .status[data-state="appt"] .status-dot { background: var(--c-muted); }
+
+/* A result card: two columns, one hairline, no shadow. */
+.result { display: grid; gap: 1.25rem; padding: 1.5rem; border: 1px solid var(--c-line); background: var(--c-surface); }
+@media (min-width: 900px) { .result { grid-template-columns: 1fr 19rem; gap: 2.5rem; } }
+.result[hidden] { display: none; }
+
+/* Form fields: square, hairline, the mono label above. */
+.field { display: flex; flex-direction: column; gap: 0.4rem; }
+.field input, .field select, .field textarea {
+  width: 100%; min-height: 2.9rem; padding: 0.6rem 0.8rem; border: 1px solid var(--c-line); background: var(--c-surface);
+  color: var(--c-ink); font-size: 0.95rem; border-radius: 0;
+}
+.field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--c-accent); outline-offset: 1px; border-color: var(--c-ink); }
+.field input:user-invalid { border-color: var(--c-caries); }
+.check { display: inline-flex; align-items: center; gap: 0.6rem; font-size: 0.92rem; color: var(--c-ink-2); cursor: pointer; }
+.check input { width: 1.05rem; height: 1.05rem; margin: 0; accent-color: var(--c-accent); flex: none; margin-top: 0.15rem; }
+
+/* The booking steps. */
+.wiz-step { padding: 0.9rem 0.25rem 0.9rem 0; color: var(--c-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.wiz-step[aria-current="step"] { color: var(--c-ink); border-bottom-color: var(--c-ink); }
+.wiz-step[data-passed] { color: var(--c-accent); }
+.wiz-step[data-passed] .sec-no::after { content: " ✓"; }
+.wiz { border: 0; padding: 0; margin: 0; min-width: 0; }
+.wiz legend { padding: 0; }
+.wiz[hidden] { display: none; }
+
+table tr.is-today th, table tr.is-today td { color: var(--c-accent); font-weight: 600; }
+table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-accent); }
+
+}  /* end @layer components */
+
+/* ===========================================================================
    odontogram — patient record only, never the home page
    =========================================================================== */
 .tooth {
@@ -569,34 +659,31 @@ p { text-wrap: pretty; }
 .line-clip:nth-of-type(2) > span { transition-delay: 70ms; }
 .line-clip:nth-of-type(3) > span { transition-delay: 140ms; }
 
-@media (prefers-reduced-motion: reduce) {
-  .reveal { opacity: 1; transform: none; transition: none; }
-  .rule-draw { transform: none; transition: none; }
-  .line-clip > span { transform: none; transition: none; }
-  .media > img { transition: none; opacity: 1; }
-  .idx-shot { transition: none; }
-  .idx-row:hover, .idx-row[data-active] { padding-left: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.001ms !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
-  }
-}
+/* The motion is the page. There is no reduced-motion variant of Flossify and
+   no switch to find: the walk through the clinic, the rises, the drawn rules
+   and the clipped headlines run for every visitor, on every machine. The owner
+   asked for this twice, the second time after a version that still dimmed the
+   autonomous motions on a Mac with Reduce Motion on. Do not reintroduce a
+   `prefers-reduced-motion` block here. */
 
 @media (max-width: 900px) {
   .tooth { width: 34px; height: 46px; }
 }
 
 /* ===========================================================================
-   the tour — a single scrubbed take
+   The film
+   ---------------------------------------------------------------------------
+   One continuous 30-second shot walking in from the pavement to the chair,
+   fixed behind the whole page. Scroll position over the *entire document*
+   maps to the video's currentTime: the top of the page is the pavement, the
+   footer is the chair, and every section between is a page standing in
+   whichever room the camera has reached. The visitor sets their own pace:
+   stop, and they stop; scroll back, and they walk back out. The page never
+   takes the wheel.
 
-   One continuous shot walking in from the pavement to the chair. Scroll
-   position maps to the video's currentTime, so the visitor sets their own
-   pace through the clinic: stop, and they stop; scroll back, and they walk
-   back out. The page never takes the wheel.
+   The scrub is driven only by the visitor's own scrolling, so it is not
+   gated by Reduce Motion — nothing here moves on its own. The autonomous
+   motions (reveals, the ticker, transitions) stay gated above.
 
    The film is a real take rather than five stills cross-faded, which is why
    nothing here scales or cross-dissolves: the forward motion is in the
@@ -604,53 +691,70 @@ p { text-wrap: pretty; }
    =========================================================================== */
 @layer components {
 
-.film { height: calc(var(--stops, 4) * 100vh); }
-
-.film-stage {
-  position: sticky;
-  top: 0;
-  height: 100vh;
+.film-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   overflow: hidden;
-  background: var(--c-ink);
+  background: #07100f;
 }
-
-.film-video {
+.film-video, .film-poster {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* Decoding a seek on the compositor rather than repainting the section. */
-  will-change: contents;
 }
-
-/* The poster shows until the film can play, so the section is never a black
-   hole on a slow connection. It is the film's own first frame. */
-.film-poster {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: opacity 400ms ease;
-}
+/* The poster is the film's own first frame. It shows until a real frame has
+   been decoded behind it, so the page is never a black hole on a slow
+   connection. */
+.film-poster { z-index: 1; transition: opacity 400ms ease; }
 .film-poster[data-hide] { opacity: 0; }
 
-/* Captions sit on the footage, so they need their own ground. A gradient
-   only on the side the text occupies keeps the rest of the frame clean. */
-/* Two passes, not one. A single left-to-right gradient left the caption at
-   about 2:1 against the bright terrazzo floor; the second pass darkens the
-   bottom so the waypoint rail keeps its footing on a lit frame too. */
-.film-scrim {
+/* A page: a section standing on the film. The block padding is the gap
+   between panes where the footage shows in full — it is how the visitor
+   watches the rooms change between one page and the next. */
+.page { position: relative; padding-block: clamp(4rem, 14vh, 9rem); }
+
+/* Frosted paper on the footage: the room stays visible through every page,
+   blurred just enough that the type reads. No radius, no shadow: a hairline
+   and the ground. */
+.pane, .ground {
+  background: color-mix(in srgb, var(--c-bg) 58%, transparent);
+  -webkit-backdrop-filter: blur(8px) saturate(1.1);
+  backdrop-filter: blur(8px) saturate(1.1);
+}
+.pane {
+  border: 1px solid color-mix(in srgb, var(--c-line) 85%, transparent);
+  padding: clamp(1.5rem, 3.5vw, 3.25rem);
+}
+
+/* The opening and the close sit straight on the footage in light type, with
+   a scrim only where the type is. Two passes, not one: a single left-to-right
+   gradient left the caption at about 2:1 against the bright terrazzo floor;
+   the second pass darkens the bottom so the scroll hint keeps its footing on
+   a lit frame too. */
+.page-hero, .page-cta { color: #f2f2ef; }
+.page-hero {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  align-items: center;
+  padding-block: 5rem 3rem;
+}
+.page-cta { padding-block: clamp(6rem, 22vh, 14rem); }
+.page-hero::before, .page-cta::before {
+  content: "";
   position: absolute;
   inset: 0;
+  pointer-events: none;
   background:
     linear-gradient(
       100deg,
-      color-mix(in srgb, #07100f 88%, transparent) 0%,
-      color-mix(in srgb, #07100f 70%, transparent) 30%,
-      color-mix(in srgb, #07100f 20%, transparent) 58%,
-      transparent 74%
+      color-mix(in srgb, #07100f 90%, transparent) 0%,
+      color-mix(in srgb, #07100f 82%, transparent) 32%,
+      color-mix(in srgb, #07100f 42%, transparent) 50%,
+      transparent 68%
     ),
     linear-gradient(
       to top,
@@ -659,87 +763,157 @@ p { text-wrap: pretty; }
       transparent 28%
     );
 }
+/* The film now opens on a white façade, far brighter than the interior the
+   scrim was first tuned for (measured: the laptop eyebrow fell to 4:1). On a
+   phone the text runs the full width, so a left-to-right scrim leaves the end
+   of every line over the bright glass; there it rises from the bottom
+   instead, behind the whole block, and stops short of the tooth sign. */
+@media (max-width: 639px) {
+  /* The text settles to the foot of the screen so the building's top and the
+     tooth sign stand clear above it; the scrim stops at the top of the text. */
+  .page-hero { align-items: end; }
+  .page-hero::before {
+    background: linear-gradient(
+      to top,
+      color-mix(in srgb, #07100f 90%, transparent) 0%,
+      color-mix(in srgb, #07100f 84%, transparent) 64%,
+      color-mix(in srgb, #07100f 30%, transparent) 74%,
+      transparent 84%
+    );
+  }
+  /* The last page the same way: its closing line runs the full width, over
+     the lit chair (measured 1.2:1 with the side scrim). */
+  .page-cta::before {
+    background: linear-gradient(
+      to top,
+      color-mix(in srgb, #07100f 88%, transparent) 0%,
+      color-mix(in srgb, #07100f 84%, transparent) 72%,
+      color-mix(in srgb, #07100f 30%, transparent) 84%,
+      transparent 94%
+    );
+  }
+}
+/* The light-mode accent is a deep teal — unreadable on footage. On the film
+   the accent has to be the bright one regardless of theme. */
+.page-hero .meta-accent, .page-cta .meta-accent { color: #7df0b4; }
 
-.film-caps { position: absolute; inset: 0; }
-.film-cap {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  max-width: 34rem;
-  padding: 0 1.25rem;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 450ms ease, visibility 450ms;
-  color: #f2f2ef;
-}
-.film-cap[data-on] { opacity: 1; visibility: visible; }
-
-/* The light-mode accent is a deep teal — unreadable on footage. Inside the
-   film the accent has to be the bright one regardless of theme. */
-.film-cap .meta-accent { color: #7df0b4; }
-@media (min-width: 640px) { .film-cap { padding: 0 2rem; } }
-
-.film-rail {
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  border-top: 1px solid color-mix(in srgb, #f2f2ef 26%, transparent);
-}
-.film-stop {
-  position: relative;
-  padding: 0.85rem 1rem;
-  border-left: 1px solid color-mix(in srgb, #f2f2ef 26%, transparent);
-  color: color-mix(in srgb, #f2f2ef 58%, transparent);
-  transition: color 240ms ease;
-}
-.film-stop:first-child { border-left: 0; }
-.film-stop[data-on] { color: #f2f2ef; }
-.film-stop::before {
-  content: "";
-  position: absolute;
-  inset-inline: 0;
-  top: -1px;
-  height: 1px;
-  background: var(--c-accent);
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 300ms ease;
-}
-.film-stop[data-on]::before { transform: scaleX(1); }
+/* The buttons on the footage take the light ground regardless of theme.
+   Still square, still flat. */
+.btn-film { background: #f2f2ef; color: #0e0f0f; border-color: #f2f2ef; }
+.btn-film:hover { background: #7df0b4; border-color: #7df0b4; color: #0e0f0f; }
+.btn-film-quiet { background: transparent; color: #f2f2ef; border-color: color-mix(in srgb, #f2f2ef 46%, transparent); }
+.btn-film-quiet:hover { border-color: #f2f2ef; }
 
 /* A hint that the film answers to scrolling, shown only until it does. */
 .film-hint {
   position: absolute;
   right: 1.5rem;
-  bottom: 4.5rem;
+  bottom: 1.5rem;
   color: color-mix(in srgb, #f2f2ef 72%, transparent);
   transition: opacity 400ms ease;
 }
 .film-hint[data-hide] { opacity: 0; }
 
+/* The room the camera is in, beside the page label in the header. */
+.film-room { color: var(--c-muted); }
+@media (max-width: 639px) { .film-hint { right: 1rem; } }
+
+
+/* ===========================================================================
+   The staff entrance — sign-in, forgot, I have a code (StaffEntrance.astro)
+   ---------------------------------------------------------------------------
+   The clinic is the background, not a picture behind a sheet of paper. The
+   form sits on dark smoked glass — the same material as the home page's
+   opening text — compact enough that the reception desk and
+   the corridor fill the screen around it. Dark, not pale: the footage is a
+   white, brightly lit interior, and pale glass over it washes out both the
+   picture and the words. Fixed light-on-dark in both themes, like every
+   overlay on the film.
+
+   Still built for a front desk between patients: 16px fields that phones do
+   not zoom into, targets at least 48px tall, a Show button, a Caps Lock line,
+   and one choice that matters on a clinic computer — shared or my own.
+   =========================================================================== */
+.entrance-pane, .entrance-pane * { --g-ink: #f2f2ef; --g-ink-2: rgb(242 242 239 / 0.82); --g-muted: rgb(242 242 239 / 0.68); --g-line: rgb(242 242 239 / 0.24); --g-accent: #7df0b4; }
+.entrance-pane { color: var(--g-ink); }
+.entrance-pane .meta { color: var(--g-muted); }
+.entrance-pane a.meta:hover { color: var(--g-ink); }
+/* Own classes, not the colour utilities: utilities outrank this layer by design,
+   so a text-ink-2 left in the markup paints dark grey on the dark glass (1.2:1). */
+.entry-dim { color: var(--g-ink-2); }
+.entry-rule { border-color: var(--g-line); }
+
+.entry-title { font-size: clamp(1.65rem, 2.4vw, 2rem); line-height: 1.06; font-weight: 600; letter-spacing: -0.025em; }
+
+.entry-field { display: grid; gap: 0.4rem; }
+.entry-field input {
+  width: 100%; min-height: 3.1rem; padding: 0.7rem 0.9rem;
+  font-size: 1rem; /* 16px: phones do not zoom into the field */
+  color: var(--g-ink); background: rgb(242 242 239 / 0.07);
+  border: 1px solid var(--g-line); border-radius: 0;
+  caret-color: var(--g-accent);
+}
+.entry-field input::placeholder { color: rgb(242 242 239 / 0.5); }
+.entry-field input:hover { border-color: rgb(242 242 239 / 0.45); }
+.entry-field input:focus { outline: 2px solid var(--g-accent); outline-offset: 1px; border-color: var(--g-ink); background: rgb(242 242 239 / 0.1); }
+.entry-field input[aria-invalid="true"] { border-color: #fb923c; }
+/* A browser's saved-password fill paints its own pale background; keep the glass. */
+.entry-field input:-webkit-autofill { -webkit-text-fill-color: var(--g-ink); caret-color: var(--g-accent); transition: background-color 600000s 0s, color 600000s 0s; }
+.entry-field input.entry-code { font-family: var(--font-mono); font-size: 1.3rem; letter-spacing: 0.35em; }
+
+.entry-secret { position: relative; }
+.entry-secret input { padding-right: 4.75rem; }
+.entry-show {
+  position: absolute; top: 0.35rem; right: 0.35rem; bottom: 0.35rem;
+  padding: 0 0.85rem; border: 1px solid var(--g-line); background: rgb(242 242 239 / 0.1);
+  font-size: 13.5px; font-weight: 600; color: var(--g-ink); cursor: pointer;
+}
+.entry-show:hover { border-color: var(--g-ink); }
+.entry-show:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 1px; }
+.entry-caps { font-size: 13.5px; font-weight: 600; color: #fcd34d; }
+
+.entry-link { justify-self: start; font-size: 13.5px; color: var(--g-ink-2); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; background: none; border: 0; padding: 0.15rem 0; }
+.entry-link:hover { color: var(--g-accent); }
+
+/* This device: two halves of one control, and one line saying what the chosen half does. */
+.entry-devices { border: 0; padding: 0; margin: 0; display: grid; gap: 0.45rem; }
+.entry-devices legend { margin-bottom: 0.45rem; padding: 0; }
+.entry-seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--g-line); }
+.entry-seg label {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; padding: 0 0.75rem;
+  font-size: 14.5px; font-weight: 600; color: var(--g-ink); cursor: pointer; text-align: center;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.entry-seg label + label { border-left: 1px solid var(--g-line); }
+.entry-seg label:hover { color: var(--g-ink); background: rgb(242 242 239 / 0.06); }
+.entry-seg label:has(:checked) { background: var(--g-ink); color: #0e0f0f; }
+.entry-seg label:has(:focus-visible) { outline: 2px solid var(--g-accent); outline-offset: 2px; position: relative; z-index: 1; }
+.entry-hint { font-size: 13.5px; line-height: 1.4; color: var(--g-ink-2); }
+
+/* The light button on the glass, like the film's own call to action. */
+.entry-go { width: 100%; min-height: 3.35rem; font-size: 1rem; background: var(--g-ink); color: #0e0f0f; border: 1px solid var(--g-ink); }
+.entry-go:hover { background: var(--g-accent); border-color: var(--g-accent); color: #0e0f0f; }
+.entry-go:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
+.entry-go[disabled] { opacity: 0.55; cursor: progress; }
+
+.entry-note { border: 1px solid; padding: 0.75rem 0.9rem; font-size: 14px; line-height: 1.45; color: var(--g-ink); }
+.entry-note-ok { border-color: rgb(125 240 180 / 0.55); background: rgb(125 240 180 / 0.12); }
+.entry-note-warn { border-color: rgb(252 211 77 / 0.55); background: rgb(252 211 77 / 0.12); }
+.entry-note-bad { border-color: rgb(251 146 60 / 0.65); background: rgb(251 146 60 / 0.16); }
+
+/* Other ways in: one line each, the arrow says it is a door. */
+.entry-way { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; min-height: 2.75rem; padding: 0.55rem 0.05rem; color: var(--g-ink); }
+.entry-way-hint { font-size: 13px; color: var(--g-muted); }
+.entry-way-arrow { font-size: 1rem; color: var(--g-muted); transition: transform 180ms ease, color 180ms ease; }
+.entry-way:hover .entry-way-arrow, .entry-way:focus-visible .entry-way-arrow { transform: translateX(4px); color: var(--g-accent); }
+.entry-way:hover { color: var(--g-accent); }
+.entry-way:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
+
+.entry-dev summary { cursor: pointer; list-style: none; }
+.entry-dev summary::-webkit-details-marker { display: none; }
+.entry-dev summary::after { content: " +"; }
+.entry-dev[open] summary::after { content: " \2212"; }
+.entry-dev code { color: var(--g-ink); }
+
 }  /* end @layer components */
 
-/* Without the travel there is nothing to scrub, so the section becomes an
-   ordinary stack: the poster frame, then the same captions as text. */
-@media (prefers-reduced-motion: reduce) {
-  .film { height: auto; }
-  .film-stage { position: static; height: auto; overflow: visible; background: var(--c-bg); }
-  .film-video, .film-scrim, .film-rail, .film-hint { display: none; }
-  .film-poster { position: static; height: auto; aspect-ratio: 16 / 9; }
-  .film-caps { position: static; }
-  .film-cap {
-    position: static;
-    transform: none;
-    opacity: 1;
-    visibility: visible;
-    max-width: 60ch;
-    color: var(--c-ink);
-    padding: 2rem 1.25rem 0;
-    border-top: 1px solid var(--c-line);
-    margin-top: 2rem;
-  }
-}

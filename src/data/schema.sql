@@ -14,6 +14,8 @@
 -- touches it.
 
 create extension if not exists "pgcrypto";
+-- Slugs and e-mail addresses compare case-insensitively.
+create extension if not exists "citext";
 
 -- ---------------------------------------------------------------------------
 -- Tenancy and people
@@ -515,9 +517,10 @@ begin
   loop
     execute format('alter table %I enable row level security', t);
     execute format('alter table %I force row level security', t);
+    -- The clinic row is its own tenant: it has id, not clinic_id.
     execute format(
-      'create policy tenant_isolation on %I using (clinic_id = current_setting(''app.clinic_id'', true)::uuid)',
-      t
+      'create policy tenant_isolation on %I using (%I = nullif(current_setting(''app.clinic_id'', true), '''')::uuid)',
+      t, case when t = 'clinic' then 'id' else 'clinic_id' end
     );
   end loop;
 end $$;

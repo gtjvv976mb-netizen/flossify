@@ -1,20 +1,32 @@
 ---
+export const prerender = false;
+
 import ClinicLayout from '../../../../layouts/Clinic.astro';
-import { clinics, clinicBySlug, patientsOf, peso } from '../../../../data/demo';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { withClinic } from '../../../../lib/db';
+import { peso } from '../../../../data/demo';
 
-export function getStaticPaths() {
-  return clinics.map((c) => ({ params: { clinic: c.slug } }));
-}
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
 
-const { clinic: slug } = Astro.params;
-const clinic = clinicBySlug(slug!)!;
-const patients = patientsOf(slug!).sort((a, b) => a.lastName.localeCompare(b.lastName));
+const { patients, area } = await withClinic(clinic.id, async (tx) => ({
+  area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area,
+  patients: (await tx.query(
+    `select p.id, p.chart_no, p.first_name, p.last_name, p.birth_date,
+            (select h.allergies from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as allergies,
+            (select h.conditions from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as conditions,
+            (select max(a.starts_at) from appointment a where a.patient_id = p.id and a.status = 'completed') as last_visit,
+            coalesce((select sum(i.total) from invoice i where i.patient_id = p.id and i.status in ('issued', 'partly_paid')), 0)
+              - coalesce((select sum(y.amount) from payment y where y.patient_id = p.id), 0) as balance
+     from patient p where p.archived_at is null order by p.last_name, p.first_name`)).rows,
+}));
 
-const age = (birth: string) =>
-  Math.floor((new Date('2026-09-21').getTime() - new Date(birth).getTime()) / 31_557_600_000);
+const age = (birth: Date | null) => (birth ? Math.floor((Date.now() - new Date(birth).getTime()) / 31_557_600_000) : null);
+const day = (d: Date | null) => (d ? new Intl.DateTimeFormat('en-PH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(d) : '—');
 ---
 
-<ClinicLayout clinic={clinic} title="Patients" section="patients">
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Patients" section="patients" staff={{ name: session.name, role: session.role }} branches={branches}>
   <div class="flex flex-wrap items-end justify-between gap-4">
     <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Patients</h1>
     <p class="text-[14.5px] text-muted">{patients.length} on file</p>
@@ -36,30 +48,20 @@ const age = (birth: string) =>
       <tbody>
         {patients.map((p, i) => (
           <tr class={i < patients.length - 1 ? 'border-b border-line-2' : ''}>
-            <td class="px-5 py-4 text-[14.5px] tabular-nums text-muted">{p.chartNo}</td>
+            <td class="px-5 py-4 text-[14.5px] tabular-nums text-muted">{p.chart_no}</td>
             <th scope="row" class="px-5 py-4">
-              <a href={`/c/${clinic.slug}/patients/${p.id}/`} class="text-[15.5px] font-semibold hover:text-accent">
-                {p.lastName}, {p.firstName}
-              </a>
+              <a href={`/c/${clinic.slug}/patients/${p.id}/`} class="text-[15.5px] font-semibold hover:text-accent">{p.last_name}, {p.first_name}</a>
             </th>
-            <td class="px-5 py-4 text-[15px] tabular-nums text-ink-2">{age(p.birthDate)}</td>
+            <td class="px-5 py-4 text-[15px] tabular-nums text-ink-2">{age(p.birth_date) ?? '—'}</td>
             <td class="px-5 py-4">
               <div class="flex flex-wrap gap-1.5">
-                {p.allergies.map((a) => (
-                  <span class="bg-caries/15 px-2.5 py-1 text-[11.5px] font-semibold text-caries">{a}</span>
-                ))}
-                {p.conditions.map((c) => (
-                  <span class="bg-crown/15 px-2.5 py-1 text-[11.5px] font-semibold text-crown">{c}</span>
-                ))}
-                {p.allergies.length === 0 && p.conditions.length === 0 && (
-                  <span class="text-[14px] text-muted">—</span>
-                )}
+                {(p.allergies ?? []).map((a: string) => <span class="bg-caries/15 px-2.5 py-1 text-[11.5px] font-semibold text-caries">{a}</span>)}
+                {(p.conditions ?? []).map((c: string) => <span class="bg-crown/15 px-2.5 py-1 text-[11.5px] font-semibold text-crown">{c}</span>)}
+                {!(p.allergies?.length || p.conditions?.length) && <span class="text-[14px] text-muted">—</span>}
               </div>
             </td>
-            <td class="px-5 py-4 text-[15px] tabular-nums text-ink-2">{p.lastVisit}</td>
-            <td class="px-5 py-4 text-right text-[15px] font-semibold tabular-nums">
-              {p.balance === 0 ? <span class="text-muted">—</span> : peso(p.balance)}
-            </td>
+            <td class="px-5 py-4 text-[15px] tabular-nums text-ink-2">{day(p.last_visit)}</td>
+            <td class="px-5 py-4 text-right text-[15px] font-semibold tabular-nums">{Number(p.balance) === 0 ? <span class="text-muted">—</span> : peso(Number(p.balance))}</td>
           </tr>
         ))}
       </tbody>

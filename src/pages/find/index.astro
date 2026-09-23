@@ -1,0 +1,276 @@
+---
+// Rendered on the server for every request: the directory comes from Postgres
+// (public_directory(), which exposes a clinic's public face and nothing else)
+// and each card's next open slots are computed from the clinic's real
+// appointments. Filtering stays on the device; so does "open now", read from
+// the visitor's clock in the clinic's time zone.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import PatientHeader from '../../components/PatientHeader.astro';
+import { services, symptoms, hmos, hmoById, priceText, CATEGORY_LABEL } from '../../data/directory';
+import { loadDirectory, openSlots, slotIso } from '../../lib/directory-db';
+
+const listings = await loadDirectory();
+const areas = [...new Set(listings.map((l) => l.area))];
+const cards = await Promise.all(listings.map(async (l) => ({
+  l,
+  fees: l.fees,
+  offered: l.fees.map((f) => f.id),
+  minPrice: Object.fromEntries(l.fees.map((f) => [f.id, f.min])),
+  dentists: l.dentistProfiles,
+  slots: l.workspace ? await openSlots(l, { limit: 3 }) : [],
+})));
+---
+
+
+<Base
+  title="Find a dentist in Baguio — Flossify"
+  description="Search dental clinics by what is wrong, by service, by HMO or PhilHealth, and see real open slots and prices before you book. No account needed."
+>
+  <PatientHeader current="find" />
+
+  <main id="main" class="mx-auto max-w-[1280px] px-5 py-12 sm:px-8">
+    <p class="meta">Patients &middot; Baguio &middot; La Trinidad</p>
+    <h1 class="mt-5 max-w-[760px] font-display text-[clamp(2rem,5vw,3.2rem)] leading-[1.05] font-semibold tracking-[-0.025em]">
+      Find a dentist who can see you.
+    </h1>
+    <p class="mt-4 max-w-[600px] text-[17px] leading-relaxed text-ink-2">
+      Real open slots, the price before you book, and which cards the clinic takes. No account.
+    </p>
+
+    <!-- What's wrong -->
+    <section class="mt-10" aria-labelledby="sym-title">
+      <h2 id="sym-title" class="meta meta-ink">What’s wrong?</h2>
+      <div class="mt-3 flex flex-wrap gap-2" role="group" aria-label="Symptom" data-symptoms>
+        {symptoms.map((s) => (
+          <button type="button" class:list={['chip', s.urgency === 'urgent' && 'chip-urgent']} aria-pressed="false" data-symptom={s.id} data-services={s.services.join(',')} data-urgency={s.urgency} data-tip={s.tip}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <p class="mt-4 max-w-[70ch] border-l-2 border-accent pl-4 text-[15px] leading-relaxed text-ink-2" data-tip-box hidden></p>
+      <div class="mt-4 border border-caries/40 bg-caries/10 p-4 text-[15px] leading-relaxed" data-urgent hidden>
+        <strong class="font-semibold">This can’t wait for a booking.</strong> Call a clinic that is open now — the numbers are on each card — or go to the nearest emergency room if there is trouble breathing or swallowing.
+      </div>
+    </section>
+
+    <!-- Filters -->
+    <form class="mt-8 grid grid-cols-2 gap-3 border-y border-line py-5 md:grid-cols-6" data-filters aria-label="Filters" onsubmit="return false">
+      <label class="field md:col-span-2">
+        <span class="meta">Service</span>
+        <select name="service">
+          <option value="">Any service</option>
+          {Object.entries(CATEGORY_LABEL).map(([cat, label]) => (
+            <optgroup label={label}>
+              {services.filter((s) => s.cat === cat).map((s) => <option value={s.id}>{s.name}{s.local ? ` (${s.local})` : ''}</option>)}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+      <label class="field">
+        <span class="meta">HMO</span>
+        <select name="hmo">
+          <option value="">Any / none</option>
+          {hmos.map((h) => <option value={h.id}>{h.name}</option>)}
+        </select>
+      </label>
+      <label class="field">
+        <span class="meta">Area</span>
+        <select name="area">
+          <option value="">Anywhere</option>
+          {areas.map((a) => <option value={a}>{a}</option>)}
+        </select>
+      </label>
+      <label class="field">
+        <span class="meta">Sort</span>
+        <select name="sort">
+          <option value="soonest">Soonest slot</option>
+          <option value="price">Lowest price</option>
+          <option value="name">Name</option>
+        </select>
+      </label>
+      <div class="flex flex-col justify-end gap-2">
+        <label class="check"><input type="checkbox" name="philhealth" /><span>PhilHealth dental</span></label>
+        <label class="check"><input type="checkbox" name="open" /><span>Open now</span></label>
+      </div>
+    </form>
+
+    <p class="meta mt-6" data-count aria-live="polite">{listings.length} clinics</p>
+
+    <!-- Results -->
+    <ul class="mt-3 grid gap-4" data-results>
+      {cards.map(({ l, dentists, offered, minPrice, fees, slots }) => (
+        <li
+          class="result"
+          data-slug={l.slug}
+          data-name={l.name}
+          data-area={l.area}
+          data-hmos={l.hmos.join(',')}
+          data-philhealth={l.philhealth ? '1' : '0'}
+          data-workspace={l.workspace ? '1' : '0'}
+          data-offered={offered.join(',')}
+          data-minprice={JSON.stringify(minPrice)}
+          data-hours={JSON.stringify(l.hours)}
+          data-first-slot={slots[0] ? slotIso(slots[0]) : ''}
+        >
+          <div class="result-main">
+            <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              <h2 class="font-display text-[22px] font-semibold tracking-tight"><a href={`/find/${l.slug}/`} class="hover:text-accent">{l.name}</a></h2>
+              <span class="meta">{l.area}</span>
+              <span class="status meta" data-status><span class="status-dot"></span><span data-status-text>{l.hours[1] ? 'Mon–Sat' : 'Hours vary'}</span></span>
+            </div>
+            <p class="mt-2 text-[15px] leading-relaxed text-ink-2">{l.about}</p>
+
+            <dl class="mt-4 grid gap-x-8 gap-y-3 text-[14px] sm:grid-cols-3">
+              <div>
+                <dt class="meta">Price</dt>
+                <dd class="mt-1 font-semibold tabular-nums" data-price>Consultation {priceText(fees.find((f) => f.id === 'consultation') ?? { min: null })}</dd>
+              </div>
+              <div>
+                <dt class="meta">Dentists</dt>
+                <dd class="mt-1">{dentists.length} &middot; <span class="text-accent">PRC checked</span>{dentists.some((d) => d.specialty) && <span> &middot; {dentists.filter((d) => d.specialty).map((d) => d.specialty).join(', ')}</span>}</dd>
+              </div>
+              <div>
+                <dt class="meta">Cards</dt>
+                <dd class="mt-1 flex flex-wrap gap-1">
+                  {l.philhealth && <span class="tag tag-accent">PhilHealth</span>}
+                  {l.hmos.slice(0, 3).map((id) => <span class="tag">{hmoById(id)?.name}</span>)}
+                  {l.hmos.length > 3 && <span class="tag">+{l.hmos.length - 3}</span>}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <div class="result-side">
+            <p class="meta" data-slots-label>{l.workspace ? 'Next open' : 'Request a time'}</p>
+            <div class="mt-2 flex flex-wrap gap-2" data-slots>
+              {l.workspace
+                ? (slots.length
+                    ? slots.map((sl) => <a class="slot" href={`/find/${l.slug}/book/?slot=${slotIso(sl)}`}><span class="meta">{sl.dayLabel}</span>{sl.label}</a>)
+                    : <span class="text-[14px] text-muted">Nothing open in the next two weeks — call the clinic.</span>)
+                : <span class="max-w-[26ch] text-[14px] leading-snug text-ink-2">Not on the live schedule yet. Send a request and the clinic confirms by text.</span>}
+            </div>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <a href={`/find/${l.slug}/book/`} class="btn btn-primary" data-book>{l.workspace ? 'Book' : 'Request'}</a>
+              <a href={`/find/${l.slug}/`} class="btn btn-quiet">Clinic page</a>
+              <a href={`tel:${l.phone.replace(/\s/g, '')}`} class="btn btn-quiet" aria-label={`Call ${l.name}`}>Call</a>
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
+
+    <p class="mt-8 border border-line p-6 text-[15px] text-ink-2" data-empty hidden>
+      No clinic matches all of that. Try a wider area, or clear the HMO — every clinic here takes walk-ins or requests.
+    </p>
+
+    <p class="mt-10 max-w-[70ch] text-[14px] leading-relaxed text-muted">
+      The symptom guide is general guidance, not a diagnosis. Prices are the clinic’s fee guide; the dentist confirms the fee at consultation. HMO acceptance is what the clinic reported — confirm with your HMO.
+    </p>
+  </main>
+
+  <script>
+    import { statusFor, manilaNow } from '../../lib/availability';
+
+    const $ = <T extends Element = HTMLElement>(s: string, r: ParentNode = document) => r.querySelector(s) as T | null;
+    const $$ = <T extends Element = HTMLElement>(s: string, r: ParentNode = document) => Array.from(r.querySelectorAll(s)) as T[];
+
+    const form = $('[data-filters]') as HTMLFormElement;
+    const results = $$('[data-results] > li');
+    const symButtons = $$('[data-symptoms] .chip') as HTMLButtonElement[];
+    const tip = $('[data-tip-box]')!, urgent = $('[data-urgent]')!, count = $('[data-count]')!, empty = $('[data-empty]')!;
+    const peso = (n: number) => '₱' + n.toLocaleString('en-PH');
+
+    const state = { symptom: '', service: '', hmo: '', area: '', sort: 'soonest', philhealth: false, open: false };
+
+    // Live status, from the visitor's clock in the clinic's time zone. Slots came from the server.
+    const now = manilaNow();
+    const facts = new Map(results.map((li) => {
+      const st = statusFor(JSON.parse(li.dataset.hours!), now);
+      const pill = $('[data-status]', li)!;
+      pill.dataset.state = st.state;
+      $('[data-status-text]', li)!.textContent = st.text;
+      return [li, { st, first: li.dataset.firstSlot || '' }];
+    }));
+
+    function readUrl() {
+      const q = new URLSearchParams(location.search);
+      state.symptom = q.get('symptom') ?? '';
+      state.service = q.get('service') ?? '';
+      state.hmo = q.get('hmo') ?? '';
+      state.area = q.get('area') ?? '';
+      state.sort = q.get('sort') ?? 'soonest';
+      state.philhealth = q.get('philhealth') === '1';
+      state.open = q.get('open') === '1';
+      (form.elements.namedItem('service') as HTMLSelectElement).value = state.service;
+      (form.elements.namedItem('hmo') as HTMLSelectElement).value = state.hmo;
+      (form.elements.namedItem('area') as HTMLSelectElement).value = state.area;
+      (form.elements.namedItem('sort') as HTMLSelectElement).value = state.sort;
+      (form.elements.namedItem('philhealth') as HTMLInputElement).checked = state.philhealth;
+      (form.elements.namedItem('open') as HTMLInputElement).checked = state.open;
+    }
+    function writeUrl() {
+      const q = new URLSearchParams();
+      for (const [k, v] of Object.entries(state)) if (v && v !== 'soonest') q.set(k, v === true ? '1' : String(v));
+      history.replaceState(null, '', q.toString() ? `?${q}` : location.pathname);
+    }
+
+    function apply() {
+      const sym = symButtons.find((b) => b.dataset.symptom === state.symptom);
+      symButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === sym)));
+      const wanted = state.service ? [state.service] : sym ? sym.dataset.services!.split(',') : [];
+      tip.hidden = !sym; if (sym) tip.textContent = sym.dataset.tip!;
+      urgent.hidden = !(sym && sym.dataset.urgency === 'urgent');
+
+      const shown: HTMLElement[] = [];
+      for (const li of results) {
+        const f = facts.get(li)!;
+        const offered = li.dataset.offered!.split(',');
+        const minPrice = JSON.parse(li.dataset.minprice!) as Record<string, number | null>;
+        let ok = true;
+        if (wanted.length && !wanted.some((s) => offered.includes(s))) ok = false;
+        if (state.hmo && !li.dataset.hmos!.split(',').includes(state.hmo)) ok = false;
+        if (state.area && li.dataset.area !== state.area) ok = false;
+        if (state.philhealth && li.dataset.philhealth !== '1') ok = false;
+        if (state.open && !f.st.open) ok = false;
+        li.hidden = !ok;
+        if (!ok) continue;
+        shown.push(li);
+
+        // The price line follows the question: the cheapest matching service.
+        const priceEl = $('[data-price]', li)!;
+        const match = wanted.filter((s) => offered.includes(s));
+        const pick = (match.length ? match : ['consultation']).filter((s) => minPrice[s] != null).sort((a, b) => minPrice[a]! - minPrice[b]!)[0];
+        const label = $(`option[value="${pick}"]`, form)?.textContent?.replace(/\s*\(.*\)$/, '') ?? 'Consultation';
+        priceEl.textContent = minPrice[pick] == null ? `${label}: quoted at consultation` : `${label} from ${peso(minPrice[pick]!)}`;
+        (li as any)._sortPrice = minPrice[pick] ?? Number.MAX_SAFE_INTEGER;
+      }
+
+      const list = $('[data-results]')!;
+      const key = (li: HTMLElement) => {
+        const f = facts.get(li)!;
+        if (state.sort === 'name') return li.dataset.name!;
+        if (state.sort === 'price') return String((li as any)._sortPrice).padStart(12, '0');
+        // soonest: clinics with a real slot first, by slot; request-only last
+        return f.first ? `0${f.first}` : `1${li.dataset.name}`;
+      };
+      shown.sort((a, b) => key(a).localeCompare(key(b))).forEach((li) => list.append(li));
+
+      count.textContent = `${shown.length} clinic${shown.length === 1 ? '' : 's'}${state.open ? ' open now' : ''}`;
+      empty.hidden = shown.length > 0;
+      writeUrl();
+    }
+
+    symButtons.forEach((b) => b.addEventListener('click', () => { state.symptom = state.symptom === b.dataset.symptom ? '' : b.dataset.symptom!; if (state.symptom) state.service = ''; (form.elements.namedItem('service') as HTMLSelectElement).value = ''; apply(); }));
+    form.addEventListener('change', () => {
+      const fd = new FormData(form);
+      state.service = String(fd.get('service') ?? ''); if (state.service) state.symptom = '';
+      state.hmo = String(fd.get('hmo') ?? ''); state.area = String(fd.get('area') ?? ''); state.sort = String(fd.get('sort') ?? 'soonest');
+      state.philhealth = fd.get('philhealth') === 'on'; state.open = fd.get('open') === 'on';
+      apply();
+    });
+
+    readUrl(); apply();
+  </script>
+</Base>
