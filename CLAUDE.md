@@ -428,6 +428,7 @@ src/pages/uploads/             serves uploaded photos, path-checked
 scripts/db/                    setup.sh (drop, create, schema, migrations, seed), seed.ts
 scripts/sms/worker.ts          the sender: npm run sms:worker (loop) / sms:once
 public/samples/swiftcare/       sample clinic website (see "Sample client sites")
+docs/service-map.md            what to build for patients, dentists and clinics, and why (Sept 2026)
 src/components/Odontogram.astro  32 teeth, FDI/Universal/Palmer, surface-scoped
 src/data/schema.sql            full multi-tenant Postgres model with RLS
 src/data/lqip.json             blur placeholders, keyed by image name
