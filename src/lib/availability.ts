@@ -6,9 +6,9 @@
 // status pill reads "closing soon" in the last hour and "opens tomorrow 9:00"
 // when it is shut, in the clinic's own time zone, not the visitor's.
 //
-// There is no server in this prototype, so "taken" is a stable hash of the
-// slot — the same slots are busy on every visit, which is what a real
-// schedule would look like from outside.
+// With a database, `isTaken` is answered by the clinic's real appointments
+// (see lib/directory-db.ts). Without one — the static build — "taken" is a
+// stable hash of the slot, so the same slots are busy on every visit.
 
 import type { Hours } from '../data/directory';
 
@@ -78,7 +78,7 @@ function addDays(ymd: string, n: number) {
  * `dentistDays` limits to the weekdays a chosen dentist is in; omit for any dentist.
  * Slots less than 60 minutes from now are not offered — nobody can get there.
  */
-export function slotsFor(slug: string, hours: Hours, opts: { days?: number; dentistDays?: number[]; limit?: number; now?: Now; minutes?: number } = {}): Slot[] {
+export function slotsFor(slug: string, hours: Hours, opts: { days?: number; dentistDays?: number[]; limit?: number; now?: Now; minutes?: number; isTaken?: (ymd: string, startMin: number, endMin: number) => boolean } = {}): Slot[] {
   const now = opts.now ?? manilaNow();
   const out: Slot[] = [];
   const step = 30, need = Math.max(step, opts.minutes ?? step);
@@ -90,7 +90,7 @@ export function slotsFor(slug: string, hours: Hours, opts: { days?: number; dent
     const dayLabel = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.label;
     for (let m = h[0] * 60; m + need <= h[1] * 60; m += step) {
       if (i === 0 && m < now.mins + 60) continue;
-      if (taken(`${slug}|${d.ymd}|${m}`)) continue;
+      if (opts.isTaken ? opts.isTaken(d.ymd, m, m + need) : taken(`${slug}|${d.ymd}|${m}`)) continue;
       out.push({ date: d.ymd, day: d.day, mins: m, label: fmtHour(m / 60), dayLabel });
       if (opts.limit && out.length >= opts.limit) return out;
     }

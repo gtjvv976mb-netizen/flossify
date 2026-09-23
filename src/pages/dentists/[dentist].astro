@@ -1,19 +1,19 @@
 ---
+export const prerender = false;
+
 import Base from '../../layouts/Base.astro';
 import PatientHeader from '../../components/PatientHeader.astro';
-import { dentists, dentistBySlug, listingBySlug } from '../../data/directory';
-
-export function getStaticPaths() {
-  return dentists.map((d) => ({ params: { dentist: d.slug } }));
-}
+import { loadDentist } from '../../lib/directory-db';
 
 // A profile is a set of claims, each with where it came from. "Verified" on
 // its own means nothing; "PRC licence, checked by a person on 15 Sep" does.
-const d = dentistBySlug(Astro.params.dentist!)!;
+const d = await loadDentist(Astro.params.dentist!);
+if (!d) return new Response('No such dentist', { status: 404 });
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const places = d.clinics.map((c) => ({ ...c, l: listingBySlug(c.slug)! }));
+const places = d.clinicsFull.map((c) => ({ days: c.days ?? [], l: { slug: c.slug, name: c.name, area: c.area, workspace: c.bookingMode === 'live' } }));
 const checked = new Date(d.prcCheckedOn).toLocaleDateString('en-PH', { day: 'numeric', month: 'long', year: 'numeric' });
 ---
+
 
 <Base title={`${d.name} — dentist in ${places[0].l.area} — Flossify`} description={`${d.name}: ${d.specialty ? 'specialist in ' + d.specialty.toLowerCase() : d.practices.join(', ').toLowerCase()}. PRC licence checked. Where to find them and when.`}>
   <PatientHeader current="find" />

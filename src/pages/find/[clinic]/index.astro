@@ -1,23 +1,24 @@
 ---
+export const prerender = false;
+
 import Base from '../../../layouts/Base.astro';
 import PatientHeader from '../../../components/PatientHeader.astro';
-import { listings, listingBySlug, dentistsOf, feeGuide, priceText, hmoById, photo, PHOTO_ALT, CATEGORY_LABEL } from '../../../data/directory';
+import { priceText, hmoById, photo, PHOTO_ALT, CATEGORY_LABEL } from '../../../data/directory';
 import { hoursRows } from '../../../lib/availability';
+import { loadListing } from '../../../lib/directory-db';
 import lqip from '../../../data/lqip.json';
 const blur = (k: string) => lqip[k as keyof typeof lqip];
 
-export function getStaticPaths() {
-  return listings.map((l) => ({ params: { clinic: l.slug } }));
-}
-
-const l = listingBySlug(Astro.params.clinic!)!;
-const dentists = dentistsOf(l);
-const fees = feeGuide(l);
+const l = await loadListing(Astro.params.clinic!);
+if (!l) return new Response('No such clinic', { status: 404 });
+const dentists = l.dentistProfiles;
+const fees = l.fees;
 const rows = hoursRows(l.hours);
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const daysAt = (slug: string, d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === slug)?.days.map((n) => DAYS[n]).join(' · ') ?? '';
 const directions = `https://www.google.com/maps/search/${encodeURIComponent(l.address)}`;
 ---
+
 
 <Base title={`${l.name} — dentists, prices, hours — Flossify`} description={`${l.name}, ${l.area}. Open slots, fee guide, dentists with PRC licences checked, and which HMO cards are taken. Book without an account.`}>
   <PatientHeader current="find" />
