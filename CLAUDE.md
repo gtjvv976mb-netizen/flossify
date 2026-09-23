@@ -67,11 +67,16 @@ See `docs/generation.md` for how the film was made and how to regenerate it.
   the files are larger than a streaming encode, and why **VP9 loses** here — it
   was measured at 5.05MB against H.264's 4.77MB at worse quality. Ship H.264.
 - Phones get `tour-960.mp4`.
-- **The scrub is not gated by Reduce Motion.** It only moves when the visitor
-  scrolls, so it is their motion, not the page's; the autonomous motions
-  (reveals, the ticker, transitions) stay gated. An earlier version gave the
-  film no `src` under Reduce Motion, and the owner — whose Mac has it on — saw
-  a still and asked why the video was images.
+- **Nothing on this site is gated by Reduce Motion, and there is no switch.**
+  The walk, the rises, the drawn rules, the clipped headlines and the queue
+  ticker run for every visitor on every machine. The owner said it twice: the
+  first time after a version that gave the film no `src` under Reduce Motion
+  (they saw stills), the second — "THE CINEMATIC MOTION SHOULD ALWAYS BE ON,
+  ITS NOT AN OPTION" — after a version that still dimmed the autonomous
+  motions. `prefers-reduced-motion` blocks, a `force-motion` class and the
+  `?motion=on` parameter are all gone from Flossify **and** from the sample
+  site. Do not put them back; if accessibility comes up, raise it with the
+  owner rather than quietly re-adding a media query.
 - `--rail-h` is the rail's height; the hint and the footer clear it with it.
   Rail captions are two lines at 1024px: keep them under ~105 characters.
 
@@ -91,9 +96,9 @@ judging correctness.
   copy at `dist/client/video/tour-test.webm`; the header of the script says
   how to make one. Copy it in after every build — `dist/` is rebuilt clean.
 - Check `prefers-reduced-motion`, keyboard order, and 390px width every time.
-- The owner's Mac has Reduce Motion on. The film scrubs there regardless (see
-  The tour); `?motion=on` on any page URL (class `force-motion` on `<html>`)
-  turns the autonomous motions back on for that load. Test both states.
+- The owner's Mac has Reduce Motion on, and the site ignores it everywhere
+  (see The tour). A headless check emulating `reducedMotion: 'reduce'` must
+  now show the *same* motion as a normal one — that is the test.
 
 ## Traps already hit
 
@@ -144,8 +149,9 @@ Rules that still hold there:
 - Health copy (first aid, aftercare, the Smile Finder) is general guidance and
   says so on the page. A dentist reviews it before any real client ships.
 - Content lives in `js/data.js`; the palette is the token block at the top of
-  `css/styles.css`. `?motion=on` on the URL forces the animations on for demos
-  on a machine with Reduce Motion enabled.
+  `css/styles.css`. Its animations run for everyone too: `reduceMotion` in
+  `js/app.js` is a constant `false` (kept rather than deleted at twenty call
+  sites) and the stylesheet has no reduced-motion block.
 
 ## The patient side — `/find/`
 

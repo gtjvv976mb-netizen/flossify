@@ -1146,13 +1146,5 @@ html.has-dialog { overflow: hidden; }
   .svc:hover .svc__icon svg { animation: none; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  html:not(.force-motion) { scroll-behavior: auto; }
-  html:not(.force-motion) *, html:not(.force-motion) *::before, html:not(.force-motion) *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: .001ms !important; transition-delay: 0s !important; }
-  html:not(.force-motion) [data-reveal] { opacity: 1; transform: none; filter: none; }
-  html:not(.force-motion) .split-word > span { transform: none; }
-  html:not(.force-motion) .hero__frame { clip-path: none; }
-  html:not(.force-motion) .hero__frame img { transform: none; }
-  html:not(.force-motion) .hero__tooth path { stroke-dashoffset: 0; }
-  html:not(.force-motion) .marquee__track { animation: none; }
-}
+/* No reduced-motion variant: every animation on this page runs for every
+   visitor. See CLAUDE.md, "The tour". */

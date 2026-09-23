@@ -406,12 +406,9 @@ const faqs = [
   </ol>
 
   <script>
-    /* `?motion=on` is a demo switch that overrides Reduce Motion for the
-       autonomous motions on this page (reveals, the ticker). The film itself
-       is not gated: it only moves when the visitor scrolls, so it runs for
-       everyone. Read once here and once, inline, in Base.astro so the CSS agrees. */
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      && !document.documentElement.classList.contains('force-motion');
+    /* Every motion on this page runs for everyone: the walk answers the wheel,
+       the rises and rules play on entry, the queue ticks. Nothing here reads
+       prefers-reduced-motion, by the owner's decision. */
 
     /* --- the walk ----------------------------------------------------------
        Scroll position over the whole document maps to the film's currentTime.
@@ -481,18 +478,14 @@ const faqs = [
        One observer for the three entry motions: rises, drawn rules and the
        clipped display lines. Everything unobserves once it has played. */
     const targets = document.querySelectorAll('.reveal, .rule-draw, [data-lines]');
-    if (reduced) {
-      targets.forEach((el) => el.classList.add('is-in'));
-    } else {
-      const io = new IntersectionObserver((entries) => {
-        for (const e of entries) {
-          if (!e.isIntersecting) continue;
-          e.target.classList.add('is-in');
-          io.unobserve(e.target);
-        }
-      }, { rootMargin: '0px 0px -12% 0px', threshold: 0.15 });
-      targets.forEach((el) => io.observe(el));
-    }
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        e.target.classList.add('is-in');
+        io.unobserve(e.target);
+      }
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.15 });
+    targets.forEach((el) => io.observe(el));
 
     /* --- masthead section readout ----------------------------------------- */
     const readout = document.querySelector<HTMLElement>('[data-readout]');
@@ -516,7 +509,7 @@ const faqs = [
 
     /* --- the queue ticker -------------------------------------------------- */
     const ticks = document.querySelectorAll<HTMLElement>('[data-tick]');
-    if (ticks.length && !reduced) {
+    if (ticks.length) {
       let at = 0;
       const step = () => {
         ticks.forEach((el, i) => {

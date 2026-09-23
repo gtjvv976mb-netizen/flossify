@@ -659,22 +659,12 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
 .line-clip:nth-of-type(2) > span { transition-delay: 70ms; }
 .line-clip:nth-of-type(3) > span { transition-delay: 140ms; }
 
-@media (prefers-reduced-motion: reduce) {
-  html:not(.force-motion) .reveal { opacity: 1; transform: none; transition: none; }
-  html:not(.force-motion) .rule-draw { transform: none; transition: none; }
-  html:not(.force-motion) .line-clip > span { transform: none; transition: none; }
-  html:not(.force-motion) .media > img { transition: none; opacity: 1; }
-  html:not(.force-motion) .idx-shot { transition: none; }
-  html:not(.force-motion) .idx-row:hover, html:not(.force-motion) .idx-row[data-active] { padding-left: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html:not(.force-motion) *, html:not(.force-motion) *::before, html:not(.force-motion) *::after {
-    animation-duration: 0.001ms !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
-  }
-}
+/* The motion is the page. There is no reduced-motion variant of Flossify and
+   no switch to find: the walk through the clinic, the rises, the drawn rules
+   and the clipped headlines run for every visitor, on every machine. The owner
+   asked for this twice, the second time after a version that still dimmed the
+   autonomous motions on a Mac with Reduce Motion on. Do not reintroduce a
+   `prefers-reduced-motion` block here. */
 
 @media (max-width: 900px) {
   .tooth { width: 34px; height: 46px; }
