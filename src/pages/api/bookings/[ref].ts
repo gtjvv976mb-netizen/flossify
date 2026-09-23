@@ -2,15 +2,21 @@
 // Within three minutes of booking: the row is removed as if it never happened
 // (undo). After that: it is marked cancelled and stays, because the clinic has
 // seen it. Either way the queued text is dropped if it has not gone out.
+// Thirty requests an hour from one address; past that, a script guessing
+// tokens is told to wait.
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import { withClinic, clinicIdBySlug } from '../../../lib/db';
+import { hit, clientIp, waitText } from '../../../lib/throttle';
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
 const UNDO_MS = 3 * 60_000;
 
-export const DELETE: APIRoute = async ({ params, url }) => {
+export const DELETE: APIRoute = async ({ params, url, request, clientAddress }) => {
+  const byIp = await hit('cancel:ip:' + clientIp({ request, clientAddress }), 30, 3600);
+  if (!byIp.allowed) return json({ error: 'Too many requests. ' + waitText(byIp.retryAfter) }, 429);
+
   const token = url.searchParams.get('token') ?? '';
   const clinicId = await clinicIdBySlug(url.searchParams.get('clinic') ?? '');
   if (!clinicId || !token) return json({ error: 'Missing clinic or token.' }, 400);

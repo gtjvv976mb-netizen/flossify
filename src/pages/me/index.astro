@@ -1,0 +1,78 @@
+---
+// My visits: the door. A patient has no account and no password; their
+// mobile number is what every clinic already has, and a six-digit code texted
+// to it is what proves the phone is in their hand. Give us the number and we
+// text the code; the next page takes the code.
+//
+// The answer is the same whether or not any clinic knows the number, so the
+// form cannot be used to find out which numbers have visits: the code is
+// minted either way, the redirect is the same either way, and only the text
+// differs — it needs a clinic to belong to (a text is a clinic's row under
+// RLS), so it is queued under the clinic that most recently dealt with the
+// number, and not at all when there is none. Guarded like the staff door:
+// the CSRF token, a limit per number and per address.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import PatientHeader from '../../components/PatientHeader.astro';
+import Csrf from '../../components/Csrf.astro';
+import { readPatientSession } from '../../lib/patient-auth';
+import { publicRead, withClinic } from '../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
+import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
+import { issuePhoneCode } from '../../lib/codes';
+import { normalizePhone, PH_MOBILE, queueText, texts } from '../../lib/messages';
+
+// Already in: straight to the list.
+if (readPatientSession(Astro.cookies)) return Astro.redirect('/me/visits/', 303);
+
+let typed = '';
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  typed = String(form.get('phone') ?? '').trim();
+  const phone = normalizePhone(typed);
+  const ip = clientIp(Astro);
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+  else if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
+  else {
+    const [byPhone, byIp] = await Promise.all([hit(`me:p:${phone}`, ...LIMITS.me.phone), hit(`me:ip:${ip}`, ...LIMITS.me.ip)]);
+    if (!byPhone.allowed || !byIp.allowed) {
+      error = `Too many requests. ${waitText(Math.max(byPhone.retryAfter, byIp.retryAfter))}`;
+    } else {
+      const code = await issuePhoneCode(phone, 'patient');
+      // The text is a clinic's row, so it needs a clinic: the one that last dealt with this number.
+      // No clinic knows it → nothing is queued, and the answer below is the same.
+      const clinicId = (await publicRead<{ id: string | null }>('select patient_home_clinic($1) as id', [phone]))[0]?.id ?? null;
+      // Kind 'reset' on purpose: the Messages page blanks the body of reset and invite rows, and a
+      // sign-in code is for the phone it was texted to, never for a page.
+      if (clinicId) await withClinic(clinicId, (tx) => queueText(tx, { clinicId, to: phone, body: texts.patientCode(code), kind: 'reset' }));
+      return Astro.redirect(`/me/code/?phone=${phone}&sent=1`, 303);
+    }
+  }
+}
+---
+
+<Base title="My visits — Flossify" description="Your visits at every clinic on Flossify, under the mobile number you booked with. We text you a six-digit code; no password.">
+  <PatientHeader current="me" />
+
+  <main id="main" class="mx-auto max-w-[440px] px-5 py-16 sm:px-8">
+    <p class="meta">Patients &middot; My visits</p>
+    <h1 class="mt-5 font-display text-[clamp(1.8rem,4vw,2.4rem)] leading-tight font-semibold tracking-[-0.02em]">My visits</h1>
+    <p class="mt-3 text-[15px] leading-relaxed text-ink-2">Your visits at every clinic on Flossify, under the mobile number you booked with. We text you a six-digit code; no password.</p>
+
+    {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
+
+    <form method="post" class="mt-8 grid gap-4">
+      <Csrf />
+      <label class="field"><span class="meta">Mobile number</span><input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="0917 000 0000" value={typed} required autofocus /></label>
+      <button type="submit" class="btn btn-primary mt-2">Text me a code</button>
+    </form>
+
+    <div class="mt-8 grid gap-2 border-t border-line pt-6 text-[14px]">
+      <a href="/me/code/" class="underline underline-offset-4">Already have a code? Enter it here.</a>
+      <p class="text-ink-2">Nothing booked yet? <a href="/find/" class="underline underline-offset-4">Find a clinic</a> and book with your mobile; the visit shows here after.</p>
+    </div>
+  </main>
+</Base>

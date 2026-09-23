@@ -49,31 +49,50 @@ inside that layer or they beat Tailwind utilities on equal specificity.
 
 ## The tour
 
-The film is the ground of the **whole home page**: one continuous 30s take from
-the pavement to the chair in a fixed layer (`.film-bg`) behind everything,
+The film is the ground of the **whole home page**: one continuous 39.8s film
+from the street to the chair in a fixed layer (`.film-bg`) behind everything.
+It opens on the clinic building from outside — a white single-storey clinic
+with a backlit tooth sign, a dental chair seen through a window, Baguio pines
+behind — walks through the hedge gap and across the forecourt, through the
+door, and continues as the original 30s interior take. The two shots are
+joined on the same frame with no cut (docs/generation.md, "The exterior
+approach"); the interior begins at `LEAD` (9.767s) in `src/data/film.ts`,
+which is the only place the film's times live. It is
 scrubbed by the document's own scroll (`scrollY / (scrollHeight − innerHeight)
-→ video.currentTime`). The top of the page is the pavement, the footer is the
-chair, and every section between is a `.page` standing in whichever room the
+→ video.currentTime`). The top of the page is the pavement, the last page is
+the chair, and every section between is a `.page` standing in whichever room the
 camera has reached, its content on a paper `.pane` so the footage shows in the
 gaps. The owner asked for exactly this — "a video that shoots all the page" —
 after a version that kept the film to the opening section. Do not go back to
-that. Nothing scales; the forward motion is in the footage. The rail at the
-foot of the viewport names the room — Outside, Reception, The corridor, The
-chair — switching at the moments the footage arrives there (`from` fractions
-on `stops` in `index.astro`, read off a frame sheet), not at equal quarters.
+that. Nothing scales; the forward motion is in the footage. The header names
+the page and the room — "04 / What it does · Reception" — the room switching
+at the moments the footage arrives there (`ROOM_FROM` in `src/data/film.ts`,
+from times read off a frame sheet), not at equal quarters.
+
+**No footer and nothing fixed at the foot** — on the home page or the staff
+entrance. There used to be a readout rail fixed to the bottom of the viewport
+and a link footer after the last page; the owner removed both ("the footer
+takes too much space … label each page on the site itself"). Pages are
+labelled where they are: the header readout, each section's own number, and
+the staff entrance's top bar ("Staff entrance / Sign in"). The footer's links
+are in the header nav; the copyright is one line on the last page. Do not put
+a footer or a bottom bar back.
 See `docs/generation.md` for how the film was made and how to regenerate it.
 
 - Encoded with a **5-frame GOP** so scrubbing lands on a real frame. This is why
   the files are larger than a streaming encode, and why **VP9 loses** here — it
   was measured at 5.05MB against H.264's 4.77MB at worse quality. Ship H.264.
 - Phones get `tour-960.mp4`.
-- **The scrub is not gated by Reduce Motion.** It only moves when the visitor
-  scrolls, so it is their motion, not the page's; the autonomous motions
-  (reveals, the ticker, transitions) stay gated. An earlier version gave the
-  film no `src` under Reduce Motion, and the owner — whose Mac has it on — saw
-  a still and asked why the video was images.
-- `--rail-h` is the rail's height; the hint and the footer clear it with it.
-  Rail captions are two lines at 1024px: keep them under ~105 characters.
+- **Nothing on this site is gated by Reduce Motion, and there is no switch.**
+  The walk, the rises, the drawn rules, the clipped headlines and the queue
+  ticker run for every visitor on every machine. The owner said it twice: the
+  first time after a version that gave the film no `src` under Reduce Motion
+  (they saw stills), the second — "THE CINEMATIC MOTION SHOULD ALWAYS BE ON,
+  ITS NOT AN OPTION" — after a version that still dimmed the autonomous
+  motions. `prefers-reduced-motion` blocks, a `force-motion` class and the
+  `?motion=on` parameter are all gone from Flossify **and** from the sample
+  site. Do not put them back; if accessibility comes up, raise it with the
+  owner rather than quietly re-adding a media query.
 
 ## Verification — measure, do not eyeball
 
@@ -91,9 +110,9 @@ judging correctness.
   copy at `dist/client/video/tour-test.webm`; the header of the script says
   how to make one. Copy it in after every build — `dist/` is rebuilt clean.
 - Check `prefers-reduced-motion`, keyboard order, and 390px width every time.
-- The owner's Mac has Reduce Motion on. The film scrubs there regardless (see
-  The tour); `?motion=on` on any page URL (class `force-motion` on `<html>`)
-  turns the autonomous motions back on for that load. Test both states.
+- The owner's Mac has Reduce Motion on, and the site ignores it everywhere
+  (see The tour). A headless check emulating `reducedMotion: 'reduce'` must
+  now show the *same* motion as a normal one — that is the test.
 
 ## Traps already hit
 
@@ -144,8 +163,38 @@ Rules that still hold there:
 - Health copy (first aid, aftercare, the Smile Finder) is general guidance and
   says so on the page. A dentist reviews it before any real client ships.
 - Content lives in `js/data.js`; the palette is the token block at the top of
-  `css/styles.css`. `?motion=on` on the URL forces the animations on for demos
-  on a machine with Reduce Motion enabled.
+  `css/styles.css`. Its animations run for everyone too: `reduceMotion` in
+  `js/app.js` is a constant `false` (kept rather than deleted at twenty call
+  sites) and the stylesheet has no reduced-motion block.
+
+## The staff entrance — `/auth/login/`, `/auth/forgot/`, `/auth/code/`
+
+All three share `src/components/StaffEntrance.astro`: the clinic from the
+home page's film behind, a compact pane of dark smoked glass with the form
+on the right (the owner: "make the boxes translucent and compact so that the
+video background is still emphasized"), and nothing along the foot. On sign-in the camera walks from the front door
+(2.0s) to the reception desk (9.0s) at 0.85× and holds there — you sign in
+at the front desk; a form shown again after a miss, and the other two pages,
+open already at the desk (`signin-door-1440.webp`, `signin-desk-*.webp` are
+the film's own frames).
+
+Built for a front desk between patients and a dentist with gloves just off:
+- **Fields 50px tall at 16px** (phones do not zoom), the button 59px, all
+  measured. Text on the glass is light in both themes (≥5.3:1 measured against
+  the brightest pixel behind it). Use `.entry-dim` / `.entry-rule` inside the
+  pane, never `text-ink-2` / `border-line`: utilities outrank the component
+  layer, so a theme utility paints dark grey on the dark glass (it did: 1.2:1). A **Show** button on every password, a **Caps Lock** line.
+- **This device: Shared at the clinic / My own**, a two-half switch with one
+  line under it saying what the chosen half does. Shared signs out after 12
+  hours and remembers nothing; own lasts 14 days and remembers the email on
+  that device only (`SESSION_HOURS` in `auth.ts`, the cookie's `maxAge`
+  follows). Shared is the default, because a clinic computer usually is.
+- After a wrong password the email stays, the password empties, the cursor
+  is in it, and the sentence sits right above the button.
+- Offline disables the button and says why in the pane — brownouts are real.
+- Fits a 1366×768 clinic monitor without scrolling to the button, and 1440×900
+  without scrolling at all.
+- `entrance-check.mjs` in the session scratchpad measures all of it.
 
 ## The patient side — `/find/`
 
@@ -194,17 +243,148 @@ The workspace and the patient directory read from PostgreSQL. Rules:
   additive files in `src/data/migrations/`, run in name order after `schema.sql`.
 - Two schema bugs were fixed on the way in: `citext` was used but never
   enabled, and the RLS policy on `clinic` referenced `clinic_id` (it has `id`).
+- **Every form post carries `<Csrf />`** (`src/components/Csrf.astro`) and its
+  handler checks `csrfOk()` before touching anything; a miss redirects back
+  with `?stale=1` and the page shows `CSRF_MESSAGE`. Astro's Origin check also
+  runs. JSON APIs are covered by CORS preflight instead.
+- **Rate limits are `hit(key, limit, window)`** (`src/lib/throttle.ts`), a
+  fixed window counted in Postgres by `throttle_hit()` so every instance sees
+  one number. The limits live in `LIMITS`; keys are `what:by:who`
+  (`login:e:<email>`, `book:p:<phone>`). Sign-in, forgot, code, booking,
+  cancel, sign-up and the inbound webhook are all limited. Behind a proxy set
+  `TRUST_PROXY=1` or every caller is one address.
+- **A password change bumps `staff.token_version`**; the session carries `tv`
+  and `canOpen()` compares them on every workspace request, so a reset signs
+  out every other session at once. Sign-in events (ok, fail, locked, logout,
+  reset, invite, signup) go to `auth_event`, which has no tenant and never
+  joins to a patient.
+- **Reset and invitation are six-digit codes texted to `staff.phone`**
+  (`src/lib/codes.ts`: HMAC-stored, 15 min / 24 h, five tries, one live code
+  per purpose). `/auth/forgot/` never says whether a number is known;
+  `/auth/code/` serves both purposes (invite when the row has no password).
+  No email channel exists — a staff member with no mobile on file is reset by
+  the owner from Settings → Team.
+- **A sign-in code is for the phone it was texted to, never for a page.** The
+  Messages page blanks the body of `reset` and `invite` rows (the review
+  found a dentist could read the owner's reset code there and take the
+  account). Nothing that renders `message_log.body` may show those kinds.
+- **A reply belongs to the clinic that last texted that number**
+  (`sms_inbound()` in 007 looks the sender up in outgoing texts first), and a
+  sender with fewer than ten digits matches nothing. `clinic.slug` is unique
+  across the service (007), not per group.
+- **Texts are queued, never sent, by the app** (`queueText()` in
+  `src/lib/messages.ts`, inside a clinic transaction). `npm run sms:worker`
+  sends them through `SMS_PROVIDER` (`console` in dev, `semaphore` live),
+  claiming and marking rows only through `sms_claim_due()` / `sms_mark()`,
+  enqueues tomorrow's reminders once each (`sms_enqueue_reminders()`,
+  `dedupe_key = reminder:<appointment id>`), holds patient texts between
+  9 pm and 8 am Manila, and retries 1 m / 5 m / 30 m before `failed`. Replies
+  land on `POST /api/sms/inbound` **as JSON** with header `X-Inbound-Secret`
+  (Astro's Origin check refuses a form-encoded post that carries no Origin,
+  which is what a gateway sends — keep the check on and point the gateway at
+  JSON) and go through `sms_inbound()`: Y confirms the sender's next visit. **No links in any text**
+  — Philippine telcos drop them.
+- **A clinic can create itself** at `/start/`, through the definer function
+  `signup_clinic(jsonb)` (006), because nothing can insert a clinic under RLS
+  before the tenant exists. It starts unlisted with request-mode booking,
+  Mon–Sat 9–5, the default fee guide, and its owner as the only staff;
+  `clinic.listed` is the owner's switch in Settings and `public_directory()`
+  reads only listed clinics. Uploaded photos are `up:<uuid>` keys in
+  `clinic.photo_keys`, stored under `UPLOAD_DIR` and served by
+  `/uploads/[...path]` behind a strict path regex.
+
+## Round three — operations, patients, billing, compliance, chart, PWA, claims
+
+- **Flossify's own people are `platform_admin` rows** (008) in a group with no
+  clinic; `requireAdmin()` gates `/admin/`, sign-in lands them there. They have
+  no tenant, so every cross-clinic read is a definer function named `admin_*`
+  that returns exactly the columns a page shows. Seeded: `ops@flossify.example`.
+- **PRC licences are checked by a person** on `/admin/prc/`: `staff.prc_status`
+  pending → checked (sets `prc_checked_on`) or mismatch (clears it and texts the
+  owner). Public pages say "PRC check pending" until then.
+- **A patient is their mobile number** (`/me/`): a texted code (`phone_code`,
+  `issuePhoneCode`), a separate cookie (`fl_patient`), and visits across every
+  clinic through `patient_visits(phone)` / `patient_act(phone, id, action)` —
+  matched on the number only, never on a name.
+- **Billing is a subscription per group** (011): 30-day trial, monthly
+  invoices, manual payment (GCash / Maya / bank) marked paid by operations.
+  Prices and pay-to details are **placeholders** in `src/lib/billing.ts`.
+  Nothing is switched off for a late payment; patients' records come first.
+- **Consent is a record, not a boolean** (012): `patient_consent` says which
+  `consent_version` a patient agreed to, when, how. Booking writes one. The
+  notice is `/privacy/`; the DPO and NPC registration number live on the
+  group (`Settings → Privacy`). Do not claim NPC registration before it is true.
+- **Chart edits save as they are made** (`POST /api/chart`, CSRF in the
+  `X-CSRF` header, `tooth_state` rows superseded, audit `chart.update`).
+- **The workspace installs** (`/manifest.webmanifest`, `/sw.js`): the service
+  worker caches the shell and fonts only — **never patient data or /c/ pages**
+  — and shows `/offline/` when the line is gone. Offline charting is not built;
+  the home page says so.
+- **Claims have their own page** (`/c/<slug>/claims/`, 013): HMO and
+  PhilHealth providers, draft → filed → approved / partly / denied → paid,
+  aging against `expected_days`, CSV export. Coverage wording comes from
+  `coverage.astro`; do not invent PhilHealth rules. One payor per name per
+  clinic and one PhilHealth payor, enforced by index (017); the accreditation
+  trigger switches the PhilHealth payor on and off.
+- **A request is not a booking until the desk sets a time.** `patient_act`
+  and `sms_inbound` refuse to confirm a request the desk has not placed —
+  `source = 'request' and moved_at is null` (018); `patient_visits` exposes
+  that as `placed` so `/me/` shows Confirm the moment the clinic gives the
+  request a real time. Gating on `source` alone (017) locked the patient out
+  for good, because nothing ever clears it. The billing strip in the
+  workspace is owner/admin only, like the Billing page. The sign-in lock
+  counts first, atomically, and refunds on success (`throttle_refund`).
+- The privacy notice promises text logs go after two years; `retention_purge()`
+  runs on every worker pass to keep that true. Change the words and the
+  function together.
+
+## The schedule — `/c/<slug>/schedule/`
+
+- **The status machine is the server's.** `NEXT_STATUS` in
+  `src/lib/schedule.ts` says where a visit may go from where it is, and
+  `applyStatus` refuses the rest: a cancelled or completed visit cannot walk
+  back into a chair another patient now holds, and cannot be moved. The
+  pages' buttons follow it; they do not define it.
+- **One booker at a time per clinic.** `/api/schedule` *and* `/api/bookings`
+  take `pg_advisory_xact_lock(hashtext(clinic_id))` and re-check the slot
+  **inside** the transaction. The public booking API used to check with
+  `openSlots()` before opening one, so a patient and the front desk could
+  both take a dentist's minute — measured, twice.
+- **A move drops the texts that named the old time** (`dropStaleTexts`),
+  including the reminder's dedupe key, so the day-before pass writes a fresh
+  one for the new day.
+- One day, one column per chair (or per dentist with `?by=dentist`), 15-minute
+  rows over the clinic's hours; a week view for the shape of the week. Web
+  bookings and seeded visits arrive with `chair = null` and sit in an
+  **Unplaced** lane until the desk drags them onto a chair — that lane is the
+  inbox, do not hide it.
+- Every change is one JSON call to `/api/schedule` (POST create, PATCH
+  move/status) with the `X-CSRF` header; `findClash()` in `src/lib/schedule.ts`
+  refuses a chair or a dentist double-booking with one sentence naming who is
+  in the way. Status changes follow the Today page's state machine; copy it,
+  do not fork it. Moving a future visit texts the patient the new time.
+- Molarsoft's calendar is behind a login; what clinics praise in any scheduler
+  is few taps, colours that mean status, a visible flow, and never a slot the
+  clinic cannot honour. The `QUEUE` colour classes on the Today page are the
+  only status colours; the schedule reuses them exactly.
 
 ## Open — read before shipping
 
-- **No SMS goes out.** Bookings queue their text in `message_log`; a sender
-  (registered sender name, no links in the body) is the next piece.
-- **No self-serve clinic onboarding or profile editing yet**; the seed is the
-  only way clinics get in.
-- Only the reader's authentication exists: no password reset, no rate limiting
-  on `/auth/login`, no CSRF token on the workspace forms (same-site cookies
-  only). Add all three before real staff sign in.
-- Odontogram edits are not persisted.
+- The Semaphore provider is written to their v4 API but has not been run
+  against a live key; the first real send needs a registered sender name and
+  a check of the response shape.
+- No email channel at all: reset, invitations and receipts are text-only.
+- PRC licence checks are still a person's job; `prc_checked_on` stays null for
+  self-added dentists until someone verifies, and the public profile says so.
+- Billing is manual payment marked paid by operations; no gateway. Prices,
+  pay-to details and the pause policy are placeholders in
+  `src/lib/billing.ts` and on the Billing pages until the owner sets them.
+- `/privacy/` hardcodes the current `consent_version` id; publish a new
+  version and the page together.
+- Offline charting with catch-up sync is not built; the service worker
+  caches the shell only.
+- Desk-side consent capture (walk-ins) is paper for now; only web bookings
+  write `patient_consent`.
 
 ## Layout
 
@@ -218,15 +398,35 @@ src/pages/find/[clinic]/…      the clinic's public page, and its five-step boo
 src/pages/dentists/[dentist]   dentist profile: PRC licence checked by a person, dated
 src/pages/coverage.astro       PhilHealth's preventive dental benefit and HMO cards, explained
 src/data/directory.ts          services, symptoms, HMOs, dentists, listings — types, and the seed's source
-src/data/migrations/           002 public booking (hours, schedules, refs), 003 public read functions
+src/data/migrations/           002 public booking, 003 public read functions, 004 staff_branches,
+                               005 codes / auth events / throttle / text queue / listed, 006 signup_clinic,
+                               007 review fixes (inbound tenant, global slug, listed-only dentist profiles),
+                               008 platform admins + phone codes, 009 PRC checks, 010 patient visits, 011 billing,
+                               012 consent + DPO, 013 claims, 014 DPO on the public listing
 src/lib/db.ts                  pool, withClinic (RLS transaction), publicRead
-src/lib/auth.ts                scrypt passwords, signed session cookie
+src/lib/auth.ts                scrypt passwords, signed session cookie with token version, auth events
+src/lib/csrf.ts + components/Csrf.astro   the double-submit token every form carries
+src/lib/throttle.ts            hit(): fixed-window rate limits in Postgres; LIMITS; clientIp
+src/lib/codes.ts               six-digit one-time codes (reset, invite)
+src/lib/messages.ts            queueText(), phone normalising, the text wording
+src/lib/sms.ts                 provider seam: console (dev), semaphore (live)
+src/lib/uploads.ts             clinic photos: sharp → 1600/640 webp under UPLOAD_DIR
 src/lib/workspace.ts           requireWorkspace: session + branch access, every request
 src/lib/directory-db.ts        public_directory() → the shapes the pages render; real open slots
 src/lib/availability.ts        Manila-time status and slot arithmetic
-src/pages/api/                 availability, bookings (create / undo-or-cancel)
-src/pages/auth/                staff sign-in and sign-out
+src/pages/api/                 availability, bookings (create / undo-or-cancel), chart (tooth_state), sms/inbound
+src/pages/auth/                sign-in, sign-out, forgot (text a code), code (set a password)
+src/pages/start/               a clinic sets itself up
+src/pages/c/[clinic]/settings/ profile + hours + HMOs + listing, fees, team (invites), photos, privacy (DPO), billing
+src/pages/c/[clinic]/claims/   HMO and PhilHealth claims: file, approve, deny, pay, notes, aging, CSV
+src/pages/me/                  patients: my visits by mobile (code → list; confirm / cancel / calendar)
+src/pages/admin/               Flossify operations: overview, PRC checks, clinics, billing
+src/pages/privacy.astro        the versioned privacy notice; src/pages/offline.astro the PWA's offline page
+src/lib/billing.ts             plans and pay-to placeholders; src/lib/admin.ts requireAdmin; src/lib/patient-auth.ts
+src/pages/c/[clinic]/messages/ the branch's texts, both directions; send again, cancel, text a patient
+src/pages/uploads/             serves uploaded photos, path-checked
 scripts/db/                    setup.sh (drop, create, schema, migrations, seed), seed.ts
+scripts/sms/worker.ts          the sender: npm run sms:worker (loop) / sms:once
 public/samples/swiftcare/       sample clinic website (see "Sample client sites")
 src/components/Odontogram.astro  32 teeth, FDI/Universal/Palmer, surface-scoped
 src/data/schema.sql            full multi-tenant Postgres model with RLS

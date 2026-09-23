@@ -1,0 +1,34 @@
+---
+// One line about the group's bill, for the top of every workspace page:
+// trial days left, an invoice due, an invoice overdue. Nothing at all when
+// the group is active with nothing to pay, which is most days. It starts the
+// trial itself the first time a group's workspace is opened (ensure), so it
+// needs nothing from the page that places it.
+//
+// It never breaks the page around it: if billing cannot be read, the desk
+// still sees today's patients and the line is simply absent.
+import { state, describe, type Notice } from '../lib/billing';
+
+interface Props { groupId: string; slug: string }
+const { groupId, slug } = Astro.props;
+
+let line: Notice | null = null;
+try {
+  const s = await state(groupId);
+  line = describe(s.sub, s.invoices);
+} catch (e) {
+  console.error('BillingNotice: could not read billing', e);
+}
+---
+
+{line && (
+  <p
+    role={line.alert ? 'alert' : 'status'}
+    class:list={[
+      'border-b px-5 py-2 text-center text-[13px] text-ink sm:px-8',
+      line.alert ? 'border-caries/40 bg-caries/10' : 'border-line bg-bg-soft',
+    ]}
+  >
+    {line.text} <a href={`/c/${slug}/settings/billing/`} class="underline underline-offset-4 hover:text-accent">Billing</a>
+  </p>
+)}

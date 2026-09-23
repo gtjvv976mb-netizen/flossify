@@ -3,17 +3,22 @@
 // withClinic(): row-level security scopes it to this clinic, so a forgotten
 // WHERE cannot show another clinic's patients. The status buttons are the
 // front desk's state machine, each press notifying the next role in a later
-// step; for now each press is a form post that redirects back here.
+// step; for now each press is a form post that redirects back here. Every
+// form carries the CSRF token; a post without a matching one changes nothing
+// and comes back here with ?stale=1, which shows the sentence to try again.
 export const prerender = false;
 
 import ClinicLayout from '../../../layouts/Clinic.astro';
+import Csrf from '../../../components/Csrf.astro';
 import { requireWorkspace } from '../../../lib/workspace';
 import { withClinic } from '../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../lib/csrf';
 import { peso } from '../../../data/demo';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
+const stale = Astro.url.searchParams.get('stale') === '1';
 
 const NEXT: Record<string, { label: string; to: string }[]> = {
   booked: [{ label: 'Confirm', to: 'confirmed' }, { label: 'Arrived', to: 'arrived' }],
@@ -26,6 +31,7 @@ const ALLOWED = new Set(['confirmed', 'arrived', 'in_lobby', 'in_chair', 'comple
 
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(Astro.url.pathname + '?stale=1', 303);
   const id = String(f.get('id') ?? ''), to = String(f.get('status') ?? '');
   if (id && ALLOWED.has(to)) {
     await withClinic(clinic.id, async (tx) => {
@@ -108,8 +114,10 @@ const time = (d: Date) => new Intl.DateTimeFormat('en-PH', { hour: 'numeric', mi
 const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(d);
 ---
 
-<ClinicLayout clinic={{ slug: clinic.slug, name: clinic.name, area: data.me.area }} title="Today" section="today" staff={{ name: session.name, role: session.role }} branches={branches}>
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.me.area }} title="Today" section="today" staff={{ name: session.name, role: session.role }} branches={branches}>
   <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Today</h1>
+
+  {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
 
   <dl class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
     {tiles.map((t) => (
@@ -134,6 +142,7 @@ const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', d
               <p class="text-[13.5px] text-muted">{a.source === 'request' ? 'Requested time — confirm or call' : 'Booked online'} · text {a.booked_by_phone}{a.booked_by_name && a.booked_by_name !== `${a.first_name} ${a.last_name}` ? ` (${a.booked_by_name})` : ''}{a.notes && ` · “${a.notes}”`}</p>
             </div>
             <form method="post" class="flex gap-2">
+              <Csrf />
               <input type="hidden" name="id" value={a.id} />
               <button name="status" value="confirmed" class="btn btn-primary !px-4 !py-2 text-[13.5px]">Confirm</button>
               <button name="status" value="cancelled" class="btn btn-quiet !px-4 !py-2 text-[13.5px]">Decline</button>
@@ -165,6 +174,7 @@ const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', d
               <span class={`px-3 py-1.5 text-xs font-semibold ${q.cls}`}>{q.label}</span>
               {NEXT[a.status] && (
                 <form method="post" class="flex gap-1.5">
+                  <Csrf />
                   <input type="hidden" name="id" value={a.id} />
                   {NEXT[a.status].map((n) => <button name="status" value={n.to} class="btn btn-quiet !px-3 !py-1.5 text-[13px]">{n.label}</button>)}
                 </form>
@@ -178,7 +188,7 @@ const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', d
 
   <section id="claims" class="mt-12 scroll-mt-24">
     <h2 class="font-display text-[22px] font-semibold">HMO claims</h2>
-    <p class="mt-1.5 text-[14.5px] text-ink-2">Filed, approved, and still waiting. Anything past sixty days is money already earned.</p>
+    <p class="mt-1.5 text-[14.5px] text-ink-2">Filed, approved, and still waiting. Anything past sixty days is money already earned. <a href={`/c/${clinic.slug}/claims/`} class="underline underline-offset-4 hover:text-accent">All claims, PhilHealth included &rarr;</a></p>
     <div class="mt-4 overflow-x-auto border border-line bg-surface">
       <table class="w-full min-w-[620px] border-collapse text-left">
         <thead>

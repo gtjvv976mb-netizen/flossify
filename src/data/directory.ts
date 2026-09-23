@@ -273,10 +273,19 @@ const PHOTO_W: Record<string, [number, number]> = {
   aligner: [960, 1600], instruments: [960, 1600], handpiece: [640, 1000], model: [640, 1000],
   tray: [640, 1000], xray: [640, 1000], 'clinic-tall': [448, 688],
 };
-export const photo = (key: string) => ({
-  src: `/img/${key}-${PHOTO_W[key][1]}.webp`,
-  srcset: `/img/${key}-${PHOTO_W[key][0]}.webp ${PHOTO_W[key][0]}w, /img/${key}-${PHOTO_W[key][1]}.webp ${PHOTO_W[key][1]}w`,
-});
+/** A key that names one of the house stills above. Anything else (an upload key, a typo) is not. */
+export const isHousePhoto = (key: string) => Object.hasOwn(PHOTO_W, key);
+/** The house still for a key; an unknown key falls back to the tray so a page never asks for a file that is not there. */
+export const photo = (key: string) => {
+  const k = isHousePhoto(key) ? key : 'tray';
+  const [small, large] = PHOTO_W[k];
+  return {
+    key: k,
+    src: `/img/${k}-${large}.webp`,
+    srcset: `/img/${k}-${small}.webp ${small}w, /img/${k}-${large}.webp ${large}w`,
+    small: `/img/${k}-${small}.webp`,
+  };
+};
 
 export const PHOTO_ALT: Record<string, string> = {
   aligner: 'A clear orthodontic aligner on a pale stone surface',

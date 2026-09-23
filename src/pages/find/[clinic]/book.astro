@@ -113,7 +113,7 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
           </label>
           <label class="field"><span class="meta">Anything we should know? (optional)</span><input type="text" name="notes" placeholder="Pain, allergies, a time that works best" /></label>
         </div>
-        <label class="check mt-6 items-start"><input type="checkbox" name="consent" required /><span>Use these details to book this visit and send its reminders. Nothing else, no marketing. <a href="/coverage/#privacy" class="underline underline-offset-4">How we handle health data</a>.</span></label>
+        <label class="check mt-6 items-start"><input type="checkbox" name="consent" required /><span>I agree that {l.name} and Flossify keep my details for this visit and text me about it, as the <a href="/privacy/" target="_blank" rel="noopener" class="underline underline-offset-4">privacy notice</a> explains.</span></label>
       </fieldset>
 
       <!-- 5 Confirm -->
@@ -146,6 +146,7 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
         <a class="btn btn-quiet" download="flossify-visit.ics" data-ics>Add to calendar</a>
         <a href="/find/" class="btn btn-quiet">Find another clinic</a>
       </div>
+      <p class="mt-4 text-[14px] text-caries" data-undo-error role="alert" hidden></p>
       <p class="mt-6 max-w-[62ch] text-[14px] leading-relaxed text-muted">
         Changed your mind within three minutes? Undo leaves no trace and sends no text. After that, cancel from the reminder or by calling {l.phone}. The clinic sees this booking on its day list the moment you confirm.
       </p>
@@ -291,11 +292,13 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
       let res: any;
       try {
         const r = await fetch('/api/bookings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
-        res = await r.json();
+        // The server's own sentence when it sent one: a slot just gone, a number that has
+        // booked five times today, a busy connection. A gateway answering in HTML gets the plain one.
+        res = r.ok ? await r.json() : await r.json().catch(() => ({}));
         if (!r.ok) {
-          err.textContent = res.error || 'Something went wrong. Try again.';
           next.disabled = false; next.textContent = ws ? 'Confirm booking' : 'Send request';
           if (r.status === 409) { show(2); refreshSlots(); }
+          err.textContent = res.error || 'Something went wrong. Try again.'; // after show(): it clears the error area
           return;
         }
       } catch {
@@ -317,12 +320,23 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
         ws ? `DTSTART;TZID=Asia/Manila:${start}` : `DTSTART;VALUE=DATE:${start}`, `SUMMARY:Dentist — ${clinicName}`, `DESCRIPTION:${booking.service} with ${booking.dentist}. Ref ${ref}.`, `LOCATION:${clinicName}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
       ($('[data-ics]') as HTMLAnchorElement).href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
       // Three-minute undo, counted down where the patient can see it.
-      let left = 180; const secs = $('[data-undo-secs]'), undo = $('[data-undo]') as HTMLButtonElement;
+      let left = 180; const secs = $('[data-undo-secs]'), undo = $('[data-undo]') as HTMLButtonElement, undoErr = $('[data-undo-error]');
       clearInterval(undoTimer);
       undoTimer = window.setInterval(() => { left--; secs.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`; if (left <= 0) { clearInterval(undoTimer); undo.hidden = true; } }, 1000);
       undo.onclick = async () => {
-        undo.disabled = true; undo.textContent = 'Undoing…';
-        try { await fetch(`/api/bookings/${encodeURIComponent(ref)}?token=${encodeURIComponent(booking.cancelToken)}&clinic=${encodeURIComponent(slug)}`, { method: 'DELETE' }); } catch { /* the row stays; the reminder tells them how to cancel */ }
+        undo.disabled = true; undo.textContent = 'Undoing…'; undoErr.hidden = true;
+        // The booking stands until the server says otherwise. When it refuses (too many
+        // requests, or it cannot be reached) say so in its words and leave the clock running.
+        let problem = '';
+        try {
+          const r = await fetch(`/api/bookings/${encodeURIComponent(ref)}?token=${encodeURIComponent(booking.cancelToken)}&clinic=${encodeURIComponent(slug)}`, { method: 'DELETE' });
+          if (!r.ok) problem = (await r.json().catch(() => ({}))).error || 'Could not undo just now. Try once more, or cancel from the reminder text.';
+        } catch { problem = 'Could not reach the clinic. Check your connection and try again.'; }
+        if (problem) {
+          undo.replaceChildren('Undo ', secs); undo.disabled = false;
+          undoErr.hidden = false; undoErr.textContent = problem;
+          return;
+        }
         clearInterval(undoTimer); save(load().filter((b) => b.ref !== ref)); location.href = location.pathname;
       };
       paintMine();

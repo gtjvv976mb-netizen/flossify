@@ -4,6 +4,7 @@ import lqip from '../data/lqip.json';
 // Written by shoot.mjs when the screenshots are recaptured, so the reserved
 // box can never drift out of step with the actual files.
 import shotSize from '../data/shot-size.json';
+import { ROOM_FROM } from '../data/film';
 
 // Two rendered widths exist per photograph. Keeping the pairs in one place
 // stops the srcset strings drifting apart as the page gets edited.
@@ -31,26 +32,26 @@ const queue = [
 
 // The rooms. Four, one per room of the film, each pinned to the moment the
 // footage arrives there (fractions of the 30s take, read off a frame sheet),
-// so the rail can never name a room the camera is not in. The whole page is
-// the walk: the top of the document is the pavement, the footer is the chair.
+// so the header can never name a room the camera is not in. The whole page is
+// the walk: the top of the document is the pavement, the last page is the chair.
 const stops = [
   {
-    key: 'A', at: '08:55', from: 0, label: 'Outside',
+    key: 'A', at: '08:55', from: ROOM_FROM.outside, label: 'Outside',
     eyebrow: 'Practice software for Philippine dental clinics',
     title: 'The whole clinic,', title2: 'laid out before the door opens.',
     body: 'You found this clinic last night and booked the slot yourself, in about ninety seconds. Walk in.',
     did: 'The website, the booking and the reminder are Flossify. No phone call, no waiting for the desk to open.',
   },
   {
-    key: 'B', at: '09:00', from: 0.17, label: 'Reception',
+    key: 'B', at: '09:00', from: ROOM_FROM.reception, label: 'Reception',
     body: 'Nothing to fill in on arrival. Your history went in at home; the desk saw you land on the day list.',
   },
   {
-    key: 'C', at: '09:12', from: 0.42, label: 'The corridor',
+    key: 'C', at: '09:12', from: ROOM_FROM.corridor, label: 'The corridor',
     body: 'Twelve minutes, not forty. The chair was ready because the schedule knew how long you would need.',
   },
   {
-    key: 'D', at: '09:15', from: 0.8, label: 'The chair',
+    key: 'D', at: '09:15', from: ROOM_FROM.chair, label: 'The chair',
     body: 'Charted at the chair, invoiced off the correct BIR series, HMO claim filed — before you reach the door.',
   },
 ];
@@ -101,7 +102,7 @@ const faqs = [
   { q: 'Do I need to be good with computers?', a: 'No. If you can use a phone, you can use this. The parts you touch every day are the ones we worked hardest to make obvious, and we sit with you for the first week.' },
   { q: 'I already use something else. Is moving painful?', a: 'It is our job, not yours. Send us whatever you have — another system, a spreadsheet, a shelf of index cards — and we bring the patients, charts and balances across while you carry on working.' },
   { q: 'What happens to my records if I ever leave?', a: 'You take everything with you, in a format you can open without us. No exit fee. They were always yours.' },
-  { q: 'Does it work when the internet is down?', a: 'Charting, notes and your schedule run on the device in front of you and catch up quietly when the connection returns. Messages and card payments do need a signal, and the app is honest about which is which.' },
+  { q: 'Does it work when the internet is down?', a: 'It installs on the tablet and opens instantly, and it tells you plainly when the connection is gone rather than losing a note. Records themselves still need a signal today; charting that catches up on its own when the line returns is the next thing we are building.' },
   { q: 'Who is behind it?', a: 'A small team in Baguio City. You talk to the people who build it, which is why things get fixed quickly.' },
 ];
 ---
@@ -119,16 +120,18 @@ const faqs = [
     <video class="film-video" data-film-video muted playsinline preload="auto" disablepictureinpicture></video>
   </div>
 
-  <header class="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur-md">
+  <header class="sticky top-0 z-40 border-b border-line bg-bg/75 backdrop-blur-md">
     <div class="mx-auto flex max-w-[1480px] items-center justify-between gap-6 px-5 py-4 sm:px-8">
       <a href="/" class="font-display text-[17px] font-bold tracking-[-0.05em]">Flossify</a>
 
-      <span class="meta hidden md:block" aria-hidden="true"><span data-readout>01 / Walk in</span></span>
+      <!-- Where you are: the page, and the room the camera is in. -->
+      <span class="meta hidden md:block" aria-hidden="true"><span data-readout>01 / Walk in</span><span class="film-room" data-room data-rooms={JSON.stringify(stops.map((t) => [t.from, t.label]))}> &middot; {stops[0].label}</span></span>
 
       <nav class="flex items-center gap-6" aria-label="Primary">
         <a href="/find/" class="meta hover:text-ink">Find a clinic</a>
         <a href="#product" class="meta hidden hover:text-ink sm:block">Product</a>
         <a href="/websites/" class="meta hidden hover:text-ink sm:block">Websites</a>
+        <a href="/coverage/" class="meta hidden hover:text-ink lg:block">PhilHealth &amp; HMO</a>
         <a href="/clinics/" class="meta meta-ink underline decoration-line underline-offset-4 hover:decoration-accent">
           Workspaces
         </a>
@@ -151,7 +154,7 @@ const faqs = [
           <p class="meta meta-accent mt-5">What Flossify did</p>
           <p class="mt-2 max-w-[36ch] text-[15px]" style="color: rgb(242 242 239 / 0.8)">{stops[0].did}</p>
           <div class="mt-8 flex flex-wrap gap-3">
-            <a href="/clinics/" class="btn btn-film">Open a workspace</a>
+            <a href="/start/" class="btn btn-film">Open your clinic</a>
             <a href="/find/" class="btn btn-film-quiet">Find a clinic</a>
           </div>
         </div>
@@ -164,7 +167,7 @@ const faqs = [
         <div class="pane lg:col-span-7 lg:col-start-6">
           <p class="sec-no">02 &mdash; Who it is for</p>
           <div class="mt-8 grid grid-cols-1 md:grid-cols-2">
-            <a href="/clinics/" class="door block border-b border-line pb-10 md:border-b-0 md:pr-10 md:pb-0">
+            <a href="/start/" class="door block border-b border-line pb-10 md:border-b-0 md:pr-10 md:pb-0">
               <p class="meta meta-ink">For clinics</p>
               <h2 class="mt-5 font-display text-[clamp(1.7rem,2.6vw,2.3rem)] font-semibold">
                 Your clinic gets its own front door.
@@ -173,7 +176,7 @@ const faqs = [
                 One link per branch, open on today. Runs on the tablet at the chair and the
                 desktop at the desk, keeps working through a brownout, and catches up after.
               </p>
-              <span class="meta meta-accent mt-8 inline-block">Open a workspace &rarr;</span>
+              <span class="meta meta-accent mt-8 inline-block">Open your clinic &rarr;</span>
               <span class="door-rule mt-2"></span>
             </a>
 
@@ -348,70 +351,24 @@ const faqs = [
           Open your clinic and see the day.
         </h2>
         <div class="mt-12 flex flex-wrap gap-3">
-          <a href="/clinics/" class="btn btn-film">Open a workspace</a>
+          <a href="/start/" class="btn btn-film">Open your clinic</a>
           <a href="#tour" class="btn btn-film-quiet">Walk in again</a>
         </div>
+        <p class="meta mt-16" style="color: rgb(242 242 239 / 0.72)">&copy; 2026 Flossify &middot; Baguio City, Philippines</p>
       </div>
     </section>
 
-    <footer class="film-clear border-t border-line bg-bg">
-      <div class="mx-auto max-w-[1480px] px-5 py-14 sm:px-8">
-        <div class="grid grid-cols-2 gap-8 md:grid-cols-4">
-          <div>
-            <p class="font-display text-[17px] font-bold tracking-[-0.05em]">Flossify</p>
-            <p class="meta mt-3">Baguio City &middot; Philippines</p>
-          </div>
-          <div>
-            <p class="meta meta-ink">Product</p>
-            <ul class="mt-3 space-y-2">
-              <li><a href="/find/" class="meta hover:text-ink">Find a clinic</a></li>
-              <li><a href="/coverage/" class="meta hover:text-ink">PhilHealth &amp; HMO</a></li>
-              <li><a href="#product" class="meta hover:text-ink">Screens</a></li>
-              <li><a href="/clinics/" class="meta hover:text-ink">Workspaces</a></li>
-            </ul>
-          </div>
-          <div>
-            <p class="meta meta-ink">More</p>
-            <ul class="mt-3 space-y-2">
-              <li><a href="#services" class="meta hover:text-ink">Services</a></li>
-              <li><a href="/websites/" class="meta hover:text-ink">Clinic websites</a></li>
-              <li><a href="#questions" class="meta hover:text-ink">Questions</a></li>
-            </ul>
-          </div>
-          <div>
-            <p class="meta meta-ink">Colophon</p>
-            <p class="meta mt-3">Set in Archivo and IBM&nbsp;Plex&nbsp;Mono. Built with Astro.</p>
-          </div>
-        </div>
-
-        <div class="rule mt-12"></div>
-        <p class="meta mt-6">&copy; 2026 Flossify</p>
-      </div>
-    </footer>
   </main>
 
-  <!-- Where the camera is, for the whole walk. The current room carries one
-       line of the patient's morning; the same lines are in the list below for
-       anyone the rail is hidden from. -->
-  <div class="film-rail" aria-hidden="true">
-    {stops.map((t, i) => (
-      <div class="film-stop" data-film-stop={i} data-from={t.from} data-on={i === 0 ? '' : undefined}>
-        <span class="meta block" style="color: inherit">{t.key}<span class="film-stop-time"> &nbsp; {t.at}</span><span class="film-stop-label"> &nbsp; {t.label}</span></span>
-        {i > 0 && <span class="film-stop-body">{t.body}</span>}
-      </div>
-    ))}
-  </div>
+  <!-- The walk in words, for anyone the film is hidden from. -->
   <ol class="sr-only" aria-label="The walk through the clinic">
     {stops.map((t) => <li>{t.at}, {t.label.toLowerCase()}: {t.body}</li>)}
   </ol>
 
   <script>
-    /* `?motion=on` is a demo switch that overrides Reduce Motion for the
-       autonomous motions on this page (reveals, the ticker). The film itself
-       is not gated: it only moves when the visitor scrolls, so it runs for
-       everyone. Read once here and once, inline, in Base.astro so the CSS agrees. */
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      && !document.documentElement.classList.contains('force-motion');
+    /* Every motion on this page runs for everyone: the walk answers the wheel,
+       the rises and rules play on entry, the queue ticks. Nothing here reads
+       prefers-reduced-motion, by the owner's decision. */
 
     /* --- the walk ----------------------------------------------------------
        Scroll position over the whole document maps to the film's currentTime.
@@ -422,8 +379,8 @@ const faqs = [
     const vid = document.querySelector<HTMLVideoElement>('[data-film-video]');
     const poster = document.querySelector<HTMLElement>('.film-poster');
     const hint = document.querySelector<HTMLElement>('[data-film-hint]');
-    const filmStops = Array.from(document.querySelectorAll<HTMLElement>('[data-film-stop]'));
-    const froms = filmStops.map((s) => parseFloat(s.dataset.from ?? '0'));
+    const room = document.querySelector<HTMLElement>('[data-room]');
+    const rooms: [number, string][] = JSON.parse(room?.dataset.rooms ?? '[]');
 
     let duration = 0;
 
@@ -441,8 +398,11 @@ const faqs = [
       }
 
       let at = 0;
-      froms.forEach((f, i) => { if (p >= f) at = i; });
-      filmStops.forEach((c, i) => c.toggleAttribute('data-on', i === at));
+      rooms.forEach(([f], i) => { if (p >= f) at = i; });
+      if (room && rooms[at] && room.dataset.at !== String(at)) {
+        room.dataset.at = String(at);
+        room.textContent = ` · ${rooms[at][1]}`;
+      }
       if (p > 0.015) hint?.setAttribute('data-hide', '');
     };
 
@@ -481,18 +441,14 @@ const faqs = [
        One observer for the three entry motions: rises, drawn rules and the
        clipped display lines. Everything unobserves once it has played. */
     const targets = document.querySelectorAll('.reveal, .rule-draw, [data-lines]');
-    if (reduced) {
-      targets.forEach((el) => el.classList.add('is-in'));
-    } else {
-      const io = new IntersectionObserver((entries) => {
-        for (const e of entries) {
-          if (!e.isIntersecting) continue;
-          e.target.classList.add('is-in');
-          io.unobserve(e.target);
-        }
-      }, { rootMargin: '0px 0px -12% 0px', threshold: 0.15 });
-      targets.forEach((el) => io.observe(el));
-    }
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        e.target.classList.add('is-in');
+        io.unobserve(e.target);
+      }
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.15 });
+    targets.forEach((el) => io.observe(el));
 
     /* --- masthead section readout ----------------------------------------- */
     const readout = document.querySelector<HTMLElement>('[data-readout]');
@@ -516,7 +472,7 @@ const faqs = [
 
     /* --- the queue ticker -------------------------------------------------- */
     const ticks = document.querySelectorAll<HTMLElement>('[data-tick]');
-    if (ticks.length && !reduced) {
+    if (ticks.length) {
       let at = 0;
       const step = () => {
         ticks.forEach((el, i) => {

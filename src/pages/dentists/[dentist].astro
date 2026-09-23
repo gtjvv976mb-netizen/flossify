@@ -11,11 +11,14 @@ const d = await loadDentist(Astro.params.dentist!);
 if (!d) return new Response('No such dentist', { status: 404 });
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const places = d.clinicsFull.map((c) => ({ days: c.days ?? [], l: { slug: c.slug, name: c.name, area: c.area, workspace: c.bookingMode === 'live' } }));
-const checked = new Date(d.prcCheckedOn).toLocaleDateString('en-PH', { day: 'numeric', month: 'long', year: 'numeric' });
+const checked = d.prcCheckedOn ? new Date(d.prcCheckedOn).toLocaleDateString('en-PH', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+// A dentist with no listed clinic has no public place to be found; the page waits until there is one.
+if (!places.length) return new Response('No such dentist', { status: 404 });
+const practises = d.practices?.length ? (d.practices.slice(1).join(', ').toLowerCase() || d.practices[0].toLowerCase()) : 'general dentistry';
 ---
 
 
-<Base title={`${d.name} — dentist in ${places[0].l.area} — Flossify`} description={`${d.name}: ${d.specialty ? 'specialist in ' + d.specialty.toLowerCase() : d.practices.join(', ').toLowerCase()}. PRC licence checked. Where to find them and when.`}>
+<Base title={`${d.name} — dentist in ${places[0]?.l.area ?? 'Benguet'} — Flossify`} description={`${d.name}: ${d.specialty ? 'specialist in ' + d.specialty.toLowerCase() : d.practices.join(', ').toLowerCase()}. PRC licence checked. Where to find them and when.`}>
   <PatientHeader current="find" />
 
   <main id="main" class="mx-auto max-w-[1040px] px-5 py-10 sm:px-8">
@@ -28,7 +31,7 @@ const checked = new Date(d.prcCheckedOn).toLocaleDateString('en-PH', { day: 'num
         <p class="mt-3 text-[17px] text-ink-2">
           {d.specialty
             ? <span>Specialist · {d.specialty}</span>
-            : <span>General dentist · practises {d.practices.slice(1).join(', ').toLowerCase() || d.practices[0].toLowerCase()}</span>}
+            : <span>General dentist · practises {practises}</span>}
         </p>
         <p class="mt-5 max-w-[60ch] text-[16px] leading-relaxed text-ink-2">{d.about}</p>
 
@@ -36,7 +39,7 @@ const checked = new Date(d.prcCheckedOn).toLocaleDateString('en-PH', { day: 'num
         <ul class="mt-3 divide-y divide-line border-y border-line text-[15px]">
           <li class="flex flex-wrap items-baseline justify-between gap-2 py-3">
             <span><span class="tag tag-accent">PRC licence</span><span class="ml-3">No. {d.prc}</span></span>
-            <span class="text-[14px] text-muted">Checked by a person at verification.prc.gov.ph on {checked}. Re-checked at each 3-year renewal.</span>
+            <span class="text-[14px] text-muted">{checked ? `Checked by a person at verification.prc.gov.ph on ${checked}. Re-checked at each 3-year renewal.` : 'Not yet checked by a person at Flossify. Until it is, treat the number as the dentist’s own statement.'}</span>
           </li>
           <li class="flex flex-wrap items-baseline justify-between gap-2 py-3">
             <span><span class:list={['tag', d.pda && 'tag-accent']}>{d.pda ? 'PDA member' : 'PDA membership not on file'}</span></span>

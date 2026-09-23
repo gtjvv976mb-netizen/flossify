@@ -9,9 +9,18 @@ interface Props {
   marks?: Partial<Record<number, ToothMark>>;
   /** Which numbering to show first. Staff switch it in the control. */
   notation?: Notation;
+  /** Where each change is posted as JSON the moment it is made. Absent, the
+   *  chart is local only, which is what a demo wants. */
+  saveUrl?: string;
+  /** The patient whose chart this is; sent with every save. */
+  patientId?: string;
+  /** The clinic slug; sent with every save so the server can check access. */
+  clinic?: string;
+  /** This browser's CSRF token, sent in the X-CSRF header. */
+  csrf?: string;
 }
 
-const { marks = {}, notation = 'fdi' } = Astro.props;
+const { marks = {}, notation = 'fdi', saveUrl, patientId, clinic, csrf } = Astro.props;
 
 // --- notation -------------------------------------------------------------
 // FDI is what we store. Universal (US) and Palmer (UK) are display only, so a
@@ -101,7 +110,7 @@ const wholeConditions: ToothCondition[] = [
 ];
 ---
 
-<div data-odontogram data-notation={notation} class="flex flex-col gap-7 border border-line bg-surface p-6 sm:p-8 lg:flex-row">
+<div data-odontogram data-notation={notation} data-save-url={saveUrl} data-patient={patientId} data-clinic={clinic} data-csrf={csrf} class="flex flex-col gap-7 border border-line bg-surface p-6 sm:p-8 lg:flex-row">
   <div class="flex min-w-0 flex-1 flex-col">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <fieldset class="flex items-center gap-2">
@@ -109,7 +118,7 @@ const wholeConditions: ToothCondition[] = [
         {notations.map((n) => (
           <label class="cursor-pointer">
             <input type="radio" name="notation" value={n.id} checked={n.id === notation} class="peer sr-only" data-notation-input />
-            <span class="block border border-line px-3 py-1.5 text-xs font-medium text-ink-2 peer-checked:border-accent peer-checked:bg-accent peer-checked:text-surface">
+            <span class="block border border-line px-3 py-1.5 text-xs font-medium text-ink-2 peer-checked:border-accent peer-checked:bg-accent peer-checked:text-surface peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">
               {n.label}
             </span>
           </label>
@@ -127,11 +136,11 @@ const wholeConditions: ToothCondition[] = [
         {archIndex === 1 && (
           <div class="my-3.5 flex items-center gap-3.5">
             <div class="h-px flex-1 bg-line-2"></div>
-            <span class="text-[11px] tracking-[0.08em] text-faint uppercase">Midline</span>
+            <span class="meta text-faint">Midline</span>
             <div class="h-px flex-1 bg-line-2"></div>
           </div>
         )}
-        <div class={`flex justify-center gap-4 overflow-x-auto ${archIndex === 0 ? 'mt-6 pb-1' : 'pt-1'}`}>
+        <div class={`flex gap-4 overflow-x-auto ${archIndex === 0 ? 'mt-6 pb-1' : 'pt-1'}`}><div class="mx-auto flex gap-4">
           {[rows[a], rows[b]].map((quadrant) => (
             <div class="flex gap-[5px]">
               {quadrant.map((t) => (
@@ -163,18 +172,19 @@ const wholeConditions: ToothCondition[] = [
               ))}
             </div>
           ))}
-        </div>
+        </div></div>
       </>
     ))}
 
     <p class="mt-6 text-[13px] text-muted">
       Click a tooth to pick a finding and its surfaces. Arrow keys move between teeth.
     </p>
+    {saveUrl && <p class="meta mt-2 min-h-[1.05rem]" data-save-status role="status"></p>}
   </div>
 
   <div class="flex w-full shrink-0 flex-col border border-line-2 bg-bg-soft p-5 lg:w-[290px]">
     <div class="flex items-baseline justify-between">
-      <span class="text-xs font-semibold tracking-[0.1em] text-muted uppercase">Chart note</span>
+      <span class="meta">Chart note</span>
       <span data-count class="text-xs tabular-nums text-muted"></span>
     </div>
     <p data-note-empty class="mt-3.5 text-sm leading-relaxed text-muted">
@@ -193,7 +203,7 @@ const wholeConditions: ToothCondition[] = [
     <p class="font-display text-[17px] font-semibold" data-palette-title>Tooth</p>
 
     <div data-surface-block>
-      <p class="mt-3 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Surfaces</p>
+      <p class="meta mt-3">Surfaces</p>
       <div class="mt-2 grid grid-cols-5 gap-1.5">
         {SURFACES.map((s) => (
           <button
@@ -208,7 +218,7 @@ const wholeConditions: ToothCondition[] = [
       </div>
     </div>
 
-    <p class="mt-4 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Per surface</p>
+    <p class="meta mt-4">Per surface</p>
     <div class="mt-2 grid grid-cols-3 gap-1.5">
       {surfaceConditions.map((c) => (
         <button type="button" data-condition={c} data-scope="surface" class="cursor-pointer border border-line px-2 py-2.5 text-[13px] font-medium hover:border-accent hover:text-accent">
@@ -217,7 +227,7 @@ const wholeConditions: ToothCondition[] = [
       ))}
     </div>
 
-    <p class="mt-4 text-xs font-semibold tracking-[0.09em] text-muted uppercase">Whole tooth</p>
+    <p class="meta mt-4">Whole tooth</p>
     <div class="mt-2 grid grid-cols-3 gap-1.5">
       {wholeConditions.map((c) => (
         <button type="button" data-condition={c} data-scope="whole" class="cursor-pointer border border-line px-2 py-2.5 text-[12.5px] font-medium hover:border-accent hover:text-accent">
@@ -261,6 +271,45 @@ const wholeConditions: ToothCondition[] = [
 
     const fdiOf = (b: HTMLButtonElement) => Number(b.dataset.fdi);
     const nameOf = (b: HTMLButtonElement) => b.dataset[root.dataset.notation ?? 'fdi'] ?? b.dataset.fdi!;
+
+    // --- saving ------------------------------------------------------------
+    // With data-save-url set, every commit in the palette is one small request:
+    // { clinic, patientId, fdi, condition, surfaces } for a tooth (condition null
+    // clears it) or { clinic, patientId, clear: true } for the whole chart. The
+    // mark stays on the chart whether or not the save went through; a miss is
+    // said out loud and touching the tooth again sends it again.
+    const saveUrl = root.dataset.saveUrl;
+    const status = root.querySelector<HTMLElement>('[data-save-status]');
+    const clock = new Intl.DateTimeFormat('en-PH', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' });
+    let seq = 0;
+
+    function setStatus(text: string, failed = false) {
+      if (!status) return;
+      status.textContent = text;
+      status.classList.toggle('text-caries', failed);
+    }
+
+    async function save(change: Record<string, unknown>) {
+      if (!saveUrl) return;
+      const mine = ++seq;
+      setStatus('Saving…');
+      try {
+        const res = await fetch(saveUrl, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json', 'X-CSRF': root.dataset.csrf ?? '' },
+          body: JSON.stringify({ clinic: root.dataset.clinic, patientId: root.dataset.patient, ...change }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { at?: string };
+        // An older reply never overwrites a newer state.
+        if (mine === seq) setStatus(`Saved ${clock.format(data.at ? new Date(data.at) : new Date()).toLowerCase()}`);
+      } catch {
+        // A miss always shows, and a reply still in flight from before it may not paper over it.
+        seq++;
+        setStatus('Not saved — check the connection and try again.', true);
+      }
+    }
 
     // Seed from what the server rendered so an existing chart survives hydration.
     teeth.forEach((b) => {
@@ -385,20 +434,26 @@ const wholeConditions: ToothCondition[] = [
       c.addEventListener('click', () => {
         if (!active) return;
         const condition = c.dataset.condition as ToothCondition;
+        const fdi = fdiOf(active);
+        let change: Record<string, unknown>;
         if (condition === 'sound') {
           marks.delete(active);
+          change = { fdi, condition: null, surfaces: [] };
         } else if (c.dataset.scope === 'surface') {
           // Default to the biting surface rather than refusing the click --
           // it is the common case and the dentist can add more.
           const surfaces = picked.size ? [...picked] : (['occlusal'] as Surface[]);
           marks.set(active, { condition, surfaces });
+          change = { fdi, condition, surfaces };
         } else {
           marks.set(active, { condition });
+          change = { fdi, condition, surfaces: [] };
         }
         paint(active);
         render();
         palette.hidePopover();
         active.focus();
+        save(change);
       });
     });
 
@@ -419,6 +474,7 @@ const wholeConditions: ToothCondition[] = [
       marks.clear();
       teeth.forEach(paint);
       render();
+      save({ clear: true });
     });
 
     render();

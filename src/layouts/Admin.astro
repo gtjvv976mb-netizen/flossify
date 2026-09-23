@@ -1,0 +1,82 @@
+---
+// The frame around Flossify's own pages: who is signed in and the way out.
+// Pages behind it have already passed requireAdmin. Same rules as the
+// workspace frame; the strip says whose side of the counter this is.
+import '../styles/global.css';
+import Csrf from '../components/Csrf.astro';
+
+interface Props {
+  title: string;
+  section: 'home' | 'prc' | 'billing' | 'clinics';
+  admin: { name: string };
+}
+
+const { title, section, admin } = Astro.props;
+
+const nav = [
+  { id: 'home', label: 'Overview', href: '/admin/' },
+  { id: 'prc', label: 'PRC checks', href: '/admin/prc/' },
+  { id: 'billing', label: 'Billing', href: '/admin/billing/' },
+  { id: 'clinics', label: 'Clinics', href: '/admin/clinics/' },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title} — Flossify operations</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-400.woff2" as="font" type="font/woff2" crossorigin />
+    <script is:inline>
+      try {
+        const saved = localStorage.getItem('theme');
+        if (saved) document.documentElement.dataset.theme = saved;
+      } catch (e) {
+        /* storage blocked: fall back to the OS preference */
+      }
+    </script>
+  </head>
+  <body>
+    <p role="note" class="border-b border-line bg-bg-soft px-5 py-2 text-center text-[13px] text-ink sm:px-8">
+      Flossify operations. Everything here is across clinics; act as if a clinic owner were reading over your shoulder.
+    </p>
+
+    <header class="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur">
+      <div class="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-8">
+        <div class="flex items-center gap-3">
+          <a href="/" class="font-display text-[17px] font-bold tracking-[-0.05em]" aria-label="Flossify, home">Flossify</a>
+          <span class="h-5 w-px bg-line"></span>
+          <p class="meta">Operations</p>
+        </div>
+
+        <nav class="flex flex-wrap items-center gap-1" aria-label="Operations sections">
+          {nav.map((n) => (
+            <a
+              href={n.href}
+              aria-current={n.id === section ? 'page' : undefined}
+              class:list={[
+                'px-3.5 py-2 text-[13.5px] font-medium',
+                n.id === section ? 'bg-accent text-surface' : 'text-ink-2 hover:bg-bg-soft hover:text-accent',
+              ]}
+            >
+              {n.label}
+            </a>
+          ))}
+        </nav>
+
+        <div class="flex items-center gap-3">
+          <span class="text-[13.5px] text-ink-2"><span class="font-medium text-ink">{admin.name}</span></span>
+          <form method="post" action="/auth/logout"><Csrf /><button type="submit" class="meta hover:text-ink">Sign out</button></form>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-[1280px] px-5 py-8 sm:px-8">
+      <slot />
+    </main>
+  </body>
+</html>

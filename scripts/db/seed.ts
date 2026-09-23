@@ -35,8 +35,8 @@ const clinicIds = new Map<string, string>();
 for (const l of listings) {
   const demo = demoClinics.find((c) => c.slug === l.slug);
   const { rows } = await db.query(
-    `insert into clinic (group_id, name, slug, address_line, city, province, phone, tin, notation, about, area, booking_mode, walk_ins, chairs, philhealth_dental, founded, photo_keys)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) returning id`,
+    `insert into clinic (group_id, name, slug, address_line, city, province, phone, tin, notation, about, area, booking_mode, walk_ins, chairs, philhealth_dental, founded, photo_keys, listed)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,true) returning id`,
     [groupIds.get(groupOf(l.slug)), l.name, l.slug, l.address, l.area, demo?.province ?? (l.area === 'Marikina City' ? 'Metro Manila' : 'Benguet'), l.phone,
      demo?.tin ?? null, demo?.notation ?? 'fdi', l.about, l.area, l.workspace ? 'live' : 'request', l.walkIns, l.chairs, l.philhealth, l.since, l.photos]);
   const id = rows[0].id; clinicIds.set(l.slug, id);
@@ -60,9 +60,11 @@ for (const d of dentists) {
   const home = d.clinics[0].slug; const g = groupOf(home); const gid = groupIds.get(g)!;
   const isOwner = !owners.has(gid); if (isOwner) owners.add(gid);
   const { rows } = await db.query(
-    `insert into staff (group_id, full_name, email, prc_licence, role, password_hash, slug, prc_checked_on, pda_member, specialty, practices, practising_since, about, home_clinic_id)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning id`,
-    [gid, d.name, email(d.name), d.prc, isOwner ? 'owner' : 'dentist', hash('flossify'), d.slug, d.prcCheckedOn, d.pda, d.specialty, d.practices, d.since, d.about, clinicIds.get(home)]);
+    `insert into staff (group_id, full_name, email, prc_licence, role, password_hash, slug, prc_checked_on, pda_member, specialty, practices, practising_since, about, home_clinic_id, phone, password_set_at, prc_status)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now(), case when $8::date is not null then 'checked' else 'pending' end) returning id`,
+    [gid, d.name, email(d.name), d.prc, isOwner ? 'owner' : 'dentist', hash('flossify'), d.slug, d.prcCheckedOn, d.pda, d.specialty, d.practices, d.since, d.about, clinicIds.get(home),
+     // A 555 mobile per dentist, so the reset-by-text flow can be tried against the dev database.
+     `0917 555 2${String(staffIds.size + 1).padStart(3, '0')}`]);
   staffIds.set(d.slug, rows[0].id);
   for (const c of d.clinics) {
     const cid = clinicIds.get(c.slug)!;
@@ -76,6 +78,18 @@ for (const l of listings) {
   const { rows } = await db.query(`select id from staff where group_id = $1 and role = 'owner'`, [gid]);
   for (const r of rows) await db.query('insert into staff_access (staff_id, clinic_id, can_view_finance, can_edit_records, can_manage_staff) values ($1,$2,true,true,true) on conflict (staff_id, clinic_id) do update set can_view_finance = true, can_manage_staff = true', [r.id, clinicIds.get(l.slug)]);
 }
+
+// Flossify's own operations account: a group with no clinic, one admin, marked platform_admin.
+{
+  const { rows: [g] } = await db.query(`insert into clinic_group (name, slug) values ('Flossify', 'flossify') returning id`);
+  const { rows: [ops] } = await db.query(
+    `insert into staff (group_id, full_name, email, phone, role, password_hash, password_set_at) values ($1, 'Flossify Operations', 'ops@flossify.example', '0917 555 0001', 'admin', $2, now()) returning id`,
+    [g.id, hash('flossify')]);
+  await db.query('insert into platform_admin (staff_id) values ($1)', [ops.id]);
+}
+
+// Every group with a clinic starts its 30-day trial at the placeholder price (src/lib/billing.ts).
+await db.query(`select billing_ensure(g.id, 1990) from clinic_group g where exists (select 1 from clinic c where c.group_id = g.id)`);
 
 // Patients, their teeth, today's appointments and the HMO claims, from demo.ts.
 const patientIds = new Map<string, string>();

@@ -28,6 +28,7 @@ const org = {
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="canonical" href={canonical.href} />
 
     <meta property="og:type" content="website" />
@@ -47,8 +48,6 @@ const org = {
       } catch (e) {
         /* private mode or blocked storage: fall back to the OS preference */
       }
-      /* Demo switch: `?motion=on` overrides Reduce Motion for this page load only. */
-      if (/[?&]motion=on\b/.test(location.search)) document.documentElement.classList.add('force-motion');
     </script>
 
     <script type="application/ld+json" set:html={JSON.stringify(org)} />

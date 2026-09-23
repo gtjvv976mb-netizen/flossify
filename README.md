@@ -6,10 +6,11 @@ Dental practice software marketing site. Astro + Tailwind v4, static output.
 
 ```bash
 npm install
-cp .env.example .env     # DATABASE_URL and SESSION_SECRET
+cp .env.example .env     # DATABASE_URL, SESSION_SECRET, the text sender, uploads
 npm run db:setup         # creates flossify_dev from schema + migrations, seeds it
 npm run dev              # http://localhost:4321
 npm run build && npm run preview   # the Node server, as deployed
+npm run sms:worker       # in a second terminal: sends queued texts (console provider in dev)
 ```
 
 Needs a local PostgreSQL (Homebrew's is fine). `db:setup` drops and recreates
@@ -48,9 +49,46 @@ workspace page and re-checks branch access on each request.
 
 API: `GET /api/availability` (real open slots), `POST /api/bookings` (book or
 request without an account; the slot is re-checked inside the insert's
-transaction), `DELETE /api/bookings/:ref` (undo within three minutes, cancel
-after). A booking queues its confirmation text in `message_log`; nothing sends
-SMS yet.
+transaction; twenty an hour per address, five a day per mobile), `DELETE
+/api/bookings/:ref` (undo within three minutes, cancel after), `POST
+/api/sms/inbound` (a patient's reply; `Y` confirms their next visit).
+
+Texts: the app only queues them (`message_log`). `npm run sms:worker` sends
+them — `SMS_PROVIDER=console` prints them in development, `semaphore` sends
+through semaphore.co with a registered sender name — holds patient texts
+between 9 pm and 8 am, queues one reminder per visit the day before, and
+retries three times before marking a text failed. The desk sees every text,
+both directions, on the branch's **Messages** page. No text ever contains a
+link; Philippine telcos drop those.
+
+Sign-in: scrypt passwords, a signed session cookie, a CSRF token on every
+form, rate limits on sign-in, reset and sign-up, and password reset by a
+six-digit code texted to the staff member's mobile (`/auth/forgot/`,
+`/auth/code/`). A password change signs out every other session.
+
+Clinics: `/start/` creates a clinic and its owner in one form. It begins
+unlisted; Settings (profile, hours, HMOs, the fee guide, Team with texted
+invitations, Photos, Privacy, Billing) works down a checklist and the owner
+flips **Listed on Find a clinic** when the page is ready. Claims (HMO and
+PhilHealth) have their own page with aging and a CSV export; the tooth chart
+saves every change under the staff member's name.
+
+Schedule: `/c/<slug>/schedule/` — the day by chair or by dentist, a week
+view, drag a visit to another time or chair, one sentence when it clashes,
+web bookings land in an Unplaced lane, print the day list. JSON API at
+`/api/schedule` and `/api/patients`.
+
+Patients: `/me/` — a texted code and nothing else — shows every visit under
+that mobile across clinics, with confirm and cancel. `/privacy/` is the
+versioned notice; each booking records which version was agreed to.
+
+Operations (`/admin/`, Flossify staff only): the PRC licence check queue,
+the clinics list, and billing — trials, monthly invoices, manual payments
+marked paid. Prices and pay-to details are placeholders in
+`src/lib/billing.ts` until you set them.
+
+The workspace installs as an app (`manifest.webmanifest`, `sw.js`); the
+service worker caches only the shell and fonts, never patient data.
 
 ## Layout
 
@@ -135,5 +173,10 @@ try/catch because private mode throws.
       practices — one letter away, same buyer. `flossify.io`, `flossify.co`
       and `flossify.ph` were free as of September 2026.
 - [ ] Point `site` in `astro.config.mjs` at the real domain.
+- [ ] Set the plan prices, the GCash / Maya / bank pay-to details, the billing
+      email and the listing-pause policy in `src/lib/billing.ts` (all marked
+      as placeholders on the Billing pages until then).
+- [ ] Name Flossify's Data Protection Officer and enter the NPC registration
+      number in `src/pages/privacy.astro` — only once they are real.
 - [ ] Add real product screenshots. The chart is currently the only real
       product surface on the page.

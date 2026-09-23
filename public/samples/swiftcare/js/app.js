@@ -5,7 +5,9 @@
 
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-  const reduceMotion = !document.documentElement.classList.contains('force-motion') && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // The motion is the site. Kept as a constant rather than deleted at twenty call
+  // sites, so the shape of the code still reads; it is never true.
+  const reduceMotion = false;
   const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
   const C = SC.clinic;
   const svcById = Object.fromEntries(SC.services.map(s => [s.id, s]));

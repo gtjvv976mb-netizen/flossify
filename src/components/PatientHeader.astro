@@ -2,7 +2,7 @@
 // The masthead for the patient side: find, coverage, and the door back to the
 // clinic side. Same rules as the home page — mono uppercase for the links,
 // one hairline, nothing rounded.
-interface Props { current?: 'find' | 'coverage' }
+interface Props { current?: 'find' | 'coverage' | 'me' }
 const { current } = Astro.props;
 ---
 
@@ -12,6 +12,7 @@ const { current } = Astro.props;
     <nav class="flex items-center gap-5" aria-label="Patients">
       <a href="/find/" class:list={['meta hover:text-ink', current === 'find' && 'meta-ink underline decoration-accent underline-offset-4']}>Find a clinic</a>
       <a href="/coverage/" class:list={['meta hover:text-ink', current === 'coverage' && 'meta-ink underline decoration-accent underline-offset-4']}>PhilHealth &amp; HMO</a>
+      <a href="/me/" class:list={['meta hover:text-ink', current === 'me' && 'meta-ink underline decoration-accent underline-offset-4']}>My visits</a>
       <a href="/clinics/" class="meta hidden hover:text-ink sm:block">Workspaces</a>
     </nav>
   </div>

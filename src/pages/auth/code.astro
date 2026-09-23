@@ -1,0 +1,163 @@
+---
+// I have a code: the six digits we texted, and the password to set. Used two
+// ways — after "forgot your password", and by staff a clinic owner has just
+// added, who have no password yet. Which one is decided by the account, not
+// the form: no password on file means the code is an invitation. Either way
+// it ends signed in, on their home branch.
+//
+// Guarded like sign-in: the CSRF token, a rate limit per number and per
+// address, every try written to auth_event, and the code itself dies after
+// five misses (codes.ts). The code field is the only thing that ever says
+// "not right": a number that is not on file gets the same sentence as a
+// wrong code, so the form cannot be used to find out which numbers are staff.
+export const prerender = false;
+
+import StaffEntrance from '../../components/StaffEntrance.astro';
+import Csrf from '../../components/Csrf.astro';
+import { staffByPhone, setPassword, whoFor, setSession, passwordProblem, PASSWORD_MIN, authEvent, SESSION_HOURS, type Device } from '../../lib/auth';
+import { pool } from '../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
+import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
+import { redeemCode, REDEEM_TEXT } from '../../lib/codes';
+import { normalizePhone, PH_MOBILE, prettyPhone } from '../../lib/messages';
+
+const sent = Astro.url.searchParams.get('sent') === '1';
+let typed = prettyPhone(Astro.url.searchParams.get('phone') ?? '');
+let error = '';
+let device: Device = 'shared';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  typed = String(form.get('phone') ?? '').trim();
+  const phone = normalizePhone(typed);
+  const code = String(form.get('code') ?? '').replace(/\D/g, '');
+  const password = String(form.get('password') ?? ''), confirm = String(form.get('confirm') ?? '');
+  device = form.get('device') === 'own' ? 'own' : 'shared';
+  const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+  else if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
+  else {
+    const [byPhone, byIp] = await Promise.all([hit(`code:p:${phone}`, ...LIMITS.code.phone), hit(`code:ip:${ip}`, ...LIMITS.code.ip)]);
+    const problem = passwordProblem(password);
+    if (!byPhone.allowed || !byIp.allowed) {
+      error = `Too many tries. ${waitText(Math.max(byPhone.retryAfter, byIp.retryAfter))}`;
+      await authEvent('code.locked', { ip, ua });
+    }
+    else if (code.length !== 6) error = 'Enter the six digits from the text.';
+    else if (problem) error = problem;
+    else if (password !== confirm) error = 'The two passwords don’t match.';
+    else {
+      const staff = await staffByPhone(phone);
+      // The account decides what the code is for: no password yet means it is an invitation.
+      const purpose = staff?.password_hash ? 'reset' : 'invite';
+      const result = staff ? await redeemCode(staff.id, purpose, code) : 'wrong';
+      if (!staff || result !== 'ok') {
+        // One sentence for every miss, whether or not the number is on file: the form cannot be used to find staff numbers.
+        error = REDEEM_TEXT.wrong;
+        await authEvent('code.fail', { email: staff?.email, staffId: staff?.id, ip, ua });
+      } else {
+        const tv = await setPassword(staff.id, password);
+        if (purpose === 'invite') await pool.query('update staff set invited_at = coalesce(invited_at, now()) where id = $1', [staff.id]);
+        await authEvent(purpose === 'invite' ? 'invite.accept' : 'reset.ok', { email: staff.email, staffId: staff.id, ip, ua });
+        // Sign them in with the new token version; every older session is already out.
+        const who = await whoFor({ id: staff.id, group_id: staff.group_id, full_name: staff.full_name, role: staff.role, token_version: tv, home_clinic_id: staff.home_clinic_id });
+        if (who.clinics.length) {
+          const clinic = who.clinics[0];
+          setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: clinic.id, name: who.name, role: who.role, tv: who.tv }, SESSION_HOURS[device]);
+          return Astro.redirect(`/c/${clinic.slug}/`, 303);
+        }
+        return Astro.redirect('/auth/login/?done=password', 303);
+      }
+    }
+  }
+}
+---
+
+<StaffEntrance title="I have a code — Flossify" description="Enter the six-digit code we texted you and set your password." page="I have a code">
+  <a href="/auth/login/" class="meta hover:text-ink">&larr; Staff sign-in</a>
+  <h1 class="entry-title font-display mt-4">
+    <span class="block">Almost in.</span>
+    <span class="block entry-dim">Enter your code.</span>
+  </h1>
+  <p class="mt-2 text-[14.5px] leading-relaxed entry-dim">The six digits we texted, and a password you’ll remember. You’re signed in straight away.</p>
+
+  {sent && !error && <p role="status" class="entry-note entry-note-ok mt-5">If that number belongs to a staff account, a code is on its way. It works for 15 minutes.</p>}
+
+  <form method="post" class="mt-5 grid gap-4" data-entry-form>
+    <Csrf />
+    <div class="entry-field">
+      <label for="phone" class="meta">Mobile number</label>
+      <input id="phone" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0917 000 0000" value={typed} required autofocus={!typed} />
+    </div>
+    <div class="entry-field">
+      <label for="code" class="meta">Code</label>
+      <input id="code" type="text" name="code" class="entry-code" inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="000000" required autofocus={!!typed}
+        aria-invalid={error ? 'true' : undefined} aria-describedby={error ? 'code-error' : undefined} />
+    </div>
+    <div class="entry-field">
+      <label for="password" class="meta">New password</label>
+      <div class="entry-secret">
+        <input id="password" type="password" name="password" autocomplete="new-password" minlength={PASSWORD_MIN} required aria-describedby="pw-rule caps-note" />
+        <button type="button" class="entry-show" aria-controls="password" aria-pressed="false" data-show>Show</button>
+      </div>
+      <p id="pw-rule" class="text-[13.5px] entry-dim">At least {PASSWORD_MIN} characters. A short sentence you’ll remember works well.</p>
+      <p id="caps-note" class="entry-caps" role="status" data-caps hidden>Caps Lock is on.</p>
+    </div>
+    <div class="entry-field">
+      <label for="confirm" class="meta">Type it again</label>
+      <div class="entry-secret">
+        <input id="confirm" type="password" name="confirm" autocomplete="new-password" minlength={PASSWORD_MIN} required />
+        <button type="button" class="entry-show" aria-controls="confirm" aria-pressed="false" data-show>Show</button>
+      </div>
+    </div>
+
+    <fieldset class="entry-devices" aria-describedby="device-hint">
+      <legend class="meta">This device</legend>
+      <div class="entry-seg">
+        <label><input type="radio" name="device" value="shared" class="sr-only" checked={device === 'shared'} />Shared at the clinic</label>
+        <label><input type="radio" name="device" value="own" class="sr-only" checked={device === 'own'} />My own</label>
+      </div>
+      <p id="device-hint" class="entry-hint" data-device-hint>{device === 'own' ? 'Stays signed in for 14 days.' : 'Signs out after 12 hours.'}</p>
+    </fieldset>
+
+    {error && <p id="code-error" role="alert" class="entry-note entry-note-bad">{error}</p>}
+    <button type="submit" class="btn btn-primary entry-go" data-go data-busy="Signing in…">Set password and sign in</button>
+  </form>
+
+  <ul class="mt-6 border-t entry-rule" aria-label="Other ways in">
+    <li class="border-b entry-rule"><a href="/auth/forgot/" class="entry-way"><span><span class="text-[14.5px] font-semibold">Didn’t get a text?</span> <span class="entry-way-hint">Ask for another code.</span></span><span aria-hidden="true" class="entry-way-arrow">&rarr;</span></a></li>
+  </ul>
+  <p class="mt-4 text-[13.5px] leading-relaxed entry-dim">An invitation code from your clinic works here too — it sets your first password.</p>
+</StaffEntrance>
+
+<script>
+  // Show the password, and warn about Caps Lock: the same help as sign-in.
+  document.querySelectorAll<HTMLButtonElement>('[data-show]').forEach((btn) => {
+    const input = document.getElementById(btn.getAttribute('aria-controls') ?? '') as HTMLInputElement | null;
+    btn.addEventListener('click', () => {
+      if (!input) return;
+      const on = input.type === 'password';
+      input.type = on ? 'text' : 'password';
+      btn.textContent = on ? 'Hide' : 'Show';
+      btn.setAttribute('aria-pressed', String(on));
+      input.focus();
+    });
+  });
+  const caps = document.querySelector<HTMLElement>('[data-caps]');
+  document.querySelectorAll<HTMLInputElement>('input[type=password]').forEach((input) => {
+    const check = (e: KeyboardEvent) => { if (caps && typeof e.getModifierState === 'function') caps.hidden = !e.getModifierState('CapsLock'); };
+    input.addEventListener('keydown', check);
+    input.addEventListener('keyup', check);
+  });
+  // The line under the switch says what the chosen half does.
+  document.querySelectorAll<HTMLInputElement>('input[name=device]').forEach((r) => r.addEventListener('change', () => {
+    const own = r.value === 'own' && r.checked;
+    const hint = document.querySelector<HTMLElement>('[data-device-hint]');
+    if (hint) hint.textContent = own ? 'Stays signed in for 14 days.' : 'Signs out after 12 hours.';
+  }));
+  // One press.
+  document.querySelector<HTMLFormElement>('[data-entry-form]')?.addEventListener('submit', (e) => {
+    const go = (e.currentTarget as HTMLFormElement).querySelector<HTMLButtonElement>('[data-go]');
+    if (go) { go.disabled = true; go.textContent = go.dataset.busy ?? 'Working…'; }
+  });
+</script>

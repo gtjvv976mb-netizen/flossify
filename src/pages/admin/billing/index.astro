@@ -1,0 +1,283 @@
+---
+// Operations › Billing. Every group's plan and what it owes, from
+// admin_billing() (migration 011): a definer function that returns exactly
+// these columns, because an admin has no tenant and must not read clinic
+// tables directly. Three things a person does here, each a form post with
+// the CSRF token, each written through a definer function and recorded as an
+// auth_event ('billing.<action>', with the admin's staff id and no tenant):
+// issue this month's invoices, mark one paid against the reference they saw
+// in the account, and set a group's terms.
+//
+// A miss (a stale token, an invoice already marked, a bad number) shows one
+// plain sentence and changes nothing; a success redirects with ?done=.
+export const prerender = false;
+
+import AdminLayout from '../../../layouts/Admin.astro';
+import Csrf from '../../../components/Csrf.astro';
+import { requireAdmin } from '../../../lib/admin';
+import { csrfOk, CSRF_MESSAGE } from '../../../lib/csrf';
+import { authEvent } from '../../../lib/auth';
+import { clientIp } from '../../../lib/throttle';
+import { peso } from '../../../data/demo';
+import {
+  PLANS, PLAN_IDS, SUB_STATUSES, STATUS_WORDS, DEFAULT_PLAN, TRIAL_DAYS,
+  adminRows, allDue, notesByGroup, issueInvoices, markPaid, adminSet,
+  manilaToday, manilaDate, monthText, dayText, whenText, type PlanId, type SubStatus,
+} from '../../../lib/billing';
+
+const admin = await requireAdmin(Astro);
+if (admin instanceof Response) return admin;
+const { session } = admin;
+const here = Astro.url.pathname;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const REF_MAX = 120;
+const NOTES_MAX = 500;
+const PRICE_MAX = 99_999.99;
+
+const today = manilaToday();
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
+  const s = (k: string) => String(form.get(k) ?? '').trim();
+
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+  else if (action === 'issue') {
+    const n = await issueInvoices(today);
+    await authEvent('billing.issue', { staffId: session.staffId, ip, ua });
+    return Astro.redirect(`${here}?done=issue&n=${n}`, 303);
+  } else if (action === 'paid') {
+    const id = s('invoice'), ref = s('ref').replace(/\s+/g, ' ');
+    const inv = UUID.test(id) ? (await allDue()).find((i) => i.id === id) : undefined;
+    if (!inv) error = 'That invoice is no longer due. It may have been marked paid a moment ago; check the list.';
+    else if (!ref) error = 'Type the reference you saw in the account, so the payment can be traced later.';
+    else if (ref.length > REF_MAX) error = `Keep the reference under ${REF_MAX} characters.`;
+    else {
+      try {
+        await markPaid(inv.id, ref, session.staffId);
+      } catch {
+        error = 'That invoice is no longer due. It may have been marked paid a moment ago; check the list.';
+      }
+      if (!error) {
+        await authEvent('billing.paid', { staffId: session.staffId, ip, ua });
+        return Astro.redirect(`${here}?done=paid&number=${encodeURIComponent(inv.number)}&group=${inv.group_id}`, 303);
+      }
+    }
+  } else if (action === 'set') {
+    const group = s('group'), plan = s('plan'), status = s('status'), ends = s('trial_ends'), notes = s('notes');
+    const rawPrice = s('price');
+    const price = /^\d{1,6}(\.\d{1,2})?$/.test(rawPrice) ? Number(rawPrice) : NaN;
+    if (!UUID.test(group)) error = 'That group is not on the list.';
+    else if (!(PLAN_IDS as string[]).includes(plan)) error = 'Pick a plan from the list.';
+    else if (!(SUB_STATUSES as string[]).includes(status)) error = 'Pick a status from the list.';
+    else if (!ISO_DAY.test(ends) || Number.isNaN(Date.parse(`${ends}T00:00:00Z`))) error = 'The trial end needs a date.';
+    else if (!Number.isFinite(price) || price > PRICE_MAX) error = `Enter the price per branch in pesos, like 1990 or 1990.50 (0 to ${peso(PRICE_MAX)}).`;
+    else if (notes.length > NOTES_MAX) error = `Keep the note under ${NOTES_MAX} characters.`;
+    else {
+      // The trial ends at the end of that Manila day.
+      const trialEnds = new Date(`${ends}T23:59:59+08:00`);
+      try {
+        await adminSet(group, { plan: plan as PlanId, status: status as SubStatus, trialEnds, price: Math.round(price * 100) / 100, notes });
+      } catch {
+        error = 'That could not be saved. Check that the group still exists and try once more.';
+      }
+      if (!error) {
+        await authEvent('billing.set', { staffId: session.staffId, ip, ua });
+        return Astro.redirect(`${here}?done=set&group=${group}`, 303);
+      }
+    }
+  }
+}
+
+const [rows, due, notes] = await Promise.all([adminRows(), allDue(), notesByGroup()]);
+const dueOf = (groupId: string) => due.filter((i) => i.group_id === groupId);
+
+const q = Astro.url.searchParams;
+const openGroup = q.get('group') ?? '';
+let notice = '';
+if (!error) {
+  const done = q.get('done') ?? '';
+  const n = Number(q.get('n') ?? 0);
+  const named = rows.find((r) => r.group_id === openGroup)?.group_name ?? 'the group';
+  if (done === 'issue') notice = n > 0 ? `Issued ${n} invoice${n === 1 ? '' : 's'} for ${monthText(today)}.` : `Nothing to issue: every group past its trial already has its ${monthText(today)} invoice, or has no open branch.`;
+  else if (done === 'paid') notice = `Marked ${q.get('number') ?? 'the invoice'} paid. If nothing else of theirs was overdue, ${named} is active again.`;
+  else if (done === 'set') notice = `Saved ${named}’s terms.`;
+}
+
+const overdueCount = rows.filter((r) => r.status === 'past_due').length;
+const owedTotal = rows.reduce((n, r) => n + r.due_amount, 0);
+const plus30 = manilaDate(new Date(Date.now() + TRIAL_DAYS * 86_400_000));
+const priceHint = PLAN_IDS.map((p) => `${PLANS[p].name} ${peso(PLANS[p].perBranch)}`).join(' · ');
+
+// Status is never colour alone: every state has its words.
+const standing = (r: (typeof rows)[number]) =>
+  !r.status ? { label: 'No subscription yet', cls: 'bg-bg-soft text-muted' }
+  : r.status === 'past_due' ? { label: STATUS_WORDS.past_due, cls: 'bg-caries/15 text-caries' }
+  : r.status === 'trial' ? { label: STATUS_WORDS.trial, cls: 'bg-crown/20 text-crown' }
+  : r.status === 'cancelled' ? { label: STATUS_WORDS.cancelled, cls: 'bg-bg-soft text-muted' }
+  : { label: STATUS_WORDS.active, cls: 'bg-accent/15 text-accent' };
+
+---
+
+<AdminLayout title="Billing" section="billing" admin={{ name: admin.name }}>
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Billing</h1>
+      <p class="mt-2 max-w-[64ch] text-[15px] leading-relaxed text-ink-2">
+        Every group, what it is on and what it owes. Payments arrive by GCash, Maya or bank transfer with the invoice number as the reference; when you see one in the account, mark it here.
+      </p>
+    </div>
+    <form method="post" class="flex flex-wrap items-center gap-3">
+      <Csrf />
+      <input type="hidden" name="action" value="issue" />
+      <button type="submit" class="btn btn-primary">Issue this month’s invoices</button>
+      <span class="max-w-[28ch] text-[13px] leading-snug text-muted">For {monthText(today)}, for every group past its trial that has none yet. Safe to press twice.</span>
+    </form>
+  </div>
+
+  <p role="note" class="mt-6 max-w-[64ch] border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
+    Prices are placeholders from <span class="font-mono text-[13px]">src/lib/billing.ts</span> until the owner sets them. Per branch, per month: {priceHint}.
+  </p>
+
+  {notice && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">{notice}</p>}
+  {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
+
+  <dl class="mt-6 grid gap-4 sm:grid-cols-3">
+    <div class="border border-line bg-surface p-5">
+      <dt class="meta">Groups</dt>
+      <dd class="mt-2 font-display text-[32px] leading-none font-bold tabular-nums">{rows.length}</dd>
+    </div>
+    <div class="border border-line bg-surface p-5">
+      <dt class="meta">Payment overdue</dt>
+      <dd class="mt-2 font-display text-[32px] leading-none font-bold tabular-nums">{overdueCount}</dd>
+    </div>
+    <div class="border border-line bg-surface p-5">
+      <dt class="meta">Owed in total</dt>
+      <dd class="mt-2 font-display text-[32px] leading-none font-bold tabular-nums">{peso(owedTotal)}</dd>
+    </div>
+  </dl>
+
+  <div class="mt-8 overflow-x-auto border border-line bg-surface">
+    <table class="w-full min-w-[960px] border-collapse text-left">
+      <caption class="sr-only">Every group’s subscription, payment overdue first</caption>
+      <thead>
+        <tr class="border-b border-line bg-bg-soft">
+          <th scope="col" class="meta px-5 py-3.5">Group</th>
+          <th scope="col" class="meta px-5 py-3.5">Plan</th>
+          <th scope="col" class="meta px-5 py-3.5">Status</th>
+          <th scope="col" class="meta px-5 py-3.5 text-right">Branches</th>
+          <th scope="col" class="meta px-5 py-3.5 text-right">Owes</th>
+          <th scope="col" class="meta px-5 py-3.5">Oldest due</th>
+          <th scope="col" class="meta px-5 py-3.5">Last paid</th>
+          <th scope="col" class="meta px-5 py-3.5">Trial ends</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 && <tr><td colspan="8" class="px-5 py-4 text-[15px] text-muted">No groups with a clinic yet.</td></tr>}
+        {rows.map((r) => {
+          const st = standing(r);
+          const mine = dueOf(r.group_id);
+          const plan = r.plan ? PLANS[r.plan] : null;
+          const open = r.group_id === openGroup;
+          return (
+            <>
+              <tr class:list={['border-b border-line-2', r.status === 'past_due' && 'bg-caries/10']}>
+                <th scope="row" class="px-5 py-4 align-top">
+                  <p class="text-[15.5px] font-semibold">{r.group_name}</p>
+                  <p class="mt-0.5 text-[13px] font-normal text-ink-2">
+                    {r.owner_name ? <>{r.owner_name}{r.owner_phone && ` · ${r.owner_phone}`}{r.owner_email && ` · ${r.owner_email}`}</> : 'No owner account on file'}
+                  </p>
+                </th>
+                <td class="px-5 py-4 align-top text-[15px] text-ink-2">
+                  {plan ? <>{plan.name}<span class="block text-[13px] tabular-nums text-muted">{peso(r.price_per_branch ?? 0)} per branch</span></> : '—'}
+                </td>
+                <td class="px-5 py-4 align-top"><span class={`inline-block px-3 py-1.5 text-xs font-semibold ${st.cls}`}>{st.label}</span></td>
+                <td class="px-5 py-4 align-top text-right text-[15px] tabular-nums">{r.branches}</td>
+                <td class="px-5 py-4 align-top text-right text-[15px] tabular-nums">
+                  {r.due_count > 0 ? <><span class="font-semibold">{peso(r.due_amount)}</span><span class="block text-[13px] text-muted">{r.due_count} invoice{r.due_count === 1 ? '' : 's'}</span></> : <span class="text-muted">nothing</span>}
+                </td>
+                <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{r.oldest_due ? dayText(r.oldest_due) : '—'}</td>
+                <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{r.last_paid ? whenText(r.last_paid) : 'never'}</td>
+                <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{r.trial_ends_at ? whenText(r.trial_ends_at) : '—'}</td>
+              </tr>
+              <tr class="border-b border-line">
+                <td colspan="8" class="px-5 py-2">
+                  <details open={open}>
+                    <summary class="meta cursor-pointer list-none py-1.5 hover:text-ink">Mark paid, or set terms &darr;</summary>
+                    <div class="grid gap-6 py-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+                      <form method="post" class="grid content-start gap-3 border border-line bg-bg-soft p-4">
+                        <Csrf />
+                        <input type="hidden" name="action" value="paid" />
+                        <h3 class="font-display text-[17px] font-semibold">Mark an invoice paid</h3>
+                        {mine.length === 0 ? (
+                          <p class="text-[14px] text-muted">Nothing due from {r.group_name}.</p>
+                        ) : (
+                          <>
+                            <label class="field">
+                              <span class="meta">Invoice</span>
+                              <select name="invoice" required>
+                                {mine.map((i) => <option value={i.id}>{i.number} · {monthText(i.period_start)} · {peso(i.amount)} · due {dayText(manilaDate(i.due_at))}</option>)}
+                              </select>
+                            </label>
+                            <label class="field">
+                              <span class="meta">Reference</span>
+                              <input name="ref" required maxlength={REF_MAX} autocomplete="off" placeholder="GCash ref no., or the bank transfer reference" />
+                              <span class="text-[13px] text-muted">As it appears in the account. It shows on the clinic’s page.</span>
+                            </label>
+                            <div><button type="submit" class="btn btn-primary !px-4 !py-2 text-[13.5px]">Mark paid</button></div>
+                          </>
+                        )}
+                      </form>
+
+                      <form method="post" class="grid content-start gap-3 border border-line bg-bg-soft p-4 sm:grid-cols-2">
+                        <Csrf />
+                        <input type="hidden" name="action" value="set" />
+                        <input type="hidden" name="group" value={r.group_id} />
+                        <h3 class="font-display text-[17px] font-semibold sm:col-span-2">Terms for {r.group_name}</h3>
+                        <label class="field">
+                          <span class="meta">Plan</span>
+                          <select name="plan">
+                            {PLAN_IDS.map((p) => <option value={p} selected={(r.plan ?? DEFAULT_PLAN) === p}>{PLANS[p].name} — {PLANS[p].blurb}</option>)}
+                          </select>
+                        </label>
+                        <label class="field">
+                          <span class="meta">Status</span>
+                          <select name="status">
+                            {SUB_STATUSES.map((st2) => <option value={st2} selected={(r.status ?? 'trial') === st2}>{STATUS_WORDS[st2]}</option>)}
+                          </select>
+                        </label>
+                        <label class="field">
+                          <span class="meta">Trial ends</span>
+                          <input type="date" name="trial_ends" value={r.trial_ends_at ? manilaDate(r.trial_ends_at) : plus30} required />
+                          <span class="text-[13px] text-muted">Invoices start with the first monthly run after this day, for that whole month.</span>
+                        </label>
+                        <label class="field">
+                          <span class="meta">Price per branch</span>
+                          <input type="number" name="price" min="0" max={PRICE_MAX} step="0.01" inputmode="decimal" value={(r.price_per_branch ?? PLANS[r.plan ?? DEFAULT_PLAN].perBranch).toFixed(2)} required />
+                          <span class="text-[13px] text-muted">Placeholders: {priceHint}.</span>
+                        </label>
+                        <label class="field sm:col-span-2">
+                          <span class="meta">Notes</span>
+                          <textarea name="notes" rows="2" maxlength={NOTES_MAX} placeholder="Agreed a discount until December; owner asked to be billed quarterly…">{notes[r.group_id] ?? ''}</textarea>
+                        </label>
+                        <div class="sm:col-span-2"><button type="submit" class="btn btn-quiet !px-4 !py-2 text-[13.5px]">Save terms</button></div>
+                      </form>
+                    </div>
+                  </details>
+                </td>
+              </tr>
+            </>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="mt-4 max-w-[64ch] text-[13.5px] leading-relaxed text-muted">
+    Nothing here switches a clinic off. A late payment changes the status and the sentence the owner sees on their Billing page; every action is recorded under your name.
+  </p>
+</AdminLayout>
