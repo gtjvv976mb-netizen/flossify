@@ -7,9 +7,9 @@
 // resets; a script gets nowhere), and every attempt written to auth_event.
 export const prerender = false;
 
-import Base from '../../layouts/Base.astro';
+import StaffEntrance from '../../components/StaffEntrance.astro';
 import Csrf from '../../components/Csrf.astro';
-import { authenticate, setSession, readSession, authEvent } from '../../lib/auth';
+import { authenticate, setSession, readSession, authEvent, SESSION_HOURS, type Device } from '../../lib/auth';
 import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
 import { hit, refund, clientIp, waitText, LIMITS } from '../../lib/throttle';
 
@@ -19,6 +19,11 @@ const next = (Astro.url.searchParams.get('next') || '').match(/^\/(?:c\/[^/?#]+|
 const denied = Astro.url.searchParams.get('denied') === '1';
 const done = Astro.url.searchParams.get('done') || '';
 let error = '';
+// Which field the error is about, so the page can mark it and put the cursor there.
+let errorOn: 'password' | 'email' | null = null;
+// Echoed back after a miss, so nobody retypes an email they got right.
+let email = '';
+let device: Device = 'shared';
 
 // Already signed in and allowed through? Go where they were going.
 const existing = readSession(Astro.cookies);
@@ -26,7 +31,10 @@ if (existing && Astro.request.method === 'GET' && !denied && next) return Astro.
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const email = String(form.get('email') ?? '').trim().toLowerCase(), password = String(form.get('password') ?? '');
+  email = String(form.get('email') ?? '').trim().toLowerCase();
+  const password = String(form.get('password') ?? '');
+  // Own device: two weeks. Shared at the clinic: one shift. Anything else is shared.
+  device = form.get('device') === 'own' ? 'own' : 'shared';
   const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
   if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
   else {
@@ -38,18 +46,18 @@ if (Astro.request.method === 'POST') {
       await authEvent('login.locked', { email, ip, ua });
     } else {
       const who = await authenticate(email, password);
-      if (!who) { error = 'That email and password don’t match a staff account.'; await authEvent('login.fail', { email, ip, ua }); }
+      if (!who) { error = 'That email and password don’t match a staff account. Check the password, or reset it below.'; errorOn = 'password'; await authEvent('login.fail', { email, ip, ua }); }
       else if (!who.clinics.length && who.admin) {
         // Flossify's own people: no branch, the operations pages instead.
-        setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: '', name: who.name, role: who.role, tv: who.tv });
+        setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: '', name: who.name, role: who.role, tv: who.tv }, SESSION_HOURS[device]);
         await refund(`login:e:${email}`); await authEvent('login.ok', { email, staffId: who.staffId, ip, ua });
         return Astro.redirect(next.startsWith('/admin/') ? next : '/admin/');
       }
-      else if (!who.clinics.length) { error = 'Your account has no branch to open yet. Ask the owner to add you.'; await authEvent('login.fail', { email, staffId: who.staffId, ip, ua }); }
+      else if (!who.clinics.length) { error = 'Your account has no branch to open yet. Ask your clinic owner to add you on Settings → Team.'; errorOn = 'email'; await authEvent('login.fail', { email, staffId: who.staffId, ip, ua }); }
       else {
         const wanted = next.match(/^\/c\/([^/]+)\//)?.[1];
         const clinic = who.clinics.find((c) => c.slug === wanted) ?? who.clinics[0];
-        setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: clinic.id, name: who.name, role: who.role, tv: who.tv });
+        setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: clinic.id, name: who.name, role: who.role, tv: who.tv }, SESSION_HOURS[device]);
         await refund(`login:e:${email}`); await authEvent('login.ok', { email, staffId: who.staffId, ip, ua });
         return Astro.redirect(next && wanted === clinic.slug ? next : `/c/${clinic.slug}/`);
       }
@@ -57,34 +65,170 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const notice = done === 'password' ? 'Your password is set. Sign in with it.' : done === 'out' ? 'You are signed out.' : '';
+const notice = done === 'password' ? 'Your password is set. Sign in with it now.' : done === 'out' ? 'You are signed out. See you next shift.' : '';
+
+// Said the way the front desk would say it, by the clock in Manila.
+const hour = +new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false }).format(new Date());
+const hello = hour >= 5 && hour < 12 ? 'Good morning.' : hour >= 12 && hour < 18 ? 'Good afternoon.' : hour >= 18 && hour < 22 ? 'Good evening.' : 'Working late.';
+
+const ways = [
+  { href: '/auth/forgot/', title: 'Forgot your password?', body: 'We text a six-digit code to the mobile on your account.' },
+  { href: '/auth/code/', title: 'I have a code', body: 'From your clinic owner, or from a password reset.' },
+  { href: '/start/', title: 'Opening a new clinic?', body: 'Set it up yourself in a few minutes.' },
+];
 ---
 
-<Base title="Staff sign-in — Flossify" description="Sign in to your clinic's workspace.">
-  <main id="main" class="mx-auto max-w-[440px] px-5 py-20 sm:px-8">
-    <a href="/" class="meta hover:text-ink">&larr; Flossify</a>
-    <h1 class="mt-6 font-display text-[clamp(1.8rem,4vw,2.4rem)] leading-tight font-semibold tracking-[-0.02em]">Staff sign-in</h1>
-    <p class="mt-3 text-[15px] text-ink-2">Your clinic’s workspace. Patients don’t need an account — <a href="/find/" class="underline underline-offset-4">booking is over here</a>.</p>
+<!-- The walk plays when you arrive; a form shown again after a miss opens at the desk, where you already are. -->
+<StaffEntrance title="Staff sign-in — Flossify" description="Sign in to your clinic's workspace." walk={Astro.request.method === 'GET'}>
+  <h1 class="entry-title font-display">
+    <span class="block" data-hello>{hello}</span>
+    <span class="block text-ink-2">Sign in to your clinic.</span>
+  </h1>
+  <p class="mt-3 text-[15px] leading-relaxed text-ink-2">Today’s list opens on your branch the moment you’re in.</p>
 
-    {notice && !error && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">{notice}</p>}
-    {denied && !error && <p role="alert" class="mt-6 border border-crown/40 bg-crown/10 p-4 text-[14.5px]">You’re signed in, but not for that branch. Sign in as someone who is, or open one of yours.</p>}
-    {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
+  {notice && !error && <p role="status" class="entry-note entry-note-ok mt-6">{notice}</p>}
+  {denied && !error && <p role="alert" class="entry-note entry-note-warn mt-6">You’re signed in, but not for that branch. Sign in as someone who is, or open one of yours.</p>}
 
-    <form method="post" class="mt-8 grid gap-4">
-      <Csrf />
-      <label class="field"><span class="meta">Email</span><input type="email" name="email" autocomplete="username" required autofocus /></label>
-      <label class="field"><span class="meta">Password</span><input type="password" name="password" autocomplete="current-password" required /></label>
-      <button type="submit" class="btn btn-primary mt-2">Sign in</button>
-    </form>
+  <form method="post" class="mt-7 grid gap-5" data-signin>
+    <Csrf />
 
-    <div class="mt-8 grid gap-2 border-t border-line pt-6 text-[14px]">
-      <a href="/auth/forgot/" class="underline underline-offset-4">Forgot your password? We’ll text you a code.</a>
-      <a href="/auth/code/" class="underline underline-offset-4">I have a code from my clinic.</a>
-      <a href="/start/" class="text-ink-2 underline underline-offset-4">New clinic? Set it up in a few minutes.</a>
+    <div class="entry-field">
+      <label for="email" class="meta">Email</label>
+      <input id="email" type="email" name="email" value={email} autocomplete="username" inputmode="email" spellcheck="false"
+        required autofocus={errorOn !== 'password'} aria-invalid={errorOn === 'email' ? 'true' : undefined}
+        aria-describedby={error ? 'signin-error' : undefined} data-email />
+      <button type="button" class="entry-link" hidden data-not-you>Not you? Use another email</button>
     </div>
 
-    <p class="mt-8 text-[13.5px] leading-relaxed text-muted">
-      Development database: every group owner is seeded with the password <code class="font-mono">flossify</code>, e.g. <code class="font-mono">liwayway.domingo@example.com</code>. Remove this note before anyone real signs in.
+    <div class="entry-field">
+      <label for="password" class="meta">Password</label>
+      <div class="entry-secret">
+        <input id="password" type="password" name="password" autocomplete="current-password" required
+          autofocus={errorOn === 'password'} aria-invalid={errorOn === 'password' ? 'true' : undefined}
+          aria-describedby={['caps-note', error && 'signin-error'].filter(Boolean).join(' ')} data-password />
+        <button type="button" class="entry-show" aria-controls="password" aria-pressed="false" data-show>Show</button>
+      </div>
+      <p id="caps-note" class="entry-caps" role="status" data-caps hidden>Caps Lock is on.</p>
+    </div>
+
+    <fieldset class="entry-devices">
+      <legend class="meta">This device</legend>
+      <label class="entry-device">
+        <input type="radio" name="device" value="shared" class="sr-only" checked={device === 'shared'} data-device />
+        <span class="entry-device-title">Shared at the clinic</span>
+        <span class="entry-device-body">Signs out after 12 hours. Nothing remembered.</span>
+      </label>
+      <label class="entry-device">
+        <input type="radio" name="device" value="own" class="sr-only" checked={device === 'own'} data-device />
+        <span class="entry-device-title">My own</span>
+        <span class="entry-device-body">Stays signed in for 14 days. Remembers my email.</span>
+      </label>
+    </fieldset>
+
+    {error && <p id="signin-error" role="alert" class="entry-note entry-note-bad">{error}</p>}
+    <p class="entry-note entry-note-warn" role="status" data-offline-note hidden>This device is offline. Sign-in needs a signal; the button works again as soon as it’s back.</p>
+
+    <button type="submit" class="btn btn-primary entry-go" data-go>Sign in</button>
+  </form>
+
+  <p class="meta mt-9">Other ways in</p>
+  <ul class="mt-3 border-t border-line">
+    {ways.map((w) => (
+      <li class="border-b border-line">
+        <a href={w.href} class="entry-way">
+          <span>
+            <span class="block text-[15.5px] font-semibold text-ink">{w.title}</span>
+            <span class="mt-0.5 block text-[14px] text-ink-2">{w.body}</span>
+          </span>
+          <span aria-hidden="true" class="entry-way-arrow">&rarr;</span>
+        </a>
+      </li>
+    ))}
+  </ul>
+
+  <details class="entry-dev mt-8">
+    <summary class="meta">Development database</summary>
+    <p class="mt-2 text-[13.5px] leading-relaxed text-ink-2">
+      Every group owner is seeded with the password <code class="font-mono">flossify</code> — for example <code class="font-mono">liwayway.domingo@example.com</code>. Operations: <code class="font-mono">ops@flossify.example</code>. Remove this before anyone real signs in.
     </p>
-  </main>
-</Base>
+  </details>
+</StaffEntrance>
+
+<script>
+  /* Everything here makes the form kinder; none of it is needed to sign in.
+     With scripts off it is a plain form that posts. */
+  const form = document.querySelector<HTMLFormElement>('[data-signin]');
+  const email = document.querySelector<HTMLInputElement>('[data-email]');
+  const password = document.querySelector<HTMLInputElement>('[data-password]');
+  const notYou = document.querySelector<HTMLButtonElement>('[data-not-you]');
+  const show = document.querySelector<HTMLButtonElement>('[data-show]');
+  const caps = document.querySelector<HTMLElement>('[data-caps]');
+  const go = document.querySelector<HTMLButtonElement>('[data-go]');
+  const offlineNote = document.querySelector<HTMLElement>('[data-offline-note]');
+  const radios = Array.from(document.querySelectorAll<HTMLInputElement>('[data-device]'));
+  const KEY = 'flossify:staff-email', DEVICE = 'flossify:device';
+
+  // Storage can be blocked (private mode, a locked-down clinic PC); every use tolerates that.
+  const read = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const write = (k: string, v: string | null) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* fine */ } };
+
+  const chosen = () => radios.find((r) => r.checked)?.value === 'own' ? 'own' : 'shared';
+  const longRead = document.querySelector<HTMLElement>('[data-device-long]'), shortRead = document.querySelector<HTMLElement>('[data-device-short]');
+  const paintDevice = () => {
+    const own = chosen() === 'own';
+    if (longRead) longRead.textContent = own ? 'My own — stays signed in' : 'Shared at the clinic';
+    if (shortRead) shortRead.textContent = own ? 'My own' : 'Shared';
+  };
+
+  // This device's last choice, and — only on someone's own device — their email.
+  const savedDevice = read(DEVICE);
+  if (savedDevice === 'own' && !form?.querySelector('[role=alert]')) radios.forEach((r) => { r.checked = r.value === 'own'; });
+  const saved = read(KEY);
+  if (saved && chosen() === 'own' && email && !email.value) {
+    email.value = saved;
+    if (notYou) notYou.hidden = false;
+    password?.focus();
+  }
+  paintDevice();
+  radios.forEach((r) => r.addEventListener('change', paintDevice));
+
+  notYou?.addEventListener('click', () => {
+    write(KEY, null);
+    if (email) { email.value = ''; email.focus(); }
+    notYou.hidden = true;
+  });
+
+  // Show the password: typing on a tablet at the chair, with gloves just off.
+  show?.addEventListener('click', () => {
+    if (!password) return;
+    const on = password.type === 'password';
+    password.type = on ? 'text' : 'password';
+    show.textContent = on ? 'Hide' : 'Show';
+    show.setAttribute('aria-pressed', String(on));
+    password.focus();
+  });
+
+  // Caps Lock: the commonest reason a right password is wrong.
+  const capsCheck = (e: KeyboardEvent) => { if (caps && typeof e.getModifierState === 'function') caps.hidden = !e.getModifierState('CapsLock'); };
+  password?.addEventListener('keydown', capsCheck);
+  password?.addEventListener('keyup', capsCheck);
+  password?.addEventListener('blur', () => { if (caps) caps.hidden = true; });
+
+  // After a wrong password: keep the email, empty the password, cursor in it.
+  if (form?.querySelector('[aria-invalid="true"][data-password]') && password) { password.value = ''; password.focus(); }
+
+  // Offline: say so, and hold the button until the signal is back.
+  document.addEventListener('entrance:net', (e) => {
+    const off = (e as CustomEvent<{ offline: boolean }>).detail.offline;
+    if (offlineNote) offlineNote.hidden = !off;
+    if (go) go.disabled = off;
+  });
+  if (!navigator.onLine) { if (offlineNote) offlineNote.hidden = false; if (go) go.disabled = true; }
+
+  // One press, one sign-in.
+  form?.addEventListener('submit', () => {
+    write(DEVICE, chosen());
+    write(KEY, chosen() === 'own' && email?.value ? email.value.trim().toLowerCase() : null);
+    if (go) { go.disabled = true; go.textContent = 'Signing in…'; }
+  });
+</script>

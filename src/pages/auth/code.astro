@@ -12,9 +12,9 @@
 // wrong code, so the form cannot be used to find out which numbers are staff.
 export const prerender = false;
 
-import Base from '../../layouts/Base.astro';
+import StaffEntrance from '../../components/StaffEntrance.astro';
 import Csrf from '../../components/Csrf.astro';
-import { staffByPhone, setPassword, whoFor, setSession, passwordProblem, PASSWORD_MIN, authEvent } from '../../lib/auth';
+import { staffByPhone, setPassword, whoFor, setSession, passwordProblem, PASSWORD_MIN, authEvent, SESSION_HOURS, type Device } from '../../lib/auth';
 import { pool } from '../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
 import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
@@ -24,6 +24,7 @@ import { normalizePhone, PH_MOBILE, prettyPhone } from '../../lib/messages';
 const sent = Astro.url.searchParams.get('sent') === '1';
 let typed = prettyPhone(Astro.url.searchParams.get('phone') ?? '');
 let error = '';
+let device: Device = 'shared';
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -31,6 +32,7 @@ if (Astro.request.method === 'POST') {
   const phone = normalizePhone(typed);
   const code = String(form.get('code') ?? '').replace(/\D/g, '');
   const password = String(form.get('password') ?? ''), confirm = String(form.get('confirm') ?? '');
+  device = form.get('device') === 'own' ? 'own' : 'shared';
   const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
   if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
   else if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
@@ -61,7 +63,7 @@ if (Astro.request.method === 'POST') {
         const who = await whoFor({ id: staff.id, group_id: staff.group_id, full_name: staff.full_name, role: staff.role, token_version: tv, home_clinic_id: staff.home_clinic_id });
         if (who.clinics.length) {
           const clinic = who.clinics[0];
-          setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: clinic.id, name: who.name, role: who.role, tv: who.tv });
+          setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: clinic.id, name: who.name, role: who.role, tv: who.tv }, SESSION_HOURS[device]);
           return Astro.redirect(`/c/${clinic.slug}/`, 303);
         }
         return Astro.redirect('/auth/login/?done=password', 303);
@@ -71,27 +73,98 @@ if (Astro.request.method === 'POST') {
 }
 ---
 
-<Base title="I have a code — Flossify" description="Enter the six-digit code we texted you and set your password.">
-  <main id="main" class="mx-auto max-w-[440px] px-5 py-20 sm:px-8">
-    <a href="/auth/login/" class="meta hover:text-ink">&larr; Staff sign-in</a>
-    <h1 class="mt-6 font-display text-[clamp(1.8rem,4vw,2.4rem)] leading-tight font-semibold tracking-[-0.02em]">I have a code</h1>
-    <p class="mt-3 text-[15px] text-ink-2">Enter the six digits we texted you and choose a password. You’ll be signed in straight away.</p>
+<StaffEntrance title="I have a code — Flossify" description="Enter the six-digit code we texted you and set your password.">
+  <a href="/auth/login/" class="meta hover:text-ink">&larr; Staff sign-in</a>
+  <h1 class="entry-title font-display mt-5">
+    <span class="block">Almost in.</span>
+    <span class="block text-ink-2">Enter your code.</span>
+  </h1>
+  <p class="mt-3 text-[15px] leading-relaxed text-ink-2">The six digits we texted, and a password you’ll remember. You’re signed in straight away.</p>
 
-    {sent && !error && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">If that number belongs to a staff account, a code is on its way. It works for 15 minutes.</p>}
-    {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
+  {sent && !error && <p role="status" class="entry-note entry-note-ok mt-6">If that number belongs to a staff account, a code is on its way. It works for 15 minutes.</p>}
 
-    <form method="post" class="mt-8 grid gap-4">
-      <Csrf />
-      <label class="field"><span class="meta">Mobile number</span><input type="tel" name="phone" autocomplete="tel" placeholder="0917 000 0000" value={typed} required autofocus={!typed} /></label>
-      <label class="field"><span class="meta">Code</span><input type="text" name="code" inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="6 digits" required autofocus={!!typed} /></label>
-      <label class="field"><span class="meta">New password</span><input type="password" name="password" autocomplete="new-password" minlength={PASSWORD_MIN} required /></label>
-      <label class="field"><span class="meta">Confirm password</span><input type="password" name="confirm" autocomplete="new-password" minlength={PASSWORD_MIN} required /></label>
-      <button type="submit" class="btn btn-primary mt-2">Set password and sign in</button>
-    </form>
-
-    <div class="mt-8 grid gap-2 border-t border-line pt-6 text-[14px]">
-      <a href="/auth/forgot/" class="underline underline-offset-4">Didn’t get a text? Ask again.</a>
-      <p class="text-ink-2">An invitation code from your clinic works here too. It sets your first password.</p>
+  <form method="post" class="mt-7 grid gap-5" data-entry-form>
+    <Csrf />
+    <div class="entry-field">
+      <label for="phone" class="meta">Mobile number</label>
+      <input id="phone" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0917 000 0000" value={typed} required autofocus={!typed} />
     </div>
-  </main>
-</Base>
+    <div class="entry-field">
+      <label for="code" class="meta">Code</label>
+      <input id="code" type="text" name="code" class="entry-code" inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="000000" required autofocus={!!typed}
+        aria-invalid={error ? 'true' : undefined} aria-describedby={error ? 'code-error' : undefined} />
+    </div>
+    <div class="entry-field">
+      <label for="password" class="meta">New password</label>
+      <div class="entry-secret">
+        <input id="password" type="password" name="password" autocomplete="new-password" minlength={PASSWORD_MIN} required aria-describedby="pw-rule caps-note" />
+        <button type="button" class="entry-show" aria-controls="password" aria-pressed="false" data-show>Show</button>
+      </div>
+      <p id="pw-rule" class="text-[13.5px] text-ink-2">At least {PASSWORD_MIN} characters. A short sentence you’ll remember works well.</p>
+      <p id="caps-note" class="entry-caps" role="status" data-caps hidden>Caps Lock is on.</p>
+    </div>
+    <div class="entry-field">
+      <label for="confirm" class="meta">Type it again</label>
+      <div class="entry-secret">
+        <input id="confirm" type="password" name="confirm" autocomplete="new-password" minlength={PASSWORD_MIN} required />
+        <button type="button" class="entry-show" aria-controls="confirm" aria-pressed="false" data-show>Show</button>
+      </div>
+    </div>
+
+    <fieldset class="entry-devices">
+      <legend class="meta">This device</legend>
+      <label class="entry-device">
+        <input type="radio" name="device" value="shared" class="sr-only" checked={device === 'shared'} />
+        <span class="entry-device-title">Shared at the clinic</span>
+        <span class="entry-device-body">Signs out after 12 hours.</span>
+      </label>
+      <label class="entry-device">
+        <input type="radio" name="device" value="own" class="sr-only" checked={device === 'own'} />
+        <span class="entry-device-title">My own</span>
+        <span class="entry-device-body">Stays signed in for 14 days.</span>
+      </label>
+    </fieldset>
+
+    {error && <p id="code-error" role="alert" class="entry-note entry-note-bad">{error}</p>}
+    <button type="submit" class="btn btn-primary entry-go" data-go data-busy="Signing in…">Set password and sign in</button>
+  </form>
+
+  <p class="meta mt-9">Other ways in</p>
+  <ul class="mt-3 border-t border-line">
+    <li class="border-b border-line"><a href="/auth/forgot/" class="entry-way"><span><span class="block text-[15.5px] font-semibold text-ink">Didn’t get a text?</span><span class="mt-0.5 block text-[14px] text-ink-2">Ask for another code.</span></span><span aria-hidden="true" class="entry-way-arrow">&rarr;</span></a></li>
+  </ul>
+  <p class="mt-5 text-[14px] leading-relaxed text-ink-2">An invitation code from your clinic works here too — it sets your first password.</p>
+</StaffEntrance>
+
+<script>
+  // Show the password, and warn about Caps Lock: the same help as sign-in.
+  document.querySelectorAll<HTMLButtonElement>('[data-show]').forEach((btn) => {
+    const input = document.getElementById(btn.getAttribute('aria-controls') ?? '') as HTMLInputElement | null;
+    btn.addEventListener('click', () => {
+      if (!input) return;
+      const on = input.type === 'password';
+      input.type = on ? 'text' : 'password';
+      btn.textContent = on ? 'Hide' : 'Show';
+      btn.setAttribute('aria-pressed', String(on));
+      input.focus();
+    });
+  });
+  const caps = document.querySelector<HTMLElement>('[data-caps]');
+  document.querySelectorAll<HTMLInputElement>('input[type=password]').forEach((input) => {
+    const check = (e: KeyboardEvent) => { if (caps && typeof e.getModifierState === 'function') caps.hidden = !e.getModifierState('CapsLock'); };
+    input.addEventListener('keydown', check);
+    input.addEventListener('keyup', check);
+  });
+  // The rail says which device this is.
+  const longRead = document.querySelector<HTMLElement>('[data-device-long]'), shortRead = document.querySelector<HTMLElement>('[data-device-short]');
+  document.querySelectorAll<HTMLInputElement>('input[name=device]').forEach((r) => r.addEventListener('change', () => {
+    const own = r.value === 'own' && r.checked;
+    if (longRead) longRead.textContent = own ? 'My own — stays signed in' : 'Shared at the clinic';
+    if (shortRead) shortRead.textContent = own ? 'My own' : 'Shared';
+  }));
+  // One press.
+  document.querySelector<HTMLFormElement>('[data-entry-form]')?.addEventListener('submit', (e) => {
+    const go = (e.currentTarget as HTMLFormElement).querySelector<HTMLButtonElement>('[data-go]');
+    if (go) { go.disabled = true; go.textContent = go.dataset.busy ?? 'Working…'; }
+  });
+</script>

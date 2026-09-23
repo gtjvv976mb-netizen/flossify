@@ -44,9 +44,14 @@ export interface Session { staffId: string; groupId: string; clinicId: string; n
 
 const sign = (body: string) => createHmac('sha256', SECRET!).update(body).digest('base64url');
 
-export function setSession(cookies: AstroCookies, s: Omit<Session, 'exp'>) {
-  const body = Buffer.from(JSON.stringify({ ...s, exp: Date.now() + DAYS * 86_400_000 })).toString('base64url');
-  cookies.set(COOKIE, `${body}.${sign(body)}`, { httpOnly: true, sameSite: 'lax', secure: import.meta.env.PROD, path: '/', maxAge: DAYS * 86_400 });
+/** How long a sign-in lasts, by the device it happens on. A clinic's front-desk
+ *  computer is shared by a shift; a dentist's own phone is not. */
+export const SESSION_HOURS = { own: DAYS * 24, shared: 12 } as const;
+export type Device = keyof typeof SESSION_HOURS;
+
+export function setSession(cookies: AstroCookies, s: Omit<Session, 'exp'>, hours: number = SESSION_HOURS.own) {
+  const body = Buffer.from(JSON.stringify({ ...s, exp: Date.now() + hours * 3_600_000 })).toString('base64url');
+  cookies.set(COOKIE, `${body}.${sign(body)}`, { httpOnly: true, sameSite: 'lax', secure: import.meta.env.PROD, path: '/', maxAge: hours * 3_600 });
 }
 
 export function clearSession(cookies: AstroCookies) {

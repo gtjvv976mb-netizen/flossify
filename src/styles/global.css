@@ -845,6 +845,84 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
 /* The last thing on the page clears the rail. */
 .film-clear { padding-bottom: var(--rail-h); }
 
+
+/* ===========================================================================
+   The staff entrance — sign-in, forgot, I have a code (StaffEntrance.astro)
+   ---------------------------------------------------------------------------
+   Built for a front desk between patients and a dentist with gloves just
+   off: 16px fields that phones do not zoom into, targets at least 52px tall,
+   a Show button on the password, a Caps Lock line, and one choice that
+   matters on a clinic computer — shared or my own.
+   =========================================================================== */
+.entry-title { font-size: clamp(1.9rem, 3.2vw, 2.45rem); line-height: 1.08; font-weight: 600; letter-spacing: -0.025em; }
+
+.entry-field { display: grid; gap: 0.45rem; }
+.entry-field input {
+  width: 100%; min-height: 3.35rem; padding: 0.75rem 0.95rem;
+  font-size: 1rem; /* 16px: phones do not zoom into the field */
+  color: var(--c-ink); background: var(--c-surface);
+  border: 1px solid var(--c-line); border-radius: 0;
+}
+.entry-field input:hover { border-color: var(--c-muted); }
+.entry-field input:focus { outline: 2px solid var(--c-accent); outline-offset: 1px; border-color: var(--c-ink); }
+.entry-field input[aria-invalid="true"] { border-color: var(--c-caries); }
+
+.entry-secret { position: relative; }
+.entry-secret input { padding-right: 5rem; }
+.entry-show {
+  position: absolute; top: 0.4rem; right: 0.4rem; bottom: 0.4rem;
+  padding: 0 0.9rem; border: 1px solid var(--c-line); background: var(--c-bg-soft);
+  font-size: 13.5px; font-weight: 600; color: var(--c-ink); cursor: pointer;
+}
+.entry-show:hover { border-color: var(--c-ink); }
+.entry-show:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
+.entry-field input.entry-code { font-family: var(--font-mono); font-size: 1.35rem; letter-spacing: 0.35em; }
+.entry-caps { font-size: 13.5px; font-weight: 600; color: var(--c-crown); }
+
+.entry-link { justify-self: start; font-size: 13.5px; color: var(--c-ink-2); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; background: none; border: 0; padding: 0.15rem 0; }
+.entry-link:hover { color: var(--c-accent); }
+
+.entry-devices { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; border: 0; padding: 0; margin: 0; }
+.entry-devices legend { margin-bottom: 0.45rem; }
+.entry-device {
+  display: grid; gap: 0.25rem; align-content: start;
+  padding: 0.85rem 0.95rem 0.9rem; min-height: 5.25rem;
+  border: 1px solid var(--c-line); background: var(--c-surface); cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+.entry-device:hover { border-color: var(--c-muted); }
+.entry-device-title { display: flex; align-items: center; gap: 0.5rem; font-size: 15px; font-weight: 600; color: var(--c-ink); }
+/* The mark: an empty square, filled when chosen. Square, like everything here. */
+.entry-device-title::before { content: ""; width: 0.8rem; height: 0.8rem; border: 1.5px solid var(--c-muted); flex: none; }
+.entry-device-body { font-size: 13.5px; line-height: 1.4; color: var(--c-ink-2); }
+.entry-device:has(:checked) { border-color: var(--c-accent); background: color-mix(in srgb, var(--c-accent) 7%, var(--c-surface)); }
+.entry-device:has(:checked) .entry-device-title::before { background: var(--c-accent); border-color: var(--c-accent); }
+.entry-device:has(:focus-visible) { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+
+.entry-go { width: 100%; min-height: 3.6rem; font-size: 1rem; }
+.entry-go[disabled] { opacity: 0.55; cursor: progress; }
+
+.entry-note { border: 1px solid; padding: 0.85rem 1rem; font-size: 14.5px; line-height: 1.45; }
+.entry-note-ok { border-color: color-mix(in srgb, var(--c-accent) 45%, transparent); background: color-mix(in srgb, var(--c-accent) 9%, transparent); }
+.entry-note-warn { border-color: color-mix(in srgb, var(--c-crown) 45%, transparent); background: color-mix(in srgb, var(--c-crown) 10%, transparent); }
+.entry-note-bad { border-color: color-mix(in srgb, var(--c-caries) 45%, transparent); background: color-mix(in srgb, var(--c-caries) 9%, transparent); }
+
+.entry-way { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.95rem 0.1rem; }
+.entry-way-arrow { font-size: 1.1rem; color: var(--c-muted); transition: transform 180ms ease, color 180ms ease; }
+.entry-way:hover .entry-way-arrow, .entry-way:focus-visible .entry-way-arrow { transform: translateX(4px); color: var(--c-accent); }
+.entry-way:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+
+.entry-dev summary { cursor: pointer; list-style: none; }
+.entry-dev summary::-webkit-details-marker { display: none; }
+.entry-dev summary::after { content: " +"; }
+.entry-dev[open] summary::after { content: " \2212"; }
+
+@media (max-width: 420px) {
+  .entry-devices { grid-template-columns: 1fr; }
+  .entry-device { min-height: 0; }
+}
+  
+
 }  /* end @layer components */
 
 /* The rail's height, read by everything that has to clear it. */

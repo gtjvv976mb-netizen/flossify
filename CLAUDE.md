@@ -153,6 +153,32 @@ Rules that still hold there:
   `js/app.js` is a constant `false` (kept rather than deleted at twenty call
   sites) and the stylesheet has no reduced-motion block.
 
+## The staff entrance — `/auth/login/`, `/auth/forgot/`, `/auth/code/`
+
+All three share `src/components/StaffEntrance.astro`: the clinic from the
+home page's film behind, a paper pane with the form on the right, a readout
+rail fixed to the foot. On sign-in the camera walks from the front door
+(2.0s) to the reception desk (9.0s) at 0.85× and holds there — you sign in
+at the front desk; a form shown again after a miss, and the other two pages,
+open already at the desk (`signin-door-1440.webp`, `signin-desk-*.webp` are
+the film's own frames).
+
+Built for a front desk between patients and a dentist with gloves just off:
+- **Fields 54px tall at 16px** (phones do not zoom), the button 59px, all
+  measured. A **Show** button on every password, a **Caps Lock** line.
+- **This device: Shared at the clinic / My own.** Shared signs out after 12
+  hours and remembers nothing; own lasts 14 days and remembers the email on
+  that device only (`SESSION_HOURS` in `auth.ts`, the cookie's `maxAge`
+  follows). Shared is the default, because a clinic computer usually is.
+- After a wrong password the email stays, the password empties, the cursor
+  is in it, and the sentence sits right above the button.
+- **The rail is true or it is not there:** Manila time, whether this device is
+  online (offline disables the button and says why — brownouts are real),
+  and which device choice is in force. No invented status.
+- Fits a 1366×768 clinic monitor without scrolling to the button; the rail
+  goes back into the flow on phones so it never sits over the keyboard.
+- `entrance-check.mjs` in the session scratchpad measures all of it.
+
 ## The patient side — `/find/`
 
 Built from `docs/service-map.md`. Rules that shaped it, and that hold:
