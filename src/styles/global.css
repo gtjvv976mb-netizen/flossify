@@ -681,12 +681,19 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
 }
 
 /* ===========================================================================
-   the tour — a single scrubbed take
+   The film
+   ---------------------------------------------------------------------------
+   One continuous 30-second shot walking in from the pavement to the chair,
+   fixed behind the whole page. Scroll position over the *entire document*
+   maps to the video's currentTime: the top of the page is the pavement, the
+   footer is the chair, and every section between is a page standing in
+   whichever room the camera has reached. The visitor sets their own pace:
+   stop, and they stop; scroll back, and they walk back out. The page never
+   takes the wheel.
 
-   One continuous 30-second shot walking in from the pavement to the chair. Scroll
-   position maps to the video's currentTime, so the visitor sets their own
-   pace through the clinic: stop, and they stop; scroll back, and they walk
-   back out. The page never takes the wheel.
+   The scrub is driven only by the visitor's own scrolling, so it is not
+   gated by Reduce Motion — nothing here moves on its own. The autonomous
+   motions (reveals, the ticker, transitions) stay gated above.
 
    The film is a real take rather than five stills cross-faded, which is why
    nothing here scales or cross-dissolves: the forward motion is in the
@@ -694,46 +701,57 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
    =========================================================================== */
 @layer components {
 
-.film { height: calc(var(--screens, 6) * 100vh); }
-
-.film-stage {
-  position: sticky;
-  top: 0;
-  height: 100vh;
+.film-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   overflow: hidden;
-  background: var(--c-ink);
+  background: #07100f;
 }
-
-.film-video {
+.film-video, .film-poster {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* Decoding a seek on the compositor rather than repainting the section. */
-  will-change: contents;
 }
-
-/* The poster shows until the film can play, so the section is never a black
-   hole on a slow connection. It is the film's own first frame. */
-.film-poster {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: opacity 400ms ease;
-}
+/* The poster is the film's own first frame. It shows until a real frame has
+   been decoded behind it, so the page is never a black hole on a slow
+   connection. */
+.film-poster { z-index: 1; transition: opacity 400ms ease; }
 .film-poster[data-hide] { opacity: 0; }
 
-/* Captions sit on the footage, so they need their own ground. A gradient
-   only on the side the text occupies keeps the rest of the frame clean. */
-/* Two passes, not one. A single left-to-right gradient left the caption at
-   about 2:1 against the bright terrazzo floor; the second pass darkens the
-   bottom so the waypoint rail keeps its footing on a lit frame too. */
-.film-scrim {
+/* A page: a section standing on the film. The block padding is the gap
+   between panes where the footage shows in full — it is how the visitor
+   watches the rooms change between one page and the next. */
+.page { position: relative; padding-block: clamp(4rem, 14vh, 9rem); }
+
+/* Paper on the footage. No radius, no shadow: a hairline and the ground. */
+.pane {
+  background: var(--c-bg);
+  border: 1px solid var(--c-line);
+  padding: clamp(1.5rem, 3.5vw, 3.25rem);
+}
+
+/* The opening and the close sit straight on the footage in light type, with
+   a scrim only where the type is. Two passes, not one: a single left-to-right
+   gradient left the caption at about 2:1 against the bright terrazzo floor;
+   the second pass darkens the bottom so the rail keeps its footing on a lit
+   frame too. */
+.page-hero, .page-cta { color: #f2f2ef; }
+.page-hero {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  align-items: center;
+  padding-block: 5rem calc(var(--rail-h) + 2rem);
+}
+.page-cta { padding-block: clamp(6rem, 22vh, 14rem); }
+.page-hero::before, .page-cta::before {
+  content: "";
   position: absolute;
   inset: 0;
+  pointer-events: none;
   background:
     linear-gradient(
       100deg,
@@ -749,35 +767,43 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
       transparent 28%
     );
 }
+/* The light-mode accent is a deep teal — unreadable on footage. On the film
+   the accent has to be the bright one regardless of theme. */
+.page-hero .meta-accent, .page-cta .meta-accent { color: #7df0b4; }
 
-.film-caps { position: absolute; inset: 0; }
-.film-cap {
+/* The buttons on the footage take the light ground regardless of theme.
+   Still square, still flat. */
+.btn-film { background: #f2f2ef; color: #0e0f0f; border-color: #f2f2ef; }
+.btn-film:hover { background: #7df0b4; border-color: #7df0b4; color: #0e0f0f; }
+.btn-film-quiet { background: transparent; color: #f2f2ef; border-color: color-mix(in srgb, #f2f2ef 46%, transparent); }
+.btn-film-quiet:hover { border-color: #f2f2ef; }
+
+/* A hint that the film answers to scrolling, shown only until it does. */
+.film-hint {
   position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  max-width: 34rem;
-  padding: 0 1.25rem;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 450ms ease, visibility 450ms;
-  color: #f2f2ef;
+  right: 1.5rem;
+  bottom: calc(var(--rail-h) + 1rem);
+  color: color-mix(in srgb, #f2f2ef 72%, transparent);
+  transition: opacity 400ms ease;
 }
-.film-cap[data-on] { opacity: 1; visibility: visible; }
+.film-hint[data-hide] { opacity: 0; }
 
-/* The light-mode accent is a deep teal — unreadable on footage. Inside the
-   film the accent has to be the bright one regardless of theme. */
-.film-cap .meta-accent { color: #7df0b4; }
-@media (min-width: 640px) { .film-cap { padding: 0 2rem; } }
-
+/* The rail: where the camera is, fixed to the foot of the viewport for the
+   whole walk. The current room carries one line of the patient's morning. */
 .film-rail {
-  position: absolute;
+  position: fixed;
   inset-inline: 0;
   bottom: 0;
+  z-index: 30;
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
+  min-height: var(--rail-h);
   border-top: 1px solid color-mix(in srgb, #f2f2ef 26%, transparent);
+  background: color-mix(in srgb, #07100f 80%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #f2f2ef;
 }
 .film-stop {
   position: relative;
@@ -794,59 +820,37 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
   inset-inline: 0;
   top: -1px;
   height: 1px;
-  background: var(--c-accent);
+  background: #7df0b4;
   transform: scaleX(0);
   transform-origin: left center;
   transition: transform 300ms ease;
 }
 .film-stop[data-on]::before { transform: scaleX(1); }
+.film-stop-body {
+  display: none;
+  margin-top: 0.45rem;
+  max-width: 44ch;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: color-mix(in srgb, #f2f2ef 84%, transparent);
+}
+@media (min-width: 1024px) {
+  .film-stop { padding: 1rem 1.25rem; }
+  .film-stop[data-on] .film-stop-body { display: block; }
+}
 /* Four labels do not fit a phone's width without wrapping into the hint, so
    the rail keeps only its letters there; the letters are the waypoints. */
 @media (max-width: 639px) {
   .film-stop { padding: 0.75rem 0.9rem; }
-  .film-stop-label { display: none; }
-  .film-hint { right: 1rem; bottom: 3.6rem; }
+  .film-stop-label, .film-stop-time { display: none; }
+  .film-hint { right: 1rem; }
 }
 
-/* The two buttons inside the opening caption sit on footage under the scrim,
-   so they take the light ground regardless of theme. Still square, still flat. */
-.btn-film { background: #f2f2ef; color: #0e0f0f; border-color: #f2f2ef; }
-.btn-film:hover { background: #7df0b4; border-color: #7df0b4; color: #0e0f0f; }
-.btn-film-quiet { background: transparent; color: #f2f2ef; border-color: color-mix(in srgb, #f2f2ef 46%, transparent); }
-.btn-film-quiet:hover { border-color: #f2f2ef; }
-
-/* A hint that the film answers to scrolling, shown only until it does. */
-.film-hint {
-  position: absolute;
-  right: 1.5rem;
-  bottom: 4.5rem;
-  color: color-mix(in srgb, #f2f2ef 72%, transparent);
-  transition: opacity 400ms ease;
-}
-.film-hint[data-hide] { opacity: 0; }
+/* The last thing on the page clears the rail. */
+.film-clear { padding-bottom: var(--rail-h); }
 
 }  /* end @layer components */
 
-/* Without the travel there is nothing to scrub, so the section becomes an
-   ordinary stack: the poster frame, then the same captions as text. */
-@media (prefers-reduced-motion: reduce) {
-  html:not(.force-motion) .film { height: auto; }
-  html:not(.force-motion) .film-stage { position: static; height: auto; overflow: visible; background: var(--c-bg); }
-  html:not(.force-motion) .film-video, html:not(.force-motion) .film-scrim, html:not(.force-motion) .film-rail, html:not(.force-motion) .film-hint { display: none; }
-  html:not(.force-motion) .film-poster { position: static; height: auto; aspect-ratio: 16 / 9; }
-  html:not(.force-motion) .film-caps { position: static; }
-  html:not(.force-motion) .film-cap {
-    position: static;
-    transform: none;
-    opacity: 1;
-    visibility: visible;
-    max-width: 60ch;
-    color: var(--c-ink);
-    padding: 2rem 1.25rem 0;
-    border-top: 1px solid var(--c-line);
-    margin-top: 2rem;
-  }
-  /* Back on the page ground, the film buttons become the ordinary pair. */
-  html:not(.force-motion) .btn-film { background: var(--c-ink); color: var(--c-bg); border-color: var(--c-ink); }
-  html:not(.force-motion) .btn-film-quiet { color: var(--c-ink); border-color: var(--c-line); }
-}
+/* The rail's height, read by everything that has to clear it. */
+:root { --rail-h: 3rem; }
+@media (min-width: 1024px) { :root { --rail-h: 6.5rem; } }
