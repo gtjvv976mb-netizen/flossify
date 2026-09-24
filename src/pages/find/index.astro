@@ -96,7 +96,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
       </div>
     </form>
 
-    <p class="meta mt-6" data-count aria-live="polite">{listings.length} clinics</p>
+    <p class="meta mt-6" data-count aria-live="polite">{listings.length === 1 ? '1 clinic' : `${listings.length} clinics`}</p>
 
     <!-- Results -->
     <ul class="mt-3 grid gap-4" data-results>
@@ -161,9 +161,16 @@ const cards = await Promise.all(listings.map(async (l) => ({
       ))}
     </ul>
 
-    <p class="mt-8 border border-line p-6 text-[15px] text-ink-2" data-empty hidden>
-      No clinic matches all of that. Try a wider area, or clear the HMO — every clinic here takes a booking or a request.
-    </p>
+    {listings.length === 0 ? (
+      <p class="mt-8 border border-line p-6 text-[15px] leading-relaxed text-ink-2">
+        No clinics are listed yet. Flossify opens with its first clinics in Baguio, and this page fills as they join.
+        Running a clinic? <a href="/start/" class="underline underline-offset-4 hover:text-accent">Set yours up</a>.
+      </p>
+    ) : (
+      <p class="mt-8 border border-line p-6 text-[15px] text-ink-2" data-empty hidden>
+        No clinic matches all of that. Try a wider area, or clear the HMO — every clinic here takes a booking or a request.
+      </p>
+    )}
 
     <p class="mt-10 max-w-[70ch] text-[14px] leading-relaxed text-muted">
       The symptom guide is general guidance, not a diagnosis. Prices are the clinic’s fee guide; the dentist confirms the fee at consultation. HMO acceptance is what the clinic reported — confirm with your HMO.
@@ -179,7 +186,9 @@ const cards = await Promise.all(listings.map(async (l) => ({
     const form = $('[data-filters]') as HTMLFormElement;
     const results = $$('[data-results] > li');
     const symButtons = $$('[data-symptoms] .chip') as HTMLButtonElement[];
-    const tip = $('[data-tip-box]')!, urgent = $('[data-urgent]')!, count = $('[data-count]')!, empty = $('[data-empty]')!;
+    const tip = $('[data-tip-box]')!, urgent = $('[data-urgent]')!, count = $('[data-count]')!;
+    // Absent when no clinic is listed at all: the page then says so in place of the filter message.
+    const empty = $('[data-empty]');
     const peso = (n: number) => '₱' + n.toLocaleString('en-PH');
 
     const state = { symptom: '', service: '', hmo: '', area: '', sort: 'soonest', philhealth: false, open: false };
@@ -258,7 +267,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
       shown.sort((a, b) => key(a).localeCompare(key(b))).forEach((li) => list.append(li));
 
       count.textContent = `${shown.length} clinic${shown.length === 1 ? '' : 's'}${state.open ? ' open now' : ''}`;
-      empty.hidden = shown.length > 0;
+      if (empty) empty.hidden = shown.length > 0;
       writeUrl();
     }
 
