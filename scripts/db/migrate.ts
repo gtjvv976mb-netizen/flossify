@@ -349,10 +349,42 @@ function connectHelp(e: unknown): string[] {
       '(encrypted, not verified).');
   } else if (/no encryption|SSL.*(required|off)|does not support SSL/i.test(msg)) {
     out.push(ssl === '1' ? 'The server does not accept TLS: unset DATABASE_SSL.' : 'The server accepts only TLS connections: set DATABASE_SSL=1.');
+  } else if (ADMIN_URL && (/invalid url/i.test(msg) || /ENOTFOUND base\b/.test(msg))) {
+    out.push(...adminUrlShape(ADMIN_URL));
   } else {
     out.push(ADMIN_URL ? 'Check DATABASE_ADMIN_URL (and DATABASE_SSL=1 if the provider requires TLS).' : `Is Postgres running, and does the database "${DB}" exist?`);
   }
   return out;
+}
+
+/**
+ * What is wrong with a DATABASE_ADMIN_URL that is not an address, described
+ * without printing any of it: it holds the admin password. The usual cause is
+ * a value pasted into the wrong field (a password, a key, the app's URL).
+ */
+function adminUrlShape(v: string): string[] {
+  const facts: string[] = [];
+  const scheme = /^postgres(ql)?:\/\//i.test(v);
+  if (!scheme) facts.push('it does not start with postgresql://');
+  if (!v.includes('@')) facts.push('it has no @ (no user and host)');
+  if (/\s/.test(v)) facts.push('it contains spaces or line breaks');
+  if (/^[0-9a-f]{32,}$/i.test(v)) facts.push('it looks like a generated password, not an address');
+  if (/^postgres(ql)?:\/\/flossify_app:/i.test(v)) facts.push("it is the app's own DATABASE_URL, not the admin's");
+  if (scheme && v.includes('@')) {
+    const rest = v.replace(/^postgres(ql)?:\/\//i, '');
+    const at = rest.lastIndexOf('@');
+    const userinfo = rest.slice(0, at), hostpart = rest.slice(at + 1);
+    const bad = [...new Set([...userinfo].filter((ch) => '/#?'.includes(ch)))];
+    if (bad.length) facts.push(`the password in it contains ${bad.join(' ')}, which must be written as ${bad.map((ch) => encodeURIComponent(ch)).join(' ')}`);
+    const port = hostpart.split('/')[0].split(':')[1];
+    if (port !== undefined && !/^\d+$/.test(port)) facts.push('the port is not a number');
+    if (!/\/flossify(\?|$)/.test(hostpart)) facts.push('it does not end in /flossify (the database name)');
+  }
+  return [
+    `DATABASE_ADMIN_URL is not a usable database address (${v.length} characters${facts.length ? '; ' + facts.join('; ') : ''}).`,
+    "It should be DigitalOcean's doadmin connection string for the flossify database, without ?sslmode=require:",
+    '  postgresql://doadmin:<password>@<host>:25060/flossify',
+  ];
 }
 
 // --- SCRAM ------------------------------------------------------------------------------
