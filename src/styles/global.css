@@ -736,8 +736,10 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
    a lit frame too. */
 .page-hero, .page-cta { color: #f2f2ef; }
 .page-hero {
-  min-height: 100vh;
-  min-height: 100svh;
+  /* One screen under the sticky header (about 3.2rem), so the opening's last
+     line and buttons sit on the first screen, not just below it. */
+  min-height: calc(100vh - 3.25rem);
+  min-height: calc(100svh - 3.25rem);
   display: grid;
   align-items: center;
   padding-block: 5rem 3rem;
