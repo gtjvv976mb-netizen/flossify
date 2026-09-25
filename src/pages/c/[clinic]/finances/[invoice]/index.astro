@@ -1,0 +1,505 @@
+---
+// One statement of account: what was charged, what has been paid, what is
+// left, and the form that records the next payment. Payments can come in
+// parts, by any of the ways Philippine clinics are paid; each gets its own
+// acknowledgment to print. (It was /billing/<id>/, which now comes here with
+// its query; the Finances tab stays on.)
+//
+// The desk, the owner, the admin and anyone with finance access here may
+// record payments (canBill). Voiding a payment or the statement is the
+// owner's and the admin's, with a reason that stays on the row; the audit log
+// says who and when. A statement with a payment still on it cannot be voided:
+// void the payment first, so money is never left pointing at nothing. The
+// BIR invoice or receipt number can be written onto a payment later by anyone
+// who records payments (setBirRef), and corrected with a reason that keeps
+// the old number (fixBirRef); nothing else on a payment changes.
+//
+// Every write locks the statement row (src/lib/invoices.ts), so two people
+// paying or voiding at once take turns and the second sees the first. A post
+// that finds things moved on comes back with ?missed=1 and a sentence.
+//
+// Very simple (the owner, 26 Sep 2026): the statement's number is the top
+// bar's title; the head is the patient (avatar, name, status) and what is
+// left; the one main action is Record payment, in green (money in), which
+// comes first on a phone. Print is one quiet menu; voiding the statement is
+// under More; each payment's BIR number and its void are in that payment's
+// side panel. A refused form comes back in its panel with its sentence.
+//
+// The workspace's words and colours: what is left is "Still to pay", in
+// amber; a statement with no lines (a balance carried in without items)
+// says so in one sentence instead of an empty table.
+export const prerender = false;
+
+import '../_fin.css';
+import ClinicLayout from '../../../../../layouts/Clinic.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Pane from '../../../../../components/ws/Pane.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Avatar from '../../../../../components/ws/Avatar.astro';
+import Menu from '../../../../../components/ws/Menu.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import { requireWorkspace } from '../../../../../lib/workspace';
+import { OPENING_LINE } from '../../../../../lib/import';
+import { withClinic } from '../../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
+import {
+  canBill, canVoid, loadStatement, recordPayment, voidPayment, voidStatement, setBirRef, fixBirRef, audit,
+  pesos, moneyField, fromDb, statementNo, methodLabel, day, stamp, isoDay,
+  METHODS, REF_LABEL, STATUS, DISCOUNTS, NOT_BIR, UUID, REF_MAX, BIR_REF_MAX, REASON_MAX,
+  type PaymentIn,
+} from '../../../../../lib/invoices';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const may = canBill(session.role, clinic.can_view_finance);
+const voider = canVoid(session.role);
+const id = Astro.params.invoice ?? '';
+const home = `/c/${clinic.slug}/finances/`;
+const here = `${home}${id}/`;
+const q = Astro.url.searchParams;
+const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the admin and anyone the owner lets see finance at this branch; ask the owner if you need them.';
+
+let error = q.get('stale') === '1' ? CSRF_MESSAGE : '';
+let typed: PaymentIn | null = null;
+let openVoid = '';
+let openBir = '';
+let typedBir = '';
+let openFix = '';
+let typedFix = { ref: '', reason: '' };
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(`${here}?stale=1`, 303);
+  const s = (k: string) => String(f.get(k) ?? '').trim();
+  const act = s('act');
+  if (!may) {
+    error = NO_ACCESS;
+    Astro.response.status = 403;
+  } else if (act === 'pay') {
+    typed = { method: s('method'), amount: s('amount'), reference: s('reference'), paidOn: s('paid_on'), birRef: s('bir_ref'), formKey: s('form_key') };
+    const out = await withClinic(clinic.id, (tx) => recordPayment(tx, clinic.id, session.staffId, id, typed!));
+    if ('id' in out) return Astro.redirect(`${here}?done=${out.again ? 'paid_again' : 'paid'}&p=${out.id}`, 303);
+    error = out.problems.join(' ');
+  } else if (act === 'bir_ref') {
+    typedBir = s('bir_ref');
+    const outcome = await withClinic(clinic.id, (tx) => setBirRef(tx, clinic.id, session.staffId, id, s('payment'), typedBir));
+    if (outcome === 'ok') return Astro.redirect(`${here}?done=bir_ref&p=${s('payment')}`, 303);
+    if (outcome === 'missed') return Astro.redirect(`${here}?missed=1`, 303);
+    error = outcome;
+    openBir = s('payment');
+  } else if (act === 'bir_ref_fix') {
+    typedFix = { ref: s('bir_ref'), reason: s('reason') };
+    const outcome = await withClinic(clinic.id, (tx) => fixBirRef(tx, clinic.id, session.staffId, id, s('payment'), s('was'), typedFix.ref, typedFix.reason));
+    if (outcome === 'ok') return Astro.redirect(`${here}?done=bir_ref_fix&p=${s('payment')}`, 303);
+    if (outcome === 'missed') return Astro.redirect(`${here}?missed=1`, 303);
+    error = outcome;
+    openFix = s('payment');
+  } else if (act === 'void_payment' || act === 'void_statement') {
+    if (!voider) {
+      error = 'Only the owner or the admin can void. Ask them, and say why.';
+      Astro.response.status = 403;
+    } else {
+      const outcome = await withClinic(clinic.id, (tx) =>
+        act === 'void_payment'
+          ? voidPayment(tx, clinic.id, session.staffId, id, s('payment'), s('reason'))
+          : voidStatement(tx, clinic.id, session.staffId, id, s('reason')));
+      if (outcome === 'ok') return Astro.redirect(`${here}?done=${act}`, 303);
+      if (outcome === 'missed') return Astro.redirect(`${here}?missed=1`, 303);
+      error = outcome;
+      openVoid = act === 'void_payment' ? s('payment') : 'statement';
+    }
+  } else {
+    return Astro.redirect(here, 303);
+  }
+}
+
+const data = may
+  ? await withClinic(clinic.id, async (tx) => {
+      const st = await loadStatement(tx, id);
+      if (st) await audit(tx, clinic.id, session.staffId, 'invoice.view', 'invoice', st.s.id);
+      const me = (await tx.query('select area, tin from clinic where id = $1', [clinic.id])).rows[0];
+      return { st, me };
+    })
+  : { st: null, me: (await withClinic(clinic.id, async (tx) => (await tx.query('select area, tin from clinic where id = $1', [clinic.id])).rows[0])) };
+if (may && !data.st) return new Response('No such statement', { status: 404 });
+
+const st = data.st;
+const s = st?.s;
+const no = s ? statementNo(s.series_prefix, s.number) : '';
+const status = s ? STATUS[s.status] ?? STATUS.issued : STATUS.issued;
+// Owed money is amber everywhere in the workspace (red is kept for overdue); "Unpaid" keeps its dot to tell it from "Part paid".
+const TONE_OF: Record<string, 'warn' | 'accent' | 'muted'> = { issued: 'warn', partly_paid: 'warn', paid: 'accent', void: 'muted', draft: 'muted' };
+const sums = st?.sums;
+const live = st ? st.payments.filter((p) => !p.voided_at) : [];
+const isVoid = s?.status === 'void';
+const canPay = may && s && !isVoid && sums!.balance > 0n;
+const payorDue = sums?.payorDue ?? 0n;
+const patientDue = sums?.patientDue ?? 0n;
+const defaultAmount = patientDue > 0n ? patientDue : sums?.balance ?? 0n;
+
+const done = q.get('done') ?? '';
+const donePayment = q.get('p') ?? '';
+const DONE: Record<string, string> = {
+  new: `Saved as ${no}.${sums && sums.balance > 0n ? ' Record the payment, or print the statement.' : ''}`,
+  again: `That form was already saved as ${no}; nothing new was made.`,
+  paid: 'Payment recorded.',
+  paid_again: 'That payment was already recorded; it was not added twice.',
+  bir_ref: 'BIR invoice or receipt number saved. It prints on the acknowledgment.',
+  bir_ref_fix: 'BIR invoice or receipt number corrected. The old number and the reason stay on the record.',
+  void_payment: 'Payment voided. Its amount is back in what is still to pay.',
+  void_statement: 'Statement voided. Its number stays used and shows as void.',
+};
+const notice = error ? '' : DONE[done] ?? '';
+const missed = q.get('missed') === '1' && !error ? 'That had already changed since the page was drawn, so nothing changed. This is how it stands now.' : '';
+
+const v: PaymentIn = typed ?? { method: 'cash', amount: moneyField(defaultAmount), reference: '', paidOn: isoDay(), birRef: '', formKey: crypto.randomUUID() };
+if (typed && !UUID.test(v.formKey)) v.formKey = crypto.randomUUID();
+const today = isoDay();
+
+const help = 'fin-help';
+// A refused form comes back in its own panel with the sentence; only a refusal with no panel is said in the head.
+const panelFor = openBir || openFix || (openVoid !== 'statement' ? openVoid : '');
+const headError = error && !panelFor && openVoid !== 'statement' ? error : '';
+// The date and the BIR number fold away unless they were typed (a refused payment comes back with them).
+const foldOpen = !!typed && (v.paidOn !== today || !!v.birRef);
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.me?.area }} title={s ? `Statement ${no}` : 'Statement'} section="finances" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  <div class="fin-page">
+  {!may || !s || !st || !sums ? (
+    <Pane as="div" label="Statement">
+      <a href={home} class="fin-back"><Icon name="chevron-left" size={16} />Finances</a>
+      <div class="grid gap-3">
+        {error && error !== NO_ACCESS && <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>}
+        <p class="ws-callout" data-tone="info"><Icon name="info" /><span>{NO_ACCESS}</span></p>
+      </div>
+    </Pane>
+  ) : (
+    <>
+      <Pane as="div" label={`Statement ${no}`}>
+        <a href={home} class="fin-back"><Icon name="chevron-left" size={16} />Finances</a>
+        <div class="st-head">
+          <div class="st-who">
+            <Avatar name={`${s.first_name} ${s.last_name}`} size="lg" />
+            <div class="min-w-0">
+              <a href={`/c/${clinic.slug}/patients/${s.patient_id}/`} class="st-name fin-hit">{s.first_name} {s.last_name}</a>
+              <p class="st-line"><span class="tabular-nums">{[s.chart_no, day(s.issued_at), s.created_by_name && `by ${s.created_by_name}`].filter(Boolean).join(' · ')}</span></p>
+              <p class="st-line">
+                <Chip tone={TONE_OF[s.status] ?? 'warn'} label={status.label} dot={s.status === 'issued'} />
+                <a href={`${home}?view=all&patient=${s.patient_id}`} class="fin-link text-[14px]">All of {s.first_name}’s statements</a>
+              </p>
+            </div>
+          </div>
+          <div class="st-balance" data-tone={isVoid ? undefined : sums.balance > 0n ? 'due' : 'paid'}>
+            <span class="meta">{isVoid ? 'Void' : sums.balance > 0n ? 'Still to pay' : 'Paid in full'}</span>
+            <span class="st-balance-value" data-bill-balance>{isVoid ? '—' : pesos(sums.balance)}</span>
+            {!isVoid && sums.balance > 0n && payorDue > 0n
+              ? <span class="fin-sub">{pesos(patientDue)} from the patient · {pesos(payorDue)} from {s.payor_name}</span>
+              : <span class="fin-sub">of {pesos(s.total)}</span>}
+          </div>
+        </div>
+
+        <div class="st-tools">
+          <Menu id="st-print" align="left" buttonClass="ws-btn ws-btn-quiet">
+            <Fragment slot="button"><Icon name="file" />Print<Icon name="chevron" size={16} /></Fragment>
+            <p class="ws-menu-head">Print the statement</p>
+            <a class="ws-menu-item" href={`${here}print/`}>
+              <span class="ws-menu-icon"><Icon name="file" /></span>
+              <span class="ws-menu-words">A5 paper<span class="ws-menu-hint">A normal printer</span></span>
+            </a>
+            <a class="ws-menu-item" href={`${here}print/?paper=receipt`}>
+              <span class="ws-menu-icon"><Icon name="file" /></span>
+              <span class="ws-menu-words">80 mm receipt<span class="ws-menu-hint">A receipt printer</span></span>
+            </a>
+            <p class="ws-menu-hint px-3 pb-2 pt-1">Each payment prints its own acknowledgment, under Payments.</p>
+          </Menu>
+          {voider && !isVoid && (
+            <Menu id="st-more" align="left" buttonClass="ws-btn ws-btn-quiet">
+              <Fragment slot="button">More<Icon name="chevron" size={16} /></Fragment>
+              <button type="button" class="ws-menu-item" data-st-void-open>
+                <span class="ws-menu-icon" data-tint="red"><Icon name="close" /></span>
+                <span class="ws-menu-words">Void this statement<span class="ws-menu-hint">Owner or admin, with a reason</span></span>
+              </button>
+            </Menu>
+          )}
+        </div>
+
+        {(notice || missed || headError || isVoid) && (
+          <div class="mt-5 grid gap-3">
+            {notice && (
+              <p role="status" class="ws-callout" data-tone="success" data-bill-notice>
+                <Icon name="check" />
+                <span class="flex flex-wrap items-center gap-x-4">
+                  <span>{notice}</span>
+                  {(done === 'paid' || done === 'paid_again' || done === 'bir_ref' || done === 'bir_ref_fix') && UUID.test(donePayment) && <a href={`${here}print/?ack=${donePayment}`} class="fin-link !min-h-11" data-bill-print-ack>Print the acknowledgment</a>}
+                  {done === 'new' && <a href={`${here}print/`} class="fin-link !min-h-11">Print the statement</a>}
+                </span>
+              </p>
+            )}
+            {missed && <p role="status" class="ws-callout" data-tone="warn"><Icon name="alert" /><span>{missed}</span></p>}
+            {headError && <p role="alert" class="ws-callout" data-tone="alert" data-bill-error><Icon name="alert" /><span>{headError}</span></p>}
+            {isVoid && (
+              <p class="ws-callout" data-tone="info"><Icon name="info" /><span><strong class="font-semibold">Void</strong> since {s.voided_at ? stamp(s.voided_at) : '—'}{s.voided_by_name && `, by ${s.voided_by_name}`}. Reason: {s.void_reason}</span></p>
+            )}
+          </div>
+        )}
+      </Pane>
+
+      <div class="st-grid">
+        <div class="st-col">
+          <Pane title="Charges" icon="file" pad="none" id="lines">
+            {st.lines.length === 0 ? (
+              <p class="st-nolines" data-st-nolines><Icon name="info" size={18} /><span>{OPENING_LINE}. It came in as one amount, with no items listed.</span></p>
+            ) : (
+            <div class="ws-table-wrap">
+              <table class="st-lines">
+                <thead>
+                  <tr>
+                    <th scope="col" class="meta">Item</th>
+                    <th scope="col" class="meta hidden text-right sm:table-cell">How many</th>
+                    <th scope="col" class="meta hidden text-right sm:table-cell">Price each</th>
+                    <th scope="col" class="meta text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {st.lines.map((l) => {
+                    const qty = l.quantity.replace(/\.0+$/, '');
+                    return (
+                      <tr>
+                        <td>{l.description}<span class="fin-sub sm:hidden">{qty} × {pesos(l.unit_price)}</span></td>
+                        <td class="hidden text-right tabular-nums sm:table-cell">{qty}</td>
+                        <td class="hidden text-right fin-money sm:table-cell">{pesos(l.unit_price)}</td>
+                        <td class="text-right fin-money">{pesos(l.amount)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            )}
+            <dl class="st-sums">
+              <dt>Charges</dt><dd>{pesos(s.subtotal)}</dd>
+              {fromDb(s.discount) > 0n && (
+                <><dt>{DISCOUNTS[(s.discount_kind ?? 'none') as keyof typeof DISCOUNTS]?.line || 'Discount'}{s.discount_id_no && ` · ID ${s.discount_id_no}`}</dt><dd>&minus;{pesos(s.discount)}</dd></>
+              )}
+              <dt class="st-sum-total">Total</dt><dd class="st-sum-total">{pesos(s.total)}</dd>
+              {fromDb(s.payor_share) > 0n && (
+                <><dt>{s.payor_name}’s part</dt><dd>{pesos(s.payor_share)}</dd></>
+              )}
+              <dt>Paid</dt><dd>{pesos(sums.paid)}</dd>
+            </dl>
+            <p class="fin-foot fin-foot-row" data-not-bir><Icon name="info" size={16} />{NOT_BIR}</p>
+          </Pane>
+
+          <Pane title="Payments" icon="money" meta={st.payments.length ? `${st.payments.length} recorded` : undefined} pad="none" id="payments">
+            {st.payments.length === 0 ? (
+              <div class="fin-empty"><Empty icon="money" text={canPay ? 'No payment yet. Record one when the patient pays.' : 'No payment recorded.'} /></div>
+            ) : (
+              <ul class="st-pays" data-bill-payments>
+                {st.payments.map((p) => (
+                  <li class="st-pay" data-payment={p.id} data-void={p.voided_at ? '' : undefined}>
+                    <span class="st-pay-icon" aria-hidden="true"><Icon name={p.voided_at ? 'close' : 'check'} /></span>
+                    <div class="min-w-0">
+                      <p class="st-pay-amount">{pesos(p.amount)} <span class="st-pay-how">· {methodLabel(p.method)}</span></p>
+                      <p class="fin-sub">
+                        {day(p.paid_on)} · Payment {p.seq ?? '—'}{p.reference && ` · Ref ${p.reference}`}
+                        {p.bir_ref ? <> · BIR no. {p.bir_ref}</> : !p.voided_at && <> · no BIR no. yet</>}
+                      </p>
+                      <p class="fin-sub">Recorded by {p.received_by_name ?? '—'}, {stamp(p.received_at)}</p>
+                      {p.bir_ref_was && <p class="fin-sub">BIR no. corrected from {p.bir_ref_was}: {p.bir_ref_fix_reason}</p>}
+                      {p.voided_at && <p class="fin-sub text-ink-2"><strong class="font-semibold">Void</strong>, {stamp(p.voided_at)}{p.voided_by_name && ` by ${p.voided_by_name}`}. Reason: {p.void_reason}</p>}
+                    </div>
+                    <div class="st-pay-end">
+                      <a href={`${here}print/?ack=${p.id}`} class="ws-btn ws-btn-quiet" aria-label={`Print the acknowledgment of payment ${p.seq ?? ''}`}><Icon name="file" />Print</a>
+                      {!p.voided_at && (
+                        <button type="button" class="ws-btn ws-btn-quiet" data-ws-open={`pay-${p.id}`}>{p.bir_ref || voider ? 'More' : 'Add BIR no.'}</button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Pane>
+        </div>
+
+        <div class="st-col st-side">
+          {canPay && (
+            <Pane title="Record a payment" icon="money" id="pay">
+              <form method="post" class="grid gap-4" data-bill-pay data-patient-due={moneyField(patientDue)} data-payor-due={moneyField(payorDue)} data-balance={moneyField(sums.balance)} data-focus={done === 'new' && !error ? '1' : undefined}>
+                <Csrf />
+                <input type="hidden" name="act" value="pay" />
+                <input type="hidden" name="form_key" value={v.formKey} />
+                <fieldset>
+                  <legend class="meta">Paid by</legend>
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    {Object.entries(METHODS).map(([k, label]) => (
+                      <label class="chip-radio"><input type="radio" name="method" value={k} checked={v.method === k} required data-pay-method /><span class="min-h-11 text-[15px]">{label}</span></label>
+                    ))}
+                  </div>
+                </fieldset>
+                <label class="field">
+                  <span class="meta">Amount received</span>
+                  <input name="amount" value={v.amount} inputmode="decimal" autocomplete="off" required class="!text-[20px] font-semibold tabular-nums" data-pay-amount />
+                  <span class={help}>Still to pay: {pesos(sums.balance)}{payorDue > 0n ? ` (${pesos(patientDue)} from the patient, ${pesos(payorDue)} from ${s.payor_name})` : ''}. Part of it is fine.</span>
+                </label>
+                <label class="field">
+                  <span class="meta" data-pay-ref-label>{REF_LABEL[v.method] ?? 'Reference'}</span>
+                  <input name="reference" value={v.reference} maxlength={REF_MAX} autocomplete="off" />
+                  <span class={help}>Optional. The number on the GCash, Maya or bank screen.</span>
+                </label>
+                <details class="fin-fold" open={foldOpen}>
+                  <summary>Date and BIR receipt no.<Icon name="chevron" size={16} /></summary>
+                  <div class="fin-fold-body">
+                    <label class="field">
+                      <span class="meta">Date paid</span>
+                      <input type="date" name="paid_on" value={v.paidOn} max={today} required />
+                      <span class={help}>Today, unless it was paid on another day.</span>
+                    </label>
+                    <label class="field">
+                      <span class="meta">BIR receipt no.</span>
+                      <input name="bir_ref" value={v.birRef} maxlength={BIR_REF_MAX} autocomplete="off" aria-describedby="bir-help" />
+                      <span id="bir-help" class={help}>Optional. From the clinic’s own BIR invoice or receipt booklet or system. Prints on the acknowledgment.</span>
+                    </label>
+                  </div>
+                </details>
+                <button type="submit" class="ws-btn ws-btn-success w-full" data-pay-save><Icon name="check" />Record payment</button>
+              </form>
+            </Pane>
+          )}
+          {!canPay && !isVoid && (
+            <p class="ws-callout" data-tone="success" data-paid-full><Icon name="check" /><span><strong class="font-semibold">Paid in full.</strong> Print the statement or a payment’s acknowledgment whenever it is asked for.</span></p>
+          )}
+        </div>
+      </div>
+
+      {st.payments.filter((p) => !p.voided_at).map((p) => {
+        const mine = panelFor === p.id;
+        return (
+          <SidePanel id={`pay-${p.id}`} title={`Payment ${p.seq ?? ''}`} meta={`${pesos(p.amount)} · ${methodLabel(p.method)} · ${day(p.paid_on)}`} open={mine}>
+            <div class="grid gap-5">
+              {mine && error && <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>}
+              <a href={`${here}print/?ack=${p.id}`} class="ws-btn ws-btn-quiet justify-self-start"><Icon name="file" />Print the acknowledgment</a>
+              {!p.bir_ref ? (
+                <form method="post" class="fin-panel-sec" data-bir-add>
+                  <Csrf />
+                  <input type="hidden" name="act" value="bir_ref" />
+                  <input type="hidden" name="payment" value={p.id} />
+                  <h3 class="fin-panel-h"><Icon name="file" />BIR invoice or receipt no.</h3>
+                  <label class="field">
+                    <span class="meta">The number</span>
+                    <input name="bir_ref" value={openBir === p.id ? typedBir : ''} required maxlength={BIR_REF_MAX} autocomplete="off" />
+                    <span class={help}>From the receipt written in the clinic’s own booklet or system. It prints on the acknowledgment.</span>
+                  </label>
+                  <div><button type="submit" class="ws-btn ws-btn-primary"><Icon name="check" />Save number</button></div>
+                </form>
+              ) : (
+                <form method="post" class="fin-panel-sec" data-bir-fix>
+                  <Csrf />
+                  <input type="hidden" name="act" value="bir_ref_fix" />
+                  <input type="hidden" name="payment" value={p.id} />
+                  <input type="hidden" name="was" value={p.bir_ref} />
+                  <h3 class="fin-panel-h"><Icon name="file" />Correct the BIR no.</h3>
+                  <p class={help}>Now {p.bir_ref}. The old number and the reason stay on the record.</p>
+                  <label class="field"><span class="meta">Right number</span><input name="bir_ref" value={openFix === p.id ? typedFix.ref : p.bir_ref} required maxlength={BIR_REF_MAX} autocomplete="off" class="tabular-nums" /></label>
+                  <label class="field"><span class="meta">Why</span><input name="reason" value={openFix === p.id ? typedFix.reason : ''} required minlength="4" maxlength={REASON_MAX} autocomplete="off" placeholder="Typed it wrong" /></label>
+                  <div><button type="submit" class="ws-btn ws-btn-quiet"><Icon name="check" />Save the right number</button></div>
+                </form>
+              )}
+              {voider && (
+                <form method="post" class="fin-panel-sec" data-pay-void>
+                  <Csrf />
+                  <input type="hidden" name="act" value="void_payment" />
+                  <input type="hidden" name="payment" value={p.id} />
+                  <h3 class="fin-panel-h" data-tint="red"><Icon name="close" />Void this payment</h3>
+                  <label class="field"><span class="meta">Why</span><input name="reason" required minlength="4" maxlength={REASON_MAX} placeholder="Recorded twice, wrong amount, cheque bounced" /></label>
+                  <p class={help}>Its amount goes back into what is still to pay. The payment stays on the record, marked void.</p>
+                  <div><button type="submit" class="ws-btn ws-btn-danger">Void payment</button></div>
+                </form>
+              )}
+            </div>
+          </SidePanel>
+        );
+      })}
+
+      {voider && !isVoid && (
+        <SidePanel id="st-void" title="Void this statement" meta={no} open={openVoid === 'statement'}>
+          <div class="grid gap-5">
+            {openVoid === 'statement' && error && <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>}
+            {live.length > 0 ? (
+              <p class="ws-callout" data-tone="warn"><Icon name="alert" /><span>{live.length === 1 ? 'A payment is' : `${live.length} payments are`} recorded on it. Void {live.length === 1 ? 'that payment' : 'those'} first (its More, under Payments), then the statement.</span></p>
+            ) : (
+              <form method="post" class="grid gap-4" data-st-void>
+                <Csrf />
+                <input type="hidden" name="act" value="void_statement" />
+                <label class="field"><span class="meta">Why</span><input name="reason" required minlength="4" maxlength={REASON_MAX} placeholder="Wrong patient, charged twice" /></label>
+                <p class={help}>Its number stays used and shows as void. Charge again if something is still owed.</p>
+                <div><button type="submit" class="ws-btn ws-btn-danger">Void statement</button></div>
+              </form>
+            )}
+          </div>
+        </SidePanel>
+      )}
+    </>
+  )}
+  </div>
+</ClinicLayout>
+
+<script>
+  // Conveniences: the reference's label follows how it was paid, and
+  // choosing HMO or PhilHealth fills in what the payor still owes (or the
+  // patient's part, back again) unless the amount was typed by hand.
+  const form = document.querySelector<HTMLFormElement>('[data-bill-pay]');
+  if (form) {
+    const LABEL: Record<string, string> = {
+      cash: 'Reference', gcash: 'GCash reference no.', maya: 'Maya reference no.', card: 'Approval no. on the card slip',
+      bank_transfer: 'Bank reference', hmo: 'LOA or HMO reference', philhealth: 'PhilHealth reference',
+    };
+    const amount = form.querySelector<HTMLInputElement>('[data-pay-amount]')!;
+    const label = form.querySelector<HTMLElement>('[data-pay-ref-label]')!;
+    const payorDue = form.dataset.payorDue ?? '0', patientDue = form.dataset.patientDue ?? '0', balance = form.dataset.balance ?? '0';
+    let typed = false;
+    amount.addEventListener('input', () => { typed = true; });
+    // Just saved: the cursor waits in the amount, selected, so the desk types a
+    // part payment or presses Enter for the whole of it. The page scrolls only
+    // as far as the Record payment button, keeping the "Saved as" line in view
+    // when both fit. An Enter still held from the Save (a repeat, or one in
+    // the first moment) does not record a payment.
+    if (form.dataset.focus) {
+      amount.focus({ preventScroll: true });
+      amount.select();
+      const btn = form.querySelector<HTMLElement>('[data-pay-save]')!;
+      const notice = document.querySelector<HTMLElement>('[data-bill-notice]');
+      const header = document.querySelector<HTMLElement>('[data-ws-top]')?.getBoundingClientRect().height ?? 0;
+      const below = btn.getBoundingClientRect().bottom + 12 - window.innerHeight;
+      const room = notice ? notice.getBoundingClientRect().top - header - 8 : below;
+      if (below > 0) window.scrollBy(0, Math.max(0, Math.min(below, room)));
+      const armed = performance.now() + 700;
+      amount.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.repeat || (!typed && performance.now() < armed))) e.preventDefault();
+      });
+    }
+    form.addEventListener('change', (e) => {
+      const t = e.target as HTMLInputElement;
+      if (!t.matches('[data-pay-method]')) return;
+      label.textContent = LABEL[t.value] ?? 'Reference';
+      if (typed) return;
+      const payor = t.value === 'hmo' || t.value === 'philhealth';
+      amount.value = payor ? (payorDue !== '0' ? payorDue : balance) : patientDue !== '0' ? patientDue : balance;
+    });
+    form.addEventListener('submit', () => {
+      const btn = form.querySelector<HTMLButtonElement>('[data-pay-save]')!;
+      window.setTimeout(() => { btn.disabled = true; btn.textContent = 'Saving…'; }, 0);
+    });
+  }
+
+  // More → Void this statement opens its panel; closing it puts focus back on More (the item
+  // itself is gone with the closed list).
+  const voidOpen = document.querySelector<HTMLElement>('[data-st-void-open]');
+  voidOpen?.addEventListener('click', () => {
+    const more = voidOpen.closest('[data-ws-menu]')?.querySelector<HTMLElement>('button[aria-expanded]') ?? null;
+    window.ws?.openPanel('st-void', more);
+  });
+</script>

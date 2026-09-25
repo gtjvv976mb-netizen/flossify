@@ -1,0 +1,56 @@
+---
+// The three health lists — allergies, conditions, medicines taken now — as
+// rounded pick chips, the same on the record's Health form and on Add patient.
+// Each list: its "none" chip first (asked, and there is none), the quick picks
+// in a fixed order, anything else on file or typed, and a box to add another.
+// Chips are checkboxes, so the form posts without a script (what is left in an
+// "add" box is split on commas and saved); the pages' scripts turn typed words
+// into chips and make "none" and the others untick each other, through the
+// data-health-* hooks below. A chosen allergy is red, a condition amber — the
+// colours of the record's alert strip — and every chosen chip shows a tick.
+import Icon from '../../../../../components/ws/Icon.astro';
+import { LISTS, ITEM_MAX } from '../../../../../lib/health';
+
+interface Props {
+  /** Per list: the chips to draw, and whether each is ticked. */
+  chips: Record<string, { value: string; on: boolean }[]>;
+  /** Per list: the "none" chip is ticked. */
+  none: Record<string, boolean>;
+  /** Per list: what is in the "add another" box (a post that came back). */
+  typed?: Record<string, string>;
+}
+const { chips, none, typed = {} } = Astro.props;
+const TONE: Record<string, string> = { allergies: 'red', conditions: 'amber', medications: 'teal' };
+---
+
+<div class="grid">
+  {LISTS.map((l) => (
+    <fieldset class="min-w-0 border-b border-[var(--ws-hair)] py-5 first:pt-1 last:border-b-0 last:pb-1" data-health-list={l.key}>
+      <legend class="float-left w-full text-[15px] font-semibold text-ink">{l.label}</legend>
+      <div class="pk-row clear-both pt-3" data-health-chips>
+        <label class="pk" data-tone="slate">
+          <input type="checkbox" name={`${l.key}_none`} value="1" checked={none[l.key]} data-health-none />
+          <span>{l.none}</span>
+        </label>
+        {(chips[l.key] ?? []).map((c) => (
+          <label class="pk" data-tone={TONE[l.key]}>
+            <input type="checkbox" name={l.key} value={c.value} checked={c.on} />
+            <span>{c.value}</span>
+          </label>
+        ))}
+      </div>
+      <div class="field mt-3">
+        <div class="pt-inline">
+          <input name={`${l.key}_add`} value={typed[l.key] ?? ''} maxlength={ITEM_MAX * 4} autocomplete="off" aria-label={`Another ${l.one}`} placeholder={`Another ${l.one}`} data-health-add-input />
+          <button type="button" class="ws-btn ws-btn-quiet" data-health-add><Icon name="plus" />Add</button>
+        </div>
+      </div>
+      <template data-health-tpl>
+        <label class="pk" data-tone={TONE[l.key]}>
+          <input type="checkbox" name={l.key} value="" checked />
+          <span data-health-chip-text></span>
+        </label>
+      </template>
+    </fieldset>
+  ))}
+</div>

@@ -1,0 +1,73 @@
+---
+// A group's terms on /admin/billing/: plan, status, trial end, price per
+// branch and a note, posted as action=set (billingAction, src/lib/admin.ts).
+// Drawn in the Terms side panel, or in the group's <template> the panel is
+// filled from. The underscore keeps it from being a page.
+import Csrf from '../../../components/Csrf.astro';
+import Icon from '../../../components/ws/Icon.astro';
+import { NOTES_MAX, PRICE_MAX } from '../../../lib/admin';
+import { peso } from '../../../data/demo';
+import { PLANS, PLAN_IDS, SUB_STATUSES, STATUS_WORDS, DEFAULT_PLAN, TRIAL_DAYS, BILLING_FINAL, PRICE_PER_BRANCH, manilaDate, type AdminRow, type PlanId } from '../../../lib/billing';
+
+interface Props { r: AdminRow; note: string }
+const { r, note } = Astro.props;
+const plus30 = manilaDate(new Date(Date.now() + TRIAL_DAYS * 86_400_000));
+
+// The plan. Today there is one price with everything included: billing.ts keeps three plan ids only
+// because 011 checks subscription.plan against them, and they share a name and a price. Three
+// options that read the same are no choice, so while that holds the group keeps the plan it has
+// (posted as it is) and the panel says what it is. Once the plans differ in name or price, the
+// choice comes back, each option labelled by its price.
+const plan = r.plan ?? DEFAULT_PLAN;
+const planWords = (p: PlanId) => `${PLANS[p].name} — ${PLANS[p].blurb.charAt(0).toLowerCase()}${PLANS[p].blurb.slice(1)}`;
+const oneChoice = new Set(PLAN_IDS.map((p) => `${PLANS[p].name}|${PLANS[p].perBranch}`)).size === 1;
+
+// The price: the group's own (what its invoices are made at and its owner sees), and how it
+// stands against the list price, so the line under the field never contradicts the field.
+const price = r.price_per_branch ?? PLANS[plan].perBranch;
+const priceLine =
+  price === PRICE_PER_BRANCH ? `${peso(price)} a branch a month: the list price.`
+  : `Now ${peso(price)} a branch a month, ${price > PRICE_PER_BRANCH ? 'more' : 'less'} than the list price of ${peso(PRICE_PER_BRANCH)}.`;
+---
+
+<form method="post" action="/admin/billing/" class="grid gap-4 sm:grid-cols-2">
+  <Csrf />
+  <input type="hidden" name="action" value="set" />
+  <input type="hidden" name="group" value={r.group_id} />
+  {oneChoice ? (
+    <div class="field sm:col-span-2">
+      <span class="meta">Plan</span>
+      <p class="text-[15px] font-medium">{planWords(plan)}</p>
+      <input type="hidden" name="plan" value={plan} />
+    </div>
+  ) : (
+    <label class="field sm:col-span-2">
+      <span class="meta">Plan</span>
+      <select name="plan">
+        {PLAN_IDS.map((p) => <option value={p} selected={plan === p}>{planWords(p)} · {peso(PLANS[p].perBranch)} a branch</option>)}
+      </select>
+    </label>
+  )}
+  <label class="field">
+    <span class="meta">Status</span>
+    <select name="status">
+      {SUB_STATUSES.map((st) => <option value={st} selected={(r.status ?? 'trial') === st}>{STATUS_WORDS[st]}</option>)}
+    </select>
+  </label>
+  <label class="field">
+    <span class="meta">Price per branch (₱)</span>
+    <input type="number" name="price" min="0" max={PRICE_MAX} step="0.01" inputmode="decimal" value={price.toFixed(2)} required />
+    <span class="text-[13.5px] text-ink-2">{priceLine}</span>
+  </label>
+  <label class="field sm:col-span-2">
+    <span class="meta">Trial ends</span>
+    <input type="date" name="trial_ends" value={r.trial_ends_at ? manilaDate(r.trial_ends_at) : plus30} required />
+    <span class="text-[13.5px] text-ink-2">{BILLING_FINAL ? 'Invoices start with the first monthly run after this day.' : 'No invoice follows while billing is off.'}</span>
+  </label>
+  <label class="field sm:col-span-2">
+    <span class="meta">Note (optional)</span>
+    <textarea name="notes" rows="3" maxlength={NOTES_MAX} placeholder="Agreed a discount until December; owner asked to be billed quarterly…">{note}</textarea>
+  </label>
+  <div class="sm:col-span-2"><button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" /> Save terms</button></div>
+  <p class="text-[13.5px] leading-snug text-ink-2 sm:col-span-2">Recorded under your name. Nothing here switches a clinic off.</p>
+</form>

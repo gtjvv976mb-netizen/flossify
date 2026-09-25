@@ -1,0 +1,45 @@
+---
+// A summary number on its own soft card: a small label (and icon), the
+// figure, one line under it. Tiles sit in a .ws-tiles row (as many columns
+// as fit, two on a phone) — at most four on a screen, the simple template
+// says. With href the whole card is the link to where the number comes from.
+//
+//   <div class="ws-tiles">
+//     <Tile label="Booked today" value="14" note="3 from the web" icon="calendar" />
+//     <Tile label="Collected today" value="₱12,400" tone="success" tint icon="money" href="/c/x/finances/" />
+//   </div>
+//
+// tone: 'default' · 'accent' (teal, a good number) · 'success' (green, money
+// in) · 'warn' (amber) · 'alert' (red) — colours the figure; the note must
+// still say what is wrong in words. tint: a pale wash of the tone behind the
+// card (true), or a named tint. (.ws-tiles.ws-glass, from before the soft
+// template, still works: the row itself draws nothing.)
+import Icon from './Icon.astro';
+import type { IconName } from './icons';
+
+type Tone = 'default' | 'accent' | 'success' | 'warn' | 'alert';
+type Tint = 'teal' | 'green' | 'amber' | 'blue' | 'red';
+interface Props {
+  label: string;
+  value: string | number;
+  note?: string;
+  href?: string;
+  tone?: Tone;
+  icon?: IconName;
+  tint?: boolean | Tint;
+  id?: string;
+}
+const { label, value, note, href, tone = 'default', icon, tint = false, id } = Astro.props;
+const valueCls = { default: '', accent: 'text-accent', success: 'ws-text-green', warn: 'text-crown', alert: 'text-caries' }[tone];
+const TINT_OF: Record<Tone, Tint> = { default: 'teal', accent: 'teal', success: 'green', warn: 'amber', alert: 'red' };
+const wash = tint === true ? TINT_OF[tone] : tint || undefined;
+const Tag = href ? 'a' : 'div';
+---
+
+<Tag id={id} href={href} class:list={['ws-tile', href && 'ws-tile-link', icon && 'ws-tile-has-icon']} data-tint={wash} data-tone={tone}>
+  {icon && <span class="ws-tile-icon" aria-hidden="true"><Icon name={icon} /></span>}
+  <span class="meta">{label}</span>
+  <span class:list={['ws-tile-value', valueCls]}>{value}</span>
+  {note && <span class="ws-tile-note">{note}</span>}
+  {href && <span class="ws-tile-go" aria-hidden="true"><Icon name="arrow-right" size={16} /></span>}
+</Tag>

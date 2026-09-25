@@ -1,0 +1,183 @@
+---
+// Your Flossify plan: what this group pays Flossify (it was "Billing"; the
+// Finances tab is patient money now). Pay now for each due invoice when paying
+// online is on; four numbers (plan, per branch, branches, the month's total);
+// every invoice; and, folded under "More", how to pay by transfer and what
+// happens when a payment is late. The logic, and every fact, is the old
+// billing page's (_lib/plan.ts).
+import Pane from '../../../../../components/ws/Pane.astro';
+import Tile from '../../../../../components/ws/Tile.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Note from './Note.astro';
+import { peso } from '../../../../../data/demo';
+import { PAUSE_AFTER_DAYS, BILLING_FINAL, invoiceWords, monthText, dayText, manilaDate } from '../../../../../lib/billing';
+import { momentText } from '../../../../../lib/payments';
+import { standingNote, type PlanView } from '../_lib/plan';
+
+interface Props { v: PlanView | null; slug: string; on: boolean }
+const { v, slug, on } = Astro.props;
+const pricesFinal = BILLING_FINAL;
+type Inv = NonNullable<PlanView>['billing']['invoices'][number];
+// The invoice's state as a pill: green paid, red overdue, amber due, slate for cancelled or not final.
+const tint = (inv: Inv) => {
+  if (inv.status === 'paid') return 'ws-tint-green';
+  if (inv.status === 'void' || !pricesFinal) return 'ws-tint-slate';
+  return manilaDate(inv.due_at) < manilaDate(new Date()) ? 'ws-tint-red' : 'ws-tint-amber';
+};
+const moreOpen = !!v && v.owed > 0 && !v.online;
+---
+
+<div class="set-panel" data-set-panel="plan" data-on={on ? '' : undefined}>
+<Pane id="plan" icon="file" title="Your Flossify plan" class="set-sec">
+  {!v ? (
+    <Empty icon="info" text="Your plan could not be read just now. Nothing about it has changed; try again in a minute." />
+  ) : (
+    <>
+      <p class="set-intro">
+        What {v.billing.branches === 1 ? 'this clinic' : 'the group'} pays Flossify: one invoice a month{v.online ? ', paid online with GCash, Maya or card' : ', paid by GCash, Maya or bank transfer'}.
+      </p>
+
+      {(!pricesFinal || v.notice || v.flash) && (
+        <div class="set-notes mt-5">
+          {!pricesFinal && <Note tone="warn" text="These prices are not final. You will not be charged until Flossify sets the real prices and tells you." />}
+          {v.notice && <Note tone={v.notice.alert ? 'alert' : 'info'} text={v.notice.text} />}
+          {v.flash && <Note tone={v.flash.alert ? 'alert' : 'ok'} text={v.flash.text} />}
+        </div>
+      )}
+
+      {v.due.length > 0 && (
+        <section class="mt-5 grid gap-3" aria-labelledby="paynow-title">
+          <h3 id="paynow-title" class="sr-only">Pay online</h3>
+          {v.due.map(({ inv, over, line, state: st }) => (
+            <div class="ws-callout block" data-tone={over ? 'alert' : 'warn'}>
+              <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+                <div id={`pay-${inv.id}`} class="min-w-0">
+                  <p class="text-[13px] text-ink-2">Invoice <span class="font-mono tabular-nums">{inv.number}</span> · {monthText(inv.period_start)}</p>
+                  <p class="mt-1 text-[26px] leading-none font-semibold tabular-nums">{peso(inv.amount)}</p>
+                  <p class:list={['mt-1.5 text-[14px] font-semibold', over ? 'text-[var(--ws-red-ink)]' : 'text-[var(--ws-amber-ink)]']}>{line}</p>
+                </div>
+                {st.kind === 'pay' && (
+                  <form method="post" action="/api/payments/checkout">
+                    <Csrf />
+                    <input type="hidden" name="clinic" value={slug} />
+                    <input type="hidden" name="invoice" value={inv.id} />
+                    <button type="submit" class="ws-btn ws-btn-primary" aria-describedby={`pay-${inv.id}`}><Icon name="wallet" />Pay now</button>
+                  </form>
+                )}
+                {st.kind === 'started' && (
+                  <a href={`?paid=${encodeURIComponent(inv.number)}#plan`} class="ws-btn ws-btn-quiet" aria-describedby={`pay-${inv.id} paystate-${inv.id}`}>Check again</a>
+                )}
+              </div>
+              {st.kind === 'pay' && <p class="mt-2 text-[13.5px] text-ink-2">GCash, Maya or card, on PayMongo’s page. You come back here after.</p>}
+              {st.kind === 'started' && (
+                <div id={`paystate-${inv.id}`} class="mt-3 text-[14.5px] leading-relaxed">
+                  <p>You started paying this on {momentText(st.at)}. PayMongo has not confirmed it yet. If you paid, do not pay again: check again in a minute.</p>
+                  <form method="post" action="/api/payments/checkout" class="mt-1">
+                    <Csrf />
+                    <input type="hidden" name="clinic" value={slug} />
+                    <input type="hidden" name="invoice" value={inv.id} />
+                    <button type="submit" class="set-link" aria-describedby={`pay-${inv.id}`}>I stopped before paying: start again</button>
+                  </form>
+                </div>
+              )}
+              {st.kind === 'refused' && (
+                <p class="mt-3 text-[14.5px] leading-relaxed"><span class="font-semibold">PayMongo reported a payment that did not match, so it is not marked paid.</span> Flossify is sorting it out. Do not pay again.</p>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+
+      <div class="ws-tiles mt-5" role="group" aria-label="Your plan">
+        <Tile label="Plan" value={v.plan.name} note={v.plan.blurb} />
+        <Tile label="Per branch, a month" value={peso(v.billing.sub.price_per_branch)} note={pricesFinal ? undefined : 'Not final yet'} />
+        <Tile label="Branches" value={v.billing.branches} note={v.billing.branches === 1 ? 'One open branch' : 'Open branches in the group'} />
+        <Tile label="Each month" value={peso(v.billing.monthly)} note={standingNote(v)} tone="accent" />
+      </div>
+      <p class="mt-3 text-[14px] text-ink-2">
+        {v.writeTo
+          ? <>To change plan, email <a href={`mailto:${v.writeTo}`} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">{v.writeTo}</a> with the plan and the month. We reply to confirm.</>
+          : <>To change plan, write to us with the plan and the month; the address goes up here before your first invoice.</>}
+      </p>
+
+      <h3 class="set-sub" id="invoices">
+        Invoices
+        {v.owed > 0 && <span class="ml-auto text-[14.5px] font-normal text-ink-2">Still to pay: <span class="font-semibold tabular-nums text-ink">{peso(v.owed)}</span></span>}
+      </h3>
+      {v.billing.invoices.length === 0 ? (
+        <Empty icon="file" class="mt-2" text={!pricesFinal ? 'No invoices yet. None comes until we have told you the real prices.'
+          : v.billing.sub.status === 'trial' ? 'No invoices yet. The first comes after your trial ends.' : 'No invoices yet.'} />
+      ) : (
+        <div class="mt-3 overflow-hidden rounded-[var(--ws-r)] border border-[var(--ws-hair)]">
+          <table class="ws-table">
+            <caption class="sr-only">Invoices from Flossify, newest first</caption>
+            <thead>
+              <tr>
+                <th scope="col" class="meta">Invoice</th>
+                <th scope="col" class="meta text-right">Amount</th>
+                <th scope="col" class="meta">Due</th>
+                <th scope="col" class="meta">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {v.billing.invoices.map((inv) => (
+                <tr>
+                  <td>
+                    <span class="block text-[15px] font-semibold">{monthText(inv.period_start)}</span>
+                    <span class="block font-mono text-[12.5px] tabular-nums text-muted">{inv.number}{inv.branches > 1 ? ` · ${inv.branches} branches` : ''}</span>
+                  </td>
+                  <td class="text-[15px] font-semibold tabular-nums lg:text-right"><span class="meta ws-cell-label">Amount</span>{peso(inv.amount)}</td>
+                  <td class="text-[15px] whitespace-nowrap tabular-nums text-ink-2"><span class="meta ws-cell-label">Due</span>{dayText(manilaDate(inv.due_at))}</td>
+                  <td>
+                    <span class="meta ws-cell-label">Status</span>
+                    <span class:list={['ws-pill', tint(inv)]}>{invoiceWords(inv)}</span>
+                    {v.byOnline.has(inv.id)
+                      ? <span class="mt-1 block text-[13px] text-muted">Paid online <span class="font-mono break-all">{inv.paid_ref}</span></span>
+                      : inv.paid_ref && <span class="mt-1 block font-mono text-[12.5px] break-all text-muted">{inv.paid_ref}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <details class="set-more" id="how-to-pay" open={moreOpen || undefined}>
+        <summary><span>How to pay</span><Icon name="chevron" /></summary>
+        <div class="set-more-body text-[14.5px] leading-relaxed text-ink-2">
+          {v.online && (
+            <p>Online: {v.due.length > 0 ? 'press Pay now above' : 'when an invoice is due, a Pay now button appears here'}. It is marked paid when PayMongo confirms it.{v.payTo.length > 0 ? ' Or by transfer:' : ''}</p>
+          )}
+          {v.payTo.length > 0 ? (
+            <>
+              <p class:list={[v.online && 'mt-2']}>{pricesFinal ? 'Send the amount on the invoice' : 'Once the prices are final, send the amount on each invoice'} {v.payTo.length > 1 ? 'to any of these' : 'to this account'}, with the invoice number (FL-…) as the reference. We mark it paid within one working day.</p>
+              <dl class="set-facts mt-3">
+                {v.payTo.map((p) => (
+                  <div><dt class="meta">{p.name}</dt><dd class="tabular-nums text-ink">{p.value}</dd></div>
+                ))}
+              </dl>
+            </>
+          ) : v.online ? (
+            <p class="mt-2">There is no transfer account yet: pay online only, and do not send money to anyone for Flossify any other way.</p>
+          ) : (
+            <Note tone="warn" text="Where to pay goes up here before your first invoice. Until then, do not send money to anyone for Flossify." />
+          )}
+        </div>
+      </details>
+      <details class="set-more mt-3" id="late">
+        <summary><span>If a payment is late</span><Icon name="chevron" /></summary>
+        <div class="set-more-body text-[14.5px] leading-relaxed text-ink-2">
+          <p>
+            Nothing is switched off. Patient records, the calendar and texts keep working — patients come first.{' '}
+            {!pricesFinal
+              ? <>If something has gone wrong on your side, tell us; a note is enough.</>
+              : <>After an invoice is more than {PAUSE_AFTER_DAYS} days overdue, your listing on Find a clinic may be paused until it is paid. If something has gone wrong, write to us before then; a note is enough.</>}
+          </p>
+        </div>
+      </details>
+    </>
+  )}
+</Pane>
+</div>

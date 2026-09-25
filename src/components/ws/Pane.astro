@@ -1,0 +1,53 @@
+---
+// A card: the one surface workspace content sits on — bright white, gently
+// rounded, the clinic showing faintly around it. Optional head (an icon, a
+// small line, the title, actions on the right) and a body.
+//
+//   <Pane title="Patients" icon="patients" meta="12 on file" id="patients">
+//     <a slot="actions" class="ws-btn ws-btn-primary" href="…"><Icon name="plus" /> Add patient</a>
+//     …
+//   </Pane>
+//
+// icon: one of the names in Icon.astro, drawn in a pale teal square beside the
+// title. meta: a short line above the title (sentence case, 13px). pad:
+// 'normal' (default) · 'tight' · 'none' (tables and lists that run edge to
+// edge; the head then gets a hairline under it). as: 'section' (default;
+// labelled by its title) · 'div' · 'article' · 'aside'. level: the title's
+// heading level.
+import Icon from './Icon.astro';
+import type { IconName } from './icons';
+
+interface Props {
+  title?: string;
+  meta?: string;
+  icon?: IconName;
+  id?: string;
+  level?: 2 | 3;
+  pad?: 'normal' | 'tight' | 'none';
+  as?: 'section' | 'div' | 'article' | 'aside';
+  class?: string;
+  /** Screen-reader name when there is no visible title. */
+  label?: string;
+}
+const { title, meta, icon, id, level = 2, pad = 'normal', as: Tag = 'section', class: extra, label } = Astro.props;
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const titleId = title ? `${id ?? 'pane-' + slug(title)}-title` : undefined;
+const H = level === 3 ? 'h3' : 'h2';
+const hasHead = Boolean(title || meta || Astro.slots.has('actions'));
+---
+
+<Tag id={id} class:list={['ws-pane ws-glass', `ws-pad-${pad}`, extra]} aria-labelledby={titleId} aria-label={!titleId ? label : undefined}>
+  {hasHead && (
+    <header class="ws-pane-head">
+      <div class="ws-pane-heading">
+        {icon && <span class="ws-pane-icon"><Icon name={icon} /></span>}
+        <div class="min-w-0">
+          {meta && <p class="meta ws-pane-meta">{meta}</p>}
+          {title && <H id={titleId} class="ws-pane-title">{title}</H>}
+        </div>
+      </div>
+      {Astro.slots.has('actions') && <div class="ws-pane-actions"><slot name="actions" /></div>}
+    </header>
+  )}
+  <slot />
+</Tag>

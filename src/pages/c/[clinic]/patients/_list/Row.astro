@@ -1,0 +1,89 @@
+---
+// One patient in the Patients tab's list (index.astro): their avatar, name
+// (the link that opens the record — it stretches over the whole row), chart
+// no., age and sex, mobile and HMO, alert pills, next and last visit, the
+// balance (finance roles), and the record check. From a wide card these are
+// columns; narrower, the mobile folds under the name; on a phone the row is a
+// small card (list.css).
+import Avatar from '../../../../../components/ws/Avatar.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import { ageOf, nearWhen, dateText, prettyPhone } from '../../../../../components/ws/cal/model';
+import { fromDb, pesos, pesosWhole } from '../../../../../lib/invoices';
+import { needsLine, type Row } from './list';
+
+interface Props {
+  r: Row;
+  href: string;
+  today: string;
+  finance: boolean;
+}
+const { r, href, today, finance } = Astro.props;
+const SEX: Record<string, string> = { female: 'Female', male: 'Male', other: 'Other' };
+const age = ageOf(r.birth, today);
+const facts = [age === null ? null : age < 1 ? 'Under 1' : `${age}`, r.sex ? SEX[r.sex] ?? null : null].filter(Boolean) as string[];
+const mobile = r.phone ? prettyPhone(r.phone) : null;
+const next = r.nextAt ? nearWhen(new Date(r.nextAt).toISOString(), today) : null;
+const last = r.lastAt ? dateText(new Date(r.lastAt).toISOString()) : null;
+const bal = finance && r.balance !== null ? fromDb(r.balance) : 0n;
+// Whole pesos, the centavos only when there are any — "₱2,400", "₱1,075.50" — as the Dashboard writes a balance (pesoBal).
+const money = (c: bigint) => (c % 100n === 0n ? pesosWhole(c) : pesos(c));
+const needs = needsLine(r.needs);
+const conditions = r.conditions.slice(0, 2);
+const moreConditions = r.conditions.length - conditions.length;
+---
+
+<tr class="pts-row">
+  <td class="pts-c-who">
+    <div class="pts-who-grid">
+    <Avatar name={r.name} />
+    <div class="pts-who">
+      <a href={href} class="pts-link"><span class="pts-name">{r.name}</span></a>
+      <p class="pts-facts">
+        <span class="pts-ref font-mono" title="Chart no."><span class="sr-only">Chart no. </span>{r.chartNo}</span>
+        {facts.length > 0 && <span>{age !== null && <span class="sr-only">Age </span>}{facts.join(' · ')}</span>}
+      </p>
+      <p class="pts-contact-in">{[mobile ?? 'No mobile', r.hmo].filter(Boolean).join(' · ')}</p>
+      {(r.allergies.length > 0 || r.conditions.length > 0 || r.isNew) && (
+        <p class="pts-marks">
+          {r.allergies.length > 0 && <span class="ws-pill ws-tint-red"><Icon name="alert" size={13} />Allergy: {r.allergies.join(', ')}</span>}
+          {conditions.map((c) => <span class="ws-pill ws-tint-amber">{c}</span>)}
+          {moreConditions > 0 && <span class="ws-pill ws-tint-slate" title={r.conditions.slice(2).join(', ')}>+{moreConditions}<span class="sr-only"> more: {r.conditions.slice(2).join(', ')}</span></span>}
+          {r.isNew && <span class="ws-pill ws-tint-teal">New</span>}
+        </p>
+      )}
+    </div>
+    </div>
+  </td>
+  <td class="pts-c-contact">
+    <span class:list={['pts-line', !mobile && 'pts-quiet']}>{mobile ?? 'No mobile'}</span>
+    <span class="pts-line pts-quiet">{r.hmo ?? 'No HMO'}</span>
+  </td>
+  <td class="pts-c-visits">
+    <span class="pts-line">
+      <span class="pts-k">Next</span>
+      {next ? <b class:list={['pts-when', r.today && next.startsWith('Today') && 'pts-today']}>{next}</b> : <span class="pts-quiet">None booked</span>}
+    </span>
+    <span class="pts-line">
+      <span class="pts-k">Last</span>
+      {last ? <span>{last}</span> : <span class="pts-quiet">Not seen yet</span>}
+    </span>
+  </td>
+  {finance && (
+    <td class="pts-c-bal">
+      {bal > 0n ? (
+        <span class="pts-bal" title="Owes the clinic"><span class="sr-only">Owes </span>{money(bal)}</span>
+      ) : bal < 0n ? (
+        <span class="pts-bal pts-bal-credit" title="Paid ahead">{money(-bal)} credit</span>
+      ) : (
+        <span class="pts-quiet"><span aria-hidden="true">—</span><span class="sr-only">Nothing owed</span></span>
+      )}
+    </td>
+  )}
+  <td class="pts-c-check">
+    {needs ? (
+      <span class="pts-need"><Icon name="alert" size={16} />{needs}</span>
+    ) : (
+      <span class="pts-ok"><Icon name="check" size={16} />Complete</span>
+    )}
+  </td>
+</tr>

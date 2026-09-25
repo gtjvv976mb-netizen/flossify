@@ -1,0 +1,128 @@
+---
+// People: the owner, the dentists and the staff at this branch — an avatar,
+// the name, what they do and when, and one status — each a row that opens
+// their own page. Add person opens today's invite flow in a side panel; a
+// refused add comes back in it with the reason and what was typed.
+import Pane from '../../../../../components/ws/Pane.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Avatar from '../../../../../components/ws/Avatar.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Note from './Note.astro';
+import { ROLES, ROLE_LABEL, DAYS, clinician, daysText, prcState, treats } from '../_lib/common';
+import { SPECIALTIES, EMAIL_MAX, accountState, type Person, type AddValues } from '../_lib/people';
+
+interface Props {
+  base: string;
+  clinicName: string;
+  people: (Person & { days: number[] })[];
+  me: string;
+  isOwner: boolean;
+  emailOn: boolean;
+  add: AddValues;
+  addError: string;
+  notes: { tone: 'ok' | 'alert' | 'warn'; text: string }[];
+  highlight: string;
+  on: boolean;
+}
+const { base, clinicName, people, me, isOwner, emailOn, add, addError, notes, highlight, on } = Astro.props;
+const active = people.filter((p) => !p.disabled_at).length;
+
+// One status per person: what needs doing first (disabled, invited, a PRC licence to sort out), else Active.
+const statusOf = (p: Person) => {
+  const acct = accountState(p);
+  if (p.disabled_at || !p.has_password) return { tone: acct.tone, label: acct.label };
+  if (treats(p.role)) {
+    const prc = prcState(p);
+    if (prc.tone === 'alert') return { tone: 'alert' as const, label: p.prc_licence ? 'PRC did not match' : 'No PRC licence' };
+    if (prc.tone === 'warn') return { tone: 'warn' as const, label: 'PRC check pending' };
+  }
+  return { tone: acct.tone, label: acct.label };
+};
+---
+
+<div class="set-panel" data-set-panel="people" data-on={on ? '' : undefined}>
+<Pane id="people" icon="patients" title="People" pad="none" class="set-sec">
+  <Fragment slot="actions">
+    <button type="button" class="ws-btn ws-btn-primary" data-ws-open="add-person"><Icon name="plus" />Add person</button>
+  </Fragment>
+  <div class="px-6 pt-4 max-md:px-4">
+    <p class="set-intro mt-0">Everyone who can open {clinicName}: {active} active{people.length > active ? `, ${people.length - active} disabled` : ''}. Open a person to change their days, access or sign-in.</p>
+    {notes.length > 0 && <div class="set-notes mt-4">{notes.map((n) => <Note tone={n.tone} text={n.text} />)}</div>}
+  </div>
+  <ul class="set-list mt-3 border-t border-[var(--ws-hair)]" aria-label={`People at ${clinicName}`}>
+    {people.map((p) => {
+      const st = statusOf(p);
+      return (
+        <li>
+          <div class="set-row" data-person={p.id} data-new={highlight === p.id ? '' : undefined}>
+            <Avatar name={p.full_name} />
+            <span class="min-w-0">
+              <a href={`${base}people/${p.id}/`} class="set-row-a set-row-name">{p.full_name}</a>
+              {p.id === me && <span class="ws-pill ws-tint-slate set-you">You</span>}
+              <span class="set-row-sub">{ROLE_LABEL[p.role] ?? p.role} · {daysText(p.days)}</span>
+            </span>
+            <span class="set-row-end">
+              <Chip tone={st.tone} label={st.label} />
+              <Icon name="chevron-right" class="set-go" />
+            </span>
+          </div>
+        </li>
+      );
+    })}
+  </ul>
+</Pane>
+</div>
+
+<SidePanel id="add-person" title="Add a person" meta="People" open={Boolean(addError)}>
+  <p class="ws-callout mb-5" data-tone="info">
+    <Icon name="message" />
+    <span>{emailOn
+      ? 'We send them a six-digit code by text and email. They choose “I have a code” on the staff sign-in page and pick their own password.'
+      : 'We text them a six-digit code. They choose “I have a code” on the staff sign-in page and pick their own password.'}</span>
+  </p>
+  {addError && <Note tone="alert" text={addError} class="mb-5" refused />}
+  <form method="post" action={base} class="grid gap-4" data-team-form>
+    <Csrf />
+    <input type="hidden" name="form" value="person-add" />
+    <input type="hidden" name="action" value="add" />
+    <label class="field"><span class="meta">Full name</span><input name="name" value={add.name} required maxlength="80" autocomplete="off" placeholder="Dr. Ana Reyes" /></label>
+    <label class="field">
+      <span class="meta">Role</span>
+      <select name="role" data-team-role>
+        {Object.entries(ROLES).map(([v, l]) => <option value={v} selected={add.role === v}>{l}</option>)}
+      </select>
+    </label>
+    <label class="field"><span class="meta">Mobile</span><input name="phone" type="tel" inputmode="numeric" value={add.phone} required autocomplete="off" placeholder="0917 000 0000" class="tabular-nums" /><span class="set-help">The code goes here by text.</span></label>
+    <label class="field"><span class="meta">Email</span><input name="email" type="email" value={add.email} required maxlength={EMAIL_MAX} autocomplete="off" autocapitalize="off" spellcheck="false" /><span class="set-help">They sign in with it.</span></label>
+    <label class="field" data-team-dentist hidden={!clinician(add.role)}>
+      <span class="meta">PRC licence</span>
+      <input name="prc" inputmode="numeric" value={add.prc} maxlength="10" autocomplete="off" placeholder="0043321" required={clinician(add.role)} data-prc-required class="tabular-nums" />
+      <span class="set-help">Flossify checks it with PRC. Until then their public profile says “PRC check pending”.</span>
+    </label>
+    <label class="field" data-team-dentist hidden={!clinician(add.role)}>
+      <span class="meta">Specialty</span>
+      <select name="specialty">
+        <option value="">General dentist</option>
+        {SPECIALTIES.map((s) => <option value={s} selected={add.specialty === s}>{s}</option>)}
+      </select>
+    </label>
+    <fieldset>
+      <legend class="meta">Days at this branch</legend>
+      <div class="set-days mt-2">
+        {DAYS.map(([n, label]) => (
+          <label class="set-day"><input type="checkbox" name="dow" value={n} checked={add.days.includes(n)} /><span>{label}</span></label>
+        ))}
+      </div>
+    </fieldset>
+    {isOwner && (
+      <label class="check set-check items-start" data-team-finance hidden={add.role === 'admin'}>
+        <input type="checkbox" name="finance" checked={add.finance} />
+        <span data-finance-for="desk" hidden={add.role !== 'secretary'}>Sees claim amounts (a secretary already sees Finances)</span>
+        <span data-finance-for="other" hidden={add.role === 'secretary'}>Sees money: balances, payments, the day’s takings and claim amounts</span>
+      </label>
+    )}
+    <div><button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="plus" />{emailOn ? 'Add and send the code' : 'Add and text the code'}</button></div>
+  </form>
+</SidePanel>

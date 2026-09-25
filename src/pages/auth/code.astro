@@ -8,9 +8,13 @@
 // The person says who they are the way the code reached them: the mobile it
 // was texted to, or the email it was sent to. A code belongs to the account,
 // not the channel, so an invitation that went by text and by email is one
-// code, and works once. When email is on (EMAIL_PROVIDER) a two-half switch,
-// Text or Email, picks the field; with email off the page is the text-only
-// page it was, unless the person arrived from an email (?via=email).
+// code, and works once. When email is on (EMAIL_PROVIDER) and nothing says how
+// the code came, two pills, Text or Email, pick the field. When something does
+// say — the cookie /auth/forgot/ left, a link's ?via= (an email's link asks for
+// Email), or the form just posted — the pills are not asked again: the field is
+// shown, with one line under it that turns to the other way ("Came by text?").
+// With email off the page is the text-only page it was, unless the person
+// arrived from an email (?via=email).
 //
 // Guarded like sign-in: the CSRF token, a rate limit per number or address and
 // per caller, every try written to auth_event, and the code itself dies after
@@ -25,9 +29,11 @@
 // and npm run admin:create resets them); a code for one is refused like any
 // miss, whichever way it arrived.
 //
-// The Text/Email switch works without script, as on /auth/forgot/: the
-// stylesheet shows the chosen half from the checked radio, neither field is
-// required in the markup, and the server reads only the one `via` names.
+// Text or Email works without script, as on /auth/forgot/: the stylesheet
+// shows the chosen field from the checked pill (or the hidden `via`), neither
+// field is required in the markup, and the server reads only the one `via`
+// names. The "Came by …?" line is a link to ?via=, so it works without script
+// too; with script it turns the field in place.
 //
 // Neither the number nor the address is ever in the page address.
 // /auth/forgot/ leaves the one it was asked with in a 15-minute httpOnly
@@ -38,6 +44,7 @@
 export const prerender = false;
 
 import StaffEntrance from '../../components/StaffEntrance.astro';
+import Icon from '../../components/ws/Icon.astro';
 import Csrf from '../../components/Csrf.astro';
 import { staffByPhone, setPassword, whoFor, setSession, passwordProblem, PASSWORD_MIN, authEvent, SESSION_HOURS, type Device } from '../../lib/auth';
 import { pool } from '../../lib/db';
@@ -62,11 +69,16 @@ const sent = Astro.url.searchParams.get('sent') === '1';
 const rememberedPhone = Astro.cookies.get(PHONE_COOKIE)?.value ?? '';
 const rememberedEmail = normalizeEmail(Astro.cookies.get(EMAIL_COOKIE)?.value ?? '');
 const hasEmail = EMAIL_ADDRESS.test(rememberedEmail);
-// The cookie says how the code went; otherwise the link that brought them here (an email's link asks for the Email half).
-let via: Via = hasEmail ? 'email' : PH_MOBILE.test(rememberedPhone) ? 'sms' : Astro.url.searchParams.get('via') === 'email' ? 'email' : 'sms';
-// The switch shows when email is on, and for anyone who came here from an email even if it has since been turned off.
+const hasPhone = PH_MOBILE.test(rememberedPhone);
+const asked = Astro.url.searchParams.get('via');
+// A link that says how the code came wins (an email's link asks for Email; "Came by text?" for Text);
+// otherwise the cookie says how it was asked for; otherwise Text.
+let via: Via = asked === 'email' || asked === 'sms' ? asked : hasEmail ? 'email' : 'sms';
+// Text or Email shows when email is on, and for anyone who came here from an email even if it has since been turned off.
 const showSwitch = emailEnabled() || via === 'email';
-let typedPhone = prettyPhone(PH_MOBILE.test(rememberedPhone) ? rememberedPhone : (Astro.url.searchParams.get('phone') ?? ''));
+// Known already (the cookie, the link, or the form just posted): no pills, just the field and a line to turn it.
+let known = hasEmail || hasPhone || asked === 'email' || asked === 'sms';
+let typedPhone = prettyPhone(hasPhone ? rememberedPhone : (Astro.url.searchParams.get('phone') ?? ''));
 let typedEmail = hasEmail ? rememberedEmail : '';
 let error = '';
 let device: Device = 'shared';
@@ -82,6 +94,7 @@ async function staffByEmail(email: string) {
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   via = form.get('via') === 'email' ? 'email' : 'sms';
+  known = true;
   typedPhone = String(form.get('phone') ?? '').trim();
   typedEmail = String(form.get('email') ?? '').trim();
   const phone = normalizePhone(typedPhone);
@@ -140,71 +153,88 @@ if (Astro.request.method === 'POST') {
 
 const byEmail = via === 'email';
 const filled = byEmail ? !!typedEmail : !!typedPhone;
+// Text or Email: two pills while nothing says how the code came; otherwise a hidden `via` and a line under the field.
+const pills = showSwitch && !known, turn = showSwitch && known;
 // Words that follow the switch: [text, email].
 const W = {
-  sent: ['If that number belongs to a staff account, a code is on its way. It works for 15 minutes.', 'If that email belongs to a staff account, a code is on its way. It works for 15 minutes. Not there in a minute? Look in spam.'],
+  sent: ['If that number belongs to a staff account, a code is on its way. It works for 15 minutes.', 'If that email belongs to a staff account, a code is on its way. It works for 15 minutes.'],
   again: ['Didn’t get a text?', 'Didn’t get the email?'],
+  againHint: ['Ask for another code.', 'Look in spam, or ask for another code.'],
   forgot: ['/auth/forgot/', '/auth/forgot/?via=email'],
 };
 const i = byEmail ? 1 : 0;
 ---
 
-<StaffEntrance title="I have a code — Flossify" description={showSwitch ? 'Enter the six-digit code we sent you and set your password.' : 'Enter the six-digit code we texted you and set your password.'} page="I have a code">
-  <a href="/auth/login/" class="meta hover:text-ink">&larr; Staff sign-in</a>
-  <h1 class="entry-title font-display mt-4">
+<StaffEntrance title="I have a code — Flossify" description={showSwitch ? 'Enter the six-digit code we sent you and set your password.' : 'Enter the six-digit code we texted you and set your password.'}>
+  <a slot="head" href="/auth/login/" class="entry-back"><Icon name="chevron-left" /><span>Back to sign-in</span></a>
+  <h1 class="entry-title">
     <span class="block">Almost in.</span>
-    <span class="block entry-dim">Enter your code.</span>
+    <span class="entry-sub">Enter your code.</span>
   </h1>
-  <p class="mt-2 text-[14.5px] leading-relaxed entry-dim">The six digits we {showSwitch ? 'sent you' : 'texted'}, and a password you’ll remember. You’re signed in straight away.</p>
+  <p class="entry-lede">The six digits we {showSwitch ? 'sent you' : 'texted'}, and a new password.</p>
 
-  {sent && !error && <p role="status" class="entry-note entry-note-ok mt-5">{W.sent[i]}</p>}
+  {sent && !error && <p role="status" class="entry-note entry-note-ok mt-5"><Icon name="check" /><span>{W.sent[i]}</span></p>}
 
-  <form method="post" class="mt-5 grid gap-4" data-entry-form>
+  <form method="post" class="entry-form" data-entry-form>
     <Csrf />
-    {showSwitch && (
+    {pills && (
       <fieldset class="entry-devices">
-        <legend class="meta">The code came by</legend>
+        <legend class="entry-label">The code came by</legend>
         <div class="entry-seg">
           <label><input type="radio" name="via" value="sms" class="sr-only" checked={!byEmail} data-via-pick />Text</label>
           <label><input type="radio" name="via" value="email" class="sr-only" checked={byEmail} data-via-pick />Email</label>
         </div>
       </fieldset>
     )}
-    {/* With the switch, neither field is required or disabled in the markup: without script both are sent and the server reads the one `via` names. */}
-    <div class="entry-field" data-via-field="sms">
-      <label for="phone" class="meta">Mobile number</label>
-      <input id="phone" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0917 000 0000" value={typedPhone} required={!showSwitch} autofocus={!byEmail && !filled} />
-    </div>
-    {showSwitch && (
-      <div class="entry-field" data-via-field="email">
-        <label for="email" class="meta">Email</label>
-        <input id="email" type="email" name="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" maxlength={EMAIL_MAX} placeholder="you@clinic.ph" value={typedEmail} autofocus={byEmail && !filled} />
+    {turn && <input type="hidden" name="via" value={via} data-via />}
+    {/* With Text or Email on the page, neither field is required or disabled in the markup: without script both are sent and the server reads the one `via` names. */}
+    {/* Who, and the code, side by side on a wide card (stacked on a phone, and for an email): the whole form fits a 1366x768 screen. */}
+    <div class="entry-pair entry-pair-who">
+      <div class="entry-field" data-via-field="sms">
+        <label for="phone" class="entry-label">Mobile number</label>
+        <input id="phone" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0917 000 0000" value={typedPhone} required={!showSwitch} autofocus={!byEmail && !filled} />
+        {turn && <a href="/auth/code/?via=email" class="entry-flip" data-flip="email">Came by email?</a>}
       </div>
-    )}
-    <div class="entry-field">
-      <label for="code" class="meta">Code</label>
-      <input id="code" type="text" name="code" class="entry-code" inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="000000" required autofocus={filled}
-        aria-invalid={error ? 'true' : undefined} aria-describedby={error ? 'code-error' : undefined} />
-    </div>
-    <div class="entry-field">
-      <label for="password" class="meta">New password</label>
-      <div class="entry-secret">
-        <input id="password" type="password" name="password" autocomplete="new-password" minlength={PASSWORD_MIN} required aria-describedby="pw-rule caps-note" />
-        <button type="button" class="entry-show" aria-controls="password" aria-pressed="false" data-show>Show</button>
+      {showSwitch && (
+        <div class="entry-field" data-via-field="email">
+          {/* An email is a card wide, so its line sits at the right of the label; the mobile's, half a card wide, under the field. */}
+          <div class="entry-label-row">
+            <label for="email" class="entry-label">Email</label>
+            {turn && <a href="/auth/code/?via=sms" class="entry-flip" data-flip="sms">Came by text?</a>}
+          </div>
+          <input id="email" type="email" name="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" maxlength={EMAIL_MAX} placeholder="you@clinic.ph" value={typedEmail} autofocus={byEmail && !filled} />
+        </div>
+      )}
+      <div class="entry-field">
+        <label for="code" class="entry-label">Code</label>
+        <input id="code" type="text" name="code" class="entry-code" inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="000000" required autofocus={filled}
+          aria-invalid={error ? 'true' : undefined} aria-describedby={error ? 'code-error' : undefined} />
       </div>
-      <p id="pw-rule" class="text-[13.5px] entry-dim">At least {PASSWORD_MIN} characters. A short sentence you’ll remember works well.</p>
-      <p id="caps-note" class="entry-caps" role="status" data-caps hidden>Caps Lock is on.</p>
     </div>
+    {/* The new password and again, side by side on a wide card (stacked on a phone), the rule under both. */}
     <div class="entry-field">
-      <label for="confirm" class="meta">Type it again</label>
-      <div class="entry-secret">
-        <input id="confirm" type="password" name="confirm" autocomplete="new-password" minlength={PASSWORD_MIN} required />
-        <button type="button" class="entry-show" aria-controls="confirm" aria-pressed="false" data-show>Show</button>
+      <div class="entry-pair">
+        <div class="entry-field">
+          <label for="password" class="entry-label">New password</label>
+          <div class="entry-secret">
+            <input id="password" type="password" name="password" autocomplete="new-password" minlength={PASSWORD_MIN} required aria-describedby="pw-rule caps-note" />
+            <button type="button" class="entry-show" aria-controls="password" aria-pressed="false" data-show>Show</button>
+          </div>
+        </div>
+        <div class="entry-field">
+          <label for="confirm" class="entry-label">Type it again</label>
+          <div class="entry-secret">
+            <input id="confirm" type="password" name="confirm" autocomplete="new-password" minlength={PASSWORD_MIN} required aria-describedby="caps-note" />
+            <button type="button" class="entry-show" aria-controls="confirm" aria-pressed="false" data-show>Show</button>
+          </div>
+        </div>
       </div>
+      <p id="pw-rule" class="entry-hint">At least {PASSWORD_MIN} characters. A short sentence works well.</p>
+      <p id="caps-note" class="entry-caps" role="status" data-caps hidden><Icon name="alert" size={16} /><span>Caps Lock is on.</span></p>
     </div>
 
     <fieldset class="entry-devices" aria-describedby="device-hint">
-      <legend class="meta">This device</legend>
+      <legend class="entry-label">This device</legend>
       <div class="entry-seg">
         <label><input type="radio" name="device" value="shared" class="sr-only" checked={device === 'shared'} />Shared at the clinic</label>
         <label><input type="radio" name="device" value="own" class="sr-only" checked={device === 'own'} />My own</label>
@@ -212,22 +242,22 @@ const i = byEmail ? 1 : 0;
       <p id="device-hint" class="entry-hint" data-device-hint>{device === 'own' ? 'Stays signed in for 14 days.' : 'Signs out after 12 hours.'}</p>
     </fieldset>
 
-    {error && <p id="code-error" role="alert" class="entry-note entry-note-bad">{error}</p>}
-    <button type="submit" class="btn btn-primary entry-go" data-go data-busy="Signing in…">Set password and sign in</button>
+    {error && <p id="code-error" role="alert" class="entry-note entry-note-bad"><Icon name="alert" /><span>{error}</span></p>}
+    <button type="submit" class="entry-go" data-go data-busy="Signing in…"><span data-go-label>Set password and sign in</span><Icon name="arrow-right" /></button>
   </form>
 
-  <ul class="mt-6 border-t entry-rule" aria-label="Other ways in">
-    <li class="border-b entry-rule"><a href={W.forgot[i]} class="entry-way" data-again data-forgot-sms={W.forgot[0]} data-forgot-email={W.forgot[1]}><span><span class="text-[14.5px] font-semibold">{showSwitch ? <><span data-via-field="sms">{W.again[0]}</span><span data-via-field="email">{W.again[1]}</span></> : W.again[i]}</span> <span class="entry-way-hint">Ask for another code.</span></span><span aria-hidden="true" class="entry-way-arrow">&rarr;</span></a></li>
+  <ul class="entry-ways" aria-label="Other ways in">
+    <li><a href={W.forgot[i]} class="entry-way" data-again data-forgot-sms={W.forgot[0]} data-forgot-email={W.forgot[1]}><span class="entry-way-icon"><Icon name="message" /></span><span class="entry-way-words"><span class="entry-way-title">{showSwitch ? <><span data-via-field="sms">{W.again[0]}</span><span data-via-field="email">{W.again[1]}</span></> : W.again[i]}</span> <span class="entry-way-hint">{showSwitch ? <><span data-via-field="sms">{W.againHint[0]}</span><span data-via-field="email">{W.againHint[1]}</span></> : W.againHint[i]}</span></span><Icon name="chevron-right" class="entry-way-go" /></a></li>
   </ul>
-  <p class="mt-4 text-[13.5px] leading-relaxed entry-dim">An invitation code from your clinic works here too — it sets your first password.</p>
+  <p class="entry-aside"><Icon name="info" /><span>An invitation code from your clinic works here too — it sets your first password.</span></p>
 </StaffEntrance>
 
 <style is:global>
-  /* Text or Email, without script: the checked radio shows its own field and words and hides the
-     other half's (the same rule as /auth/forgot/). */
+  /* Text or Email, without script: the checked pill (or the hidden `via`, when the page already knows)
+     shows its own field and words and hides the other half's (the same rule as /auth/forgot/). */
   @layer components {
-    :root:has(input[name='via'][value='email']:checked) [data-via-field='sms'],
-    :root:has(input[name='via'][value='sms']:checked) [data-via-field='email'] { display: none; }
+    :root:has(input[name='via'][value='email']:is(:checked, [type='hidden'])) [data-via-field='sms'],
+    :root:has(input[name='via'][value='sms']:is(:checked, [type='hidden'])) [data-via-field='email'] { display: none; }
   }
 </style>
 
@@ -241,6 +271,7 @@ const i = byEmail ? 1 : 0;
   // Text or Email. The stylesheet already shows the chosen half; this makes its field the required
   // one and switches the other off (neither required nor sent), and keeps the link and the address bar in step.
   const picks = Array.from(document.querySelectorAll<HTMLInputElement>('[data-via-pick]'));
+  const viaKnown = document.querySelector<HTMLInputElement>('input[data-via]');
   const again = document.querySelector<HTMLAnchorElement>('[data-again]');
   const sync = (via: string) => {
     document.querySelectorAll<HTMLElement>('[data-via-field]').forEach((field) => {
@@ -251,8 +282,22 @@ const i = byEmail ? 1 : 0;
     });
     if (again) again.href = (via === 'email' ? again.dataset.forgotEmail : again.dataset.forgotSms) ?? again.href;
   };
-  const chosen = picks.find((r) => r.checked);
-  if (chosen) sync(chosen.value);
+  const current = picks.find((r) => r.checked)?.value ?? viaKnown?.value;
+  if (current) sync(current);
+  // Already known: the line under the field turns to the other way in place (without script it is a link to ?via=).
+  document.querySelectorAll<HTMLAnchorElement>('[data-flip]').forEach((a) => a.addEventListener('click', (e) => {
+    if (!viaKnown) return;
+    e.preventDefault();
+    const via = a.dataset.flip === 'email' ? 'email' : 'sms';
+    viaKnown.value = via; // a hidden input's value is its attribute, which the stylesheet reads
+    sync(via);
+    // A reload lands on the same half; the "on its way" note was about the first ask, so it is not asked for again.
+    const u = new URL(location.href);
+    u.searchParams.set('via', via);
+    u.searchParams.delete('sent');
+    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+    document.querySelector<HTMLInputElement>(`[data-via-field="${via}"] input`)?.focus();
+  }));
   let keyed = false;
   document.addEventListener('pointerdown', () => { keyed = false; });
   picks.forEach((r) => {
@@ -293,9 +338,24 @@ const i = byEmail ? 1 : 0;
     const hint = document.querySelector<HTMLElement>('[data-device-hint]');
     if (hint) hint.textContent = own ? 'Stays signed in for 14 days.' : 'Signs out after 12 hours.';
   }));
-  // One press.
+  // One press. The words change, and the stylesheet turns a small ring in place of the icon.
   document.querySelector<HTMLFormElement>('[data-entry-form]')?.addEventListener('submit', (e) => {
     const go = (e.currentTarget as HTMLFormElement).querySelector<HTMLButtonElement>('[data-go]');
-    if (go) { go.disabled = true; go.textContent = go.dataset.busy ?? 'Working…'; }
+    if (!go) return;
+    go.disabled = true;
+    go.setAttribute('aria-busy', 'true');
+    const label = go.querySelector<HTMLElement>('[data-go-label]') ?? go;
+    label.dataset.was = label.innerHTML;
+    label.textContent = go.dataset.busy ?? 'Working…';
+  });
+  // Back to this page from the browser's cache: the button is ready again.
+  addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    document.querySelectorAll<HTMLButtonElement>('[data-go]').forEach((go) => {
+      const label = go.querySelector<HTMLElement>('[data-go-label]');
+      if (label?.dataset.was) { label.innerHTML = label.dataset.was; delete label.dataset.was; }
+      go.disabled = false;
+      go.removeAttribute('aria-busy');
+    });
   });
 </script>

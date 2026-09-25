@@ -1,0 +1,651 @@
+---
+// Add patient: everything about one patient on one page, in clear sections —
+// Person, Health, Consent, Past visits, Opening balance — and one Save.
+// (docs/workspace-redesign.md, "Patients".)
+//
+// Soft and simple (docs/workspace-redesign.md, "Very simple"): the few fields
+// the desk always fills are in view (name, birth date, sex, mobile, email,
+// HMO); address, emergency contact, chart no. and notes fold under "Address,
+// emergency contact and more" (open by itself when a post comes back with any
+// of them typed). No past visit is drawn until "Add a past visit" (a submit
+// with more=1 without the script, so it works either way). One teal button:
+// Save patient.
+//
+// Only the name is needed. Everything posts in one form with the CSRF token
+// (checked first; a miss comes back with ?stale=1 and nothing saved) and is
+// written in ONE withClinic() transaction after the clinic's lock
+// (lockClinic, the schedule's own): the patient, a first health version, the
+// consent (at the desk now, through recordDeskConsent, or signed on paper,
+// through recordPaperConsent — src/lib/health.ts), the past visits as
+// completed visits marked imported, their charges and payments as
+// statements in the clinic's own series (src/lib/import.ts, insertMoney),
+// and an opening balance as one more. Anything refused rolls all of it back
+// and the page comes back with what was typed and every reason in words.
+//
+// Before saving: a duplicate check. The page asks as the name and mobile are
+// typed (GET /api/patients/match), and the server asks again on Save: people
+// on file with this name (and birth date), this chart no., or this mobile and
+// last name. Save then shows them — "This looks like Maria Santos, 0917 555
+// 0142 — open her record?" — and saves only when the desk says it is someone
+// else (confirm_new carries the ids it was shown; a new look-alike asks again).
+//
+// Who: people who can edit records at this branch (staff_access.
+// can_edit_records, canEditRecords). The money parts (amounts on past visits,
+// the opening balance) only for people who may bill here (canBill in
+// src/lib/invoices.ts); for others they are not drawn, and the server ignores
+// them if posted. Every write is in audit_log (patient.create, health.update,
+// consent.desk / consent.paper / consent.paper_form, appointment.import,
+// invoice.import, payment.import).
+export const prerender = false;
+
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import DeskConsent from '../../../../components/DeskConsent.astro';
+import Pane from '../../../../components/ws/Pane.astro';
+import Icon from '../../../../components/ws/Icon.astro';
+import Avatar from '../../../../components/ws/Avatar.astro';
+import Head from './_ui/Head.astro';
+import Callout from './_ui/Callout.astro';
+import HealthLists from './_ui/HealthLists.astro';
+import PastVisit from './_ui/PastVisit.astro';
+import './_ui/patients.css';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { withClinic } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { hit, waitText, LIMITS } from '../../../../lib/throttle';
+import { canBill, METHODS, pesos, realDay, type Cents } from '../../../../lib/invoices';
+import {
+  LISTS, NOTE_MAX, NAME_MAX, manilaToday, ageOn, ageText, oneLine, readHealthForm, canEditRecords, noticeInForce,
+  recordDeskConsent, recordPaperConsent, readPaperForm, PAPER_WORDS, dateText, answered, type HealthAnswers, type AgreedAs, type PaperIn,
+} from '../../../../lib/health';
+import {
+  readPersonForm, snapshot, lookAlikes, lockClinic, nextChartNos, chartKey, archivedChart, insertPatients, insertHealth, insertVisits, insertMoney, keyUuid,
+  visitKey, openingKey, visitLine, readTeeth, readMoney, matchService, OPENING_LINE, SEXES, SERVICE_MAX, VISIT_NOTE_MAX, NOTES_MAX, hmoSuggestions,
+  type VisitIn, type PersonIn,
+} from '../../../../lib/import';
+import { hmos } from '../../../../data/directory';
+import { prettyPhone } from '../../../../lib/messages';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const money = canBill(session.role, clinic.can_view_finance);
+const here = `/c/${clinic.slug}/patients/new/`;
+const today = manilaToday();
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// How a past visit was paid: the Finances methods, and cheque (payment.method allows it; old records have them).
+const PAY_METHODS: Record<string, string> = { ...METHODS, cheque: 'Cheque' };
+
+// What the page needs to draw the form: the dentists (for past visits), the fee guide, the HMOs, the notice.
+const setup = await withClinic(clinic.id, async (tx) => ({
+  area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null,
+  canEdit: await canEditRecords(tx, session.staffId, clinic.id),
+  dentists: (await tx.query<{ id: string; full_name: string; active: boolean }>(
+    `select s.id, s.full_name, s.disabled_at is null as active from staff s
+      where s.group_id = $1 and s.role in ('owner', 'dentist', 'associate')
+        and (exists (select 1 from staff_access a where a.staff_id = s.id and a.clinic_id = $2)
+             or exists (select 1 from staff_schedule ss where ss.staff_id = s.id and ss.clinic_id = $2))
+      order by s.disabled_at is null desc, s.full_name`, [clinic.group_id, clinic.id])).rows,
+  services: (await tx.query<{ name: string }>(`select name from procedure_catalog where active order by name`)).rows.map((r) => r.name),
+  hmoNames: await hmoSuggestions(tx, new Map(hmos.map((h) => [h.id, h.name]))),
+  notice: await noticeInForce(tx),
+  dpo: ((await tx.query('select dpo_name from clinic_group where id = $1', [clinic.group_id])).rows[0]?.dpo_name ?? null) as string | null,
+  nextChart: nextChartNos((await tx.query<{ chart_no: string }>('select chart_no from patient')).rows.map((r) => r.chart_no), 1)[0],
+}));
+
+// ---------------------------------------------------------------------------
+// The post
+// ---------------------------------------------------------------------------
+interface VisitRow { date: string; dentist: string; dentistName: string; service: string; teeth: string; notes: string; charged: string; paid: string; method: string }
+const blankVisit = (): VisitRow => ({ date: '', dentist: '', dentistName: '', service: '', teeth: '', notes: '', charged: '', paid: '', method: '' });
+
+let problems: string[] = [];
+let posted: FormData | null = null;
+// No past visit is drawn until the desk adds one (most new patients have none); a post comes back with its rows.
+let visitRows: VisitRow[] = [];
+let dupes: { id: string; name: string; chartNo: string; phone: string | null; birth: string | null }[] = [];
+let consentHow: 'later' | 'desk' | 'paper' = 'later';
+let paperValues: Partial<PaperIn> = {};
+const stale = Astro.url.searchParams.get('stale') === '1';
+
+class Refused extends Error { reasons: string[]; constructor(r: string[]) { super('refused'); this.reasons = r; } }
+
+if (Astro.request.method === 'POST' && setup.canEdit) {
+  const form = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(here + '?stale=1', 303);
+  posted = form;
+  const V = (k: string) => form.getAll(k).map((v) => String(v ?? ''));
+  const cols = { date: V('visit_date'), dentist: V('visit_dentist'), dentistName: V('visit_dentist_name'), service: V('visit_service'), teeth: V('visit_teeth'), notes: V('visit_notes'), charged: V('visit_charged'), paid: V('visit_paid'), method: V('visit_method') };
+  visitRows = cols.date.map((_, i) => ({
+    date: cols.date[i] ?? '', dentist: cols.dentist[i] ?? '', dentistName: cols.dentistName[i] ?? '', service: cols.service[i] ?? '', teeth: cols.teeth[i] ?? '',
+    notes: cols.notes[i] ?? '', charged: cols.charged[i] ?? '', paid: cols.paid[i] ?? '', method: cols.method[i] ?? '',
+  }));
+  const how = String(form.get('consent_how') ?? 'later');
+  consentHow = how === 'desk' || how === 'paper' ? how : 'later';
+  // "Add another visit" without the page's script: draw one more row, save nothing.
+  if (form.get('more') === '1') {
+    visitRows.push(blankVisit());
+  } else {
+    const rate = await hit('record:s:' + session.staffId, ...LIMITS.chart.staff);
+    if (!rate.allowed) problems.push('Too many saves at once. ' + waitText(rate.retryAfter));
+
+    const { person, problems: pp } = readPersonForm(form);
+    const { answers, birth, problems: hp } = readHealthForm(form, today);
+    problems.push(...pp, ...hp.map((p) => (p.startsWith('That birth date') || p.startsWith('The birth date') ? p : `Health: ${p}`)));
+
+    // Past visits: blank rows are skipped; every other row is checked in full.
+    const dentistIds = new Set(setup.dentists.map((d) => d.id));
+    const visits: VisitIn[] = [];
+    visitRows.forEach((r, i) => {
+      const blank = !r.date && !r.service.trim() && !r.teeth.trim() && !r.notes.trim() && !r.charged.trim() && !r.paid.trim() && !r.dentistName.trim();
+      if (blank) return;
+      const n = `Visit ${i + 1}`;
+      const before = problems.length;
+      if (!r.date) problems.push(`${n}: give the date of the visit.`);
+      else if (!realDay(r.date)) problems.push(`${n}: the date is not a real date.`);
+      else if (r.date > today) problems.push(`${n}: the date is after today. Only past visits go here; book coming ones on the Dashboard.`);
+      else if (r.date < '1900-01-01') problems.push(`${n}: the date is before 1900.`);
+      const service = oneLine(r.service).normalize('NFC');
+      if (!service) problems.push(`${n}: say what was done.`);
+      else if (service.length > SERVICE_MAX) problems.push(`${n}: keep the service under ${SERVICE_MAX} characters.`);
+      let dentistId: string | null = null, dentistName: string | null = null;
+      if (r.dentist === '__other') { dentistName = oneLine(r.dentistName).normalize('NFC') || null; if (!dentistName) problems.push(`${n}: write the dentist’s name, or pick one from the team.`); else if (dentistName.length > 120) problems.push(`${n}: the dentist’s name is too long.`); }
+      else if (r.dentist) { if (dentistIds.has(r.dentist)) dentistId = r.dentist; else problems.push(`${n}: pick the dentist again.`); }
+      const t = readTeeth(r.teeth);
+      if ('problem' in t) problems.push(`${n}: ${t.problem}.`);
+      const notes = r.notes.replace(/\r\n/g, '\n').trim();
+      if (notes.length > VISIT_NOTE_MAX) problems.push(`${n}: keep the notes under ${VISIT_NOTE_MAX} characters.`);
+      let charged: Cents = 0n, paid: Cents = 0n, method = 'unrecorded';
+      if (money) {
+        const c = readMoney(r.charged), p = readMoney(r.paid);
+        if (c && 'problem' in c) problems.push(`${n}: amount charged ${c.problem}.`); else if (c) charged = c.cents;
+        if (p && 'problem' in p) problems.push(`${n}: amount paid ${p.problem}.`); else if (p) paid = p.cents;
+        if (paid > 0n && charged === 0n) problems.push(`${n}: an amount paid with no amount charged. Put what the visit cost too.`);
+        else if (paid > charged) problems.push(`${n}: paid ${pesos(paid)} is more than the ${pesos(charged)} charged.`);
+        if (paid > 0n) {
+          if (r.method === 'unrecorded' || Object.hasOwn(PAY_METHODS, r.method)) method = r.method;
+          else problems.push(`${n}: say how it was paid, or choose “Not in the old records”.`);
+        }
+      }
+      if (problems.length === before) visits.push({ date: r.date, dentistId, dentistName, catalogId: null, service, teeth: 'teeth' in t ? t.teeth : null, notes: notes || null, charged, paid, method });
+    });
+
+    let opening: { cents: Cents; asOf: string } | null = null;
+    if (money) {
+      const m = readMoney(String(form.get('opening_amount') ?? ''));
+      const asOf = String(form.get('opening_as_of') ?? '').trim() || today;
+      if (m && 'problem' in m) problems.push(`Opening balance: ${m.problem}.`);
+      else if (m) {
+        if (!realDay(asOf)) problems.push('Opening balance: the “as of” date is not a real date.');
+        else if (asOf > today) problems.push('Opening balance: the “as of” date is after today.');
+        else opening = { cents: m.cents, asOf };
+      }
+    }
+
+    // Consent: at the desk now, or signed on paper (or not now).
+    const agreedRaw = String(form.get('agreed_as') ?? '');
+    const agreedAs: AgreedAs | null = agreedRaw === 'patient' || agreedRaw === 'guardian' ? agreedRaw : null;
+    const givenBy = oneLine(form.get('given_by_name')) || null;
+    let paper: PaperIn | null = null;
+    if (consentHow === 'desk') {
+      if (!setup.notice) problems.push('Consent: no privacy notice is in force, so there is nothing to agree to yet. Choose “Not now”.');
+      else if (form.get('agreed') !== '1') problems.push('Consent: tick the box that says they agreed, once they have, or choose “Not now”.');
+      else if (givenBy && givenBy.length > NAME_MAX) problems.push(`Consent: keep the name under ${NAME_MAX} characters.`);
+    } else if (consentHow === 'paper') {
+      const r = readPaperForm(form, today);
+      paper = r.paper;
+      paperValues = r.paper;
+      problems.push(...r.problems.map((p) => `Consent: ${p}`));
+    }
+    if (consentHow !== 'paper') paperValues = readPaperForm(form, today).paper;
+
+    if (problems.length === 0) {
+      const confirmed = new Set(String(form.get('confirm_new') ?? '').split(',').filter((x) => UUID.test(x)));
+      try {
+        const out = await withClinic(clinic.id, async (tx) => {
+          if (!(await canEditRecords(tx, session.staffId, clinic.id))) throw new Refused(['Your account cannot add patients at this branch. Ask the owner.']);
+          await lockClinic(tx, clinic.id);
+          const s = await snapshot(tx, clinic.group_id, { visitKeys: false });
+          const alike = lookAlikes(s, { first: person.first, last: person.last, birth, mobile: person.phone, chartNo: person.chartNo });
+          const nextFree = () => nextChartNos(s.takenCharts, 1)[0];
+          if (person.chartNo && s.byChart.has(chartKey(person.chartNo))) {
+            const p = s.byChart.get(chartKey(person.chartNo))!;
+            throw new Refused([`Chart no. ${person.chartNo} is ${p.first_name} ${p.last_name}’s. Leave it blank for the next free number, ${nextFree()}.`]);
+          }
+          const archived = archivedChart(s, person.chartNo);
+          if (archived) throw new Refused([`${archived} Leave it blank for the next free number, ${nextFree()}.`]);
+          if (alike.length && !alike.every((p) => confirmed.has(p.id))) return { dupes: alike };
+          const ctx = { clinicId: clinic.id, staffId: session.staffId, importId: null };
+          const chartNo = person.chartNo ?? nextFree();
+          const [id] = await insertPatients(tx, ctx, [{ ...person, chartNo, birth, health: null, opening: null, paperForm: null }]);
+          if (answered(answers)) await insertHealth(tx, ctx, [{ id, h: answers as HealthAnswers }]);
+          if (consentHow === 'desk') {
+            const r = await recordDeskConsent(tx, { clinicId: clinic.id, staffId: session.staffId, patientId: id, version: String(form.get('version') ?? ''), givenBy, agreedAs });
+            if (r !== 'saved') throw new Refused([`Consent: ${{
+              who: 'choose who is agreeing: the patient, 18 or over, or a parent or guardian.',
+              minor: 'the birth date makes the patient under 18, so a parent or guardian agrees for them and types their name.',
+              'guardian-name': 'a parent or guardian is agreeing, so they type their name.',
+              'no-notice': 'no privacy notice is in force.',
+              changed: 'the privacy notice changed while this page was open. Show the patient the new one.',
+              already: 'already on record.', none: 'the patient was not saved.',
+            }[r]}`]);
+          } else if (consentHow === 'paper' && paper) {
+            const r = await recordPaperConsent(tx, { clinicId: clinic.id, staffId: session.staffId, patientId: id, ...paper });
+            if (r !== 'saved') throw new Refused([`Consent: ${r === 'none' ? 'the patient was not saved.' : PAPER_WORDS[r]}`]);
+          }
+          // Past visits: completed, marked imported; what they cost, as statements dated that day.
+          const keyed = visits.map((v) => {
+            const m = matchService(s, v.service);
+            const withCat = { ...v, catalogId: m?.id ?? null, service: m?.name ?? v.service };
+            return { patientId: id, key: visitKey(clinic.id, id, v.date, withCat.service, v.dentistId ?? v.dentistName ?? ''), v: withCat };
+          });
+          const seen = new Set<string>();
+          for (const [i, k] of keyed.entries()) { if (seen.has(k.key)) throw new Refused([`Visit ${i + 1}: the same day, service and dentist as another visit above. Remove one, or tell them apart.`]); seen.add(k.key); }
+          const made = await insertVisits(tx, ctx, keyed);
+          const charges = keyed.filter((k) => k.v.charged > 0n).map((k) => ({
+            patientId: id, formKey: keyUuid(`charge|${k.key}`), day: k.v.date, appointmentId: made.get(k.key) ?? null,
+            line: { desc: visitLine(k.v), catalogId: k.v.catalogId }, charged: k.v.charged, paid: k.v.paid, method: k.v.method,
+          }));
+          if (opening) charges.push({ patientId: id, formKey: openingKey(clinic.id, id), day: opening.asOf, appointmentId: null, line: { desc: OPENING_LINE, catalogId: null }, charged: opening.cents, paid: 0n, method: 'unrecorded' });
+          await insertMoney(tx, ctx, charges);
+          return { id };
+        });
+        if ('dupes' in out) {
+          dupes = out.dupes.map((p) => ({ id: p.id, name: [p.first_name, p.last_name, p.suffix].filter(Boolean).join(' '), chartNo: p.chart_no, phone: p.phone, birth: p.birth }));
+        } else {
+          return Astro.redirect(`/c/${clinic.slug}/patients/${out.id}/?saved=new`, 303);
+        }
+      } catch (e) {
+        // A unique number taken by a save that did not wait for this one (the chart no., a statement's): nothing was kept.
+        if ((e as { code?: string })?.code === '23505') problems.push('Another save took the same number at the same moment. Nothing was saved: press Save patient again.');
+        else if (!(e instanceof Refused)) throw e;
+        else problems.push(...e.reasons);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Drawing
+// ---------------------------------------------------------------------------
+const val = (k: string) => (posted ? String(posted.get(k) ?? '') : '');
+const list = (k: string) => (posted ? posted.getAll(k).map(String) : []);
+const birthValue = val('birth_date');
+const age = birthValue ? ageOn(birthValue, today) : null;
+// The chips: the quick picks, then anything typed, ticked when posted.
+const lower = (s: string) => s.toLocaleLowerCase('en');
+const chipsFor = (key: string, picks: readonly string[]) => {
+  const on = list(key);
+  const extra = on.filter((v) => !picks.some((p) => lower(p) === lower(v)));
+  return [...picks, ...extra].map((v) => ({ value: v, on: on.some((x) => lower(x) === lower(v)) }));
+};
+const healthChips = Object.fromEntries(LISTS.map((l) => [l.key, chipsFor(l.key, l.picks)]));
+const healthNone = Object.fromEntries(LISTS.map((l) => [l.key, val(`${l.key}_none`) === '1']));
+const healthTyped = Object.fromEntries(LISTS.map((l) => [l.key, val(`${l.key}_add`)]));
+const help = 'text-[13px] leading-snug text-muted';
+const METHOD_OPTIONS = [...Object.entries(PAY_METHODS), ['unrecorded', 'Not in the old records']] as [string, string][];
+const dupFirst = dupes[0];
+// "Address, emergency contact and more" opens by itself when a post comes back with any of it typed.
+const MORE_FIELDS = ['address', 'city', 'province', 'emergency_name', 'emergency_relation', 'emergency_phone', 'chart_no', 'notes'];
+const moreOpen = MORE_FIELDS.some((k) => val(k).trim() !== '');
+const importHref = `/c/${clinic.slug}/patients/import/`;
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: setup.area }} title="Add patient" section="add-patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  {/* Back to the Patients tab, as the record and Import have it — on the room, so on a small white card of its own. */}
+  <a href={`/c/${clinic.slug}/patients/`} class="rec-back ws-glass m-0! w-fit px-3!" data-pts-back><Icon name="chevron-left" />Back to patients</a>
+  <script>
+    // Back to the list as it was left: the same search, filter and sort (./_list/back.ts).
+    import { restoreBackLinks } from './_list/back';
+    restoreBackLinks();
+  </script>
+  {stale && <Callout tone="alert" text={CSRF_MESSAGE} />}
+  {problems.length > 0 && (
+    <Callout tone="alert" focus class="focus:outline-none" data-add-problems title={`Nothing was saved. ${problems.length === 1 ? 'One thing' : `${problems.length} things`} to fix:`} items={problems} />
+  )}
+
+  {!setup.canEdit ? (
+    <Pane as="div" label="Not allowed">
+      <Callout tone="alert" role="note" text="Your account cannot add patients at this branch. Ask the owner." />
+    </Pane>
+  ) : (
+    <form method="post" action={here} class="grid gap-4 max-md:gap-3" data-add-form>
+      <Csrf />
+
+      {dupFirst && (
+        <Pane as="div" label="Before saving">
+          <div role="alert" tabindex="-1" class="focus:outline-none" data-add-dupes>
+            <div class="ws-callout" data-tone="warn">
+              <Icon name="alert" />
+              <div class="min-w-0 flex-1">
+                <p class="text-[17px] font-semibold">This looks like {dupFirst.name}{dupFirst.phone ? `, ${prettyPhone(dupFirst.phone)}` : ''}. Open {dupes.length === 1 ? 'their' : 'one'} record?</p>
+                <p class="mt-0.5 text-[14.5px] text-ink-2">Families often share one mobile. Nothing is saved until you choose.</p>
+              </div>
+            </div>
+            <ul class="pt-list mt-3">
+              {dupes.map((d) => (
+                <li>
+                  <span class="flex min-w-0 items-center gap-3">
+                    <Avatar name={d.name} />
+                    <span class="min-w-0 text-[15px]"><span class="font-semibold">{d.name}</span><span class="block text-[13.5px] text-muted">{[d.chartNo, d.birth ? `born ${dateText(d.birth)}` : null, d.phone ? prettyPhone(d.phone) : null].filter(Boolean).join(' · ')}</span></span>
+                  </span>
+                  <a href={`/c/${clinic.slug}/patients/${d.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open record <Icon name="arrow-right" size={16} /></a>
+                </li>
+              ))}
+            </ul>
+            <div class="mt-3 border-t border-[var(--ws-hair)] pt-4">
+              <button type="submit" name="confirm_new" value={dupes.map((d) => d.id).join(',')} class="ws-btn ws-btn-quiet"><Icon name="plus" />It is someone else: save as new</button>
+            </div>
+          </div>
+        </Pane>
+      )}
+
+      <Pane title="Person" icon="user" id="person">
+        <p slot="actions" class="text-[14px] text-ink-2">Only the name is needed. <a href={importHref} class="font-semibold whitespace-nowrap text-[var(--ws-teal-ink)] underline-offset-4 hover:underline">Import a spreadsheet instead</a></p>
+        <p class="sr-only" aria-live="polite" data-match-said></p>
+        <div class="grid gap-x-5 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label class="field">
+            <span class="meta">Last name</span>
+            <input name="last_name" value={val('last_name')} required maxlength="60" autocomplete="off" autocapitalize="words" data-match />
+          </label>
+          <label class="field">
+            <span class="meta">First name</span>
+            <input name="first_name" value={val('first_name')} required maxlength="60" autocomplete="off" autocapitalize="words" data-match />
+          </label>
+          <label class="field">
+            <span class="meta">Middle name</span>
+            <input name="middle_name" value={val('middle_name')} maxlength="60" autocomplete="off" autocapitalize="words" />
+          </label>
+          <label class="field">
+            <span class="meta">Suffix</span>
+            <input name="suffix" value={val('suffix')} maxlength="10" autocomplete="off" list="suffixes" placeholder="Jr., Sr., III" />
+          </label>
+          <label class="field">
+            <span class="meta">Birth date</span>
+            <input type="date" name="birth_date" value={birthValue} min="1900-01-01" max={today} data-match data-add-birth data-today={today} />
+            <span class={help} aria-live="polite" data-add-age>{age !== null && age >= 0 ? ageText(age) : 'Under 18: a parent or guardian agrees to consent.'}</span>
+          </label>
+          <fieldset class="min-w-0 sm:col-span-1 lg:col-span-3">
+            <legend class="float-left w-full text-[14px] font-medium text-ink-2">Sex</legend>
+            <div class="pk-row clear-both pt-[0.4rem]">
+              {SEXES.map((x) => (
+                <label class="pk pk-radio"><input type="radio" name="sex" value={x.id} checked={val('sex') === x.id} /><span>{x.label}</span></label>
+              ))}
+            </div>
+          </fieldset>
+          <label class="field">
+            <span class="meta">Mobile</span>
+            <input type="tel" name="mobile" value={val('mobile')} inputmode="tel" autocomplete="off" placeholder="0917 555 0142" data-match />
+            <span class={help}>Reminders go to it.</span>
+          </label>
+          <label class="field">
+            <span class="meta">Email</span>
+            <input type="email" name="email" value={val('email')} maxlength="120" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span class="meta">HMO</span>
+            <input name="hmo_name" value={val('hmo_name')} maxlength="80" autocomplete="off" list="hmo-names" />
+          </label>
+          <label class="field">
+            <span class="meta">HMO member no.</span>
+            <input name="hmo_member_no" value={val('hmo_member_no')} maxlength="40" autocomplete="off" />
+          </label>
+        </div>
+
+        <details class="pt-more mt-4" open={moreOpen || undefined}>
+          <summary>Address, emergency contact and more <Icon name="chevron" size={16} class="pt-chev" /></summary>
+          <div class="grid gap-x-5 gap-y-4 pt-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label class="field sm:col-span-2">
+              <span class="meta">Address</span>
+              <input name="address" value={val('address')} maxlength="200" autocomplete="off" placeholder="House, street, barangay" />
+            </label>
+            <label class="field">
+              <span class="meta">City or town</span>
+              <input name="city" value={val('city')} maxlength="80" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span class="meta">Province</span>
+              <input name="province" value={val('province')} maxlength="80" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span class="meta">Emergency contact</span>
+              <input name="emergency_name" value={val('emergency_name')} maxlength="120" autocomplete="off" autocapitalize="words" />
+            </label>
+            <label class="field">
+              <span class="meta">Relation</span>
+              <input name="emergency_relation" value={val('emergency_relation')} maxlength="40" autocomplete="off" placeholder="Mother, husband…" />
+            </label>
+            <label class="field">
+              <span class="meta">Their number</span>
+              <input type="tel" name="emergency_phone" value={val('emergency_phone')} maxlength="20" inputmode="tel" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span class="meta">Chart no.</span>
+              <input name="chart_no" value={val('chart_no')} maxlength="20" autocomplete="off" placeholder={setup.nextChart} data-match />
+              <span class={help}>Blank: the next free number, {setup.nextChart}.</span>
+            </label>
+            <label class="field sm:col-span-2 lg:col-span-4">
+              <span class="meta">Other notes</span>
+              <textarea name="notes" rows="2" maxlength={NOTES_MAX}>{val('notes')}</textarea>
+            </label>
+          </div>
+        </details>
+        <datalist id="suffixes"><option value="Jr." /><option value="Sr." /><option value="II" /><option value="III" /><option value="IV" /></datalist>
+        <datalist id="hmo-names">{setup.hmoNames.map((h) => <option value={h} />)}</datalist>
+        <div class="ws-callout mt-4" data-tone="warn" role="status" hidden data-match-box>
+          <Icon name="alert" />
+          <div class="min-w-0 flex-1">
+            <p class="font-semibold" data-match-line></p>
+            <ul class="mt-1 grid gap-0.5" data-match-list></ul>
+          </div>
+        </div>
+      </Pane>
+
+      <Pane as="section" label="Health" id="health">
+        <Head icon="heart" title="Health" />
+        <p class="-mt-2 mb-2 text-[14px] text-ink-2">Leave a list alone if nobody asked yet. “None known” means asked, and there is none.</p>
+        <HealthLists chips={healthChips} none={healthNone} typed={healthTyped} />
+        <label class="field mt-2 border-t border-[var(--ws-hair)] pt-5">
+          <span class="meta">Note for the dentist</span>
+          <textarea name="note" rows="2" maxlength={NOTE_MAX} placeholder="Anything to know before starting. For example: faints at injections.">{val('note')}</textarea>
+        </label>
+      </Pane>
+
+      <Pane as="section" label="Privacy consent" id="consent-pane">
+        <Head icon="shield" title="Privacy consent" />
+        <DeskConsent embed notice={setup.notice} consents={[]} canRecord={true} minor={false} birthKnown={false} dpo={setup.dpo} action={here}
+          how={consentHow} givenBy={val('given_by_name')} agreedAs={(val('agreed_as') || null) as AgreedAs | null} ticked={val('agreed') === '1'}
+          paper={{ values: paperValues }} />
+      </Pane>
+
+      <Pane title="Past visits" icon="clock" id="visits">
+        <p class="-mt-2 mb-4 max-w-[70ch] text-[14px] text-ink-2">
+          Visits from before Flossify. Each is kept as a finished visit marked imported, on its day.
+          {money ? ' What it cost and what was paid become a statement and a payment dated that day.' : ''}
+        </p>
+        <ol class="grid gap-3 empty:hidden" data-visits>{visitRows.map((r, i) => <PastVisit row={r} n={i + 1} today={today} dentists={setup.dentists} money={money} methods={METHOD_OPTIONS} />)}</ol>
+        <p class="text-[14.5px] text-ink-2" hidden={visitRows.length > 0} data-visits-empty>None added. Most new patients have none.</p>
+        <datalist id="services">{setup.services.map((n) => <option value={n} />)}</datalist>
+        <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <button type="submit" name="more" value="1" formnovalidate class="ws-btn ws-btn-quiet" data-visit-add><Icon name="plus" />Add a past visit</button>
+          <span class={help}>Teeth are FDI numbers: 11 to 48, milk teeth 51 to 85.</span>
+        </div>
+      </Pane>
+
+      {money && (
+        <Pane title="Opening balance" icon="money" id="opening">
+          <p class="-mt-2 mb-4 max-w-[70ch] text-[14px] text-ink-2">What they still owe from before. Leave it blank if they owe nothing.</p>
+          <div class="flex flex-wrap items-end gap-4">
+            <label class="field w-[12rem]"><span class="meta">Amount, ₱</span><input name="opening_amount" value={val('opening_amount')} inputmode="decimal" autocomplete="off" placeholder="0" /></label>
+            <label class="field w-[13.5rem]"><span class="meta">As of</span><input type="date" name="opening_as_of" value={val('opening_as_of') || today} min="1900-01-01" max={today} /></label>
+          </div>
+          <p class={`${help} mt-3 max-w-[70ch]`}>It becomes one statement, “{OPENING_LINE}”, dated that day, for the desk to collect on.</p>
+        </Pane>
+      )}
+
+      <Pane as="div" label="Save">
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <button type="submit" class="ws-btn ws-btn-primary min-h-[48px] min-w-[12rem] text-[16px] max-sm:w-full" data-add-save><Icon name="check" />Save patient</button>
+          <p class="text-[14px] text-ink-2">Everything is saved together, under your name. If anything needs fixing, nothing is saved.</p>
+        </div>
+      </Pane>
+
+      <template data-visit-tpl><PastVisit today={today} dentists={setup.dentists} money={money} methods={METHOD_OPTIONS} /></template>
+    </form>
+  )}
+</ClinicLayout>
+
+<script>
+  import { ageOn, ageText, capitalise } from '../../../../lib/health';
+
+  const form = document.querySelector<HTMLFormElement>('[data-add-form]');
+  if (form) {
+    // A refused save, or the duplicate question: bring it into view.
+    (document.querySelector<HTMLElement>('[data-add-dupes]') ?? document.querySelector<HTMLElement>('[data-add-problems]'))?.focus();
+
+    // Enter in a one-line field would save a half-filled form; it moves on instead.
+    form.addEventListener('keydown', (e) => {
+      const t = e.target as HTMLElement;
+      if (e.key === 'Enter' && t instanceof HTMLInputElement && !['submit', 'button', 'checkbox', 'radio'].includes(t.type) && !t.hasAttribute('data-health-add-input')) e.preventDefault();
+    });
+
+    // Leaving with something typed asks first.
+    let dirty = false, saving = false;
+    form.addEventListener('input', () => { dirty = true; });
+    form.addEventListener('submit', () => { saving = true; });
+    window.addEventListener('beforeunload', (e) => { if (dirty && !saving) { e.preventDefault(); e.returnValue = ''; } });
+
+    // --- health chips (the record page's, the same rules) ----------------------
+    form.querySelectorAll<HTMLElement>('[data-health-list]').forEach((group) => {
+      const chips = group.querySelector<HTMLElement>('[data-health-chips]')!;
+      const none = group.querySelector<HTMLInputElement>('[data-health-none]')!;
+      const box = group.querySelector<HTMLInputElement>('[data-health-add-input]')!;
+      const tpl = group.querySelector<HTMLTemplateElement>('[data-health-tpl]')!;
+      const items = () => [...chips.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:not([data-health-none])')];
+      chips.addEventListener('change', (e) => {
+        const t = e.target as HTMLInputElement;
+        if (t === none) { if (t.checked) items().forEach((i) => { i.checked = false; }); }
+        else if (t.checked) none.checked = false;
+      });
+      const add = () => {
+        const words = box.value.split(/[,;\n]/).map((s) => capitalise(s.replace(/\s+/g, ' ').trim())).filter(Boolean);
+        for (const w of words) {
+          const same = items().find((i) => i.value.toLocaleLowerCase('en') === w.toLocaleLowerCase('en'));
+          if (same) { same.checked = true; continue; }
+          const node = tpl.content.firstElementChild!.cloneNode(true) as HTMLElement;
+          const input = node.querySelector('input')!;
+          input.value = w; input.checked = true;
+          node.querySelector('[data-health-chip-text]')!.textContent = w;
+          chips.append(node);
+        }
+        if (words.length) none.checked = false;
+        box.value = '';
+        box.focus();
+      };
+      box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+      group.querySelector<HTMLButtonElement>('[data-health-add]')!.addEventListener('click', add);
+    });
+
+    // --- the age, and who agrees to consent ---------------------------------------
+    const birth = form.querySelector<HTMLInputElement>('[data-add-birth]');
+    const age = form.querySelector<HTMLElement>('[data-add-age]');
+    const whoFrom = () => {
+      if (!birth || !age) return;
+      const today = birth.dataset.today ?? '';
+      const v = birth.value;
+      const years = v && v >= '1900-01-01' && v <= today ? ageOn(v, today) : null;
+      age.textContent = years === null ? (v ? 'Check the date' : 'Under 18: a parent or guardian agrees to consent.') : ageText(years);
+      if (years === null) return;
+      const pick = form.querySelector<HTMLInputElement>(`input[name="agreed_as"][value="${years < 18 ? 'guardian' : 'patient'}"]`);
+      if (pick && !pick.checked) { pick.checked = true; pick.dispatchEvent(new Event('change', { bubbles: true })); }
+    };
+    birth?.addEventListener('change', whoFrom);
+    birth?.addEventListener('blur', whoFrom);
+
+    // --- consent: one of three ----------------------------------------------------
+    const parts = form.querySelectorAll<HTMLElement>('[data-consent-part]');
+    const showHow = () => {
+      const how = form.querySelector<HTMLInputElement>('input[name="consent_how"]:checked')?.value ?? 'later';
+      parts.forEach((p) => { p.hidden = p.dataset.consentPart !== how; });
+    };
+    form.querySelectorAll<HTMLInputElement>('input[name="consent_how"]').forEach((r) => r.addEventListener('change', showHow));
+    showHow();
+
+    // --- past visits: add, remove, "someone else" ----------------------------------
+    const list = form.querySelector<HTMLOListElement>('[data-visits]')!;
+    const tpl = form.querySelector<HTMLTemplateElement>('[data-visit-tpl]')!;
+    const none = form.querySelector<HTMLElement>('[data-visits-empty]');
+    const addBtn = form.querySelector<HTMLButtonElement>('[data-visit-add]');
+    const renumber = () => {
+      const rows = list.querySelectorAll<HTMLElement>('[data-visit-no]');
+      rows.forEach((p, i) => { p.textContent = `Visit ${i + 1}`; });
+      if (none) none.hidden = rows.length > 0;
+    };
+    addBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const node = tpl.content.firstElementChild!.cloneNode(true) as HTMLElement;
+      list.append(node);
+      renumber();
+      node.querySelector<HTMLInputElement>('input[name="visit_date"]')?.focus();
+    });
+    list.addEventListener('click', (e) => {
+      const b = (e.target as Element).closest('[data-visit-remove]');
+      if (!b) return;
+      const item = b.closest<HTMLElement>('[data-visit]')!;
+      const next = (item.nextElementSibling ?? item.previousElementSibling) as HTMLElement | null;
+      item.remove();
+      renumber();
+      // Focus goes to the visit beside it, or back to "Add a past visit" when none is left.
+      (next?.querySelector<HTMLInputElement>('input[name="visit_date"]') ?? addBtn)?.focus();
+      dirty = true;
+    });
+    list.addEventListener('change', (e) => {
+      const s = e.target as HTMLSelectElement;
+      if (!s.matches('[data-visit-dentist]')) return;
+      const name = s.closest('[data-visit]')!.querySelector<HTMLInputElement>('[data-visit-dentist-name]')!;
+      name.hidden = s.value !== '__other';
+      if (!name.hidden) name.focus();
+    });
+
+    // --- the duplicate check, as they type -------------------------------------------
+    // The server checks again on Save; this only says it early.
+    const clinic = location.pathname.split('/')[2];
+    const box = form.querySelector<HTMLElement>('[data-match-box]');
+    const line = form.querySelector<HTMLElement>('[data-match-line]');
+    const ul = form.querySelector<HTMLElement>('[data-match-list]');
+    const said = form.querySelector<HTMLElement>('[data-match-said]');
+    const f = (n: string) => form.querySelector<HTMLInputElement>(`[name="${n}"]`)?.value.trim() ?? '';
+    let timer = 0, asked = '';
+    const check = async () => {
+      const q = new URLSearchParams({ clinic, first: f('first_name'), last: f('last_name'), mobile: f('mobile'), birth: f('birth_date'), chart: f('chart_no') });
+      const key = q.toString();
+      if (key === asked || (!f('last_name') && !f('mobile') && !f('chart_no'))) return;
+      asked = key;
+      try {
+        const res = await fetch(`/api/patients/match?${key}`, { credentials: 'same-origin' });
+        if (!res.ok || key !== asked) return;
+        const data = await res.json();
+        const found: { name: string; chartNo: string; mobile: string | null; born: string | null; href: string }[] = Array.isArray(data?.matches) ? data.matches : [];
+        if (!box || !line || !ul) return;
+        if (!found.length) { box.hidden = true; return; }
+        const a = found[0];
+        line.textContent = `This looks like ${a.name}${a.mobile ? `, ${a.mobile}` : ''}. Open ${found.length === 1 ? 'their' : 'one'} record?`;
+        ul.replaceChildren(...found.map((m) => {
+          const li = document.createElement('li');
+          const link = document.createElement('a');
+          link.href = m.href;
+          link.className = 'inline-flex min-h-11 items-center gap-2 font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4';
+          link.textContent = `${m.name} · ${m.chartNo}${m.born ? ` · born ${m.born}` : ''}${m.mobile ? ` · ${m.mobile}` : ''}`;
+          li.append(link);
+          return li;
+        }));
+        box.hidden = false;
+        if (said) said.textContent = line.textContent;
+      } catch { /* the server checks on Save */ }
+    };
+    form.querySelectorAll<HTMLInputElement>('[data-match]').forEach((i) => {
+      i.addEventListener('input', () => { clearTimeout(timer); timer = window.setTimeout(check, 450); });
+      i.addEventListener('change', check);
+    });
+  }
+</script>

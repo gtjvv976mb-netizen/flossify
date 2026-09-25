@@ -1,0 +1,431 @@
+---
+// The claims list and everything done to a claim: the section of Finances
+// (/c/<slug>/finances/?show=claims) and the whole of /c/<slug>/claims/ for
+// people without Finances. The page reads and writes through _claims.ts and
+// hands the result here; this only draws.
+//
+// Declutter: a row says who, which payor, how much, where it stands and how
+// long the payor has had it, and carries one button named for the next step
+// (File, Record answer, Mark paid, Notes). The button opens the claim
+// beside the list (one <SidePanel>, filled from the row), where every form
+// the claims page ever had still is: file with the payor's reference,
+// approved / partly approved with the amount, denied with the reason, paid,
+// and the notes with a new one. A refused form comes back in that panel with
+// its sentence and what was typed; so does a refused new claim in its own.
+//
+// Amounts, the new claim and the money forms only when canMoney; the page
+// that uses this re-checks on the server (postClaim) whatever is drawn here.
+//
+// Very simple (the owner, 26 Sep 2026): the filters are one row of pills with
+// their counts, the payor a pill beside them, Download quiet on the right. A
+// row is the patient (an avatar and the name), the payor, the amount, where it
+// stands and how long the payor has had it, and the next step; the LOA, card
+// and reference numbers are in the claim's panel and the download. The page
+// draws the one main action (Finances: New claim in its section head); this
+// draws its panel.
+import './_fin.css';
+import Csrf from '../../../../components/Csrf.astro';
+import Avatar from '../../../../components/ws/Avatar.astro';
+import Icon from '../../../../components/ws/Icon.astro';
+import Chip from '../../../../components/ws/Chip.astro';
+import Empty from '../../../../components/ws/Empty.astro';
+import Menu from '../../../../components/ws/Menu.astro';
+import SidePanel from '../../../../components/ws/SidePanel.astro';
+import Tabs from '../../../../components/ws/Tabs.astro';
+import { TONE } from '../../../../components/ws/status';
+import { pesos } from '../../../../lib/invoices';
+import {
+  CLAIM_VIEWS, CLAIM_STATUS, TEXT_MAX, REASON_MAX, NOTE_MAX, SHOW_MAX, EMPTY_DRAFT,
+  aging, claimTone, nextStep, payorChoices, day,
+  type ClaimsData, type ClaimFilter, type ClaimView, type ClaimPost, type Claim,
+} from './_claims';
+
+interface Props {
+  slug: string;
+  data: ClaimsData;
+  filter: ClaimFilter;
+  canMoney: boolean;
+  /** The URL parameter that holds the view (Finances: claims; the old page: view). */
+  viewKey: string;
+  /** This page with parameters changed (null removes one); the claims view and payor go through it. */
+  link: (changes: Record<string, string | null>) => string;
+  /** Where the forms post: this page, on this filter. */
+  action: string;
+  csvHref: string;
+  /** A refused post, drawn back into its panel. */
+  post?: ClaimPost | null;
+  /** A sentence for the whole section (the page had gone stale). */
+  error?: string;
+  notice?: string;
+  missed?: string;
+}
+const { slug, data, filter, canMoney, viewKey, link, action, csvHref, post = null, error = '', notice = '', missed = '' } = Astro.props;
+
+const views = Object.keys(CLAIM_VIEWS) as ClaimView[];
+const active = data.providers.filter((p) => p.active);
+const payorName = filter.payor ? data.providers.find((p) => p.id === filter.payor)?.name ?? 'that payor' : '';
+const choices = canMoney ? payorChoices(data) : [];
+const hasPhilhealth = active.some((p) => p.kind === 'philhealth');
+const shown = data.claims.slice(0, SHOW_MAX);
+
+// A refused post comes back open: a new claim in its panel, a claim's form in the claim's panel.
+const newRefused = post && 'newDraft' in post ? post : null;
+const draft = newRefused?.newDraft ?? EMPTY_DRAFT;
+const claimRefused = post && 'claim' in post ? post : null;
+const refused: Claim | undefined = claimRefused ? data.claims.find((c) => c.id === claimRefused.claim) : undefined;
+// A refusal for a claim no longer on this list is said above the list instead.
+const topError = error || (claimRefused && !refused ? claimRefused.error : '');
+const typed = claimRefused?.typed ?? {};
+
+const S = data.sums;
+const n = (x: number, one: string, many = `${one}s`) => `${x} ${x === 1 ? one : many}`;
+const empty = filter.payor
+  ? `No ${CLAIM_VIEWS[filter.view].noun} with ${payorName}.`
+  : {
+      open: 'No open claims. Everything filed has been paid or denied.',
+      drafts: canMoney ? 'No drafts. Start one with New claim; it waits here until it is filed.' : 'No drafts. A new claim waits here until it is filed.',
+      resolved: 'Nothing resolved yet. Paid and denied claims collect here.',
+      all: canMoney ? 'No claims yet. Start one with New claim after an HMO or PhilHealth visit.' : 'No claims on file yet.',
+    }[filter.view];
+// Chosen one payor: where things stand with them (the tiles above count every payor).
+const payorLine = filter.payor
+  ? `With ${payorName}: ${n(S.waiting_n, 'open claim')}${canMoney && S.waiting_n > 0 ? `, ${pesos(S.waiting)} not in yet` : ''}${S.stuck_n > 0 ? `; ${S.stuck_n} overdue` : ''}.`
+  : '';
+
+/** What the panel shows for a claim; the row carries it and the panel's script reads it. */
+const facts = (c: Claim) => {
+  const a = aging(c);
+  return {
+    id: c.id, status: c.status, statusLabel: CLAIM_STATUS[c.status] ?? c.status, tone: claimTone(c.status, a.late),
+    patient: `${c.first_name} ${c.last_name}`, chart: c.chart_no, patientHref: `/c/${slug}/patients/${c.patient_id}/`,
+    payor: c.provider, kind: c.provider_kind === 'philhealth' ? 'PhilHealth' : 'HMO', expected: c.expected_days,
+    loa: c.loa_number ?? '', member: c.member_no ?? '', ref: c.submitted_ref ?? '',
+    claimed: canMoney ? pesos(c.claimed) : '', claimedField: canMoney ? Number(c.claimed).toFixed(2) : '',
+    approved: canMoney && c.approved !== null ? pesos(c.approved) : '',
+    filed: c.filed_at ? day(c.filed_at) : '', resolved: c.resolved_at ? day(c.resolved_at) : '',
+    // resolved_at is the day of the payor's answer (approved, denied) or of the payment.
+    resolvedOn: ({ approved: 'Approved on', denied: 'Denied on', paid: 'Paid on' } as Record<string, string>)[c.status] ?? 'Answered on',
+    aging: a.text, late: a.late, denial: c.status === 'denied' ? c.denial_reason ?? '' : '', notes: c.notes ?? '',
+  };
+};
+const f0 = refused ? facts(refused) : null;
+const help = 'fin-help';
+---
+
+<div class="fin-bar" data-claims-bar>
+  <Tabs label="Which claims" current={filter.view}
+    items={views.map((v) => ({ id: v, label: CLAIM_VIEWS[v].label, count: data.counts[v], href: link({ [viewKey]: v === 'open' ? null : v, payor: filter.payor || null }) }))} />
+  {active.length > 0 && (
+    <Menu id="claims-payor" align="left" buttonClass={`ws-seg-item fin-payor${filter.payor ? ' fin-payor-on' : ''}`} label={`Payor: ${payorName || 'all payors'}`}>
+      <Fragment slot="button">
+        <span>{payorName || 'All payors'}</span>
+        <Icon name="chevron" size={16} />
+      </Fragment>
+      <p class="ws-menu-head">Payor</p>
+      <a class="ws-menu-item" href={link({ payor: null })} aria-current={!filter.payor ? 'page' : undefined}>All payors</a>
+      {active.map((p) => (
+        <a class="ws-menu-item" href={link({ payor: p.id })} aria-current={filter.payor === p.id ? 'page' : undefined}>
+          <span class="ws-menu-words">{p.name}<span class="ws-menu-hint">{p.kind === 'philhealth' ? 'PhilHealth' : 'HMO'} · pays within {p.expected_days} days</span></span>
+        </a>
+      ))}
+    </Menu>
+  )}
+  <div class="fin-bar-end fin-bar-tight">
+    <a href={csvHref} class="ws-btn ws-btn-quiet fin-dl" download data-claims-csv title="Download this list for a spreadsheet"><Icon name="download" /><span class="max-md:sr-only">Download</span></a>
+  </div>
+</div>
+
+{payorLine && <p class="fin-help -mt-2 px-6 pb-3 max-md:px-4" data-claims-sums>{payorLine}</p>}
+{!canMoney && (
+  <p class="ws-callout mx-6 mb-4 max-md:mx-4" data-tone="info"><Icon name="info" /><span>Amounts, filing and payment are for the owner, the admin and anyone with finance access here. You can read every claim and add a note.</span></p>
+)}
+{notice && !topError && <p role="status" class="ws-callout mx-6 mb-4 max-md:mx-4" data-tone="success" data-claims-notice><Icon name="check" /><span>{notice}</span></p>}
+{missed && !topError && <p role="status" class="ws-callout mx-6 mb-4 max-md:mx-4" data-tone="warn"><Icon name="alert" /><span>{missed}</span></p>}
+{topError && <p role="alert" class="ws-callout mx-6 mb-4 max-md:mx-4" data-tone="alert"><Icon name="alert" /><span>{topError}</span></p>}
+
+{shown.length === 0 ? (
+  <div class="fin-empty"><Empty icon="file" text={empty} /></div>
+) : (
+  <table class="ws-table fin-table fin-table-claims" data-claims-list>
+    <caption class="sr-only">{CLAIM_VIEWS[filter.view].label} claims{payorName && `, ${payorName} only`}</caption>
+    <thead>
+      <tr>
+        <th scope="col" class="meta">Patient</th>
+        <th scope="col" class="meta">Payor</th>
+        {canMoney && <th scope="col" class="meta fin-num">Amount</th>}
+        <th scope="col" class="meta">Status</th>
+        <th scope="col"><span class="sr-only">Next step</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {shown.map((c) => {
+        const a = aging(c);
+        const name = `${c.first_name} ${c.last_name}`;
+        // On a phone the row is a small card: who and how much, the payor and where it stands, the button.
+        return (
+          <tr data-claim-row={c.id}>
+            <td class="fin-c-who">
+              <span class="fin-person">
+                <Avatar name={name} size="sm" />
+                <span class="fin-person-words">
+                  <a href={`/c/${slug}/patients/${c.patient_id}/`} class="fin-person-name fin-hit hover:text-(--ws-teal-ink) hover:underline underline-offset-4">{name}</a>
+                  <span class="fin-sub">{c.chart_no}</span>
+                </span>
+              </span>
+            </td>
+            <td class="fin-c-what text-[14.5px] text-ink-2">
+              {c.provider}
+              <span class="fin-sub max-lg:inline"><span class="lg:hidden"> · </span>{c.provider_kind === 'philhealth' ? 'PhilHealth' : 'HMO'}</span>
+            </td>
+            {canMoney && (
+              <td class="fin-c-amount fin-num">
+                <span class="fin-money text-[15.5px] font-semibold">{pesos(c.claimed)}</span>
+                {c.approved !== null && <span class="fin-sub fin-money">{pesos(c.approved)} approved</span>}
+              </td>
+            )}
+            <td class="fin-c-state">
+              <Chip tone={claimTone(c.status, a.late)} label={CLAIM_STATUS[c.status] ?? c.status} dot={a.late || c.status === 'denied'} />
+              <span class:list={['fin-sub mt-1', a.late && 'fin-late']}>{a.text}</span>
+            </td>
+            <td class="fin-c-go fin-num">
+              <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="claim-panel"
+                data-claim={JSON.stringify(facts(c))} aria-label={`${nextStep(c.status, canMoney)}: ${name}, ${c.provider}`}>
+                {nextStep(c.status, canMoney)}
+              </button>
+            </td>
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+)}
+{data.claims.length > SHOW_MAX && (
+  <p class="fin-more">Showing the first {SHOW_MAX} of {data.claims.length}. Pick a payor to narrow it; the download has every one.</p>
+)}
+
+<SidePanel id="claim-panel" title={f0 ? f0.patient : 'Claim'} meta={f0 ? `${f0.payor} · ${f0.kind}` : 'Claim'} open={Boolean(refused)}>
+  <div class="grid gap-5" data-claim-body data-claim-keep={refused ? refused.id : undefined}>
+    <p role="alert" class="ws-callout" data-tone="alert" data-claim-error hidden={!refused}><Icon name="alert" /><span>{refused ? claimRefused?.error : ''}</span></p>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <span class:list={['ws-chip ws-chip-dot', f0 && TONE[f0.tone]]} data-f-chip>{f0?.statusLabel}</span>
+      <span class="text-[14px] tabular-nums text-ink-2" data-f="aging">{f0?.aging}</span>
+    </div>
+
+    <dl class="fin-facts">
+      <dt>Patient</dt>
+      <dd><a class="fin-link fin-hit" href={f0?.patientHref ?? '#'} data-f-link="patientHref"><span data-f="patient">{f0?.patient}</span></a> <span class="whitespace-nowrap text-muted tabular-nums" data-f="chart">{f0?.chart}</span></dd>
+      <dt>Payor</dt><dd><span data-f="payor">{f0?.payor}</span> <span class="text-muted">· pays within <span data-f="expected">{f0?.expected}</span> days</span></dd>
+      {canMoney && <><dt>Claimed</dt><dd class="font-semibold tabular-nums" data-f="claimed">{f0?.claimed}</dd></>}
+      {canMoney && <><dt data-f-row="approved">Approved</dt><dd class="tabular-nums" data-f-row="approved" data-f="approved">{f0?.approved || '—'}</dd></>}
+      <dt data-f-row="loa">LOA no.</dt><dd class="font-mono text-[14px] tabular-nums" data-f-row="loa" data-f="loa">{f0?.loa}</dd>
+      <dt data-f-row="member">PhilHealth PIN or HMO card no.</dt><dd class="font-mono text-[14px] tabular-nums" data-f-row="member" data-f="member">{f0?.member}</dd>
+      <dt data-f-row="ref">Payor’s reference</dt><dd class="font-mono text-[14px] tabular-nums" data-f-row="ref" data-f="ref">{f0?.ref}</dd>
+      <dt data-f-row="filed">Filed</dt><dd class="tabular-nums" data-f-row="filed" data-f="filed">{f0?.filed}</dd>
+      <dt data-f-row="resolved" data-f="resolvedOn">{f0?.resolvedOn}</dt><dd class="tabular-nums" data-f-row="resolved" data-f="resolved">{f0?.resolved}</dd>
+      <dt data-f-row="denial">Denied because</dt><dd data-f-row="denial" data-f="denial">{f0?.denial}</dd>
+    </dl>
+
+    {canMoney && (
+      <>
+        <form method="post" action={action} class="fin-panel-sec" data-claim-form="draft" hidden={f0?.status !== 'draft'}>
+          <Csrf />
+          <input type="hidden" name="id" value={f0?.id ?? ''} data-claim-id />
+          <h3 class="fin-panel-h"><Icon name="upload" />File it with the payor</h3>
+          <label class="field">
+            <span class="meta">Payor’s reference, if any</span>
+            <input name="ref" maxlength={TEXT_MAX} autocomplete="off" value={refused && f0?.status === 'draft' ? typed.ref ?? '' : ''} />
+            <span class={help}>The clock on the claim starts when it is filed.</span>
+          </label>
+          <div><button name="act" value="file" class="ws-btn ws-btn-primary"><Icon name="check" />File</button></div>
+        </form>
+
+        <div class="grid gap-5" data-claim-form="filed" hidden={f0?.status !== 'filed'}>
+          <form method="post" action={action} class="fin-panel-sec">
+            <Csrf />
+            <input type="hidden" name="id" value={f0?.id ?? ''} data-claim-id />
+            <h3 class="fin-panel-h" data-tint="green"><Icon name="check" />The payor approved it</h3>
+            <label class="field">
+              <span class="meta">Amount approved, in pesos</span>
+              <input name="amount" inputmode="decimal" autocomplete="off" class="tabular-nums" value={refused && f0?.status === 'filed' ? typed.amount ?? f0.claimedField : f0?.claimedField ?? ''} data-claim-amount />
+              <span class={help}>All of it: Approved. Less than was claimed: Partly approved, and it stays open until the money lands.</span>
+            </label>
+            <div class="fin-actions">
+              <button name="act" value="approve" class="ws-btn ws-btn-primary"><Icon name="check" />Approved</button>
+              <button name="act" value="partly" class="ws-btn ws-btn-quiet">Partly approved</button>
+            </div>
+          </form>
+          <form method="post" action={action} class="fin-panel-sec">
+            <Csrf />
+            <input type="hidden" name="id" value={f0?.id ?? ''} data-claim-id />
+            <h3 class="fin-panel-h" data-tint="red"><Icon name="close" />The payor denied it</h3>
+            <label class="field">
+              <span class="meta">Why it was denied</span>
+              <input name="reason" maxlength={REASON_MAX} autocomplete="off" value={refused && f0?.status === 'filed' ? typed.reason ?? '' : ''} placeholder="No LOA on file, over the annual limit" />
+              <span class={help}>It goes on the record and helps the next filing.</span>
+            </label>
+            <div><button name="act" value="deny" class="ws-btn ws-btn-danger">Denied</button></div>
+          </form>
+        </div>
+
+        <form method="post" action={action} class="fin-panel-sec" data-claim-form="approved" hidden={f0?.status !== 'approved' && f0?.status !== 'partly_approved'}>
+          <Csrf />
+          <input type="hidden" name="id" value={f0?.id ?? ''} data-claim-id />
+          <h3 class="fin-panel-h" data-tint="green"><Icon name="money" />The money came in</h3>
+          <p class={help}>Mark it paid when the payor’s money lands. To put it against a patient’s statement, record it there as an HMO or PhilHealth payment.</p>
+          <div><button name="act" value="paid" class="ws-btn ws-btn-success"><Icon name="check" />Mark paid</button></div>
+        </form>
+      </>
+    )}
+
+    <section class="fin-panel-sec" aria-labelledby="claim-notes-title">
+      <h3 id="claim-notes-title" class="fin-panel-h" data-tint="blue"><Icon name="message" />Notes</h3>
+      <p class="fin-notes" data-f="notes" data-f-empty="No notes yet.">{f0 ? f0.notes || 'No notes yet.' : ''}</p>
+      <form method="post" action={action} class="grid gap-3">
+        <Csrf />
+        <input type="hidden" name="id" value={f0?.id ?? ''} data-claim-id />
+        <label class="field">
+          <span class="meta">Add a note</span>
+          <textarea name="note" rows="2" maxlength={NOTE_MAX} placeholder="Called the payor, resent the LOA">{refused ? typed.note ?? '' : ''}</textarea>
+          <span class={help}>It goes on the claim with the time and your name. Notes are never edited.</span>
+        </label>
+        <div><button name="act" value="note" class="ws-btn ws-btn-quiet"><Icon name="plus" />Add note</button></div>
+      </form>
+    </section>
+  </div>
+</SidePanel>
+
+{canMoney && (
+  <SidePanel id="claim-new" title="New claim" meta="HMO or PhilHealth" open={Boolean(newRefused)}>
+    {newRefused && <p role="alert" class="ws-callout mb-5" data-tone="alert"><Icon name="alert" /><span>{newRefused.error}</span></p>}
+    {choices.length === 0 ? (
+      <Empty icon="settings" text="No payor to file to yet. Tick the HMOs the clinic takes, or mark it PhilHealth-accredited, in Clinic settings." action={{ label: 'Clinic settings', href: `/c/${slug}/settings/` }} />
+    ) : data.recent.length === 0 ? (
+      <Empty icon="calendar" text="Nobody has had a visit in the last 90 days, so there is no one to file for yet. A claim starts from a visit." />
+    ) : (
+      <form method="post" action={action} class="grid gap-5">
+        <Csrf />
+        <input type="hidden" name="act" value="new" />
+        <div class="field">
+          <label class="meta" for="claim-search">Patient</label>
+          <input id="claim-search" type="search" placeholder="Type a name or chart no. to narrow the list" autocomplete="off" data-claim-search />
+          <select name="patient" required aria-label="Patient" data-claim-patients>
+            <option value="" disabled selected={!draft.patient}>Choose a patient</option>
+            {data.recent.map((r) => (
+              <option value={r.id} selected={draft.patient === r.id}>{r.first_name} {r.last_name} · {r.chart_no} · last seen {day(r.last_visit)}</option>
+            ))}
+          </select>
+          <span class={help}>Patients seen here in the last 90 days.</span>
+        </div>
+        <label class="field">
+          <span class="meta">Payor</span>
+          <select name="payor" required>
+            <option value="" disabled selected={!draft.payor}>Choose the payor</option>
+            {choices.map((o) => <option value={o.value} selected={draft.payor === o.value}>{o.label}</option>)}
+          </select>
+          {hasPhilhealth && (
+            <span class={help}>PhilHealth pays up to ₱1,000 a year per member for preventive dental care: ₱300 for each of two visits at least four months apart, ₱200 per tooth for sealants or small fillings up to two teeth, and an emergency extraction. Source: PhilHealth Circular 2024-0034.</span>
+          )}
+        </label>
+        <label class="field">
+          <span class="meta">Amount claimed, in pesos</span>
+          <input name="claimed" inputmode="decimal" value={draft.claimed} required placeholder="1500" class="tabular-nums" />
+        </label>
+        <label class="field">
+          <span class="meta">LOA number</span>
+          <input name="loa" value={draft.loa} maxlength={TEXT_MAX} placeholder="From the HMO’s letter of authorization" />
+          <span class={help}>Leave it blank for PhilHealth.</span>
+        </label>
+        <label class="field">
+          <span class="meta">PhilHealth PIN or HMO card no.</span>
+          <input name="member" value={draft.member} maxlength={TEXT_MAX} />
+        </label>
+        <label class="field">
+          <span class="meta">Notes</span>
+          <textarea name="notes" rows="3" maxlength={NOTE_MAX} placeholder="What was done, and anything the payor asked for">{draft.notes}</textarea>
+        </label>
+        <div class="grid gap-2">
+          <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save as draft</button>
+          <span class={help}>It waits in Drafts. File it when the papers have gone to the payor.</span>
+        </div>
+      </form>
+    )}
+  </SidePanel>
+)}
+
+<script>
+  // The claim panel is one <SidePanel> for every row: opening it from a row
+  // fills it from that row's data-claim (the words only; every write is
+  // re-checked on the server). A panel the server drew open for a refused
+  // form (data-claim-keep) keeps what it drew, the sentence and the typing,
+  // the first time. Text goes in with textContent, never innerHTML: names and
+  // notes come from people.
+  import { TONE } from '../../../../components/ws/status';
+
+  type Facts = Record<string, string | number | boolean>;
+  const panel = document.getElementById('claim-panel');
+  const body = panel?.querySelector<HTMLElement>('[data-claim-body]');
+  if (panel && body) {
+    // Drawn open by the server, the shell names the first row as its opener; on
+    // closing, focus goes back to the refused claim's own row instead.
+    let backTo = '';
+    panel.addEventListener('ws:panel-close', () => {
+      if (!backTo) return;
+      document.querySelector<HTMLElement>(`[data-claim-row="${backTo}"] button[data-ws-open]`)?.focus();
+      backTo = '';
+    });
+    panel.addEventListener('ws:panel-open', (e) => {
+      if ('claimKeep' in body.dataset) { backTo = body.dataset.claimKeep ?? ''; delete body.dataset.claimKeep; return; }
+      const opener = (e as CustomEvent<{ opener: Element | null }>).detail?.opener as HTMLElement | null;
+      const raw = opener?.closest<HTMLElement>('[data-claim]')?.dataset.claim;
+      if (!raw) return;
+      let c: Facts;
+      try { c = JSON.parse(raw); } catch { return; }
+      const str = (k: string) => String(c[k] ?? '');
+      panel.querySelector<HTMLElement>('[data-ws-title]')!.textContent = str('patient');
+      const meta = panel.querySelector<HTMLElement>('[data-ws-meta]')!;
+      meta.textContent = `${str('payor')} · ${str('kind')}`;
+      meta.hidden = false;
+      for (const el of body.querySelectorAll<HTMLElement>('[data-f]')) {
+        const v = str(el.dataset.f!);
+        el.textContent = v || el.dataset.fEmpty || (el.dataset.f === 'approved' ? '—' : '');
+      }
+      for (const el of body.querySelectorAll<HTMLElement>('[data-f-row]')) el.hidden = !str(el.dataset.fRow!);
+      for (const a of body.querySelectorAll<HTMLAnchorElement>('[data-f-link]')) a.href = str(a.dataset.fLink!);
+      const chip = body.querySelector<HTMLElement>('[data-f-chip]')!;
+      chip.className = `ws-chip ws-chip-dot ${TONE[str('tone') as keyof typeof TONE] ?? TONE.neutral}`;
+      chip.textContent = str('statusLabel');
+      // The forms for where the claim stands; each carries the claim's id.
+      const status = str('status');
+      for (const f of body.querySelectorAll<HTMLElement>('[data-claim-form]')) {
+        const on = f.dataset.claimForm === status || (f.dataset.claimForm === 'approved' && status === 'partly_approved');
+        f.hidden = !on;
+      }
+      for (const i of body.querySelectorAll<HTMLInputElement>('[data-claim-id]')) i.value = str('id');
+      for (const i of body.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input:not([type="hidden"]), textarea')) i.value = '';
+      const amount = body.querySelector<HTMLInputElement>('[data-claim-amount]');
+      if (amount) amount.value = str('claimedField');
+      body.querySelector<HTMLElement>('[data-claim-error]')!.hidden = true;
+    });
+    // The rows the server drew: their facts' empties hidden, as the script would.
+    if ('claimKeep' in body.dataset) for (const el of body.querySelectorAll<HTMLElement>('[data-f-row]')) {
+      const v = body.querySelector<HTMLElement>(`[data-f="${el.dataset.fRow}"]`)?.textContent?.trim();
+      el.hidden = !v || v === '—';
+    }
+  }
+
+  // New claim: the search box narrows the patient list as you type. The
+  // options are rebuilt from the full list each time, because a hidden
+  // <option> is not hidden in every browser.
+  const search = document.querySelector<HTMLInputElement>('[data-claim-search]');
+  const select = document.querySelector<HTMLSelectElement>('[data-claim-patients]');
+  if (search && select) {
+    const all = Array.from(select.options).slice(1);
+    search.addEventListener('input', () => {
+      const q = search.value.trim().toLowerCase();
+      const keep = q ? all.filter((o) => (o.textContent ?? '').toLowerCase().includes(q)) : all;
+      select.replaceChildren(select.options[0], ...keep);
+      if (keep.length === 1) select.value = keep[0].value;
+    });
+  }
+</script>

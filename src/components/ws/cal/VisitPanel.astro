@@ -1,0 +1,81 @@
+---
+// One visit, beside the calendar: the patient, the visit, and everything the
+// desk can do to it. The shell's <SidePanel> (a modal dialog: Escape, the
+// scrim or × close it, Tab stays inside, focus goes back to the card). board.ts
+// fills it from the card with textContent only — names and notes are typed by
+// people — and redraws it from the server's answer after every change.
+//
+// Very simple (the soft template): one teal button, the step the desk most
+// likely takes next (Arrived, In the chair, Done; Confirm for a later day;
+// Place it for a web request; Charge once it is done, for the people who may
+// see money), Move and Open record beside it, and every other step behind
+// More. The move form stays folded until Move (or Place it) is pressed.
+//
+// The status steps follow the server's state machine (NEXT_STATUS in
+// src/lib/schedule.ts, passed to the page), never a list of their own.
+import SidePanel from '../SidePanel.astro';
+import Menu from '../Menu.astro';
+import Icon from '../Icon.astro';
+
+interface Props { chairs: number }
+const { chairs } = Astro.props;
+---
+
+<SidePanel id="visit" title="Visit" meta="Visit" wide>
+  <div slot="actions" class="vp-actions">
+    <div class="vp-main" data-vp-actions></div>
+    <Menu id="vp-more" align="right" label="More for this visit" buttonClass="ws-btn ws-btn-quiet ws-btn-sm" class="vp-more" wide>
+      <Fragment slot="button">More <Icon name="chevron" size={16} class="ws-chev" /></Fragment>
+      <div data-vp-more></div>
+    </Menu>
+  </div>
+
+  <p role="alert" class="ws-callout vp-say" data-tone="alert" data-vp-error hidden></p>
+  <p role="status" class="ws-callout vp-say" data-tone="success" data-vp-said hidden></p>
+  <div class="ws-callout vp-ask" data-tone="alert" data-vp-ask hidden>
+    <Icon name="alert" />
+    <div class="min-w-0">
+      <p class="font-semibold" data-vp-ask-title>Cancel this visit?</p>
+      <p class="text-[14px] text-ink-2" data-vp-ask-note>Texts still waiting to go out for it are dropped.</p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button type="button" class="ws-btn ws-btn-danger ws-btn-sm" data-vp-ask-yes>Yes, cancel it</button>
+        <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-vp-ask-keep>Keep it</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="vp-grid">
+    <section aria-labelledby="vp-visit-h" class="vp-sec">
+      <h3 id="vp-visit-h" class="vp-h"><span class="vp-h-icon" aria-hidden="true"><Icon name="calendar" size={16} /></span>This visit</h3>
+      <dl class="vp-dl" data-vp-visit></dl>
+    </section>
+    <section aria-labelledby="vp-patient-h" class="vp-sec">
+      <h3 id="vp-patient-h" class="vp-h"><span class="vp-h-icon" aria-hidden="true"><Icon name="user" size={16} /></span>Patient</h3>
+      <div class="vp-who" data-vp-who></div>
+      <div class="vp-alerts" data-vp-alerts></div>
+      <dl class="vp-dl" data-vp-patient></dl>
+    </section>
+  </div>
+
+  <form class="vp-move" data-vp-move novalidate hidden>
+    <h3 class="vp-move-title" id="vp-move-h" tabindex="-1"><span class="vp-h-icon" aria-hidden="true"><Icon name="clock" size={16} /></span><span data-vp-move-title>Move</span></h3>
+    <p class="text-[14px] text-ink-2" data-vp-move-note>A new time for a visit still ahead is texted to the patient.</p>
+    <div class="vp-fields">
+      <label class="field"><span class="meta">Date</span><input type="date" data-vp-date required /></label>
+      <label class="field"><span class="meta">Time</span><input type="time" step="900" data-vp-time required /></label>
+      <label class="field">
+        <span class="meta">Chair</span>
+        <select data-vp-chair>
+          <option value="">No chair yet</option>
+          {Array.from({ length: chairs }, (_, i) => <option value={i + 1}>Chair {i + 1}</option>)}
+        </select>
+      </label>
+      <label class="field"><span class="meta">Minutes</span><input type="number" min="5" max="480" step="5" inputmode="numeric" data-vp-minutes required /></label>
+      <label class="field vp-wide"><span class="meta">Dentist</span><select data-vp-dentist><option value="">Any dentist</option></select></label>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" class="ws-btn ws-btn-primary" data-vp-move-save><Icon name="check" /><span data-vp-move-save-word>Save new time</span></button>
+      <button type="button" class="ws-btn ws-btn-quiet" data-vp-move-close>Not now</button>
+    </div>
+  </form>
+</SidePanel>

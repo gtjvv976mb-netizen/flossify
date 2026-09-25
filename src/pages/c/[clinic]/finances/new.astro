@@ -1,7 +1,15 @@
 ---
 // A new charge: who, what was done, any senior / PWD discount, any part an HMO
 // or PhilHealth pays. Save numbers it — the clinic's next statement of account
-// — and opens it, where the payment is recorded.
+// — and opens it, where the payment is recorded. (It was /billing/new/, which
+// now comes here with its query.)
+//
+// The Dashboard's Charge action comes here pre-filled:
+//   /c/<slug>/finances/new/?patient=<patient id>&service=<fee guide id>
+// The patient is chosen and each service (service= may repeat) is a line from
+// the fee guide at the guide's price (the lowest of a range, which the desk
+// can raise within it). An id that is not this branch's patient or an active
+// fee guide row is simply left out.
 //
 // The desk, the owner, the admin and anyone with finance access here may
 // charge (canBill). Prices from the fee guide stay inside the guide's range;
@@ -13,43 +21,62 @@
 // The form carries a key made when the page was drawn: a double-clicked Save,
 // or Save pressed again after a slow answer, opens the statement the first
 // press made instead of making a second.
+//
+// Very simple (the owner, 26 Sep 2026): three cards — the patient (found by
+// typing, shown with their avatar once chosen), what was done, and a discount
+// or an HMO's part — and the total beside them with the one main action,
+// Save statement, in teal. The title is the top bar's. A mobile reads as the
+// rest of the workspace writes it: 0920 555 0144 (prettyPhone).
 export const prerender = false;
 
+import './_fin.css';
 import ClinicLayout from '../../../../layouts/Clinic.astro';
 import Csrf from '../../../../components/Csrf.astro';
+import Pane from '../../../../components/ws/Pane.astro';
+import Icon from '../../../../components/ws/Icon.astro';
+import Avatar from '../../../../components/ws/Avatar.astro';
 import Line from './_Line.astro';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { shellLinks } from '../../../../components/ws/routes';
+import { prettyPhone } from '../../../../lib/messages';
 import { hmos, CATEGORY_LABEL, type Category } from '../../../../data/directory';
 import {
-  canBill, feeGuide, payorOptions, priceRange, rangeText, saveStatement, parseMoney, discountOf, pesos,
-  DISCOUNTS, UUID, ID_NO_MAX, type ChargeIn, type FeeRow,
+  canBill, feeGuide, payorOptions, priceRange, rangeText, saveStatement, parseMoney, discountOf, pesos, moneyField,
+  DISCOUNTS, UUID, ID_NO_MAX, LINES_MAX, NOT_BIR, type ChargeIn, type FeeRow,
 } from '../../../../lib/invoices';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
 const may = canBill(session.role, clinic.can_view_finance);
-const base = `/c/${clinic.slug}/billing/`;
+const home = `/c/${clinic.slug}/finances/`;
 const q = Astro.url.searchParams;
 const hmoNames = new Map(hmos.map((h) => [h.id, h.name]));
+const addPatient = shellLinks(clinic.slug).addPatient;
 
 const data = await withClinic(clinic.id, async (tx) => ({
   area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null,
   guide: may ? await feeGuide(tx) : ([] as FeeRow[]),
   payors: may ? await payorOptions(tx, hmoNames) : [],
 }));
+const byId = new Map(data.guide.map((r) => [r.id, r]));
 
 let problems: string[] = [];
 let draft: ChargeIn = {
   patientId: UUID.test(q.get('patient') ?? '') ? q.get('patient')! : '',
-  lines: [], discount: 'none', discountId: '', payor: '', payorShare: '', formKey: crypto.randomUUID(),
+  // The Dashboard's Charge: each service= a line from the fee guide, at the guide's price.
+  lines: q.getAll('service').filter((id) => byId.has(id)).slice(0, LINES_MAX).map((id) => {
+    const r = byId.get(id)!;
+    return { catalogId: r.id, desc: r.name, qty: '1', price: moneyField(priceRange(r).min) };
+  }),
+  discount: 'none', discountId: '', payor: '', payorShare: '', formKey: crypto.randomUUID(),
 };
 
 if (Astro.request.method === 'POST' && may) {
   const f = await Astro.request.formData();
-  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(`${base}new/?stale=1`, 303);
+  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(`${home}new/?stale=1`, 303);
   const all = (k: string) => f.getAll(k).map(String);
   const cat = all('line_catalog'), desc = all('line_desc'), qty = all('line_qty'), price = all('line_price');
   const s = (k: string) => String(f.get(k) ?? '').trim();
@@ -61,7 +88,7 @@ if (Astro.request.method === 'POST' && may) {
     formKey: UUID.test(key) ? key : crypto.randomUUID(),
   };
   const out = await saveStatement(withClinic, clinic.id, session.staffId, draft, data.payors);
-  if ('id' in out) return Astro.redirect(`${base}${out.id}/?done=${out.again ? 'again' : 'new'}`, 303);
+  if ('id' in out) return Astro.redirect(`${home}${out.id}/?done=${out.again ? 'again' : 'new'}`, 303);
   problems = out.problems;
 }
 
@@ -72,8 +99,7 @@ const chosen = may && UUID.test(draft.patientId)
       [draft.patientId])).rows[0] as { id: string; name: string; chart_no: string; phone: string | null } | undefined)
   : undefined;
 
-// The guide, grouped the way Settings → Fee guide groups it.
-const byId = new Map(data.guide.map((r) => [r.id, r]));
+// The guide, grouped the way Clinic settings → Fee guide groups it.
 const groups = (Object.keys(CATEGORY_LABEL) as Category[])
   .map((c) => ({ label: CATEGORY_LABEL[c], rows: data.guide.filter((r) => r.category === c) }))
   .concat([{ label: 'Other', rows: data.guide.filter((r) => !r.category || !Object.hasOwn(CATEGORY_LABEL, r.category)) }])
@@ -97,159 +123,155 @@ const payorName = data.payors.find((p) => p.value === draft.payor)?.name ?? '';
 const patientPart = total - share > 0n ? total - share : 0n;
 
 const stale = q.get('stale') === '1';
-const help = 'text-[13px] leading-snug text-muted';
-const sectionTitle = 'font-display text-[22px] font-semibold';
+const help = 'fin-help';
+const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the admin and anyone the owner lets see finance at this branch; ask the owner if you need them.';
 ---
 
-<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title="New charge" section="billing" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance}>
-  <a href={base} class="inline-flex min-h-11 items-center text-[14.5px] font-medium text-accent">&larr; Billing</a>
-  <h1 class="mt-4 font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">New charge</h1>
-
-  {!may ? (
-    <p class="mt-6 max-w-[60ch] text-[15.5px] leading-relaxed text-ink-2">Charges and payments are kept by the desk, the owner, the admin and anyone the owner lets see finance at this branch. Ask the owner if you need them.</p>
-  ) : (
-    <>
-      <p class="mt-3 max-w-[64ch] text-[15px] text-ink-2">Pick the patient, add what was done, and save. It becomes the clinic’s next numbered statement of account, and the payment is recorded on it.</p>
-
-      {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
-      {problems.length > 0 && (
-        <div role="alert" class="mt-6 max-w-[900px] border border-caries/40 bg-caries/10 p-4 text-[14.5px]" data-bill-problems>
-          <p class="font-semibold">Nothing was saved. A few things to fix:</p>
-          <ul class="mt-2 list-disc space-y-1 pl-5">{problems.map((p) => <li>{p}</li>)}</ul>
-        </div>
-      )}
-      <p role="alert" hidden class="mt-6 max-w-[900px] border border-caries/40 bg-caries/10 p-4 text-[14.5px]" data-bill-client-error></p>
-
-      <form method="post" class="mt-8 max-w-[900px]" data-bill-form data-slug={clinic.slug}>
-        <Csrf />
-        <input type="hidden" name="form_key" value={draft.formKey} />
-
-        <section aria-labelledby="who-title">
-          <p class="sec-no">01 &mdash; Patient</p>
-          <h2 id="who-title" class={`mt-1 ${sectionTitle}`}>Who is paying</h2>
-          <input type="hidden" name="patient" value={chosen?.id ?? ''} data-bill-patient-id />
-          <div class="mt-5" data-bill-lookup hidden={!!chosen}>
-            <label class="field">
-              <span class="meta">Find the patient</span>
-              <input type="search" autocomplete="off" placeholder="Name, chart number or mobile" class="text-[16px]" data-bill-search autofocus={!chosen && problems.length === 0 && !stale} />
-            </label>
-            <ul class="mt-1 divide-y divide-line-2 border border-line bg-surface" hidden data-bill-results></ul>
-            <p class={`mt-1.5 ${help}`} data-bill-hint>Type two letters of a name, a chart number or a mobile.</p>
-          </div>
-          <div class="mt-5 flex min-h-11 items-center justify-between gap-3 border border-line bg-surface px-4 py-3" data-bill-chosen hidden={!chosen}>
-            <p class="text-[16px]"><strong class="font-semibold" data-bill-chosen-name>{chosen?.name}</strong> <span class="text-muted" data-bill-chosen-more>{chosen ? `· ${chosen.chart_no}${chosen.phone ? ' · ' + chosen.phone : ''}` : ''}</span></p>
-            <button type="button" class="btn btn-quiet min-h-11 !px-3.5 !py-2 text-[14px]" data-bill-change>Change</button>
-          </div>
-        </section>
-
-        <hr class="rule my-10" />
-
-        <section aria-labelledby="what-title">
-          <p class="sec-no">02 &mdash; What was done</p>
-          <h2 id="what-title" class={`mt-1 ${sectionTitle}`}>Charges</h2>
-          <div class="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
-            {data.guide.length > 0 ? (
-              <label class="field">
-                <span class="meta">Add from the fee guide</span>
-                <select class="text-[16px]" aria-describedby="guide-help" data-bill-guide-pick>
-                  <option value="">Choose a service</option>
-                  {groups.map((g) => (
-                    <optgroup label={g.label}>
-                      {g.rows.map((r) => {
-                        const p = lineProps(r);
-                        return <option value={r.id} data-name={r.name} data-min={p.min} data-max={p.max} data-fixed={p.fixed ? '1' : ''} data-hint={p.hint}>{r.name} · {rangeText(r)}</option>;
-                      })}
-                    </optgroup>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <p class="text-[14.5px] text-ink-2 sm:col-span-2">The fee guide is empty. The owner adds services in Settings → Fee guide; until then, add each line as something else.</p>
-            )}
-            {data.guide.length > 0 && <button type="button" class="btn btn-quiet" data-bill-guide-add>Add</button>}
-            <button type="button" class="btn btn-quiet" data-bill-add-free>Add something else</button>
-          </div>
-          {data.guide.length > 0 && <p id="guide-help" class={`mt-1.5 ${help}`}>Tap a service and it is added. With the keyboard, choose it and press Enter.</p>}
-
-          <ol class="mt-4 border border-line bg-surface" data-bill-lines hidden={draft.lines.length === 0}>
-            {draft.lines.map((l) => {
-              const r = l.catalogId ? byId.get(l.catalogId) : undefined;
-              return <Line catalogId={r ? l.catalogId : ''} desc={l.desc} qty={l.qty} price={l.price} {...lineProps(r)} />;
-            })}
-          </ol>
-          <p class={`mt-2 ${help}`} data-bill-empty hidden={draft.lines.length > 0}>No lines yet. Add a service from the fee guide, or something else with its price.</p>
-          <template data-bill-line-tpl><Line /></template>
-        </section>
-
-        <hr class="rule my-10" />
-
-        <section aria-labelledby="discount-title">
-          <p class="sec-no">03 &mdash; Discount</p>
-          <h2 id="discount-title" class={`mt-1 ${sectionTitle}`}>Senior citizen or PWD</h2>
-          <p class="mt-2 max-w-[62ch] text-[14.5px] text-ink-2">Senior citizens and persons with disability get 20% off dental services. Ask for the ID and write its number; it prints on the statement.</p>
-          <fieldset class="mt-4">
-            <legend class="sr-only">Discount</legend>
-            <div class="flex flex-wrap gap-2">
-              {(Object.keys(DISCOUNTS) as (keyof typeof DISCOUNTS)[]).map((k) => (
-                <label class="chip-radio"><input type="radio" name="discount" value={k} checked={draft.discount === k || (k === 'none' && !Object.hasOwn(DISCOUNTS, draft.discount))} data-bill-discount /><span class="min-h-11 text-[15px]">{DISCOUNTS[k].label}</span></label>
-              ))}
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title="New charge" section="finances" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  <div class="fin-page">
+    {!may ? (
+      <Pane as="div" label="New charge">
+        <a href={home} class="fin-back"><Icon name="chevron-left" size={16} />Finances</a>
+        <p class="ws-callout" data-tone="info"><Icon name="info" /><span>{NO_ACCESS}</span></p>
+      </Pane>
+    ) : (
+      <>
+        {stale && <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{CSRF_MESSAGE}</span></p>}
+        {problems.length > 0 && (
+          <div role="alert" class="ws-callout" data-tone="alert" data-bill-problems>
+            <Icon name="alert" />
+            <div>
+              <p class="font-semibold">Nothing was saved yet. A few things to fix:</p>
+              <ul class="mt-1 list-disc space-y-1 pl-5">{problems.map((p) => <li>{p}</li>)}</ul>
             </div>
-          </fieldset>
-          <label class="field mt-4 sm:max-w-[22rem]" data-bill-discount-id hidden={draft.discount !== 'senior' && draft.discount !== 'pwd'}>
-            <span class="meta">ID number</span>
-            <input name="discount_id" value={draft.discountId} maxlength={ID_NO_MAX} autocomplete="off" class="text-[16px]" placeholder="OSCA or PWD ID no." />
-            <span class={help}>As printed on the patient’s senior citizen (OSCA) or PWD ID.</span>
-          </label>
-        </section>
+          </div>
+        )}
+        <p role="alert" hidden class="ws-callout" data-tone="alert" data-bill-client-error><Icon name="alert" /><span data-bill-client-text></span></p>
 
-        <hr class="rule my-10" />
+        <form method="post" class="chg-grid" data-bill-form data-slug={clinic.slug} data-add-patient={addPatient ?? undefined}>
+          <Csrf />
+          <input type="hidden" name="form_key" value={draft.formKey} />
 
-        <section aria-labelledby="payor-title">
-          <p class="sec-no">04 &mdash; HMO or PhilHealth</p>
-          <h2 id="payor-title" class={`mt-1 ${sectionTitle}`}>Does anyone else pay part?</h2>
-          {data.payors.length === 0 ? (
-            <p class="mt-2 max-w-[62ch] text-[14.5px] text-ink-2">No HMO or PhilHealth is set up for this branch, so the patient pays all of it. The owner ticks the HMOs the clinic takes in Settings.</p>
-          ) : (
-            <div class="mt-4 grid gap-4 sm:grid-cols-2">
-              <label class="field">
-                <span class="meta">Who pays part</span>
-                <select name="payor" class="text-[16px]" data-bill-payor>
-                  <option value="">No one — the patient pays all of it</option>
-                  {data.payors.map((p) => <option value={p.value} selected={draft.payor === p.value}>{p.name}{p.kind === 'philhealth' ? ' (preventive dental benefit)' : ''}</option>)}
-                </select>
-              </label>
-              <label class="field" data-bill-share hidden={!draft.payor}>
-                <span class="meta">Their part, in pesos</span>
-                <input name="payor_share" value={draft.payorShare} inputmode="decimal" autocomplete="off" class="text-[16px] tabular-nums" placeholder="0.00" data-bill-share-input />
-                <span class={help}>What the LOA or PhilHealth covers. Record it as paid when their money comes in.</span>
-              </label>
-            </div>
-          )}
-        </section>
+          <div class="chg-main">
+            <Pane as="section" title="Patient" icon="user" id="who">
+              <input type="hidden" name="patient" value={chosen?.id ?? ''} data-bill-patient-id />
+              <div data-bill-lookup hidden={!!chosen}>
+                <label class="field">
+                  <span class="meta">Find the patient</span>
+                  <input type="search" autocomplete="off" placeholder="Name, chart no. or mobile" data-bill-search autofocus={!chosen && problems.length === 0 && !stale} />
+                </label>
+                <ul class="chg-results" hidden data-bill-results></ul>
+                <p class={`mt-1.5 ${help}`} data-bill-hint>Type two letters of a name, a chart no. or a mobile.</p>
+              </div>
+              <div class="chg-chosen" data-bill-chosen hidden={!chosen}>
+                <span class="fin-person">
+                  {chosen ? <Avatar name={chosen.name} class="chg-avatar" /> : <span class="ws-avatar chg-avatar" aria-hidden="true"></span>}
+                  <span class="fin-person-words">
+                    <strong class="fin-person-name text-[16px]" data-bill-chosen-name>{chosen?.name}</strong>
+                    <span class="fin-sub" data-bill-chosen-more>{chosen ? `${chosen.chart_no}${chosen.phone ? ' · ' + prettyPhone(chosen.phone) : ''}` : ''}</span>
+                  </span>
+                </span>
+                <button type="button" class="ws-btn ws-btn-quiet" data-bill-change>Change</button>
+              </div>
+            </Pane>
 
-        <hr class="rule my-10" />
+            <Pane as="section" title="What was done" icon="file" id="what">
+              <div class="chg-add">
+                {data.guide.length > 0 ? (
+                  <label class="field">
+                    <span class="meta">Add from the fee guide</span>
+                    <select aria-describedby="guide-help" data-bill-guide-pick>
+                      <option value="">Choose a service</option>
+                      {groups.map((g) => (
+                        <optgroup label={g.label}>
+                          {g.rows.map((r) => {
+                            const p = lineProps(r);
+                            return <option value={r.id} data-name={r.name} data-min={p.min} data-max={p.max} data-fixed={p.fixed ? '1' : ''} data-hint={p.hint}>{r.name} · {rangeText(r)}</option>;
+                          })}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <p class="ws-callout w-full" data-tone="info"><Icon name="info" /><span>The fee guide is empty. The owner adds services in Clinic settings → Services &amp; fees; until then, add each line as something else.</span></p>
+                )}
+                {data.guide.length > 0 && <button type="button" class="ws-btn ws-btn-quiet" data-bill-guide-add><Icon name="plus" />Add</button>}
+                <button type="button" class="ws-btn ws-btn-quiet" data-bill-add-free><Icon name="plus" />Something else</button>
+              </div>
+              {data.guide.length > 0 && <p id="guide-help" class={`mt-1.5 ${help}`}>Tap a service and it is added. With the keyboard, choose it and press Enter.</p>}
 
-        <section aria-labelledby="total-title">
-          <h2 id="total-title" class="sr-only">Total</h2>
-          <dl class="divide-y divide-line-2 border border-line bg-surface text-[16px]" data-bill-totals>
-            <div class="flex items-baseline justify-between gap-4 px-5 py-3"><dt class="text-ink-2">Charges</dt><dd class="tabular-nums" data-t="subtotal">{pesos(sub)}</dd></div>
-            <div class="flex items-baseline justify-between gap-4 px-5 py-3" hidden={disc === 0n} data-t-row="discount"><dt class="text-ink-2" data-t="discount-label">{DISCOUNTS[draft.discount as keyof typeof DISCOUNTS]?.line || 'Discount'}</dt><dd class="tabular-nums" data-t="discount">&minus;{pesos(disc)}</dd></div>
-            <div class="flex items-baseline justify-between gap-4 px-5 py-3"><dt class="font-semibold">Total</dt><dd class="font-semibold tabular-nums" data-t="total">{pesos(total)}</dd></div>
-            <div class="flex items-baseline justify-between gap-4 px-5 py-3" hidden={share === 0n} data-t-row="payor"><dt class="text-ink-2">Less <span data-t="payor-name">{payorName || 'their'}</span>’s part</dt><dd class="tabular-nums" data-t="payor">&minus;{pesos(share)}</dd></div>
-            <div class="flex items-baseline justify-between gap-4 bg-bg-soft px-5 py-4"><dt class="font-semibold">Patient pays</dt><dd class="font-display text-[30px] leading-none font-bold tabular-nums" data-t="patient">{pesos(patientPart)}</dd></div>
-          </dl>
-        </section>
+              <ol class="chg-lines" data-bill-lines hidden={draft.lines.length === 0}>
+                {draft.lines.map((l) => {
+                  const r = l.catalogId ? byId.get(l.catalogId) : undefined;
+                  return <Line catalogId={r ? l.catalogId : ''} desc={l.desc} qty={l.qty} price={l.price} {...lineProps(r)} />;
+                })}
+              </ol>
+              <p class="ws-empty mt-2" data-bill-empty hidden={draft.lines.length > 0}>
+                <Icon name="file" size={20} class="ws-empty-icon" />
+                <span class="ws-empty-text">No lines yet. Add a service from the fee guide, or something else with its price.</span>
+              </p>
+              <template data-bill-line-tpl><Line /></template>
+            </Pane>
 
-        <div class="mt-8 flex flex-wrap items-center gap-4">
-          <button type="submit" class="btn btn-primary" data-bill-save>Save statement</button>
-          <span class="max-w-[52ch] text-[13.5px] text-muted">It gets the clinic’s next statement number. A saved statement is not edited: if something is wrong, the owner or admin voids it and you charge again.</span>
-        </div>
-      </form>
-    </>
-  )}
+            <Pane as="section" title="Discount or HMO" icon="wallet" id="discount">
+              <div class="chg-opts">
+                <div class="grid content-start gap-3">
+                  <fieldset>
+                    <legend class="meta">Senior citizen or PWD: 20% off</legend>
+                    <div class="mt-2 flex flex-wrap gap-2">
+                      {(Object.keys(DISCOUNTS) as (keyof typeof DISCOUNTS)[]).map((k) => (
+                        <label class="chip-radio"><input type="radio" name="discount" value={k} checked={draft.discount === k || (k === 'none' && !Object.hasOwn(DISCOUNTS, draft.discount))} data-bill-discount /><span class="min-h-11 text-[15px]">{k === 'none' ? 'None' : k === 'senior' ? 'Senior citizen' : 'PWD'}</span></label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <label class="field" data-bill-discount-id hidden={draft.discount !== 'senior' && draft.discount !== 'pwd'}>
+                    <span class="meta">ID number</span>
+                    <input name="discount_id" value={draft.discountId} maxlength={ID_NO_MAX} autocomplete="off" placeholder="OSCA or PWD ID no." />
+                    <span class={help}>Ask for the ID. Its number prints on the statement.</span>
+                  </label>
+                </div>
+                {data.payors.length === 0 ? (
+                  <p class="fin-help">No HMO or PhilHealth is set up for this branch, so the patient pays all of it. The owner ticks the HMOs the clinic takes in Clinic settings.</p>
+                ) : (
+                  <div class="grid content-start gap-3">
+                    <label class="field">
+                      <span class="meta">Does an HMO or PhilHealth pay part?</span>
+                      <select name="payor" data-bill-payor>
+                        <option value="">No, the patient pays all of it</option>
+                        {data.payors.map((p) => <option value={p.value} selected={draft.payor === p.value}>{p.name}{p.kind === 'philhealth' ? ' (preventive dental benefit)' : ''}</option>)}
+                      </select>
+                    </label>
+                    <label class="field" data-bill-share hidden={!draft.payor}>
+                      <span class="meta">Their part, in pesos</span>
+                      <input name="payor_share" value={draft.payorShare} inputmode="decimal" autocomplete="off" class="tabular-nums" placeholder="0.00" data-bill-share-input />
+                      <span class={help}>What the LOA or PhilHealth covers. Record it as paid when their money comes in.</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </Pane>
+          </div>
+
+          <Pane as="aside" title="Total" icon="money" id="total" class="chg-total">
+            <dl class="chg-sums" data-bill-totals>
+              <div><dt>Charges</dt><dd data-t="subtotal">{pesos(sub)}</dd></div>
+              <div hidden={disc === 0n} data-t-row="discount"><dt data-t="discount-label">{DISCOUNTS[draft.discount as keyof typeof DISCOUNTS]?.line || 'Discount'}</dt><dd data-t="discount">&minus;{pesos(disc)}</dd></div>
+              <div><dt class="font-semibold !text-ink">Total</dt><dd class="font-semibold" data-t="total">{pesos(total)}</dd></div>
+              <div hidden={share === 0n} data-t-row="payor"><dt>Less <span data-t="payor-name">{payorName || 'their'}</span>’s part</dt><dd data-t="payor">&minus;{pesos(share)}</dd></div>
+            </dl>
+            <p class="chg-due"><span class="font-semibold">Patient pays</span><span class="chg-due-value" data-t="patient">{pesos(patientPart)}</span></p>
+            <button type="submit" class="ws-btn ws-btn-primary mt-5 w-full" data-bill-save><Icon name="check" />Save statement</button>
+            <p class={`mt-3 ${help}`}>It gets the clinic’s next statement number. A saved statement is not edited: if something is wrong, the owner or admin voids it and you charge again.</p>
+            <p class="fin-foot mt-4 border-t border-(--ws-hair) pt-3"><Icon name="info" size={16} />{NOT_BIR}</p>
+          </Pane>
+        </form>
+      </>
+    )}
+  </div>
 </ClinicLayout>
 
 <script>
+  import { prettyPhone } from '../../../../lib/messages';
   // The desk's conveniences: find the patient, add and remove lines, and keep
   // the totals as you type. The server checks and counts everything again on
   // Save; nothing here decides what is saved. Money is counted in whole
@@ -259,6 +281,7 @@ const sectionTitle = 'font-display text-[22px] font-semibold';
     const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = form) => root.querySelector<T>(sel);
     const $$ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = form) => Array.from(root.querySelectorAll<T>(sel));
     const slug = form.dataset.slug ?? '';
+    const addPatient = form.dataset.addPatient ?? '';
     const PESO = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const dec = (c: number) => `${c < 0 ? '-' : ''}${Math.trunc(Math.abs(c) / 100)}.${String(Math.abs(c) % 100).padStart(2, '0')}`;
     const peso = (c: number) => PESO.format(dec(c) as any);
@@ -273,6 +296,21 @@ const sectionTitle = 'font-display text-[22px] font-semibold';
     const lookup = $('[data-bill-lookup]')!, chosen = $('[data-bill-chosen]')!;
     const search = $<HTMLInputElement>('[data-bill-search]')!, results = $('[data-bill-results]')!, hint = $('[data-bill-hint]')!;
     const el = (tag: string, cls = '', text = '') => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
+    const say = (text: string, link?: { label: string; href: string }) => {
+      hint.replaceChildren(text);
+      if (link) { const a = el('a', 'fin-link', link.label) as HTMLAnchorElement; a.href = link.href; hint.append(' ', a); }
+      hint.hidden = false;
+    };
+    // A person's round avatar, as <Avatar> draws it: first and last initials, a tint picked from the name.
+    const TINTS = ['teal', 'blue', 'green', 'amber', 'violet', 'rose'];
+    const paintAvatar = (s: HTMLElement, name: string) => {
+      const words = name.replace(/^(Dr|Dra|Doc)\.?\s+/i, '').trim().split(/\s+/).filter(Boolean);
+      s.textContent = ((words[0]?.[0] ?? '') + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase() || '·';
+      let h = 0;
+      for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      s.dataset.tint = TINTS[h % TINTS.length];
+      return s;
+    };
     $('[data-bill-change]')?.addEventListener('click', () => {
       pid.value = ''; chosen.hidden = true; lookup.hidden = false; search.value = ''; results.hidden = true; search.focus();
     });
@@ -280,7 +318,7 @@ const sectionTitle = 'font-display text-[22px] font-semibold';
     search.addEventListener('input', () => {
       window.clearTimeout(timer);
       const q = search.value.trim();
-      if (q.length < 2) { results.hidden = true; results.replaceChildren(); hint.hidden = false; hint.textContent = 'Type two letters of a name, a chart number or a mobile.'; return; }
+      if (q.length < 2) { results.hidden = true; results.replaceChildren(); say('Type two letters of a name, a chart number or a mobile.'); return; }
       timer = window.setTimeout(async () => {
         abort?.abort(); abort = new AbortController();
         try {
@@ -288,24 +326,32 @@ const sectionTitle = 'font-display text-[22px] font-semibold';
           const data = res.ok ? await res.json() : null;
           const found: { id: string; name: string; chartNo: string; phone: string | null }[] = Array.isArray(data?.patients) ? data.patients : [];
           results.replaceChildren(...found.slice(0, 8).map((p) => {
+            const more = `${p.chartNo}${p.phone ? ' · ' + prettyPhone(p.phone) : ''}`;
             const li = el('li');
-            const b = el('button', 'block min-h-11 w-full px-4 py-2.5 text-left text-[16px] hover:bg-bg-soft') as HTMLButtonElement;
+            const b = el('button') as HTMLButtonElement;
             b.type = 'button';
-            b.append(el('strong', 'font-semibold', p.name), el('span', 'text-muted', ` · ${p.chartNo}${p.phone ? ' · ' + p.phone : ''}`));
+            const words = el('span', 'fin-person-words');
+            words.append(el('strong', 'fin-person-name', p.name), el('span', 'fin-sub', more));
+            const face = paintAvatar(el('span', 'ws-avatar ws-avatar-sm'), p.name);
+            face.setAttribute('aria-hidden', 'true');
+            b.append(face, words);
             b.addEventListener('click', () => {
               pid.value = p.id;
               $('[data-bill-chosen-name]')!.textContent = p.name;
-              $('[data-bill-chosen-more]')!.textContent = `· ${p.chartNo}${p.phone ? ' · ' + p.phone : ''}`;
+              $('[data-bill-chosen-more]')!.textContent = more;
+              paintAvatar($('.chg-avatar')!, p.name);
               chosen.hidden = false; lookup.hidden = true; results.hidden = true;
               ($('[data-bill-guide-pick]') ?? $('[data-bill-add-free]'))?.focus();
             });
             li.append(b); return li;
           }));
           results.hidden = found.length === 0;
-          hint.hidden = found.length > 0;
-          hint.textContent = res.ok ? (found.length ? '' : 'No one on file matches. Add them from the Schedule first, then charge them here.') : 'Could not reach the clinic to search. Try again.';
+          if (!res.ok) say('Could not reach the clinic to search. Try again.');
+          else if (found.length) hint.hidden = true;
+          else if (addPatient) say('No one on file matches.', { label: 'Add the patient first', href: addPatient });
+          else say('No one on file matches. Add them from the Schedule first, then charge them here.');
         } catch (e) {
-          if ((e as Error).name !== 'AbortError') { hint.hidden = false; hint.textContent = 'Could not reach the clinic to search. Try again.'; }
+          if ((e as Error).name !== 'AbortError') say('Could not reach the clinic to search. Try again.');
         }
       }, 220);
     });
@@ -432,7 +478,7 @@ const sectionTitle = 'font-display text-[22px] font-semibold';
       else if ($$('[data-line]', list).length === 0) why = 'Add at least one line before saving.';
       if (why) {
         e.preventDefault();
-        clientError.textContent = why; clientError.hidden = false;
+        clientError.querySelector('[data-bill-client-text]')!.textContent = why; clientError.hidden = false;
         clientError.scrollIntoView({ block: 'center' });
         return;
       }

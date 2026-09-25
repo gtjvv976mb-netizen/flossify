@@ -134,7 +134,7 @@ for (const l of listings) {
 }
 
 // Every group with a clinic starts its 30-day trial at the placeholder price (src/lib/billing.ts).
-await db.query(`select billing_ensure(g.id, 1990) from clinic_group g where exists (select 1 from clinic c where c.group_id = g.id)`);
+await db.query(`select billing_ensure(g.id, 800) from clinic_group g where exists (select 1 from clinic c where c.group_id = g.id)`);
 
 // Patients, their teeth, today's appointments and the HMO claims, from demo.ts.
 const patientIds = new Map<string, string>();

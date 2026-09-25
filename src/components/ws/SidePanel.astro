@@ -1,0 +1,51 @@
+---
+// Detail beside the content, never a new page: a white rounded sheet that
+// slides in from the right over a soft scrim, so the calendar or list it came
+// from stays in view. Full screen on phones. A modal <dialog>: focus stays inside it while
+// it is open (the page behind is inert), Escape closes it, a click on the
+// scrim closes it, and focus goes back to whatever opened it.
+//
+//   <SidePanel id="visit" title="Visit" meta="Booking">
+//     <div slot="actions">…Confirm · Arrived…</div>
+//     …details…
+//   </SidePanel>
+//   <button type="button" data-ws-open="visit">Open</button>
+//
+// From a script: ws.openPanel('visit', openerElement) / ws.closePanel('visit')
+// (window.ws, set by the shell). The dialog fires `ws:panel-open` (detail:
+// { opener }) before it shows, so a page can fill it, and `ws:panel-close`
+// after it closes. [data-ws-title] and [data-ws-meta] inside are the title and
+// label, for a page that sets them from a script. Actions sit in the head,
+// under the title: nothing is pinned to the foot of the screen.
+//
+// open: drawn open — the page opens it as soon as it loads (a form in the
+// panel that the server refused comes back in the panel, with its sentence).
+import Icon from './Icon.astro';
+
+interface Props {
+  id: string;
+  title: string;
+  meta?: string;
+  /** 40rem instead of 30rem, for a record with a table in it. */
+  wide?: boolean;
+  /** Open it as soon as the page loads. */
+  open?: boolean;
+}
+const { id, title, meta, wide = false, open = false } = Astro.props;
+---
+
+<dialog id={id} class:list={['ws-panel', wide && 'ws-panel-wide']} aria-labelledby={`${id}-title`} data-ws-panel data-ws-open-now={open ? '' : undefined}>
+  <div class="ws-panel-inner">
+    <header class="ws-panel-head">
+      <div class="min-w-0">
+        <p class="meta" data-ws-meta hidden={!meta}>{meta}</p>
+        <h2 id={`${id}-title`} class="ws-panel-title" tabindex="-1" data-ws-title>{title}</h2>
+      </div>
+      <button type="button" class="ws-tool ws-panel-close" data-ws-close aria-label="Close">
+        <Icon name="close" size={20} />
+      </button>
+    </header>
+    {Astro.slots.has('actions') && <div class="ws-panel-actions"><slot name="actions" /></div>}
+    <div class="ws-panel-body"><slot /></div>
+  </div>
+</dialog>

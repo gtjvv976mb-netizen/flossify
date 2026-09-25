@@ -1,0 +1,73 @@
+---
+// Privacy: who answers for the group's patient data (the Data Protection
+// Officer), the NPC registration number, and how many patients have agreed to
+// the privacy notice in force.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Tile from '../../../../../components/ws/Tile.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Note from './Note.astro';
+import type { PrivacyData, PrivacyValues } from '../_lib/privacy';
+
+interface Props {
+  base: string;
+  data: PrivacyData;
+  v: PrivacyValues;
+  problems: string[];
+  notes: { tone: 'ok' | 'alert' | 'warn'; text: string }[];
+  on: boolean;
+}
+const { base, data, v, problems, notes, on } = Astro.props;
+// "23 September 2026", day first, the way the notice's own date reads here.
+const when = (d: Date) => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Manila' }).format(d);
+const patients = (n: number) => `${n} patient${n === 1 ? '' : 's'}`;
+---
+
+<div class="set-panel" data-set-panel="privacy" data-on={on ? '' : undefined}>
+<form method="post" action={base} data-set-form="privacy" class="min-w-0">
+  <Csrf />
+  <input type="hidden" name="form" value="privacy" />
+  <Pane id="privacy" icon="check" title="Privacy" class="set-sec">
+    <p class="set-intro">Who patients write to about their data, and who has agreed to your privacy notice.</p>
+    {(notes.length > 0 || problems.length > 0) && (
+      <div class="set-notes mt-5">
+        {notes.map((n) => <Note tone={n.tone} text={n.text} />)}
+        {problems.length > 0 && <Note tone="alert" title="Nothing was saved yet. Please fix:" items={problems} refused />}
+      </div>
+    )}
+
+    <h3 class="set-sub">Data Protection Officer</h3>
+    <p class="mt-1 text-[14.5px] text-ink-2">One person for every branch. Their name goes on your public page.</p>
+    <div class="mt-4 grid gap-4">
+      <label class="field"><span class="meta">Name</span><input name="dpo_name" value={v.dpo_name} maxlength="120" autocomplete="off" /></label>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="field"><span class="meta">Email</span><input type="email" name="dpo_email" value={v.dpo_email} autocomplete="off" autocapitalize="off" spellcheck="false" /></label>
+        <label class="field"><span class="meta">Mobile</span><input type="tel" name="dpo_phone" value={v.dpo_phone} placeholder="0917 000 0000" autocomplete="off" class="tabular-nums" /></label>
+      </div>
+      <label class="field sm:max-w-[24rem]">
+        <span class="meta">NPC registration number (when you have it)</span>
+        <input name="npc_registration_no" value={v.npc_registration_no} maxlength="60" autocomplete="off" />
+        <span class="set-help">From the National Privacy Commission, where clinics that keep health records register.</span>
+      </label>
+    </div>
+
+    <div class="set-foot">
+      <button type="submit" class="ws-btn ws-btn-primary"><Icon name="check" />Save</button>
+      <span class="set-dirty-note" data-set-dirty-note hidden>Not saved yet</span>
+      {data.group.dpo_updated_at && <span class="set-help">Last saved {when(data.group.dpo_updated_at)}</span>}
+    </div>
+
+    <h3 class="set-sub" id="consent">Patients who agreed</h3>
+    <p class="mt-1 text-[14.5px] text-ink-2">
+      {data.version
+        ? <>To the notice in force, “{data.version.title}”, from {data.version.effective}. <a href="/privacy/" target="_blank" rel="noopener" class="set-link -my-3 align-middle">Read it<span class="sr-only"> (opens in a new tab)</span><Icon name="arrow-right" size={16} class="set-arrow" /></a></>
+        : 'No privacy notice is in force yet, so nothing can be counted against one.'}
+    </p>
+    <div class="ws-tiles mt-4">
+      <Tile label="Agreed" value={data.counts.agreed} note={`${patients(data.counts.agreed)} agreed to it`} icon="check" tone="accent" />
+      <Tile label="Not yet" value={data.counts.none} note={data.counts.none > 0 ? `${patients(data.counts.none)} with nothing on record` : 'Everyone has agreed'} icon="alert" tone={data.counts.none > 0 ? 'warn' : 'default'} />
+    </div>
+    <p class="ws-callout mt-4" data-tone="info"><Icon name="info" /><span>Online bookings agree on the form. A walk-in agrees at the desk: open their record and turn the screen to them.</span></p>
+  </Pane>
+</form>
+</div>

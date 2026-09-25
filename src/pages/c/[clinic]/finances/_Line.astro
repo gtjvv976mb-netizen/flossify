@@ -1,0 +1,52 @@
+---
+// One line of a new charge: what it is, how many, at what price, and what it
+// comes to. The same markup is drawn by the server (lines kept after a refused
+// save, or a service the Dashboard's Charge asked for) and cloned by the
+// page's script from a <template> (a new line), so the two can never drift
+// apart. Field names repeat on purpose: the handler reads them with getAll(),
+// in order, one entry per line.
+//
+// A line from the fee guide carries its row id and the guide's range, which
+// the script checks as you type; the server checks it again on save. A line
+// that is "something else" has no id and any price above zero.
+//
+// A soft card per line (_fin.css, .chg-line). On a phone the description
+// and the remove button share the first row and how many, price and amount
+// sit under it; from 768px it is one row.
+import Icon from '../../../../components/ws/Icon.astro';
+
+interface Props {
+  catalogId?: string;
+  desc?: string;
+  qty?: string;
+  price?: string;
+  /** The guide's range in centavos, for the script. max '' = no ceiling. */
+  min?: string;
+  max?: string;
+  fixed?: boolean;
+  hint?: string;
+}
+const { catalogId = '', desc = '', qty = '1', price = '', min = '', max = '', fixed = false, hint = '' } = Astro.props;
+---
+
+<li data-line class="chg-line" data-line-min={min} data-line-max={max} data-line-fixed={fixed ? '1' : undefined}>
+  <input type="hidden" name="line_catalog" value={catalogId} data-line-catalog />
+  <label class="field chg-line-desc">
+    <span class="meta">{catalogId ? 'From the fee guide' : 'Something else'}</span>
+    <input name="line_desc" value={desc} maxlength="120" autocomplete="off" data-line-desc placeholder={catalogId ? '' : 'What it is for'} />
+  </label>
+  <label class="field">
+    <span class="meta">How many</span>
+    <input name="line_qty" type="number" value={qty} min="1" max="99" step="1" inputmode="numeric" class="tabular-nums" data-line-qty />
+  </label>
+  <label class="field">
+    <span class="meta">Price each</span>
+    <input name="line_price" value={price} inputmode="decimal" autocomplete="off" readonly={fixed} class="tabular-nums read-only:bg-bg-soft" data-line-price placeholder="0.00" />
+  </label>
+  <div class="chg-line-amount">
+    <span class="meta text-right">Amount</span>
+    <output data-line-amount>—</output>
+  </div>
+  <button type="button" class="ws-tool chg-line-remove" data-line-remove aria-label="Remove this line" title="Remove this line"><Icon name="close" size={20} /></button>
+  <p class="chg-line-hint text-muted" data-line-hint>{hint || (catalogId ? '' : 'Not in the fee guide: any price above zero.')}</p>
+</li>

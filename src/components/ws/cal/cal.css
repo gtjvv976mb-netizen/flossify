@@ -1,0 +1,513 @@
+/* ===========================================================================
+   The Dashboard — src/pages/c/[clinic]/index.astro, src/components/ws/cal/
+   ---------------------------------------------------------------------------
+   Built on the shell (src/styles/global.css, "The workspace — the soft
+   template"): its cards, tiles, pills, callouts, menus, side panels and
+   tokens. Nothing here restyles the shell; these are the calendar, the
+   requests lane, the patients list and what goes inside the Dashboard's
+   panels — soft like the rest: rounded, white or pale tints, slate words,
+   sentence case, teal for the one main action. Every colour is one of the
+   shell's measured tokens (docs/workspace-redesign.md, "Contrast"). Motion is
+   always on (no reduced-motion block, CLAUDE.md "The tour"). Fields are 16px
+   and targets 44px.
+
+   In @layer components like global.css, so a utility in the markup always
+   wins; the first line repeats Tailwind's layer order so this file can never
+   be the one that declares it.
+   =========================================================================== */
+@layer theme, base, components, utilities;
+
+@layer components {
+
+.ws { --cal-hatch: rgb(255 255 255 / 0.6); }
+/* The shell's sticky top bar, whatever its height at this width (none in a layout without one): board.ts
+   measures it into --dash-bar. Whatever the page scrolls to — #requests, #patients, a card taken into view by
+   the keyboard — lands below it, not under it. */
+html:has(.dash-board) { scroll-padding-top: calc(var(--dash-bar, 0px) + 0.75rem); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ws { --cal-hatch: rgb(0 0 0 / 0.28); } }
+:root[data-theme="dark"] .ws { --cal-hatch: rgb(0 0 0 / 0.28); }
+
+/* --- the page --------------------------------------------------------------- */
+.dash-alert { align-items: flex-start; }
+/* Four numbers in one row from a tablet up, so the calendar keeps the first screen; two by two on a phone. */
+@media (min-width: 768px) { .dash-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.dash-tiles .ws-tile { min-height: 6.5rem; }
+/* The icon sits beside the label only: the figure and its note keep the tile's whole width, so a narrow tile
+   (a 1024 screen, a phone) never folds "at least ₱13,300 expected" into three lines. */
+.dash-tiles .ws-tile-has-icon { padding-right: 1.25rem; }
+.dash-tiles .ws-tile-has-icon > .meta { padding-right: 2.5rem; }
+.dash-tiles .ws-tile-icon { top: 0.875rem; right: 0.875rem; width: 32px; height: 32px; }
+.dash-tiles .ws-tile-link .ws-tile-note { padding-right: 1.25rem; }
+@media (max-width: 767px) {
+  .dash-tiles .ws-tile-has-icon { padding-right: 1rem; }
+  .dash-tiles .ws-tile-icon { top: 0.75rem; right: 0.75rem; width: 30px; height: 30px; }
+  .dash-tiles .ws-tile-icon .ws-icon { width: 16px; height: 16px; }
+}
+/* A 1366×768 clinic monitor: the strip gives its height to the calendar. */
+@media (min-width: 768px) and (max-height: 820px) {
+  .dash-tiles .ws-tile { min-height: 0; padding-block: 0.8rem 0.85rem; gap: 0.2rem; }
+  .dash-tiles .ws-tile-icon { top: 0.75rem; }
+  .dash-cal, .dash-pts { --dash-top: 12rem; }
+}
+
+.dash-board { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; }
+.dash-cal, .dash-pts { display: flex; flex-direction: column; min-width: 0; }
+@media (min-width: 1180px) {
+  /* Side by side, both the height of the screen under the summary strip, each scrolling inside itself:
+     the morning in one screen. The grid keeps at least 24rem (three hours of a day) whatever stands above
+     it: a long requests lane or an opened history lane makes the pane taller, never the calendar a sliver.
+     The patients pane is stretched to the calendar's height by the grid and scrolls its list inside. */
+  .dash-board { grid-template-columns: minmax(0, 7fr) minmax(21rem, 3fr); align-items: stretch; }
+  .dash-cal { min-height: max(42rem, calc(100dvh - var(--dash-top, 15rem))); }
+  .dash-cal .cal-frame { flex: 1 1 0; min-height: 24rem; }
+  .dash-pts .pt-list { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+}
+@media (min-width: 768px) and (max-width: 1179px) {
+  .dash-pts .pt-list { max-height: 34rem; overflow-y: auto; overscroll-behavior: contain; }
+}
+
+/* --- the calendar's head and bar ------------------------------------------------ */
+.cal-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
+.cal-step { border: 1px solid var(--ws-field-line); background: var(--c-surface); color: var(--c-ink); box-shadow: var(--ws-shadow); }
+.cal-step:hover { border-color: var(--ws-field-line-hover); background: var(--ws-subtle); }
+.cal-date input {
+  min-height: 44px; padding: 0 0.75rem; border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-ctl);
+  background: var(--ws-field); color: var(--c-ink); font-size: 16px; font-family: inherit; box-shadow: var(--ws-shadow);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.cal-date input:hover { border-color: var(--ws-field-line-hover); }
+.cal-date input:focus { outline: none; border-color: var(--ws-teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws-teal) 24%, transparent); }
+.cal-new { margin-left: 0.25rem; }
+
+.cal-bar { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.625rem; padding: 0.875rem 1.5rem; }
+.cal-seg .ws-seg-item { padding-inline: 1rem; }
+.cal-count { flex: 1 1 14rem; min-width: 0; font-size: 14px; line-height: 1.4; color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
+.cal-count:empty { display: none; }
+.cal-menu { margin-left: auto; }
+.cal-menu-cols[hidden] { display: none; }
+.cal-more { flex: none; min-height: 44px; font-size: 14px; font-weight: 600; color: var(--ws-teal-ink); cursor: pointer; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; transition: text-decoration-color 160ms ease; }
+.cal-more:hover { text-decoration-color: currentColor; }
+.cal-more[hidden] { display: none; }
+
+/* What just happened, over the top of the calendar rather than pushing it down mid-drag: a dock of no height
+   under the bar that sticks just below the top bar once the page is scrolled past it (a tablet, a 1366 screen),
+   so a refusal is always on screen next to the card it is about. The callouts are the shell's (opaque tints). */
+.cal-dock { position: sticky; top: calc(var(--dash-bar, 0px) + 0.5rem); z-index: 35; flex: none; height: 0; }
+.cal-toasts { position: absolute; left: 1.5rem; right: 1.5rem; top: -0.25rem; display: grid; gap: 0.4rem; pointer-events: none; }
+.cal-toast { pointer-events: auto; align-items: center; padding-block: 0.5rem; box-shadow: var(--ws-shadow-pop); animation: cal-rise 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+.cal-toast > .ws-icon { margin-top: 0; }
+.cal-toast > span { flex: 1 1 auto; padding-block: 0.25rem; }
+.cal-toast-x { flex: none; margin: -0.25rem -0.5rem -0.25rem 0; color: var(--c-ink-2); }
+.cal-toast[hidden] { display: none; }
+.cal-toast-go {
+  display: inline-flex; align-items: center; min-height: 44px; margin-block: -0.75rem; padding-inline: 0.25rem;
+  font-weight: 600; color: var(--c-ink); text-decoration: underline; text-underline-offset: 4px; cursor: pointer;
+}
+
+/* --- the website's lane ------------------------------------------------------------ */
+/* An inset box between the bar and the grid: amber ("needs attention") while a request waits for a time or a web
+   booking to be confirmed, a quiet line when nothing does. One row of cards, scrolling sideways inside itself
+   when there are many, so the calendar keeps the height. A phone stacks them. */
+.cal-lane { margin: 0 1.5rem 0.875rem; padding: 0.625rem 0.875rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
+.cal-lane[data-some] { padding-bottom: 0.875rem; border-color: color-mix(in srgb, var(--ws-amber) 28%, transparent); background: var(--ws-amber-tint); }
+.cal-lane-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; min-height: 2rem; }
+.cal-lane-icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: none; border-radius: var(--ws-r-pill);
+  background: var(--c-surface); color: var(--c-muted);
+}
+.cal-lane[data-some] .cal-lane-icon { color: var(--ws-amber-ink); }
+.cal-lane-title, .cal-lane-also { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 15px; font-weight: 600; line-height: 1.3; }
+.cal-lane-also { font-weight: 500; color: var(--c-ink-2); }
+.cal-lane-also[hidden] { display: none; }
+.cal-lane-also .ws-count { background: var(--ws-blue-tint); color: var(--ws-blue-ink); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ws-blue) 30%, transparent); }
+#requests .cal-lane-title .ws-count[data-zero] { display: none; }
+.cal-lane-hint { flex: 1 1 16rem; font-size: 14px; line-height: 1.4; color: var(--c-ink-2); }
+.cal-lane-list {
+  /* 17rem: wide enough for "Asks Mon 28 Sep, 10:00 am" and its status on one line. */
+  display: grid; grid-auto-flow: column; grid-auto-columns: 17rem; gap: 0.5rem;
+  margin: 0.625rem 0 0; padding: 0 0 0.125rem; list-style: none; overflow-x: auto; overscroll-behavior-x: contain;
+}
+.cal-lane-list:empty { display: none; }
+.cal-lane:target .cal-lane-title, .cal-lane.is-flash .cal-lane-title { animation: cal-flash-text 1.4s ease; }
+.cal-card.is-lane { height: 100%; cursor: grab; }
+/* The folded lane: its head is the button (44px), a chevron that turns, the words saying what a press does. */
+.cal-undated { background: var(--ws-subtle); }
+.cal-undated[hidden] { display: none; }
+.cal-undated-head { min-height: 44px; margin-block: -0.375rem; cursor: pointer; list-style: none; }
+.cal-undated-head::-webkit-details-marker { display: none; }
+.cal-undated-head:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; border-radius: var(--ws-r-ctl); }
+.cal-undated-show { display: inline-flex; align-items: center; gap: 0.3rem; font-weight: 600; color: var(--ws-teal-ink); }
+.cal-undated-show::after { content: 'Show them'; }
+.cal-undated[open] .cal-undated-show::after { content: 'Hide them'; }
+.cal-undated-head:hover .cal-undated-show { text-decoration: underline; text-underline-offset: 4px; }
+
+/* --- the grid ------------------------------------------------------------------------ */
+.cal-frame {
+  /* A column's floor: the calendar fits its pane side by side with the patients from 1180px — a week's seven
+     days, or a day's columns up to six (five chairs and the No-chair lane) — and only scrolls sideways past
+     that (a clinic with more chairs), when the bar says what is off to the side (data-cal-more). */
+  --gutter: 4.5rem; --colw: 7rem; --mpx: 2px;
+  position: relative; flex: 1 1 auto; min-height: 20rem; overflow: auto; overscroll-behavior: contain;
+  border-top: 1px solid var(--ws-hair); border-radius: 0 0 var(--ws-r) var(--ws-r); transition: opacity 180ms ease;
+}
+.cal-frame[data-view="week"] { --colw: 6rem; } /* seven days fit from a 768px tablet up, "Completed" whole on a day's card */
+.cal-frame[aria-busy="true"] { opacity: 0.55; }
+.cal-frame:focus { outline: none; }
+@media (max-width: 1179px) { .cal-frame { flex: none; height: max(28rem, calc(100dvh - 17rem)); } }
+
+.cal-head, .cal-body {
+  display: grid; grid-template-columns: var(--gutter) repeat(var(--cols), minmax(var(--colw), 1fr));
+  width: max(100%, calc(var(--gutter) + var(--cols) * var(--colw)));
+}
+.cal-head { position: sticky; top: 0; z-index: 6; border-bottom: 1px solid var(--ws-hair); background: var(--ws-glass-strong); }
+.cal-corner { position: sticky; left: 0; z-index: 2; background: var(--ws-glass-strong); }
+.cal-colhead {
+  display: flex; align-items: center; gap: 0.5rem; min-width: 0; min-height: 3.5rem; padding: 0.5rem 0.75rem;
+  border-left: 1px solid var(--ws-hair); text-align: left; color: var(--c-ink);
+}
+.cal-colhead-words { display: grid; min-width: 0; }
+.cal-colhead-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14.5px; font-weight: 600; line-height: 1.25; }
+/* The small line under a column's name wraps rather than cut ("drag to a chair" in a narrow column). */
+.cal-colhead .meta { font-size: 13px; line-height: 1.3; text-wrap: balance; }
+.cal-colhead > .ws-avatar { flex: none; }
+button.cal-colhead { display: grid; align-content: center; gap: 0; cursor: pointer; transition: background-color 150ms ease; }
+button.cal-colhead:hover { background: var(--ws-hover); }
+.cal-colhead[data-today] .cal-colhead-name { color: var(--ws-teal-ink); }
+button.cal-colhead { container-type: inline-size; }
+@container (max-width: 8.5rem) { .cal-colhead[data-today] .cal-colhead-unit { display: none; } }
+/* The chosen day of a week: a soft teal wash under its head and a teal line along its column. */
+.cal-colhead[data-selected] { background: var(--ws-teal-tint); box-shadow: inset 0 -2px 0 var(--ws-teal); }
+.cal-colhead[data-selected] .meta { color: var(--c-ink-2); }
+
+.cal-body { position: relative; height: calc(var(--span) * var(--mpx)); animation: cal-fade 240ms ease; }
+.cal-gutter { position: sticky; left: 0; z-index: 4; background: var(--ws-glass-strong); border-right: 1px solid var(--ws-hair); }
+.cal-hour { position: absolute; right: 0.625rem; top: calc(var(--s) * var(--mpx) + 4px); font-size: 13px; font-weight: 500; line-height: 1; white-space: nowrap; color: var(--c-muted); font-variant-numeric: tabular-nums; }
+.cal-lanecol {
+  position: relative; min-width: 0; border-left: 1px solid var(--ws-hair); cursor: cell;
+  /* Hour rules, and a fainter half-hour: the grid always starts on the hour. */
+  background-image:
+    repeating-linear-gradient(to bottom, var(--ws-hair) 0 1px, transparent 1px calc(60 * var(--mpx))),
+    repeating-linear-gradient(to bottom, transparent 0 calc(30 * var(--mpx)), color-mix(in srgb, var(--ws-hair) 55%, transparent) calc(30 * var(--mpx)) calc(30 * var(--mpx) + 1px), transparent calc(30 * var(--mpx) + 1px) calc(60 * var(--mpx)));
+}
+/* Hours the clinic is shut: a soft wash, lighter in light mode and darker in dark mode, away from the text
+   colour either way (the cards are opaque, so their words never sit on it). */
+.cal-closed {
+  position: absolute; left: 0; right: 0; top: calc(var(--s) * var(--mpx)); height: calc(var(--d) * var(--mpx)); pointer-events: none;
+  background: repeating-linear-gradient(135deg, var(--cal-hatch) 0 6px, transparent 6px 12px);
+}
+.cal-lanecol[data-selected] { background-color: color-mix(in srgb, var(--ws-teal-tint) 45%, transparent); }
+
+.cal-slot {
+  position: absolute; left: 3px; right: 3px; z-index: 1; pointer-events: none;
+  top: calc(var(--s) * var(--mpx)); height: calc(var(--d) * var(--mpx));
+  display: flex; align-items: flex-start; padding: 2px 8px;
+  border: 1.5px dashed var(--ws-teal); border-radius: 8px; background: var(--ws-teal-tint);
+  font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--ws-teal-ink); font-variant-numeric: tabular-nums;
+}
+.cal-slot[hidden] { display: none; }
+
+/* Now: a soft red line with a round end, and the time on a small red pill in the gutter. */
+.cal-now { position: absolute; left: var(--gutter); right: 0; z-index: 3; top: calc(var(--s) * var(--mpx) - 1px); height: 2px; border-radius: 2px; background: var(--ws-red); pointer-events: none; }
+.cal-now::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: var(--ws-r-pill); background: var(--ws-red); }
+.cal-lanecol .cal-now { left: 0; }
+.cal-now-label {
+  position: absolute; right: 4px; z-index: 5; top: calc(var(--s) * var(--mpx) - 0.625rem); padding: 0.2rem 0.4rem; border-radius: var(--ws-r-pill);
+  font-size: 12.5px; font-weight: 600; line-height: 1; background: var(--ws-red-fill); color: #fff; font-variant-numeric: tabular-nums;
+}
+
+/* --- a card ----------------------------------------------------------------------------- */
+/* A soft card: white or a pale tint of its status, rounded, a coloured edge on the left (drawn as an inset
+   shadow so the corners stay round), the status in words on a small pill. Opaque, so the grid's rules and
+   the closed-hours wash never show through it, nor one overlapping card's words through another's.
+   Every colour pair here is from the shell's measured tints (docs/workspace-redesign.md, "Contrast"). */
+.cal-card {
+  --lane: 0; --lanes: 1; --z: 0; --nudge: 0px;
+  --edge: var(--c-muted); --card: var(--c-surface); --pill: var(--c-bg-soft); --pill-ink: var(--c-ink-2); --sub: var(--c-ink-2);
+  position: absolute; z-index: 2;
+  top: calc(var(--s) * var(--mpx) + 1px); height: calc(var(--d) * var(--mpx) - 2px);
+  left: calc(var(--lane) * (100% / var(--lanes)) + 3px); width: calc(100% / var(--lanes) - 6px);
+  display: flex; flex-direction: column; gap: 1px; padding: 3px 5px 5px 10px; overflow: hidden;
+  border: 1px solid var(--ws-hair); border-radius: 8px; background: var(--card); color: var(--c-ink);
+  box-shadow: inset 3px 0 0 var(--edge), var(--ws-shadow);
+  font-size: 13px; line-height: 1.25; text-align: left; cursor: grab;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  transition: border-color 140ms ease, box-shadow 160ms ease, opacity 160ms ease;
+  animation: cal-rise 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.cal-card[data-status="booked"] { --edge: var(--c-muted); }
+.cal-card[data-status="confirmed"], .cal-card[data-status="confirm"] { --edge: var(--ws-blue); --pill: var(--ws-blue-tint); --pill-ink: var(--ws-blue-ink); }
+.cal-card[data-status="arrived"], .cal-card[data-status="in_lobby"] { --edge: var(--ws-amber); --card: var(--ws-amber-tint); --pill: var(--c-surface); --pill-ink: var(--ws-amber-ink); border-color: color-mix(in srgb, var(--ws-amber) 25%, transparent); }
+.cal-card[data-status="in_chair"] { --edge: var(--ws-teal); --card: var(--ws-teal-tint); --pill: var(--ws-teal-fill); --pill-ink: #fff; border-color: color-mix(in srgb, var(--ws-teal) 25%, transparent); }
+.cal-card[data-status="completed"] { --edge: var(--ws-green); --card: var(--ws-subtle); --pill: var(--ws-green-tint); --pill-ink: var(--ws-green-ink); }
+.cal-card[data-status="completed"] .cal-card-name { font-weight: 600; color: var(--c-ink-2); }
+.cal-card[data-status="no_show"] { --edge: var(--ws-red); --card: var(--ws-red-tint); --pill: var(--c-surface); --pill-ink: var(--ws-red-ink); border-color: color-mix(in srgb, var(--ws-red) 25%, transparent); }
+.cal-card[data-status="request"] { --edge: var(--ws-amber); --pill: var(--ws-amber-tint); --pill-ink: var(--ws-amber-ink); border-style: dashed; border-color: color-mix(in srgb, var(--ws-amber) 60%, transparent); }
+.cal-card:hover { border-color: var(--ws-field-line-hover); box-shadow: inset 3px 0 0 var(--edge), var(--ws-shadow-pop); }
+.cal-card:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 1px; z-index: 30; }
+/* A cascade: 0.75rem to the right each, so the one under still shows its edge and the one on top keeps room for
+   "Confirmed" whole; the later start on top, and one that starts within a line of another a line lower (board.ts,
+   stack: --z, --nudge), so the first line of every card is in view. */
+.cal-card.is-cascade {
+  top: calc(var(--s) * var(--mpx) + 1px + var(--nudge)); height: calc(var(--d) * var(--mpx) - 2px - var(--nudge));
+  left: calc(var(--lane) * 0.75rem + 3px); width: calc(100% - var(--lane) * 0.75rem - 6px); z-index: calc(2 + var(--z));
+}
+.cal-card.is-cascade:hover { z-index: 29; }
+/* Two side by side in a day's column (board.ts, is-pair) share it while each half still reads — about 9rem —
+   and cascade like three or more once the column is narrower than that (a 1024–1440 screen with the patients
+   beside the calendar): the later card a little to the right and over the earlier one, both starts in view. */
+.cal-frame[data-view="day"] .cal-lanecol { container: cal-col / inline-size; }
+@container cal-col (max-width: 19rem) {
+  .cal-card.is-pair {
+    top: calc(var(--s) * var(--mpx) + 1px + var(--nudge)); height: calc(var(--d) * var(--mpx) - 2px - var(--nudge));
+    left: calc(var(--lane) * 0.75rem + 3px); width: calc(100% - var(--lane) * 0.75rem - 6px); z-index: calc(2 + var(--z));
+  }
+  .cal-card.is-pair:hover { z-index: 29; }
+}
+.cal-card.is-cascade:focus-visible, .cal-card.is-pair:focus-visible { z-index: 30; }
+.cal-card.is-dragging { opacity: 0.35; }
+.cal-card.is-flash { animation: cal-flash 1.2s ease; }
+.cal-card-top { display: flex; align-items: center; justify-content: space-between; gap: 0.375rem; min-height: 16px; font-size: 13px; font-weight: 500; line-height: 1.25; color: var(--sub); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The time never gives way; the status word does, last. */
+.cal-card-time { flex: none; }
+.cal-card-status {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 0 5px; border-radius: var(--ws-r-pill); background: var(--pill); color: var(--pill-ink);
+  font-size: 12.5px; font-weight: 600; line-height: 16px; letter-spacing: 0;
+}
+.cal-card-who { display: flex; align-items: center; gap: 0.3rem; min-width: 0; white-space: nowrap; }
+/* In a narrow lane the chart number gives way first — whole, never cut to "SR-02(": it wraps onto a second
+   line the box does not show — then the name ellipsises; the name never vanishes. */
+.cal-card-nm { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 0.35rem; flex: 1 1 auto; min-width: 0; height: 16px; overflow: hidden; }
+.cal-card-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13.5px; line-height: 16px; font-weight: 600; }
+.cal-card-chart { flex: none; font-size: 13px; color: var(--sub); font-variant-numeric: tabular-nums; }
+.cal-card-line { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--sub); }
+.cal-card-price { font-weight: 600; color: var(--c-ink); font-variant-numeric: tabular-nums; }
+/* An allergy or an alert: a small red warning sign before the name (the label and the panel say what). */
+.cal-mark { display: inline-flex; flex: none; color: var(--ws-red-ink); }
+.cal-card[data-status="no_show"] .cal-mark { color: var(--ws-red-ink); }
+.cal-card-line { line-height: 16px; }
+/* Whole lines only (board.ts counts them from the card's height): two lines are the time and the name, three
+   add the service (and the dentist or chair after it), four add who booked it. */
+.cal-card.is-sm .cal-card-how, .cal-card.is-l2 .cal-card-what { display: none; }
+/* The status word is never cut. In a narrow column the card drops the end of its range first (the panel and
+   the label keep it); a card with a line to spare puts the word under the time when the two still do not fit. */
+.cal-card:not(.is-xs):not(.is-static) { container-type: inline-size; }
+.cal-card.is-roomy .cal-card-top { flex-wrap: wrap; row-gap: 1px; }
+@container (max-width: 10.5rem) {
+  .cal-card-end { display: none; }
+}
+@container (max-width: 6.5rem) {
+  .cal-card-how { display: none; }
+}
+/* A day card too narrow for its time and its status side by side (board.ts, fitCards, is-tight): the status goes
+   under the time and the card gives up its last line for it, so it still shows whole lines only — time, status,
+   name, then the service if there is room. A two-line card shows the status over the name; a one-line card the
+   name and the status, without its time (the grid and the panel say it). */
+.cal-card.is-tight .cal-card-top { flex-wrap: wrap; row-gap: 1px; }
+.cal-card.is-tight.is-l2 .cal-card-time, .cal-card.is-tight.is-xs .cal-card-top { display: none; }
+.cal-card.is-tight.is-l3 .cal-card-what, .cal-card.is-tight.is-l4 .cal-card-how { display: none; }
+/* The smallest card is one row: time · name · status (never colour alone). */
+.cal-card.is-xs { flex-direction: row; align-items: center; gap: 0.4rem; padding-block: 0 1px; }
+.cal-card.is-xs .cal-card-top { flex: none; }
+.cal-card.is-xs .cal-card-who { flex: 1 1 auto; }
+.cal-card.is-xs > .cal-card-status { flex: none; }
+.cal-card.is-xs .cal-card-chart { display: none; }
+.cal-frame[data-view="week"] .cal-card-chart { display: none; }
+.cal-frame[data-view="week"] .cal-card > .cal-card-status { flex: none; align-self: flex-start; max-width: 100%; }
+.cal-frame[data-view="week"] .cal-card.is-xs > .cal-card-status { align-self: center; }
+.cal-frame[data-view="week"] .cal-card.is-sm .cal-card-what { display: none; }
+.cal-frame[data-view="week"] .cal-card { padding-inline: 8px 4px; }
+.cal-frame[data-view="week"] .cal-card.is-cascade { left: calc(var(--lane) * 0.625rem + 3px); width: calc(100% - var(--lane) * 0.625rem - 6px); }
+
+/* A card that is not on a timeline: the website's lane, the brought-in list, and the day on a phone. */
+.cal-card.is-static {
+  position: relative; top: auto; left: auto; width: 100%; min-width: 0; height: auto; min-height: 44px;
+  padding: 0.625rem 0.75rem 0.7rem 0.95rem; gap: 3px; border-radius: var(--ws-r);
+  animation: cal-rise 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.cal-card.is-static .cal-card-top { flex-wrap: wrap; row-gap: 2px; } /* a card with no fixed height never cuts its status */
+.cal-card.is-static .cal-card-name { font-size: 15px; line-height: 20px; }
+.cal-card.is-static .cal-card-nm { height: 20px; }
+.cal-card.is-static .cal-card-line { font-size: 13.5px; line-height: 19px; }
+.cal-ghost { position: fixed !important; z-index: 90; margin: 0; pointer-events: none; opacity: 0.94; cursor: grabbing; animation: none; box-shadow: inset 3px 0 0 var(--edge), var(--ws-shadow-pop) !important; }
+body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
+
+/* The status chip in the visit panel: the same colours as the card's pill. */
+.cal-status { background: var(--c-bg-soft); color: var(--c-ink-2); }
+.cal-status[data-status="confirmed"] { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
+.cal-status[data-status="arrived"], .cal-status[data-status="in_lobby"], .cal-status[data-status="request"] { background: var(--ws-amber-tint); color: var(--ws-amber-ink); }
+.cal-status[data-status="in_chair"] { background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+.cal-status[data-status="completed"] { background: var(--ws-green-tint); color: var(--ws-green-ink); }
+.cal-status[data-status="no_show"] { background: var(--ws-red-tint); color: var(--ws-red-ink); }
+
+/* --- a phone: the day as a list ---------------------------------------------------------------- */
+.cal-list { display: none; }
+@media (max-width: 767px) {
+  .cal-frame { display: none; }
+  .cal-list { display: grid; gap: 0.5rem; padding: 0.875rem 1rem 1rem; border-top: 1px solid var(--ws-hair); }
+  .cal-list-day { margin-top: 0.5rem; font-size: 15px; font-weight: 600; }
+  .cal-list-day:first-child { margin-top: 0; }
+  .cal-list .cal-card { cursor: pointer; touch-action: auto; }
+  .cal-bar { padding-inline: 1rem; }
+  .cal-lane { margin-inline: 1rem; }
+  .cal-toasts { left: 1rem; right: 1rem; }
+  .cal-menu-cols { display: none; } /* a phone's list is in time order whatever the columns */
+  .cal-nav { width: 100%; }
+  .cal-date { flex: 1 1 8rem; min-width: 0; }
+  .cal-date input { width: 100%; min-width: 0; }
+  .cal-new { flex: 1 1 100%; margin-left: 0; }
+  .cal-lane-list { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: minmax(0, 1fr); overflow: visible; }
+}
+.cal-empty { padding: 0.75rem 0; font-size: 15px; color: var(--c-ink-2); }
+.cal-empty.ws-empty { padding: 0.5rem 0; }
+.cal-list-quiet { padding: 0.625rem 0.875rem; border: 1px dashed var(--ws-hair-strong); border-radius: var(--ws-r); font-size: 14px; }
+
+/* --- print: the day list, nothing else ------------------------------------------------------------ */
+.cal-print-list { display: none; }
+
+/* --- today's patients ------------------------------------------------------------------------ */
+.dash-pts { container-type: inline-size; }
+.dash-pts .pt-scope { padding: 0.75rem 1.25rem 0; }
+.pt-scope { font-size: 13.5px; line-height: 1.4; color: var(--c-ink-2); }
+.pt-scope:empty { display: none; }
+.pt-scope button { display: inline-flex; align-items: center; min-height: 44px; margin-block: -0.75rem; font-weight: 600; color: var(--ws-teal-ink); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; cursor: pointer; }
+.pt-scope button:hover { text-decoration-color: currentColor; }
+.pt-all { gap: 0.3rem; }
+.pt-all .ws-icon { color: var(--ws-teal-ink); }
+
+.pt-list { list-style: none; margin: 0; padding: 0.375rem 0.5rem; }
+/* Nothing to list: the list takes no room, so the empty state sits right under the head, not at the pane's foot. */
+.dash-pts .pt-list:empty { flex: none; padding: 0; }
+/* A row: the person's avatar, their name and age, today's visit (time and what for), their mobile, soft pills;
+   the visit's status and the balance on the right. Hover is a pale wash under a rounded row; the pills are opaque,
+   so it never lowers their contrast. */
+.pt-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 0 0.75rem; width: 100%; min-height: 44px;
+  padding: 0.75rem 0.75rem; border-radius: var(--ws-r-ctl); text-align: left; color: var(--c-ink); cursor: pointer;
+  transition: background-color 140ms ease;
+}
+.pt-list > li + li { border-top: 1px solid var(--ws-hair); }
+.pt-row:hover { background: var(--ws-hover); }
+.pt-row:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: -2px; }
+.pt-row > .ws-avatar { margin-top: 2px; }
+.pt-main { display: grid; gap: 0.1rem; min-width: 0; }
+/* The name wraps rather than cut (a long Filipino name and the age both whole); the age never splits from its dot. */
+.pt-name { overflow-wrap: anywhere; text-wrap: pretty; font-size: 15px; font-weight: 600; line-height: 1.35; }
+.pt-row:hover .pt-name { color: var(--ws-teal-ink); }
+.pt-age { font-weight: 400; color: var(--c-ink-2); white-space: nowrap; }
+.pt-bal { align-self: start; margin-top: 2px; padding: 0.1rem 0.5rem; border-radius: var(--ws-r-pill); background: var(--ws-amber-tint); color: var(--ws-amber-ink); font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pt-bal[data-zero] { background: var(--ws-green-tint); color: var(--ws-green-ink); }
+.pt-when { font-size: 14px; line-height: 1.4; color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
+.pt-when b { font-weight: 600; color: var(--c-ink); }
+.pt-sub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; line-height: 1.4; color: var(--c-muted); font-variant-numeric: tabular-nums; }
+.pt-marks { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
+.pt-side { display: grid; justify-items: end; align-content: start; gap: 0.3rem; }
+.pt-side .ws-pill { margin-top: 2px; white-space: nowrap; }
+.pt-side .pt-bal { margin-top: 0; }
+.pt-empty { padding: 0.5rem 1.25rem 1rem; }
+.pt-empty[hidden], .pt-list[hidden] { display: none; }
+@media (max-width: 767px) {
+  .pt-list { padding-inline: 0.25rem; }
+  .dash-pts .pt-scope { padding-inline: 1rem; }
+}
+
+/* --- inside the panels ------------------------------------------------------------------------ */
+.vp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; width: 100%; }
+.vp-main { display: contents; }
+.vp-more { margin-left: auto; }
+.vp-more[hidden] { display: none; }
+.vp-danger { color: var(--ws-red-ink); }
+.vp-say, .vp-ask { margin-bottom: 1.25rem; }
+.vp-ask[hidden], .vp-say[hidden] { display: none; }
+.vp-grid { display: grid; gap: 1rem; }
+@media (min-width: 768px) { .ws-panel-wide .vp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.vp-sec { min-width: 0; padding: 1rem 1.125rem 1.125rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
+.vp-h { display: flex; align-items: center; gap: 0.5rem; font-size: 15px; font-weight: 600; line-height: 1.4; }
+.vp-h-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: none; border-radius: var(--ws-r-ctl); background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+.vp-who { display: flex; align-items: center; gap: 0.75rem; min-width: 0; margin-top: 0.875rem; }
+.vp-who:empty { display: none; }
+#patient .vp-who { margin-top: 0; }
+.vp-who-words { display: grid; min-width: 0; }
+.vp-who-name { justify-self: start; display: inline-flex; align-items: center; min-height: 44px; margin-block: -0.625rem; font-size: 16px; font-weight: 600; color: var(--c-ink); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 4px; overflow-wrap: anywhere; }
+.vp-who-name:hover { color: var(--ws-teal-ink); text-decoration-color: currentColor; }
+.vp-who-sub { font-size: 13.5px; color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
+.vp-dl { display: grid; grid-template-columns: 6.25rem minmax(0, 1fr); gap: 0.625rem 0.75rem; margin-top: 0.875rem; font-size: 15px; line-height: 1.45; }
+.vp-dl dt { padding-top: 0.1rem; }
+.vp-dl dd { min-width: 0; overflow-wrap: anywhere; }
+.vp-dl dd .vp-sub { display: block; font-size: 13.5px; color: var(--c-ink-2); }
+.vp-dl .ws-chip { min-height: 1.5rem; }
+.vp-link { display: inline-flex; align-items: center; min-height: 44px; margin-block: -0.625rem; font-weight: 600; color: var(--ws-teal-ink); text-align: left; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; cursor: pointer; }
+.vp-link:hover { text-decoration-color: currentColor; }
+.vp-alerts { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.75rem; }
+.vp-alerts:empty { display: none; }
+#visit .vp-alerts { margin-top: 0.75rem; }
+.vp-move { display: grid; gap: 0.875rem; margin-top: 1rem; padding: 1.125rem; border: 1px solid color-mix(in srgb, var(--ws-teal) 30%, transparent); border-radius: var(--ws-r); background: var(--ws-teal-tint); animation: cal-rise 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+.vp-move[hidden] { display: none; }
+.vp-move-title { display: flex; align-items: center; gap: 0.5rem; font-size: 16px; font-weight: 600; scroll-margin-top: 1rem; }
+.vp-move-title:focus { outline: none; }
+.vp-move-title .vp-h-icon { background: var(--c-surface); }
+.vp-move .text-ink-2 { color: var(--c-ink-2); }
+.vp-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.vp-wide { grid-column: 1 / -1; }
+
+.bk-form { display: grid; gap: 1rem; }
+.bk-who { display: grid; gap: 0.5rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+.bk-legend { margin-bottom: 0.375rem; font-size: 14px; font-weight: 500; color: var(--c-ink-2); }
+.bk-who[hidden], .bk-chosen[hidden], [data-bk-new][hidden] { display: none; }
+.bk-find {
+  display: flex; align-items: center; min-height: 46px; border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-ctl); background: var(--ws-field);
+  box-shadow: var(--ws-shadow); transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.bk-find:hover { border-color: var(--ws-field-line-hover); }
+.bk-find:focus-within { border-color: var(--ws-teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws-teal) 24%, transparent); }
+.bk-find-icon { flex: none; margin-left: 0.75rem; color: var(--c-muted); }
+.bk-find input { flex: 1; width: 0; min-width: 0; height: 44px; padding: 0 0.75rem 0 0.55rem; border: 0; background: transparent; font-size: 16px; color: var(--c-ink); outline: none; -webkit-appearance: none; appearance: none; }
+.bk-find input:disabled { opacity: 0.55; }
+.bk-results { list-style: none; margin: 0; padding: 0.25rem; max-height: 17rem; overflow-y: auto; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--c-surface); box-shadow: var(--ws-shadow); }
+.bk-results[hidden] { display: none; }
+.bk-results button { display: flex; align-items: center; gap: 0.625rem; width: 100%; min-height: 44px; padding: 0.4rem 0.625rem; border-radius: 8px; text-align: left; color: var(--c-ink); cursor: pointer; }
+.bk-results button:hover, .bk-results button:focus-visible { background: var(--ws-hover); }
+.bk-result-words { display: grid; min-width: 0; }
+.bk-results b { font-size: 15px; font-weight: 600; }
+.bk-results span:not(.ws-avatar) { font-size: 13px; color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
+.bk-hint { font-size: 13.5px; line-height: 1.45; color: var(--c-ink-2); }
+.bk-hint:empty { display: none; }
+.bk-hint a { font-weight: 600; color: var(--ws-teal-ink); text-decoration: underline; text-underline-offset: 4px; }
+.bk-hint button { min-height: 44px; margin-block: -0.75rem; font-weight: 600; color: var(--ws-teal-ink); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+.bk-free:not(:empty) { margin-top: -0.375rem; }
+.bk-check { min-height: 44px; }
+.bk-chosen { display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.625rem 0.625rem 0.75rem; border: 1px solid color-mix(in srgb, var(--ws-teal) 30%, transparent); border-radius: var(--ws-r); background: var(--ws-teal-tint); font-size: 15px; }
+.bk-chosen [data-bk-chosen-face] { display: contents; }
+.bk-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.bk-more { border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
+.bk-more-head { display: flex; align-items: center; gap: 0.5rem; min-height: 46px; padding: 0 0.875rem; font-size: 15px; font-weight: 600; color: var(--c-ink); cursor: pointer; list-style: none; border-radius: var(--ws-r); }
+.bk-more-head::-webkit-details-marker { display: none; }
+.bk-more-head:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+.bk-more-chev { flex: none; color: var(--c-muted); transform: rotate(-90deg); transition: transform 180ms ease; }
+.bk-more[open] .bk-more-chev { transform: none; }
+.bk-more-hint { font-size: 13.5px; font-weight: 400; color: var(--c-ink-2); }
+.bk-more-body { display: grid; gap: 0.875rem; padding: 0.25rem 0.875rem 1rem; }
+
+@keyframes cal-rise { from { opacity: 0; transform: translateY(4px); } }
+@keyframes cal-fade { from { opacity: 0.35; } }
+@keyframes cal-flash { 0%, 45% { outline: 2px solid var(--c-accent); outline-offset: 2px; } 100% { outline: 2px solid transparent; outline-offset: 2px; } }
+@keyframes cal-flash-text { 0%, 50% { color: var(--c-accent); } }
+
+}  /* end @layer components */
+
+/* The booking panel's patient search rings its whole box, as the shell's search does; outside the
+   layer because the base :focus-visible rule is unlayered and would draw a second ring on the bare input. */
+.bk-find input:focus-visible { outline: none; }
+
+@media print {
+  .ws-top, .ws-backdrop, .ws-devline, .ws-skip, .ws-phone-title, .dash-tiles, .dash-pts, .dash-alert, .cal-nav, .cal-bar, .cal-count, .cal-toast,
+  .cal-lane, .cal-frame, .cal-list, .ws-pane-icon, dialog { display: none !important; }
+  .ws-main { padding: 0; max-width: none; }
+  .dash-board { display: block; }
+  .dash-cal { height: auto !important; border: 0; }
+  .ws-glass::before { display: none; }
+  .cal-print-list { display: table !important; width: calc(100% - 3rem); margin: 0.5rem 1.5rem 0; border-collapse: collapse; font-size: 11.5px; color: #000; }
+  .cal-print-list caption { padding-bottom: 0.4rem; text-align: left; color: #000; }
+  .cal-print-list th, .cal-print-list td { padding: 4px 10px 4px 0; border-bottom: 1px solid #bbb; text-align: left; vertical-align: top; }
+  .cal-print-list tr { break-inside: avoid; }
+}

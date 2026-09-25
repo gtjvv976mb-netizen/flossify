@@ -1,0 +1,41 @@
+---
+// A tinted box with an icon, in plain words — the shell's .ws-callout: blue
+// for information, amber for "needs attention", red for "blocked", green for
+// done. Its role follows the tone (alert for red, status for green and blue,
+// note for amber) unless the page says otherwise.
+//
+//   <Callout tone="alert" title="Nothing was saved. Two things to fix:" items={problems} />
+//   <Callout tone="success" text="Details saved." />
+//   <Callout tone="warn">Words, links, a button…</Callout>
+import Icon from '../../../../../components/ws/Icon.astro';
+import type { IconName } from '../../../../../components/ws/icons';
+
+type Tone = 'info' | 'warn' | 'alert' | 'success';
+interface Props {
+  tone?: Tone;
+  title?: string;
+  text?: string;
+  items?: string[];
+  icon?: IconName;
+  role?: 'alert' | 'status' | 'note' | 'none';
+  class?: string;
+  id?: string;
+  /** Focusable (tabindex -1), for a page that moves focus to it. */
+  focus?: boolean;
+  [key: `data-${string}`]: unknown;
+}
+const { tone = 'info', title, text, items, icon, role, class: extra, id, focus = false, ...rest } = Astro.props;
+const ICON: Record<Tone, IconName> = { info: 'info', warn: 'alert', alert: 'alert', success: 'check' };
+const ROLE: Record<Tone, string> = { info: 'status', warn: 'note', alert: 'alert', success: 'status' };
+const r = role === 'none' ? undefined : role ?? ROLE[tone];
+---
+
+<div id={id} role={r} class:list={['ws-callout', extra]} data-tone={tone} tabindex={focus ? -1 : undefined} {...rest}>
+  <Icon name={icon ?? ICON[tone]} />
+  <div class="min-w-0 flex-1">
+    {title && <p class="font-semibold">{title}</p>}
+    {text && <p>{text}</p>}
+    {items && items.length > 0 && <ul class="mt-1.5 list-disc space-y-1 pl-5">{items.map((i) => <li>{i}</li>)}</ul>}
+    <slot />
+  </div>
+</div>

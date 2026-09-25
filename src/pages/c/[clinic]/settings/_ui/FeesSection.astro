@@ -1,0 +1,136 @@
+---
+// Services & prices: the fee guide as patients read it, one row per service.
+// A row (or Edit prices) opens the whole guide in a side panel — one form, one
+// Save, as before — at that service; Add service opens a second small panel.
+// A refused save comes back in its panel with the reasons and what was typed.
+import Pane from '../../../../../components/ws/Pane.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import Note from './Note.astro';
+import { CATEGORY_LABEL, type Category } from '../../../../../data/directory';
+import { CATS, shows, type FeeRow, type FeeAdd } from '../_lib/fees';
+
+interface Props {
+  base: string;
+  clinicName: string;
+  rows: FeeRow[];
+  /** The guide as posted, when it came back with problems. */
+  keep: FormData | null;
+  problems: string[];
+  add: FeeAdd;
+  addProblems: string[];
+  notes: { tone: 'ok' | 'alert' | 'warn'; text: string }[];
+  on: boolean;
+}
+const { base, clinicName, rows, keep, problems, add, addProblems, notes, on } = Astro.props;
+
+// What the panel shows for a row: the typed value while something needs fixing, otherwise the saved one.
+const val = (field: string, r: FeeRow, saved: string) => (keep ? String(keep.get(`${field}[${r.id}]`) ?? '') : saved);
+const tick = (field: string, r: FeeRow, saved: boolean) => (keep ? keep.get(`${field}[${r.id}]`) === 'on' : saved);
+const money = (s: string | null) => (s == null ? '' : String(Math.round(Number(s))));
+const offered = rows.filter((r) => r.active).length;
+const kind = (r: FeeRow) => CATEGORY_LABEL[r.category as Category] ?? r.category ?? 'No category';
+// A refused add that was about the code opens "More", where the code is.
+const codeProblem = addProblems.some((p) => /code/i.test(p));
+---
+
+<div class="set-panel" data-set-panel="fees" data-on={on ? '' : undefined}>
+<Pane id="fees" icon="money" title="Services & prices" pad="none" class="set-sec">
+  <Fragment slot="actions">
+    <span class="set-dirty-note" data-set-dirty-for="fees" hidden>Not saved yet</span>
+    <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="add-fee"><Icon name="plus" />Add service</button>
+    {rows.length > 0 && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="fees-edit"><Icon name="money" />Edit prices</button>}
+  </Fragment>
+  <div class="px-6 pt-4 max-md:px-4">
+    <p class="set-intro mt-0">{rows.length ? `What patients see on your page and what the desk quotes. ${offered} of ${rows.length} offered. Tap a service to change it.` : 'What patients see on your page and what the desk quotes.'}</p>
+    {notes.length > 0 && <div class="set-notes mt-4">{notes.map((n) => <Note tone={n.tone} text={n.text} />)}</div>}
+  </div>
+  {rows.length === 0 ? (
+    <div class="px-6 pb-4 pt-2 max-md:px-4"><Empty icon="money" text="No services yet. Press Add service to put in your first one." /></div>
+  ) : (
+    <ul class="set-list mt-3 border-t border-[var(--ws-hair)]" aria-label={`Services and prices at ${clinicName}`}>
+      {rows.map((r) => (
+        <li>
+          <button type="button" class="set-row set-row-plain" data-ws-open="fees-edit" data-fee-row={r.id}>
+            <span class="min-w-0">
+              <span class="sr-only">Edit </span>
+              <span class="set-row-name block">{r.name}</span>
+              <span class="set-row-sub">{kind(r)}{r.local_name ? ` · ${r.local_name}` : ''}</span>
+            </span>
+            <span class="set-row-end">
+              {r.active ? <span class="set-fee-price">{shows(r)}</span> : <Chip tone="muted" label="Not offered" />}
+              {r.minutes != null && <span class="set-fee-mins">{r.minutes} min</span>}
+              <Icon name="chevron-right" class="set-go" />
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  )}
+</Pane>
+</div>
+
+{rows.length > 0 && (
+  <SidePanel id="fees-edit" title="Edit prices" meta="Services & prices" wide open={problems.length > 0}>
+    <Fragment slot="actions">
+      <button type="submit" form="fees-form" class="ws-btn ws-btn-primary"><Icon name="check" />Save prices</button>
+      <span class="set-dirty-note self-center" data-set-dirty-for="fees" hidden>Not saved yet</span>
+    </Fragment>
+    <form method="post" action={base} id="fees-form" data-set-form="fees">
+      <Csrf />
+      <input type="hidden" name="form" value="fees" />
+      {problems.length > 0 && <Note tone="alert" title="Nothing was saved yet. Please fix:" items={problems} class="mb-5" refused />}
+      <p class="set-help mb-3">Leave “Up to” empty for one price. Minutes is the chair time the calendar keeps free.</p>
+      {rows.map((r) => (
+        <fieldset class="set-fee-edit" id={`fee-${r.id}`} data-fee-edit={r.id}>
+          <legend>{r.name}<span class="block text-[13px] font-normal text-muted">{kind(r)}{r.unit ? ` · ${r.unit}` : ''}</span></legend>
+          <div class="set-fee-grid">
+            <label class="field"><span class="meta">Price ₱</span><input inputmode="decimal" name={`price[${r.id}]`} value={val('price', r, money(r.default_price))} required class="tabular-nums" /></label>
+            <label class="field"><span class="meta">Up to ₱</span><input inputmode="decimal" name={`max[${r.id}]`} value={val('max', r, money(r.price_max))} placeholder="Optional" class="tabular-nums" /></label>
+            <label class="field"><span class="meta">Minutes</span><input inputmode="numeric" name={`minutes[${r.id}]`} value={val('minutes', r, r.minutes == null ? '' : String(r.minutes))} class="tabular-nums" /></label>
+          </div>
+          <div class="set-fee-checks">
+            <label class="check set-check"><input type="checkbox" name={`active[${r.id}]`} checked={tick('active', r, r.active)} /><span>Offered</span></label>
+            <label class="check set-check"><input type="checkbox" name={`from[${r.id}]`} checked={tick('from', r, r.price_from)} /><span>Show as “from ₱…”</span></label>
+          </div>
+        </fieldset>
+      ))}
+      <div class="set-foot">
+        <button type="submit" class="ws-btn ws-btn-primary"><Icon name="check" />Save prices</button>
+        <span class="set-dirty-note" data-set-dirty-note hidden>Not saved yet</span>
+      </div>
+    </form>
+  </SidePanel>
+)}
+
+<SidePanel id="add-fee" title="Add a service" meta="Services & prices" open={addProblems.length > 0}>
+  {addProblems.length > 0 && <Note tone="alert" title="It was not added yet. Please fix:" items={addProblems} class="mb-5" />}
+  <form method="post" action={base} class="grid gap-4">
+    <Csrf />
+    <input type="hidden" name="form" value="fee-add" />
+    <input type="hidden" name="do" value="add" />
+    <label class="field"><span class="meta">Name</span><input name="name" value={add.name} required maxlength="80" placeholder="Night guard" /></label>
+    <label class="field"><span class="meta">Kind</span><select name="category">{CATS.map((c) => <option value={c} selected={add.category === c}>{CATEGORY_LABEL[c]}</option>)}</select></label>
+    <div class="grid grid-cols-2 gap-4">
+      <label class="field"><span class="meta">Price ₱</span><input name="price" value={add.price} inputmode="decimal" required class="tabular-nums" /></label>
+      <label class="field"><span class="meta">Minutes</span><input name="minutes" value={add.minutes} inputmode="numeric" required placeholder="30" class="tabular-nums" /></label>
+    </div>
+    <details class="set-more mt-0" open={codeProblem || !!add.local_name || !!add.unit || undefined}>
+      <summary><span>More<span class="set-more-hint">: local name, unit, code</span></span><Icon name="chevron" /></summary>
+      <div class="set-more-body grid gap-4">
+        <label class="field"><span class="meta">Local name (optional)</span><input name="local_name" value={add.local_name} maxlength="80" placeholder="What patients call it at the desk" /></label>
+        <label class="field"><span class="meta">Unit (optional)</span><input name="unit" value={add.unit} placeholder="per tooth" /></label>
+        <label class="field">
+          <span class="meta">Code (optional)</span>
+          <input name="code" value={add.code} autocapitalize="off" spellcheck="false" placeholder="Made from the name" />
+          <span class="set-help">Lowercase letters and hyphens. Patients never see it.</span>
+        </label>
+      </div>
+    </details>
+    <p class="set-help">It is offered, and on your page, as soon as it is added.</p>
+    <div><button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="plus" />Add service</button></div>
+  </form>
+</SidePanel>

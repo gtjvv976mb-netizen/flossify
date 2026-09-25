@@ -1,0 +1,142 @@
+---
+// The part of the Patients tab that changes as the desk searches, filters,
+// sorts and asks for more (index.astro): the filter pills with their counts,
+// one line that says what is shown, the list (or a friendly empty state) and
+// "Show more". The page draws it inside the card; the page's script asks the
+// page again for just this part (?part=list) and puts the answer in its place,
+// or for the next rows only (?part=rows&from=), so what a browser without
+// JavaScript gets by following the links and what the script shows are the
+// same markup.
+import Icon from '../../../../../components/ws/Icon.astro';
+import Row from './Row.astro';
+import { listHref, PAGE, type Counts, type Filter, type ListState, type Row as RowData } from './list';
+
+interface Props {
+  /** 'list': everything that changes; 'rows': the rows after those on screen, and the new "Show more". */
+  mode: 'list' | 'rows';
+  rows: RowData[];
+  counts: Counts;
+  matched: number;
+  state: ListState;
+  base: string;
+  slug: string;
+  today: string;
+  finance: boolean;
+  canEdit: boolean;
+  notice: boolean;
+}
+const { mode, rows, counts, matched, state, base, slug, today, finance, canEdit, notice } = Astro.props;
+
+const n = (v: number) => v.toLocaleString('en-PH');
+const plural = (v: number, one: string, many: string) => `${n(v)} ${v === 1 ? one : many}`;
+const FILTER_LABEL: Record<Filter, string> = { all: 'All', today: 'Today', new: 'New', balance: 'With balance', attention: 'Needs attention' };
+const pills: Filter[] = ['all', 'today', 'new', ...(finance ? (['balance'] as const) : []), 'attention'];
+
+// What is shown, in one line — and for New and Needs attention the rule the filter follows, said once, here.
+const missing = ['a birth date', 'health history', ...(notice ? ['consent to the privacy notice'] : []), 'a mobile'];
+const missingText = `${missing.slice(0, -1).join(', ')} or ${missing[missing.length - 1]}`;
+const SHOWS: Record<Filter, (v: number) => string> = {
+  all: (v) => plural(v, 'patient', 'patients'),
+  today: (v) => `${plural(v, 'patient', 'patients')} with a visit today`,
+  new: (v) => plural(v, 'new patient', 'new patients'),
+  balance: (v) => `${plural(v, 'patient owes', 'patients owe')} the clinic`,
+  attention: (v) => `${plural(v, 'record needs', 'records need')} something added`,
+};
+const RULE: Partial<Record<Filter, string>> = {
+  new: 'New: a first visit in the last 30 days, or added in them and not seen yet.',
+  attention: `Needs attention: a record without ${missingText}.`,
+};
+const head = state.q
+  ? `${matched === 0 ? 'No patient matches' : plural(matched, 'patient matches', 'patients match')} “${state.q}”${state.f !== 'all' ? ` in ${FILTER_LABEL[state.f]}` : ''}`
+  : SHOWS[state.f](matched);
+const rule = RULE[state.f] ?? '';
+const shown = state.from + rows.length;
+const left = Math.max(0, matched - shown);
+const nextCount = Math.min(PAGE, left);
+const moreHref = listHref(base, { ...state, show: shown + PAGE });
+const record = (id: string) => `${base}${id}/`;
+
+// Nothing to show: say why in one line, and the one thing to do next.
+const addHref = `/c/${slug}/patients/new/`;
+const importHref = `/c/${slug}/patients/import/`;
+type Go = { label: string; href: string };
+let emptyText = '';
+let emptyGo: Go[] = [];
+let emptyIcon: 'patients' | 'search' | 'check' | 'calendar' | 'info' = 'patients';
+if (rows.length === 0 && mode === 'list') {
+  if (counts.all === 0 && !state.q) {
+    emptyText = canEdit ? 'No patients yet — add your first, or import your list.' : 'No patients yet. They arrive with their first booking.';
+    emptyGo = canEdit ? [{ label: 'Add patient', href: addHref }, { label: 'Import your list', href: importHref }] : [];
+  } else if (state.q) {
+    emptyIcon = 'search';
+    emptyText = state.f !== 'all' && counts.all > 0
+      ? `No patient matches “${state.q}” in ${FILTER_LABEL[state.f]}.`
+      : `No patient matches “${state.q}”. Check the spelling, or search by mobile or chart no.`;
+    emptyGo = state.f !== 'all' && counts.all > 0
+      ? [{ label: 'Look in all patients', href: listHref(base, { ...state, f: 'all' }) }]
+      : canEdit ? [{ label: 'Add patient', href: addHref }] : [];
+  } else {
+    const E: Record<Filter, [string, typeof emptyIcon]> = {
+      all: ['No patients yet.', 'patients'],
+      today: ['Nobody has a visit today.', 'calendar'],
+      new: ['No new patients in the last 30 days.', 'patients'],
+      balance: ['Nobody owes the clinic. Everyone is paid up.', 'check'],
+      attention: ['Every record is complete.', 'check'],
+    };
+    [emptyText, emptyIcon] = E[state.f];
+  }
+}
+---
+
+{mode === 'rows' ? (
+  <>
+    <table><tbody data-pts-new-rows>{rows.map((r) => <Row r={r} href={record(r.id)} today={today} finance={finance} />)}</tbody></table>
+    <div data-pts-new-more>
+      {left > 0 && <a href={moreHref} class="ws-btn ws-btn-quiet pts-more" data-pts-more data-from={shown}>Show {n(nextCount)} more <span class="pts-more-left">· {n(left)} left</span></a>}
+    </div>
+  </>
+) : (
+  <>
+    <nav class="ws-seg pts-filters" aria-label="Show patients">
+      {pills.map((f) => (
+        <a href={listHref(base, { ...state, f })} class="ws-seg-item" aria-current={f === state.f ? 'page' : undefined} data-pts-f={f}>
+          <span class="ws-seg-label">{FILTER_LABEL[f]}</span>
+          <span class="ws-seg-count" data-zero={counts[f] === 0 ? '' : undefined}>{n(counts[f])}</span>
+        </a>
+      ))}
+    </nav>
+    {/* Read out after each change (the page's live line); on screen only when there are rows, since an
+        empty list says the same in its own line — and on a phone not for the whole list unsearched, since the
+        All pill just above says the same number (list.css). */}
+    <p class:list={['pts-said', rows.length === 0 && 'sr-only', !state.q && state.f === 'all' && 'pts-said-all']} data-pts-said>{head}{rule && <><span class="sr-only">. </span> <span class="pts-rule">{rule}</span></>}</p>
+
+    {rows.length === 0 ? (
+      <div class="pts-empty">
+        <p class="ws-empty">
+          <Icon name={emptyIcon} size={20} class="ws-empty-icon" />
+          <span class="ws-empty-text">{emptyText}</span>
+          {emptyGo.map((g) => <a href={g.href} class="ws-empty-go">{g.label} <Icon name="arrow-right" size={16} /></a>)}
+        </p>
+      </div>
+    ) : (
+      <table class="pts-table" data-pts-table>
+        <caption class="sr-only">{head}</caption>
+        <thead>
+          <tr>
+            <th scope="col" class="meta">Patient</th>
+            <th scope="col" class="meta pts-c-contact">Mobile and HMO</th>
+            <th scope="col" class="meta">Visits</th>
+            {finance && <th scope="col" class="meta pts-c-bal">Balance</th>}
+            <th scope="col" class="meta">Record</th>
+          </tr>
+        </thead>
+        <tbody data-pts-rows>
+          {rows.map((r) => <Row r={r} href={record(r.id)} today={today} finance={finance} />)}
+        </tbody>
+      </table>
+    )}
+    <div class="pts-more-row" data-pts-more-row>
+      {left > 0 && <a href={moreHref} class="ws-btn ws-btn-quiet pts-more" data-pts-more data-from={shown}>Show {n(nextCount)} more <span class="pts-more-left">· {n(left)} left</span></a>}
+    </div>
+  </>
+)}

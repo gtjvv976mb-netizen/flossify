@@ -658,3 +658,34 @@ export function tinParts(tin: string | null, branch: string | null): { tin: stri
   const three = d.length >= 12 ? d.slice(-3) : b ? b.slice(-3).padStart(3, '0') : '000';
   return { tin: tinFmt(d.slice(0, 9), three), branch: b || (d.length === 14 ? d.slice(9) : '00000') };
 }
+
+// ---------------------------------------------------------------------------
+// What HMOs and PhilHealth still have to pay, on claims
+// ---------------------------------------------------------------------------
+
+/**
+ * One row for the branch, from its claims (not its statements): what the
+ * payors still have to send, and how much of that is stuck. Use inside
+ * withClinic(); $1 is a payor (hmo_provider id) to keep to, or null for all.
+ *
+ *   waiting_n, waiting — claims the payor has not paid yet: filed (the amount
+ *     claimed), partly approved or approved (the amount approved);
+ *   stuck_n, stuck — the part of that past the payor's own expected days
+ *     since filing (hmo_provider.expected_days), the same "past expected" the
+ *     claims list marks in its aging column.
+ *
+ * Drafts are not with the payor yet; denied and paid claims are settled.
+ * The Finances page's "Stuck with HMOs" tile and its claims summary read this,
+ * and its Open claims list (CLAIM_VIEWS.open in pages/c/[clinic]/finances/
+ * _claims.ts) lists exactly these claims, so the tile and the list agree.
+ */
+export const HMO_WAITING_SQL = `
+  select count(*) filter (where w.awaited is not null)::int as waiting_n,
+         coalesce(sum(w.awaited), 0) as waiting,
+         count(*) filter (where w.awaited is not null and w.late)::int as stuck_n,
+         coalesce(sum(w.awaited) filter (where w.late), 0) as stuck
+    from (select case when c.status = 'filed' then c.claimed
+                      when c.status in ('partly_approved', 'approved') then coalesce(c.approved, c.claimed) end as awaited,
+                 c.filed_at is not null and c.filed_at + make_interval(days => pr.expected_days) < now() as late
+            from hmo_claim c join hmo_provider pr on pr.id = c.provider_id
+           where ($1::uuid is null or c.provider_id = $1)) w`;
