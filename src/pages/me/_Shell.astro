@@ -1,0 +1,146 @@
+---
+// The patient area's frame (/me/visits/): the workspace's soft left-sidebar pattern, for a patient.
+// A patient has no clinic and no tenant, so this does not use the clinic layout (Clinic.astro reads
+// the staff session and the branch); it draws the same pieces with the same classes instead — the
+// room behind (the waiting area, the bench patients sit on), a white sidebar on the left with the
+// Flossify mark and two items (My visits, Find a clinic), the person at the foot of the sidebar's own
+// column (the mobile number they signed in with), the privacy notice and Sign out — and at the top of
+// the content the page's title and one quiet "Book a visit". docs/workspace-redesign.md, "Shell API"
+// and "The whole site, soft".
+//
+// Sizes are the workspace's: from 1024px the whole sidebar (244px; 220px to 1279px); 768–1023px an
+// icon rail with a small word under each icon; to 767px no sidebar on screen — a slim bar (menu, the
+// mark, Book a visit) whose menu button slides the same sidebar in from the left over a scrim (Tab
+// stays inside, Escape / the scrim / × close it, focus returns to the menu button). That behaviour is
+// the workspace's own script (ws/shell.ts), which needs nothing from a clinic session. Nothing is
+// fixed to the bottom of the screen.
+//
+//   <Shell title="My visits" description="…" phone="+639175550142">…panes…</Shell>
+import Base from '../../layouts/Base.astro';
+import Csrf from '../../components/Csrf.astro';
+import Icon from '../../components/ws/Icon.astro';
+import { prettyPhone } from '../../lib/messages';
+
+interface Props {
+  /** The page's title: the bar's <h1> (a phone draws it at the top of the page instead). */
+  title: string;
+  description: string;
+  /** The signed-in mobile number (the patient session). */
+  phone: string;
+}
+const { title, description, phone } = Astro.props;
+
+// The same switch as PatientHeader's: on the owner's own machine only, the seeded directory is invented.
+const devData = process.env.SHOW_DEMO_LOGINS === '1' || (import.meta.env.DEV && import.meta.env.SHOW_DEMO_LOGINS === '1');
+
+const room = (w: number) => `/img/ws/waiting-${w}.webp`;
+const srcset = `${room(960)} 960w, ${room(1920)} 1920w`;
+const here = Astro.url.pathname;
+const nav = [
+  { href: '/me/visits/', label: 'My visits', short: 'Visits', icon: 'calendar' as const },
+  { href: '/find/', label: 'Find a clinic', short: 'Find', icon: 'search' as const },
+];
+---
+
+<Base title={title} description={description}>
+  <div class="ws me-shell bg-transparent text-[15px] leading-normal [--ws-max:1040px]" data-room="waiting">
+    <div class="ws-backdrop" aria-hidden="true">
+      <img src={room(1920)} srcset={srcset} sizes="100vw" alt="" decoding="async" />
+    </div>
+
+    <div class="ws-app">
+      <aside id="ws-side" class="ws-side" aria-label="My visits menu" data-ws-side>
+        <div class="ws-side-scroll">
+          <div class="ws-side-top">
+            <div class="ws-side-brand">
+              <a href="/" class="ws-mark" aria-label="Flossify, home">
+                <svg class="ws-mark-sq" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" /><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z" /></svg>
+                <span class="ws-mark-word">Flossify</span>
+              </a>
+              <button type="button" class="ws-tool ws-side-close" data-ws-side-close aria-label="Close the menu">
+                <Icon name="close" size={20} />
+              </button>
+            </div>
+
+            <nav class="ws-nav" aria-label="Patients">
+              {nav.map((n) => (
+                <a href={n.href} class="ws-nav-item" aria-current={here.startsWith(n.href) ? 'page' : undefined}>
+                  <Icon name={n.icon} size={20} />
+                  <span class="ws-nav-word ws-nav-long">{n.label}</span>
+                  <span class="ws-nav-word ws-nav-short" aria-hidden="true">{n.short}</span>
+                </a>
+              ))}
+            </nav>
+          </div>
+        </div>
+
+        <div class="ws-side-foot">
+          <div class="ws-me" title={`${prettyPhone(phone)} · Patient`}>
+            <span class="ws-avatar" data-tint="teal" aria-hidden="true"><Icon name="user" /></span>
+            <span class="ws-me-text">
+              <span class="ws-me-name tabular-nums"><span class="sr-only">Signed in as </span>{prettyPhone(phone)}</span>
+              <span class="ws-pill ws-me-role">Patient</span>
+            </span>
+          </div>
+          <a class="ws-side-link" href="/privacy/">
+            <Icon name="file" /><span class="ws-side-word"><span class="ws-side-long">Privacy notice</span><span class="ws-side-short" aria-hidden="true">Privacy</span></span>
+          </a>
+          {/* A form post with the CSRF token, so a stray link cannot sign a phone out. The icon is
+              drawn by CSS (.ws-signout .ws-side-link::before), as in the workspace. */}
+          <form method="post" action="/me/logout" class="ws-signout"><Csrf /><button type="submit" class="ws-side-link">Sign out</button></form>
+        </div>
+      </aside>
+      <div class="ws-scrim" data-ws-side-scrim hidden></div>
+
+      <div class="ws-col" data-ws-col>
+        <header class="ws-top ws-bar">
+          <div class="ws-bar-row">
+            <button type="button" class="ws-tool ws-side-open" aria-label="Menu" aria-controls="ws-side" aria-expanded="false" data-ws-side-open>
+              <Icon name="menu" size={22} />
+            </button>
+            {/* On a phone the bar carries the mark; the title is drawn at the top of the page. */}
+            <a href="/" class="ws-mark me-bar-mark" aria-label="Flossify, home">
+              <svg class="ws-mark-sq" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" /><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z" /></svg>
+              <span class="ws-mark-word">Flossify</span>
+            </a>
+            <div class="ws-bar-where">
+              {/* On the icon rail (768–1023px) the number is not in the sidebar; it is said here, small
+                  (the workspace's clinic line: hidden from 1024px, where the sidebar says it). */}
+              <p class="ws-bar-clinic tabular-nums" aria-hidden="true">{prettyPhone(phone)}</p>
+              <h1 class="ws-bar-title ws-bar-h1">{title}</h1>
+            </div>
+            <div class="ws-right">
+              <div class="ws-tools">
+                {/* Quiet, with a teal plus: the one teal button on this screen is a visit's own Confirm. */}
+                <a href="/find/" class="ws-btn ws-btn-quiet ws-new"><Icon name="plus" size={18} /><span>Book a visit</span></a>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {devData && (
+          <p role="note" class="ws-devline"><Icon name="info" />Prototype. The clinics and dentists are invented and the phone numbers are 555 numbers; nothing here books a real visit.</p>
+        )}
+
+        <main id="main" tabindex="-1" class="ws-main ws-main-panes">
+          <h1 class="ws-phone-title">{title}</h1>
+          <slot />
+        </main>
+      </div>
+    </div>
+  </div>
+</Base>
+
+<script>import '../../components/ws/shell';</script>
+
+<style>
+  @layer components {
+    /* The mark stands in the bar only on a phone, where the sidebar is off screen. */
+    .me-bar-mark { display: none; }
+    @media (max-width: 767px) {
+      .me-bar-mark { display: inline-flex; flex: none; }
+      .ws-bar-where { display: none; }
+      .ws-right { display: flex; flex: 1 1 auto; }
+    }
+  }
+</style>

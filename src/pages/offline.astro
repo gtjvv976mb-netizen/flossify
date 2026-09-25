@@ -1,28 +1,41 @@
 ---
 // What the service worker shows when a navigation fails. Static on purpose:
 // it is precached at install and must never need the database. The reload
-// handler is inline so the page has no script bundle to fetch offline.
+// handler is inline so the page has no script bundle to fetch offline, and
+// there is no top bar (its menu is a script, and its links need the line).
+//
+// Drawn in the soft template: the Flossify mark, then one white card with a
+// small amber icon, the words, and one teal "Try again". The icons are inline
+// SVG (ws/Icon.astro renders them into the page), so nothing else is fetched.
 import Base from '../layouts/Base.astro';
+import Icon from '../components/ws/Icon.astro';
 ---
 
 <Base
   title="You're offline — Flossify"
   description="The Flossify workspace needs a connection for patient records. Nothing typed offline is saved, and this page says so."
 >
-  <main id="main" class="mx-auto max-w-[1280px] px-5 py-16 sm:px-8">
-    <p class="meta">Flossify &middot; Offline</p>
-    <h1 class="mt-6 max-w-[760px] font-display text-[clamp(2rem,5vw,3rem)] leading-tight font-semibold tracking-[-0.025em]">
-      You're offline.
-    </h1>
-    <p class="mt-4 max-w-[620px] text-[17px] leading-relaxed text-ink-2">
-      The workspace needs a connection for patient records, so nothing you type here would be saved — and we would rather tell you than lose it. The page you last opened may still be in the back button.
-    </p>
-    <div class="mt-8">
-      <button type="button" class="btn btn-primary" data-retry>Try again</button>
+  <main id="main" class="mx-auto flex min-h-[100dvh] max-w-[1280px] flex-col items-center justify-center px-5 py-12 sm:px-8">
+    <div class="w-full max-w-[560px]">
+      <a href="/" class="ws-mark" aria-label="Flossify, home">
+        <svg class="ws-mark-sq" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" /><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z" /></svg>
+        <span class="ws-mark-word">Flossify</span>
+      </a>
+
+      <section class="card rounded-pane mt-5 p-6 sm:p-9" aria-labelledby="offline-title">
+        <span class="inline-flex size-12 items-center justify-center rounded-card bg-amber-tint text-amber-ink" aria-hidden="true"><Icon name="alert" size={24} /></span>
+        <p class="meta mt-5">Flossify &middot; Offline</p>
+        <h1 id="offline-title" class="mt-1.5 text-[clamp(1.75rem,4vw,2.25rem)]">You're offline.</h1>
+        <p class="mt-3 text-[16px] leading-relaxed text-ink-2">
+          The workspace needs a connection for patient records, so nothing you type here would be saved — and we would rather tell you than lose it. The page you last opened may still be in the back button.
+        </p>
+        <button type="button" class="btn btn-primary btn-lg mt-7 w-full sm:w-auto" data-retry>Try again</button>
+        <p class="mt-7 flex items-start gap-2.5 border-t border-hair pt-5 text-[14px] leading-relaxed text-ink-2">
+          <Icon name="info" size={16} class="mt-[3px] flex-none text-blue-ink" />
+          <span>A patient chart that was already open keeps working through a brownout: its changes wait on that device and are sent when the line returns.</span>
+        </p>
+      </section>
     </div>
-    <p class="mt-12 max-w-[620px] border-t border-line pt-4 text-[13.5px] leading-relaxed text-ink-2">
-      Charting that catches up on its own when the line returns is the next thing we are building.
-    </p>
   </main>
 </Base>
 

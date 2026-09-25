@@ -28,53 +28,86 @@ work that was already rejected once. Do not quietly relax them.
 - The site is judged on **user experience and user-friendliness**, for **both
   patients and clinic owners**.
 
-## Art direction — Swiss clinical (the public site) and soft clinical (the app)
+## Art direction — soft clinical, everywhere
 
-**Two looks, by the owner's decision (26 Sep 2026).** The public marketing
-pages — the film home page, /find/, /coverage/, /websites/, /privacy/ — keep
-the Swiss rules below. The clinic side — the workspace (/c/<slug>/…), the
-staff sign-in (/auth/…) and the operator's page (/admin/) — uses the **soft
-template** in `docs/workspace-redesign.md`: white rounded cards on the clinic
-backdrop, a teal primary, pastel tinted callouts, sentence-case labels, line
-icons, round initial avatars, no black buttons, very simple screens, and a
-left sidebar with four tabs (Dashboard · Patients · Finances · Clinic
-settings). The owner called the Swiss workspace "hard, angry and dark" next to
-SwiftCare's "soft, friendly and accommodating". Motion always on, nothing
-fixed to the bottom of the screen and measured contrast apply to both.
+**One look for the whole site, by the owner's decision (26 Sep 2026).** The
+workspace was redesigned in a soft template first (the owner had called the
+Swiss workspace "hard, angry and dark" next to SwiftCare's "soft, friendly and
+accommodating"); after seeing it the owner said: *"I love what you've done!
+Now implement this kind of HUD/UI design and template to the whole site."* So
+every page — the film home page, /find/ and booking, /dentists/, /coverage/,
+/websites/, /privacy/, /start/, /me/, the staff sign-in, the workspace
+(/c/<slug>/…) and the operator's page (/admin/) — uses the **soft template**
+in `docs/workspace-redesign.md` ("The soft template", "The whole site, soft",
+"Site API"). **The Swiss rules are retired** (no radius, no shadow, uppercase
+mono labels, Archivo): do not bring them back on any page.
 
-Three rules govern the public pages. Breaking any one collapses the page back into a
-generic SaaS template, which is what the owner rejected.
+- **Surfaces:** white cards with gently rounded corners — 12px cards, 16px big
+  cards and sheets, 10px fields and buttons, 999px pills and avatars — a
+  hairline (`#e6e9ee`) and at most a whisper of shadow. No black buttons, no
+  black blocks.
+- **Colour:** slate words, never black (`#1f2937`, `#475467`, muted
+  `#667085`); one calm **teal** for the main action and the chosen thing (fill
+  `#0e7471` under white words, `#0d706d` words); green for money in, amber for
+  "needs attention", blue for information, a soft red for "blocked", each
+  with a pale tint and its own darker words. Dark mode is soft charcoal
+  (`#15191e` page, `#1d232a` cards), never pure black.
+- **Type:** one friendly sans — Inter where the device has it, the system's
+  own UI face otherwise. **No web font is fetched from anywhere**, and never
+  Google Fonts: it is a third-party connection on a page about medical
+  records, and it is blocked outright in some sandboxes. IBM Plex Mono
+  (self-hosted in `public/fonts/`) only for reference numbers — chart and
+  statement numbers, booking refs, a six-digit code. **Sentence case
+  everywhere; no uppercase typewriter labels.**
+- **Very simple:** one teal button per screen (the public bar's Open your
+  clinic goes quiet, `cta="quiet"`, wherever the page has its own teal
+  action); line icons (`src/components/ws/Icon.astro`) beside nav items,
+  section titles and main actions; round initial avatars for people, a
+  clinic's initials in a rounded square; tinted callouts with an icon, in
+  plain words.
+- **Frames:** public pages have a soft top bar
+  (`src/components/site/SiteHeader.astro`; a drawer from the left on phones);
+  the workspace a left sidebar with four tabs (Dashboard · Patients ·
+  Finances · Clinic settings); My visits (/me/visits/) the workspace's
+  sidebar pattern (`src/pages/me/_Shell.astro`), and the way in to it (/me/,
+  /me/code/) the patients' bar over one card (`_Door.astro`); the staff
+  entrance one white card on the film (`StaffEntrance.astro`).
+- **Still true everywhere:** motion always on, nothing fixed to the bottom of
+  the screen, targets ≥44px, fields ≥16px, and contrast **measured** (≥4.5:1
+  against the worst pixel behind the words, light and dark; muted slate on a
+  pale tint is 4.48 — use ink-2 or the tint's own ink there).
+- **Exceptions:** the SwiftCare sample in `public/samples/` (its own design)
+  and the paper of print pages (black on white).
 
-1. **Nothing is rounded.** `border-radius: 0` everywhere.
-2. **Nothing casts a shadow.** Separation is 1px rules and whitespace.
-3. **Uppercase lives in the mono face alone** (`.meta`, `.sec-no`).
-
-Type is **Archivo** (variable, display + body) and **IBM Plex Mono** (all
-metadata), both self-hosted from `public/fonts/`. Do not re-add Google Fonts:
-it is a third-party connection on a page about medical records, and it is
-blocked outright in some sandboxes, which silently renders everything in
-Helvetica.
-
-`src/styles/global.css` is the whole system. Read the comment at the top of the
-`@layer components` block before editing it — component rules **must** stay
-inside that layer or they beat Tailwind utilities on equal specificity.
+`src/styles/global.css` is the whole system: the tokens on `:root` (both
+themes; the utilities `text-ink`, `bg-teal-tint`, `rounded-card` … read them),
+then the site's classes (`.btn`, `.meta`, `.chip`, `.field`, `.pane`, `.q` …,
+drawn soft under their old names), the film, the staff entrance, the public
+top bar and the workspace. Read the comment at the top of the `@layer
+components` block before editing it — component rules **must** stay inside
+that layer or they beat Tailwind utilities on equal specificity. The heading
+rule is in `@layer base`, so utilities on headings work; the workspace and the
+staff entrance keep their own unlayered heading rules, and the workspace must
+not change when the site's classes do (compare computed styles before and
+after, as the Site API section says).
 
 ## The tour
 
-**The home page's pages** (the owner's layout, 25 Sep 2026), all standing on
-the film: 01 *Your clinic, in the Web* — "Switch to paperless, seamless,
-effortless daily operations:" and the buttons *Open your clinic in the web*
-(/start/) and *I'm a Patient* (/find/); 02 Services, for clinics and for
-patients; 03 How it works, both ways in; 04 Pricing — ₱800 a month per
+**The home page's pages** (the owner's layout, 25 Sep 2026), in this order,
+all standing on the film (no section numbers any more: after the opening,
+each page has a title with a line icon): *Your clinic, in the Web* —
+"Switch to paperless, seamless, effortless daily operations:" and the buttons *Open your clinic in the web*
+(/start/) and *I'm a Patient* (/find/); Services, for clinics and for
+patients; How it works, both ways in; Pricing — ₱800 a month per
 branch, everything included (`PRICE_PER_BRANCH` in `src/lib/billing.ts`, the
-one number); 05 Partners — the clinics really listed, read live from the
-directory (the page is server-rendered for this); 06 How to register — two
+one number); Partners — the clinics really listed, read live from the
+directory (the page is server-rendered for this); How to register — two
 walkthroughs recorded from the real product with sample data
-(`scripts/record-walkthroughs.mjs`, `public/video/register-*.mp4`); 07 Know
+(`scripts/record-walkthroughs.mjs`, `public/video/register-*.mp4`); Know
 the team — from `src/data/team.ts`, and left out while that list is empty:
 real people only, never a placeholder person. The service and price lists
-name only what is live; billing, health history and desk consent go in when
-those features ship.
+name only what is live (billing, health history and desk consent went in
+once they shipped).
 
 
 The film is the ground of the **whole home page**: one continuous 39.8s film
@@ -89,20 +122,21 @@ which is the only place the film's times live. It is
 scrubbed by the document's own scroll (`scrollY / (scrollHeight − innerHeight)
 → video.currentTime`). The top of the page is the pavement, the last page is
 the chair, and every section between is a `.page` standing in whichever room the
-camera has reached, its content on a paper `.pane` so the footage shows in the
-gaps. The owner asked for exactly this — "a video that shoots all the page" —
-after a version that kept the film to the opening section. Do not go back to
-that. Nothing scales; the forward motion is in the footage. The header names
-the page and the room — "04 / What it does · Reception" — the room switching
-at the moments the footage arrives there (`ROOM_FROM` in `src/data/film.ts`,
-from times read off a frame sheet), not at equal quarters.
+camera has reached, its content on a white rounded card (`.pane`) so the
+footage shows in the gaps. The owner asked for exactly this — "a video that
+shoots all the page" — after a version that kept the film to the opening section. Do not go back to
+that. Nothing scales; the forward motion is in the footage. From 1180px the
+bar names the page and the room in a small pill beside its links —
+"Services · Reception" — the page from the section in view (its `data-sec`),
+the room switching at the moments the footage arrives there (`ROOM_FROM` in
+`src/data/film.ts`, from times read off a frame sheet), not at equal quarters.
 
 **No footer and nothing fixed at the foot** — on the home page or the staff
 entrance. There used to be a readout rail fixed to the bottom of the viewport
 and a link footer after the last page; the owner removed both ("the footer
 takes too much space … label each page on the site itself"). Pages are
-labelled where they are: the header readout, each section's own number, and
-the staff entrance's top bar ("Staff entrance / Sign in"). The footer's links
+labelled where they are: the bar's readout, each section's own title, and
+the "Staff entrance" pill at the head of the sign-in card. The footer's links
 are in the header nav; the copyright is one line on the last page. Do not put
 a footer or a bottom bar back.
 See `docs/generation.md` for how the film was made and how to regenerate it.
@@ -174,7 +208,7 @@ open the clinic's real booking flow and staff login. If that relationship ever
 changes, swap the folder for a fictional clinic rather than editing it in place.
 
 It is a **client deliverable, not a Flossify page**, and it deliberately does
-not follow the Swiss rules above: a patient expects a clinic site to feel warm,
+not follow Flossify's own design system above: a patient expects a clinic site to feel warm,
 so the sample is rounded, shadowed and set in a serif, in the clinic's own gold
 and espresso. Keep that exception inside the folder. Its CSS is scoped to its
 own document and imports nothing from `global.css`. The clinic's service
@@ -198,28 +232,37 @@ Rules that still hold there:
 ## The staff entrance — `/auth/login/`, `/auth/forgot/`, `/auth/code/`
 
 All three share `src/components/StaffEntrance.astro`: the clinic from the
-home page's film behind, a compact pane of dark smoked glass with the form
-on the right (the owner: "make the boxes translucent and compact so that the
-video background is still emphasized"), and nothing along the foot. On sign-in the camera walks from the front door
+home page's film behind, and on the right one compact white card with soft
+12px corners holding the form — the soft template, so the door into the
+workspace looks like the workspace (95% white on a light blur; soft charcoal
+in dark mode, where a light charcoal veil also dims the film). The film stays
+the ground around it (the owner: "make the boxes translucent and compact so
+that the video background is still emphasized"). The card's head is the
+Flossify mark and a small "Staff entrance" pill; top left, one quiet pill for
+a patient at the wrong door ("Patients: find a clinic"); nothing along the
+foot. On sign-in the camera walks from the front door
 (2.0s) to the reception desk (9.0s) at 0.85× and holds there — you sign in
 at the front desk; a form shown again after a miss, and the other two pages,
 open already at the desk (`signin-door-1440.webp`, `signin-desk-*.webp` are
 the film's own frames).
 
 Built for a front desk between patients and a dentist with gloves just off:
-- **Fields 50px tall at 16px** (phones do not zoom), the button 59px, all
-  measured. Text on the glass is light in both themes (≥5.3:1 measured against
-  the brightest pixel behind it). Use `.entry-dim` / `.entry-rule` inside the
-  pane, never `text-ink-2` / `border-line`: utilities outrank the component
-  layer, so a theme utility paints dark grey on the dark glass (it did: 1.2:1). A **Show** button on every password, a **Caps Lock** line.
-- **This device: Shared at the clinic / My own**, a two-half switch with one
-  line under it saying what the chosen half does. Shared signs out after 12
+- **Fields 50px tall at 16px** (phones do not zoom), the button 52px, every
+  target at least 44px, all measured. Slate words on the white card (light
+  words on the charcoal one in dark mode), every colour at least 5.2:1 with
+  the card composited over pure black and over pure white, since the film
+  reaches both; small words are ink-2, never muted. The card has its own
+  tokens (`--en-*` on `.entrance`) and pieces (`.entry-*`, the staff-entrance
+  section of `global.css`): build on those inside it. A **Show** button on
+  every password, a **Caps Lock** line.
+- **This device: Shared at the clinic / My own**, two soft pills with one
+  line under them saying what the chosen one does. Shared signs out after 12
   hours and remembers nothing; own lasts 14 days and remembers the email on
   that device only (`SESSION_HOURS` in `auth.ts`, the cookie's `maxAge`
   follows). Shared is the default, because a clinic computer usually is.
 - After a wrong password the email stays, the password empties, the cursor
   is in it, and the sentence sits right above the button.
-- Offline disables the button and says why in the pane — brownouts are real.
+- Offline disables the button and says why on the card — brownouts are real.
 - Fits a 1366×768 clinic monitor without scrolling to the button, and 1440×900
   without scrolling at all.
 - `entrance-check.mjs` in the session scratchpad measures all of it.
@@ -297,8 +340,9 @@ The workspace and the patient directory read from PostgreSQL. Rules:
   (`src/lib/codes.ts`: HMAC-stored, 15 min / 24 h, five tries, one live code
   per purpose). `/auth/forgot/` never says whether a number is known;
   `/auth/code/` serves both purposes (invite when the row has no password).
-  No email channel exists — a staff member with no mobile on file is reset by
-  the owner from Settings → Team.
+  With `EMAIL_PROVIDER` set (023, `src/lib/email.ts`) the same codes can also
+  go by email; with it unset there is no email channel, and a staff member with
+  no mobile on file is reset by the owner from Settings → Team.
 - **A sign-in code is for the phone it was texted to, never for a page.** The
   Messages page blanks the body of `reset` and `invite` rows (the review
   found a dentist could read the owner's reset code there and take the
@@ -406,9 +450,16 @@ The rules that live in code:
 - **Chart edits save as they are made** (`POST /api/chart`, CSRF in the
   `X-CSRF` header, `tooth_state` rows superseded, audit `chart.update`).
 - **The workspace installs** (`/manifest.webmanifest`, `/sw.js`): the service
-  worker caches the shell and fonts only — **never patient data or /c/ pages**
-  — and shows `/offline/` when the line is gone. Offline charting is not built;
-  the home page says so.
+  worker caches the shell, the fonts and `/offline/` (shown when the line is
+  gone) — **never the API, uploads or a /c/ page, but one**: the patient
+  record whose chart is open, kept as a marked copy for at most 4 hours and
+  dropped at every sign-in and sign-out (the rules are at the top of
+  `sw.js`). **Offline charting is built (025):** an open chart keeps working
+  through a brownout; its changes wait on the device (IndexedDB,
+  `src/lib/offline-queue.ts`) and reach `POST /api/chart` when the line is
+  back, each once (`sync_change`); when a colleague charted the same tooth
+  first, their finding stays and the person is told which tooth — never
+  resolved silently. The home page and `/offline/` say so.
 - **Claims have their own page** (`/c/<slug>/claims/`, 013): HMO and
   PhilHealth providers, draft → filed → approved / partly / denied → paid,
   aging against `expected_days`, CSV export. Coverage wording comes from
@@ -462,7 +513,8 @@ The rules that live in code:
 - The Semaphore provider is written to their v4 API but has not been run
   against a live key; the first real send needs a registered sender name and
   a check of the response shape.
-- No email channel at all: reset, invitations and receipts are text-only.
+- Email (023) is off until `EMAIL_PROVIDER` and a verified sending domain are
+  set on the server; until then reset, invitations and receipts are text-only.
 - PRC licence checks are still a person's job; `prc_checked_on` stays null for
   self-added dentists until someone verifies, and the public profile says so.
 - Billing is manual payment marked paid by operations; no gateway. Prices,
@@ -484,16 +536,18 @@ The rules that live in code:
   consent: a new consent version, reviewed by the owner's lawyer, is needed.
 - `/privacy/` hardcodes the current `consent_version` id; publish a new
   version and the page together.
-- Offline charting with catch-up sync is not built; the service worker
-  caches the shell only.
-- Desk-side consent capture (walk-ins) is paper for now; only web bookings
-  write `patient_consent`.
+- Offline covers a chart that was already open, and nothing else: opening a
+  record, the schedule or billing needs the line (the service worker keeps
+  one record page, for at most 4 hours).
+- Desk consent is recorded on Add patient and on the record (agreed at the
+  desk, or a signed paper copy — `recordDeskConsent` / `recordPaperConsent`
+  in `src/lib/health.ts`); web bookings write their own `patient_consent`.
 
 ## Layout
 
 ```
 src/pages/index.astro          the marketing page (tour, product, services, FAQ)
-src/pages/clinics.astro        workspace directory
+src/pages/clinics.astro        workspace directory (no bar or page links to it now; see "Site API")
 src/pages/c/[clinic]/…         prototype clinic workspace
 src/pages/c/[clinic]/patients/ the Patients tab (Dashboard · Patients · Finances · Clinic settings): every patient + a record check, one query (_list/list.ts)
 src/pages/websites.astro       the clinic-website service, with the sample framed
@@ -541,6 +595,10 @@ render.yaml                    Render Blueprint (web + worker + disk, Singapore)
 docs/deploy.md, docs/launch.md how to deploy; the owner's launch checklist
 docs/workspace-redesign.md     the clinic workspace's design: tabs, soft template, Shell API
 src/layouts/Clinic.astro, src/components/ws/   the workspace shell (sidebar, cards, icons, panels)
+src/components/site/SiteHeader.astro  the public top bar (soft; a drawer from the left on phones); PatientHeader wraps it
+src/pages/me/_Door.astro, _Shell.astro  the way in to My visits (the patients' bar, one card) and My visits' sidebar frame
+src/pages/find/_ui/            patient.css (the patient pages' pt-* classes) and ClinicBadge (a clinic's initials)
+src/pages/404.astro            not found: the site's bar, one card, the ways on
 src/components/ws/cal/         the Dashboard's calendar (day/week, drag, panels)
 src/pages/c/[clinic]/patients/ Patients tab (list + record check), record, new (add), import (CSV/XLSX)
 src/pages/c/[clinic]/finances/ Finances tab: statements, payments, claims, new charge, print

@@ -36,8 +36,9 @@ sub-menus and no page a person must hunt for.
 6. **Built for the front desk between patients and a dentist with gloves
    off.** Big targets (≥44px), 16px fields, one clear primary action per
    view, keyboard shortcuts for people at a desk (`/` search, `N` new).
-7. **House rules hold.** Swiss: no radius, no shadow, uppercase only in
-   `.meta`/`.sec-no`, Archivo + IBM Plex Mono. Motion always on (never
+7. **House rules hold.** (The Swiss rules first listed here — no radius, no
+   shadow, uppercase only in `.meta`/`.sec-no`, Archivo — gave way to the soft
+   template, below, and then on the whole site.) Motion always on (never
    `prefers-reduced-motion`). No footer and nothing fixed to the bottom of
    the screen. Truthful copy. CSRF on every post, RLS via `withClinic`,
    roles re-checked on the server.
@@ -184,8 +185,9 @@ What the shell gives every workspace page, and what it expects back — in the
 soft, very simple template (the two sections at the end of this document).
 The code is the reference: `src/layouts/Clinic.astro`, `src/components/ws/`
 (each component opens with a comment and an example) and "The workspace —
-the soft template" at the end of `src/styles/global.css`. Every rule there is
-scoped under `.ws`: the marketing site keeps its Swiss look.
+the soft template" at the end of `src/styles/global.css`. (Since the whole
+site went soft, its tokens live on `:root` and the rest of the site uses the
+same pieces — "Site API" at the end.)
 
 ### The frame: a sidebar on the left, the page on the right
 
@@ -319,8 +321,9 @@ claims page keeps amounts to finance, as it always has).
   the text colour at 50%, was about 3:1); `.tab`, `.chip`, `.chip-radio`, `.slot-radio`,
   `.row-radio`, `.tag` and `.card` are softened there too (pills, teal tint
   when chosen). Utilities in the markup still beat all of it.
-- **Tokens, inside `.ws` only, both themes.** The site's own tokens are
-  redrawn soft there, so every utility follows with no change in the markup:
+- **Tokens, both themes** (inside `.ws` at first; on `:root` for the whole
+  site since "Site API", with the same values). The site's own tokens are
+  drawn soft, so every utility follows with no change in the markup:
   `--c-ink` slate `#1f2937`, `--c-ink-2` `#475467`, `--c-muted` / `--c-faint`
   `#667085`, `--c-accent` teal `#0d706d`, `--c-caries` soft red `#ac3232`,
   `--c-crown` amber `#8a4604`, `--c-bg-soft`, `--c-line` hairline `#e6e9ee`
@@ -600,3 +603,221 @@ a row per patient that says in words what the record still lacks.
 - **The Dashboard keeps the day:** its patients pane is now **Today's
   patients** (see Dashboard) with **See all patients**, and its old `?pq=` /
   `?pf=` links redirect here.
+
+## The whole site, soft (the owner, 26 Sep 2026)
+
+After seeing the redesigned workspace the owner said: *"I love what you've
+done! Now implement this kind of HUD/UI design and template to the whole
+site."* So **one soft design system for every page** — the public site, the
+patient pages, clinic sign-up, patient accounts, the workspace, sign-in and
+the operator page. The Swiss look is retired.
+
+- **One set of tokens and pieces site-wide:** the workspace's colours, type,
+  radii, hairlines, buttons (teal primary, green success, white quiet),
+  pills, tinted callouts, line icons and initial avatars are the site's.
+  The global component classes (`.btn`, `.btn-primary`, `.btn-quiet`,
+  `.meta`, `.sec-no`, `.tag`, `.chip`, `.chip-radio`, `.slot-radio`,
+  `.field`, `.pane`, `.check`, `.q`) become soft for every page: sentence
+  case, rounded, no black blocks. The workspace keeps looking exactly as it
+  does now.
+- **Public pages keep a top bar, not a sidebar** (the film home page needs
+  the full width): a soft white bar with the Flossify mark, a few plain links
+  (Find a clinic, Pricing, Clinic websites), "Staff sign-in" and one teal
+  **Open your clinic** button; on phones a menu button slides the same links
+  in from the left, like the workspace. The patient account area (`/me/`)
+  is app-like, so it uses the workspace's left-sidebar pattern (My visits,
+  Find a clinic, Sign out) in the same soft style.
+- **The home page keeps its film** — the owner's signature — and its scroll
+  walk. Its pages become white rounded cards on the film; the opening and
+  closing lines stay light on the film's scrim, with soft rounded buttons
+  (teal, and white-outline quiet); section numbers become small quiet
+  labels or go; services get line icons; pricing sits in a soft card with
+  teal checks; partners as soft cards with initial avatars; the video tabs
+  as soft pills.
+- **Patient pages** (Find a clinic, clinic page, the five-step booking,
+  dentist profile, coverage): soft cards, filters and slots as soft pills,
+  the booking steps as a friendly numbered stepper, tinted callouts, one
+  teal action per step.
+- **Forms** (clinic sign-up, patient code pages, privacy): soft fields
+  (16px, 10px corners, teal focus ring), sentence-case labels.
+- **Unchanged:** the SwiftCare sample site in `public/samples/` (it is
+  SwiftCare's own design), print pages (black on white), motion always on,
+  nothing fixed to the bottom of the screen, truthful copy, measured
+  contrast (≥4.5:1 on whatever is behind the text).
+
+## Site API — the soft foundation for every page (26 Sep 2026)
+
+What every page shares now, and how a page uses it. The code is the
+reference: the top of `src/styles/global.css` (tokens, base, the site's
+classes, "The film", "The public top bar"), `src/components/site/SiteHeader.astro`
+and `src/components/PatientHeader.astro`. The workspace's own pieces
+(`src/components/ws/`, "Shell API" above) work on any page too.
+
+### Tokens — on `:root`, both themes
+
+- The soft template's tokens moved from `.ws` to `:root`, with the same
+  values: `--c-*` (the site's names, so `text-ink`, `text-ink-2`,
+  `text-muted`, `bg-bg`, `bg-bg-soft`, `bg-surface`, `border-line`,
+  `text-accent`, `text-caries`, `text-crown` are slate, teal, soft red and
+  amber everywhere) and every `--ws-*` (colours, tints, fills, hairlines,
+  radii, shadows, `--ws-font`). `.ws` keeps only its frame (`--ws-max`,
+  `--ws-side-w`). Dark mode is the same swap as before, twice (the OS
+  preference and `data-theme="dark"`): soft charcoal, never black.
+- New for the public site: `--site-bar-bg` (the top bar, white 96% /
+  charcoal 94%), `--site-pane` (the home page's cards on the film, 97% /
+  95%), `--site-shadow-card` (their lift). Near-opaque because nothing veils
+  the film there.
+- The old inverted block (`--c-invert-*`, `.on-invert`) is a teal band with
+  white words now, never black.
+- **Utilities** (Tailwind, from the tokens): the old names above, plus
+  `bg-card`, `bg-subtle`, `border-hair`, `bg-field`, `border-field-line`,
+  and for each of teal · green · amber · blue · red: `bg-<c>-tint`,
+  `text-<c>-ink`, `bg-<c>-fill` (teal, green, red), `bg-<c>`/`text-<c>` (the
+  mark). Radii: `rounded-card` (12px), `rounded-ctl` (10px, fields and
+  buttons), `rounded-pane` (16px, big cards), `rounded-full` for pills.
+- **Type.** `font-display` and `font-body` are the one friendly sans (Inter
+  where installed, the system UI face otherwise; nothing fetched). The body
+  is 17px/1.55 on public pages (the workspace sets 15px on `body.ws`).
+  `font-mono` (IBM Plex Mono, self-hosted, loaded only when used) is for
+  reference numbers. Base.astro no longer preloads a web font.
+- **Headings** (`h1`–`h3`, `.font-display`): semibold, -0.02em, balanced;
+  `h1` line-height 1.1, the rest 1.2. The rule is in `@layer base` now (it
+  was unlayered), so **a utility on a heading works** — `leading-tight`,
+  `tracking-[-0.03em]`, `font-bold` — as it does on any other element. The
+  workspace and the staff entrance keep their own unlayered heading rules, so
+  they did not change.
+- **Focus:** a 2px teal ring (`--ws-teal`), 2px out, following the control's
+  corners (still unlayered: an `outline-none` does not remove it). Fields in
+  `.field` show the soft teal halo instead.
+- **Skip link:** Base.astro's is `.ws-skip` (a teal pill, top left, on focus).
+
+### The public top bar — `<SiteHeader>` (`src/components/site/`)
+
+| prop | |
+|---|---|
+| `current` | the page's own link, marked `aria-current` and tinted teal: an id from the links (`find` `pricing` `websites`, or `find` `coverage` `me`), or `signin` / `start` |
+| `links` | `'site'` (default): Find a clinic (`/find/`) · Pricing (`/#pricing`) · Clinic websites (`/websites/`). `'patients'`: Find a clinic · PhilHealth & HMO (`/coverage/`) · My visits (`/me/`). Or your own `{ id, label, href, icon }[]` (icon: a `ws/icons.ts` name, for the drawer) |
+| `cta` | `'primary'` (default): **Open your clinic** (`/start/`) is the teal button. `'quiet'`: white with a hairline, for pages whose own main action is the teal one (patient pages); on a phone a quiet one is in the drawer, not the bar |
+| `wide` | 1480px (the home page's width) instead of 1280px; the bar's side padding is the pages' (`px-5 sm:px-8`), so the mark lines up with the content |
+| `sticky` | sticky at the top (default `true`) |
+| slot `aside` | beside the links, shown from 1180px (below that the links and the two actions need the bar) — the home page's "where you are" readout |
+| default slot | inside the `<header>`, after the bar — e.g. the home page's progress line (`absolute inset-x-0 bottom-0`) |
+
+- **From 960px:** mark · the links as soft pills · (aside) · Staff sign-in
+  (`/auth/login/`, a quiet link with the user icon) · Open your clinic.
+  68px tall; white 96% on blur with a hairline under it; every word ink or
+  ink-2 (never muted: over a pure black film pixel muted would be 4.56).
+- **Below 960px:** menu button · mark · Open your clinic (teal only). The menu
+  button opens a `<dialog class="site-drawer">` from the left: the same links
+  with icons as 48px rows, then Staff sign-in and Open your clinic. Modal (the
+  page behind is inert, and the page does not scroll), focus starts on the
+  current link, Tab and Shift+Tab stay inside, Escape / the scrim / × slide
+  it out and focus goes back to the menu button (`aria-expanded` follows). A
+  link to a part of the same page (`/#pricing` on the home page) closes it at
+  once so the page can scroll there; growing past 960px closes it. Below
+  380px the mark drops its word, so the bar fits a 360px phone.
+- **Patient pages:** `<PatientHeader current="find|coverage|me" />` is
+  `<SiteHeader links="patients" cta="quiet" />` plus, on the owner's machine
+  only (`SHOW_DEMO_LOGINS=1`), the "Prototype…" line as an amber callout
+  under the bar.
+- **Staff find their workspace through Staff sign-in**, which opens each
+  person's own branch. `/clinics/` (the list of every clinic's workspace
+  link) is in no bar, and no page links to it now: it answers at its
+  address only. **Open:** give it a way in from the sign-in card's "Other
+  ways in" (e.g. "Find your clinic's workspace") or retire it with a redirect
+  to `/auth/login/` — both are the pages' calls, not the bar's.
+- **The home page** adopts it as `<SiteHeader wide cta="quiet">` — no
+  `current` (the readout says where you are), and Open your clinic quiet
+  because the opening's own "Open your clinic in the web" is the teal one —
+  with its readout in `<span slot="aside">` and its progress line in the
+  default slot. The bar is 68px, so `.page-hero`'s first screen is
+  `100svh − 4.25rem`.
+- **Who passes what** (today): `/websites/` `current="websites" cta="quiet"`,
+  `/start/` `current="start" cta="quiet"`, the 404 `cta="quiet"`,
+  `/clinics/` the defaults, patient pages through PatientHeader.
+
+### The site's classes — the same names, drawn soft
+
+Every page follows with no change in its markup. Inside the workspace these
+classes keep the workspace's own variants (its block in global.css), which
+did not change.
+
+| class | now |
+|---|---|
+| `.btn` + `.btn-primary` / `.btn-quiet` / `.btn-success` | the workspace's buttons: 44px, 10px corners, 15px semibold. Teal fill with white words (5.6:1) for the one main action; white with a field hairline for the rest; green for money in. `.btn-lg` 52px. A trailing arrow steps forward on hover when the words are in their own element (`<span>Words</span><Icon name="arrow-right" />`) |
+| `.btn-film` / `.btn-film-quiet` | on the film, both themes: the teal button with a soft lift; a white outline on a faint white wash |
+| `.meta` | 13px medium slate (muted), sentence case, the page's font. `.meta-ink`, `.meta-accent` (teal). **On the film:** any `.meta` inside `.page-hero`, `.page-cta` or `.on-film` is white 86% (9:1 on the scrim) and `.meta-accent` there is the light teal `#7fdcd4`; elsewhere use `.meta-film`. No inline colour needed |
+| `.sec-no` | a small pale teal pill with teal figures ("01", "2", "01 — The clinic"): the quiet section or step number. Drop it where a page does not need numbers |
+| `.tag` / `.tag-accent` | a rounded fact pill on the pale neutral (ink-2) / on the teal tint (teal) |
+| `.chip` (`aria-pressed`) / `.chip-urgent` | a 44px pill filter; chosen: teal tint, teal words. Urgent: a soft red dot, red tint when chosen |
+| `.chip-radio` / `.slot-radio` / `.row-radio` | the hidden radio's label: 44px pills (rows: 10px cards); checked: teal tint, teal words (rows: a teal ring) |
+| `.slot` | a next-open time link: 44px, 10px corners, teal tint on hover |
+| `.field` | the first `.meta` is the label (14px ink-2); inputs, selects, textareas 46px at 16px, 10px corners, a field hairline, a teal halo on focus, soft red when invalid. Checkboxes and radios are left alone (use `.check`) |
+| `.check` | a checkbox and its words, the whole line a 44px target, teal box |
+| `.pane` | the home page's white card on the film: 16px corners, hairline, a soft lift, 97% white on blur (muted 4.66:1 over pure black) |
+| `.card` / `.result` | a white card, 12px, hairline, whisper of shadow (`.result` keeps its two columns from 900px) |
+| `.frame` / `.frame-bar` | a soft window for a screenshot or recording; the bar is a sentence-case 13px line on the subtle grey |
+| `.q` (`<details>`) | hairline rows; the summary is 44px+ and a chevron at the right turns when it opens |
+| `.tab` / `.rail-item` | soft pills / soft rows, the chosen one teal tint with teal words |
+| `.rule` / `.rule-draw` | the hairline, still drawn in on entry |
+| `.door` / `.idx-row` | a whole-area link with a soft wash on hover (12px), and a teal line that draws in / hairline rows that wash and indent on hover |
+| `.status` + `.status-dot` | a round dot and words: open green, closing soon amber, closed slate |
+| `.wiz-step` (in `.wiz` flows) | the booking stepper: each step's `.sec-no` is a 32px circle — outlined ahead, teal with white figures now, teal tint with a check when done — the word under it, a teal line under the current step |
+| `table tr.is-today` | teal words and a small "Today" pill |
+| `.grid-frame` | retired (no drawn grid); harmless |
+
+The workspace's pieces work on any page now that their tokens are global:
+`<Icon>`, `<Avatar>` (`.ws-avatar`), `.ws-pill` + `.ws-tint-*`,
+`.ws-callout` + `data-tone` (tinted box with an icon), `.ws-btn*`,
+`<Tabs>` (`.ws-seg`), `.ws-empty`, `.ws-table` / `.ws-table-wrap`,
+`.ws-mark` (the Flossify mark).
+
+### Frames and pieces the pages added
+
+Built by the pages' own passes on the tokens and classes above; the pages
+own them. Reuse one before drawing a new one.
+
+| file | what it is | used by |
+|---|---|---|
+| `src/pages/me/_Door.astro` | The way in to My visits: `<PatientHeader current="me">`, one white card holding the page's form (the slot) and a "How it works" card with three numbered steps, the one you are on marked (`step={1}` the number, `{2}` the code). Side by side from 1024px, stacked below | `/me/`, `/me/code/` |
+| `src/pages/me/_Shell.astro` | My visits' frame: the workspace's left sidebar (`.ws`, `.ws-side`, the `ws/shell.ts` script) for a patient — the waiting-room backdrop, My visits · Find a clinic, the signed-in number, the privacy notice and Sign out at the foot, one quiet "Book a visit" by the title. Not `Clinic.astro` (a patient has no clinic session); the workspace's sizes: the sidebar from 1024px, an icon rail at 768–1023px, a slim bar and the slide-in sidebar below | `/me/visits/` |
+| `src/pages/404.astro` | Not found: `<SiteHeader cta="quiet">` and one card — Go to the home page (teal), Find a clinic — with quiet rows to My visits and Staff sign-in. Sent with the 404 status for any address with no page | unknown addresses |
+| `src/pages/find/_ui/patient.css` | The patient pages' own classes, all `pt-*` (title, lede, back link, `.pt-card` on a `<Pane>`, rows, insets, facts, filters, slots, the booking's steps and summary, the bookings on this device …), in `@layer components`, only what global.css does not already draw. A plain stylesheet, because the pages' scripts write some of its classes | `/find/`, a clinic's page and booking, a dentist, `/coverage/` |
+| `src/pages/find/_ui/ClinicBadge.astro` | A clinic's initials (the first letters of its first two words) in a pale teal rounded square — the sidebar's `.ws-branch-badge`, 38px; `size="lg"` 56px. Decorative beside the written name; round initials (`<Avatar>`) are for people | the patient pages, the home page's partners, `/clinics/` |
+
+### Contrast, measured (the tokens, worst case)
+
+Each text colour on each public surface; a translucent surface composited
+over pure black and pure white, the lower reported.
+
+| light | bar 96% | pane 97% | page | bg-soft | white | teal tint |
+|---|---|---|---|---|---|---|
+| ink | 13.4 | 13.7 | 13.4 | 13.3 | 14.7 | 13.2 |
+| ink-2 | 7.0 | 7.2 | 7.0 | 7.0 | 7.7 | 6.9 |
+| muted | 4.56 | 4.66 | 4.55 | 4.51 | 4.97 | **4.48** |
+| teal words | 5.4 | 5.5 | 5.4 | 5.4 | 5.9 | 5.3 |
+| red / amber / green / blue words | 5.9 / 6.5 / 5.4 / 5.8 | 6.0 / 6.7 / 5.5 / 5.9 | 5.9 / 6.5 / 5.4 / 5.8 | | | |
+
+| dark | bar 94% | pane 95% | page | bg-soft | surface | teal tint |
+|---|---|---|---|---|---|---|
+| ink | 11.1 | 11.4 | 14.7 | 11.6 | 13.2 | 10.3 |
+| ink-2 | 8.0 | 8.3 | 10.7 | 8.4 | 9.6 | 7.5 |
+| muted | 5.5 | 5.7 | 7.3 | 5.8 | 6.6 | 5.1 |
+| teal words | 8.3 | 8.5 | 11.0 | 8.7 | 9.9 | 7.7 |
+
+White on the teal fill 5.6; the film captions (white 86%) 9.0 and the light
+teal 7.2 on the scrim's 82% over white. **Muted on a tint fails (4.48):** on a
+tinted surface use ink-2 or the tint's own ink (the slot does this on hover).
+Rendered pages were sampled too — every text node against the layers behind
+it, light and dark: `/`, `/find/`, a clinic page, its booking, a dentist,
+`/coverage/`, `/websites/`, `/clinics/`, `/privacy/`, `/start/`, `/me/`,
+`/me/code/`, `/offline/` — none below 4.5:1 (3:1 for large text).
+
+### The workspace did not change
+
+Checked by the computed style of every element (colour, background, borders,
+radius, shadow, font, spacing, size) on the Dashboard, Patients, a record,
+Add patient, Finances, New charge, Settings, Messages, My page, the
+operator's overview, clinics and PRC pages and the sign-in pages, light and
+dark, at 1440 and 390, before and after: identical, apart from the
+visually-hidden skip link on sign-in and a time-dependent "Joined … ago".

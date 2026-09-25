@@ -1,0 +1,84 @@
+---
+// The way into My visits (/me/ and /me/code/), in the soft template: the patients' top bar, then one
+// white card with the form (the page's slot) and, beside it from 1024px (under it on a phone), a card
+// that says how it works in three numbered steps, the step the person is on marked — a friendly
+// stepper, like the booking's. No password and no account: a mobile number and a texted code.
+//
+//   <Door title="My visits — Flossify" description="…" step={1}>…the card's contents…</Door>
+import Base from '../../layouts/Base.astro';
+import PatientHeader from '../../components/PatientHeader.astro';
+import Icon from '../../components/ws/Icon.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  /** Which step of the three this page is: 1 the number, 2 the code. */
+  step: 1 | 2;
+}
+const { title, description, step } = Astro.props;
+
+// Truthful to the letter: a code is texted only when a clinic on Flossify knows the number (me/index.astro).
+const STEPS = [
+  { title: 'Your mobile number', text: 'The one you booked with. No account and no password.' },
+  { title: 'A six-digit code', text: 'If the number has visits on Flossify, we text it a code. It works for 15 minutes.' },
+  { title: 'Your visits', text: 'At every clinic on Flossify: confirm, cancel, or add one to your calendar. You stay signed in on this phone for a month.' },
+];
+---
+
+<Base title={title} description={description}>
+  <PatientHeader current="me" />
+
+  <main id="main" class="mx-auto max-w-[1040px] px-5 pt-8 pb-16 sm:px-8 sm:pt-14">
+    <div class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-6">
+      <section class="card rounded-pane p-6 sm:p-9">
+        <slot />
+      </section>
+
+      <aside class="card p-6" aria-labelledby="door-how">
+        <h2 id="door-how" class="text-[17px] font-semibold tracking-[-0.01em]">How it works</h2>
+        <ol class="door-steps mt-5" role="list">
+          {STEPS.map((s, i) => {
+            const n = i + 1;
+            const state = n < step ? 'done' : n === step ? 'now' : 'ahead';
+            return (
+              <li class="door-step" data-state={state} aria-current={state === 'now' ? 'step' : undefined}>
+                <span class="door-no" aria-hidden="true">{state === 'done' ? <Icon name="check" size={16} /> : n}</span>
+                <span class="min-w-0">
+                  <span class="door-step-title">{s.title}{state === 'done' && <span class="sr-only"> (done)</span>}</span>
+                  <span class="door-step-text">{s.text}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+        <p class="mt-6 border-t border-hair pt-5 text-[14.5px] leading-relaxed text-ink-2">
+          Nothing booked yet? <a href="/find/" class="font-semibold text-teal-ink underline underline-offset-4">Find a clinic</a> and book with your mobile; the visit shows here after.
+        </p>
+      </aside>
+    </div>
+  </main>
+</Base>
+
+<style>
+  @layer components {
+    /* Three steps down a thin line: the number in a circle — outlined ahead, teal with white figures
+       on the step you are on, a teal check on a step done (the booking stepper's own marks). */
+    .door-steps { display: grid; gap: 0; }
+    .door-step { position: relative; display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: 0.875rem; padding-bottom: 1.25rem; }
+    .door-step:last-child { padding-bottom: 0; }
+    .door-step:not(:last-child)::before {
+      content: ""; position: absolute; left: calc(1rem - 1px); top: 2.25rem; bottom: 0.25rem; width: 2px; border-radius: 2px; background: var(--ws-hair);
+    }
+    .door-step[data-state="done"]:not(:last-child)::before { background: color-mix(in srgb, var(--ws-teal) 45%, transparent); }
+    .door-no {
+      display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: var(--ws-r-pill);
+      background: var(--c-surface); color: var(--c-ink-2); box-shadow: inset 0 0 0 1px var(--ws-field-line);
+      font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
+    }
+    .door-step[data-state="now"] .door-no { background: var(--ws-teal-fill); color: #fff; box-shadow: none; }
+    .door-step[data-state="done"] .door-no { background: var(--ws-teal-tint); color: var(--ws-teal-ink); box-shadow: none; }
+    .door-step-title { display: block; padding-top: 0.25rem; font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--c-ink); }
+    .door-step[data-state="ahead"] .door-step-title { color: var(--c-ink-2); }
+    .door-step-text { display: block; margin-top: 0.125rem; font-size: 14px; line-height: 1.5; color: var(--c-ink-2); }
+  }
+</style>

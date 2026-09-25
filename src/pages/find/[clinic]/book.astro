@@ -3,6 +3,10 @@ export const prerender = false;
 
 import Base from '../../../layouts/Base.astro';
 import PatientHeader from '../../../components/PatientHeader.astro';
+import Icon from '../../../components/ws/Icon.astro';
+import Avatar from '../../../components/ws/Avatar.astro';
+import ClinicBadge from '../_ui/ClinicBadge.astro';
+import '../_ui/patient.css';
 import { priceText, symptoms, hmoById } from '../../../data/directory';
 import { loadListing } from '../../../lib/directory-db';
 
@@ -23,144 +27,164 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
 <Base title={`Book at ${l.name} — Flossify`} description={`${l.workspace ? 'Book' : 'Request'} a dental visit at ${l.name} in five short steps. No account: your name, a mobile number, and ${l.workspace ? 'a real open slot' : 'the day that suits you'}.`}>
   <PatientHeader current="find" />
 
-  <main id="main" class="mx-auto max-w-[880px] px-5 py-10 sm:px-8"
+  <main id="main" class="pt-main mx-auto max-w-[880px] px-5 pt-5 pb-16 sm:px-8 sm:pt-7"
     data-slug={l.slug} data-name={l.name} data-phone={l.phone} data-workspace={l.workspace ? '1' : '0'}
     data-hours={JSON.stringify(l.hours)}
     data-dentists={JSON.stringify(dentists.map((d) => ({ slug: d.slug, name: d.name, days: d.clinics.find((c) => c.slug === l.slug)?.days ?? [] })))}
     data-services={JSON.stringify(fees.map((f) => ({ id: f.id, name: f.name, minutes: f.minutes, price: priceText(f) })))}
   >
-    <a href={`/find/${l.slug}/`} class="meta hover:text-ink">&larr; {l.name}</a>
-    <h1 class="mt-5 font-display text-[clamp(1.8rem,4vw,2.6rem)] leading-[1.05] font-semibold tracking-[-0.025em]">
-      {l.workspace ? 'Book a visit' : 'Request a visit'}
-    </h1>
-    <p class="mt-3 text-[16px] text-ink-2">{l.name} &middot; {l.area}{l.workspace ? '' : ' · the clinic confirms the time with you'}</p>
+    <a href={`/find/${l.slug}/`} class="pt-back"><Icon name="chevron-left" />{l.name}</a>
+    <div class="mt-2 flex items-center gap-4">
+      <ClinicBadge name={l.name} size="lg" />
+      <div class="min-w-0">
+        <h1 class="pt-title">{l.workspace ? 'Book a visit' : 'Request a visit'}</h1>
+        <p class="mt-1 text-[16px] text-ink-2">{l.name} &middot; {l.area}{l.workspace ? '' : ' · the clinic confirms the time with you'}</p>
+      </div>
+    </div>
 
-    <!-- Progress -->
-    <ol class="mt-8 grid grid-cols-5 border-b border-line" data-progress aria-label="Steps">
-      {steps.map((s, i) => (
-        <li class="wiz-step" data-step-mark={i} aria-current={i === 0 ? 'step' : undefined}>
-          <span class="sec-no">{String(i + 1).padStart(2, '0')}</span>
-          <span class="mt-1 block text-[13px] font-medium">{s}</span>
-        </li>
-      ))}
-    </ol>
+    <!-- One card: the steps, the step you are on, Back and Continue. The done screen takes its place. -->
+    <div class="ws-pane ws-glass ws-pad-normal pt-card mt-6 sm:p-8">
+      <!-- Progress -->
+      <ol class="pt-steps" data-progress aria-label="Steps">
+        {steps.map((s, i) => (
+          <li class="wiz-step" data-step-mark={i} aria-current={i === 0 ? 'step' : undefined}>
+            <span class="sec-no">{i + 1}</span>
+            <span>{s}</span>
+            <span class="sr-only" data-step-sr></span>
+          </li>
+        ))}
+      </ol>
 
-    <form class="mt-8" data-wizard novalidate>
-      <!-- 1 Reason -->
-      <fieldset class="wiz" data-step="0">
-        <legend class="font-display text-[22px] font-semibold">What is the visit for?</legend>
-        <p class="mt-2 text-[15px] text-ink-2">Pick what is closest. “Not sure” is a fine answer — the dentist will look.</p>
-        <div class="mt-5 flex flex-wrap gap-2" role="radiogroup" aria-label="Reason">
-          <label class="chip-radio"><input type="radio" name="reason" value="consultation" checked /><span>Not sure — a check-up</span></label>
-          {symptoms.filter((s) => s.urgency !== 'urgent').map((s) => {
-            const svc = s.services.find((id) => fees.some((f) => f.id === id)) ?? 'consultation';
-            return <label class="chip-radio"><input type="radio" name="reason" value={svc} data-label={s.label} /><span>{s.label}</span></label>;
-          })}
-        </div>
-        <details class="mt-5">
-          <summary class="meta meta-accent cursor-pointer">Or choose the service directly</summary>
-          <div class="mt-3 flex flex-wrap gap-2">
-            {fees.map((f) => <label class="chip-radio"><input type="radio" name="reason" value={f.id} data-label={f.name} /><span>{f.name}<span class="ml-2 text-muted">{priceText(f)}</span></span></label>)}
+      <form class="mt-6 border-t border-hair pt-6" data-wizard novalidate>
+        <!-- 1 Reason -->
+        <fieldset class="wiz" data-step="0">
+          <legend class="pt-legend" tabindex="-1">What is the visit for?</legend>
+          <p class="pt-help">Pick what is closest. “Not sure” is a fine answer — the dentist will look.</p>
+          <div class="mt-5 flex flex-wrap gap-2" role="radiogroup" aria-label="Reason">
+            <label class="chip-radio"><input type="radio" name="reason" value="consultation" checked /><span>Not sure — a check-up</span></label>
+            {symptoms.filter((s) => s.urgency !== 'urgent').map((s) => {
+              const svc = s.services.find((id) => fees.some((f) => f.id === id)) ?? 'consultation';
+              return <label class="chip-radio"><input type="radio" name="reason" value={svc} data-label={s.label} /><span>{s.label}</span></label>;
+            })}
           </div>
-        </details>
-        <p class="mt-5 border-l-2 border-accent pl-4 text-[14.5px] text-ink-2" data-reason-price></p>
-      </fieldset>
+          <details class="pt-more mt-3">
+            <summary><span>Or choose the service directly</span><Icon name="chevron" size={16} /></summary>
+            <div class="mt-2 flex flex-wrap gap-2">
+              {fees.map((f) => <label class="chip-radio"><input type="radio" name="reason" value={f.id} data-label={f.name} /><span>{f.name}<span class="pt-price">{priceText(f)}</span></span></label>)}
+            </div>
+          </details>
+          <p class="ws-callout mt-5"><Icon name="money" /><span data-reason-price></span></p>
+        </fieldset>
 
-      <!-- 2 Dentist -->
-      <fieldset class="wiz" data-step="1" hidden>
-        <legend class="font-display text-[22px] font-semibold">Any dentist, or someone in particular?</legend>
-        <p class="mt-2 text-[15px] text-ink-2">Choosing one limits the days you can pick.</p>
-        <div class="mt-5 grid gap-2" role="radiogroup" aria-label="Dentist">
-          <label class="row-radio"><input type="radio" name="dentist" value="" checked /><span><strong class="font-semibold">Any available dentist</strong><span class="block text-[14px] text-ink-2">Soonest slot at the clinic</span></span></label>
-          {dentists.map((d) => (
-            <label class="row-radio"><input type="radio" name="dentist" value={d.slug} /><span><strong class="font-semibold">{d.name}</strong><span class="block text-[14px] text-ink-2">{d.specialty ?? d.practices.slice(0, 2).join(', ')} · {d.clinics.find((c) => c.slug === l.slug)?.days.map((n) => DAYS[n]).join(' · ')} · {d.prcCheckedOn ? <span class="text-accent">PRC checked</span> : <span>PRC check pending</span>}</span></span></label>
-          ))}
-        </div>
-      </fieldset>
+        <!-- 2 Dentist -->
+        <fieldset class="wiz" data-step="1" hidden>
+          <legend class="pt-legend" tabindex="-1">Any dentist, or someone in particular?</legend>
+          <p class="pt-help">Choosing one limits the days you can pick.</p>
+          <div class="mt-5 grid gap-2" role="radiogroup" aria-label="Dentist">
+            <label class="row-radio pt-pick"><input type="radio" name="dentist" value="" checked /><span><span class="pt-pick-icon"><Icon name="patients" /></span><span class="pt-pick-words"><strong class="font-semibold">Any available dentist</strong><span class="block text-[14px] text-ink-2">Soonest slot at the clinic</span></span><span class="pt-tick" aria-hidden="true"></span></span></label>
+            {dentists.map((d) => (
+              <label class="row-radio pt-pick"><input type="radio" name="dentist" value={d.slug} /><span><Avatar name={d.name} /><span class="pt-pick-words"><strong class="font-semibold">{d.name}</strong><span class="block text-[14px] text-ink-2">{d.specialty ?? d.practices.slice(0, 2).join(', ')} · {d.clinics.find((c) => c.slug === l.slug)?.days.map((n) => DAYS[n]).join(' · ')} · {d.prcCheckedOn ? <span class="font-medium text-accent">PRC checked</span> : <span>PRC check pending</span>}</span></span><span class="pt-tick" aria-hidden="true"></span></span></label>
+            ))}
+          </div>
+        </fieldset>
 
-      <!-- 3 When -->
-      <fieldset class="wiz" data-step="2" hidden>
-        <legend class="font-display text-[22px] font-semibold">{l.workspace ? 'When?' : 'When would suit you?'}</legend>
-        {l.workspace
-          ? <p class="mt-2 text-[15px] text-ink-2">These are the clinic’s real open slots for the next two weeks, in Baguio time. Tap one.</p>
-          : <p class="mt-2 text-[15px] text-ink-2">This clinic is not on the live schedule. Tell us a day and a time of day; the clinic confirms the time with you.</p>}
-        <div class="mt-5" data-slot-area>
+        <!-- 3 When -->
+        <fieldset class="wiz" data-step="2" hidden>
+          <legend class="pt-legend" tabindex="-1">{l.workspace ? 'When?' : 'When would suit you?'}</legend>
           {l.workspace
-            ? <div class="grid gap-6" data-slot-days></div>
-            : <div class="grid gap-4 sm:grid-cols-2">
-                <label class="field"><span class="meta">Preferred day</span><input type="date" name="reqDate" required /></label>
-                <label class="field"><span class="meta">Time of day</span><select name="reqTime"><option>Morning</option><option>Midday</option><option>Afternoon</option></select></label>
-              </div>}
-        </div>
-        <input type="hidden" name="slot" />
-        <button type="button" class="meta meta-accent mt-4" data-slot-more hidden>Show more days &darr;</button>
-        <p class="mt-4 text-[14px] text-muted" data-slot-note></p>
-      </fieldset>
+            ? <p class="pt-help">These are the clinic’s real open slots for the next two weeks, in Baguio time. Tap one.</p>
+            : <p class="pt-help">This clinic is not on the live schedule. Tell us a day and a time of day; the clinic confirms the time with you.</p>}
+          <div class="mt-5" data-slot-area>
+            {l.workspace
+              ? <div class="pt-days" data-slot-days></div>
+              : <div class="grid gap-4 sm:grid-cols-2">
+                  <label class="field"><span class="meta">Preferred day</span><input type="date" name="reqDate" required /></label>
+                  <label class="field"><span class="meta">Time of day</span><select name="reqTime"><option>Morning</option><option>Midday</option><option>Afternoon</option></select></label>
+                </div>}
+          </div>
+          <input type="hidden" name="slot" />
+          <button type="button" class="btn btn-quiet mt-5" data-slot-more hidden><Icon name="chevron" />Show more days</button>
+          <p class="mt-4 text-[14.5px] text-ink-2" data-slot-note></p>
+        </fieldset>
 
-      <!-- 4 Who -->
-      <fieldset class="wiz" data-step="3" hidden>
-        <legend class="font-display text-[22px] font-semibold">Who is the visit for?</legend>
-        <div class="mt-5 flex flex-wrap gap-2" role="radiogroup" aria-label="For whom">
-          <label class="chip-radio"><input type="radio" name="who" value="me" checked /><span>Me</span></label>
-          <label class="chip-radio"><input type="radio" name="who" value="other" /><span>Someone else</span></label>
-        </div>
-        <div class="mt-6 grid gap-4 sm:grid-cols-2">
-          <label class="field"><span class="meta" data-name-label>Your name</span><input type="text" name="name" autocomplete="name" required /></label>
-          <label class="field"><span class="meta">Mobile number</span><input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="0917 000 0000" required pattern="^(\+?63|0)9\d{2}[ \-]?\d{3}[ \-]?\d{4}$" /></label>
-          <label class="field sm:col-span-2" data-patient-name-field hidden><span class="meta">Patient’s name</span><input type="text" name="patientName" /></label>
-          <label class="field"><span class="meta">HMO card (optional)</span>
-            <select name="hmo"><option value="">None / I’ll pay</option>{l.hmos.map((id) => <option value={id}>{hmoById(id)?.name}</option>)}{l.philhealth && <option value="philhealth">PhilHealth preventive visit</option>}</select>
-          </label>
-          <label class="field"><span class="meta">Anything we should know? (optional)</span><input type="text" name="notes" placeholder="Pain, allergies, a time that works best" /></label>
-        </div>
-        <label class="check mt-6 items-start"><input type="checkbox" name="consent" required /><span>I agree that {l.name} and Flossify keep my details for this visit and text me about it, as the <a href="/privacy/" target="_blank" rel="noopener" class="underline underline-offset-4">privacy notice</a> explains.</span></label>
-      </fieldset>
+        <!-- 4 Who -->
+        <fieldset class="wiz" data-step="3" hidden>
+          <legend class="pt-legend" tabindex="-1">Who is the visit for?</legend>
+          <div class="mt-5 flex flex-wrap gap-2" role="radiogroup" aria-label="For whom">
+            <label class="chip-radio"><input type="radio" name="who" value="me" checked /><span>Me</span></label>
+            <label class="chip-radio"><input type="radio" name="who" value="other" /><span>Someone else</span></label>
+          </div>
+          <div class="mt-6 grid gap-4 sm:grid-cols-2">
+            <label class="field"><span class="meta" data-name-label>Your name</span><input type="text" name="name" autocomplete="name" required /></label>
+            <label class="field"><span class="meta">Mobile number</span><input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="0917 000 0000" required pattern="^(\+?63|0)9\d{2}[ \-]?\d{3}[ \-]?\d{4}$" /></label>
+            <label class="field sm:col-span-2" data-patient-name-field hidden><span class="meta">Patient’s name</span><input type="text" name="patientName" /></label>
+            <label class="field"><span class="meta">HMO card (optional)</span>
+              <select name="hmo"><option value="">None / I’ll pay</option>{l.hmos.map((id) => <option value={id}>{hmoById(id)?.name}</option>)}{l.philhealth && <option value="philhealth">PhilHealth preventive visit</option>}</select>
+            </label>
+            <label class="field"><span class="meta">Anything we should know? (optional)</span><input type="text" name="notes" placeholder="Pain, allergies, a time that works best" /></label>
+          </div>
+          <div class="pt-consent mt-6">
+            <label class="check items-start"><input type="checkbox" name="consent" required /><span>I agree that {l.name} and Flossify keep my details for this visit and text me about it, as the <a href="/privacy/" target="_blank" rel="noopener" class="pt-link">privacy notice</a> explains.</span></label>
+          </div>
+        </fieldset>
 
-      <!-- 5 Confirm -->
-      <fieldset class="wiz" data-step="4" hidden>
-        <legend class="font-display text-[22px] font-semibold">Check and confirm</legend>
-        <dl class="mt-5 grid gap-y-3 border border-line p-5 text-[15px] sm:grid-cols-[10rem_1fr]" data-summary></dl>
-        <p class="mt-4 text-[14.5px] leading-relaxed text-ink-2">
-          {l.workspace
-            ? 'The slot is held the moment you confirm. You get a text now, and a reminder the day before unless the visit is that soon. To cancel, use My visits up to two hours ahead, or call the clinic.'
-            : 'The clinic gets your request now and confirms the time with you. Not heard by the day before? Call them.'}
+        <!-- 5 Confirm -->
+        <fieldset class="wiz" data-step="4" hidden>
+          <legend class="pt-legend" tabindex="-1">Check and confirm</legend>
+          <dl class="pt-summary mt-5" data-summary></dl>
+          <p class="ws-callout mt-4">
+            <Icon name="info" />
+            <span>{l.workspace
+              ? 'The slot is held the moment you confirm. You get a text now, and a reminder the day before unless the visit is that soon. To cancel, use My visits up to two hours ahead, or call the clinic.'
+              : 'The clinic gets your request now and confirms the time with you. Not heard by the day before? Call them.'}</span>
+          </p>
+        </fieldset>
+
+        <!-- A refusal, in plain words, right above the button -->
+        <p class="pt-error" data-error role="alert"></p>
+
+        <!-- Nav -->
+        <div class="pt-nav" data-nav>
+          <button type="button" class="btn btn-quiet" data-back hidden><Icon name="chevron-left" />Back</button>
+          <button type="button" class="btn btn-primary" data-next><span data-next-label>Continue</span><Icon name="arrow-right" class="pt-next-go" /><Icon name="check" class="pt-next-ok" /></button>
+        </div>
+      </form>
+
+      <!-- Done -->
+      <section data-done-panel hidden aria-live="polite">
+        <span class="pt-done-mark" data-tone={l.workspace ? undefined : 'request'}><Icon name={l.workspace ? 'check' : 'message'} size={28} /></span>
+        <p class="mt-4"><span class:list={['ws-pill', l.workspace ? 'ws-tint-green' : 'ws-tint-blue']}>{l.workspace ? 'Booked' : 'Request sent'}</span></p>
+        <h2 class="pt-done-title mt-2" data-done-title tabindex="-1"></h2>
+        <p class="mt-2 max-w-[62ch] text-[16px] leading-relaxed text-ink-2" data-done-text></p>
+        <p class="pt-ref mt-5"><span class="pt-ref-label">Reference</span><span class="pt-ref-no" data-ref></span></p>
+        <div class="mt-6 flex flex-wrap gap-2">
+          <button type="button" class="btn btn-quiet" data-undo><span data-undo-words>Undo</span> <span class="pt-clock" data-undo-secs aria-live="off">3:00</span></button>
+          <a class="btn btn-quiet" download="flossify-visit.ics" data-ics><Icon name="calendar" />Add to calendar</a>
+          <a href="/find/" class="btn btn-quiet"><Icon name="search" />Find another clinic</a>
+        </div>
+        <p class="pt-error" data-undo-error role="alert" hidden></p>
+        <p class="ws-callout mt-6 max-w-[66ch]">
+          <Icon name="info" />
+          <span>Changed your mind within three minutes? Undo frees the slot at once, and no reminder follows. After that, cancel under <a href="/me/" class="pt-link pt-link-reach">My visits</a> or by calling {l.phone}. The clinic sees this booking on its schedule the moment you confirm.</span>
         </p>
-      </fieldset>
-
-      <!-- Nav -->
-      <div class="mt-8 flex items-center justify-between gap-3 border-t border-line pt-6" data-nav>
-        <button type="button" class="btn btn-quiet" data-back hidden>&larr; Back</button>
-        <span class="text-[13.5px] text-caries" data-error role="alert"></span>
-        <button type="button" class="btn btn-primary" data-next>Continue &rarr;</button>
-      </div>
-    </form>
-
-    <!-- Done -->
-    <section class="mt-8" data-done-panel hidden aria-live="polite">
-      <p class="meta meta-accent">{l.workspace ? 'Booked' : 'Request sent'}</p>
-      <h2 class="mt-3 font-display text-[clamp(1.8rem,4vw,2.4rem)] leading-tight font-semibold tracking-tight" data-done-title></h2>
-      <p class="mt-3 text-[16px] text-ink-2" data-done-text></p>
-      <p class="mt-5 font-mono text-[13px] tracking-[0.08em] uppercase text-muted">Reference <span class="text-ink" data-ref></span></p>
-      <div class="mt-6 flex flex-wrap gap-3">
-        <button type="button" class="btn btn-quiet" data-undo>Undo <span class="tabular-nums" data-undo-secs>3:00</span></button>
-        <a class="btn btn-quiet" download="flossify-visit.ics" data-ics>Add to calendar</a>
-        <a href="/find/" class="btn btn-quiet">Find another clinic</a>
-      </div>
-      <p class="mt-4 text-[14px] text-caries" data-undo-error role="alert" hidden></p>
-      <p class="mt-6 max-w-[62ch] text-[14px] leading-relaxed text-muted">
-        Changed your mind within three minutes? Undo frees the slot at once, and no reminder follows. After that, cancel under My visits or by calling {l.phone}. The clinic sees this booking on its schedule the moment you confirm.
-      </p>
-    </section>
+      </section>
+    </div>
 
     <!-- Bookings on this device -->
-    <section class="mt-16 border-t border-line pt-8" data-mine hidden>
-      <h2 class="meta meta-ink">Your bookings on this device</h2>
-      <ul class="mt-4 divide-y divide-line" data-mine-list></ul>
+    <section class="ws-pane ws-glass ws-pad-none pt-card mt-4" data-mine hidden aria-labelledby="mine-title">
+      <header class="ws-pane-head">
+        <div class="ws-pane-heading">
+          <span class="ws-pane-icon"><Icon name="calendar" /></span>
+          <div class="min-w-0"><h2 id="mine-title" class="ws-pane-title">Your bookings on this device</h2></div>
+        </div>
+      </header>
+      <ul class="pt-rows" data-mine-list></ul>
     </section>
   </main>
 
   <script>
     import { manilaNow } from '../../../lib/availability';
+    import { svgFor } from '../../../components/ws/icons';
 
     const main = document.querySelector('main')!;
     const ws = main.dataset.workspace === '1';
@@ -175,6 +199,16 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
     const steps = Array.from(form.querySelectorAll<HTMLFieldSetElement>('[data-step]'));
     const marks = Array.from(main.querySelectorAll<HTMLElement>('[data-step-mark]'));
     const back = $('[data-back]') as HTMLButtonElement, next = $('[data-next]') as HTMLButtonElement, err = $('[data-error]');
+    // The main button's words live in their own span, so its icon stays: an arrow while there is a
+    // next step, a check on the last one, none while it is working.
+    const nextLabel = $('[data-next-label]', next), nextGo = $('.pt-next-go', next), nextOk = $('.pt-next-ok', next);
+    const setNext = (words: string, icon: 'go' | 'ok' | 'none') => {
+      nextLabel.textContent = words;
+      nextGo.style.display = icon === 'go' ? 'block' : 'none';
+      nextOk.style.display = icon === 'ok' ? 'block' : 'none';
+    };
+    // Anything a person typed, or a stored booking, goes into markup escaped.
+    const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
     let at = 0;
 
     const val = (n: string) => (form.elements.namedItem(n) as RadioNodeList | HTMLInputElement | null)?.value ?? '';
@@ -207,22 +241,23 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
       for (const s of lastSlots) (byDay.get(s.date) ?? byDay.set(s.date, []).get(s.date)!).push(s);
       const days = Array.from(byDay.entries());
       slotDays.innerHTML = days.slice(0, shownDays).map(([, ss]) => `
-        <div>
-          <p class="meta meta-ink">${ss[0].dayLabel}</p>
-          <div class="mt-2 flex flex-wrap gap-2">${ss.map((s) => `<label class="slot-radio"><input type="radio" name="slotpick" value="${s.at}" data-label="${s.dayLabel}, ${s.label}"><span>${s.label}</span></label>`).join('')}</div>
-        </div>`).join('') || '<p class="text-[15px] text-ink-2">Nothing open in the next two weeks for that choice. Try “any dentist”, or call the clinic.</p>';
+        <div class="pt-day" role="group" aria-label="${esc(ss[0].dayLabel)}">
+          <p class="pt-day-label">${esc(ss[0].dayLabel)}</p>
+          <div class="pt-slots">${ss.map((s) => `<label class="slot-radio"><input type="radio" name="slotpick" value="${esc(s.at)}" data-label="${esc(s.dayLabel)}, ${esc(s.label)}"><span>${esc(s.label)}</span></label>`).join('')}</div>
+        </div>`).join('') || `<p class="ws-empty">${svgFor('info', 20).replace('class="ws-icon"', 'class="ws-icon ws-empty-icon"')}<span class="ws-empty-text">Nothing open in the next two weeks for that choice. Try “any dentist”, or call the clinic.</span></p>`;
       more.hidden = days.length <= shownDays;
       note.textContent = d ? `${d.name} is in on ${d.days.map((n) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][n]).join(', ')}.` : `${lastSlots.length} open slots in the next two weeks.`;
       // A slot passed in from the search page is preselected if it is still free.
-      const pre = new URLSearchParams(location.search).get('slot');
-      const hit = pre && slotDays.querySelector<HTMLInputElement>(`input[value="${pre}"]`);
+      // (A link written before the time was encoded reads its "+08:00" as " 08:00": put the plus back.)
+      const pre = new URLSearchParams(location.search).get('slot')?.replace(' ', '+');
+      const hit = pre && slotDays.querySelector<HTMLInputElement>(`input[value="${CSS.escape(pre)}"]`);
       if (hit) hit.checked = true;
     }
     async function refreshSlots() {
       if (!ws || !slotDays) return;
-      slotDays.innerHTML = '<p class="text-[15px] text-muted">Checking the schedule…</p>';
+      slotDays.innerHTML = '<p class="pt-wait">Checking the schedule…</p>';
       try { await fetchSlots(); paintSlots(); }
-      catch { slotDays.innerHTML = '<p class="text-[15px] text-caries">Could not reach the schedule. Try again, or call the clinic.</p>'; }
+      catch { slotDays.innerHTML = '<p class="pt-error">Could not reach the schedule. Try again, or call the clinic.</p>'; }
     }
     more.addEventListener('click', () => { shownDays += 4; paintSlots(); });
     form.addEventListener('change', (e) => { const n = (e.target as HTMLInputElement).name; if (n === 'dentist' || n === 'reason') { shownDays = 4; refreshSlots(); } });
@@ -262,18 +297,24 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
         ['Card', (form.elements.namedItem('hmo') as HTMLSelectElement).selectedOptions[0]?.textContent ?? 'None'],
       ];
       if (val('notes')) rows.push(['Notes', val('notes')]);
-      $('[data-summary]').innerHTML = rows.map(([k, v]) => `<dt class="meta">${k}</dt><dd class="text-ink">${v}</dd>`).join('');
+      $('[data-summary]').innerHTML = rows.map(([k, v]) => `<div class="pt-sum-row"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
     }
 
-    function show(i: number) {
+    // The step's question takes the focus (not on the first paint), so Tab and Enter carry on from
+    // there and a screen reader starts at the question; the smooth scroll below is the one that moves the page.
+    function show(i: number, focus = true) {
       at = i;
       steps.forEach((s, n) => { s.hidden = n !== i; });
-      marks.forEach((m, n) => { m.toggleAttribute('data-passed', n < i); if (n === i) m.setAttribute('aria-current', 'step'); else m.removeAttribute('aria-current'); });
+      marks.forEach((m, n) => {
+        m.toggleAttribute('data-passed', n < i); if (n === i) m.setAttribute('aria-current', 'step'); else m.removeAttribute('aria-current');
+        // A step done shows a check in place of its number; a screen reader hears it in words.
+        m.querySelector('[data-step-sr]')!.textContent = n < i ? ', done' : '';
+      });
       back.hidden = i === 0;
-      next.textContent = i === steps.length - 1 ? (ws ? 'Confirm booking' : 'Send request') : 'Continue →';
+      if (i === steps.length - 1) setNext(ws ? 'Confirm booking' : 'Send request', 'ok'); else setNext('Continue', 'go');
       err.textContent = '';
       if (i === steps.length - 1) summary();
-      steps[i].querySelector<HTMLElement>('legend')?.focus?.();
+      if (focus) steps[i].querySelector<HTMLElement>('legend')?.focus({ preventScroll: true });
       main.scrollIntoView({ block: 'start', behavior: 'smooth' });
     }
     back.addEventListener('click', () => show(Math.max(0, at - 1)));
@@ -290,7 +331,7 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
     let undoTimer = 0;
 
     async function finish() {
-      next.disabled = true; next.textContent = ws ? 'Booking…' : 'Sending…'; err.textContent = '';
+      next.disabled = true; setNext(ws ? 'Booking…' : 'Sending…', 'none'); err.textContent = '';
       const d = dentists.find((x) => x.slug === val('dentist'));
       const payload = { clinic: slug, service: val('reason'), dentist: val('dentist') || null, at: val('slot'), reqDate: val('reqDate'), reqTime: val('reqTime'), who: val('who'), name: val('name'), patientName: val('patientName'), phone: val('phone'), hmo: val('hmo'), notes: val('notes'), consent: (form.elements.namedItem('consent') as HTMLInputElement).checked };
       let res: any;
@@ -300,14 +341,14 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
         // booked five times today, a busy connection. A gateway answering in HTML gets the plain one.
         res = r.ok ? await r.json() : await r.json().catch(() => ({}));
         if (!r.ok) {
-          next.disabled = false; next.textContent = ws ? 'Confirm booking' : 'Send request';
+          next.disabled = false; setNext(ws ? 'Confirm booking' : 'Send request', 'ok');
           if (r.status === 409) { show(2); refreshSlots(); }
           err.textContent = res.error || 'Something went wrong. Try again.'; // after show(): it clears the error area
           return;
         }
       } catch {
         err.textContent = 'Could not reach the clinic’s schedule. Check your connection and try again.';
-        next.disabled = false; next.textContent = ws ? 'Confirm booking' : 'Send request'; return;
+        next.disabled = false; setNext(ws ? 'Confirm booking' : 'Send request', 'ok'); return;
       }
       const ref = res.ref as string;
       const booking = { ref, cancelToken: res.cancelToken, slug, clinic: clinicName, service: chosenLabel('reason') || service().name, dentist: d?.name ?? 'Any dentist', slot: ws ? val('slot') : `${val('reqDate')} ${val('reqTime')}`, label: ws ? chosenLabel('slotpick') : `${val('reqDate')}, ${val('reqTime')} (requested)`, name: val('who') === 'other' ? val('patientName') : val('name'), phone: val('phone'), status: ws ? 'booked' : 'requested', madeAt: Date.now(), returning: !!res.returning, chartNo: res.chartNo };
@@ -320,17 +361,19 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
       // The API says whether a reminder will come (a same-day or late-night booking gets none), and texts ask for no reply: the sender is one-way.
       $('[data-done-text]').textContent = (ws ? `A text is on its way to ${booking.phone}${res.reminder ? ', and a reminder will follow the day before' : ''}.` : `A text is on its way to ${booking.phone} to say the clinic has it. They confirm ${booking.label.replace(' (requested)', '')} with you; not heard by the day before? Call ${main.dataset.phone}.`) + (booking.returning ? ` Welcome back — your record ${booking.chartNo} is already on file.` : '');
       $('[data-ref]').textContent = ref;
+      // The button that was pressed is gone with the form: the focus goes to what happened.
+      $('[data-done-title]').focus({ preventScroll: true });
       // Calendar file: an all-day marker for requests, the exact half hour for bookings.
       const start = ws ? booking.slot.slice(0, 16).replace(/[-:]/g, '') + '00' : booking.slot.slice(0, 10).replace(/-/g, ''); // '2026-09-24T09:00:00+08:00' → 20260924T090000
       const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Flossify//Visit//EN', 'BEGIN:VEVENT', `UID:${ref}@flossify`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,
         ws ? `DTSTART;TZID=Asia/Manila:${start}` : `DTSTART;VALUE=DATE:${start}`, `SUMMARY:Dentist — ${clinicName}`, `DESCRIPTION:${booking.service} with ${booking.dentist}. Ref ${ref}.`, `LOCATION:${clinicName}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
       ($('[data-ics]') as HTMLAnchorElement).href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
       // Three-minute undo, counted down where the patient can see it.
-      let left = 180; const secs = $('[data-undo-secs]'), undo = $('[data-undo]') as HTMLButtonElement, undoErr = $('[data-undo-error]');
+      let left = 180; const secs = $('[data-undo-secs]'), undo = $('[data-undo]') as HTMLButtonElement, undoWords = $('[data-undo-words]'), undoErr = $('[data-undo-error]');
       clearInterval(undoTimer);
       undoTimer = window.setInterval(() => { left--; secs.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`; if (left <= 0) { clearInterval(undoTimer); undo.hidden = true; } }, 1000);
       undo.onclick = async () => {
-        undo.disabled = true; undo.textContent = 'Undoing…'; undoErr.hidden = true;
+        undo.disabled = true; undoWords.textContent = 'Undoing…'; secs.hidden = true; undoErr.hidden = true;
         // The booking stands until the server says otherwise. When it refuses (too many
         // requests, or it cannot be reached) say so in its words and leave the clock running.
         let problem = '';
@@ -339,7 +382,7 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
           if (!r.ok) problem = (await r.json().catch(() => ({}))).error || 'Could not undo just now. Try once more, or cancel under My visits.';
         } catch { problem = 'Could not reach the clinic. Check your connection and try again.'; }
         if (problem) {
-          undo.replaceChildren('Undo ', secs); undo.disabled = false;
+          undoWords.textContent = 'Undo'; secs.hidden = false; undo.disabled = false;
           undoErr.hidden = false; undoErr.textContent = problem;
           return;
         }
@@ -350,9 +393,9 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
 
     function paintMine() {
       const mine = load(); const sec = $('[data-mine]'); sec.hidden = mine.length === 0;
-      $('[data-mine-list]').innerHTML = mine.map((b) => `<li class="flex flex-wrap items-baseline justify-between gap-3 py-3 text-[15px]"><span><strong class="font-semibold">${b.clinic}</strong> · ${b.service} · ${b.label}</span><span class="meta">${b.status} · ${b.ref}</span></li>`).join('');
+      $('[data-mine-list]').innerHTML = mine.map((b) => `<li class="pt-mine-row"><span class="min-w-0"><strong class="block font-semibold">${esc(b.clinic)}</strong><span class="block text-[14.5px] text-ink-2">${esc(b.service)} · ${esc(b.label)}</span></span><span class="flex flex-wrap items-center gap-2"><span class="ws-pill ${b.status === 'booked' ? 'ws-tint-teal' : 'ws-tint-amber'}">${b.status === 'booked' ? 'Booked' : b.status === 'requested' ? 'Requested' : esc(b.status)}</span><span class="pt-mine-ref">${esc(b.ref)}</span></span></li>`).join('');
     }
     paintMine();
-    show(0);
+    show(0, false);
   </script>
 </Base>

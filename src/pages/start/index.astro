@@ -8,10 +8,19 @@
 // Guarded like sign-in: the CSRF token, three sign-ups an hour per address,
 // every problem a plain sentence with the typed values kept, and the event
 // written to auth_event.
+//
+// Drawn in the soft template: the site's top bar (its Open your clinic quiet
+// here, because this page's own button is the one teal one), a friendly
+// one-page form in three numbered white cards — the clinic, you, a password —
+// then the consent and one teal "Open my clinic", with a card beside it
+// (under it on a phone) that says what happens next, in words that are true
+// of signup_clinic() (migration 006).
 export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
 import Csrf from '../../components/Csrf.astro';
+import SiteHeader from '../../components/site/SiteHeader.astro';
+import Icon from '../../components/ws/Icon.astro';
 import { pool } from '../../lib/db';
 import { hashPassword, passwordProblem, PASSWORD_MIN, setSession, authEvent } from '../../lib/auth';
 import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
@@ -93,87 +102,125 @@ if (Astro.request.method === 'POST') {
 ---
 
 <Base title="Open your clinic — Flossify" description="Set up your clinic on Flossify in a few minutes: a workspace for the desk and a page patients can find, when you say it is ready.">
-  <main id="main" class="mx-auto max-w-[640px] px-5 py-16 sm:px-8">
-    <a href="/" class="meta hover:text-ink">&larr; Flossify</a>
-    <h1 class="mt-6 font-display text-[clamp(1.8rem,4vw,2.6rem)] leading-tight font-semibold tracking-[-0.02em]">Open your clinic on Flossify</h1>
-    <p class="mt-3 text-[15px] leading-relaxed text-ink-2">
-      A few minutes, no card, no call with us. You get a workspace for the desk and a page patients can find — once you say it is ready.
-      Already set up? <a href="/auth/login/" class="underline underline-offset-4">Sign in</a>.
-    </p>
+  <SiteHeader current="start" cta="quiet" />
 
-    {failed && <p role="alert" class="mt-8 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{failed}</p>}
-    {problems.length > 0 && (
-      <div role="alert" class="mt-8 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">
-        <p class="font-semibold">A few things to fix first.</p>
-        <ul class="mt-2 list-disc space-y-1 pl-5">{problems.map((p) => <li>{p}</li>)}</ul>
-      </div>
-    )}
+  <main id="main" class="mx-auto max-w-[1120px] px-5 pt-8 pb-16 sm:px-8 sm:pt-12">
+    <header class="max-w-[680px]">
+      <p class="meta">For clinics</p>
+      <h1 class="mt-1.5 text-[clamp(1.9rem,4vw,2.6rem)]">Open your clinic on Flossify</h1>
+      <p class="mt-3 text-[17px] leading-relaxed text-ink-2">
+        A few minutes, no card, no call with us. You get a workspace for the desk and a page patients can find — once you say it is ready.
+        Already set up? <a href="/auth/login/" class="font-semibold text-teal-ink underline underline-offset-4">Sign in</a>.
+      </p>
+    </header>
 
-    <form method="post" class="mt-10">
-      <Csrf />
-
-      <section>
-        <p class="sec-no">01 &mdash; The clinic</p>
-        <div class="mt-4 grid gap-4">
-          <label class="field"><span class="meta">Clinic name</span><input name="name" value={v.name} required maxlength="80" autocomplete="organization" autofocus /></label>
-          <label class="field">
-            <span class="meta">Where</span>
-            <select name="area">{AREAS.map((a) => <option value={a} selected={v.area === a}>{a}</option>)}</select>
-          </label>
-          <label class="field"><span class="meta">Address</span><input name="address" value={v.address} required autocomplete="street-address" placeholder="2/F, 88 Session Road" /></label>
-          <div class="grid gap-4 sm:grid-cols-2">
-            <label class="field"><span class="meta">Clinic phone</span><input type="tel" name="phone" value={v.phone} required autocomplete="tel" /></label>
-            <label class="field"><span class="meta">Clinic email (optional)</span><input type="email" name="email" value={v.email} /></label>
+    <div class="mt-8 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-6">
+      <div class="grid gap-5">
+        {failed && <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{failed}</span></p>}
+        {problems.length > 0 && (
+          <div role="alert" class="ws-callout" data-tone="alert">
+            <Icon name="alert" />
+            <div>
+              <p class="font-semibold">A few things to fix first.</p>
+              <ul class="mt-1.5 list-disc space-y-1 pl-5 marker:text-red-ink">{problems.map((p) => <li>{p}</li>)}</ul>
+            </div>
           </div>
-        </div>
-      </section>
+        )}
 
-      <hr class="rule my-10" />
+        <form method="post" class="grid gap-5">
+          <Csrf />
 
-      <section>
-        <p class="sec-no">02 &mdash; You</p>
-        <p class="mt-2 text-[14.5px] text-ink-2">You will be the owner: the one who adds staff, sets fees and lists the clinic.</p>
-        <div class="mt-4 grid gap-4">
-          <label class="field"><span class="meta">Full name</span><input name="owner_name" value={v.owner_name} required autocomplete="name" placeholder="Dr. Liwayway Domingo" /></label>
-          <div class="grid gap-4 sm:grid-cols-2">
-            <label class="field">
-              <span class="meta">Mobile</span>
-              <input type="tel" name="owner_phone" value={v.owner_phone} required autocomplete="tel" placeholder="0917 000 0000" />
-              <span class="text-[13px] leading-snug text-muted">Password reset codes are texted here.</span>
+          <section class="card p-5 sm:p-7" aria-labelledby="start-clinic">
+            <div class="flex items-center gap-3">
+              <span class="sec-no">1</span>
+              <div>
+                <h2 id="start-clinic" class="text-[18px]">The clinic</h2>
+                <p class="text-[14px] text-ink-2">What patients will see once you list it.</p>
+              </div>
+            </div>
+            <div class="mt-6 grid gap-5">
+              <label class="field"><span class="meta">Clinic name</span><input name="name" value={v.name} required maxlength="80" autocomplete="organization" autofocus /></label>
+              <label class="field">
+                <span class="meta">Where</span>
+                <select name="area">{AREAS.map((a) => <option value={a} selected={v.area === a}>{a}</option>)}</select>
+              </label>
+              <label class="field"><span class="meta">Address</span><input name="address" value={v.address} required autocomplete="street-address" placeholder="2/F, 88 Session Road" /></label>
+              <div class="grid gap-5 sm:grid-cols-2">
+                <label class="field"><span class="meta">Clinic phone</span><input type="tel" name="phone" value={v.phone} required autocomplete="tel" /></label>
+                <label class="field"><span class="meta">Clinic email (optional)</span><input type="email" name="email" value={v.email} /></label>
+              </div>
+            </div>
+          </section>
+
+          <section class="card p-5 sm:p-7" aria-labelledby="start-you">
+            <div class="flex items-center gap-3">
+              <span class="sec-no">2</span>
+              <div>
+                <h2 id="start-you" class="text-[18px]">You</h2>
+                <p class="text-[14px] text-ink-2">You will be the owner: the one who adds staff, sets fees and lists the clinic.</p>
+              </div>
+            </div>
+            <div class="mt-6 grid gap-5">
+              <label class="field"><span class="meta">Full name</span><input name="owner_name" value={v.owner_name} required autocomplete="name" placeholder="Dr. Liwayway Domingo" /></label>
+              <div class="grid gap-5 sm:grid-cols-2">
+                <label class="field">
+                  <span class="meta">Mobile</span>
+                  <input type="tel" name="owner_phone" value={v.owner_phone} required autocomplete="tel" placeholder="0917 000 0000" />
+                  <span class="text-[13px] leading-snug text-muted">Password reset codes are texted here.</span>
+                </label>
+                <label class="field"><span class="meta">Email</span><input type="email" name="owner_email" value={v.owner_email} required autocomplete="email" /></label>
+              </div>
+              <label class="field">
+                <span class="meta">PRC licence number (optional)</span>
+                <input name="owner_prc" value={v.owner_prc} inputmode="numeric" autocomplete="off" />
+                <span class="text-[13px] leading-snug text-muted">It appears on your public profile, marked as checked once a person at Flossify has verified it.</span>
+              </label>
+            </div>
+          </section>
+
+          <section class="card p-5 sm:p-7" aria-labelledby="start-password">
+            <div class="flex items-center gap-3">
+              <span class="sec-no">3</span>
+              <div>
+                <h2 id="start-password" class="text-[18px]">A password</h2>
+                <p class="text-[14px] text-ink-2">You sign in with your email and this.</p>
+              </div>
+            </div>
+            <div class="mt-6 grid gap-5 sm:grid-cols-2">
+              <label class="field">
+                <span class="meta">Password</span>
+                <input type="password" name="password" required minlength={PASSWORD_MIN} autocomplete="new-password" />
+                <span class="text-[13px] leading-snug text-muted">At least {PASSWORD_MIN} characters. A short sentence you will remember works well.</span>
+              </label>
+              <label class="field"><span class="meta">Once more</span><input type="password" name="confirm" required minlength={PASSWORD_MIN} autocomplete="new-password" /></label>
+            </div>
+          </section>
+
+          <div class="card p-5 sm:p-7">
+            <label class="check items-start text-[15px] leading-relaxed">
+              <input type="checkbox" name="consent" required checked={consent} />
+              <span>I’m authorised to set this clinic up, and I’ve read <a href="/coverage/#privacy" class="font-semibold text-teal-ink underline underline-offset-4">how Flossify handles patient data</a> (Data Privacy Act of 2012).</span>
             </label>
-            <label class="field"><span class="meta">Email</span><input type="email" name="owner_email" value={v.owner_email} required autocomplete="email" /></label>
+
+            <button type="submit" class="btn btn-primary btn-lg mt-6 w-full sm:w-auto"><span>Open my clinic</span><Icon name="arrow-right" /></button>
+            <p class="mt-4 text-[14px] leading-relaxed text-ink-2">Nobody can find the clinic until you switch the listing on. The clinic’s details can all be changed later in Settings.</p>
           </div>
-          <label class="field">
-            <span class="meta">PRC licence number (optional)</span>
-            <input name="owner_prc" value={v.owner_prc} inputmode="numeric" autocomplete="off" />
-            <span class="text-[13px] leading-snug text-muted">It appears on your public profile, marked as checked once a person at Flossify has verified it.</span>
-          </label>
+        </form>
+      </div>
+
+      <aside class="card p-6 lg:sticky lg:top-[5.5rem]" aria-labelledby="start-next">
+        <span class="inline-flex size-11 items-center justify-center rounded-card bg-teal-tint text-teal-ink" aria-hidden="true"><Icon name="clinic" size={22} /></span>
+        <h2 id="start-next" class="mt-4 text-[17px] tracking-[-0.01em]">What happens next</h2>
+        <ul class="mt-4 grid gap-3.5 text-[14.5px] leading-relaxed text-ink-2" role="list">
+          <li class="flex gap-2.5"><Icon name="check" class="mt-[3px] flex-none text-teal-ink" /><span>Your workspace opens straight away, and you are signed in as its owner.</span></li>
+          <li class="flex gap-2.5"><Icon name="check" class="mt-[3px] flex-none text-teal-ink" /><span>It starts open Monday to Saturday, 9 am to 5 pm, with a starting fee guide. Change both in Clinic settings.</span></li>
+          <li class="flex gap-2.5"><Icon name="check" class="mt-[3px] flex-none text-teal-ink" /><span>Once it is listed, patients send requests and the desk gives each one a time. Switch to live booking in Clinic settings when you are ready.</span></li>
+          <li class="flex gap-2.5"><Icon name="check" class="mt-[3px] flex-none text-teal-ink" /><span>Add your dentists and staff when you are ready.</span></li>
+        </ul>
+        <div class="mt-5 border-t border-hair pt-4">
+          <a href="/auth/login/" class="inline-flex min-h-11 items-center gap-2 text-[15px] font-semibold text-teal-ink underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"><Icon name="user" size={16} />Already set up? Sign in</a>
         </div>
-      </section>
-
-      <hr class="rule my-10" />
-
-      <section>
-        <p class="sec-no">03 &mdash; Password</p>
-        <div class="mt-4 grid gap-4 sm:grid-cols-2">
-          <label class="field">
-            <span class="meta">Password</span>
-            <input type="password" name="password" required minlength={PASSWORD_MIN} autocomplete="new-password" />
-            <span class="text-[13px] leading-snug text-muted">At least {PASSWORD_MIN} characters. A short sentence you will remember works well.</span>
-          </label>
-          <label class="field"><span class="meta">Once more</span><input type="password" name="confirm" required minlength={PASSWORD_MIN} autocomplete="new-password" /></label>
-        </div>
-      </section>
-
-      <hr class="rule my-10" />
-
-      <label class="check items-start">
-        <input type="checkbox" name="consent" required checked={consent} />
-        <span>I’m authorised to set this clinic up, and I’ve read <a href="/coverage/#privacy" class="underline underline-offset-4">how Flossify handles patient data</a> (Data Privacy Act of 2012).</span>
-      </label>
-
-      <button type="submit" class="btn btn-primary mt-8 w-full sm:w-auto">Open the workspace</button>
-      <p class="mt-4 text-[13.5px] leading-relaxed text-muted">Nobody can find the clinic until you switch the listing on. The clinic’s details can all be changed later in Settings.</p>
-    </form>
+      </aside>
+    </div>
   </main>
 </Base>

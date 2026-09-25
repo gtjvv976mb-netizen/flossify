@@ -2,6 +2,9 @@
 export const prerender = false;
 
 import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/site/SiteHeader.astro';
+import Icon from '../components/ws/Icon.astro';
+import ClinicBadge from './find/_ui/ClinicBadge.astro';
 import { loadDirectory } from '../lib/directory-db';
 const clinics = (await loadDirectory()).filter((l) => l.workspace).map((l) => ({ slug: l.slug, name: l.name, group: l.area, city: l.address }));
 ---
@@ -10,10 +13,11 @@ const clinics = (await loadDirectory()).filter((l) => l.workspace).map((l) => ({
   title="Clinic workspaces — Flossify"
   description="Every clinic gets its own workspace link. Staff sign in and go straight to today's chairs."
 >
-  <main id="main" class="mx-auto max-w-[1280px] px-5 py-16 sm:px-8">
-    <a href="/" class="text-[14.5px] font-medium text-accent">&larr; Back to the site</a>
+  <SiteHeader />
 
-    <h1 class="mt-6 max-w-[760px] font-display text-[clamp(2rem,5vw,3rem)] leading-tight font-semibold tracking-[-0.025em]">
+  <main id="main" class="mx-auto max-w-[1280px] px-5 pt-10 pb-16 sm:px-8 sm:pt-14">
+    <p class="ws-pill ws-tint-teal"><Icon name="dashboard" size={14} />Clinic workspaces</p>
+    <h1 class="mt-4 max-w-[760px] text-[clamp(1.9rem,4.2vw,2.75rem)] leading-tight tracking-[-0.025em]">
       Your clinic has its own front door.
     </h1>
     <p class="mt-4 max-w-[620px] text-[17px] leading-relaxed text-ink-2">
@@ -21,29 +25,41 @@ const clinics = (await loadDirectory()).filter((l) => l.workspace).map((l) => ({
       them all; if you work at one, you see that one.
     </p>
 
-    <div
-      role="note"
-      class="mt-8 max-w-[720px] border border-crown/40 bg-crown/10 p-5 text-[14.5px] leading-relaxed"
-    >
-      <strong class="font-semibold">Every workspace is behind a staff sign-in.</strong>
-      A workspace URL is an address, never a credential. Opening a branch you are not assigned to
-      sends you back to the sign-in page, and every query inside runs under the database's
-      row-level security for that one clinic.
+    <div role="note" class="ws-callout mt-7 max-w-[760px]">
+      <Icon name="info" />
+      <p>
+        <strong class="font-semibold">Every workspace is behind a staff sign-in.</strong>{" "}
+        A workspace URL is an address, never a credential. Opening a branch you are not assigned to
+        sends you back to the sign-in page, and every query inside runs under the database’s
+        row-level security for that one clinic.
+      </p>
     </div>
 
-    <ul class="mt-10 grid gap-5 lg:grid-cols-2">
-      {clinics.map((c) => (
-        <li class="border border-line bg-surface p-8">
-          <h2 class="font-display text-[26px] font-semibold tracking-tight">{c.name}</h2>
-          <p class="mt-1.5 text-[15px] text-muted">{c.group} &middot; {c.city}</p>
-          <a
-            href={`/c/${c.slug}/`}
-            class="mt-7 inline-block bg-accent px-7 py-3.5 text-[15px] font-semibold text-surface hover:bg-accent-deep"
-          >
-            Open this clinic
-          </a>
-        </li>
-      ))}
-    </ul>
+    {clinics.length > 0 ? (
+      <ul class="mt-8 grid gap-4 lg:grid-cols-2">
+        {clinics.map((c) => (
+          <li class="card clinic-row flex flex-wrap items-center gap-x-4 gap-y-4 p-5 sm:p-6">
+            <ClinicBadge name={c.name} />
+            <div class="min-w-0 flex-1 basis-[12rem]">
+              <h2 class="text-[19px] leading-snug tracking-[-0.01em]">{c.name}</h2>
+              <p class="mt-0.5 text-[15px] leading-snug text-ink-2">{c.group} &middot; {c.city}</p>
+            </div>
+            <a href={`/c/${c.slug}/`} class="btn btn-quiet max-sm:w-full"><span>Open this clinic</span><Icon name="arrow-right" /></a>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <p class="ws-empty card mt-8 px-5 py-4">
+        <Icon name="clinic" size={20} class="ws-empty-icon" />
+        <span class="ws-empty-text">No clinic has a workspace yet.</span>
+        <a href="/start/" class="ws-empty-go">Open your clinic <Icon name="arrow-right" size={16} /></a>
+      </p>
+    )}
   </main>
+
+  <style>
+    /* The clinic's badge, as on Find a clinic and in the workspace's sidebar (the first letters of
+       its first two words, a rounded square; round initials are for people), 48px on these cards. */
+    .clinic-row :global(.ws-branch-badge) { width: 48px; height: 48px; border-radius: var(--ws-r); font-size: 16px; }
+  </style>
 </Base>

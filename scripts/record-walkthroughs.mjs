@@ -7,19 +7,19 @@
 // then: node scripts/record-walkthroughs.mjs <out-dir> clinic|patient
 // and encode the .webm with ffmpeg (H.264, crf 27, faststart) into public/video/.
 import { chromium } from 'playwright';
-const B = 'http://localhost:4520', OUT = process.argv[2], which = process.argv[3];
+const B = process.env.REC_BASE || 'http://localhost:4520', OUT = process.argv[2], which = process.argv[3];
 const cap = () => {
   const draw = () => {
     const t = sessionStorage.getItem('__cap'); if (!t) return;
     let el = document.getElementById('__cap');
     if (!el) {
       el = document.createElement('div'); el.id = '__cap';
-      Object.assign(el.style, { position: 'fixed', left: '0', right: '0', bottom: '0', zIndex: '2147483647', padding: '20px 36px', background: 'rgba(7,16,15,.9)', color: '#f2f2ef', font: '600 28px/1.2 Archivo, system-ui, sans-serif', letterSpacing: '-0.015em', display: 'flex', gap: '18px', alignItems: 'baseline', pointerEvents: 'none' });
+      Object.assign(el.style, { position: 'fixed', left: '28px', bottom: '28px', zIndex: '2147483647', padding: '14px 22px 14px 14px', background: '#ffffff', color: '#1f2937', borderRadius: '14px', boxShadow: '0 10px 30px rgb(16 24 40 / 0.16)', border: '1px solid #e6e9ee', font: '600 24px/1.2 Inter, system-ui, sans-serif', letterSpacing: '-0.01em', display: 'flex', gap: '14px', alignItems: 'center', pointerEvents: 'none' });
       document.documentElement.appendChild(el);
     }
     const [n, ...rest] = t.split('|');
     el.innerHTML = '';
-    const a = document.createElement('span'); a.textContent = n; Object.assign(a.style, { font: '500 18px/1 "IBM Plex Mono", ui-monospace, monospace', color: '#7df0b4', letterSpacing: '0.08em' });
+    const a = document.createElement('span'); a.textContent = n; Object.assign(a.style, { font: '600 16px/1 Inter, system-ui, sans-serif', color: '#0f7776', background: '#e8f6f5', borderRadius: '999px', padding: '7px 11px' });
     const b = document.createElement('span'); b.textContent = rest.join('|');
     el.append(a, b);
   };
@@ -50,12 +50,13 @@ try {
     await type('input[name=password]', 'pines are tall trees');
     await type('input[name=confirm]', 'pines are tall trees');
     await p.check('input[name=consent]'); await p.waitForTimeout(600);
-    await p.getByRole('button', { name: /Open the workspace/ }).click(); await p.waitForLoadState('load'); await p.waitForTimeout(800);
+    await p.getByRole('button', { name: /Open my clinic/ }).click(); await p.waitForLoadState('load'); await p.waitForTimeout(800);
     await say('03|Set your hours and fees'); await p.waitForTimeout(2200);
     await p.mouse.wheel(0, 700); await p.waitForTimeout(1600); await p.mouse.wheel(0, 700); await p.waitForTimeout(1600);
     const slug = new URL(p.url()).pathname.split('/')[2];
-    await p.goto(`${B}/c/${slug}/settings/fees/`, { waitUntil: 'load' }).catch(() => {}); await p.waitForTimeout(2200);
-    await p.goto(`${B}/c/${slug}/`, { waitUntil: 'load' }); await say('04|Your day list is ready'); await p.waitForTimeout(3200);
+    await p.locator('.set-toc-item[data-set-toc-item=fees]').hover(); await p.waitForTimeout(500);
+    await p.locator('.set-toc-item[data-set-toc-item=fees]').click(); await p.waitForTimeout(2800);
+    await p.goto(`${B}/c/${slug}/`, { waitUntil: 'load' }); await say('04|Your Dashboard is ready'); await p.waitForTimeout(3200);
   } else {
     await p.goto(`${B}/`, { waitUntil: 'load' }); await say('01|Tap “I’m a Patient”'); await p.waitForTimeout(2600);
     await p.getByRole('link', { name: 'I’m a Patient' }).first().hover(); await p.waitForTimeout(700);
