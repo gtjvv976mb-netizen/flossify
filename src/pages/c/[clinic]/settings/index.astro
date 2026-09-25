@@ -18,6 +18,7 @@ import { withClinic } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
 import { hmos } from '../../../../data/directory';
 import { AREAS, placeOf } from '../../../../lib/slug';
+import { parseTin, tinParts } from '../../../../lib/invoices';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -54,6 +55,8 @@ const data = await withClinic(clinic.id, async (tx) => ({
                      where ss.clinic_id = $1 and s.slug is not null and s.disabled_at is null) as yes`, [clinic.id])).rows[0].yes as boolean,
   // "We don't take HMOs" stores no HMO row; the choice is kept as the audit entry the save wrote.
   saidNoHmos: (await tx.query(`select exists (select 1 from audit_log where action = 'clinic.hmos_none') as yes`)).rows[0].yes as boolean,
+  // TIN and BIR branch code: they print on statements of account (Billing).
+  tax: (await tx.query('select tin, bir_branch_code from clinic where id = $1', [clinic.id])).rows[0] as { tin: string | null; bir_branch_code: string | null },
 }));
 
 // The listing's prerequisites, from the data as it is now.
@@ -65,6 +68,8 @@ const listWords = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(
 
 const problems: string[] = [];
 let posted: Values | null = null;
+// The TIN / branch code as typed, kept on the form when something needs fixing.
+let taxPosted: { tin: string; branch: string } | null = null;
 
 if (Astro.request.method === 'POST' && canSetUp) {
   const form = await Astro.request.formData();
@@ -100,6 +105,10 @@ if (Astro.request.method === 'POST' && canSetUp) {
     hours.push({ dow, open_min: o, close_min: c });
   }
   if (p.noHmos && p.hmoIds.length > 0) problems.push('You ticked HMOs and also “We don’t take HMOs”. Keep one.');
+  // A form drawn before these fields existed sends neither; it must not clear a saved TIN.
+  taxPosted = form.has('tin') ? { tin: s('tin'), branch: s('bir_branch_code') } : null;
+  const tax = taxPosted ? parseTin(taxPosted.tin, taxPosted.branch) : null;
+  if (tax) problems.push(...tax.problems);
 
   if (problems.length === 0) {
     // The switch needs the about and hours being saved now, and a dentist that is already here.
@@ -114,6 +123,7 @@ if (Astro.request.method === 'POST' && canSetUp) {
          where id = $1`,
         [clinic.id, p.name, p.area, p.address_line, place.city === undefined ? data.c.city : place.city, place.province === undefined ? data.c.province : place.province,
          p.phone, p.email || null, p.maps_url || null, p.about || null, p.chairs, p.walk_ins, p.philhealth_dental, p.booking_mode, listed]);
+      if (tax) await tx.query('update clinic set tin = $2, bir_branch_code = $3 where id = $1', [clinic.id, tax.tin, tax.branch]);
       await tx.query('delete from clinic_hours where clinic_id = $1', [clinic.id]);
       for (const h of hours) await tx.query('insert into clinic_hours (clinic_id, dow, open_min, close_min) values ($1, $2, $3, $4)', [clinic.id, h.dow, h.open_min, h.close_min]);
       await tx.query('delete from clinic_hmo where clinic_id = $1', [clinic.id]);
@@ -136,6 +146,8 @@ const v: Values = posted ?? {
     return [dow, h ? { closed: false, open: toTime(h.open_min), close: toTime(h.close_min) } : { closed: true, open: '09:00', close: '17:00' }];
   })),
 };
+const taxSaved = tinParts(data.tax.tin, data.tax.bir_branch_code);
+const taxShown = taxPosted ?? { tin: taxSaved?.tin ?? '', branch: taxSaved?.branch || data.tax.bir_branch_code || '00000' };
 const areaOptions: string[] = (AREAS as readonly string[]).includes(v.area) || !v.area ? [...AREAS] : [v.area, ...AREAS];
 
 const checklist = [
@@ -314,6 +326,26 @@ const help = 'text-[13px] leading-snug text-muted';
               {canList && <span class="block text-muted">Patients in your area see the card, the fee guide and {v.booking_mode === 'live' ? 'the open slots' : 'a “Request a time” button; the desk confirms by text'}.</span>}
             </span>
           </label>
+        </section>
+
+        <hr class="rule my-10" />
+
+        <section id="tax" class="scroll-mt-24">
+          <p class="sec-no">06 &mdash; Statements</p>
+          <h2 class={`mt-1 ${sectionTitle}`}>TIN and BIR branch code</h2>
+          <p class="mt-2 max-w-[62ch] text-[14.5px] text-ink-2">Both print on the statements and payment acknowledgments from Billing. Flossify is not a BIR-registered invoicing system, so keep issuing your BIR invoices or receipts from your own booklet or system.</p>
+          <div class="mt-5 grid gap-4 sm:grid-cols-2">
+            <label class="field">
+              <span class="meta">TIN</span>
+              <input name="tin" value={taxShown.tin} inputmode="numeric" autocomplete="off" maxlength="20" placeholder="123-456-789-000" class="text-[16px] tabular-nums" />
+              <span class={help}>Written like 123-456-789-000, as on the clinic’s BIR Certificate of Registration (Form 2303). Leave it empty and statements print without one.</span>
+            </label>
+            <label class="field">
+              <span class="meta">BIR branch code</span>
+              <input name="bir_branch_code" value={taxShown.branch} inputmode="numeric" autocomplete="off" maxlength="7" placeholder="00000" class="text-[16px] tabular-nums" />
+              <span class={help}>Five digits: 00000 for the main office, another for a branch. Older papers show three (000).</span>
+            </label>
+          </div>
         </section>
 
         <div class="mt-10 flex flex-wrap items-center gap-4">

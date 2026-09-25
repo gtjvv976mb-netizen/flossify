@@ -1,10 +1,25 @@
 ---
 // Settings › Billing. What this group pays Flossify: the plan, the branches
-// it is counted on, the month's total, every invoice, and how to pay. There
-// is no gateway and no card form — a clinic pays by GCash, Maya or bank
-// transfer with the invoice number as the reference, and a person on our
-// side marks it paid. There is nothing to submit here: plan changes are a
-// note to us, not a button, until self-service is worth building.
+// it is counted on, the month's total, every invoice, and how to pay. A
+// clinic pays by GCash, Maya or bank transfer with the invoice number as the
+// reference, and a person on our side marks it paid. When online payment is
+// on (billing final and PayMongo set up: src/lib/payments.ts) each due
+// invoice also gets a Pay now button: a form post to /api/payments/checkout,
+// which sends the owner to PayMongo's page for GCash, Maya or card, and
+// PayMongo sends them back here with ?paid=<number> or ?unpaid=<number>.
+// There is no card form on this site. Plan changes are a note to us, not a
+// button, until self-service is worth building.
+//
+// Coming back (?paid=<number>), or pressing Check again, the webhook may not
+// have landed yet, so the page asks PayMongo itself about that invoice's
+// checkouts (confirmPending) before it reads the invoices: the owner sees
+// Paid, not an invoice that looks unpaid and asks to be paid twice. A plain
+// view never calls PayMongo (its rate limit is the whole account's); it reads
+// what is recorded. A due invoice with a payment started in the last
+// CONFIRM_WITHIN_DAYS shows that, with Check again, instead of the big Pay
+// now; one with a payment PayMongo reported that did not match shows that,
+// with no button, until operations have handled it. ?paid= and ?unpaid= mean
+// nothing while online payment is off.
 //
 // The owner's and the admin's, like the rest of Settings. The subscription
 // rows are group data outside row-level security (like staff); the branch
@@ -12,13 +27,20 @@
 export const prerender = false;
 
 import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Csrf from '../../../../components/Csrf.astro';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
+import { CSRF_MESSAGE } from '../../../../lib/csrf';
 import { peso } from '../../../../data/demo';
 import {
   PLANS, PAY_TO, WRITE_TO, PAUSE_AFTER_DAYS, STATUS_WORDS, BILLING_FINAL,
-  state, describe, daysLeft, invoiceWords, monthText, dayText, whenText, manilaDate,
+  state, describe, daysLeft, invoiceWords, monthText, dayText, whenText, manilaDate, dueWord, daysBetween,
+  type Invoice,
 } from '../../../../lib/billing';
+import {
+  onlinePayReady, confirmPending, paidOnline, checkoutsStarted, pendingCheckouts, openRefusals, momentText,
+  type Asked, type Outcome,
+} from '../../../../lib/payments';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -27,6 +49,13 @@ const canSetUp = session.role === 'owner' || session.role === 'admin';
 
 const area = await withClinic(clinic.id, async (tx) => (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null);
 
+// Paying online: only while the prices are final and PayMongo is set up.
+const online = canSetUp && BILLING_FINAL && onlinePayReady();
+const q = Astro.url.searchParams;
+// Back from PayMongo, or Check again: ask about that one invoice before the invoices are read,
+// so a payment PayMongo already took shows as paid. Rate limited per group inside confirmPending.
+const backNumber = online ? (q.get('paid') ?? '').trim().slice(0, 40) : '';
+const asked: Asked | null = backNumber ? await confirmPending(clinic.group_id, backNumber) : null;
 const billing = canSetUp ? await state(clinic.group_id) : null;
 const plan = billing ? PLANS[billing.sub.plan] : null;
 const notice = billing ? describe(billing.sub, billing.invoices) : null;
@@ -56,6 +85,70 @@ const payTo = [
   { name: 'Bank transfer', value: PAY_TO.bank as string },
 ].filter((p) => isSet(p.value));
 const writeTo = isSet(WRITE_TO) ? WRITE_TO : '';
+
+// Invoices still due, oldest first, each with what is known about paying it online.
+const today = manilaDate(new Date());
+const due: Invoice[] = billing && online
+  ? billing.invoices.filter((i) => i.status === 'due').sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
+  : [];
+const dueLine = (inv: Invoice) => {
+  const over = daysBetween(manilaDate(inv.due_at), today);
+  return over > 0 ? `Overdue by ${over} day${over === 1 ? '' : 's'}` : `Due ${dueWord(manilaDate(inv.due_at), today)}`;
+};
+const byOnline = billing ? await paidOnline(billing.invoices.filter((i) => i.status === 'paid').map((i) => i.id)) : new Set<string>();
+const [started, pending, refused] = billing && online
+  ? await Promise.all([checkoutsStarted(billing.invoices.map((i) => i.id)), pendingCheckouts(due.map((i) => i.id)), openRefusals(clinic.group_id)])
+  : [new Map<string, Date>(), new Map<string, Date>(), new Map<string, { outcome: Outcome; at: Date }>()];
+
+const invoiceNamed = (n: string | null) => (n && billing ? billing.invoices.find((i) => i.number === n) : undefined);
+// Only an invoice that really has an online payment started answers to ?paid= or ?unpaid=.
+const withCheckout = (inv: Invoice | undefined) => (inv && started.has(inv.id) ? inv : undefined);
+const back = online ? withCheckout(invoiceNamed(backNumber)) : undefined;
+const quit = online ? withCheckout(invoiceNamed(q.get('unpaid'))) : undefined;
+
+// Per due invoice: pay (the Pay now button), started (a checkout from the last CONFIRM_WITHIN_DAYS
+// that nothing has reported yet: Check again instead), or refused (PayMongo reported a payment
+// that did not match: no button until operations handle it).
+const payState = (inv: Invoice): { kind: 'pay' } | { kind: 'started'; at: Date } | { kind: 'refused' } => {
+  if (refused.has(inv.id)) return { kind: 'refused' };
+  const at = pending.get(inv.id);
+  // Back from PayMongo's Cancel for this invoice: the owner just said it was not paid.
+  if (at && quit?.id !== inv.id) return { kind: 'started', at };
+  return { kind: 'pay' };
+};
+
+// A refused payment, in the owner's words: nothing for them to do but not pay again.
+const refusedWords = (number: string, outcome: Outcome) =>
+  outcome === 'paid_twice'
+    ? `Invoice ${number} was already marked paid, and PayMongo reports another payment for it. Flossify will check it and return any payment made twice. Do not pay again.`
+    : outcome === 'not_due'
+      ? `PayMongo reports a payment for ${number}, but that invoice was cancelled. Flossify will check it and return it or put it toward another invoice. Do not pay again.`
+      : `PayMongo has a payment for ${number} that does not match this invoice, so it was not marked paid. It is on Flossify’s list to sort out. Do not pay again.`;
+
+// One sentence about what just happened: back from PayMongo, a refused press, or a stale form.
+let flash: { text: string; alert: boolean } | null = null;
+if (billing) {
+  const pay = q.get('pay') ?? '';
+  const backRefused = back ? refused.get(back.id) : undefined;
+  if (q.get('stale') === '1') flash = { text: CSRF_MESSAGE, alert: true };
+  else if (back && backRefused) flash = { text: refusedWords(back.number, backRefused.outcome), alert: true };
+  else if (back && back.status === 'paid') flash = { text: `Thank you. Invoice ${back.number} is paid.`, alert: false };
+  else if (back && back.status === 'due') {
+    // The invoice's own row says the rest (started, Check again); this says what asking just found.
+    flash = asked === 'busy'
+      ? { text: `PayMongo was asked about ${back.number} a moment ago. Wait a minute, then check again. If you finished paying, do not pay again.`, alert: false }
+      : asked === 'noanswer'
+        ? { text: `PayMongo did not answer just now, so ${back.number} still shows as due. If you finished paying, do not pay again. Check again in a minute.`, alert: false }
+        : asked === 'unpaid'
+          ? { text: `Checked with PayMongo just now: no payment for ${back.number} is confirmed yet. If you finished paying, do not pay again.`, alert: false }
+          : { text: `PayMongo has not confirmed a payment for ${back.number} yet. If you finished paying, do not pay again.`, alert: false };
+  }
+  else if (quit && quit.status === 'due' && !refused.has(quit.id)) flash = { text: `The payment for ${quit.number} was not finished. The invoice is still due; pay it whenever you are ready.`, alert: false };
+  else if (pay === 'off') flash = { text: 'Paying online is not switched on right now. Nothing was charged.', alert: true };
+  else if (pay === 'not_due') flash = { text: 'That invoice is not due any more: it is paid or cancelled. Nothing was charged.', alert: false };
+  else if (pay === 'gateway') flash = { text: 'PayMongo did not open the payment page. Nothing was charged. Try again in a minute.', alert: true };
+  else if (pay === 'busy') flash = { text: 'Too many tries in a short time. Wait a few minutes, then try again. Nothing was charged.', alert: true };
+}
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Billing" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
@@ -67,7 +160,9 @@ const writeTo = isSet(WRITE_TO) ? WRITE_TO : '';
   ) : (
     <>
       <p class="mt-3 max-w-[64ch] text-[15px] leading-relaxed text-ink-2">
-        What {billing.branches === 1 ? 'this clinic' : 'the group'} pays Flossify. One invoice a month, paid by GCash, Maya or bank transfer; a person on our side marks it paid.
+        {online
+          ? <>What {billing.branches === 1 ? 'this clinic' : 'the group'} pays Flossify. One invoice a month. Pay it online with GCash, Maya or card and it is marked paid when PayMongo confirms it{payTo.length > 0 ? '; or send a transfer and a person on our side marks it paid' : ''}.</>
+          : <>What {billing.branches === 1 ? 'this clinic' : 'the group'} pays Flossify. One invoice a month, paid by GCash, Maya or bank transfer; a person on our side marks it paid.</>}
       </p>
 
       {!pricesFinal && (
@@ -80,6 +175,66 @@ const writeTo = isSet(WRITE_TO) ? WRITE_TO : '';
         <p role={notice.alert ? 'alert' : 'status'} class:list={['mt-6 border p-4 text-[14.5px] leading-relaxed', notice.alert ? 'border-caries/40 bg-caries/10' : 'border-accent/40 bg-accent/10']}>
           {notice.text}
         </p>
+      )}
+
+      {flash && (
+        <p role={flash.alert ? 'alert' : 'status'} class:list={['mt-6 border p-4 text-[14.5px] leading-relaxed', flash.alert ? 'border-caries/40 bg-caries/10' : 'border-accent/40 bg-accent/10']}>
+          {flash.text}
+        </p>
+      )}
+
+      {due.length > 0 && (
+        <section class="mt-8" aria-labelledby="paynow-title">
+          <h2 id="paynow-title" class="font-display text-[22px] font-semibold">Pay online</h2>
+          <p class="mt-1.5 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
+            GCash, Maya or card, on PayMongo’s payment page. You come back here after, and the invoice is marked paid as soon as PayMongo confirms it.
+          </p>
+          <ul class="mt-4 max-w-[760px] divide-y divide-line-2 border border-line bg-surface">
+            {due.map((inv) => {
+              const over = daysBetween(manilaDate(inv.due_at), today) > 0;
+              const st = payState(inv);
+              return (
+                <li class="px-5 py-5">
+                  <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+                    <div id={`pay-${inv.id}`}>
+                      <p class="font-mono text-[13px] tracking-[0.04em] tabular-nums">{inv.number}</p>
+                      <p class="mt-2 font-display text-[26px] leading-none font-bold tabular-nums">{peso(inv.amount)}</p>
+                      <p class="mt-1.5 text-[14px] text-ink-2">{monthText(inv.period_start)} · <span class:list={[over && 'font-semibold text-caries']}>{dueLine(inv)}</span></p>
+                    </div>
+                    {st.kind === 'pay' && (
+                      <form method="post" action="/api/payments/checkout">
+                        <Csrf />
+                        <input type="hidden" name="clinic" value={clinic.slug} />
+                        <input type="hidden" name="invoice" value={inv.id} />
+                        <button type="submit" class="btn btn-primary" aria-describedby={`pay-${inv.id}`}>Pay now (GCash, Maya, card)</button>
+                      </form>
+                    )}
+                    {st.kind === 'started' && (
+                      <a href={`?paid=${encodeURIComponent(inv.number)}`} class="btn btn-quiet" aria-describedby={`pay-${inv.id} paystate-${inv.id}`}>Check again</a>
+                    )}
+                  </div>
+                  {st.kind === 'started' && (
+                    <div id={`paystate-${inv.id}`} class="mt-4 max-w-[64ch] border-t border-line-2 pt-4 text-[14.5px] leading-relaxed">
+                      <p>You started paying this on {momentText(st.at)}. PayMongo has not confirmed a payment yet.</p>
+                      <p class="mt-1 text-ink-2">If you paid, do not pay again: check again in a minute. If you stopped before paying, start a new payment.</p>
+                      <form method="post" action="/api/payments/checkout" class="mt-1">
+                        <Csrf />
+                        <input type="hidden" name="clinic" value={clinic.slug} />
+                        <input type="hidden" name="invoice" value={inv.id} />
+                        <button type="submit" class="inline-flex min-h-11 items-center text-[14.5px] font-semibold underline underline-offset-4 hover:text-accent" aria-describedby={`pay-${inv.id}`}>Start a new payment</button>
+                      </form>
+                    </div>
+                  )}
+                  {st.kind === 'refused' && (
+                    <p class="mt-4 max-w-[64ch] border-t border-line-2 pt-4 text-[14.5px] leading-relaxed">
+                      <span class="font-semibold text-caries">PayMongo reported a payment for this that did not match it, so it is not marked paid.</span> Flossify is sorting it out. Do not pay again.
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
 
       <section class="mt-8" aria-labelledby="plan-title">
@@ -149,7 +304,11 @@ const writeTo = isSet(WRITE_TO) ? WRITE_TO : '';
                     <td class="px-5 py-3.5 text-right text-[15px] font-semibold tabular-nums">{peso(inv.amount)}</td>
                     <td class="px-5 py-3.5 text-[15px] whitespace-nowrap tabular-nums text-ink-2">{dayText(manilaDate(inv.due_at))}</td>
                     <td class:list={['px-5 py-3.5 text-[14.5px] font-semibold', overdue ? 'text-caries' : inv.status === 'paid' ? 'text-accent' : 'text-ink-2']}>{invoiceWords(inv)}</td>
-                    <td class="px-5 py-3.5 text-[14px] text-ink-2">{inv.paid_ref ?? '—'}</td>
+                    <td class="px-5 py-3.5 text-[14px] text-ink-2">
+                      {byOnline.has(inv.id)
+                        ? <>Paid online <span class="block font-mono text-[12.5px] tabular-nums break-all">{inv.paid_ref}</span></>
+                        : (inv.paid_ref ?? '—')}
+                    </td>
                   </tr>
                 );
               })}
@@ -160,6 +319,11 @@ const writeTo = isSet(WRITE_TO) ? WRITE_TO : '';
 
       <section class="mt-10" aria-labelledby="pay-title">
         <h2 id="pay-title" class="font-display text-[22px] font-semibold">How to pay</h2>
+        {online && (
+          <p class="mt-1.5 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
+            Online: {due.length > 0 ? 'press Pay now above' : 'when an invoice is due, a Pay now button appears on this page'}. GCash, Maya or card, on PayMongo’s page; the invoice is marked paid when PayMongo confirms it.{payTo.length > 0 ? ' Or by transfer:' : ''}
+          </p>
+        )}
         {payTo.length > 0 ? (
           <>
             <p class="mt-1.5 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
@@ -174,6 +338,10 @@ const writeTo = isSet(WRITE_TO) ? WRITE_TO : '';
               ))}
             </dl>
           </>
+        ) : online ? (
+          <p class="mt-3 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
+            There is no transfer account yet: pay online only, and do not send money to anyone for Flossify any other way.
+          </p>
         ) : (
           <p role="note" class="mt-3 max-w-[64ch] border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
             Where to pay goes up here before your first invoice. Until then, do not send money to anyone for Flossify.

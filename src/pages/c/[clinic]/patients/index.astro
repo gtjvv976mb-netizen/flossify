@@ -5,6 +5,7 @@ import ClinicLayout from '../../../../layouts/Clinic.astro';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
 import { peso } from '../../../../data/demo';
+import { ageOn, manilaToday } from '../../../../lib/health';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -13,16 +14,17 @@ const { clinic, session, branches } = ws;
 const { patients, area } = await withClinic(clinic.id, async (tx) => ({
   area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area,
   patients: (await tx.query(
-    `select p.id, p.chart_no, p.first_name, p.last_name, p.birth_date,
+    `select p.id, p.chart_no, p.first_name, p.last_name, to_char(p.birth_date, 'YYYY-MM-DD') as birth,
             (select h.allergies from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as allergies,
             (select h.conditions from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as conditions,
             (select max(a.starts_at) from appointment a where a.patient_id = p.id and a.status = 'completed') as last_visit,
-            coalesce((select sum(i.total) from invoice i where i.patient_id = p.id and i.status in ('issued', 'partly_paid')), 0)
-              - coalesce((select sum(y.amount) from payment y where y.patient_id = p.id), 0) as balance
+            patient_balance(p.id) as balance
      from patient p where p.archived_at is null order by p.last_name, p.first_name`)).rows,
 }));
 
-const age = (birth: Date | null) => (birth ? Math.floor((Date.now() - new Date(birth).getTime()) / 31_557_600_000) : null);
+// Whole years on Manila's calendar, from the birth date the record page sets.
+const today = manilaToday();
+const age = (birth: string | null) => (birth ? ageOn(birth, today) : null);
 const day = (d: Date | null) => (d ? new Intl.DateTimeFormat('en-PH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(d) : '—');
 // Invoices and payments cannot be recorded in Flossify yet (only the development
 // seed writes them), so the Balance column shows only when some patient has one.
@@ -56,7 +58,7 @@ const anyBalance = patients.some((p) => Number(p.balance) !== 0);
             <th scope="row" class="px-5 py-4">
               <a href={`/c/${clinic.slug}/patients/${p.id}/`} class="text-[15.5px] font-semibold hover:text-accent">{p.last_name}, {p.first_name}</a>
             </th>
-            <td class="px-5 py-4 text-[15px] tabular-nums text-ink-2">{age(p.birth_date) ?? '—'}</td>
+            <td class="px-5 py-4 text-[15px] tabular-nums text-ink-2">{age(p.birth) ?? '—'}</td>
             <td class="px-5 py-4">
               <div class="flex flex-wrap gap-1.5">
                 {(p.allergies ?? []).map((a: string) => <span class="bg-caries/15 px-2.5 py-1 text-[11.5px] font-semibold text-caries">{a}</span>)}

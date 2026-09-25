@@ -1,0 +1,253 @@
+---
+// The papers: a statement of account, or (?ack=<payment id>) the
+// acknowledgment of one payment. A5 by default; ?paper=receipt sets it for an
+// 80 mm receipt printer. The page is its own document, without the workspace
+// header, so what prints is only the paper; the bar at the top does not print.
+//
+// BIR honesty. Flossify is not a BIR-registered invoicing system, so these
+// are never titled "Official receipt" or "Sales invoice", and each carries a
+// plain line saying so. The acknowledgment prints the number of the BIR
+// invoice or receipt the desk wrote on the payment, or a blank to write it
+// in by hand. The clinic's TIN and branch code print when Settings has them.
+//
+// Same gate as the statement page: requireWorkspace, then canBill. Printing
+// is written to the audit log like a view: the paper names the patient and
+// what was done.
+export const prerender = false;
+
+import '../../../../../styles/global.css';
+import { requireWorkspace } from '../../../../../lib/workspace';
+import { withClinic } from '../../../../../lib/db';
+import {
+  canBill, loadStatement, audit, pesos, fromDb, statementNo, methodLabel, day, stamp, tinParts,
+  DISCOUNTS, NOT_BIR, UUID, PAYOR_METHODS,
+} from '../../../../../lib/invoices';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session } = ws;
+if (!canBill(session.role, clinic.can_view_finance)) return Astro.redirect(`/c/${clinic.slug}/billing/${Astro.params.invoice ?? ''}/`, 303);
+
+const q = Astro.url.searchParams;
+const paper = q.get('paper') === 'receipt' ? 'receipt' : 'a5';
+const ackId = q.get('ack') ?? '';
+const here = `/c/${clinic.slug}/billing/${Astro.params.invoice ?? ''}/`;
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const st = await loadStatement(tx, Astro.params.invoice ?? '');
+  if (!st) return null;
+  const c = (await tx.query(
+    `select name, address_line, barangay, city, province, phone, tin, bir_branch_code from clinic where id = $1`, [clinic.id])).rows[0];
+  const ack = UUID.test(ackId) ? st.payments.find((p) => p.id === ackId) ?? null : null;
+  if (ackId && !ack) return { st, c, ack: undefined };
+  await audit(tx, clinic.id, session.staffId, ack ? 'payment.print' : 'invoice.print', ack ? 'payment' : 'invoice', ack ? ack.id : st.s.id);
+  return { st, c, ack };
+});
+if (!data || data.ack === undefined) return new Response('No such statement or payment', { status: 404 });
+
+const { st, c, ack } = data;
+const s = st.s;
+const no = statementNo(s.series_prefix, s.number);
+const isVoid = s.status === 'void';
+const tax = tinParts(c.tin, c.bir_branch_code);
+// The address line often already names the city; say each part once.
+const address = [c.address_line, c.barangay, c.city, c.province]
+  .filter((part, i, all) => part && !all.slice(0, i).some((prev) => prev && String(prev).toLowerCase().includes(String(part).toLowerCase())))
+  .join(', ');
+const patient = `${s.first_name} ${s.last_name}`;
+
+// For the acknowledgment: where this payment left the statement. A void
+// payment (or one on a void statement) left it nowhere, so its paper carries
+// no running totals, only the VOID box and one plain line.
+const ackVoid = !!ack && (!!ack.voided_at || isVoid);
+const upTo = ack && !ackVoid ? st.payments.filter((p) => !p.voided_at && (p.seq ?? 0) <= (ack.seq ?? 0)) : [];
+const paidToDate = upTo.reduce((n, p) => n + fromDb(p.amount), 0n);
+const after = fromDb(s.total) - paidToDate;
+const fromPayor = ack && PAYOR_METHODS.has(ack.method);
+
+const title = ack ? 'Acknowledgment of payment' : 'Statement of account';
+const pageCss = `
+@page { size: ${paper === 'receipt' ? '80mm 297mm' : 'A5 portrait'}; margin: ${paper === 'receipt' ? '4mm' : '12mm'}; }
+@media print {
+  /* Paper is black on white whatever the screen theme. The extra :not()s only
+     raise specificity above global.css's dark-theme :root selectors. */
+  html:root:not([data-never]):not([data-never-2]) {
+    --c-bg: #ffffff; --c-bg-soft: #ffffff; --c-surface: #ffffff; --c-ink: #000000; --c-ink-2: #1f1f1f;
+    --c-muted: #3d3d3d; --c-faint: #4a4a4a; --c-line: #8a8a8a; --c-line-2: #b5b5b5; --c-accent: #000000;
+    color-scheme: light;
+  }
+  body { background: #ffffff; }
+  .sheet { border: 0 !important; padding: 0 !important; margin: 0 !important; max-width: none !important; }
+}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title} {no}{ack ? ` · payment ${ack.seq}` : ''} — {clinic.name}</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-400.woff2" as="font" type="font/woff2" crossorigin />
+    <script is:inline>
+      try {
+        const saved = localStorage.getItem('theme');
+        if (saved) document.documentElement.dataset.theme = saved;
+      } catch (e) {
+        /* storage blocked: fall back to the OS preference */
+      }
+    </script>
+    <style is:inline set:html={pageCss}></style>
+    {paper === 'receipt' && <style is:inline data-receipt-length></style>}
+  </head>
+  <body data-paper={paper}>
+    <div class="border-b border-line bg-surface print:hidden">
+      <div class="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-8">
+        <a href={here} class="inline-flex min-h-11 items-center text-[14.5px] font-medium text-accent">&larr; Back to {no}</a>
+        <nav class="flex flex-wrap items-center gap-2" aria-label="Paper size">
+          <span class="meta">Paper</span>
+          <a href={`?${new URLSearchParams({ ...(ack ? { ack: ack.id } : {}) }).toString()}`} aria-current={paper === 'a5' ? 'page' : undefined}
+             class:list={['inline-flex min-h-11 items-center px-3.5 text-[14px] font-medium', paper === 'a5' ? 'bg-ink text-bg' : 'text-ink-2 hover:bg-bg-soft']}>A5</a>
+          <a href={`?${new URLSearchParams({ ...(ack ? { ack: ack.id } : {}), paper: 'receipt' }).toString()}`} aria-current={paper === 'receipt' ? 'page' : undefined}
+             class:list={['inline-flex min-h-11 items-center px-3.5 text-[14px] font-medium', paper === 'receipt' ? 'bg-ink text-bg' : 'text-ink-2 hover:bg-bg-soft']}>80 mm receipt</a>
+          <button type="button" class="btn btn-primary ml-2 !py-2.5" data-print>Print</button>
+        </nav>
+      </div>
+    </div>
+
+    <main class="px-4 py-8 print:p-0">
+      <article
+        class:list={[
+          'sheet mx-auto border border-line bg-surface text-ink',
+          paper === 'receipt' ? 'max-w-[80mm] p-4 text-[12.5px] leading-snug' : 'max-w-[148mm] p-8 text-[13.5px] leading-normal',
+        ]}
+        data-sheet
+        aria-label={`${title} ${no}`}>
+
+        <header class="border-b border-line pb-3">
+          <p class:list={['font-display font-bold tracking-[-0.03em]', paper === 'receipt' ? 'text-[17px]' : 'text-[21px]']}>{c.name}</p>
+          {address && <p class="mt-1 text-ink-2">{address}</p>}
+          {c.phone && <p class="text-ink-2">{c.phone}</p>}
+          {tax && <p class="mt-1 font-mono text-[11.5px] tabular-nums text-ink-2">TIN {tax.tin}{tax.branch && ` · Branch code ${tax.branch}`}</p>}
+        </header>
+
+        <div class="mt-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h1 class:list={['font-display font-semibold tracking-[-0.02em]', paper === 'receipt' ? 'text-[16px]' : 'text-[19px]']}>{title}</h1>
+          <p class="font-mono text-[12px] tabular-nums">No. {no}{ack && ` · payment ${ack.seq}`}</p>
+        </div>
+
+        {(isVoid || ack?.voided_at) && (
+          <p class="mt-3 border-2 border-ink px-3 py-2 text-center">
+            <span class="meta meta-ink text-[13px] tracking-[0.2em]">Void</span>
+            <span class="block text-[12.5px]">{ack?.voided_at ? ack.void_reason : s.void_reason}</span>
+          </p>
+        )}
+
+        {ack ? (
+          <>
+            <dl class="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
+              <dt class="text-ink-2">Date paid</dt><dd class="tabular-nums">{day(ack.paid_on)}</dd>
+              <dt class="text-ink-2">Received from</dt><dd>{fromPayor && s.payor_name ? `${s.payor_name}, for ${patient}` : patient}</dd>
+              <dt class="text-ink-2">Paid by</dt><dd>{methodLabel(ack.method)}{ack.reference && ` · ref ${ack.reference}`}</dd>
+            </dl>
+            <div class="mt-4 flex items-baseline justify-between gap-4 border-y border-line py-3">
+              <span class="font-semibold">Amount received</span>
+              <span class:list={['font-display font-bold tabular-nums', paper === 'receipt' ? 'text-[20px]' : 'text-[26px]']}>{pesos(ack.amount)}</span>
+            </div>
+            {ackVoid ? (
+              <p class="mt-3 font-semibold" data-ack-void>This payment was voided. It does not count toward statement {no}.</p>
+            ) : (
+              <dl class="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 tabular-nums">
+                <dt class="text-ink-2">Statement {no}, total</dt><dd class="text-right">{pesos(s.total)}</dd>
+                <dt class="text-ink-2">Paid to date, with this</dt><dd class="text-right">{pesos(paidToDate)}</dd>
+                <dt class="font-semibold">Balance after this payment</dt><dd class="text-right font-semibold">{pesos(after > 0n ? after : 0n)}</dd>
+              </dl>
+            )}
+            <p class="mt-4">
+              <span class="text-ink-2">BIR invoice or receipt no.</span>
+              {ack.bir_ref ? <span class="font-mono tabular-nums"> {ack.bir_ref}</span> : <span class="inline-block w-[45%] border-b border-ink align-bottom">&nbsp;</span>}
+            </p>
+            <p class="mt-4 text-ink-2">Received by {ack.received_by_name ?? '—'}</p>
+          </>
+        ) : (
+          <>
+            <dl class="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
+              <dt class="text-ink-2">Date</dt><dd class="tabular-nums">{day(s.issued_at)}</dd>
+              <dt class="text-ink-2">Patient</dt><dd>{patient} <span class="text-ink-2">· {s.chart_no}</span></dd>
+            </dl>
+            <table class="mt-4 w-full border-collapse text-left tabular-nums">
+              <thead>
+                <tr class="border-b border-line">
+                  <th scope="col" class="meta py-1.5 pr-2 text-[11px] font-normal text-ink-2">Item</th>
+                  <th scope="col" class="meta py-1.5 text-right text-[11px] font-normal text-ink-2">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {st.lines.map((l) => {
+                  const qty = l.quantity.replace(/\.0+$/, '');
+                  return (
+                    <tr class="border-b border-line-2 align-top">
+                      <td class="py-1.5 pr-2">{l.description}{qty !== '1' && <span class="block text-ink-2">{qty} × {pesos(l.unit_price)}</span>}</td>
+                      <td class="py-1.5 text-right whitespace-nowrap">{pesos(l.amount)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <dl class="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-y-1 tabular-nums [&>dd]:pl-4">
+              <dt class="text-ink-2">Charges</dt><dd class="text-right">{pesos(s.subtotal)}</dd>
+              {fromDb(s.discount) > 0n && (
+                <>
+                  <dt class="text-ink-2">{DISCOUNTS[(s.discount_kind ?? 'none') as keyof typeof DISCOUNTS]?.line || 'Discount'}{s.discount_id_no && <span class="block">ID {s.discount_id_no}</span>}</dt>
+                  <dd class="text-right">&minus;{pesos(s.discount)}</dd>
+                </>
+              )}
+              <dt class="font-semibold">Total</dt><dd class="text-right font-semibold">{pesos(s.total)}</dd>
+              {fromDb(s.payor_share) > 0n && (<><dt class="text-ink-2">{s.payor_name}’s part</dt><dd class="text-right">{pesos(s.payor_share)}</dd></>)}
+              <dt class="text-ink-2">Paid</dt><dd class="text-right">{pesos(st.sums.paid)}</dd>
+              <dt class="border-t border-line pt-1.5 font-semibold">Balance</dt><dd class="border-t border-line pt-1.5 text-right font-semibold">{isVoid ? '—' : pesos(st.sums.balance)}</dd>
+            </dl>
+            {st.payments.some((p) => !p.voided_at) && (
+              <>
+                <p class="meta mt-4 text-[11px] text-ink-2">Payments</p>
+                <ul class="mt-1 divide-y divide-line-2 border-y border-line-2">
+                  {st.payments.filter((p) => !p.voided_at).map((p) => (
+                    <li class="flex justify-between gap-3 py-1 tabular-nums">
+                      <span>{day(p.paid_on)} · {methodLabel(p.method)}{p.bir_ref && <span class="text-ink-2"> · BIR no. {p.bir_ref}</span>}</span>
+                      <span class="whitespace-nowrap">{pesos(p.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        )}
+
+        <p class="mt-5 border-t border-line pt-3 text-[11.5px] leading-snug text-ink-2" data-not-bir>{NOT_BIR}</p>
+        <p class="mt-1 font-mono text-[10.5px] text-ink-2">Printed {stamp(new Date())} · Flossify</p>
+      </article>
+    </main>
+
+    <script is:inline>
+      // A receipt roll is as long as the receipt: before printing, the page
+      // length is set to the paper's own height (80 mm wide, 4 mm margins),
+      // measured at the width it prints at, so the printer does not feed a
+      // blank A4's worth after it. 297 mm stays the fallback in the CSS.
+      const length = document.querySelector('[data-receipt-length]');
+      const sheet = document.querySelector('[data-sheet]');
+      const fit = () => {
+        if (!length || !sheet) return;
+        const was = sheet.style.cssText;
+        sheet.style.cssText = 'width:72mm;max-width:none;padding:0;border:0';
+        const mm = Math.ceil(sheet.getBoundingClientRect().height / (96 / 25.4)) + 8 + 6;
+        sheet.style.cssText = was;
+        length.textContent = '@page { size: 80mm ' + Math.max(mm, 60) + 'mm; margin: 4mm; }';
+      };
+      fit();
+      window.addEventListener('beforeprint', fit);
+      document.querySelector('[data-print]')?.addEventListener('click', () => { fit(); window.print(); });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,445 @@
+---
+// A new charge: who, what was done, any senior / PWD discount, any part an HMO
+// or PhilHealth pays. Save numbers it — the clinic's next statement of account
+// — and opens it, where the payment is recorded.
+//
+// The desk, the owner, the admin and anyone with finance access here may
+// charge (canBill). Prices from the fee guide stay inside the guide's range;
+// anything else is a line of its own. The page's script adds lines and keeps
+// the totals as you type; the server checks every line again and does the
+// arithmetic in centavos (src/lib/invoices.ts), so what is saved never
+// depends on the script.
+//
+// The form carries a key made when the page was drawn: a double-clicked Save,
+// or Save pressed again after a slow answer, opens the statement the first
+// press made instead of making a second.
+export const prerender = false;
+
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import Line from './_Line.astro';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { withClinic } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { hmos, CATEGORY_LABEL, type Category } from '../../../../data/directory';
+import {
+  canBill, feeGuide, payorOptions, priceRange, rangeText, saveStatement, parseMoney, discountOf, pesos,
+  DISCOUNTS, UUID, ID_NO_MAX, type ChargeIn, type FeeRow,
+} from '../../../../lib/invoices';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const may = canBill(session.role, clinic.can_view_finance);
+const base = `/c/${clinic.slug}/billing/`;
+const q = Astro.url.searchParams;
+const hmoNames = new Map(hmos.map((h) => [h.id, h.name]));
+
+const data = await withClinic(clinic.id, async (tx) => ({
+  area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null,
+  guide: may ? await feeGuide(tx) : ([] as FeeRow[]),
+  payors: may ? await payorOptions(tx, hmoNames) : [],
+}));
+
+let problems: string[] = [];
+let draft: ChargeIn = {
+  patientId: UUID.test(q.get('patient') ?? '') ? q.get('patient')! : '',
+  lines: [], discount: 'none', discountId: '', payor: '', payorShare: '', formKey: crypto.randomUUID(),
+};
+
+if (Astro.request.method === 'POST' && may) {
+  const f = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(`${base}new/?stale=1`, 303);
+  const all = (k: string) => f.getAll(k).map(String);
+  const cat = all('line_catalog'), desc = all('line_desc'), qty = all('line_qty'), price = all('line_price');
+  const s = (k: string) => String(f.get(k) ?? '').trim();
+  const key = s('form_key');
+  draft = {
+    patientId: s('patient'),
+    lines: cat.map((c, i) => ({ catalogId: UUID.test(c) ? c : '', desc: desc[i] ?? '', qty: qty[i] ?? '', price: price[i] ?? '' })),
+    discount: s('discount') || 'none', discountId: s('discount_id'), payor: s('payor'), payorShare: s('payor_share'),
+    formKey: UUID.test(key) ? key : crypto.randomUUID(),
+  };
+  const out = await saveStatement(withClinic, clinic.id, session.staffId, draft, data.payors);
+  if ('id' in out) return Astro.redirect(`${base}${out.id}/?done=${out.again ? 'again' : 'new'}`, 303);
+  problems = out.problems;
+}
+
+// The patient already chosen: from the link (?patient=) or from a refused save.
+const chosen = may && UUID.test(draft.patientId)
+  ? await withClinic(clinic.id, async (tx) => (await tx.query(
+      `select id, concat_ws(' ', first_name, nullif(last_name, '—')) as name, chart_no, phone from patient where id = $1 and archived_at is null`,
+      [draft.patientId])).rows[0] as { id: string; name: string; chart_no: string; phone: string | null } | undefined)
+  : undefined;
+
+// The guide, grouped the way Settings → Fee guide groups it.
+const byId = new Map(data.guide.map((r) => [r.id, r]));
+const groups = (Object.keys(CATEGORY_LABEL) as Category[])
+  .map((c) => ({ label: CATEGORY_LABEL[c], rows: data.guide.filter((r) => r.category === c) }))
+  .concat([{ label: 'Other', rows: data.guide.filter((r) => !r.category || !Object.hasOwn(CATEGORY_LABEL, r.category)) }])
+  .filter((g) => g.rows.length > 0);
+const lineProps = (r: FeeRow | undefined) => {
+  if (!r) return {};
+  const { min, max, fixed } = priceRange(r);
+  return { min: String(min), max: max === null ? '' : String(max), fixed, hint: `Fee guide: ${rangeText(r)}.` };
+};
+
+// The totals as the server would count them, for the first paint and a page without its script.
+const typedLines = draft.lines.filter((l) => l.catalogId || l.desc.trim() || l.price.trim());
+const sub = typedLines.reduce((n, l) => {
+  const p = parseMoney(l.price); const k = /^\d{1,2}$/.test(l.qty.trim() || '1') ? BigInt(l.qty.trim() || '1') : 0n;
+  return n + (p ?? 0n) * k;
+}, 0n);
+const disc = discountOf(sub, draft.discount);
+const total = sub - disc;
+const share = draft.payor ? parseMoney(draft.payorShare) ?? 0n : 0n;
+const payorName = data.payors.find((p) => p.value === draft.payor)?.name ?? '';
+const patientPart = total - share > 0n ? total - share : 0n;
+
+const stale = q.get('stale') === '1';
+const help = 'text-[13px] leading-snug text-muted';
+const sectionTitle = 'font-display text-[22px] font-semibold';
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title="New charge" section="billing" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance}>
+  <a href={base} class="inline-flex min-h-11 items-center text-[14.5px] font-medium text-accent">&larr; Billing</a>
+  <h1 class="mt-4 font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">New charge</h1>
+
+  {!may ? (
+    <p class="mt-6 max-w-[60ch] text-[15.5px] leading-relaxed text-ink-2">Charges and payments are kept by the desk, the owner, the admin and anyone the owner lets see finance at this branch. Ask the owner if you need them.</p>
+  ) : (
+    <>
+      <p class="mt-3 max-w-[64ch] text-[15px] text-ink-2">Pick the patient, add what was done, and save. It becomes the clinic’s next numbered statement of account, and the payment is recorded on it.</p>
+
+      {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
+      {problems.length > 0 && (
+        <div role="alert" class="mt-6 max-w-[900px] border border-caries/40 bg-caries/10 p-4 text-[14.5px]" data-bill-problems>
+          <p class="font-semibold">Nothing was saved. A few things to fix:</p>
+          <ul class="mt-2 list-disc space-y-1 pl-5">{problems.map((p) => <li>{p}</li>)}</ul>
+        </div>
+      )}
+      <p role="alert" hidden class="mt-6 max-w-[900px] border border-caries/40 bg-caries/10 p-4 text-[14.5px]" data-bill-client-error></p>
+
+      <form method="post" class="mt-8 max-w-[900px]" data-bill-form data-slug={clinic.slug}>
+        <Csrf />
+        <input type="hidden" name="form_key" value={draft.formKey} />
+
+        <section aria-labelledby="who-title">
+          <p class="sec-no">01 &mdash; Patient</p>
+          <h2 id="who-title" class={`mt-1 ${sectionTitle}`}>Who is paying</h2>
+          <input type="hidden" name="patient" value={chosen?.id ?? ''} data-bill-patient-id />
+          <div class="mt-5" data-bill-lookup hidden={!!chosen}>
+            <label class="field">
+              <span class="meta">Find the patient</span>
+              <input type="search" autocomplete="off" placeholder="Name, chart number or mobile" class="text-[16px]" data-bill-search autofocus={!chosen && problems.length === 0 && !stale} />
+            </label>
+            <ul class="mt-1 divide-y divide-line-2 border border-line bg-surface" hidden data-bill-results></ul>
+            <p class={`mt-1.5 ${help}`} data-bill-hint>Type two letters of a name, a chart number or a mobile.</p>
+          </div>
+          <div class="mt-5 flex min-h-11 items-center justify-between gap-3 border border-line bg-surface px-4 py-3" data-bill-chosen hidden={!chosen}>
+            <p class="text-[16px]"><strong class="font-semibold" data-bill-chosen-name>{chosen?.name}</strong> <span class="text-muted" data-bill-chosen-more>{chosen ? `· ${chosen.chart_no}${chosen.phone ? ' · ' + chosen.phone : ''}` : ''}</span></p>
+            <button type="button" class="btn btn-quiet min-h-11 !px-3.5 !py-2 text-[14px]" data-bill-change>Change</button>
+          </div>
+        </section>
+
+        <hr class="rule my-10" />
+
+        <section aria-labelledby="what-title">
+          <p class="sec-no">02 &mdash; What was done</p>
+          <h2 id="what-title" class={`mt-1 ${sectionTitle}`}>Charges</h2>
+          <div class="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
+            {data.guide.length > 0 ? (
+              <label class="field">
+                <span class="meta">Add from the fee guide</span>
+                <select class="text-[16px]" aria-describedby="guide-help" data-bill-guide-pick>
+                  <option value="">Choose a service</option>
+                  {groups.map((g) => (
+                    <optgroup label={g.label}>
+                      {g.rows.map((r) => {
+                        const p = lineProps(r);
+                        return <option value={r.id} data-name={r.name} data-min={p.min} data-max={p.max} data-fixed={p.fixed ? '1' : ''} data-hint={p.hint}>{r.name} · {rangeText(r)}</option>;
+                      })}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <p class="text-[14.5px] text-ink-2 sm:col-span-2">The fee guide is empty. The owner adds services in Settings → Fee guide; until then, add each line as something else.</p>
+            )}
+            {data.guide.length > 0 && <button type="button" class="btn btn-quiet" data-bill-guide-add>Add</button>}
+            <button type="button" class="btn btn-quiet" data-bill-add-free>Add something else</button>
+          </div>
+          {data.guide.length > 0 && <p id="guide-help" class={`mt-1.5 ${help}`}>Tap a service and it is added. With the keyboard, choose it and press Enter.</p>}
+
+          <ol class="mt-4 border border-line bg-surface" data-bill-lines hidden={draft.lines.length === 0}>
+            {draft.lines.map((l) => {
+              const r = l.catalogId ? byId.get(l.catalogId) : undefined;
+              return <Line catalogId={r ? l.catalogId : ''} desc={l.desc} qty={l.qty} price={l.price} {...lineProps(r)} />;
+            })}
+          </ol>
+          <p class={`mt-2 ${help}`} data-bill-empty hidden={draft.lines.length > 0}>No lines yet. Add a service from the fee guide, or something else with its price.</p>
+          <template data-bill-line-tpl><Line /></template>
+        </section>
+
+        <hr class="rule my-10" />
+
+        <section aria-labelledby="discount-title">
+          <p class="sec-no">03 &mdash; Discount</p>
+          <h2 id="discount-title" class={`mt-1 ${sectionTitle}`}>Senior citizen or PWD</h2>
+          <p class="mt-2 max-w-[62ch] text-[14.5px] text-ink-2">Senior citizens and persons with disability get 20% off dental services. Ask for the ID and write its number; it prints on the statement.</p>
+          <fieldset class="mt-4">
+            <legend class="sr-only">Discount</legend>
+            <div class="flex flex-wrap gap-2">
+              {(Object.keys(DISCOUNTS) as (keyof typeof DISCOUNTS)[]).map((k) => (
+                <label class="chip-radio"><input type="radio" name="discount" value={k} checked={draft.discount === k || (k === 'none' && !Object.hasOwn(DISCOUNTS, draft.discount))} data-bill-discount /><span class="min-h-11 text-[15px]">{DISCOUNTS[k].label}</span></label>
+              ))}
+            </div>
+          </fieldset>
+          <label class="field mt-4 sm:max-w-[22rem]" data-bill-discount-id hidden={draft.discount !== 'senior' && draft.discount !== 'pwd'}>
+            <span class="meta">ID number</span>
+            <input name="discount_id" value={draft.discountId} maxlength={ID_NO_MAX} autocomplete="off" class="text-[16px]" placeholder="OSCA or PWD ID no." />
+            <span class={help}>As printed on the patient’s senior citizen (OSCA) or PWD ID.</span>
+          </label>
+        </section>
+
+        <hr class="rule my-10" />
+
+        <section aria-labelledby="payor-title">
+          <p class="sec-no">04 &mdash; HMO or PhilHealth</p>
+          <h2 id="payor-title" class={`mt-1 ${sectionTitle}`}>Does anyone else pay part?</h2>
+          {data.payors.length === 0 ? (
+            <p class="mt-2 max-w-[62ch] text-[14.5px] text-ink-2">No HMO or PhilHealth is set up for this branch, so the patient pays all of it. The owner ticks the HMOs the clinic takes in Settings.</p>
+          ) : (
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+              <label class="field">
+                <span class="meta">Who pays part</span>
+                <select name="payor" class="text-[16px]" data-bill-payor>
+                  <option value="">No one — the patient pays all of it</option>
+                  {data.payors.map((p) => <option value={p.value} selected={draft.payor === p.value}>{p.name}{p.kind === 'philhealth' ? ' (preventive dental benefit)' : ''}</option>)}
+                </select>
+              </label>
+              <label class="field" data-bill-share hidden={!draft.payor}>
+                <span class="meta">Their part, in pesos</span>
+                <input name="payor_share" value={draft.payorShare} inputmode="decimal" autocomplete="off" class="text-[16px] tabular-nums" placeholder="0.00" data-bill-share-input />
+                <span class={help}>What the LOA or PhilHealth covers. Record it as paid when their money comes in.</span>
+              </label>
+            </div>
+          )}
+        </section>
+
+        <hr class="rule my-10" />
+
+        <section aria-labelledby="total-title">
+          <h2 id="total-title" class="sr-only">Total</h2>
+          <dl class="divide-y divide-line-2 border border-line bg-surface text-[16px]" data-bill-totals>
+            <div class="flex items-baseline justify-between gap-4 px-5 py-3"><dt class="text-ink-2">Charges</dt><dd class="tabular-nums" data-t="subtotal">{pesos(sub)}</dd></div>
+            <div class="flex items-baseline justify-between gap-4 px-5 py-3" hidden={disc === 0n} data-t-row="discount"><dt class="text-ink-2" data-t="discount-label">{DISCOUNTS[draft.discount as keyof typeof DISCOUNTS]?.line || 'Discount'}</dt><dd class="tabular-nums" data-t="discount">&minus;{pesos(disc)}</dd></div>
+            <div class="flex items-baseline justify-between gap-4 px-5 py-3"><dt class="font-semibold">Total</dt><dd class="font-semibold tabular-nums" data-t="total">{pesos(total)}</dd></div>
+            <div class="flex items-baseline justify-between gap-4 px-5 py-3" hidden={share === 0n} data-t-row="payor"><dt class="text-ink-2">Less <span data-t="payor-name">{payorName || 'their'}</span>’s part</dt><dd class="tabular-nums" data-t="payor">&minus;{pesos(share)}</dd></div>
+            <div class="flex items-baseline justify-between gap-4 bg-bg-soft px-5 py-4"><dt class="font-semibold">Patient pays</dt><dd class="font-display text-[30px] leading-none font-bold tabular-nums" data-t="patient">{pesos(patientPart)}</dd></div>
+          </dl>
+        </section>
+
+        <div class="mt-8 flex flex-wrap items-center gap-4">
+          <button type="submit" class="btn btn-primary" data-bill-save>Save statement</button>
+          <span class="max-w-[52ch] text-[13.5px] text-muted">It gets the clinic’s next statement number. A saved statement is not edited: if something is wrong, the owner or admin voids it and you charge again.</span>
+        </div>
+      </form>
+    </>
+  )}
+</ClinicLayout>
+
+<script>
+  // The desk's conveniences: find the patient, add and remove lines, and keep
+  // the totals as you type. The server checks and counts everything again on
+  // Save; nothing here decides what is saved. Money is counted in whole
+  // centavos and formatted from a decimal string, never through a float.
+  const form = document.querySelector<HTMLFormElement>('[data-bill-form]');
+  if (form) {
+    const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = form) => root.querySelector<T>(sel);
+    const $$ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = form) => Array.from(root.querySelectorAll<T>(sel));
+    const slug = form.dataset.slug ?? '';
+    const PESO = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const dec = (c: number) => `${c < 0 ? '-' : ''}${Math.trunc(Math.abs(c) / 100)}.${String(Math.abs(c) % 100).padStart(2, '0')}`;
+    const peso = (c: number) => PESO.format(dec(c) as any);
+    /** "1,500.50" → 150050 centavos; anything else → null. */
+    const cents = (s: string): number | null => {
+      const m = /^(\d{1,9})(?:\.(\d{1,2}))?$/.exec(s.replace(/[₱,\s]/g, ''));
+      return m ? Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0')) : null;
+    };
+
+    // --- the patient -------------------------------------------------------
+    const pid = $<HTMLInputElement>('[data-bill-patient-id]')!;
+    const lookup = $('[data-bill-lookup]')!, chosen = $('[data-bill-chosen]')!;
+    const search = $<HTMLInputElement>('[data-bill-search]')!, results = $('[data-bill-results]')!, hint = $('[data-bill-hint]')!;
+    const el = (tag: string, cls = '', text = '') => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
+    $('[data-bill-change]')?.addEventListener('click', () => {
+      pid.value = ''; chosen.hidden = true; lookup.hidden = false; search.value = ''; results.hidden = true; search.focus();
+    });
+    let timer = 0, abort: AbortController | null = null;
+    search.addEventListener('input', () => {
+      window.clearTimeout(timer);
+      const q = search.value.trim();
+      if (q.length < 2) { results.hidden = true; results.replaceChildren(); hint.hidden = false; hint.textContent = 'Type two letters of a name, a chart number or a mobile.'; return; }
+      timer = window.setTimeout(async () => {
+        abort?.abort(); abort = new AbortController();
+        try {
+          const res = await fetch(`/api/patients?clinic=${encodeURIComponent(slug)}&q=${encodeURIComponent(q)}`, { credentials: 'same-origin', signal: abort.signal });
+          const data = res.ok ? await res.json() : null;
+          const found: { id: string; name: string; chartNo: string; phone: string | null }[] = Array.isArray(data?.patients) ? data.patients : [];
+          results.replaceChildren(...found.slice(0, 8).map((p) => {
+            const li = el('li');
+            const b = el('button', 'block min-h-11 w-full px-4 py-2.5 text-left text-[16px] hover:bg-bg-soft') as HTMLButtonElement;
+            b.type = 'button';
+            b.append(el('strong', 'font-semibold', p.name), el('span', 'text-muted', ` · ${p.chartNo}${p.phone ? ' · ' + p.phone : ''}`));
+            b.addEventListener('click', () => {
+              pid.value = p.id;
+              $('[data-bill-chosen-name]')!.textContent = p.name;
+              $('[data-bill-chosen-more]')!.textContent = `· ${p.chartNo}${p.phone ? ' · ' + p.phone : ''}`;
+              chosen.hidden = false; lookup.hidden = true; results.hidden = true;
+              ($('[data-bill-guide-pick]') ?? $('[data-bill-add-free]'))?.focus();
+            });
+            li.append(b); return li;
+          }));
+          results.hidden = found.length === 0;
+          hint.hidden = found.length > 0;
+          hint.textContent = res.ok ? (found.length ? '' : 'No one on file matches. Add them from the Schedule first, then charge them here.') : 'Could not reach the clinic to search. Try again.';
+        } catch (e) {
+          if ((e as Error).name !== 'AbortError') { hint.hidden = false; hint.textContent = 'Could not reach the clinic to search. Try again.'; }
+        }
+      }, 220);
+    });
+
+    // --- the lines ---------------------------------------------------------
+    const list = $('[data-bill-lines]')!, empty = $('[data-bill-empty]')!;
+    const tpl = $<HTMLTemplateElement>('[data-bill-line-tpl]')!;
+    const addLine = (o: { id?: string; name?: string; min?: string; max?: string; fixed?: boolean; hint?: string }) => {
+      const li = (tpl.content.firstElementChild as HTMLElement).cloneNode(true) as HTMLElement;
+      const price = $<HTMLInputElement>('[data-line-price]', li)!;
+      $<HTMLInputElement>('[data-line-catalog]', li)!.value = o.id ?? '';
+      $<HTMLInputElement>('[data-line-desc]', li)!.value = o.name ?? '';
+      if (o.id) {
+        li.dataset.lineMin = o.min ?? ''; li.dataset.lineMax = o.max ?? '';
+        if (o.fixed) { li.dataset.lineFixed = '1'; price.readOnly = true; }
+        price.value = o.min ? dec(Number(o.min)).replace(/\.00$/, '') : '';
+        $('.meta', li)!.textContent = 'From the fee guide';
+        $('[data-line-desc]', li)!.removeAttribute('placeholder');
+        $('[data-line-hint]', li)!.textContent = o.hint ?? '';
+      }
+      list.append(li);
+      recount();
+      (o.id ? (o.fixed ? $<HTMLInputElement>('[data-line-qty]', li) : price) : $<HTMLInputElement>('[data-line-desc]', li))!.focus();
+    };
+    // A service chosen with the mouse or a finger is added at once. With the
+    // keyboard, the arrows only move through the list (on Windows a closed
+    // select fires change on every arrow press); Enter or Add adds it.
+    const pick = $<HTMLSelectElement>('[data-bill-guide-pick]');
+    let viaPointer = false;
+    const addPicked = () => {
+      const o = pick?.selectedOptions[0];
+      if (!pick || !o || !o.value) return false;
+      viaPointer = false;
+      addLine({ id: o.value, name: o.dataset.name, min: o.dataset.min, max: o.dataset.max, fixed: o.dataset.fixed === '1', hint: o.dataset.hint });
+      pick.value = '';
+      return true;
+    };
+    pick?.addEventListener('pointerdown', () => { viaPointer = true; });
+    pick?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); addPicked(); return; }
+      viaPointer = false;
+    });
+    pick?.addEventListener('change', () => { if (viaPointer) addPicked(); });
+    $('[data-bill-guide-add]')?.addEventListener('click', () => { if (!addPicked()) pick?.focus(); });
+    $('[data-bill-add-free]')?.addEventListener('click', () => addLine({}));
+    list.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('[data-line-remove]');
+      if (!b) return;
+      b.closest('[data-line]')?.remove();
+      recount();
+      (pick ?? $('[data-bill-add-free]'))?.focus();
+    });
+
+    // --- discount and payor ------------------------------------------------
+    const idBox = $('[data-bill-discount-id]')!;
+    const idInput = $<HTMLInputElement>('input', idBox)!;
+    const discount = () => $$<HTMLInputElement>('[data-bill-discount]').find((r) => r.checked)?.value ?? 'none';
+    const LINE: Record<string, string> = { senior: 'Senior citizen discount, 20%', pwd: 'PWD discount, 20%' };
+    const payor = $<HTMLSelectElement>('[data-bill-payor]');
+    const shareBox = $('[data-bill-share]'), shareInput = $<HTMLInputElement>('[data-bill-share-input]');
+    form.addEventListener('change', (e) => {
+      const t = e.target as HTMLElement;
+      if (t.matches('[data-bill-discount]')) {
+        const on = discount() !== 'none';
+        idBox.hidden = !on; idInput.required = on;
+        if (on) idInput.focus();
+      }
+      if (payor && t === payor && shareBox && shareInput) {
+        shareBox.hidden = !payor.value;
+        if (payor.value) shareInput.focus(); else shareInput.value = '';
+      }
+      recount();
+    });
+    form.addEventListener('input', recount);
+
+    // --- totals -----------------------------------------------------------
+    function recount() {
+      let sub = 0;
+      const rows = $$('[data-line]', list);
+      empty.hidden = rows.length > 0;
+      list.hidden = rows.length === 0;
+      for (const li of rows) {
+        const qtyText = $<HTMLInputElement>('[data-line-qty]', li)!.value.trim() || '1';
+        const qty = /^\d{1,2}$/.test(qtyText) ? Number(qtyText) : 0;
+        const priceInput = $<HTMLInputElement>('[data-line-price]', li)!;
+        const p = cents(priceInput.value);
+        const out = $('[data-line-amount]', li)!;
+        out.textContent = p === null || !qty ? '—' : peso(p * qty);
+        if (p !== null && qty) sub += p * qty;
+        // The guide's range, said in place when a price leaves it.
+        const min = li.dataset.lineMin, max = li.dataset.lineMax;
+        const hintEl = $('[data-line-hint]', li)!;
+        let off = false;
+        if (priceInput.value.trim() && p === null) off = true;
+        else if (p !== null && min) off = p < Number(min) || (!!max && p > Number(max));
+        else if (p !== null && !min && p <= 0) off = true;
+        priceInput.setAttribute('aria-invalid', off ? 'true' : 'false');
+        priceInput.classList.toggle('border-caries', off);
+        hintEl.classList.toggle('text-caries', off);
+        hintEl.classList.toggle('text-muted', !off);
+      }
+      const d = discount();
+      const disc = d === 'senior' || d === 'pwd' ? Math.floor((sub * 20 + 50) / 100) : 0;
+      const total = sub - disc;
+      const share = payor?.value && shareInput ? cents(shareInput.value) ?? 0 : 0;
+      const set = (k: string, v: string) => { const n = form!.querySelector(`[data-t="${k}"]`); if (n) n.textContent = v; };
+      set('subtotal', peso(sub));
+      set('discount', `−${peso(disc)}`);
+      set('discount-label', LINE[d] ?? 'Discount');
+      form!.querySelector<HTMLElement>('[data-t-row="discount"]')!.hidden = disc === 0;
+      set('total', peso(total));
+      set('payor', `−${peso(share)}`);
+      set('payor-name', payor?.selectedOptions[0]?.textContent?.replace(/ \(.*\)$/, '') ?? 'their');
+      form!.querySelector<HTMLElement>('[data-t-row="payor"]')!.hidden = share === 0;
+      set('patient', peso(Math.max(0, total - share)));
+    }
+    recount();
+
+    // --- save --------------------------------------------------------------
+    const clientError = document.querySelector<HTMLElement>('[data-bill-client-error]')!;
+    form.addEventListener('submit', (e) => {
+      let why = '';
+      if (!pid.value) why = 'Pick the patient first: type their name and choose them from the list.';
+      else if ($$('[data-line]', list).length === 0) why = 'Add at least one line before saving.';
+      if (why) {
+        e.preventDefault();
+        clientError.textContent = why; clientError.hidden = false;
+        clientError.scrollIntoView({ block: 'center' });
+        return;
+      }
+      clientError.hidden = true;
+      const btn = $<HTMLButtonElement>('[data-bill-save]')!;
+      // One press is one statement; the server's form key covers a second anyway.
+      window.setTimeout(() => { btn.disabled = true; btn.textContent = 'Saving…'; }, 0);
+    });
+  }
+</script>

@@ -22,6 +22,54 @@ interface Props {
 
 const { marks = {}, notation = 'fdi', saveUrl, patientId, clinic, csrf } = Astro.props;
 
+// --- charting through a brownout -------------------------------------------
+// A saving chart keeps each change on the device until the server has it
+// (src/lib/offline-queue.ts). It needs to know whose changes they are and
+// under which sign-in — the signed-in staff member and the tag of this
+// sign-in (chartSession), both from the session here on the server: the
+// server saves a change only under the sign-in it was made under — how long
+// this sign-in has left (the chart locks after that), when this chart was
+// drawn (so the server can tell a colleague's finding saved later from one
+// this chart showed, and the page which kept changes it already shows), and
+// how long the service worker may keep a copy of this page for a reload
+// mid-brownout: until this sign-in would end, at most 4 hours (public/sw.js
+// reads data-shell-until, and caps it at the same 4 hours itself). Read only
+// when saving: a demo chart needs no session.
+//
+// "When this chart was drawn" must be exact: a colleague's change saved
+// between the page reading the chart and this line would otherwise be dated
+// before the drawing, and the next change to that tooth would replace it
+// unseen. So a saving chart reads its own marks, with the database's time,
+// under a shared hold on the lock every chart change takes (chartNow in
+// src/pages/api/chart.ts); `marks` from the page is used only if that read
+// fails.
+const now = Date.now();
+let drawn = marks;
+let renderedAt: number | undefined;
+let staffKey: string | undefined;
+let sid: string | undefined;
+let sessionLeft: number | undefined;
+let shellUntil: number | undefined;
+if (saveUrl) {
+  const { readSession } = await import('../lib/auth');
+  const { chartSession, chartNow } = await import('../pages/api/chart');
+  const session = readSession(Astro.cookies);
+  if (session) {
+    staffKey = session.staffId;
+    sid = chartSession(session);
+    sessionLeft = Math.max(0, session.exp - now);
+    shellUntil = Math.min(session.exp, now + 4 * 3_600_000);
+    if (patientId && clinic) {
+      const read = await chartNow(session, clinic, patientId).catch(() => null);
+      if (read) {
+        drawn = read.marks as Partial<Record<number, ToothMark>>;
+        renderedAt = read.at;
+      }
+    }
+  }
+  renderedAt ??= now;
+}
+
 // --- notation -------------------------------------------------------------
 // FDI is what we store. Universal (US) and Palmer (UK) are display only, so a
 // record stays readable wherever it is opened.
@@ -56,7 +104,7 @@ function tooth(fdi: number) {
   const q = Math.floor(fdi / 10);
   const pos = fdi % 10;
   const meta = QUADRANTS[q];
-  const mark = marks[fdi];
+  const mark = drawn[fdi];
   const scoped = mark && SURFACE_SCOPED.includes(mark.condition);
   return {
     fdi,
@@ -110,13 +158,13 @@ const wholeConditions: ToothCondition[] = [
 ];
 ---
 
-<div data-odontogram data-notation={notation} data-save-url={saveUrl} data-patient={patientId} data-clinic={clinic} data-csrf={csrf} class="flex flex-col gap-7 border border-line bg-surface p-6 sm:p-8 lg:flex-row">
+<div data-odontogram data-notation={notation} data-save-url={saveUrl} data-patient={patientId} data-clinic={clinic} data-csrf={csrf} data-staff={staffKey} data-sid={sid} data-session-left={sessionLeft} data-rendered-at={renderedAt} data-shell-until={shellUntil} class="flex flex-col gap-7 border border-line bg-surface p-6 sm:p-8 lg:flex-row">
   <div class="flex min-w-0 flex-1 flex-col">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <fieldset class="flex items-center gap-2">
         <legend class="sr-only">Tooth notation system</legend>
         {notations.map((n) => (
-          <label class="cursor-pointer">
+          <label class="-my-[7px] cursor-pointer py-[7px]">
             <input type="radio" name="notation" value={n.id} checked={n.id === notation} class="peer sr-only" data-notation-input />
             <span class="block border border-line px-3 py-1.5 text-xs font-medium text-ink-2 peer-checked:border-accent peer-checked:bg-accent peer-checked:text-surface peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">
               {n.label}
@@ -128,6 +176,7 @@ const wholeConditions: ToothCondition[] = [
         {legend.map((g) => (
           <span class="flex items-center gap-1.5 text-xs text-ink-2"><span class={`swatch ${g.cls}`}></span>{g.label}</span>
         ))}
+        {saveUrl && <span class="flex items-center gap-1.5 text-xs text-ink-2" data-waiting-legend hidden><span class="swatch waiting-swatch"></span>Saved on this device</span>}
       </div>
     </div>
 
@@ -180,6 +229,25 @@ const wholeConditions: ToothCondition[] = [
       Click a tooth to pick a finding and its surfaces. Arrow keys move between teeth.
     </p>
     {saveUrl && <p class="meta mt-2 min-h-[1.05rem]" data-save-status role="status"></p>}
+    {saveUrl && (
+      <div data-hold-note hidden class="mt-3 flex flex-wrap items-center justify-between gap-3 border border-line-2 bg-bg-soft px-4 py-3">
+        <p class="text-[14.5px] leading-snug text-ink" data-hold-text></p>
+        <a data-hold-signin hidden href="/auth/login/" class="inline-flex min-h-11 items-center border border-line bg-surface px-3.5 py-2.5 text-[13px] font-medium text-ink-2 hover:border-accent hover:text-accent">Sign in again</a>
+        <button type="button" data-hold-reload hidden class="min-h-11 cursor-pointer border border-line bg-surface px-3.5 py-2.5 text-[13px] font-medium text-ink-2 hover:border-accent hover:text-accent">Reload</button>
+        <span data-hold-choice hidden class="flex flex-wrap gap-2">
+          <button type="button" data-hold-save class="min-h-11 cursor-pointer border border-accent bg-accent px-3.5 py-2.5 text-[13px] font-medium text-surface hover:opacity-90">Save them</button>
+          <button type="button" data-hold-delete class="min-h-11 cursor-pointer border border-line bg-surface px-3.5 py-2.5 text-[13px] font-medium text-ink-2 hover:border-caries hover:text-caries">Delete them</button>
+        </span>
+      </div>
+      <div data-copy-note hidden class="mt-3 flex flex-wrap items-center justify-between gap-3 border border-line-2 bg-bg-soft px-4 py-3">
+        <p class="text-[14.5px] leading-snug text-ink" data-copy-text></p>
+        <button type="button" data-copy-reload hidden class="min-h-11 cursor-pointer border border-line bg-surface px-3.5 py-2.5 text-[13px] font-medium text-ink-2 hover:border-accent hover:text-accent">Reload</button>
+      </div>
+      <div data-sync-notice hidden class="mt-3 border border-crown/40 bg-crown/10 px-4 py-3">
+        <ul data-sync-notice-list role="alert" class="flex flex-col gap-2 text-[14.5px] leading-snug text-ink"></ul>
+        <button type="button" data-sync-notice-ok hidden class="mt-3 min-h-11 cursor-pointer border border-line bg-surface px-3.5 py-2.5 text-[13px] font-medium text-ink-2 hover:border-accent hover:text-accent">Got it</button>
+      </div>
+    )}
   </div>
 
   <div class="flex w-full shrink-0 flex-col border border-line-2 bg-bg-soft p-5 lg:w-[290px]">
@@ -192,7 +260,7 @@ const wholeConditions: ToothCondition[] = [
     </p>
     <ul data-note-list class="mt-3.5 flex flex-col gap-2.5" hidden></ul>
     <div class="min-h-4 flex-1"></div>
-    <button type="button" data-clear class="mt-4 w-full cursor-pointer border border-line bg-surface px-3.5 py-2.5 text-[13px] font-medium text-ink-2 hover:border-accent hover:text-accent">
+    <button type="button" data-clear class="mt-4 min-h-11 w-full cursor-pointer border border-line bg-surface px-3.5 py-2.5 text-[13px] font-medium text-ink-2 hover:border-accent hover:text-accent">
       Clear chart
     </button>
   </div>
@@ -210,7 +278,7 @@ const wholeConditions: ToothCondition[] = [
             type="button"
             data-surface-toggle={s}
             aria-pressed="false"
-            class="cursor-pointer border border-line py-2.5 text-[13px] font-semibold text-ink-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-surface"
+            class="min-h-11 cursor-pointer border border-line py-2.5 text-[13px] font-semibold text-ink-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-surface"
           >
             <span data-surface-code>{s === 'occlusal' ? 'O' : SURFACE_LABEL[s][0]}</span>
           </button>
@@ -221,7 +289,7 @@ const wholeConditions: ToothCondition[] = [
     <p class="meta mt-4">Per surface</p>
     <div class="mt-2 grid grid-cols-3 gap-1.5">
       {surfaceConditions.map((c) => (
-        <button type="button" data-condition={c} data-scope="surface" class="cursor-pointer border border-line px-2 py-2.5 text-[13px] font-medium hover:border-accent hover:text-accent">
+        <button type="button" data-condition={c} data-scope="surface" class="min-h-11 cursor-pointer border border-line px-2 py-2.5 text-[13px] font-medium hover:border-accent hover:text-accent">
           {CONDITION_LABEL[c]}
         </button>
       ))}
@@ -230,13 +298,13 @@ const wholeConditions: ToothCondition[] = [
     <p class="meta mt-4">Whole tooth</p>
     <div class="mt-2 grid grid-cols-3 gap-1.5">
       {wholeConditions.map((c) => (
-        <button type="button" data-condition={c} data-scope="whole" class="cursor-pointer border border-line px-2 py-2.5 text-[12.5px] font-medium hover:border-accent hover:text-accent">
+        <button type="button" data-condition={c} data-scope="whole" class="min-h-11 cursor-pointer border border-line px-2 py-2.5 text-[12.5px] font-medium hover:border-accent hover:text-accent">
           {CONDITION_LABEL[c]}
         </button>
       ))}
     </div>
 
-    <button type="button" data-condition="sound" data-scope="whole" class="mt-3 w-full cursor-pointer border border-line px-3 py-2.5 text-[13px] font-medium text-ink-2 hover:border-caries hover:text-caries">
+    <button type="button" data-condition="sound" data-scope="whole" class="mt-3 min-h-11 w-full cursor-pointer border border-line px-3 py-2.5 text-[13px] font-medium text-ink-2 hover:border-caries hover:text-caries">
       Clear this tooth
     </button>
   </div>
@@ -247,6 +315,7 @@ const wholeConditions: ToothCondition[] = [
     CONDITION_LABEL, SURFACE_SCOPED, SURFACE_LABEL, occlusalWord, occlusalCode, surfaceSummary,
     type ToothCondition, type ToothMark, type Surface,
   } from '../data/demo';
+  import * as queue from '../lib/offline-queue';
 
   const SURFACES: Surface[] = ['mesial', 'occlusal', 'distal', 'buccal', 'lingual'];
   const SWATCH: Record<string, string> = {
@@ -255,6 +324,10 @@ const wholeConditions: ToothCondition[] = [
     root_canal: '#8b5cf6', implant: '#64748b', missing: 'var(--c-tooth-missing)',
     unerupted: 'var(--c-muted)', impacted: 'var(--c-muted)',
   };
+  // A change still in the queue this long after it was made is shown as kept
+  // on this device. Most saves come back well inside it, so a chart on a good
+  // line never flickers a marker.
+  const WAITING_AFTER_MS = 1500;
 
   document.querySelectorAll<HTMLElement>('[data-odontogram]').forEach((root) => {
     const teeth = [...root.querySelectorAll<HTMLButtonElement>('button[data-tooth]')];
@@ -268,48 +341,15 @@ const wholeConditions: ToothCondition[] = [
     const marks = new Map<HTMLButtonElement, ToothMark>();
     let active: HTMLButtonElement | null = null;
     let picked = new Set<Surface>();
+    // Teeth whose latest change is kept on this device and not on the server yet,
+    // and how many changes that is (a clear of an empty chart has no tooth to mark).
+    let waitingTeeth = new Set<HTMLButtonElement>();
+    let waitingCount = 0;
 
     const fdiOf = (b: HTMLButtonElement) => Number(b.dataset.fdi);
     const nameOf = (b: HTMLButtonElement) => b.dataset[root.dataset.notation ?? 'fdi'] ?? b.dataset.fdi!;
-
-    // --- saving ------------------------------------------------------------
-    // With data-save-url set, every commit in the palette is one small request:
-    // { clinic, patientId, fdi, condition, surfaces } for a tooth (condition null
-    // clears it) or { clinic, patientId, clear: true } for the whole chart. The
-    // mark stays on the chart whether or not the save went through; a miss is
-    // said out loud and touching the tooth again sends it again.
-    const saveUrl = root.dataset.saveUrl;
-    const status = root.querySelector<HTMLElement>('[data-save-status]');
-    const clock = new Intl.DateTimeFormat('en-PH', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' });
-    let seq = 0;
-
-    function setStatus(text: string, failed = false) {
-      if (!status) return;
-      status.textContent = text;
-      status.classList.toggle('text-caries', failed);
-    }
-
-    async function save(change: Record<string, unknown>) {
-      if (!saveUrl) return;
-      const mine = ++seq;
-      setStatus('Saving…');
-      try {
-        const res = await fetch(saveUrl, {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'content-type': 'application/json', 'X-CSRF': root.dataset.csrf ?? '' },
-          body: JSON.stringify({ clinic: root.dataset.clinic, patientId: root.dataset.patient, ...change }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as { at?: string };
-        // An older reply never overwrites a newer state.
-        if (mine === seq) setStatus(`Saved ${clock.format(data.at ? new Date(data.at) : new Date()).toLowerCase()}`);
-      } catch {
-        // A miss always shows, and a reply still in flight from before it may not paper over it.
-        seq++;
-        setStatus('Not saved — check the connection and try again.', true);
-      }
-    }
+    const byFdi = new Map(teeth.map((b) => [fdiOf(b), b]));
+    const nameOfFdi = (fdi: number) => { const b = byFdi.get(fdi); return b ? nameOf(b) : String(fdi); };
 
     // Seed from what the server rendered so an existing chart survives hydration.
     teeth.forEach((b) => {
@@ -322,15 +362,18 @@ const wholeConditions: ToothCondition[] = [
         marks.set(b, { condition: whole as ToothCondition });
       }
     });
+    // The chart as the server drew it. Kept changes are laid over this.
+    const base = new Map(marks);
 
     function describe(b: HTMLButtonElement) {
       const m = marks.get(b);
       const name = nameOf(b);
-      if (!m) return `Tooth ${name}, Sound. Activate to edit.`;
+      const kept = waitingTeeth.has(b) ? ' Saved on this device, will sync.' : '';
+      if (!m) return `Tooth ${name}, Sound.${kept} Activate to edit.`;
       if (m.surfaces?.length) {
-        return `Tooth ${name}, ${CONDITION_LABEL[m.condition]} on ${surfaceSummary(fdiOf(b), m.surfaces)}. Activate to edit.`;
+        return `Tooth ${name}, ${CONDITION_LABEL[m.condition]} on ${surfaceSummary(fdiOf(b), m.surfaces)}.${kept} Activate to edit.`;
       }
-      return `Tooth ${name}, ${CONDITION_LABEL[m.condition]}. Activate to edit.`;
+      return `Tooth ${name}, ${CONDITION_LABEL[m.condition]}.${kept} Activate to edit.`;
     }
 
     function paint(b: HTMLButtonElement) {
@@ -343,6 +386,7 @@ const wholeConditions: ToothCondition[] = [
         if (on) p.setAttribute('data-on', '');
         else p.removeAttribute('data-on');
       });
+      b.toggleAttribute('data-waiting', waitingTeeth.has(b));
       b.setAttribute('aria-label', describe(b));
     }
 
@@ -371,12 +415,577 @@ const wholeConditions: ToothCondition[] = [
           label.textContent = CONDITION_LABEL[m.condition];
 
           li.append(dot, num, label);
+          if (waitingTeeth.has(b)) {
+            // Where the row is too narrow, the tag drops to its own line rather than breaking the finding's name.
+            li.className = 'flex flex-wrap items-center gap-x-2.5 gap-y-0.5';
+            label.classList.add('whitespace-nowrap');
+            const tag = document.createElement('span');
+            tag.className = 'meta ml-auto whitespace-nowrap';
+            tag.textContent = 'Will sync';
+            li.append(tag);
+          }
           return li;
         })
       );
     }
 
+    // --- saving ------------------------------------------------------------
+    // With data-save-url set, every commit in the palette is one change —
+    // { fdi, condition, surfaces } for a tooth (condition null clears it) or
+    // { clear: true } for the whole chart — written to this device first and
+    // then sent (src/lib/offline-queue.ts). A change that cannot go stays on
+    // the device, is shown as such on the tooth, in the chart note and in the
+    // status line, and goes on its own: when the connection comes back, when
+    // the page loads, every 30 seconds while anything waits. What the server
+    // decided about it comes back here: saved, or kept as a colleague's newer
+    // finding — then the tooth shows theirs and a notice says which tooth.
+    // Each change carries when the server drew this chart (data-rendered-at),
+    // so a colleague's finding saved after that — one this chart never showed
+    // — is kept and named, not replaced unseen.
+    //
+    // A chart is its sign-in's (data-staff and data-sid, from the session on
+    // the server): once that person has signed out on this device, someone
+    // else has signed in, or the sign-in has run out, it takes no more
+    // changes, and says so at once in one line with Reload. It hears that from
+    // the device (another tab's sign-out or sign-in, the service worker) and
+    // asks the server itself when it is looked at again, on reconnect, every
+    // 30 seconds, and when a tooth is opened or Clear chart pressed. A change
+    // is written to the device at the tap — a tab dropped a moment later, on a
+    // line that hangs, still has it — but kept unconfirmed, and not sent,
+    // until that answer is in (at most 4 seconds): a tap in a tab whose
+    // sign-in another sign-in replaced is then deleted and refused, not kept
+    // under the wrong name. Whatever it still kept waits for that person: the
+    // server saves a change only under the sign-in it was made under, and at
+    // their next sign-in this chart shows it marked, with Save and Delete, so
+    // nothing is filed under their name unseen. While a sign-out from another
+    // tab is on its way, the chart takes no changes and says "Signing out…".
+    //
+    // The status line counts only changes that are on the device: one still
+    // on its way there is "Saving…". A kept copy of this page (the service
+    // worker's) says the connection is back only once a request to the
+    // server has really come back.
+    const saveUrl = root.dataset.saveUrl;
+    const status = root.querySelector<HTMLElement>('[data-save-status]');
+    const clock = new Intl.DateTimeFormat('en-PH', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' });
+    const dayFmt = new Intl.DateTimeFormat('en-PH', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Manila' });
+    const dayKey = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Manila' });
+    const scope: queue.Scope | null = saveUrl && root.dataset.staff && root.dataset.sid && root.dataset.clinic && root.dataset.patient
+      ? { staff: root.dataset.staff, sid: root.dataset.sid, clinic: root.dataset.clinic, patient: root.dataset.patient }
+      : null;
+    const renderedAt = Number(root.dataset.renderedAt) || null;
+    // Set by the service worker when this page is the copy it kept, served because the network failed.
+    const copyAt = Number(document.documentElement.dataset.offlineCopy) || null;
+    // When this page's sign-in runs out, on this device's clock: how long it had left when the server
+    // drew the page, counted from when the page (or the kept copy) arrived, so a wrong clock does not matter.
+    const sessionLeft = root.dataset.sessionLeft ? Number(root.dataset.sessionLeft) : null;
+    const deadline = sessionLeft !== null && Number.isFinite(sessionLeft) ? (copyAt ?? Date.now()) + sessionLeft : null;
+    const csrf = root.dataset.csrf ?? '';
+    const copyNote = root.querySelector<HTMLElement>('[data-copy-note]');
+    const noticeBox = root.querySelector<HTMLElement>('[data-sync-notice]');
+    const noticeList = root.querySelector<HTMLElement>('[data-sync-notice-list]');
+    const noticeOk = root.querySelector<HTMLButtonElement>('[data-sync-notice-ok]');
+    const waitingLegend = root.querySelector<HTMLElement>('[data-waiting-legend]');
+    const holdNote = root.querySelector<HTMLElement>('[data-hold-note]');
+    const holdText = root.querySelector<HTMLElement>('[data-hold-text]');
+    const holdSignIn = root.querySelector<HTMLAnchorElement>('[data-hold-signin]');
+    const holdReload = root.querySelector<HTMLButtonElement>('[data-hold-reload]');
+    const holdChoice = root.querySelector<HTMLElement>('[data-hold-choice]');
+    const holdSave = root.querySelector<HTMLButtonElement>('[data-hold-save]');
+    const holdDelete = root.querySelector<HTMLButtonElement>('[data-hold-delete]');
+    let stored = true;
+    let records: queue.Entry[] = [];
+    // Sent changes this page has shown, by record key. They are the server's findings, and this page shows them
+    // only from the device: when another tab or a sign-out deletes them there, the chart must not lose them.
+    const shownSynced = new Map<string, queue.Entry>();
+    let elsewhere: queue.Entry[] = [];
+    // Everything this person has waiting, on any chart, in the order it goes.
+    let allWaiting: queue.Entry[] = [];
+    // The device refused to keep the last change (storage full or blocked).
+    let refused = false;
+    // This page's sign-in has ended on this device, and a tap was turned away because of it.
+    let locked = false;
+    let lockRefused = false;
+    // Locked because a sign-out sent from another tab (or this one) is on its way: it may yet fail.
+    let leaving = false;
+    // A kept copy of the page: whether a request to the server has come back since it was shown.
+    let reached = false;
+    // Changes made in this tab and not yet written to the device (a few milliseconds): laid over
+    // everything, so a repaint that reads the device a moment before the write lands never undoes a click.
+    const optimistic: queue.Body[] = [];
+
+    /** "10:05 am", or "Wed, Sep 23, 10:05 am" when it was not today in Manila. */
+    function when(ms: number | string) {
+      const d = new Date(ms);
+      const time = clock.format(d).toLowerCase();
+      return dayKey.format(d) === dayKey.format(new Date()) ? time : `${dayFmt.format(d)}, ${time}`;
+    }
+
+    function setStatus(text: string, strong = false) {
+      if (!status) return;
+      status.textContent = text;
+      status.classList.toggle('meta-ink', strong);
+    }
+
+    function applyBody(into: Map<HTMLButtonElement, ToothMark>, body: queue.ToothBody) {
+      const b = byFdi.get(body.fdi);
+      if (!b) return;
+      const c = body.condition as ToothCondition | null;
+      if (!c || c === 'sound') into.delete(b);
+      else if (SURFACE_SCOPED.includes(c)) into.set(b, { condition: c, surfaces: (body.surfaces ?? []) as Surface[] });
+      else into.set(b, { condition: c });
+    }
+
+    /** The chart: as the server drew it, then every change this person made
+     *  here since, in the order made — synced ones newer than the drawing (a
+     *  kept copy of the page predates them) and waiting ones. */
+    function lay() {
+      const next = new Map(base);
+      const waitingNow = new Set<HTMLButtonElement>();
+      const now = Date.now();
+      const offline = navigator.onLine === false;
+      let count = 0;
+      const layOne = (body: queue.Body, waiting: boolean) => {
+        if (waiting) count++;
+        if ('clear' in body) {
+          if (waiting) next.forEach((_, b) => waitingNow.add(b));
+          next.clear();
+          (body.keep ?? []).forEach((t) => applyBody(next, t));
+        } else {
+          applyBody(next, body);
+          const b = byFdi.get(body.fdi);
+          if (b && waiting) waitingNow.add(b);
+        }
+      };
+      for (const e of records) {
+        if (e.kind !== 'change' || !e.body) continue;
+        if (e.state === 'synced' && renderedAt !== null && (e.at ?? 0) <= renderedAt) continue;
+        const waiting = e.state === 'pending'
+          && (offline || !!e.hold || (e.tries ?? 0) > 0 || now - e.madeAt > WAITING_AFTER_MS || !queue.sameSignIn(e, scope!.sid));
+        layOne(e.body, waiting);
+      }
+      // Not on the device yet: shown, but never marked as kept there.
+      optimistic.forEach((body) => layOne(body, false));
+      marks.clear();
+      next.forEach((m, b) => marks.set(b, m));
+      waitingTeeth = waitingNow;
+      waitingCount = count;
+      teeth.forEach(paint);
+      render();
+      if (waitingLegend) waitingLegend.hidden = waitingTeeth.size === 0;
+    }
+
+    /** Pending changes on this chart made under an earlier sign-in of this person: marked, and sent only if they choose Save. */
+    const earlierHere = () => records.filter((e) => e.kind === 'change' && e.state === 'pending' && !queue.sameSignIn(e, scope!.sid));
+    /** How sure the device is that an earlier sign-in's change is this person's. 'unsure': the server turned it away
+     *  because someone else was signed in here when it was sent. 'unchecked': it was kept at a tap whose sign-in was
+     *  never confirmed (its page closed before the answer came). Either may not be theirs, so they are asked to check. */
+    const doubt = (e: queue.Entry): 'unsure' | 'unchecked' | null => (e.hold === 'owner' ? 'unsure' : e.unconfirmed ? 'unchecked' : null);
+
+    /** Why waiting changes cannot go until the person acts, in a sentence, with the one button that fixes it.
+     *  'unsure' / 'unchecked': earlier changes of which at least one may not be this person's (doubt()), so they
+     *  are asked to check it. 'leaving': a sign-out is on its way; nothing to press. */
+    function sayHold(held: queue.Hold | 'ended' | 'leaving' | 'earlier' | 'unsure' | 'unchecked' | null, n: number) {
+      if (!holdNote) return;
+      const one = n === 1;
+      const them = one ? 'it' : 'them';
+      const stays = one ? 'It stays' : 'They stay';
+      // Without IndexedDB the changes live in this page only: leaving it to sign in or reload loses them.
+      const lost = `this browser cannot keep chart changes once this page is left. Note the ${one ? 'tooth' : 'teeth'} marked “Will sync”`;
+      let text = '';
+      if (held === 'ended') {
+        text = 'This page belongs to a sign-in that has ended. Reload to chart.';
+      } else if (held === 'leaving') {
+        text = 'Signing out…';
+      } else if (held === 'earlier') {
+        text = one
+          ? 'A change you made before you last signed in is still on this device, marked on the chart. It is not saved. Save it or delete it.'
+          : `${n} changes you made before you last signed in are still on this device, marked on the chart. They are not saved. Save them or delete them.`;
+      } else if (held === 'unsure') {
+        text = one
+          ? 'A change on this chart was kept on this device while someone else was signed in here. It may not be yours, and it is not saved. Check the marked tooth, then save it or delete it.'
+          : `${n} changes on this chart were kept on this device while someone else was signed in here. They may not be yours, and they are not saved. Check the marked teeth, then save them or delete them.`;
+      } else if (held === 'unchecked') {
+        text = one
+          ? 'A change on this chart was kept on this device before it could check who was signed in. It may not be yours, and it is not saved. Check the marked tooth, then save it or delete it.'
+          : `${n} changes on this chart were kept on this device before it could check who was signed in. They may not be yours, and they are not saved. Check the marked teeth, then save them or delete them.`;
+      } else if (held === 'auth') {
+        text = stored
+          ? `Your sign-in has ended. Sign in again to save ${them}. ${stays} on this device until then.`
+          : `Your sign-in has ended, and ${lost}, sign in again and chart ${them} again.`;
+      } else if (held === 'csrf') {
+        text = stored
+          ? `This page is out of date. Reload it to send ${them}. ${stays} on this device until then.`
+          : `This page is out of date, and ${lost}, reload and chart ${them} again.`;
+      } else if (held === 'owner' || held === 'session') {
+        text = `Someone else is signed in on this device now. ${one ? 'Your change stays' : `Your ${n} changes stay`} here, kept for you, until you sign in again.`;
+      }
+      holdNote.hidden = !text;
+      if (holdText) holdText.textContent = text;
+      if (holdSignIn) {
+        holdSignIn.hidden = held !== 'auth';
+        holdSignIn.href = `/auth/login/?next=${encodeURIComponent(location.pathname)}`;
+      }
+      if (holdReload) holdReload.hidden = held !== 'csrf' && held !== 'ended';
+      if (holdChoice) holdChoice.hidden = held !== 'earlier' && held !== 'unsure' && held !== 'unchecked';
+      if (holdSave) holdSave.textContent = one ? 'Save it' : 'Save them';
+      if (holdDelete) holdDelete.textContent = one ? 'Delete it' : 'Delete them';
+    }
+
+    /** The change the server answered last on this chart (by this device's clock when the answer came): whether
+     *  it was applied (for a clear, at least in part), the notice that came with it, if any, and the server's time. */
+    function lastAnswer(): { applied: boolean; notice: queue.Entry | null; at: number } | null {
+      const byId = new Map<string, { applied: boolean; notice: queue.Entry | null; at: number; order: number }>();
+      for (const e of records) {
+        const order = e.answered ?? e.at ?? 0;
+        if (e.kind === 'change' && e.state === 'synced') {
+          // A change this page was drawn with is not an answer to anything done here.
+          if (renderedAt !== null && (e.at ?? 0) <= renderedAt) continue;
+          const a = byId.get(e.id) ?? { applied: false, notice: null, at: 0, order };
+          a.applied = e.outcome !== 'kept';
+          a.at = e.at ?? 0;
+          a.order = Math.max(a.order, order);
+          byId.set(e.id, a);
+        } else if (e.kind === 'notice') {
+          const a = byId.get(e.id) ?? { applied: false, notice: null, at: 0, order };
+          a.notice = e;
+          a.order = Math.max(a.order, order);
+          byId.set(e.id, a);
+        }
+      }
+      let best: { applied: boolean; notice: queue.Entry | null; at: number; order: number } | null = null;
+      byId.forEach((a) => { if (!best || a.order > best.order) best = a; });
+      return best;
+    }
+
+    function say() {
+      if (!scope) return;
+      const pending = records.filter((e) => e.kind === 'change' && e.state === 'pending');
+      const earlierOnes = earlierHere();
+      const earlier = earlierOnes.length;
+      // Only what is on the device counts as saved there. A change still on its way to it (optimistic,
+      // a few milliseconds) is "Saving…", never counted in "saved on this device".
+      const n = pending.length;
+      const mine = n - earlier;
+      // This sign-in's changes go oldest first and stop at the first that cannot: that one's reason holds
+      // them all, even when it is another patient's change.
+      const held = mine ? (allWaiting.find((e) => queue.sameSignIn(e, scope.sid))?.hold ?? null) : null;
+      const count = (one: string, many: string) => (n === 1 ? one : `${n} ${many}`);
+      // A page whose sign-in has ended says only that: it is the one thing to do here (or that a sign-out is
+      // on its way). Then what holds this sign-in's changes, then the earlier sign-in's changes waiting for
+      // Save or Delete.
+      if (locked) sayHold(leaving ? 'leaving' : 'ended', n);
+      else if (held) sayHold(held, mine);
+      else {
+        const doubts = earlierOnes.map(doubt);
+        sayHold(!earlier ? null : doubts.includes('unsure') ? 'unsure' : doubts.includes('unchecked') ? 'unchecked' : 'earlier', earlier);
+      }
+      status?.classList.toggle('text-caries', refused || lockRefused);
+      if (lockRefused) setStatus('Not saved', true);
+      else if (refused) setStatus('Not saved — this device could not keep that change. Try that tooth again.', true);
+      else if (held || earlier || (locked && n)) setStatus(`${count('Saved', 'changes saved')} on this device — not sent yet`, true);
+      else if (n && waitingCount > 0) {
+        setStatus(stored
+          ? `${count('Saved', 'changes saved')} on this device — will sync`
+          : `${count('Not sent yet', 'changes not sent yet')} — keep this page open and ${n === 1 ? 'it' : 'they'} will sync`, true);
+      } else if (n || optimistic.length) setStatus('Saving…');
+      else {
+        // The last answer from the server decides the line: "Saved" only when it applied the change. When it kept
+        // a colleague's finding instead, or refused the change, the notice below says so and this line points to it.
+        const last = lastAnswer();
+        if (last?.notice && !last.notice.read) {
+          status?.classList.add('text-caries');
+          setStatus(last.applied ? 'Partly saved — see below' : 'Not saved — see below', true);
+        } else if (last?.applied && !last.notice) setStatus(`Saved ${when(last.at)}`);
+        else if (navigator.onLine === false) setStatus('Offline — changes will be kept on this device', true);
+        else setStatus('');
+      }
+
+      // A kept copy of the page, shown because the record could not be fetched. "The connection is back" only
+      // once a request to the server has really come back (reached): the Wi-Fi being up says nothing — in a
+      // brownout it stays up while nothing answers, and Reload would only bring this copy back.
+      if (copyNote && copyAt) {
+        const back = reached && navigator.onLine !== false;
+        copyNote.hidden = false;
+        copyNote.querySelector<HTMLElement>('[data-copy-text]')!.textContent = back
+          ? `This is the copy of this record kept on this device at ${when(copyAt)}. The connection is back: reload to see the latest.`
+          : `No connection. This is the copy of this record kept on this device at ${when(copyAt)}. Charting still works; changes sync when the line is back.`;
+        // Reloading is safe while changes wait on the device; only memory would lose them.
+        copyNote.querySelector<HTMLElement>('[data-copy-reload]')!.hidden = !back || (!stored && n + optimistic.length > 0);
+      }
+    }
+
+    function noticeLines(n: queue.Notice): string[] {
+      if (n.kind === 'dropped') {
+        return [n.clear || n.fdi == null ? `The chart was not cleared. ${n.error ?? ''}`.trim() : `Tooth ${nameOfFdi(n.fdi)} was not saved. ${n.error ?? ''}`.trim()];
+      }
+      // What the server tells us: someone saved a change to this tooth (at `it.at`, when it reached
+      // the server) that the chart this change was made on was not showing — made while this device
+      // was offline, or while this chart sat open. Which was made first on the clinic floor is not
+      // known, so the sentence never says "after you".
+      return n.items.map((it) => {
+        const tooth = nameOfFdi(it.fdi);
+        const at = it.at ? ` at ${when(it.at)}` : '';
+        const lead = n.clear ? `Tooth ${tooth} was not cleared` : `Your change to tooth ${tooth} was not saved`;
+        if (it.you) {
+          return `${lead}: you saved a change to it${at} on another screen, and this chart was not showing it. The chart shows that one now.`;
+        }
+        return `${lead}: ${it.by ?? 'Someone'} saved a change to it${at} that your chart was not showing. The chart shows theirs now.`;
+      });
+    }
+
+    function tell() {
+      if (!noticeBox || !noticeList || !noticeOk || !scope) return;
+      const here = records.filter((e) => e.kind === 'notice' && e.notice && !e.read);
+      const items: HTMLElement[] = [];
+      here.forEach((e) => noticeLines(e.notice!).forEach((line) => {
+        const li = document.createElement('li');
+        li.textContent = line;
+        items.push(li);
+      }));
+      // Other patients' charts: answers sent from this page, and changes from an earlier sign-in waiting
+      // there for Save or Delete. Say so, and link to where the details are (no patient's name is kept).
+      const others = new Map<string, { href: string; notice: boolean; earlier: boolean; unsure: boolean; unchecked: boolean }>();
+      elsewhere.forEach((e) => {
+        const k = `${e.clinic}|${e.patient}`;
+        const o = others.get(k) ?? { href: `/c/${e.clinic}/patients/${e.patient}/`, notice: false, earlier: false, unsure: false, unchecked: false };
+        const d = e.kind === 'change' ? doubt(e) : null;
+        if (e.kind === 'notice') o.notice = true;
+        else if (d === 'unsure') o.unsure = true;
+        else if (d === 'unchecked') o.unchecked = true;
+        else o.earlier = true;
+        others.set(k, o);
+      });
+      // The sentence, then the way there on its own line: a full-size target for a gloved hand.
+      const line = (href: string, text: string) => {
+        const li = document.createElement('li');
+        li.className = 'flex flex-col items-start gap-2';
+        const p = document.createElement('span');
+        p.textContent = text;
+        const a = document.createElement('a');
+        a.href = href;
+        a.className = 'inline-flex min-h-11 items-center border border-line bg-surface px-3.5 py-2.5 text-[13px] font-medium text-ink-2 hover:border-accent hover:text-accent';
+        a.textContent = 'Open that record';
+        li.append(p, a);
+        items.push(li);
+      };
+      others.forEach((o) => {
+        if (o.notice) line(o.href, 'A change you made on another patient’s chart was not applied. That record says which tooth.');
+        if (o.earlier) line(o.href, 'A change you made before you last signed in is waiting on another patient’s chart. It is not saved. Save or delete it there.');
+        if (o.unsure) line(o.href, 'A change kept on this device while someone else was signed in here is waiting on another patient’s chart. It is not saved. Check it there.');
+        if (o.unchecked) line(o.href, 'A change kept on this device before it could check who was signed in is waiting on another patient’s chart. It is not saved. Check it there.');
+      });
+      noticeList.replaceChildren(...items);
+      noticeBox.hidden = items.length === 0;
+      noticeOk.hidden = here.length === 0;
+    }
+
+    let reading = 0;
+    async function refresh() {
+      if (!scope) return;
+      const mine = ++reading;
+      const [r, o, w, state] = await Promise.all([queue.recordsFor(scope), queue.noticesElsewhere(scope), queue.waiting(scope.staff), queue.signInState()])
+        .catch(() => [records, elsewhere, allWaiting, { who: locked ? null : { staff: scope.staff, sid: scope.sid }, leavingSince: null }] as const);
+      const who = state.who;
+      // Only the latest read paints: two reads racing never leave the older on screen.
+      if (mine !== reading) return;
+      // What the device holds, plus any sent change this page has shown that the device no longer holds (another
+      // tab, a sign-out). In the order made, so a later change to the same tooth still lays over it.
+      for (const e of r) {
+        if (e.kind !== 'change' || e.state !== 'synced') continue;
+        const had = shownSynced.get(e.key);
+        if (!had || had.seq <= e.seq) shownSynced.set(e.key, e);
+      }
+      const ids = new Set(r.map((e) => e.id));
+      records = [...r, ...[...shownSynced.values()].filter((e) => !ids.has(e.id))].sort((a, b) => a.seq - b.seq);
+      elsewhere = o;
+      allWaiting = w;
+      // Whose sign-in this device is on now, as the last freshly drawn chart, a sign-in or sign-out, or the
+      // server said; and whether this page's sign-in has simply run out.
+      const expired = deadline !== null && Date.now() >= deadline;
+      locked = expired || !who || who.staff !== scope.staff || who.sid !== scope.sid;
+      // A sign-out on its way says so for as long as it can take; past that it is over (its tab closed mid-way).
+      const leftFor = !expired && !who && state.leavingSince !== null ? state.leavingSince + queue.LEAVING_MS - Date.now() : 0;
+      leaving = leftFor > 0;
+      if (leaving) setTimeout(refresh, leftFor + 50);
+      if (!locked) lockRefused = false;
+      else if (palette.matches(':popover-open')) palette.hidePopover();
+      lay();
+      say();
+      tell();
+    }
+
+    // Sending under a sign-in that has ended would only be refused: this page leaves it to a fresh one.
+    const kick = () => {
+      if (scope && !locked && navigator.onLine !== false) queue.flush(scope.staff, scope.sid, csrf);
+    };
+
+    // The server's word on who is signed in here. When it differs from this page's sign-in, the device
+    // records it and every open chart hears so (onChange), and this one locks. ask() always asks: a tooth
+    // opened (or Clear chart pressed) asks, and that change is confirmed only once the answer is in (keep),
+    // so the palette opens at once and the question runs while the person picks. check() is for an idle
+    // chart — looked at again, reconnected, every 30 seconds — and asks at most once in five seconds. On a
+    // kept copy of the page, every answer (or none) also says whether the connection is back (reached).
+    let lastCheck = 0;
+    const heard = (w: unknown) => {
+      if (!copyAt || (w !== undefined) === reached) return;
+      reached = w !== undefined;
+      say();
+    };
+    const ask = (): Promise<unknown> => {
+      if (!scope || navigator.onLine === false) { heard(undefined); return Promise.resolve(); }
+      // A locked page has nothing to ask about, except whether the line is back, on a copy.
+      if (locked && !copyAt) return Promise.resolve();
+      lastCheck = Date.now();
+      return queue.serverWho().then((w) => { heard(w); return w; }, () => { heard(undefined); });
+    };
+    const check = (): Promise<unknown> => (Date.now() - lastCheck >= 5_000 ? ask() : Promise.resolve());
+    // The question asked when the open tooth was opened.
+    let asked: Promise<unknown> = Promise.resolve();
+
+    /** A tap on a chart whose sign-in has ended: nothing opens, the line under the chart says why, and Reload has the focus. */
+    function refuseLocked() {
+      lockRefused = true;
+      say();
+      holdNote?.scrollIntoView({ block: 'nearest' });
+      holdReload?.focus({ preventScroll: true });
+    }
+
+    // Changes are written to the device in the order made, one after another, at once. None waits there for
+    // the answer about who is signed in: each is confirmed (or refused) when its own answer is in.
+    let keeping: Promise<void> = Promise.resolve();
+    function commit(body: queue.Body, answer: Promise<unknown>) {
+      if (!scope || !saveUrl) return;
+      optimistic.push(body);
+      say();
+      keeping = keeping.then(() => keep(body, answer));
+    }
+
+    /** A tap the device would not take, or took and then had to refuse: the chart goes back to what is really
+     *  saved, and the line says why — this page's sign-in has ended (Reload), or the device would not keep it
+     *  (storage full or blocked). */
+    async function notKept(err: unknown) {
+      if ((err as Error)?.name === 'SignedOut') {
+        locked = true;
+        lockRefused = true;
+      } else refused = true;
+      await refresh();
+      if (lockRefused) refuseLocked();
+    }
+
+    async function keep(body: queue.Body, answer: Promise<unknown>) {
+      if (!scope || !saveUrl) return;
+      let entry: queue.Entry;
+      try {
+        // After this page has said whose it is (milliseconds after load), so a quick first tap is never taken
+        // for a stale page. Then straight onto the device, unconfirmed: a tab dropped from here on keeps it.
+        await claimed;
+        entry = await queue.enqueue(scope, saveUrl, body, renderedAt, true);
+      } catch (err) {
+        optimistic.splice(optimistic.indexOf(body), 1);
+        await notKept(err);
+        return;
+      }
+      optimistic.splice(optimistic.indexOf(body), 1);
+      refused = false;
+      await refresh();
+      // It is on the device: once a save would normally be back, show it as kept there, answer or not.
+      setTimeout(refresh, WAITING_AFTER_MS + 100);
+      settle(entry, answer);
+    }
+
+    /** Once the server has said who is signed in here now (the question asked when the tooth was opened), or could
+     *  not say within 4 seconds: if that is still this page's person and sign-in, the change is confirmed and goes;
+     *  if not, the device already knows (follow), and the change is deleted and the tap refused. */
+    async function settle(entry: queue.Entry, answer: Promise<unknown>) {
+      if (!scope) return;
+      await answer;
+      try {
+        await queue.confirmKept(scope, entry);
+      } catch (err) {
+        if ((err as Error)?.name === 'SignedOut') await notKept(err);
+        // Storage failed: it stays unconfirmed, and the server's next word on this sign-in settles it.
+        return;
+      }
+      await refresh();
+      // Look again once a slow save has had its chance, so a waiting change shows as waiting.
+      setTimeout(refresh, WAITING_AFTER_MS + 100);
+      kick();
+    }
+
+    noticeOk?.addEventListener('click', () => {
+      queue.dismiss(records.filter((e) => e.kind === 'notice').map((e) => e.key));
+    });
+    copyNote?.querySelector('[data-copy-reload]')?.addEventListener('click', () => location.reload());
+    holdReload?.addEventListener('click', () => location.reload());
+
+    // Changes made under an earlier sign-in, shown marked on this chart: the person chooses.
+    holdSave?.addEventListener('click', async () => {
+      if (!scope) return;
+      if (locked) return refuseLocked();
+      try {
+        await queue.adopt(scope, earlierHere().map((e) => e.key));
+      } catch (err) {
+        if ((err as Error)?.name === 'SignedOut') { locked = true; lockRefused = true; }
+      }
+      await refresh();
+      if (lockRefused) return refuseLocked();
+      kick();
+    });
+    holdDelete?.addEventListener('click', async () => {
+      if (!scope) return;
+      const keys = earlierHere().map((e) => e.key);
+      if (!keys.length) return;
+      const what = keys.length === 1 ? 'this chart change' : `these ${keys.length} chart changes`;
+      if (!confirm(`Delete ${what} from this device? ${keys.length === 1 ? 'It was' : 'They were'} never saved.`)) return;
+      await queue.forget(scope, keys).catch(() => {});
+      await refresh();
+    });
+
+    // This page, just drawn by the server for the person signed in, says so to the device.
+    const claimed = scope
+      ? (async () => {
+        stored = await queue.persistent();
+        await queue.setCurrentUser({ staff: scope.staff, sid: scope.sid }).catch(() => {});
+      })()
+      : Promise.resolve();
+
+    if (scope) {
+      // Signing out from this page sends what waits first, asks before deleting anything
+      // unsent or unread, then clears this person's records from the device.
+      queue.nameTeeth(nameOfFdi);
+      queue.guardSignOut();
+      (async () => {
+        await claimed;
+        // Sent changes and answers past their keeping time go.
+        await queue.tidy().catch(() => {});
+        queue.onChange(refresh);
+        await refresh();
+        kick();
+        // A kept copy: is the line really back? (The server's answer also settles changes this sign-in kept
+        // unconfirmed before the page closed, and they go.)
+        if (copyAt) ask().then(kick);
+      })();
+      addEventListener('online', () => { refresh(); (copyAt ? ask() : check()).then(kick); kick(); });
+      addEventListener('offline', () => { heard(undefined); refresh(); });
+      // Between the tap and the device's write (milliseconds) a change lives only in this page: leaving asks first.
+      addEventListener('beforeunload', (e) => { if (optimistic.length) { e.preventDefault(); e.returnValue = ''; } });
+      addEventListener('pageshow', (e) => { if (e.persisted) { refresh(); check().then(kick); kick(); } });
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { check().then(kick); kick(); } });
+      setInterval(() => {
+        const asked = document.visibilityState === 'visible' ? check() : Promise.resolve();
+        // After the answer: it may have confirmed changes kept unconfirmed, which can go now.
+        asked.then(() => {
+          if (records.some((e) => e.kind === 'change' && e.state === 'pending')) kick();
+          else queue.waiting(scope.staff).then((w) => { if (w.length) kick(); }).catch(() => {});
+        });
+      }, queue.RETRY_MS);
+      // The moment this page's sign-in runs out, it locks. (Capped: a longer timer would fire at once.)
+      if (deadline !== null) setTimeout(refresh, Math.min(2 ** 31 - 1, Math.max(0, deadline - Date.now()) + 100));
+    }
+
     function openPalette(b: HTMLButtonElement) {
+      if (locked) return refuseLocked();
+      asked = ask();
       active = b;
       const fdi = fdiOf(b);
       const m = marks.get(b);
@@ -435,7 +1044,7 @@ const wholeConditions: ToothCondition[] = [
         if (!active) return;
         const condition = c.dataset.condition as ToothCondition;
         const fdi = fdiOf(active);
-        let change: Record<string, unknown>;
+        let change: queue.ToothBody;
         if (condition === 'sound') {
           marks.delete(active);
           change = { fdi, condition: null, surfaces: [] };
@@ -453,7 +1062,7 @@ const wholeConditions: ToothCondition[] = [
         render();
         palette.hidePopover();
         active.focus();
-        save(change);
+        commit(change, asked);
       });
     });
 
@@ -467,16 +1076,39 @@ const wholeConditions: ToothCondition[] = [
           b.setAttribute('aria-label', describe(b));
         });
         render();
+        tell();
       });
     });
 
     root.querySelector<HTMLButtonElement>('[data-clear]')?.addEventListener('click', () => {
+      if (locked) return refuseLocked();
+      const answer = ask();
       marks.clear();
       teeth.forEach(paint);
       render();
-      save({ clear: true });
+      commit({ clear: true }, answer);
     });
 
     render();
   });
 </script>
+
+<style>
+  /* A tooth whose latest change is kept on this device and not on the server
+     yet: a folded corner, top right, and the same corner in the legend. A
+     triangle, so it never reads as one more surface pip; ink, not red, because
+     nothing is wrong — it just has not gone yet. Edged in the surface colour
+     along its long side, so it stands out on every fill in both themes: ink
+     is near the crown's amber in dark mode, and the edge is not. */
+  .tooth[data-waiting]::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    width: 15px;
+    height: 15px;
+    background: linear-gradient(to bottom left, var(--c-ink) 0 37%, var(--c-surface) 37% 52%, transparent 52%);
+    pointer-events: none;
+  }
+  .waiting-swatch { background: linear-gradient(to bottom left, var(--c-ink) 0 37%, var(--c-surface) 37% 52%, transparent 52%); }
+</style>

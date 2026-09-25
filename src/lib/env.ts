@@ -166,12 +166,43 @@ function checkTexts(p: Problem[], w: string[], env: Env) {
   }
 }
 
+/**
+ * Email is optional (src/lib/email.ts): EMAIL_PROVIDER unset or "off" is no
+ * email channel, not a problem. When it is set it must be able to send, on the
+ * web server (which offers "Email me a code" and queues invitations by email)
+ * and on the worker (which sends them) alike: a server that says "we emailed
+ * you a code" and never does is worse than one that only texts. A refusal here
+ * stops the whole server and the worker, texts included, so EMAIL_PROVIDER is
+ * the last of the three to be set.
+ */
+const EMAIL_ADDRESS = /^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[^\s@<>(),;:"]{2,}$/;
+function checkEmail(p: Problem[], w: string[], env: Env) {
+  const provider = read(env, 'EMAIL_PROVIDER').toLowerCase();
+  if (!provider || provider === 'off' || provider === 'none') return;
+  if (provider === 'console') {
+    p.push({ key: 'EMAIL_PROVIDER', text: 'EMAIL_PROVIDER is console: emails would be printed, not sent, so nobody could reset a password or accept an invitation by email. Set EMAIL_PROVIDER=resend with EMAIL_API_KEY and EMAIL_FROM, or remove EMAIL_PROVIDER to turn email off (texts still work).' });
+  } else if (provider === 'resend') {
+    const key = read(env, 'EMAIL_API_KEY');
+    if (!key) p.push({ key: 'EMAIL_API_KEY', missing: true, text: 'EMAIL_API_KEY is not set. EMAIL_PROVIDER=resend needs an API key from resend.com (API Keys, sending access). Remove EMAIL_PROVIDER to turn email off (texts still work); set EMAIL_API_KEY and EMAIL_FROM first and EMAIL_PROVIDER last, by hand, on the web server and the worker.' });
+    else if (PLACEHOLDER.test(key)) p.push({ key: 'EMAIL_API_KEY', text: 'EMAIL_API_KEY is still the placeholder from .env.example. Put the API key from resend.com there.' });
+    else if (!key.startsWith('re_')) w.push('EMAIL_API_KEY does not start with re_, as Resend\'s keys do. Check it was pasted whole.');
+    const from = read(env, 'EMAIL_FROM');
+    const named = /^[^<>]*<([^<>\s]+)>$/.exec(from);
+    const address = named ? named[1] : from;
+    if (!from) p.push({ key: 'EMAIL_FROM', missing: true, text: 'EMAIL_FROM is not set. It is who the email is from, on a domain verified at Resend, like: Flossify <no-reply@flossify.ph>. Or remove EMAIL_PROVIDER to turn email off.' });
+    else if (!EMAIL_ADDRESS.test(address)) p.push({ key: 'EMAIL_FROM', text: 'EMAIL_FROM is not an address. Write it like: Flossify <no-reply@flossify.ph>' });
+  } else {
+    p.push({ key: 'EMAIL_PROVIDER', text: `EMAIL_PROVIDER is "${/^[\w.-]{1,24}$/.test(provider) ? provider : 'something else'}". Use resend, or remove it to turn email off.` });
+  }
+}
+
 /** Every problem with this environment, for the given process. Pure: reads only what it is given. */
 export function checkEnv(env: Env = process.env, scope: Scope = 'web'): EnvReport {
   const problems: Problem[] = [];
   const warnings: string[] = [];
   checkDatabase(problems, warnings, env);
   checkTexts(problems, warnings, env);
+  checkEmail(problems, warnings, env);
   if (scope === 'web') {
     checkSecret(problems, env, 'SESSION_SECRET', 32, 'openssl rand -base64 48', 'It signs every sign-in; rotating it signs everyone out.');
     checkSecret(problems, env, 'SMS_INBOUND_SECRET', 24, 'openssl rand -hex 24', 'Replies from the text gateway are accepted only with it.');
