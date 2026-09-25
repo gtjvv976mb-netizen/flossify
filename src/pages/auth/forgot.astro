@@ -43,6 +43,7 @@
 export const prerender = false;
 
 import StaffEntrance from '../../components/StaffEntrance.astro';
+import Icon from '../../components/ws/Icon.astro';
 import Csrf from '../../components/Csrf.astro';
 import { staffByPhone, authEvent } from '../../lib/auth';
 import { pool, withClinic } from '../../lib/db';
@@ -166,53 +167,52 @@ const byEmail = via === 'email';
 const GO = { sms: 'Text me a code', email: 'Email me a code' };
 ---
 
-<StaffEntrance title="Reset your password — Flossify" description={emailOn ? 'We send a six-digit code to the mobile number or email on your staff account.' : 'We text a six-digit code to the mobile number on your staff account.'} page="Forgot password">
-  <a href="/auth/login/" class="meta hover:text-ink">&larr; Staff sign-in</a>
-  <h1 class="entry-title font-display mt-4">
+<StaffEntrance title="Reset your password — Flossify" description={emailOn ? 'We send a six-digit code to the mobile number or email on your staff account.' : 'We text a six-digit code to the mobile number on your staff account.'}>
+  <a slot="head" href="/auth/login/" class="entry-back"><Icon name="chevron-left" /><span>Back to sign-in</span></a>
+  <h1 class="entry-title">
     <span class="block">Locked out?</span>
-    <span class="block entry-dim">{emailOn ? 'We’ll send you a code.' : 'We’ll text you a code.'}</span>
+    <span class="entry-sub">{emailOn ? 'We’ll send you a code.' : 'We’ll text you a code.'}</span>
   </h1>
-  <p class="mt-2 text-[14.5px] leading-relaxed entry-dim">
+  <p class="entry-lede">
     {emailOn ? 'To the mobile or the email on your staff account. It works for 15 minutes.' : 'Type the mobile number on your staff account. The code works for 15 minutes.'}
   </p>
 
-  <form method="post" class="mt-5 grid gap-4" data-entry-form>
+  <form method="post" class="entry-form" data-entry-form>
     <Csrf />
     {emailOn && (
       <fieldset class="entry-devices">
-        <legend class="meta">Send the code by</legend>
+        <legend class="entry-label">Send the code by</legend>
         <div class="entry-seg">
           <label><input type="radio" name="via" value="sms" class="sr-only" checked={!byEmail} data-via-pick />Text</label>
-          <label><input type="radio" id="via-email" name="via" value="email" class="sr-only" checked={byEmail} aria-label="Email" data-via-pick />Email</label>
+          <label><input type="radio" name="via" value="email" class="sr-only" checked={byEmail} data-via-pick />Email</label>
         </div>
       </fieldset>
     )}
     {/* With the switch, neither field is required or disabled in the markup: without script both are sent and the server reads the one `via` names. */}
     <div class="entry-field" data-via-field="sms">
-      <label for="phone" class="meta">Mobile number</label>
+      <label for="phone" class="entry-label">Mobile number</label>
       <input id="phone" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0917 000 0000" value={typedPhone} required={!emailOn} autofocus={!byEmail}
         aria-invalid={error && !byEmail ? 'true' : undefined} aria-describedby={error && !byEmail ? 'forgot-error' : undefined} />
     </div>
     {emailOn && (
       <div class="entry-field" data-via-field="email">
-        <label for="email" class="meta">Email</label>
+        <label for="email" class="entry-label">Email</label>
         <input id="email" type="email" name="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" maxlength={EMAIL_MAX} placeholder="you@clinic.ph" value={typedEmail} autofocus={byEmail}
           aria-invalid={error && byEmail ? 'true' : undefined} aria-describedby={error && byEmail ? 'forgot-error' : undefined} />
       </div>
     )}
-    {error && <p id="forgot-error" role="alert" class="entry-note entry-note-bad">{error}</p>}
-    <button type="submit" class="btn btn-primary entry-go" data-go data-busy="Sending…">{emailOn ? <><span data-via-field="sms">{GO.sms}</span><span data-via-field="email">{GO.email}</span></> : GO.sms}</button>
+    {error && <p id="forgot-error" role="alert" class="entry-note entry-note-bad"><Icon name="alert" /><span>{error}</span></p>}
+    <button type="submit" class="entry-go" data-go data-busy="Sending…"><Icon name="message" /><span data-go-label>{emailOn ? <><span data-via-field="sms">{GO.sms}</span><span data-via-field="email">{GO.email}</span></> : GO.sms}</span></button>
   </form>
 
   {emailOn ? (
-    <p class="mt-4 text-[13.5px] leading-relaxed entry-dim">No mobile on file, or the clinic phone is shared? Choose <label for="via-email" class="cursor-pointer font-semibold underline underline-offset-4">Email</label>.</p>
+    <p class="entry-aside"><Icon name="info" /><span>No mobile on file, or the clinic phone is shared? Choose <strong>Email</strong> above.</span></p>
   ) : (
-    <p class="mt-4 text-[13.5px] leading-relaxed entry-dim">No mobile on file? Your clinic owner can add it on <strong class="font-semibold">Settings → Team</strong> and text you a code from there.</p>
+    <p class="entry-aside"><Icon name="info" /><span>No mobile on file? Your clinic owner can add it on <strong>Settings → Team</strong> and text you a code from there.</span></p>
   )}
 
-  <ul class="mt-6 border-t entry-rule" aria-label="Other ways in">
-    <li class="border-b entry-rule"><a href={byEmail ? '/auth/code/?via=email' : '/auth/code/'} class="entry-way" data-code-link><span><span class="text-[14.5px] font-semibold">Already have a code?</span> <span class="entry-way-hint">Enter it and choose a new password.</span></span><span aria-hidden="true" class="entry-way-arrow">&rarr;</span></a></li>
-    <li class="border-b entry-rule"><a href="/auth/login/" class="entry-way"><span><span class="text-[14.5px] font-semibold">Remembered it?</span> <span class="entry-way-hint">Back to sign-in.</span></span><span aria-hidden="true" class="entry-way-arrow">&rarr;</span></a></li>
+  <ul class="entry-ways" aria-label="Other ways in">
+    <li><a href={byEmail ? '/auth/code/?via=email' : '/auth/code/'} class="entry-way" data-code-link><span class="entry-way-icon"><Icon name="message" /></span><span class="entry-way-words"><span class="entry-way-title">Already have a code?</span> <span class="entry-way-hint">Enter it and choose a new password.</span></span><Icon name="chevron-right" class="entry-way-go" /></a></li>
   </ul>
 </StaffEntrance>
 
@@ -263,9 +263,26 @@ const GO = { sms: 'Text me a code', email: 'Email me a code' };
     history.replaceState(history.state, '', here.pathname + here.search + here.hash);
     if (!byKey) document.querySelector<HTMLInputElement>(`[data-via-field="${via}"] input`)?.focus();
   }));
-  // One press.
+  // One press. The words change, and the stylesheet turns a small ring in place of the icon.
   document.querySelector<HTMLFormElement>('[data-entry-form]')?.addEventListener('submit', (e) => {
     const btn = (e.currentTarget as HTMLFormElement).querySelector<HTMLButtonElement>('[data-go]');
-    if (btn) { btn.disabled = true; btn.textContent = btn.dataset.busy ?? 'Working…'; }
+    if (!btn) return;
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    const label = btn.querySelector<HTMLElement>('[data-go-label]') ?? btn;
+    label.dataset.was = label.innerHTML;
+    label.textContent = btn.dataset.busy ?? 'Working…';
+  });
+  // Back to this page from the browser's cache: the button is ready again.
+  addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    document.querySelectorAll<HTMLButtonElement>('[data-go]').forEach((btn) => {
+      const label = btn.querySelector<HTMLElement>('[data-go-label]');
+      if (label?.dataset.was) { label.innerHTML = label.dataset.was; delete label.dataset.was; }
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+    });
+    const picked = picks.find((r) => r.checked);
+    if (picked) sync(picked.value);
   });
 </script>

@@ -28,6 +28,12 @@
 // - A desk consent says who agreed (agreed_as, 021): the patient, or a parent
 //   or guardian, named. Under 18 by the birth date on file, only a parent or
 //   guardian can agree. With no birth date on file, the desk says which it is.
+// - Consent signed on paper is recorded as what it was (026). A printed copy of
+//   the notice in force, signed on a day it was in force: a patient_consent
+//   row, channel 'paper', with that day (signed_on) — it counts like any
+//   consent to that version, and the age rule is the one on the day it was
+//   signed. The clinic's own paper form: a patient_paper_consent row, kept on
+//   the record as a fact, never counted as consent to the notice.
 
 import type { Tx } from './db';
 
@@ -352,16 +358,19 @@ export interface ConsentRow {
   id: string; version_id: string; given_at: Date; channel: string; given_by_name: string | null; recorded_by_name: string | null;
   /** Who agreed: the patient, or a parent or guardian (021). Null on web consents and older rows. */
   agreed_as: AgreedAs | null;
+  /** Signed on paper: the day on the paper (026). Null for every other channel. */
+  signed_on: string | null;
 }
 
 export async function readConsents(tx: Tx, patientId: string): Promise<ConsentRow[]> {
   const { rows } = await tx.query(
-    `select c.*, s.full_name as recorded_by_name
+    `select c.*, to_char(c.signed_on, 'YYYY-MM-DD') as signed_day, s.full_name as recorded_by_name
        from patient_consent c left join staff s on s.id = c.recorded_by
       where c.patient_id = $1 order by c.given_at desc`, [patientId]);
   return rows.map((r) => ({
     id: r.id, version_id: r.version_id, given_at: r.given_at, channel: r.channel, given_by_name: r.given_by_name,
     recorded_by_name: r.recorded_by_name, agreed_as: r.agreed_as === 'patient' || r.agreed_as === 'guardian' ? r.agreed_as : null,
+    signed_on: r.signed_day ?? null,
   }));
 }
 
@@ -435,3 +444,112 @@ export async function recordDeskConsent(tx: Tx, a: {
     [a.clinicId, a.staffId, a.patientId]);
   return 'saved';
 }
+
+// ---------------------------------------------------------------------------
+// Consent signed on paper
+// ---------------------------------------------------------------------------
+export type PaperWhat = 'notice' | 'clinic';
+
+export interface PaperForm {
+  id: string; signed_on: string; form_name: string; signed_by_name: string | null; agreed_as: AgreedAs | null;
+  recorded_by_name: string | null; recorded_at: Date; imported: boolean;
+}
+
+/** The clinic's own paper consent forms on file (026), newest paper first. */
+export async function readPaperForms(tx: Tx, patientId: string): Promise<PaperForm[]> {
+  const { rows } = await tx.query(
+    `select f.id, to_char(f.signed_on, 'YYYY-MM-DD') as signed_on, f.form_name, f.signed_by_name, f.agreed_as, f.recorded_at,
+            f.import_id is not null as imported, s.full_name as recorded_by_name
+       from patient_paper_consent f left join staff s on s.id = f.recorded_by
+      where f.patient_id = $1 order by f.signed_on desc`, [patientId]);
+  return rows.map((r) => ({ ...r, agreed_as: r.agreed_as === 'patient' || r.agreed_as === 'guardian' ? r.agreed_as : null }));
+}
+
+export interface PaperIn {
+  what: PaperWhat | null;
+  /** The notice the screen showed, for 'notice'. */
+  version: string;
+  signedOn: string;
+  givenBy: string | null;
+  agreedAs: AgreedAs | null;
+}
+
+/** The paper fields as posted (paper_*), and every problem with them. */
+export function readPaperForm(form: FormData, today = manilaToday()): { paper: PaperIn; problems: string[] } {
+  const problems: string[] = [];
+  const whatRaw = String(form.get('paper_what') ?? '');
+  const what: PaperWhat | null = whatRaw === 'notice' || whatRaw === 'clinic' ? whatRaw : null;
+  const who = String(form.get('paper_agreed_as') ?? '');
+  const agreedAs: AgreedAs | null = who === 'patient' || who === 'guardian' ? who : null;
+  const givenBy = oneLine(form.get('paper_name')) || null;
+  const signedOn = oneLine(form.get('paper_signed_on'));
+  if (!what) problems.push('Say what was signed: a printed copy of the privacy notice, or the clinic’s own form.');
+  if (!signedOn) problems.push('Write the date on the paper.');
+  else if (!YMD.test(signedOn) || !(() => { const m = YMD.exec(signedOn)!; const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])); return d.getUTCDate() === +m[3] && d.getUTCMonth() === +m[2] - 1; })()) problems.push('The date on the paper is not a real date.');
+  else if (signedOn > today) problems.push('The date on the paper is after today. Check it.');
+  else if (signedOn < '1900-01-01') problems.push('The date on the paper is before 1900. Check the year.');
+  if (givenBy && givenBy.length > NAME_MAX) problems.push(`Keep the name under ${NAME_MAX} characters.`);
+  return { paper: { what, version: String(form.get('paper_version') ?? ''), signedOn, givenBy, agreedAs }, problems };
+}
+
+export type PaperResult =
+  | 'none' | 'saved' | 'already'
+  /** 'notice' asked, but no notice is in force, or another came into force since the page was drawn. */
+  | 'no-notice' | 'changed'
+  /** The paper is dated before the notice was in force: it cannot be consent to it. */
+  | 'before'
+  | 'who' | 'minor' | 'guardian-name';
+
+/**
+ * Record a consent signed on paper. 'notice': the notice in force, printed and
+ * signed on `signedOn` — a patient_consent row (channel 'paper'), under the
+ * desk's rules: who agreed, a parent or guardian (named) for a patient under
+ * 18 on the day it was signed, one per notice unless a guardian's is added.
+ * 'clinic': the clinic's own form — a patient_paper_consent row, one per day.
+ * The patient row is locked first, like every write to a record.
+ */
+export async function recordPaperConsent(tx: Tx, a: { clinicId: string; staffId: string; patientId: string } & PaperIn): Promise<PaperResult> {
+  const p = (await tx.query<{ birth: string | null }>(
+    `select to_char(birth_date, 'YYYY-MM-DD') as birth from patient where id = $1 and archived_at is null for update`, [a.patientId])).rows[0];
+  if (!p) return 'none';
+  const audit = (action: string) => tx.query(
+    `insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'patient', $4)`, [a.clinicId, a.staffId, action, a.patientId]);
+  if (a.what === 'clinic') {
+    const r = await tx.query(
+      `insert into patient_paper_consent (clinic_id, patient_id, signed_on, signed_by_name, agreed_as, recorded_by)
+       values ($1, $2, $3, $4, $5, $6) on conflict (clinic_id, patient_id, signed_on) do nothing`,
+      [a.clinicId, a.patientId, a.signedOn, a.givenBy, a.agreedAs, a.staffId]);
+    if (!r.rowCount) return 'already';
+    await audit('consent.paper_form');
+    return 'saved';
+  }
+  const notice = await noticeInForce(tx);
+  if (!notice) return 'no-notice';
+  if (notice.id !== a.version) return 'changed';
+  const eff = (await tx.query<{ d: string }>(`select effective_from::text as d from consent_version where id = $1`, [notice.id])).rows[0]?.d;
+  if (eff && a.signedOn < eff) return 'before';
+  if (!a.agreedAs) return 'who';
+  if (isMinor(p.birth ?? null, a.signedOn) && a.agreedAs !== 'guardian') return 'minor';
+  if (a.agreedAs === 'guardian' && !a.givenBy) return 'guardian-name';
+  const had = (await tx.query<{ agreed_as: string | null }>(
+    'select agreed_as from patient_consent where patient_id = $1 and version_id = $2', [a.patientId, notice.id])).rows;
+  const addsGuardian = a.agreedAs === 'guardian' && !had.some((r) => r.agreed_as === 'guardian');
+  if (had.length && !addsGuardian) return 'already';
+  await tx.query(
+    `insert into patient_consent (clinic_id, patient_id, version_id, channel, given_by_name, recorded_by, agreed_as, signed_on)
+     values ($1, $2, $3, 'paper', $4, $5, $6, $7)`,
+    [a.clinicId, a.patientId, notice.id, a.givenBy, a.staffId, a.agreedAs, a.signedOn]);
+  await audit('consent.paper');
+  return 'saved';
+}
+
+/** The sentence for each paper result the desk can act on. */
+export const PAPER_WORDS: Record<Exclude<PaperResult, 'saved' | 'none'>, string> = {
+  already: 'That paper is already on record, so it was not added again.',
+  'no-notice': 'No privacy notice is in force, so a printed copy of it cannot have been signed. Record it as the clinic’s own form.',
+  changed: 'The privacy notice changed while this page was open. Check which one the paper is, and record it again.',
+  before: 'The paper is dated before this privacy notice was in force, so it cannot be consent to it. Record it as the clinic’s own form.',
+  who: 'Say who signed: the patient, 18 or over, or a parent or guardian.',
+  minor: 'The birth date on file makes the patient under 18 on the day it was signed, so a parent or guardian signs for them. Choose that, and write their name.',
+  'guardian-name': 'A parent or guardian signed, so write their name as it is on the paper.',
+};

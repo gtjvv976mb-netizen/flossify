@@ -1,0 +1,57 @@
+---
+// An in-page switch: two to five choices, one of them on — a small row of
+// soft pills (the chosen one tinted teal, teal words), or with
+// variant="underline" plain words with a teal line under the chosen one, for
+// switching inside a card.
+//
+// Links (the choice is in the URL, so it survives a reload and a post):
+//   <Tabs label="Show" current={show} items={[
+//     { id: 'all', label: 'All', href: '?' },
+//     { id: 'failed', label: 'Failed', href: '?show=failed', count: 2 },
+//   ]} />
+//
+// In place (no href): buttons that show one panel and hide the others. Each
+// item's id is the id of its panel, which the page renders like this:
+//   <Tabs label="View" group="cal" current="day" items={[{ id: 'day', label: 'Day' }, { id: 'week', label: 'Week' }]} />
+//   <div id="day" role="tabpanel" aria-labelledby="cal-day-tab">…</div>
+//   <div id="week" role="tabpanel" aria-labelledby="cal-week-tab" hidden>…</div>
+// Arrow keys move between the buttons; the change fires `ws:tab` on the
+// tablist with detail { id }. `full` stretches the control to its container
+// (its choices go on to a second row rather than cut a word short).
+interface Item { id: string; label: string; href?: string; count?: number | string | null }
+type Variant = 'pills' | 'underline';
+interface Props {
+  items: Item[];
+  current: string;
+  /** What the choice is about, for screen readers: "Show", "View". */
+  label: string;
+  /** Prefix for the buttons' ids (in-place mode). */
+  group?: string;
+  full?: boolean;
+  /** 'pills' (default) or 'underline' (inside a card). */
+  variant?: Variant;
+  class?: string;
+}
+const { items, current, label, group = 'tabs', full = false, variant = 'pills', class: extra } = Astro.props;
+const links = items.some((i) => i.href);
+const has = (c: Item['count']) => c !== undefined && c !== null && c !== '' && c !== 0;
+---
+
+{links ? (
+  <nav aria-label={label} class:list={['ws-seg', variant === 'underline' && 'ws-seg-line', full && 'ws-seg-full', extra]}>
+    {items.map((i) => (
+      <a href={i.href} class="ws-seg-item" aria-current={i.id === current ? 'page' : undefined}>
+        <span class="ws-seg-label">{i.label}</span>{has(i.count) && <span class="ws-seg-count">{i.count}</span>}
+      </a>
+    ))}
+  </nav>
+) : (
+  <div role="tablist" aria-label={label} class:list={['ws-seg', variant === 'underline' && 'ws-seg-line', full && 'ws-seg-full', extra]} data-ws-tabs>
+    {items.map((i) => (
+      <button type="button" role="tab" id={`${group}-${i.id}-tab`} class="ws-seg-item" aria-controls={i.id}
+        aria-selected={i.id === current ? 'true' : 'false'} tabindex={i.id === current ? 0 : -1}>
+        <span class="ws-seg-label">{i.label}</span>{has(i.count) && <span class="ws-seg-count">{i.count}</span>}
+      </button>
+    ))}
+  </div>
+)}

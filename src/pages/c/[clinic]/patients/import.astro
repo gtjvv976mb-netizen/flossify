@@ -1,0 +1,620 @@
+---
+// Import patients, or their past visits, from a spreadsheet: CSV or Excel
+// (.xlsx). Three steps on one page, the step in the address:
+//
+//   1. Upload (/patients/import/). Templates for Patients and for Visits, or
+//      the clinic's own file as it is. The file is read (src/lib/import.ts,
+//      readTable: at most 5 MB, 5,000 rows and 200 columns, an .xlsx at most
+//      40 MB once unzipped, a sentence for anything else; 20 uploads in ten
+//      minutes a person),
+//      its columns matched to Flossify's fields by their headers, and kept as
+//      a draft (patient_import, 026) — nothing is added to the clinic yet.
+//   2. Check (?id=<draft>). The column matching, with a chance to fix any
+//      column; the order the file's dates are read in, with an example and
+//      what the file itself shows (03/04/1985 is month/day/year unless the desk
+//      switches it); then every row, what it becomes, and every problem in
+//      plain words. The counts are a dry run: plan() over a fresh read of the
+//      clinic, writing nothing.
+//   3. Import, then the summary (?id=<done>). ONE withClinic() transaction,
+//      after lockClinic (the schedule's own lock), planned again inside it:
+//      new patients, blanks filled on patients already on file, first health
+//      answers, the clinic's own paper consent forms, opening balances as
+//      statements; or past visits as completed visits marked imported, with
+//      their charges and payments as statements in the clinic's own series.
+//      Rows with problems are left out, listed with their reasons. The draft's
+//      cells are emptied; the counts stay. Importing the same file again adds
+//      nothing twice (import.ts says how each thing is matched).
+//
+// Soft and simple: the steps as three pills at the top, at most four numbers
+// on a screen, each row of the file as one line (the patient, what identifies
+// them, what the row becomes and why), and one teal button per step (Read the
+// file, Import …, Import another file).
+//
+// Every post carries the CSRF token, checked first (a miss comes back with
+// ?stale=1). Who: people who can edit records here (canEditRecords); the
+// money columns only for people who may bill here (canBill), and for others
+// the preview says they are left out. audit_log: import.upload, import.run, import.discard
+// (entity patient_import) and a row for each thing written (import.ts).
+export const prerender = false;
+
+import { createHash } from 'node:crypto';
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import Pane from '../../../../components/ws/Pane.astro';
+import Tile from '../../../../components/ws/Tile.astro';
+import Chip from '../../../../components/ws/Chip.astro';
+import Tabs from '../../../../components/ws/Tabs.astro';
+import Empty from '../../../../components/ws/Empty.astro';
+import Icon from '../../../../components/ws/Icon.astro';
+import Avatar from '../../../../components/ws/Avatar.astro';
+import Callout from './_ui/Callout.astro';
+import './_ui/patients.css';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { withClinic } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { hit, waitText, LIMITS } from '../../../../lib/throttle';
+import { canBill, pesos, fromDb } from '../../../../lib/invoices';
+import { canEditRecords, when, dateText } from '../../../../lib/health';
+import { prettyPhone } from '../../../../lib/messages';
+import {
+  FILE_MAX, ROWS_MAX, UPLOAD_LIMIT, formUpTo, readTable, autoMap, guessKind, cleanMapping, fieldsFor, fieldByKey, missingFields, dateEvidence, suggestedOrder,
+  snapshot, plan as makePlan, runPlan, lockClinic, ymdText, TEMPLATE, type Kind, type DateOrder, type Mapping, type Plan,
+} from '../../../../lib/import';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const money = canBill(session.role, clinic.can_view_finance);
+const base = `/c/${clinic.slug}/patients/import/`;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const q = Astro.url.searchParams;
+const idParam = q.get('id') ?? '';
+const id = UUID.test(idParam) ? idParam : '';
+const stale = q.get('stale') === '1';
+const at = (x: string, hash = '') => `${base}${x ? `?${x}` : ''}${hash}`;
+
+let uploadProblem: string | null = null;
+let runProblem: string | null = null;
+
+const audit = (tx: any, action: string, entityId: string) =>
+  tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'patient_import', $4)`, [clinic.id, session.staffId, action, entityId]);
+
+if (Astro.request.method === 'POST') {
+  // Refuse an oversized upload without holding it: 5 MB of file, and room for the form around it. The
+  // Content-Length is checked first; a body without one (chunked) is read only up to the same limit.
+  const BODY_MAX = FILE_MAX + 256 * 1024;
+  const length = Number(Astro.request.headers.get('content-length') ?? 0);
+  const form = length > BODY_MAX ? null : await formUpTo(Astro.request, BODY_MAX);
+  if (!form) {
+    uploadProblem = `That file is ${length > BODY_MAX ? `${(length / 1048576).toFixed(1)} MB` : 'more than 5 MB'}. The most one import takes is 5 MB: split it into two files.`;
+  } else {
+    if (!csrfOk(Astro.cookies, form)) return Astro.redirect(at(id ? `id=${id}&stale=1` : 'stale=1'), 303);
+    const intent = String(form.get('intent') ?? '');
+    const rate = await hit('record:s:' + session.staffId, ...LIMITS.chart.staff);
+    // Reading a file is the heaviest thing here: uploads have their own, lower limit.
+    const uploads = intent === 'upload' ? await hit('import:s:' + session.staffId, ...UPLOAD_LIMIT) : null;
+    const allowed = await withClinic(clinic.id, (tx) => canEditRecords(tx, session.staffId, clinic.id));
+    if (!rate.allowed) uploadProblem = runProblem = 'Too many at once. ' + waitText(rate.retryAfter);
+    else if (!allowed) uploadProblem = runProblem = 'Your account cannot add patients at this branch. Ask the owner.';
+    else if (uploads && !uploads.allowed) uploadProblem = `That is ${UPLOAD_LIMIT[0]} files in ${UPLOAD_LIMIT[1] / 60} minutes, the most one person uploads. ${waitText(uploads.retryAfter)}`;
+    else if (intent === 'upload') {
+      const file = form.get('file');
+      const chosen = String(form.get('kind') ?? 'auto');
+      if (!(file instanceof File) || !file.name) uploadProblem = 'Choose a file first: a CSV or an Excel workbook (.xlsx).';
+      else if (file.size === 0) uploadProblem = `${file.name.slice(0, 80)} is empty. Save the spreadsheet with its rows in it, and upload that.`;
+      else if (file.size > FILE_MAX) uploadProblem = `That file is ${(file.size / 1048576).toFixed(1)} MB. The most one import takes is 5 MB: split it into two files.`;
+      else {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const table = await readTable(bytes, file.name);
+        if ('problem' in table) uploadProblem = table.problem;
+        else {
+          const kind: Kind = chosen === 'patients' || chosen === 'visits' ? chosen : guessKind(table.headers);
+          const mapping = autoMap(table.headers, kind, money);
+          const dateCols = Object.entries(mapping).filter(([, k]) => ['birth_date', 'visit_date', 'paper_consent', 'balance_as_of'].includes(k)).map(([c]) => Number(c));
+          const order = suggestedOrder(dateEvidence(table.rows.flatMap((r) => dateCols.map((c) => r[c] ?? ''))));
+          const newId = await withClinic(clinic.id, async (tx) => {
+            // Drafts nobody ran in a day are let go: their cells are emptied.
+            await tx.query(`update patient_import set status = 'discarded', cells = null, headers = null where status = 'draft' and created_at < now() - interval '1 day'`);
+            const { rows: [row] } = await tx.query(
+              `insert into patient_import (clinic_id, kind, file_name, file_bytes, file_sha256, headers, cells, mapping, date_order, counts, created_by)
+               values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
+              [clinic.id, kind, file.name.slice(0, 200), bytes.length, createHash('sha256').update(bytes).digest('hex'), JSON.stringify(table.headers),
+               JSON.stringify(table.rows), JSON.stringify(mapping), order, JSON.stringify({ notes: table.notes, headerRow: table.headerRow }), session.staffId]);
+            await audit(tx, 'import.upload', row.id);
+            return row.id as string;
+          });
+          return Astro.redirect(at(`id=${newId}`), 303);
+        }
+      }
+    } else if (id && (intent === 'map' || intent === 'run' || intent === 'discard')) {
+      if (intent === 'map') {
+        const kindRaw = String(form.get('kind') ?? '');
+        const orderRaw = String(form.get('date_order') ?? '');
+        await withClinic(clinic.id, async (tx) => {
+          const d = (await tx.query(`select kind, headers, mapping from patient_import where id = $1 and status = 'draft' for update`, [id])).rows[0];
+          if (!d) return;
+          const width = (d.headers as string[]).length;
+          const kind: Kind = kindRaw === 'patients' || kindRaw === 'visits' ? kindRaw : d.kind;
+          // A different kind of file: its columns are matched again from the headers.
+          const raw: Record<string, unknown> = {};
+          for (let c = 0; c < width; c++) raw[String(c)] = form.get(`col_${c}`);
+          const mapping: Mapping = kind !== d.kind ? autoMap(d.headers, kind, money) : cleanMapping(raw, width, kind, money);
+          // Money columns this person cannot see stay as they were matched (for someone who can).
+          if (kind === d.kind && !money) for (const [c, k] of Object.entries(d.mapping as Mapping)) if (fieldByKey(k)?.money && !mapping[c]) mapping[c] = k;
+          const order: DateOrder = orderRaw === 'dmy' ? 'dmy' : 'mdy';
+          await tx.query(`update patient_import set kind = $2, mapping = $3, date_order = $4 where id = $1`, [id, kind, JSON.stringify(mapping), order]);
+        });
+        return Astro.redirect(at(`id=${id}`, String(form.get('back') ?? '') === 'dates' ? '#dates' : '#columns'), 303);
+      }
+      if (intent === 'discard') {
+        await withClinic(clinic.id, async (tx) => {
+          const r = await tx.query(`update patient_import set status = 'discarded', cells = null, headers = null where id = $1 and status = 'draft'`, [id]);
+          if (r.rowCount) await audit(tx, 'import.discard', id);
+        });
+        return Astro.redirect(at('discarded=1'), 303);
+      }
+      // intent === 'run'
+      const r = await withClinic(clinic.id, async (tx) => {
+        const d = (await tx.query(`select * from patient_import where id = $1 for update`, [id])).rows[0];
+        if (!d) return 'gone' as const;
+        if (d.status !== 'draft') return 'done' as const;
+        const missing = missingFields(d.kind, d.mapping);
+        if (missing.length) return { missing };
+        await lockClinic(tx, clinic.id);
+        const s = await snapshot(tx, clinic.group_id);
+        const p = makePlan(s, { kind: d.kind, headers: d.headers, rows: d.cells, mapping: d.mapping, order: d.date_order, money, clinicId: clinic.id, headerRow: d.counts?.headerRow ?? 1 });
+        const res = await runPlan(tx, { clinicId: clinic.id, staffId: session.staffId, importId: id }, s, p);
+        const counts = {
+          rows: p.counts.rows, newPatients: res.newPatients.length, matched: res.matched, filled: res.filled, health: res.health, openings: res.openings,
+          paper: res.paper, newVisits: res.newVisits, sameVisits: res.sameVisits, statements: res.statements, payments: res.payments,
+          charged: p.counts.charged, paid: p.counts.paid, money, out: res.out,
+        };
+        await tx.query(`update patient_import set status = 'done', cells = null, headers = null, counts = $2, done_by = $3, done_at = now() where id = $1`,
+          [id, JSON.stringify(counts), session.staffId]);
+        await audit(tx, 'import.run', id);
+        return 'ok' as const;
+      }).catch((e) => {
+        // A unique number taken by a save that did not wait for this import: the whole import rolled back.
+        if ((e as { code?: string })?.code === '23505') return 'clash' as const;
+        throw e;
+      });
+      if (r === 'gone') return new Response('No such import', { status: 404 });
+      if (r === 'clash') runProblem = 'Another save took a number this import needed at the same moment. Nothing was imported: press Import again.';
+      else if (typeof r === 'object') runProblem = `Match a column to ${r.missing.join(' and ')} first.`;
+      else return Astro.redirect(at(`id=${id}`), 303);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// What to show
+// ---------------------------------------------------------------------------
+const view = await withClinic(clinic.id, async (tx) => {
+  // A file nobody imported or let go within a day is let go here too: its cells (patients' details) are not kept.
+  await tx.query(`update patient_import set status = 'discarded', cells = null, headers = null where status = 'draft' and created_at < now() - interval '1 day'`);
+  const area =(await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null;
+  const canEdit = await canEditRecords(tx, session.staffId, clinic.id);
+  const recent = (await tx.query(
+    `select i.id, i.kind, i.file_name, i.status, i.created_at, i.done_at, i.counts, s.full_name as by
+       from patient_import i left join staff s on s.id = coalesce(i.done_by, i.created_by)
+      where i.status <> 'discarded' order by i.created_at desc limit 8`)).rows;
+  if (!id) return { area, canEdit, recent, d: null, plan: null as Plan | null, made: [] as any[] };
+  const d = (await tx.query(`select i.*, s.full_name as by from patient_import i left join staff s on s.id = coalesce(i.done_by, i.created_by) where i.id = $1`, [id])).rows[0];
+  if (!d) return null;
+  let plan: Plan | null = null;
+  let made: any[] = [];
+  if (d.status === 'draft' && canEdit) {
+    const s = await snapshot(tx, clinic.group_id);
+    plan = makePlan(s, { kind: d.kind, headers: d.headers, rows: d.cells, mapping: d.mapping, order: d.date_order, money, clinicId: clinic.id, headerRow: d.counts?.headerRow ?? 1 });
+  } else if (d.status === 'done') {
+    made = d.kind === 'patients'
+      ? (await tx.query(`select id, first_name, last_name, suffix, chart_no from patient where import_id = $1 and archived_at is null order by chart_no limit 30`, [id])).rows
+      // Whose records the file went into: their visits, and the charges that came with them (or later, on a second import).
+      : (await tx.query(
+          `select p.id, p.first_name, p.last_name, p.suffix, p.chart_no,
+                  (select count(*)::int from appointment a where a.patient_id = p.id and a.import_id = $1) as n,
+                  (select count(*)::int from invoice i where i.patient_id = p.id and i.import_id = $1) as s
+             from patient p
+            where exists (select 1 from appointment a where a.patient_id = p.id and a.import_id = $1)
+               or exists (select 1 from invoice i where i.patient_id = p.id and i.import_id = $1)
+            order by p.last_name, p.first_name limit 30`, [id])).rows;
+  }
+  return { area, canEdit, recent, d, plan, made };
+});
+if (!view) return new Response('No such import', { status: 404 });
+const { d, plan } = view;
+
+const kindWord = (k: Kind) => (k === 'patients' ? 'patients' : 'past visits');
+const title = d?.status === 'done' ? 'Imported' : d?.status === 'draft' ? `Check the ${kindWord(d.kind)}` : 'Import patients';
+const step = !d || d.status === 'discarded' ? 1 : d.status === 'draft' ? 2 : 3;
+
+// --- the preview ---------------------------------------------------------------
+const SHOWS = ['all', 'out', 'new', 'onfile'] as const;
+type Show = (typeof SHOWS)[number];
+const showRaw = q.get('show') ?? 'all';
+const show: Show = (SHOWS as readonly string[]).includes(showRaw) ? (showRaw as Show) : 'all';
+const LIMIT = 200;
+const rows = plan ? plan.rows.filter((r) => show === 'all' || (show === 'out' ? r.status === 'out' : show === 'new' ? r.status === 'new' : r.status === 'match' || r.status === 'same')) : [];
+const headers: string[] = d?.headers ?? [];
+const mapping: Mapping = d?.mapping ?? {};
+const cells: string[][] = d?.cells ?? [];
+const fieldOptions = d ? fieldsFor(d.kind, money) : [];
+const missing = d && d.status === 'draft' ? missingFields(d.kind, mapping) : [];
+const samples = (c: number) => { const out: string[] = []; for (const r of cells) { const v = r[c]; if (v && !out.includes(v)) out.push(v); if (out.length === 3) break; } return out; };
+// Money columns, for someone who does not see finances here: the ones matched to money, and the ones
+// that would be (a "Balance" column left out) — their field is not offered and their cells are not shown.
+const moneyGuess = d && !money ? autoMap(headers, d.kind, true) : {};
+const moneyHidden = (c: number) => !money && !!(fieldByKey(mapping[String(c)] ?? '')?.money || fieldByKey(moneyGuess[String(c)] ?? '')?.money);
+const lateCharges = plan && plan.kind === 'visits' ? plan.rows.filter((r) => r.status === 'match').length : 0;
+const willChange = plan ? (plan.kind === 'patients' ? plan.counts.newPatients + plan.counts.filled : plan.counts.newVisits + lateCharges) : 0;
+const nothing = !!plan && willChange === 0 && plan.counts.health + plan.counts.paper + plan.counts.openings === 0;
+const ev = plan?.dates.evidence;
+const statusChip = (s: string) => (s === 'new' ? { tone: 'accent' as const, label: 'New' } : s === 'match' ? { tone: 'warn' as const, label: 'On file: fill in' } : s === 'same' ? { tone: 'muted' as const, label: 'On file' } : { tone: 'alert' as const, label: 'Left out' });
+const c = d?.counts ?? {};
+const n = (x: number) => Number(x ?? 0).toLocaleString('en');
+const doneWhen = d?.done_at ? when(new Date(d.done_at)) : null;
+const help = 'text-[13px] leading-snug text-muted';
+const templates = [
+  { kind: 'Patients', note: 'Who they are and their health' + (money ? ', an opening balance' : ''), csv: 'patients.csv', xlsx: 'patients.xlsx' },
+  { kind: 'Past visits', note: 'Date, dentist, service, teeth, notes' + (money ? ', charged and paid' : ''), csv: 'visits.csv', xlsx: 'visits.xlsx' },
+];
+const STEPS = ['Upload', 'Check', 'Done'];
+const outCount = (c.out ?? []).length;
+const patientsHref = `/c/${clinic.slug}/patients/`;
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: view.area }} title={title} section="import" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  <Pane as="div" label="Import steps" pad="tight">
+    <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+      <ol class="imp-steps" aria-label="Steps">
+        {STEPS.map((s, i) => (
+          <>
+            {i > 0 && <li class="imp-step-sep" aria-hidden="true"></li>}
+            <li class="imp-step" aria-current={i + 1 === step ? 'step' : undefined} data-done={i + 1 < step ? '' : undefined}>
+              <span class="imp-step-no">{i + 1 < step ? <Icon name="check" size={14} label="Done:" /> : i + 1}</span>{s}
+            </li>
+          </>
+        ))}
+      </ol>
+      <a href={patientsHref} class="rec-back m-0!" data-pts-back><Icon name="chevron-left" />Back to patients</a>
+    </div>
+    {step === 1 && <p class="ws-lede">Bring in the patients the clinic already has, and their past visits, from a spreadsheet or the old system saved as one. Nothing is added until you have checked every row.</p>}
+    {step === 2 && d && <p class="ws-lede">From <span class="font-semibold text-ink [overflow-wrap:anywhere]">{d.file_name}</span>, uploaded {when(new Date(d.created_at))}. Nothing is added yet: check the columns and dates, then import.</p>}
+  </Pane>
+  <script>
+    // Back to the list as it was left: the same search, filter and sort (./_list/back.ts).
+    import { restoreBackLinks } from './_list/back';
+    restoreBackLinks();
+  </script>
+  {stale && <Callout tone="alert" text={CSRF_MESSAGE} />}
+  {q.get('discarded') === '1' && <Callout tone="info" text="That file was let go. Nothing from it was added." />}
+
+  {!view.canEdit ? (
+    <Pane as="div" label="Not allowed"><Callout tone="alert" role="note" text="Your account cannot add patients at this branch. Ask the owner." /></Pane>
+  ) : step === 1 ? (
+    <>
+      <div class="grid items-start gap-4 max-md:gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+        <Pane title="Upload a file" icon="upload" meta="CSV or Excel (.xlsx), up to 5 MB" id="upload">
+          {uploadProblem && <Callout tone="alert" class="mb-5" focus data-import-problem text={uploadProblem} />}
+          <form method="post" action={base} enctype="multipart/form-data" class="grid gap-5" data-import-upload>
+            <Csrf />
+            <input type="hidden" name="intent" value="upload" />
+            <label class="field">
+              <span class="meta">Your file</span>
+              <input type="file" name="file" required accept=".csv,.xlsx,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="pt-file" data-import-file />
+              <span class={help}>Up to {ROWS_MAX.toLocaleString('en')} rows. The first row with anything in it is read as the column names.</span>
+            </label>
+            <fieldset class="min-w-0">
+              <legend class="float-left w-full text-[14px] font-medium text-ink-2">What is in it</legend>
+              <div class="pk-row clear-both pt-2">
+                {[['auto', 'Let Flossify tell'], ['patients', 'Patients'], ['visits', 'Past visits']].map(([v, l]) => (
+                  <label class="pk pk-radio"><input type="radio" name="kind" value={v} checked={v === 'auto'} /><span>{l}</span></label>
+                ))}
+              </div>
+              <p class={`${help} mt-2`}>Import patients first, then their visits: a visit finds its patient by chart no., by name with a mobile or birth date, or by name alone when only one patient has it.</p>
+            </fieldset>
+            <div><button type="submit" class="ws-btn ws-btn-primary min-h-[48px] min-w-[12rem] text-[16px] max-sm:w-full"><Icon name="upload" />Read the file</button></div>
+          </form>
+        </Pane>
+        <Pane title="Templates" icon="download" meta="Columns Flossify reads by itself">
+          <ul class="pt-list">
+            {templates.map((t) => (
+              <li>
+                <span class="min-w-0"><span class="block text-[15.5px] font-semibold">{t.kind}</span><span class="text-[13.5px] text-ink-2">{t.note}</span></span>
+                <span class="flex gap-2">
+                  <a href={`/c/${clinic.slug}/patients/template/${t.xlsx}`} download class="ws-btn ws-btn-quiet ws-btn-sm" aria-label={`${t.kind} template, Excel`}><Icon name="download" size={16} />Excel</a>
+                  <a href={`/c/${clinic.slug}/patients/template/${t.csv}`} download class="ws-btn ws-btn-quiet ws-btn-sm" aria-label={`${t.kind} template, CSV`}><Icon name="download" size={16} />CSV</a>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p class="mt-4 text-[14px] leading-relaxed text-ink-2">Your own file works too: its columns are matched by their names (English or Filipino, like “Apelyido” or “Kaarawan”), and you can fix any before anything is added.</p>
+          <details class="pt-more mt-2">
+            <summary>Every column Flossify reads <Icon name="chevron" size={16} class="pt-chev" /></summary>
+            <dl class="pt-facts mt-2 text-[14px]">
+              {[...new Set([...TEMPLATE.patients, ...TEMPLATE.visits, 'full_name'])].map((k) => fieldByKey(k)!).filter((f) => money || !f.money).map((f) => (
+                <><dt class="!text-[14px] !font-semibold !text-ink">{f.label}</dt><dd class="!text-[14px] !text-ink-2">{f.hint || '—'}</dd></>
+              ))}
+            </dl>
+          </details>
+        </Pane>
+      </div>
+      <Pane title="Earlier imports" icon="file" pad="none" meta="This branch">
+        {view.recent.length === 0 ? <div class="px-6 py-3 max-md:px-4"><Empty icon="upload" text="Nothing imported here yet. Your first file shows here once it is read." /></div> : (
+          <table class="ws-table">
+            <caption class="sr-only">Earlier imports at {clinic.name}</caption>
+            <thead><tr><th scope="col" class="meta">When</th><th scope="col" class="meta">File</th><th scope="col" class="meta">What it did</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead>
+            <tbody>
+              {view.recent.map((r) => (
+                <tr>
+                  <td class="text-[14.5px] whitespace-nowrap tabular-nums">{when(new Date(r.done_at ?? r.created_at))}<span class="block text-[13px] text-muted">{r.by}</span></td>
+                  <td class="text-[15px] break-all"><span class="meta ws-cell-label">File</span>{r.file_name}<span class="block text-[13px] text-muted">{r.kind === 'patients' ? 'Patients' : 'Past visits'}</span></td>
+                  <td class="text-[14.5px]"><span class="meta ws-cell-label">What it did</span>{r.status === 'draft' ? <Chip tone="warn" label="Not imported yet" /> : r.kind === 'patients'
+                    ? `${r.counts.newPatients ?? 0} new, ${r.counts.filled ?? 0} filled in, ${(r.counts.out ?? []).length} left out`
+                    : `${r.counts.newVisits ?? 0} visits, ${money ? `${r.counts.statements ?? 0} statements, ` : ''}${(r.counts.out ?? []).length} left out`}</td>
+                  <td class="text-right max-lg:text-left"><a href={at(`id=${r.id}`)} class="ws-btn ws-btn-quiet ws-btn-sm">{r.status === 'draft' ? 'Check' : 'Open'} <Icon name="arrow-right" size={16} /></a></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Pane>
+    </>
+  ) : step === 2 && d && plan ? (
+    <>
+      {((d.counts?.notes ?? []).length > 0 || plan.fileNotes.length > 0) && (
+        <Callout tone="warn" role="note" title="About the file">
+          <ul class="mt-1 grid gap-1 [overflow-wrap:anywhere]">{[...(d.counts?.notes ?? []), ...plan.fileNotes].map((n: string) => <li>{n}</li>)}</ul>
+        </Callout>
+      )}
+
+      <form method="post" action={at(`id=${d.id}`)} class="grid gap-4 max-md:gap-3" data-import-map>
+        <Csrf />
+        <input type="hidden" name="intent" value="map" />
+        <input type="hidden" name="back" value="columns" data-import-back />
+        {plan.dates.columns.length > 0 && ev && ev.either + ev.mdyOnly + ev.dmyOnly > 0 && (
+          <Pane title="Dates" icon="calendar" id="dates" meta={plan.dates.columns.join(' · ')}>
+            <p class="-mt-2 mb-4 max-w-[70ch] text-[15px] text-ink-2">
+              {ev && ev.dmyOnly > 0 && ev.mdyOnly > 0
+                ? `This file writes dates both ways: ${ev.mdyOnly} can only be month/day/year (like ${ev.mdySample}) and ${ev.dmyOnly} only day/month/year (like ${ev.dmySample}). Pick the one most rows use; the others are listed below to fix.`
+                : ev && ev.dmyOnly > 0 ? `This file writes day first: ${ev.dmySample} can only be day/month/year.`
+                : ev && ev.mdyOnly > 0 ? `This file writes month first: ${ev.mdySample} can only be month/day/year.`
+                : ev && ev.either > 0 ? 'Nothing in the file says which order its dates are in, so they are read the Philippine way, month first. Check one you know.'
+                : 'Every date in the file reads only one way.'}
+            </p>
+            <fieldset class="min-w-0">
+              <legend class="float-left w-full text-[14px] font-medium text-ink-2">Dates like {plan.dates.sample?.raw ?? '03/04/1985'} are</legend>
+              <div class="clear-both grid gap-2.5 pt-2 sm:grid-cols-2">
+                {(['mdy', 'dmy'] as const).map((o) => {
+                  const ex = plan.dates.sample?.raw ?? '03/04/1985';
+                  const m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/.exec(ex);
+                  const read = m ? (o === 'mdy' ? `${+m[2]} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m[1] - 1] ?? '?'}` : `${+m[1]} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m[2] - 1] ?? '?'}`) : '';
+                  return (
+                    <label class="pk pk-radio pk-card">
+                      <input type="radio" name="date_order" value={o} checked={d.date_order === o} data-import-auto data-import-dates />
+                      <span><span>{o === 'mdy' ? 'Month / day / year' : 'Day / month / year'}<span class="pk-hint">{ex} is {read}{m ? ` ${m[3].length === 2 ? `’${m[3]}` : m[3]}` : ''}{o === 'mdy' ? ' — the Philippine habit' : ''}</span></span></span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          </Pane>
+        )}
+
+        <Pane title="Columns" icon="file" id="columns" meta={`${headers.length} in the file · ${Object.keys(mapping).length} matched`}>
+          <fieldset class="mb-5 min-w-0">
+            <legend class="float-left w-full text-[14px] font-medium text-ink-2">This file is</legend>
+            <div class="pk-row clear-both pt-2">
+              {[['patients', 'Patients'], ['visits', 'Past visits']].map(([v, l]) => (
+                <label class="pk pk-radio"><input type="radio" name="kind" value={v} checked={d.kind === v} data-import-auto /><span>{l}</span></label>
+              ))}
+            </div>
+          </fieldset>
+          {missing.length > 0 && <Callout tone="alert" class="mb-4" text={`Match a column to ${missing.join(' and ')} to import.`} />}
+          {/* Columns side by side from 1024px; below that each column of the file is one block, its field under it, never a table to scroll sideways. */}
+          <div class="overflow-hidden rounded-[var(--ws-r)] border border-[var(--ws-hair)]">
+            <table class="ws-table">
+              <caption class="sr-only">Each column of the file, and the field it is read into</caption>
+              <thead><tr><th scope="col" class="meta">In the file</th><th scope="col" class="meta">For example</th><th scope="col" class="meta">Read as</th></tr></thead>
+              <tbody>
+                {headers.map((h, i) => (
+                  <tr>
+                    <td class="min-w-[7rem] text-[15px] font-semibold break-words">{h}</td>
+                    <td class="text-[14px] text-ink-2"><span class="meta ws-cell-label">For example</span><span class="line-clamp-2 [overflow-wrap:anywhere]">{moneyHidden(i) ? <span class="text-muted">Not shown</span> : samples(i).join(' · ') || '—'}</span></td>
+                    <td class="w-[17rem] !py-2 max-lg:w-auto max-lg:!pt-1.5">
+                      <span class="meta ws-cell-label">Read as</span>
+                      {moneyHidden(i) ? (
+                        <span class="text-[14px] text-muted">Money — for finance only</span>
+                      ) : (
+                        <span class="field max-lg:mt-1">
+                          <select name={`col_${i}`} aria-label={`Read “${h}” as`} class="w-full" data-import-auto>
+                            <option value="" selected={!mapping[String(i)]}>Leave out</option>
+                            {fieldOptions.map((f) => <option value={f.key} selected={mapping[String(i)] === f.key}>{f.label}</option>)}
+                          </select>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p class={`${help} mt-3`}>A field is read from one column. Pick “Leave out” for a column Flossify does not need. A change applies at once.</p>
+        </Pane>
+        <div class="flex justify-end" data-import-apply><button type="submit" class="ws-btn ws-btn-quiet"><Icon name="check" />Apply the changes</button></div>
+      </form>
+
+      <Pane title="Rows" icon="patients" id="rows" meta={plan.kind === 'patients' ? 'What each row becomes' : 'Each visit, and whose it is'} pad="none">
+        {missing.length > 0 ? (
+          <p class="px-6 py-4 text-[15px] text-ink-2 max-md:px-4">Match a column to {missing.join(' and ')} under Columns above, and each of the {plan.counts.rows.toLocaleString('en')} rows shows here with what it becomes.</p>
+        ) : (<>
+        <div class="pt-tiles-wrap px-6 pt-5 max-md:px-4"><div class="ws-tiles pt-tiles">
+          {plan.kind === 'patients' ? (
+            <>
+              <Tile label="New patients" value={plan.counts.newPatients.toLocaleString('en')} tone="accent" icon="plus" note={plan.counts.health ? `${plan.counts.health.toLocaleString('en')} with health answers` : 'To be added'} />
+              <Tile label="Already on file" value={plan.counts.matched.toLocaleString('en')} icon="user" note={plan.counts.filled ? `${plan.counts.filled} to fill in` : 'Nothing changes'} />
+              {money && <Tile label="Opening balances" value={plan.counts.openings.toLocaleString('en')} icon="money" note={plan.counts.openings ? pesos(fromDb(plan.counts.charged)) : 'None to bring in'} />}
+            </>
+          ) : (
+            <>
+              <Tile label="New visits" value={plan.counts.newVisits.toLocaleString('en')} tone="accent" icon="calendar" note={plan.counts.sameVisits ? `${plan.counts.sameVisits} already on file` : 'Marked imported'} />
+              {money && <Tile label="Charged" value={pesos(fromDb(plan.counts.charged))} icon="money" note={`${plan.counts.statements} ${plan.counts.statements === 1 ? 'statement' : 'statements'}, ${pesos(fromDb(plan.counts.paid))} paid`} />}
+            </>
+          )}
+          <Tile label="Left out" value={plan.counts.out.toLocaleString('en')} tone={plan.counts.out ? 'alert' : 'default'} icon={plan.counts.out ? 'alert' : 'check'} note={plan.counts.out ? 'Each says why, below' : 'Every row reads'} />
+        </div></div>
+        <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 max-md:px-4">
+          <Tabs label="Show" current={show} items={[
+            { id: 'all', label: 'All', href: at(`id=${d.id}`, '#rows'), count: plan.counts.rows },
+            { id: 'out', label: 'Left out', href: at(`id=${d.id}&show=out`, '#rows'), count: plan.counts.out },
+            { id: 'new', label: 'New', href: at(`id=${d.id}&show=new`, '#rows'), count: plan.kind === 'patients' ? plan.counts.newPatients : plan.counts.newVisits },
+            { id: 'onfile', label: 'On file', href: at(`id=${d.id}&show=onfile`, '#rows'), count: plan.kind === 'patients' ? plan.counts.matched : plan.counts.sameVisits },
+          ]} />
+          {rows.length > LIMIT && <p class={help}>The first {LIMIT} of {rows.length.toLocaleString('en')} are shown; the import takes them all.</p>}
+        </div>
+        {rows.length === 0 ? <div class="border-t border-[var(--ws-hair)] px-6 py-3 max-md:px-4"><Empty text="No rows here. Pick another filter above." /></div> : (
+          <table class="ws-table border-t border-[var(--ws-hair)]">
+            <caption class="sr-only">The rows of {d.file_name}, as they will be imported</caption>
+            <thead>
+              <tr>
+                <th scope="col" class="meta w-[4.5rem]">Row</th>
+                <th scope="col" class="meta">{plan.kind === 'patients' ? 'Patient' : 'Visit'}</th>
+                <th scope="col" class="meta">Becomes</th>
+                <th scope="col" class="meta">Why, in words</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.slice(0, LIMIT).map((r) => {
+                const st = statusChip(r.status);
+                // Under the name: what identifies the row (chart no., birth date, mobile), or the visit itself.
+                const facts = plan.kind === 'patients'
+                  ? [r.onFile?.chartNo ?? r.chartNo, r.date ? `born ${ymdText(r.date)}` : 'no birth date', r.mobile ? prettyPhone(r.mobile) : 'no mobile']
+                  : [r.onFile?.chartNo ?? r.chartNo, r.date ? ymdText(r.date) : null, r.visit?.service ?? r.what, r.visit?.teeth?.length ? `teeth ${r.visit.teeth.join(', ')}` : null];
+                return (
+                  <tr data-row-status={r.status}>
+                    <td class="text-[14px] whitespace-nowrap tabular-nums text-ink-2"><span class="meta lg:hidden">Row </span>{r.row}</td>
+                    <td class="text-[15px]"><span class="meta ws-cell-label">{plan.kind === 'patients' ? 'Patient' : 'Visit'}</span><span class="font-semibold break-words">{r.name || '—'}</span>
+                      <span class="block text-[13.5px] text-ink-2 tabular-nums">{facts.filter(Boolean).map((f, i) => <>{i > 0 && ' · '}<span class="whitespace-nowrap">{f}</span></>)}</span>
+                    </td>
+                    <td class="whitespace-nowrap"><span class="meta ws-cell-label">Becomes</span><Chip tone={st.tone} label={st.label} dot={r.status === 'out'} />{r.onFile && r.status !== 'out' && plan.kind === 'patients' && <span class="mt-1 block text-[13px] whitespace-normal text-ink-2">{r.onFile.chartNo} {r.onFile.name}</span>}</td>
+                    <td class="max-w-[30rem] text-[14px] leading-snug break-words max-lg:max-w-none">
+                      <span class="meta ws-cell-label">Why</span>
+                      {r.problems.length === 0 && r.notes.length === 0 && r.fills.length === 0 && r.brings.length === 0 && <span class="text-muted">—</span>}
+                      {r.problems.map((x) => <span class="block text-caries">{x}</span>)}
+                      {r.fills.length > 0 && <span class="block text-ink-2">Fills in: {r.fills.join(', ')}.</span>}
+                      {r.brings.length > 0 && <span class="block text-ink-2">With {r.brings.join(', ')}.</span>}
+                      {r.notes.map((x) => <span class="block text-ink-2">{x}</span>)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        </>)}
+      </Pane>
+
+      <Pane as="div" label="Import">
+        {runProblem && <Callout tone="alert" class="mb-4" text={runProblem} />}
+        <div class="flex flex-wrap items-center gap-3">
+          <form method="post" action={at(`id=${d.id}`)} data-import-run class="max-sm:w-full">
+            <Csrf />
+            <input type="hidden" name="intent" value="run" />
+            <button type="submit" class:list={['ws-btn min-h-[48px] min-w-[14rem] text-[16px] max-sm:w-full max-sm:whitespace-normal', missing.length > 0 || nothing ? 'ws-btn-quiet' : 'ws-btn-primary']} disabled={missing.length > 0 || nothing}>
+              <Icon name={missing.length > 0 || nothing ? 'info' : 'check'} />
+              {missing.length > 0 ? `Match a column to ${missing.join(' and ')} first` : nothing ? 'Nothing new to import' : plan.kind === 'patients'
+                ? (plan.counts.newPatients === 0 ? `Fill in ${plan.counts.filled.toLocaleString('en')} patient${plan.counts.filled === 1 ? '' : 's'} on file`
+                  : `Import ${plan.counts.newPatients.toLocaleString('en')} new patient${plan.counts.newPatients === 1 ? '' : 's'}${plan.counts.filled ? ` and fill in ${plan.counts.filled}` : ''}`)
+                : plan.counts.newVisits === 0 ? `Bring in ${lateCharges} charge${lateCharges === 1 ? '' : 's'} for visits on file`
+                : `Import ${plan.counts.newVisits.toLocaleString('en')} visit${plan.counts.newVisits === 1 ? '' : 's'}${lateCharges ? ` and ${lateCharges} charge${lateCharges === 1 ? '' : 's'} for visits on file` : ''}`}
+            </button>
+          </form>
+          <form method="post" action={at(`id=${d.id}`)} class="max-sm:w-full">
+            <Csrf />
+            <input type="hidden" name="intent" value="discard" />
+            <button type="submit" class="ws-btn ws-btn-quiet max-sm:w-full"><Icon name="close" size={16} />Let this file go</button>
+          </form>
+        </div>
+        <p class="mt-3 max-w-[75ch] text-[14px] leading-relaxed text-ink-2">
+          All of it goes in at once, under your name, or none of it does.
+          {missing.length === 0 && plan.counts.out > 0 && ` ${plan.counts.out} ${plan.counts.out === 1 ? 'row is' : 'rows are'} left out: fix ${plan.counts.out === 1 ? 'it' : 'them'} in your file and import it again later — what is already in is not added twice.`}
+        </p>
+      </Pane>
+    </>
+  ) : step === 3 && d ? (
+    <>
+      <Pane title={`${d.kind === 'patients' ? 'Patients' : 'Past visits'} from ${d.file_name}`} icon="check" meta={doneWhen ? `${doneWhen} · ${d.by ?? ''}` : undefined} pad="none" id="summary">
+        <div class="pt-tiles-wrap px-6 pt-5 max-md:px-4"><div class="ws-tiles pt-tiles">
+          {d.kind === 'patients' ? (
+            <>
+              <Tile label="New patients" value={(c.newPatients ?? 0).toLocaleString('en')} tone="accent" icon="plus" note={c.health ? `${n(c.health)} with health answers` : 'Added'} />
+              <Tile label="Already on file" value={(c.matched ?? 0).toLocaleString('en')} icon="user" note={`${n(c.filled ?? 0)} filled in`} />
+              {c.money && money && <Tile label="Opening balances" value={(c.openings ?? 0).toLocaleString('en')} icon="money" note={c.openings ? `${pesos(fromDb(c.charged))} in statements` : 'None'} />}
+            </>
+          ) : (
+            <>
+              <Tile label="Visits" value={(c.newVisits ?? 0).toLocaleString('en')} tone="accent" icon="calendar" note={c.sameVisits ? `${n(c.sameVisits)} ${c.sameVisits === 1 ? 'was' : 'were'} already on file` : 'Marked imported'} />
+              {c.money && money && <Tile label="Statements" value={(c.statements ?? 0).toLocaleString('en')} icon="money" note={`${n(c.payments ?? 0)} ${c.payments === 1 ? 'payment' : 'payments'} recorded`} />}
+            </>
+          )}
+          <Tile label="Left out" value={outCount.toLocaleString('en')} tone={outCount ? 'alert' : 'default'} icon={outCount ? 'alert' : 'check'} note={outCount ? 'Fix and import again' : 'None'} />
+        </div></div>
+        {d.kind === 'patients' && (c.paper ?? 0) > 0 && <p class="px-6 pt-3 text-[14px] text-ink-2 max-md:px-4">{n(c.paper)} of the clinic’s own paper consent {c.paper === 1 ? 'form was' : 'forms were'} recorded.</p>}
+        <div class="grid gap-6 p-6 max-md:p-4 lg:grid-cols-2">
+          <div>
+            <h3 class="text-[16px] font-semibold">{d.kind === 'patients' ? 'Added' : 'The records it went into'}</h3>
+            {view.made.length === 0 ? <Empty text={d.kind === 'patients' ? 'No one was added from this file.' : 'Nothing from this file went into a record.'} /> : (
+              <ul class="pt-list mt-2">
+                {view.made.map((p) => {
+                  const name = [p.first_name, p.last_name, p.suffix].filter(Boolean).join(' ');
+                  return (
+                    <li class="!py-0"><a href={`/c/${clinic.slug}/patients/${p.id}/${d.kind === 'visits' ? '#visits' : ''}`} class="flex min-h-12 w-full items-center gap-3 py-1.5 text-[15px] hover:text-[var(--ws-teal-ink)]"><Avatar name={name} size="sm" /><span class="min-w-0 flex-1 font-semibold">{name}</span><span class="text-[13px] text-muted tabular-nums">{[p.chart_no, p.n ? `${p.n} ${p.n === 1 ? 'visit' : 'visits'}` : null, money && p.s ? `${p.s} ${p.s === 1 ? 'statement' : 'statements'}` : null].filter(Boolean).join(' · ')}</span></a></li>
+                  );
+                })}
+              </ul>
+            )}
+            {((d.kind === 'patients' ? c.newPatients : 0) ?? 0) > view.made.length && <p class={`${help} mt-2`}>And {(c.newPatients - view.made.length).toLocaleString('en')} more: search for them from the top bar, or open the patients list.</p>}
+          </div>
+          <div>
+            <h3 class="text-[16px] font-semibold">Left out</h3>
+            {outCount === 0 ? <Empty icon="check" text="Every row went in." /> : (
+              <ul class="pt-list mt-2">
+                {(c.out as { row: number; why: string[] }[]).slice(0, 200).map((o) => (
+                  <li class="!grid grid-cols-[4.5rem_1fr] !gap-3 text-[14px]"><span class="tabular-nums text-ink-2">Row {o.row}</span><span>{o.why.join(' ')}</span></li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2 border-t border-[var(--ws-hair)] px-6 py-4 max-md:px-4">
+          <a href={base} class="ws-btn ws-btn-primary"><Icon name="upload" />Import another file</a>
+          <a href={patientsHref} class="ws-btn ws-btn-quiet"><Icon name="patients" />See the patients</a>
+        </div>
+      </Pane>
+    </>
+  ) : (
+    <Pane as="div" label="Import"><Empty icon="upload" text="That file is no longer here." action={{ label: 'Upload a file', href: base }} /></Pane>
+  )}
+</ClinicLayout>
+
+<script>
+  // The column matching and the date order apply as soon as they change (the
+  // Apply button is for a page without this script). The run shows it is working.
+  const map = document.querySelector<HTMLFormElement>('[data-import-map]');
+  if (map) {
+    map.querySelector<HTMLElement>('[data-import-apply]')!.hidden = true;
+    map.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-import-auto]').forEach((el) => el.addEventListener('change', () => {
+      const back = map.querySelector<HTMLInputElement>('[data-import-back]');
+      if (back) back.value = el.hasAttribute('data-import-dates') ? 'dates' : 'columns';
+      map.setAttribute('data-ws-busy', '');
+      map.requestSubmit();
+    }));
+  }
+  document.querySelectorAll<HTMLFormElement>('[data-import-run], [data-import-upload]').forEach((f) => f.addEventListener('submit', () => {
+    const b = f.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (!b) return;
+    b.disabled = true;
+    b.textContent = f.hasAttribute('data-import-run') ? 'Importing… keep this page open' : 'Reading the file…';
+  }));
+  document.querySelector<HTMLElement>('[data-import-problem]')?.focus();
+</script>

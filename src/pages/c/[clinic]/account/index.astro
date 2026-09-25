@@ -1,0 +1,258 @@
+---
+// My page: /c/<slug>/account/. Every signed-in person, whatever their role:
+// my details, change my password, my days and coming appointments here (for
+// anyone who sees patients), and my PRC licence and where its check stands.
+// No tab is lit: it is reached from the sidebar's foot (My page), where Sign
+// out also is. "My page" is the title in the top bar (the layout's heading).
+//
+// Details are read only here. Name, email and mobile are where sign-in finds
+// a person and where reset codes go, so they are changed by the owner or an
+// admin on the person's page (Clinic settings → People), with the rules that
+// page keeps; an owner or admin gets a link to their own.
+//
+// Change my password: the current one, then the new one twice. The new one
+// goes through setPassword() (src/lib/auth.ts), which bumps token_version, so
+// every other session this person has ends at once (canOpen compares it on
+// every request); this one carries on with a fresh cookie at the new version,
+// for what was left of it. Any sign-in code still live (a reset or an
+// invitation) is spent, so it cannot set the password again behind them.
+// Wrong current passwords are counted per person, first and atomically, and
+// the count is given back when the password was right (the sign-in lock's
+// pattern): five in fifteen minutes, then a wait. Every try is an auth_event
+// (password.change, password.fail, password.locked).
+export const prerender = false;
+
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Pane from '../../../../components/ws/Pane.astro';
+import Chip from '../../../../components/ws/Chip.astro';
+import Icon from '../../../../components/ws/Icon.astro';
+import Avatar from '../../../../components/ws/Avatar.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import Note from '../settings/_ui/Note.astro';
+import Upcoming from '../settings/_ui/Upcoming.astro';
+import Email from '../settings/_ui/Email.astro';
+import '../settings/_ui/settings.css';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { pool } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { verifyPassword, setPassword, setSession, passwordProblem, authEvent, PASSWORD_MIN } from '../../../../lib/auth';
+import { hit, refund, clientIp, waitText } from '../../../../lib/throttle';
+import { canBill } from '../../../../lib/invoices';
+import { prettyPhone } from '../../../../lib/messages';
+import { ROLE_LABEL, DAYS, ago, dateText, daysText, prcState, treats } from '../settings/_lib/common';
+import { daysOf, upcomingFor } from '../settings/_lib/people';
+
+// Wrong current passwords, per person: [tries, window in seconds]. (src/lib/throttle.ts keeps the
+// service's limits in LIMITS; this one waits to move there.)
+const PASSWORD_LIMIT: [number, number] = [5, 15 * 60];
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const here = `/c/${clinic.slug}/account/`;
+const canSetUp = session.role === 'owner' || session.role === 'admin';
+
+interface Me {
+  full_name: string; role: string; email: string; phone: string | null; prc_licence: string | null; prc_status: string | null; prc_checked_on: Date | null;
+  prc_note: string | null; specialty: string | null; slug: string | null; practices: string[] | null; created_at: Date; password_set_at: Date | null; last_seen_at: Date | null;
+}
+// staff is group data outside row-level security; this is the signed-in person's own row.
+const readMe = async () => (await pool.query(
+  `select full_name, role, email::text as email, phone, prc_licence, prc_status, prc_checked_on, prc_note, specialty, slug, practices,
+          created_at, password_set_at, last_seen_at
+     from staff where id = $1`, [session.staffId])).rows[0] as Me;
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const current = String(form.get('current') ?? '');
+  const password = String(form.get('password') ?? '');
+  const confirm = String(form.get('confirm') ?? '');
+  const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
+  const key = `pwchange:s:${session.staffId}`;
+  const problem = passwordProblem(password);
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+  else if (!current) error = 'Type your current password first.';
+  else if (problem) error = problem;
+  else if (password !== confirm) error = 'The two new passwords don’t match. Type the new one twice, the same.';
+  else {
+    // Counted first, atomically, and given back when it was right: only wrong tries add up.
+    const gate = await hit(key, ...PASSWORD_LIMIT);
+    if (!gate.allowed) {
+      error = `Too many wrong tries. ${waitText(gate.retryAfter)} Or sign out and use “Forgot password” on the sign-in page.`;
+      await authEvent('password.locked', { staffId: session.staffId, ip, ua });
+    } else {
+      const { rows } = await pool.query('select password_hash from staff where id = $1 and disabled_at is null', [session.staffId]);
+      if (!rows[0] || !verifyPassword(current, rows[0].password_hash)) {
+        error = 'That is not your current password. Check it, and Caps Lock.';
+        await authEvent('password.fail', { staffId: session.staffId, ip, ua });
+      } else if (password === current) {
+        // Said only once the current password is known to be right; a right one never counts against them.
+        await refund(key);
+        error = 'That is the password you have now. Choose a new one.';
+      } else {
+        await refund(key);
+        const tv = await setPassword(session.staffId, password);
+        // A code still live could set the password again behind them.
+        await pool.query('update one_time_code set used_at = now() where staff_id = $1 and used_at is null', [session.staffId]);
+        await authEvent('password.change', { staffId: session.staffId, ip, ua });
+        // This device carries on, for what was left of its sign-in; every other one is out.
+        const hours = Math.max(1, Math.floor((session.exp - Date.now()) / 3_600_000));
+        setSession(Astro.cookies, { staffId: session.staffId, groupId: session.groupId, clinicId: session.clinicId, name: session.name, role: session.role, tv }, hours);
+        return Astro.redirect(`${here}?done=password#password`, 303);
+      }
+    }
+  }
+}
+
+const me = await readMe();
+const patients = treats(me.role);
+const [days, upcoming] = await Promise.all([daysOf(clinic.id, session.staffId), patients ? upcomingFor(clinic.id, session.staffId) : Promise.resolve(null)]);
+const prc = prcState(me);
+// Finances here, in the words the person's page uses: owner and admin always; the desk by role, with the
+// claim amounts as the branch's flag says (canMoneyOf in ../finances/_claims.ts); anyone else by the flag.
+const sees = canBill(me.role, clinic.can_view_finance);
+const financeWords = me.role === 'owner' || me.role === 'admin'
+  ? 'Yes, always, claim amounts included'
+  : me.role === 'secretary'
+    ? `Yes, by role. Claim amounts: ${clinic.can_view_finance ? 'shown' : 'hidden'}`
+    : sees ? 'Yes, claim amounts included' : 'No';
+const done = Astro.url.searchParams.get('done') === 'password';
+const roleLabel = ROLE_LABEL[me.role] ?? me.role;
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name }} title="My page" section="account" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  <div class="set grid gap-4">
+    {/* "My page" is the page's title, in the top bar (the layout's heading), as the sidebar calls it; this card
+        says whose it is. Sign out is the sidebar's (in the menu on a phone), so it is not repeated here. */}
+    <Pane as="div">
+      <div class="set-person-who">
+        <Avatar name={me.full_name} size="lg" />
+        <div class="min-w-0">
+          <h2 class="set-person-name">{me.full_name}</h2>
+          <div class="set-person-chips">
+            <span class="ws-pill ws-tint-slate">{roleLabel}</span>
+            {patients && <Chip tone={prc.tone} label={`PRC: ${prc.short}`} />}
+          </div>
+          {/* The branch on screen, which may not be the one signed in to: the days and visits below are this branch's. */}
+          <p class="set-person-facts"><span><Icon name="clinic" size={16} />{branches.length > 1 ? `Showing ${clinic.name}, one of your ${branches.length} branches` : clinic.name}</span></p>
+        </div>
+      </div>
+    </Pane>
+
+    <div class="set-two">
+      <div class="set-col">
+        {upcoming && (
+          <Upcoming rows={upcoming.rows} total={upcoming.total} slug={clinic.slug} title="My coming appointments" emptyText={`Nothing booked for you at ${clinic.name} yet.`} />
+        )}
+
+        <Pane id="password" icon="check" title="Change my password" class="set-sec">
+          <p class="set-intro mb-5">Your other devices are signed out when you change it. This one stays signed in.</p>
+          {done && <Note tone="ok" text="Your password is changed. Every other device is signed out; sign in there with the new one." class="mb-5" />}
+          {error && <Note tone="alert" text={error} class="mb-5" refused />}
+          <form method="post" action={here} class="grid max-w-[30rem] gap-4" data-pw-form>
+            <Csrf />
+            <input type="hidden" name="action" value="password" />
+            <input type="text" name="username" value={me.email} autocomplete="username" hidden readonly />
+            <div class="field">
+              <label for="pw-current" class="meta">Current password</label>
+              <div class="set-pw">
+                <input id="pw-current" type="password" name="current" autocomplete="current-password" required aria-describedby="pw-caps" autofocus={!!error && error !== CSRF_MESSAGE} />
+                <button type="button" aria-controls="pw-current" aria-pressed="false" data-show>Show</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="pw-new" class="meta">New password</label>
+              <div class="set-pw">
+                <input id="pw-new" type="password" name="password" autocomplete="new-password" minlength={PASSWORD_MIN} required aria-describedby="pw-rule pw-caps" />
+                <button type="button" aria-controls="pw-new" aria-pressed="false" data-show>Show</button>
+              </div>
+              <span id="pw-rule" class="set-help">At least {PASSWORD_MIN} characters. A short sentence you’ll remember works well.</span>
+            </div>
+            <div class="field">
+              <label for="pw-confirm" class="meta">New password again</label>
+              <div class="set-pw">
+                <input id="pw-confirm" type="password" name="confirm" autocomplete="new-password" minlength={PASSWORD_MIN} required />
+                <button type="button" aria-controls="pw-confirm" aria-pressed="false" data-show>Show</button>
+              </div>
+            </div>
+            <p id="pw-caps" class="set-dirty-note justify-self-start" role="status" data-caps hidden>Caps Lock is on</p>
+            <div><button type="submit" class="ws-btn ws-btn-primary"><Icon name="check" />Change password</button></div>
+            <p class="set-help">Forgot your current one? Sign out, then use “Forgot password” on the sign-in page: a code comes to your mobile.</p>
+          </form>
+        </Pane>
+      </div>
+
+      <div class="set-col">
+        <Pane id="details" icon="user" title="My details" class="set-sec">
+          <dl class="set-facts">
+            <div><dt class="meta">Email</dt><dd><Email address={me.email} /><span class="block set-help">You sign in with it.</span></dd></div>
+            <div><dt class="meta">Mobile</dt><dd class="tabular-nums">{me.phone ? prettyPhone(me.phone) : 'None on file'}<span class="block set-help">Reset codes come here by text.</span></dd></div>
+            <div><dt class="meta">Branches</dt><dd>{branches.map((b) => b.name).join(', ')}</dd></div>
+            <div><dt class="meta">Finances here</dt><dd>{financeWords}</dd></div>
+            <div><dt class="meta">Password</dt><dd>{me.password_set_at ? `Set ${dateText(me.password_set_at)}` : 'Set'}</dd></div>
+          </dl>
+          <p class="set-help mt-4">
+            {canSetUp
+              ? <>Change your name, email or mobile on <a href={`/c/${clinic.slug}/settings/people/${session.staffId}/`} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">your page in Clinic settings</a>.</>
+              : 'To change your name, email or mobile, ask the owner or an admin: sign-in and reset codes depend on them.'}
+          </p>
+        </Pane>
+
+        {(patients || me.prc_licence) && (
+          <Pane id="prc" icon="file" title="My PRC licence" class="set-sec">
+            <div class="set-state">
+              <Chip tone={prc.tone} label={prc.short} icon={prc.tone === 'accent' ? 'check' : prc.tone === 'muted' ? undefined : 'alert'} />
+              {me.prc_licence && <span class="text-[15px] tabular-nums">Licence no. {me.prc_licence}</span>}
+              <p class="text-[14.5px]">{prc.long}</p>
+            </div>
+            {me.prc_status === 'mismatch' && me.prc_note && <p class="ws-callout mt-3" data-tone="alert"><Icon name="alert" /><span>Flossify’s note: {me.prc_note}</span></p>}
+            {me.prc_status === 'mismatch' && <p class="set-help mt-2">{canSetUp ? 'Correct the number on your page in Clinic settings, or save it as it is to have it checked again.' : 'Ask the owner or an admin to correct the number, or to save it as it is to have it checked again.'}</p>}
+            {me.slug && (days.length > 0
+              ? <a href={`/dentists/${me.slug}/`} target="_blank" rel="noopener" class="set-link mt-1">My public profile<span class="sr-only"> (opens in a new tab)</span><Icon name="arrow-right" size={16} class="set-arrow" /></a>
+              : <p class="set-help mt-2">No public profile until you have days here.</p>)}
+          </Pane>
+        )}
+
+        <Pane id="days" icon="calendar" title={`My days at ${clinic.name}`} meta={daysText(days)} class="set-sec">
+          <p class="set-days-ro" aria-label={`Days here: ${daysText(days)}`}>
+            {DAYS.map(([n, label]) => <span class="set-day-ro" data-on={days.includes(n) ? '' : undefined} aria-hidden="true">{label}</span>)}
+          </p>
+          <p class="set-help mt-3">{canSetUp ? <>Set on <a href={`/c/${clinic.slug}/settings/people/${session.staffId}/#days`} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">your page in Clinic settings</a>.</> : 'The owner or an admin sets these.'} Last signed in {ago(me.last_seen_at)}.</p>
+        </Pane>
+      </div>
+    </div>
+  </div>
+</ClinicLayout>
+
+<script>
+  // Show a password, and warn about Caps Lock: the same help as the sign-in page. One press.
+  document.querySelectorAll<HTMLButtonElement>('[data-show]').forEach((btn) => {
+    const input = document.getElementById(btn.getAttribute('aria-controls') ?? '') as HTMLInputElement | null;
+    btn.addEventListener('click', () => {
+      if (!input) return;
+      const on = input.type === 'password';
+      input.type = on ? 'text' : 'password';
+      btn.textContent = on ? 'Hide' : 'Show';
+      btn.setAttribute('aria-pressed', String(on));
+      input.focus();
+    });
+  });
+  const caps = document.querySelector<HTMLElement>('[data-caps]');
+  document.querySelectorAll<HTMLInputElement>('[data-pw-form] input[type=password]').forEach((input) => {
+    const check = (e: KeyboardEvent) => { if (caps && typeof e.getModifierState === 'function') caps.hidden = !e.getModifierState('CapsLock'); };
+    input.addEventListener('keydown', check);
+    input.addEventListener('keyup', check);
+  });
+  document.querySelector<HTMLFormElement>('[data-pw-form]')?.addEventListener('submit', (e) => {
+    const b = (e.currentTarget as HTMLFormElement).querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (b) { b.disabled = true; b.lastChild!.textContent = 'Changing…'; }
+  });
+  const topBar = document.querySelector<HTMLElement>('[data-ws-top]');
+  if (topBar) document.documentElement.style.setProperty('--set-top', `${Math.round(topBar.getBoundingClientRect().height)}px`);
+  const refused = document.querySelector<HTMLElement>('[data-set-refused]');
+  if (refused) { refused.closest<HTMLElement>('.set-sec')?.scrollIntoView({ block: 'start' }); }
+  else if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' });
+  const url = new URL(location.href);
+  if (url.searchParams.has('done')) { url.searchParams.delete('done'); history.replaceState(history.state, '', url.pathname + url.search + url.hash); }
+</script>

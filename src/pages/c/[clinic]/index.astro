@@ -1,235 +1,346 @@
 ---
-// Today, for one branch, for a signed-in staff member. Every query runs inside
-// withClinic(): row-level security scopes it to this clinic, so a forgotten
-// WHERE cannot show another clinic's patients. The status buttons are the
-// front desk's state machine, each press notifying the next role in a later
-// step; for now each press is a form post that redirects back here. Every
-// form carries the CSRF token; a post without a matching one changes nothing
-// and comes back here with ?stale=1, which shows the sentence to try again.
+// The Dashboard: one branch's day in one screen (docs/workspace-redesign.md,
+// "Dashboard"). Four numbers, the calendar (day or week, by chair or by
+// dentist, with the website's requests in their own lane) and today's
+// patients, side by side; a click opens the detail beside them in a side
+// panel and the page stays where it is. It replaces the Today page and the
+// Schedule: /schedule/ redirects here with its query. Every patient is the
+// Patients tab (/patients/), one link from today's patients.
+//
+// Soft and very simple ("The soft template", "Very simple, tabs on the left"):
+// one teal button on the screen (New booking); the view switch as a small
+// row of pills; the columns, one dentist's visits and printing behind
+// "More"; line icons beside the section titles
+// and actions, initials avatars for people, tinted callouts with an icon. The
+// title at the top of the content is this page's <h1> (heading).
+//
+// Reads: requireWorkspace (session + branch access, every request), then one
+// withClinic() transaction with one query per panel (src/components/ws/cal/
+// data.ts) — row-level security keeps every row to this branch. The calendar
+// is drawn in the browser from that answer (src/components/ws/cal/board.ts),
+// and every change after that is one JSON call to /api/schedule (POST a
+// booking, PATCH a move or a status) with the X-CSRF header; the card is
+// redrawn from what the server says was saved. Moving to another day or week
+// asks GET /api/schedule for it.
+//
+// Who sees what, decided here on the server: money (Expected and Collected
+// today, balances, Charge) only for the people who may open Finances —
+// canBill(), the billing pages' rule; for anyone else those figures are never
+// read. A dentist opens on their own column and their own patients, with one
+// switch to see everyone (?dentist=all); the desk and the owner see the whole
+// clinic.
+//
+// Query: ?date=YYYY-MM-DD (Manila; default today) ?view=day|week ?by=chair|dentist
+// ?dentist=<id>|all ?new=booking[&patient=<id>] ?booking=<id> (open that visit)
+// #requests is the website lane (the top bar's inbox links there); #patients
+// is today's patients. The old ?pq=<text> / ?pf= (the patients list that was
+// here) go on to the Patients tab with the same search and filter.
+//
+// A form post here (the old Today page's status buttons) still works: CSRF,
+// then the server's state machine (applyStatus), then back here.
 export const prerender = false;
 
 import ClinicLayout from '../../../layouts/Clinic.astro';
-import Csrf from '../../../components/Csrf.astro';
+import Pane from '../../../components/ws/Pane.astro';
+import Tile from '../../../components/ws/Tile.astro';
+import Tabs from '../../../components/ws/Tabs.astro';
+import Icon from '../../../components/ws/Icon.astro';
+import Menu from '../../../components/ws/Menu.astro';
+import VisitPanel from '../../../components/ws/cal/VisitPanel.astro';
+import BookPanel from '../../../components/ws/cal/BookPanel.astro';
+import PatientPanel from '../../../components/ws/cal/PatientPanel.astro';
+import '../../../components/ws/cal/cal.css';
 import { requireWorkspace } from '../../../lib/workspace';
 import { withClinic } from '../../../lib/db';
-import { csrfOk, CSRF_MESSAGE } from '../../../lib/csrf';
-import { peso } from '../../../data/demo';
-import { hmoById } from '../../../data/directory';
-import { pesosWhole, canBill, DUE_SQL } from '../../../lib/invoices';
+import { csrfOk, csrfToken, CSRF_MESSAGE } from '../../../lib/csrf';
+import { canBill } from '../../../lib/invoices';
+import { applyStatus, ALLOWED, NEXT_STATUS, StatusRefused } from '../../../lib/schedule';
+import { shellLinks } from '../../../components/ws/routes';
+import { loadDashboard } from '../../../components/ws/cal/data';
+import { PT_KEYS } from '../../../components/ws/cal/model';
+import {
+  DAY_MS, addDays, dayLabel, mondayOf, realDay, startMs, ymdOf, peso, summarize, summaryNotes,
+} from '../../../components/ws/cal/model';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
-const stale = Astro.url.searchParams.get('stale') === '1';
-// Patient balances are finance: the same people who may open Billing see the tile.
-const seesMoney = canBill(session.role, clinic.can_view_finance);
 
-const NEXT: Record<string, { label: string; to: string }[]> = {
-  booked: [{ label: 'Confirm', to: 'confirmed' }, { label: 'Arrived', to: 'arrived' }],
-  confirmed: [{ label: 'Arrived', to: 'arrived' }],
-  arrived: [{ label: 'To lobby', to: 'in_lobby' }, { label: 'Seat', to: 'in_chair' }],
-  in_lobby: [{ label: 'Seat', to: 'in_chair' }],
-  in_chair: [{ label: 'Complete', to: 'completed' }],
-};
-const ALLOWED = new Set(['confirmed', 'arrived', 'in_lobby', 'in_chair', 'completed', 'no_show', 'cancelled']);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const here = `/c/${clinic.slug}/`;
 
+// The old Today page's status buttons posted here. They still work, through the server's state machine.
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
-  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(Astro.url.pathname + '?stale=1', 303);
+  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(`${here}?stale=1`, 303);
   const id = String(f.get('id') ?? ''), to = String(f.get('status') ?? '');
-  if (id && ALLOWED.has(to)) {
-    await withClinic(clinic.id, async (tx) => {
-      await tx.query(
-        `update appointment set status = $2,
-           arrived_at = case when $2 in ('arrived', 'in_lobby') then coalesce(arrived_at, now()) else arrived_at end,
-           seated_at = case when $2 = 'in_chair' then coalesce(seated_at, now()) else seated_at end,
-           cancelled_at = case when $2 = 'cancelled' then now() else cancelled_at end
-         where id = $1`, [id, to]);
-      await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'appointment', $4)`, [clinic.id, session.staffId, `appointment.${to}`, id]);
-    });
+  if (UUID.test(id) && ALLOWED.has(to)) {
+    try {
+      await withClinic(clinic.id, async (tx) => {
+        const cur = (await tx.query<{ status: string }>('select status from appointment where id = $1 for update', [id])).rows[0];
+        if (cur && cur.status !== to) await applyStatus(tx, clinic.id, session.staffId, id, to, cur.status);
+      });
+    } catch (e) {
+      if (e instanceof StatusRefused) return Astro.redirect(`${here}?refused=1`, 303);
+      throw e;
+    }
   }
-  return Astro.redirect(Astro.url.pathname, 303);
+  return Astro.redirect(here, 303);
 }
 
-const data = await withClinic(clinic.id, async (tx) => {
-  const me = (await tx.query(`select chairs, area from clinic where id = $1`, [clinic.id])).rows[0];
-  const today = (await tx.query(
-    `select a.id, a.starts_at, a.reason, a.status, a.source, a.public_ref, a.booked_by_phone,
-            p.id as patient_id, p.first_name, p.last_name, p.chart_no,
-            (select h.allergies from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as allergies,
-            s.full_name as dentist
-     from appointment a join patient p on p.id = a.patient_id left join staff s on s.id = a.dentist_id
-     where (a.starts_at at time zone 'Asia/Manila')::date = (now() at time zone 'Asia/Manila')::date
-       and a.status <> 'cancelled'
-     order by a.starts_at`)).rows;
-  const fromWeb = (await tx.query(
-    `select a.id, a.starts_at, a.reason, a.status, a.source, a.public_ref, a.booked_by_name, a.booked_by_phone, a.hmo_id, a.notes, a.created_at,
-            p.first_name, p.last_name, p.chart_no, s.full_name as dentist
-     from appointment a join patient p on p.id = a.patient_id left join staff s on s.id = a.dentist_id
-     where a.source in ('web', 'request') and a.status = 'booked' and a.starts_at >= now() - interval '1 day'
-     order by a.created_at desc limit 25`)).rows;
-  const counts = (await tx.query(`select (select count(*) from patient where archived_at is null)::int as patients`)).rows[0];
-  // What patients themselves still owe on statements that are not void
-  // (Billing; the part an HMO or PhilHealth still owes is left out, as on the
-  // Billing page), and how many owe it. Only read for those who see it.
-  const money = seesMoney
-    ? (await tx.query(
-        `select count(*)::int as statements,
-                coalesce(sum(patient_due) filter (where patient_due > 0), 0) as owed,
-                count(distinct patient_id) filter (where patient_due > 0)::int as owing
-           from (${DUE_SQL}) s`)).rows[0]
-    : { statements: 0, owed: '0', owing: 0 };
-  const claims = (await tx.query(
-    `select c.id, c.claimed, c.approved, c.status, c.filed_at, extract(day from now() - c.filed_at)::int as days,
-            pr.name as provider, p.first_name, p.last_name
-     from hmo_claim c join hmo_provider pr on pr.id = c.provider_id join patient p on p.id = c.patient_id
-     order by c.filed_at`)).rows;
-  return { me, today, fromWeb, counts, money, claims };
-});
+// Who is looking.
+const finance = canBill(session.role, clinic.can_view_finance);
+const isDentist = session.role === 'dentist' || session.role === 'associate';
+const links = shellLinks(clinic.slug);
 
-const inChair = data.today.filter((a) => a.status === 'in_chair').length;
-const waiting = data.today.filter((a) => a.status === 'in_lobby' || a.status === 'arrived').length;
-const open = data.claims.filter((c) => c.status === 'filed' || c.status === 'partly_approved');
-const overdue = open.filter((c) => c.days > 60);
-const stuck = overdue.reduce((n, c) => n + (Number(c.claimed) - Number(c.approved ?? 0)), 0);
+const qs = Astro.url.searchParams;
+// Every patient has their own tab now (the Patients tab); the Dashboard keeps today's. An old link to this page's
+// patients list — ?pq= a search, ?pf= a filter — lands there, asking the same thing. An old address that was a
+// calendar view as well (the calendar wrote its date, view, columns and dentist beside the list's search and
+// filter) stays on the calendar it showed, without those two.
+{
+  const oldQ = (qs.get('pq') ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const oldF = ({ today: 'today', new: 'new', balance: 'balance' } as Record<string, string>)[qs.get('pf') ?? ''];
+  const CALENDAR = ['date', 'view', 'by', 'dentist', 'new', 'patient', 'booking'];
+  if (qs.has('pq') || qs.has('pf')) {
+    if (CALENDAR.some((k) => qs.get(k))) {
+      const keep = new URLSearchParams(qs);
+      keep.delete('pq'); keep.delete('pf');
+      return Astro.redirect(`${here}?${keep}`, 302);
+    }
+    if (oldQ || oldF) {
+      const to = new URLSearchParams();
+      if (oldQ) to.set('q', oldQ);
+      if (oldF) to.set('f', oldF);
+      return Astro.redirect(`${links.patients}?${to}`, 302);
+    }
+  }
+}
+// The query, read once and checked. Anything odd falls back to today, the whole clinic.
+const today = ymdOf(Date.now());
+const askedDate = qs.get('date') ?? '';
+const date = realDay(askedDate) ? askedDate : today;
+const view: 'day' | 'week' = qs.get('view') === 'week' ? 'week' : 'day';
+// ?dentist= is '' (the default: a dentist's own column, everyone for anyone else), 'all', or one dentist's id.
+const askedDentist = qs.get('dentist') ?? '';
+const dentistParam = UUID.test(askedDentist) ? askedDentist.toLowerCase() : askedDentist === 'all' && isDentist ? 'all' : '';
+const filterOf = (param: string) => (param === 'all' ? '' : param || (isDentist ? session.staffId : ''));
+const byDefault = (param: string) => (isDentist && filterOf(param) === session.staffId ? 'dentist' : 'chair');
+const filter = filterOf(dentistParam);
+const byAsked = qs.get('by');
+const by: 'chair' | 'dentist' = byAsked === 'dentist' || byAsked === 'chair' ? byAsked : byDefault(dentistParam);
+const openNew = qs.get('new') === 'booking';
+const openPatient = UUID.test(qs.get('patient') ?? '') ? qs.get('patient')!.toLowerCase() : null;
+const openBooking = UUID.test(qs.get('booking') ?? '') ? qs.get('booking')!.toLowerCase() : null;
+const stale = qs.get('stale') === '1';
+const refused = qs.get('refused') === '1';
 
-// The balances tile shows once the branch has a statement (Billing), to those
-// who may open Billing: before that it would be a made-up ₱0. It opens the
-// unpaid list, where the same figure stands.
-const hasLedger = seesMoney && data.money.statements > 0;
-const tiles = [
-  { label: 'In the chair', value: String(inChair), note: `${data.me.chairs} ${data.me.chairs === 1 ? 'chair' : 'chairs'}` },
-  { label: 'Waiting', value: String(waiting), note: 'arrived or in lobby' },
-  ...(hasLedger ? [{ label: 'Patient balances', value: pesosWhole(data.money.owed), note: `${data.money.owing} ${data.money.owing === 1 ? 'patient owes' : 'patients owe'}`, href: `/c/${clinic.slug}/billing/?view=unpaid` }] : []),
-  { label: 'Stuck with HMOs', value: peso(stuck), note: `${overdue.length} past 60 days` },
-];
+const first = view === 'week' ? mondayOf(date) : date;
+const from = new Date(startMs(first));
+const to = new Date(startMs(first) + (view === 'week' ? 7 : 1) * DAY_MS);
+const todayFrom = new Date(startMs(today));
+const todayTo = new Date(startMs(today) + DAY_MS);
 
-const QUEUE: Record<string, { label: string; cls: string }> = {
-  in_chair: { label: 'In chair', cls: 'bg-accent text-surface' },
-  in_lobby: { label: 'In lobby', cls: 'bg-crown/20 text-crown' },
-  arrived: { label: 'Arrived', cls: 'bg-crown/20 text-crown' },
-  confirmed: { label: 'Confirmed', cls: 'bg-bg-soft text-ink-2' },
-  booked: { label: 'Booked', cls: 'bg-bg-soft text-ink-2' },
-  completed: { label: 'Completed', cls: 'bg-bg-soft text-muted' },
-  no_show: { label: 'No show', cls: 'bg-caries/15 text-caries' },
-  cancelled: { label: 'Cancelled', cls: 'bg-bg-soft text-muted' },
+const data = await loadDashboard(clinic.id, { from, to, todayFrom, todayTo, finance, staffId: session.staffId });
+// Add patient and Import refuse anyone without can_edit_records here (canEditRecords): not offered to them.
+const canEdit = data.canEdit;
+const csrf = csrfToken(Astro.cookies);
+
+// The summary strip. The browser recounts it from today's visits after every change.
+const sum = summarize(data.today, isDentist ? session.staffId : '');
+const notes = summaryNotes(sum, data.clinic.chairs, isDentist, finance);
+
+// The URL for a view of the calendar; board.ts writes the same one (calUrl there).
+const calUrl = (o: Partial<{ date: string; view: string; by: string; dentist: string }>) => {
+  const v = { date, view, by, dentist: dentistParam, ...o };
+  const p = new URLSearchParams();
+  if (v.date !== today) p.set('date', v.date);
+  if (v.view !== 'day') p.set('view', v.view);
+  if (v.by !== byDefault(v.dentist)) p.set('by', v.by);
+  if (v.dentist) p.set('dentist', v.dentist);
+  const s = p.toString();
+  return s ? `${here}?${s}` : here;
 };
+const title = view === 'week' ? `${dayLabel(first)} – ${dayLabel(addDays(first, 6))}` : dayLabel(date, 'long');
+// The small line over the calendar's title, in plain words; board.ts writes the same (calMeta there).
+const calMeta = view === 'week' ? (first === mondayOf(today) ? 'This week' : 'Week')
+  : date === today ? 'Today' : date === addDays(today, 1) ? 'Tomorrow' : date === addDays(today, -1) ? 'Yesterday' : 'Calendar';
 
-// Status is never colour alone: every badge carries its word.
-function claimStatus(c: (typeof data.claims)[number]) {
-  if (c.status === 'paid') return { label: 'Paid', tone: 'text-accent', dot: 'bg-accent' };
-  if (c.status === 'denied') return { label: 'Denied', tone: 'text-caries', dot: 'bg-caries' };
-  if (c.days > 120) return { label: `Overdue ${c.days}d`, tone: 'text-caries', dot: 'bg-caries' };
-  if (c.days > 60) return { label: `Late ${c.days}d`, tone: 'text-crown', dot: 'bg-crown' };
-  return { label: `Filed ${c.days}d`, tone: 'text-ink-2', dot: 'bg-muted' };
-}
+// Today's patients (the pane beside the calendar): each patient with a visit today once — a dentist's own,
+// while their calendar shows their own column; an archived record's visit left out, as the Patients tab's Today
+// leaves it out (data.patients is every patient on file). patients.ts recounts it after every change.
+const todayMine = isDentist && filter === session.staffId;
+const onFile = new Set(data.patients.map((p) => p.id));
+const todayCount = new Set(data.today.filter((c) => onFile.has(c.patientId) && (!todayMine || c.dentistId === session.staffId)).map((c) => c.patientId)).size;
+const todayMeta = `${todayCount} with a visit today${todayMine ? ', with you' : ''}`;
+// "More" beside the calendar's view switch: the columns (a day by chair or by dentist) and one dentist's
+// visits (the desk and the owner; a dentist has Mine · Everyone as pills). Links, so each one survives a reload.
+const whoItems = !isDentist && data.staff.length > 1
+  ? [{ id: '', label: 'All dentists' }, ...data.staff.map((s) => ({ id: s.id, label: s.name }))]
+  : [];
 
-const time = (d: Date) => new Intl.DateTimeFormat('en-PH', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(d);
-const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(d);
+const boot = {
+  slug: clinic.slug, csrf, today, date, view, by, dentist: dentistParam,
+  me: { id: session.staffId, name: session.name, dentist: isDentist },
+  finance, canEdit,
+  chairs: data.clinic.chairs, hours: data.hours, staff: data.staff, catalog: data.catalog,
+  next: NEXT_STATUS,
+  cards: data.range, todayCards: data.today, toPlace: data.toPlace, toConfirm: data.toConfirm,
+  // Every patient, as rows under one list of keys (PT_KEYS): a clinic with thousands of patients sends each
+  // key once, not once per patient. patients.ts unpacks it.
+  patients: { keys: PT_KEYS, rows: data.patients.map((p) => PT_KEYS.map((k) => p[k])) },
+  links: {
+    record: `/c/${clinic.slug}/patients/`,
+    // Finances' new charge, pre-filled (?patient=&service=). /billing/new/ still answers, by a redirect there.
+    charge: `/c/${clinic.slug}/finances/new/`,
+    messages: links.messages,
+    addPatient: `/c/${clinic.slug}/patients/new/`,
+    importPatients: `/c/${clinic.slug}/patients/import/`,
+  },
+  open: { new: openNew, patient: openPatient, booking: openBooking },
+  // The patients list's filter and search moved to the Patients tab; the calendar's script still reads the keys.
+  pf: 'all', pq: '',
+};
+const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
 ---
 
-<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.me.area }} title="Today" section="today" staff={{ name: session.name, role: session.role }} branches={branches}>
-  <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Today</h1>
-
-  {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
-
-  <dl class={`mt-6 grid gap-4 sm:grid-cols-2 ${tiles.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
-    {tiles.map((t) => (
-      <div class="border border-line bg-surface p-5">
-        <dt class="meta">{t.label}</dt>
-        <dd class="mt-2 font-display text-[32px] leading-none font-bold tabular-nums">{'href' in t && t.href ? <a href={t.href} class="inline-flex min-h-11 items-center hover:text-accent">{t.value}</a> : t.value}</dd>
-        <p class="mt-1.5 text-[13px] text-muted">{t.note}</p>
-      </div>
-    ))}
-  </dl>
-
-  {data.fromWeb.length > 0 && (
-    <section class="mt-10" aria-labelledby="web-title">
-      <h2 id="web-title" class="font-display text-[22px] font-semibold">From the website</h2>
-      <p class="mt-1.5 text-[14.5px] text-ink-2">Booked or requested online, not yet confirmed. Confirming sends no text. A request gets its reminder once it is placed on the Schedule.</p>
-      <ul class="mt-4 divide-y divide-line-2 overflow-hidden border border-line bg-surface">
-        {data.fromWeb.map((a) => (
-          <li class="flex flex-wrap items-center gap-4 p-4 sm:px-6">
-            <div class="min-w-0 flex-1">
-              <p class="text-[15.5px] font-semibold">{a.first_name} {a.last_name} <span class="font-mono text-[12px] tracking-[0.08em] text-muted">{a.public_ref}</span></p>
-              <p class="text-[13.5px] text-ink-2">{when(a.starts_at)} · {a.reason} · {a.dentist ?? 'any dentist'}{a.hmo_id && ` · HMO: ${hmoById(a.hmo_id)?.name ?? a.hmo_id}`}</p>
-              <p class="text-[13.5px] text-muted">{a.source === 'request' ? 'Requested time — confirm or call' : 'Booked online'} · text {a.booked_by_phone}{a.booked_by_name && a.booked_by_name !== `${a.first_name} ${a.last_name}` ? ` (${a.booked_by_name})` : ''}{a.notes && ` · “${a.notes}”`}</p>
-            </div>
-            <form method="post" class="flex gap-2">
-              <Csrf />
-              <input type="hidden" name="id" value={a.id} />
-              <button name="status" value="confirmed" class="btn btn-primary !px-4 !py-2 text-[13.5px]">Confirm</button>
-              <button name="status" value="cancelled" class="btn btn-quiet !px-4 !py-2 text-[13.5px]">Decline</button>
-            </form>
-          </li>
-        ))}
-      </ul>
-    </section>
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.clinic.area }} title="Dashboard" section="dashboard" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" wide heading>
+  {(stale || refused) && (
+    <p role="alert" class="ws-callout dash-alert" data-tone="alert"><Icon name="alert" /><span>{stale ? CSRF_MESSAGE : 'That change is not one the book allows any more. The calendar shows where the visit stands now.'}</span></p>
   )}
 
-  <section class="mt-10">
-    <h2 class="font-display text-[22px] font-semibold">Queue</h2>
-    {data.today.length === 0 ? (
-      <p class="mt-3 text-[15px] text-muted">Nothing on the book today.</p>
+  <!-- Four numbers, no more (the soft template): the same three for everyone, then Done — or, for the people
+       who may see money, Collected today (Done is said under Booked, the fee guide's expectation under Collected). -->
+  <div class="ws-tiles dash-tiles" data-dash-tiles aria-label="Today at a glance" role="group">
+    <Tile id="tile-booked" label="Booked today" value={sum.booked} note={notes.booked} icon="calendar" />
+    <Tile id="tile-waiting" label="Waiting" value={sum.waiting} note={notes.waiting} icon="clock" tone={sum.waiting ? 'warn' : 'default'} />
+    <Tile id="tile-chair" label="In the chair" value={sum.inChair} note={notes.inChair} icon="user" tone={sum.inChair ? 'accent' : 'default'} />
+    {finance && data.collected ? (
+      <Tile id="tile-collected" label="Collected today" value={peso(data.collected.amount)} note={notes.expected} icon="money" tone={data.collected.amount > 0 ? 'success' : 'default'} href={`/c/${clinic.slug}/finances/`} />
     ) : (
-      <ul class="mt-4 divide-y divide-line-2 overflow-hidden border border-line bg-surface">
-        {data.today.map((a) => {
-          const q = QUEUE[a.status];
-          return (
-            <li class="flex flex-wrap items-center gap-4 p-4 sm:px-6">
-              <span class="w-16 shrink-0 text-[15px] font-semibold tabular-nums">{time(a.starts_at)}</span>
-              <div class="min-w-0 flex-1">
-                <a href={`/c/${clinic.slug}/patients/${a.patient_id}/`} class="text-[15.5px] font-semibold hover:text-accent">{a.first_name} {a.last_name}</a>
-                <p class="text-[13.5px] text-muted">{a.reason} &middot; {a.chart_no}{a.dentist && ` · ${a.dentist}`}{a.source !== 'staff' && ` · ${a.source === 'web' ? 'booked online' : 'requested online'}`}</p>
-              </div>
-              {a.allergies?.length > 0 && (
-                <span class="bg-caries/15 px-3 py-1 text-xs font-semibold text-caries">Allergy: {a.allergies.join(', ')}</span>
-              )}
-              <span class={`px-3 py-1.5 text-xs font-semibold ${q.cls}`}>{q.label}</span>
-              {NEXT[a.status] && (
-                <form method="post" class="flex gap-1.5">
-                  <Csrf />
-                  <input type="hidden" name="id" value={a.id} />
-                  {NEXT[a.status].map((n) => <button name="status" value={n.to} class="btn btn-quiet !px-3 !py-1.5 text-[13px]">{n.label}</button>)}
-                </form>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      <Tile id="tile-done" label="Done" value={sum.done} note={notes.done} icon="check" />
     )}
-  </section>
+  </div>
 
-  <section id="claims" class="mt-12 scroll-mt-24">
-    <h2 class="font-display text-[22px] font-semibold">HMO claims</h2>
-    <p class="mt-1.5 text-[14.5px] text-ink-2">Filed, approved, and still waiting. Anything past sixty days is money already earned. <a href={`/c/${clinic.slug}/claims/`} class="underline underline-offset-4 hover:text-accent">All claims, PhilHealth included &rarr;</a></p>
-    <div class="mt-4 overflow-x-auto border border-line bg-surface">
-      <table class="w-full min-w-[620px] border-collapse text-left">
-        <thead>
-          <tr class="border-b border-line bg-bg-soft">
-            <th scope="col" class="meta px-5 py-3.5 font-normal">Patient</th>
-            <th scope="col" class="meta px-5 py-3.5 font-normal">Provider</th>
-            <th scope="col" class="meta px-5 py-3.5 text-right font-normal">Claimed</th>
-            <th scope="col" class="meta px-5 py-3.5 text-right font-normal">Approved</th>
-            <th scope="col" class="meta px-5 py-3.5 font-normal">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.claims.length === 0 && <tr><td colspan="5" class="px-5 py-4 text-[15px] text-muted">No claims on file.</td></tr>}
-          {data.claims.map((c, i) => {
-            const s = claimStatus(c);
-            return (
-              <tr class={i < data.claims.length - 1 ? 'border-b border-line-2' : ''}>
-                <th scope="row" class="px-5 py-3.5 text-[15px] font-medium">{c.first_name} {c.last_name}</th>
-                <td class="px-5 py-3.5 text-[15px] text-ink-2">{c.provider}</td>
-                <td class="px-5 py-3.5 text-right text-[15px] tabular-nums">{peso(Number(c.claimed))}</td>
-                <td class="px-5 py-3.5 text-right text-[15px] tabular-nums text-ink-2">{c.approved === null ? '—' : peso(Number(c.approved))}</td>
-                <td class={`px-5 py-3.5 text-[14.5px] font-semibold ${s.tone}`}><span class="flex items-center gap-2"><span class={`h-2.5 w-2.5 shrink-0 ${s.dot}`}></span>{s.label}</span></td>
-              </tr>
-            );
-          })}
-        </tbody>
+  <div class="dash-board" data-dash>
+    <Pane id="calendar" title={title} meta={calMeta} icon="calendar" pad="none" class="dash-cal">
+      <div slot="actions" class="cal-nav">
+        <a href={calUrl({ date: addDays(date, view === 'week' ? -7 : -1) })} class="ws-tool cal-step" data-cal-step="-1" aria-label={view === 'week' ? 'Previous week' : 'Previous day'} title="Previous (←)">
+          <Icon name="chevron-left" size={20} />
+        </a>
+        <a href={calUrl({ date: today })} class="ws-btn ws-btn-quiet ws-btn-sm cal-today" data-cal-today>Today</a>
+        <a href={calUrl({ date: addDays(date, view === 'week' ? 7 : 1) })} class="ws-tool cal-step" data-cal-step="1" aria-label={view === 'week' ? 'Next week' : 'Next day'} title="Next (→)">
+          <Icon name="chevron-right" size={20} />
+        </a>
+        <label class="cal-date">
+          <span class="sr-only">Go to a date</span>
+          <input type="date" value={date} data-cal-date />
+        </label>
+        <button type="button" class="ws-btn ws-btn-primary cal-new" data-cal-new><Icon name="plus" />New booking</button>
+      </div>
+
+      <div class="cal-bar" data-cal-bar>
+        <Tabs label="View" current={view} class="cal-seg" items={[
+          { id: 'day', label: 'Day', href: calUrl({ view: 'day' }) },
+          { id: 'week', label: 'Week', href: calUrl({ view: 'week' }) },
+        ]} />
+        {isDentist && (
+          <Tabs label="Whose visits and patients" current={filter === session.staffId ? 'mine' : 'all'} class="cal-seg" items={[
+            { id: 'mine', label: 'Mine', href: calUrl({ dentist: '', by: 'dentist' }) },
+            { id: 'all', label: 'Everyone', href: calUrl({ dentist: 'all' }) },
+          ]} />
+        )}
+        <p class="cal-count" data-cal-count aria-live="off"></p>
+        <Menu id="cal-menu" align="right" label="More calendar options" buttonClass="ws-btn ws-btn-quiet ws-btn-sm cal-menu-btn" class="cal-menu" wide>
+          <Fragment slot="button">More <Icon name="chevron" size={16} class="ws-chev" /></Fragment>
+          <div class="cal-menu-cols" data-cal-by-wrap hidden={view === 'week'}>
+            <p class="ws-menu-head">Columns</p>
+            <a class="ws-menu-item" href={calUrl({ by: 'chair' })} data-cal-by="chair" aria-current={by === 'chair' ? 'page' : undefined}>
+              <span class="ws-menu-words">By chair<span class="ws-menu-hint">A column for each chair</span></span>
+            </a>
+            <a class="ws-menu-item" href={calUrl({ by: 'dentist' })} data-cal-by="dentist" aria-current={by === 'dentist' ? 'page' : undefined}>
+              <span class="ws-menu-words">By dentist<span class="ws-menu-hint">A column for each dentist in that day</span></span>
+            </a>
+            <div class="ws-menu-sep"></div>
+          </div>
+          {whoItems.length > 0 && (
+            <>
+              <p class="ws-menu-head">Show the visits of</p>
+              {whoItems.map((w) => (
+                <a class="ws-menu-item" href={calUrl({ dentist: w.id })} data-cal-who={w.id} aria-current={filter === w.id ? 'page' : undefined}>{w.label}</a>
+              ))}
+              <div class="ws-menu-sep"></div>
+            </>
+          )}
+          <button type="button" class="ws-menu-item" data-cal-print>
+            <span class="ws-menu-icon" data-tint="blue"><Icon name="file" /></span>
+            <span class="ws-menu-words">Print the day’s list<span class="ws-menu-hint">Every visit on screen, in time order</span></span>
+          </button>
+        </Menu>
+        <!-- Columns off to the side of the grid (more chairs than the pane is wide), named, one press away. -->
+        <button type="button" class="cal-more" data-cal-more hidden></button>
+      </div>
+      <!-- What just happened, over the top of the calendar rather than pushing it down mid-drag; the dock sticks
+           under the top bar when the page is scrolled (cal.css). -->
+      <div class="cal-dock">
+        <div class="cal-toasts">
+          <p role="alert" class="ws-callout cal-toast" data-tone="alert" data-cal-err hidden></p>
+          <div role="status" class="ws-callout cal-toast" data-tone="success" data-cal-ok hidden></div>
+        </div>
+      </div>
+
+      <section id="requests" class="cal-lane" aria-labelledby="requests-title" data-reqs data-some={data.toPlace.length + data.toConfirm.length ? '' : undefined}>
+        <span id="web-title" class="sr-only"></span>
+        <div class="cal-lane-head">
+          <span class="cal-lane-icon" aria-hidden="true"><Icon name="clock" /></span>
+          <h3 id="requests-title" class="cal-lane-title">Web requests <span class="ws-count" data-lane-count data-zero={data.toPlace.length ? undefined : ''}>{data.toPlace.length}</span></h3>
+          <p class="cal-lane-also" data-lane-confirm-head hidden={data.toConfirm.length === 0}>To confirm <span class="ws-count" data-confirm-count>{data.toConfirm.length}</span></p>
+          <p class="cal-lane-hint" data-lane-hint>{data.toPlace.length ? 'Give each a time: drag it onto a chair, or open it.' : 'None waiting. A request from the website waits here for a time.'}</p>
+        </div>
+        <ul class="cal-lane-list" data-lane-list aria-label="From the website"></ul>
+      </section>
+
+      <!-- Past visits brought in with their day only: folded to one line by default, so a week of an imported
+           history does not push the calendar off the screen. They are history, not work for the desk. -->
+      <details class="cal-lane cal-undated" data-cal-undated hidden>
+        <summary class="cal-lane-head cal-undated-head">
+          <span class="cal-lane-icon" aria-hidden="true"><Icon name="file" /></span>
+          <span id="undated-title" class="cal-lane-title">From earlier records <span class="ws-count" data-zero data-undated-count>0</span></span>
+          <span class="cal-lane-hint">Past visits with their day only, no time. <span class="cal-undated-show" aria-hidden="true"></span></span>
+        </summary>
+        <ul class="cal-lane-list" data-undated-list aria-label="Past visits with no time on record"></ul>
+      </details>
+
+      <div class="cal-frame" data-cal-frame role="group" aria-label="Calendar" aria-busy="true" tabindex="-1">
+        <noscript><p class="p-6 text-[15px] text-ink-2">The calendar needs JavaScript in this browser. Every visit is also on each patient's record.</p></noscript>
+      </div>
+      <div class="cal-list" data-cal-list></div>
+
+      <table class="cal-print-list" data-cal-print-list>
+        <caption class="meta" data-cal-print-caption>{clinic.name} · {title}</caption>
+        <thead><tr><th scope="col">Time</th><th scope="col">Patient</th><th scope="col">Chart</th><th scope="col">Service</th><th scope="col">Dentist</th><th scope="col">Chair</th><th scope="col">Status</th></tr></thead>
+        <tbody data-cal-print-rows></tbody>
       </table>
-    </div>
-  </section>
+    </Pane>
+
+    {/* Today's patients: only the people with a visit today, in the order they come (patients.ts draws the rows).
+        Every patient — searched, filtered, each record's check — is the Patients tab, one link away. */}
+    <Pane id="patients" title="Today’s patients" meta={todayMeta} icon="patients" pad="none" class="dash-pts">
+      <a slot="actions" href={links.patients} class="ws-btn ws-btn-quiet ws-btn-sm pt-all" data-pt-all>See all patients <Icon name="arrow-right" size={16} /></a>
+      <p class="pt-scope" data-pt-scope></p>
+      <ul id="pt-list" class="pt-list" data-pt-list aria-label="Today’s patients, in the order they come"></ul>
+      <div class="pt-empty" data-pt-empty hidden></div>
+      <noscript><p class="pt-empty">Today’s patients need JavaScript in this browser. <a href={links.patients}>See all patients</a>.</p></noscript>
+    </Pane>
+  </div>
+
+  <VisitPanel chairs={data.clinic.chairs} />
+  <BookPanel chairs={data.clinic.chairs} catalog={data.catalog} date={date} addPatient={canEdit ? `/c/${clinic.slug}/patients/new/` : null} />
+  <PatientPanel />
+
+  <script is:inline type="application/json" data-dash-boot set:html={bootJson}></script>
 </ClinicLayout>
+
+<script>
+  import '../../../components/ws/cal/board';
+</script>

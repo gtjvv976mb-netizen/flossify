@@ -1,0 +1,32 @@
+---
+// A line icon for the patient pages: the shell's set (src/components/ws/icons.ts)
+// plus three the record needs and the shell does not have — a heart (Health),
+// a tooth (Chart) and a shield with a tick (Consent). Drawn the shell's way:
+// 24-unit paths, a 1.75 stroke in currentColor, round ends, no fill; hidden
+// from screen readers unless it has a label.
+//
+//   <Glyph name="tooth" />            beside a section title
+//   <Glyph name="calendar" />         any of the shell's names works too
+import { glyphPaths, type GlyphName } from './glyphs';
+
+interface Props { name: GlyphName; size?: number; label?: string; class?: string }
+const { name, size = 18, label, class: extra } = Astro.props;
+const inner = glyphPaths(name);
+---
+
+<svg
+  class:list={['ws-icon', extra]}
+  width={size}
+  height={size}
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  role={label ? 'img' : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : 'true'}
+  focusable="false"
+  set:html={inner}
+/>

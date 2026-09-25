@@ -1,137 +1,75 @@
 ---
-// Operations › Billing. Every group's plan and what it owes, from
-// admin_billing() (migration 011): a definer function that returns exactly
+// Flossify control › Billing (/admin/billing/): what is due, what came in,
+// the online payments a person must look at, and every group's terms. From
+// admin_billing() (migration 011), a definer function that returns exactly
 // these columns, because an admin has no tenant and must not read clinic
-// tables directly. Three things a person does here, each a form post with
-// the CSRF token, each written through a definer function and recorded as an
-// auth_event ('billing.<action>', with the admin's staff id and no tenant):
-// issue this month's invoices, mark one paid against the reference they saw
-// in the account, and set a group's terms. Issuing is off while BILLING_FINAL
-// (src/lib/billing-config.ts) is false: the prices are placeholders.
+// tables directly. The soft, very simple template: four numbers, one main
+// action (Mark paid, green: money in), everything else a quiet button or a
+// side panel — Mark paid and a group's terms each open one.
 //
-// A miss (a stale token, an invoice already marked, a bad number) shows one
-// plain sentence and changes nothing; a success redirects with ?done=.
+// Every action is a form post with the CSRF token, carried out by
+// billingAction() in src/lib/admin.ts, written through a definer function and
+// recorded in auth_event as 'billing.<action>' with the operator's staff id
+// and a detail line naming the invoice or group. Issuing is off while
+// BILLING_FINAL (src/lib/billing-config.ts) is false: the pay-to details are
+// placeholders. The page says so in words ("Billing is off"); the file and
+// flag names stay here, for whoever switches it on — the prices and pay-to
+// details live in src/lib/billing.ts. Money is shown at each group's own
+// price (subscription.price_per_branch), never the list price. A miss (a
+// stale token, an invoice already marked, a bad number) shows one plain
+// sentence and changes nothing — a refused Mark paid or Save terms comes back
+// in its own panel — and a success redirects with ?done=.
 //
 // Invoices a clinic paid online (PayMongo, src/lib/payments.ts, migration 024)
-// mark themselves: they are listed under "Paid online" with PayMongo's payment
-// id as the reference. A payment PayMongo reported that no invoice could take
-// (wrong amount, an invoice already paid or cancelled, a checkout we have no
-// record of, a paid event that could not be read) is listed under "Online
-// payments to look at", every one until a person presses Handled: money may
-// have moved, and the fix (a refund, or marking an invoice by hand) is a
-// person's. Both read admin_online_payments(), a definer function, like the
-// rest here. When an online payment was started for a due invoice, its Mark
-// paid form says so and offers Check with PayMongo, which asks PayMongo and
-// marks it paid online if it was, so a person does not mark by hand what
-// PayMongo already took. Marking by hand closes the invoice's open checkouts.
+// mark themselves, with PayMongo's payment id as the reference. A payment
+// PayMongo reported that no invoice could take is listed under "Online
+// payments to look at" until a person presses Handled: money may have moved,
+// and the fix (a refund, or marking an invoice by hand) is a person's. When an
+// online payment was started for a due invoice, Mark paid says so and offers
+// Ask PayMongo.
+//
+// Addresses: ?terms=<group> (the clinic panel's "Billing and terms") opens
+// that group's terms; so does the older ?group=<group> when it is not a
+// sentence's (a ?done= carries group= to name it).
 export const prerender = false;
 
 import AdminLayout from '../../../layouts/Admin.astro';
 import Csrf from '../../../components/Csrf.astro';
-import { requireAdmin } from '../../../lib/admin';
+import Pane from '../../../components/ws/Pane.astro';
+import Tile from '../../../components/ws/Tile.astro';
+import Chip from '../../../components/ws/Chip.astro';
+import Empty from '../../../components/ws/Empty.astro';
+import Icon from '../../../components/ws/Icon.astro';
+import Avatar from '../../../components/ws/Avatar.astro';
+import Menu from '../../../components/ws/Menu.astro';
+import SidePanel from '../../../components/ws/SidePanel.astro';
+import TermsForm from './_TermsForm.astro';
+import { requireAdmin, billingAction, billingNotice, paidLately, ago, REF_MAX, type BillingResult } from '../../../lib/admin';
 import { csrfOk, CSRF_MESSAGE } from '../../../lib/csrf';
-import { authEvent } from '../../../lib/auth';
 import { clientIp } from '../../../lib/throttle';
 import { peso } from '../../../data/demo';
+import { prettyPhone } from '../../../lib/messages';
 import {
-  PLANS, PLAN_IDS, SUB_STATUSES, STATUS_WORDS, DEFAULT_PLAN, TRIAL_DAYS, BILLING_FINAL,
-  adminRows, allDue, notesByGroup, issueInvoices, markPaid, adminSet,
-  manilaToday, manilaDate, monthText, dayText, whenText, type PlanId, type SubStatus,
+  STATUS_WORDS, BILLING_FINAL,
+  adminRows, allDue, notesByGroup, manilaToday, manilaDate, monthText, dayText, whenText, daysBetween, type AdminRow,
 } from '../../../lib/billing';
-import {
-  onlineEvents, paymentsToLookAt, lastPaidOnline, checkoutsStarted, onlinePayReady, payConfig, markReviewed, closeCheckouts, confirmPending,
-  ADMIN_CONFIRM_DAYS, OUTCOME_WORDS, type Asked,
-} from '../../../lib/payments';
+import { onlineEvents, paymentsToLookAt, lastPaidOnline, checkoutsStarted, onlinePayReady, payConfig, OUTCOME_WORDS } from '../../../lib/payments';
 
 const admin = await requireAdmin(Astro);
 if (admin instanceof Response) return admin;
-const { session } = admin;
-const here = Astro.url.pathname;
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
-const REF_MAX = 120;
-const NOTES_MAX = 500;
-const PRICE_MAX = 99_999.99;
-
+const here = '/admin/billing/';
 const today = manilaToday();
-let error = '';
 
+let refused: Extract<BillingResult, { ok: false }> | null = null;
+let staleNow = false;
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const action = String(form.get('action') ?? '');
-  const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
-  const s = (k: string) => String(form.get(k) ?? '').trim();
-
-  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
-  else if (action === 'issue' && !BILLING_FINAL) {
-    // A form from before the switch, or a hand-made post: the button is not on the page while prices are placeholders.
-    error = 'Invoices are not issued yet: the prices are still placeholders. Nothing was created.';
-  } else if (action === 'issue') {
-    const n = await issueInvoices(today);
-    await authEvent('billing.issue', { staffId: session.staffId, ip, ua });
-    return Astro.redirect(`${here}?done=issue&n=${n}`, 303);
-  } else if (action === 'paid') {
-    const id = s('invoice'), ref = s('ref').replace(/\s+/g, ' ');
-    const inv = UUID.test(id) ? (await allDue()).find((i) => i.id === id) : undefined;
-    if (!inv) error = 'That invoice is no longer due. It may have been marked paid a moment ago; check the list.';
-    else if (!ref) error = 'Type the reference you saw in the account, so the payment can be traced later.';
-    else if (ref.length > REF_MAX) error = `Keep the reference under ${REF_MAX} characters.`;
-    else {
-      try {
-        await markPaid(inv.id, ref, session.staffId);
-      } catch {
-        error = 'That invoice is no longer due. It may have been marked paid a moment ago; check the list.';
-      }
-      if (!error) {
-        await authEvent('billing.paid', { staffId: session.staffId, ip, ua });
-        // Paid now: close any PayMongo checkout still open for it, so the clinic cannot pay it twice. Not awaited.
-        void closeCheckouts({ invoiceId: inv.id });
-        return Astro.redirect(`${here}?done=paid&number=${encodeURIComponent(inv.number)}&group=${inv.group_id}`, 303);
-      }
-    }
-  } else if (action === 'check') {
-    // Before marking by hand: ask PayMongo about the invoice's checkouts, and mark it paid online if it was.
-    const id = s('invoice');
-    const inv = UUID.test(id) ? (await allDue()).find((i) => i.id === id) : undefined;
-    if (!inv) error = 'That invoice is no longer due. It may have been marked paid a moment ago; check the list.';
-    else {
-      const r = await confirmPending(inv.group_id, inv.number, ADMIN_CONFIRM_DAYS);
-      await authEvent('billing.check', { staffId: session.staffId, ip, ua });
-      return Astro.redirect(`${here}?done=check&r=${r}&number=${encodeURIComponent(inv.number)}&group=${inv.group_id}`, 303);
-    }
-  } else if (action === 'reviewed') {
-    // A refused online payment, dealt with in the PayMongo dashboard or by marking an invoice by hand.
-    const id = s('event');
-    if (!/^(evt_|check:pay_)[A-Za-z0-9]{8,64}$/.test(id) || !(await markReviewed(id, session.staffId))) {
-      error = 'That payment is not on the list any more. Someone may have marked it a moment ago.';
-    } else {
-      await authEvent('billing.reviewed', { staffId: session.staffId, ip, ua });
-      return Astro.redirect(`${here}?done=reviewed#look-title`, 303);
-    }
-  } else if (action === 'set') {
-    const group = s('group'), plan = s('plan'), status = s('status'), ends = s('trial_ends'), notes = s('notes');
-    const rawPrice = s('price');
-    const price = /^\d{1,6}(\.\d{1,2})?$/.test(rawPrice) ? Number(rawPrice) : NaN;
-    if (!UUID.test(group)) error = 'That group is not on the list.';
-    else if (!(PLAN_IDS as string[]).includes(plan)) error = 'Pick a plan from the list.';
-    else if (!(SUB_STATUSES as string[]).includes(status)) error = 'Pick a status from the list.';
-    else if (!ISO_DAY.test(ends) || Number.isNaN(Date.parse(`${ends}T00:00:00Z`))) error = 'The trial end needs a date.';
-    else if (!Number.isFinite(price) || price > PRICE_MAX) error = `Enter the price per branch in pesos, like 800 or 800.50 (0 to ${peso(PRICE_MAX)}).`;
-    else if (notes.length > NOTES_MAX) error = `Keep the note under ${NOTES_MAX} characters.`;
-    else {
-      // The trial ends at the end of that Manila day.
-      const trialEnds = new Date(`${ends}T23:59:59+08:00`);
-      try {
-        await adminSet(group, { plan: plan as PlanId, status: status as SubStatus, trialEnds, price: Math.round(price * 100) / 100, notes });
-      } catch {
-        error = 'That could not be saved. Check that the group still exists and try once more.';
-      }
-      if (!error) {
-        await authEvent('billing.set', { staffId: session.staffId, ip, ua });
-        return Astro.redirect(`${here}?done=set&group=${group}`, 303);
-      }
-    }
+  if (!csrfOk(Astro.cookies, form)) staleNow = true;
+  else {
+    const r = await billingAction(form, { staffId: admin.session.staffId, ip: clientIp(Astro), ua: Astro.request.headers.get('user-agent') });
+    // Back to the top, where the sentence is.
+    if (r.ok) return Astro.redirect(`${here}?${new URLSearchParams(r.done)}`, 303);
+    refused = r;
   }
 }
 
@@ -139,345 +77,364 @@ if (Astro.request.method === 'POST') {
 // (no limit: one must never drop off behind newer ones), whose last payment was online, and
 // which due invoices have a payment under way.
 const PAID_SHOWN = 100;
-const [rows, due, notes, paidOnlineList, toLook, onlineLast] = await Promise.all([
-  adminRows(), allDue(), notesByGroup(), onlineEvents({ limit: PAID_SHOWN, outcomes: ['paid'] }), paymentsToLookAt(), lastPaidOnline(),
+const [rows, due, notes, paidOnlineList, toLook, onlineLast, paid] = await Promise.all([
+  adminRows(), allDue(), notesByGroup(), onlineEvents({ limit: PAID_SHOWN, outcomes: ['paid'] }), paymentsToLookAt(), lastPaidOnline(), paidLately(8),
 ]);
-const dueOf = (groupId: string) => due.filter((i) => i.group_id === groupId);
 const started = await checkoutsStarted(due.map((i) => i.id));
-const lastOnline = (r: (typeof rows)[number]) => !!r.last_paid && onlineLast.has(r.group_id);
-const centavosText = (n: number | null) => (n === null ? '—' : peso(n / 100));
 const onlineOn = onlinePayReady();
 // PayMongo can be asked whenever this server has its keys, even with billing not final: a checkout opened earlier still needs an answer.
 const canAsk = payConfig() !== null;
 const anyOnline = onlineOn || paidOnlineList.length > 0 || toLook.length > 0;
+const now = new Date();
+const n = (x: number) => x.toLocaleString('en-PH');
+const plural = (k: number, one: string, many = `${one}s`) => `${n(k)} ${k === 1 ? one : many}`;
+const centavos = (x: number | null) => (x === null ? '—' : peso(x / 100));
 
 const q = Astro.url.searchParams;
-const openGroup = q.get('group') ?? '';
-let notice = '';
-if (!error) {
-  const done = q.get('done') ?? '';
-  const n = Number(q.get('n') ?? 0);
-  const named = rows.find((r) => r.group_id === openGroup)?.group_name ?? 'the group';
-  if (done === 'issue') notice = n > 0 ? `Issued ${n} invoice${n === 1 ? '' : 's'} for ${monthText(today)}.` : `Nothing to issue: every group past its trial already has its ${monthText(today)} invoice, or has no open branch.`;
-  else if (done === 'paid') notice = `Marked ${q.get('number') ?? 'the invoice'} paid. If nothing else of theirs was overdue, ${named} is active again.`;
-  else if (done === 'set') notice = `Saved ${named}’s terms.`;
-  else if (done === 'reviewed') notice = 'Taken off the list of online payments to look at.';
-  else if (done === 'check') {
-    const num = q.get('number') ?? 'the invoice';
-    const said: Record<Asked, string> = {
-      paid: `PayMongo has a payment for ${num}: it is marked paid online.`,
-      refused: `PayMongo has a payment for ${num} that the invoice did not take. It is under Online payments to look at, below.`,
-      unpaid: `PayMongo has no payment for ${num} yet. If the clinic paid by transfer instead, mark it by hand with that reference.`,
-      noanswer: 'PayMongo did not answer. Nothing was changed. Try again in a minute.',
-      busy: `PayMongo was asked about ${named} a moment ago. Nothing was changed. Try again in a minute.`,
-      none: `There is no online payment for ${num} from the last ${ADMIN_CONFIRM_DAYS} days left to ask PayMongo about. Anything it already reported is in the lists below.`,
-      off: 'PayMongo is not set up on this server, so it cannot be asked. Nothing was changed.',
-    };
-    const r = q.get('r') ?? '';
-    notice = Object.hasOwn(said, r) ? said[r as Asked] : '';
-  }
-}
+const groupName = new Map(rows.map((r) => [r.group_id, r.group_name]));
+const stale = staleNow || q.get('stale') === 'billing' || q.get('stale') === '1';
+const notice = refused || stale ? '' : billingNotice(q, (id) => groupName.get(id));
 
-const overdueCount = rows.filter((r) => r.status === 'past_due').length;
-const owedTotal = rows.reduce((n, r) => n + r.due_amount, 0);
-const plus30 = manilaDate(new Date(Date.now() + TRIAL_DAYS * 86_400_000));
-const priceHint = PLAN_IDS.map((p) => `${PLANS[p].name} ${peso(PLANS[p].perBranch)}`).join(' · ');
-// The same switch as the clinic's Billing page and the SMS worker: until BILLING_FINAL is true
-// the plan prices are placeholders and no invoice is issued, by the worker or from here.
-const pricesFinal = BILLING_FINAL;
+// A refused Mark paid comes back in its panel. The invoice and the reference are kept only while
+// that invoice is still due (a reference too long, say). When it is gone — someone marked it a
+// moment ago — nothing is kept: the list shows "Choose an invoice", so a second press cannot mark
+// another group's invoice with this payment's reference.
+const payRefused = refused?.action === 'paid' ? refused : null;
+const payInvoice = payRefused?.invoice && due.some((i) => i.id === payRefused.invoice) ? payRefused.invoice : '';
+const payRef = payInvoice ? (payRefused?.ref ?? '') : '';
+// A refused Save terms comes back in the terms panel, on its group.
+const setRefused = refused?.action === 'set' ? refused : null;
+const otherRefused = refused && !payRefused && !setRefused ? refused : null;
+const termsId = setRefused?.group || q.get('terms') || (q.has('done') ? '' : (q.get('group') ?? ''));
+const termsRow = rows.find((r) => r.group_id === termsId) ?? null;
+
+const owed = due.reduce((s, i) => s + i.amount, 0);
+const overdueGroups = rows.filter((r) => r.status === 'past_due').length;
+const lastOnline = (r: AdminRow) => !!r.last_paid && onlineLast.has(r.group_id);
+const late = (dueAt: Date) => daysBetween(manilaDate(dueAt), today);
 
 // Status is never colour alone: every state has its words.
-const standing = (r: (typeof rows)[number]) =>
-  !r.status ? { label: 'No subscription yet', cls: 'bg-bg-soft text-muted' }
-  : r.status === 'past_due' ? { label: STATUS_WORDS.past_due, cls: 'bg-caries/15 text-caries' }
-  : r.status === 'trial' ? { label: STATUS_WORDS.trial, cls: 'bg-crown/20 text-crown' }
-  : r.status === 'cancelled' ? { label: STATUS_WORDS.cancelled, cls: 'bg-bg-soft text-muted' }
-  : { label: STATUS_WORDS.active, cls: 'bg-accent/15 text-accent' };
-
+const standing = (r: AdminRow) =>
+  !r.status ? { label: 'Not started', tone: 'muted' as const }
+  : r.status === 'past_due' ? { label: STATUS_WORDS.past_due, tone: 'alert' as const }
+  : r.status === 'trial' ? { label: STATUS_WORDS.trial, tone: 'warn' as const }
+  : r.status === 'cancelled' ? { label: STATUS_WORDS.cancelled, tone: 'muted' as const }
+  : { label: STATUS_WORDS.active, tone: 'accent' as const };
+const standingLine = (r: AdminRow) =>
+  r.status === 'trial' && r.trial_ends_at ? `trial ends ${whenText(r.trial_ends_at)}`
+  : r.status === 'past_due' && r.oldest_due ? `oldest due ${dayText(r.oldest_due)}`
+  : r.price_per_branch !== null ? `${peso(r.price_per_branch)} a branch` : '';
 ---
 
-<AdminLayout title="Billing" section="billing" admin={{ name: admin.name }}>
-  <div class="flex flex-wrap items-end justify-between gap-4">
-    <div>
-      <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Billing</h1>
-      <p class="mt-2 max-w-[64ch] text-[15px] leading-relaxed text-ink-2">
-        Every group, what it is on and what it owes. Payments arrive by GCash, Maya or bank transfer with the invoice number as the reference; when you see one in the account, mark it here.{anyOnline && ' A payment made online through PayMongo marks its invoice itself.'}
-      </p>
-    </div>
-    {pricesFinal ? (
-      <form method="post" class="flex flex-wrap items-center gap-3">
-        <Csrf />
-        <input type="hidden" name="action" value="issue" />
-        <button type="submit" class="btn btn-primary">Issue this month’s invoices</button>
-        <span class="max-w-[28ch] text-[13px] leading-snug text-muted">For {monthText(today)}, for every group past its trial that has none yet. Safe to press twice.</span>
-      </form>
+<AdminLayout title="Billing" section="billing" admin={{ name: admin.name, email: admin.email }} wide>
+  {!BILLING_FINAL && (
+    <p role="note" class="ws-callout" data-tone="warn">
+      <Icon name="alert" />
+      <span>
+        <strong class="font-semibold">Billing is off.</strong> No invoice goes out until the real prices and pay-to details are set and billing is switched on.
+        {due.length > 0 && <> {due.length === 1 ? 'One invoice was' : `${due.length} invoices were`} made earlier ({peso(owed)}); clinics are told not to pay {due.length === 1 ? 'it' : 'them'}. {due.length === 1 ? 'It has' : 'They have'} to be voided in the database before billing is switched on.</>}
+      </span>
+    </p>
+  )}
+  {stale && <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{CSRF_MESSAGE}</span></p>}
+  {otherRefused && <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{otherRefused.error}</span></p>}
+  {notice && <p role="status" class="ws-callout" data-tone="success"><Icon name="check" /><span>{notice}</span></p>}
+
+  <section aria-label="Billing in numbers" class="ws-tiles">
+    <Tile label="Owed now" value={peso(owed)} icon="money" note={due.length ? `${plural(due.length, 'invoice')} due` : 'nothing due'} />
+    <Tile label="Payment overdue" value={n(overdueGroups)} icon="clock" tone={overdueGroups ? 'alert' : 'default'} tint={overdueGroups > 0}
+      note={overdueGroups ? `${overdueGroups === 1 ? 'group' : 'groups'} over 14 days late` : 'no group is late'} />
+    <Tile label="Paid this month" value={peso(paid.monthTotal)} icon="check" tone={paid.monthTotal ? 'success' : 'default'} note={`${plural(paid.monthCount, 'invoice')} in ${monthText(today)}`} />
+    <Tile label="To look at" value={n(toLook.length)} icon="alert" tone={toLook.length ? 'alert' : 'default'} tint={toLook.length > 0} href={toLook.length ? '#look' : undefined}
+      note={toLook.length ? 'online payments no invoice took' : 'every online payment found its invoice'} />
+  </section>
+
+  <!-- Due --------------------------------------------------------------------------------------- -->
+  <Pane id="due" title="Due" icon="money" meta={due.length ? 'Oldest first' : 'Nothing due'} pad="none">
+    <Fragment slot="actions">
+      {due.length > 0 && (
+        <button type="button" class="ws-btn ws-btn-success" data-ws-open="pay" data-invoice={due[0].id}><Icon name="check" /> Mark paid</button>
+      )}
+      {BILLING_FINAL && (
+        <Menu id="due-more" label="More billing actions" buttonClass="ws-btn ws-btn-quiet" wide>
+          <Fragment slot="button">More <Icon name="chevron" size={16} class="ws-chev" /></Fragment>
+          <form method="post" action={here}>
+            <Csrf />
+            <input type="hidden" name="action" value="issue" />
+            <button type="submit" class="ws-menu-item">
+              <span class="ws-menu-icon" data-tint="teal"><Icon name="file" /></span>
+              <span class="ws-menu-words">Issue {monthText(today)} invoices<span class="ws-menu-hint">For every group past its trial that has none yet. Safe to press twice.</span></span>
+            </button>
+          </form>
+        </Menu>
+      )}
+    </Fragment>
+    {due.length === 0 ? (
+      <div class="px-6 py-3 max-md:px-4"><Empty icon="check" text={BILLING_FINAL ? 'Nothing is due from any group. New invoices show here after the monthly run.' : 'Nothing is due from any group. Invoices show here once billing is switched on.'} /></div>
     ) : (
-      <p class="max-w-[34ch] text-[13.5px] leading-snug text-ink-2">No invoices are issued while the prices are placeholders, here or by the text worker.</p>
-    )}
-  </div>
-
-  {!pricesFinal && (
-    <p role="note" class="mt-6 max-w-[64ch] border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
-      Prices are placeholders from <span class="font-mono text-[13px]">src/lib/billing.ts</span> until the owner sets them, with the pay-to details, the billing email and the pause policy, and then sets <span class="font-mono text-[13px]">BILLING_FINAL</span> to true in <span class="font-mono text-[13px]">src/lib/billing-config.ts</span>. Until then no new invoice is issued. Per branch, per month: {priceHint}.
-    </p>
-  )}
-  {!pricesFinal && due.length > 0 && (
-    <p role="note" class="mt-3 max-w-[64ch] border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
-      {due.length === 1 ? 'One invoice was' : `${due.length} invoices were`} made earlier at these placeholder prices and {due.length === 1 ? 'is' : 'are'} still marked due ({peso(owedTotal)}). Clinics are told not to pay {due.length === 1 ? 'it' : 'them'}. Before <span class="font-mono text-[13px]">BILLING_FINAL</span> goes true, set {due.length === 1 ? 'it' : 'them'} to void in the database; this page has no button for that yet. Otherwise {due.length === 1 ? 'it is' : 'they are'} asked for at these prices.
-    </p>
-  )}
-
-  {notice && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">{notice}</p>}
-  {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
-
-  <dl class="mt-6 grid gap-4 sm:grid-cols-3">
-    <div class="border border-line bg-surface p-5">
-      <dt class="meta">Groups</dt>
-      <dd class="mt-2 font-display text-[32px] leading-none font-bold tabular-nums">{rows.length}</dd>
-    </div>
-    <div class="border border-line bg-surface p-5">
-      <dt class="meta">Payment overdue</dt>
-      <dd class="mt-2 font-display text-[32px] leading-none font-bold tabular-nums">{overdueCount}</dd>
-    </div>
-    <div class="border border-line bg-surface p-5">
-      <dt class="meta">Owed in total</dt>
-      <dd class="mt-2 font-display text-[32px] leading-none font-bold tabular-nums">{peso(owedTotal)}</dd>
-      {!pricesFinal && owedTotal > 0 && <p class="mt-1.5 text-[13px] text-muted">at placeholder prices; clinics are told not to pay</p>}
-    </div>
-  </dl>
-
-  <div class="mt-8 overflow-x-auto border border-line bg-surface">
-    <table class="w-full min-w-[960px] border-collapse text-left">
-      <caption class="sr-only">Every group’s subscription, payment overdue first</caption>
-      <thead>
-        <tr class="border-b border-line bg-bg-soft">
-          <th scope="col" class="meta px-5 py-3.5">Group</th>
-          <th scope="col" class="meta px-5 py-3.5">Plan</th>
-          <th scope="col" class="meta px-5 py-3.5">Status</th>
-          <th scope="col" class="meta px-5 py-3.5 text-right">Branches</th>
-          <th scope="col" class="meta px-5 py-3.5 text-right">Owes</th>
-          <th scope="col" class="meta px-5 py-3.5">Oldest due</th>
-          <th scope="col" class="meta px-5 py-3.5">Last paid</th>
-          <th scope="col" class="meta px-5 py-3.5">Trial ends</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length === 0 && <tr><td colspan="8" class="px-5 py-4 text-[15px] text-muted">No groups with a clinic yet.</td></tr>}
-        {rows.map((r) => {
-          const st = standing(r);
-          const mine = dueOf(r.group_id);
-          const plan = r.plan ? PLANS[r.plan] : null;
-          const open = r.group_id === openGroup;
+      <ul class="ops-rows">
+        {due.map((i) => {
+          const d = late(i.due_at);
           return (
-            <>
-              <tr class:list={['border-b border-line-2', r.status === 'past_due' && 'bg-caries/10']}>
-                <th scope="row" class="px-5 py-4 align-top">
-                  <p class="text-[15.5px] font-semibold">{r.group_name}</p>
-                  <p class="mt-0.5 text-[13px] font-normal text-ink-2">
-                    {r.owner_name ? <>{r.owner_name}{r.owner_phone && ` · ${r.owner_phone}`}{r.owner_email && ` · ${r.owner_email}`}</> : 'No owner account on file'}
-                  </p>
-                </th>
-                <td class="px-5 py-4 align-top text-[15px] text-ink-2">
-                  {plan ? <>{plan.name}<span class="block text-[13px] tabular-nums text-muted">{peso(r.price_per_branch ?? 0)} per branch</span></> : '—'}
-                </td>
-                <td class="px-5 py-4 align-top"><span class={`inline-block px-3 py-1.5 text-xs font-semibold ${st.cls}`}>{st.label}</span></td>
-                <td class="px-5 py-4 align-top text-right text-[15px] tabular-nums">{r.branches}</td>
-                <td class="px-5 py-4 align-top text-right text-[15px] tabular-nums">
-                  {r.due_count > 0 ? <><span class="font-semibold">{peso(r.due_amount)}</span><span class="block text-[13px] text-muted">{r.due_count} invoice{r.due_count === 1 ? '' : 's'}</span></> : <span class="text-muted">nothing</span>}
-                </td>
-                <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{r.oldest_due ? dayText(r.oldest_due) : '—'}</td>
-                <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">
-                  {r.last_paid ? whenText(r.last_paid) : 'never'}
-                  {lastOnline(r) && <span class="block text-[13px] text-muted">paid online</span>}
-                </td>
-                <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{r.trial_ends_at ? whenText(r.trial_ends_at) : '—'}</td>
-              </tr>
-              <tr class="border-b border-line">
-                <td colspan="8" class="px-5 py-2">
-                  <details open={open}>
-                    <summary class="meta cursor-pointer list-none py-1.5 hover:text-ink">Mark paid, or set terms &darr;</summary>
-                    <div class="grid gap-6 py-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-                      <form method="post" class="grid content-start gap-3 border border-line bg-bg-soft p-4">
-                        <Csrf />
-                        <input type="hidden" name="action" value="paid" />
-                        <h3 class="font-display text-[17px] font-semibold">Mark an invoice paid</h3>
-                        {mine.length === 0 ? (
-                          <p class="text-[14px] text-muted">Nothing due from {r.group_name}.</p>
-                        ) : (
-                          <>
-                            <label class="field">
-                              <span class="meta">Invoice</span>
-                              <select name="invoice" required>
-                                {mine.map((i) => <option value={i.id}>{i.number} · {monthText(i.period_start)} · {peso(i.amount)} · due {dayText(manilaDate(i.due_at))}</option>)}
-                              </select>
-                            </label>
-                            <label class="field">
-                              <span class="meta">Reference</span>
-                              <input name="ref" required maxlength={REF_MAX} autocomplete="off" placeholder="GCash ref no., or the bank transfer reference" />
-                              <span class="text-[13px] text-muted">As it appears in the account. It shows on the clinic’s page.</span>
-                            </label>
-                            {mine.filter((i) => started.has(i.id)).map((i) => (
-                              <div class="grid gap-2 border border-crown/40 bg-crown/10 p-3 text-[13.5px] leading-snug">
-                                <p>
-                                  {i.number}: the clinic started paying online {whenText(started.get(i.id)!)}. Ask PayMongo first{canAsk ? ': if it has the payment, the invoice is marked paid online for you' : ''}. If you still mark it by hand for a PayMongo payment, type PayMongo’s payment id (pay_…) as the reference, so a late confirmation matches it.
-                                </p>
-                                {canAsk && (
-                                  <div><button type="submit" form={`check-${i.id}`} class="btn btn-quiet min-h-11 !px-4 !py-2 text-[13.5px]">Check {i.number} with PayMongo</button></div>
-                                )}
-                              </div>
-                            ))}
-                            <div><button type="submit" class="btn btn-primary !px-4 !py-2 text-[13.5px]">Mark paid</button></div>
-                          </>
-                        )}
-                      </form>
-                      {canAsk && mine.filter((i) => started.has(i.id)).map((i) => (
-                        <form id={`check-${i.id}`} method="post" hidden>
-                          <Csrf />
-                          <input type="hidden" name="action" value="check" />
-                          <input type="hidden" name="invoice" value={i.id} />
-                        </form>
-                      ))}
-
-                      <form method="post" class="grid content-start gap-3 border border-line bg-bg-soft p-4 sm:grid-cols-2">
-                        <Csrf />
-                        <input type="hidden" name="action" value="set" />
-                        <input type="hidden" name="group" value={r.group_id} />
-                        <h3 class="font-display text-[17px] font-semibold sm:col-span-2">Terms for {r.group_name}</h3>
-                        <label class="field">
-                          <span class="meta">Plan</span>
-                          <select name="plan">
-                            {PLAN_IDS.map((p) => <option value={p} selected={(r.plan ?? DEFAULT_PLAN) === p}>{PLANS[p].name} — {PLANS[p].blurb}</option>)}
-                          </select>
-                        </label>
-                        <label class="field">
-                          <span class="meta">Status</span>
-                          <select name="status">
-                            {SUB_STATUSES.map((st2) => <option value={st2} selected={(r.status ?? 'trial') === st2}>{STATUS_WORDS[st2]}</option>)}
-                          </select>
-                        </label>
-                        <label class="field">
-                          <span class="meta">Trial ends</span>
-                          <input type="date" name="trial_ends" value={r.trial_ends_at ? manilaDate(r.trial_ends_at) : plus30} required />
-                          <span class="text-[13px] text-muted">{pricesFinal ? 'Invoices start with the first monthly run after this day, for that whole month.' : 'No invoice follows this day while the prices are placeholders.'}</span>
-                        </label>
-                        <label class="field">
-                          <span class="meta">Price per branch</span>
-                          <input type="number" name="price" min="0" max={PRICE_MAX} step="0.01" inputmode="decimal" value={(r.price_per_branch ?? PLANS[r.plan ?? DEFAULT_PLAN].perBranch).toFixed(2)} required />
-                          <span class="text-[13px] text-muted">{pricesFinal ? 'Plan prices' : 'Placeholders'}: {priceHint}.</span>
-                        </label>
-                        <label class="field sm:col-span-2">
-                          <span class="meta">Notes</span>
-                          <textarea name="notes" rows="2" maxlength={NOTES_MAX} placeholder="Agreed a discount until December; owner asked to be billed quarterly…">{notes[r.group_id] ?? ''}</textarea>
-                        </label>
-                        <div class="sm:col-span-2"><button type="submit" class="btn btn-quiet !px-4 !py-2 text-[13.5px]">Save terms</button></div>
-                      </form>
-                    </div>
-                  </details>
-                </td>
-              </tr>
-            </>
+            <li class="grid items-center gap-x-6 gap-y-2 md:grid-cols-[minmax(0,1fr)_minmax(0,9rem)_minmax(0,13rem)_auto]">
+              <div class="min-w-0">
+                <p class="text-[15.5px] font-semibold [overflow-wrap:anywhere]">{groupName.get(i.group_id) ?? 'A group'}</p>
+                <p class="ops-ref">{i.number} · {monthText(i.period_start)}</p>
+              </div>
+              <p class="text-[16px] font-semibold tabular-nums">{peso(i.amount)}</p>
+              <div class="flex flex-wrap items-center gap-2 text-[14px] text-ink-2">
+                {d > 0
+                  ? <span class:list={['ws-pill', d > 14 ? 'ws-tint-red' : 'ws-tint-amber']}>{d} {d === 1 ? 'day' : 'days'} late</span>
+                  : <span>Due {dayText(manilaDate(i.due_at))}</span>}
+                {started.has(i.id) && <span class="ws-pill ws-tint-blue">Paying online started</span>}
+              </div>
+              <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm justify-self-start md:justify-self-end" data-ws-open="pay" data-invoice={i.id}>Mark paid<span class="sr-only">: {i.number}, {groupName.get(i.group_id) ?? 'a group'}</span></button>
+            </li>
           );
         })}
-      </tbody>
-    </table>
-  </div>
+      </ul>
+    )}
+  </Pane>
 
+  <!-- Online payments to look at ------------------------------------------------------------------ -->
   {toLook.length > 0 && (
-    <section class="mt-10" aria-labelledby="look-title">
-      <h2 id="look-title" class="font-display text-[22px] font-semibold">Online payments to look at</h2>
-      <p class="mt-1.5 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
-        PayMongo reported these payments and no invoice took them, so nothing was marked. Find each one in the PayMongo dashboard by its payment id, then refund it or mark the right invoice by hand above. Then press Handled to take it off this list. The clinic’s Billing page says it is being sorted out, and shows no Pay now for that invoice, until you do.
-      </p>
-      <!-- relative: the visually hidden header in the last column is absolutely positioned, and must be clipped by this scroller, not widen the page (it did: 875 px at 390). -->
-      <div class="relative mt-4 overflow-x-auto border border-line bg-surface">
-        <table class="w-full min-w-[960px] border-collapse text-left">
-          <caption class="sr-only">Online payments that no invoice took, newest first</caption>
-          <thead>
-            <tr class="border-b border-line bg-bg-soft">
-              <th scope="col" class="meta px-5 py-3.5">Received</th>
-              <th scope="col" class="meta px-5 py-3.5">Group and invoice</th>
-              <th scope="col" class="meta px-5 py-3.5 text-right">Paid</th>
-              <th scope="col" class="meta px-5 py-3.5">Payment</th>
-              <th scope="col" class="meta px-5 py-3.5">What happened</th>
-              <th scope="col" class="px-5 py-3.5"><span class="sr-only">Action</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {toLook.map((e, i) => (
-              <tr class:list={[i < toLook.length - 1 && 'border-b border-line-2']}>
-                <td class="px-5 py-3.5 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{whenText(e.received_at)}</td>
-                <th scope="row" class="px-5 py-3.5 align-top text-[15px] font-normal">
-                  {e.group_name ?? 'No group'}
-                  <span class="block font-mono text-[13px] tracking-[0.04em] tabular-nums text-ink-2">{e.invoice_number ?? 'no invoice'}{e.invoice_amount !== null && ` · ${peso(e.invoice_amount)}`}</span>
-                </th>
-                <td class="px-5 py-3.5 align-top text-right text-[15px] font-semibold tabular-nums">{centavosText(e.amount_centavos)}</td>
-                <td class="px-5 py-3.5 align-top font-mono text-[13px] tabular-nums break-all text-ink-2">
-                  {e.payment_id ?? e.session_id ?? '—'}
-                  {!e.payment_id && e.session_id && <span class="block font-sans text-[12.5px] text-muted">checkout; no payment id could be read</span>}
-                </td>
-                <td id={`look-${i}`} class="px-5 py-3.5 align-top text-[14.5px]">
-                  <span class="font-semibold text-caries">{e.outcome === 'paid_twice' && e.paid_via === 'paymongo'
-                    ? 'The invoice was already paid online with another PayMongo payment: the clinic paid twice. Return one payment, then press Handled.'
-                    : (OUTCOME_WORDS[e.outcome] ?? e.outcome)}</span>
-                  {e.invoice_status === 'paid' && (
-                    <span class="mt-1 block text-[13.5px] text-ink-2">
-                      The invoice: {e.paid_via === 'paymongo' ? 'paid online' : 'marked paid by hand'}{e.paid_at && ` ${whenText(e.paid_at)}`}, reference <span class="font-mono text-[12.5px] break-all">{e.paid_ref ?? '—'}</span>.
-                    </span>
-                  )}
-                  {e.reports > 1 && <span class="mt-1 block text-[13px] text-muted">Reported {e.reports} times; one Handled takes all of them off.</span>}
-                </td>
-                <td class="px-5 py-3.5 align-top text-right">
-                  <form method="post">
-                    <Csrf />
-                    <input type="hidden" name="action" value="reviewed" />
-                    <input type="hidden" name="event" value={e.event_id} />
-                    <button type="submit" class="btn btn-quiet min-h-11 !px-4 !py-2 text-[13.5px]" aria-describedby={`look-${i}`}>Handled</button>
-                  </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <Pane id="look" title="Online payments to look at" icon="alert" meta={plural(toLook.length, 'payment')} pad="none">
+      <div class="px-6 pt-4 max-md:px-4">
+        <p class="ws-callout text-[14.5px]" data-tone="alert">
+          <Icon name="alert" />
+          <span>PayMongo reported these and no invoice took them, so nothing was marked. Find each one in the PayMongo dashboard by its payment id, then refund it or mark the right invoice paid by hand. Then press Handled. Until you do, the clinic’s page says it is being sorted out.</span>
+        </p>
       </div>
-    </section>
+      <ul class="ops-rows mt-2">
+        {toLook.map((e, i) => (
+          <li class="grid items-start gap-x-6 gap-y-3 md:grid-cols-[minmax(0,1fr)_auto]">
+            <div class="min-w-0">
+              <p id={`look-${i}`} class="text-[15px] font-semibold text-caries">
+                {e.outcome === 'paid_twice' && e.paid_via === 'paymongo'
+                  ? 'The invoice was already paid online with another PayMongo payment: the clinic paid twice. Return one payment, then press Handled.'
+                  : (OUTCOME_WORDS[e.outcome] ?? e.outcome)}
+              </p>
+              <p class="mt-1 text-[14.5px] text-ink-2">
+                {e.group_name ?? 'No group'} · paid <span class="font-semibold text-ink tabular-nums">{centavos(e.amount_centavos)}</span>{e.invoice_amount !== null && <> for an invoice of {peso(e.invoice_amount)}</>} · {whenText(e.received_at)}
+              </p>
+              <p class="ops-ref mt-0.5">{e.invoice_number ?? 'no invoice'} · {e.payment_id ?? e.session_id ?? '—'}{!e.payment_id && e.session_id && ' (checkout; no payment id could be read)'}</p>
+              {e.invoice_status === 'paid' && (
+                <p class="mt-1 text-[13.5px] text-ink-2">The invoice: {e.paid_via === 'paymongo' ? 'paid online' : 'marked paid by hand'}{e.paid_at && ` ${whenText(e.paid_at)}`}, reference <span class="ops-ref">{e.paid_ref ?? '—'}</span>.</p>
+              )}
+              {e.reports > 1 && <p class="mt-1 text-[13.5px] text-muted">Reported {e.reports} times; one Handled takes all of them off.</p>}
+            </div>
+            <form method="post" action={here}>
+              <Csrf />
+              <input type="hidden" name="action" value="reviewed" />
+              <input type="hidden" name="event" value={e.event_id} />
+              <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm" aria-describedby={`look-${i}`}><Icon name="check" /> Handled</button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    </Pane>
   )}
 
-  {(paidOnlineList.length > 0 || onlineOn) && (
-  <section class="mt-10" aria-labelledby="online-title">
-    <h2 id="online-title" class="font-display text-[22px] font-semibold">Paid online</h2>
-    <p class="mt-1.5 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
-      Invoices PayMongo confirmed, newest first{paidOnlineList.length >= PAID_SHOWN ? ` (the latest ${PAID_SHOWN})` : ''}. The reference is PayMongo’s payment id; search for it in the PayMongo dashboard.
-    </p>
-    <div class="mt-4 overflow-x-auto border border-line bg-surface">
-      <table class="w-full min-w-[760px] border-collapse text-left">
-        <caption class="sr-only">Invoices paid online through PayMongo, newest first</caption>
+  <!-- Every group ------------------------------------------------------------------------------ -->
+  <Pane id="groups" title="Every group" icon="clinic" meta={`${plural(rows.length, 'group')} · overdue first`} pad="none">
+    {rows.length === 0 ? (
+      <div class="px-6 py-3 max-md:px-4"><Empty text="No groups yet. A group shows here once a clinic signs up." /></div>
+    ) : (
+      <table class="ws-table">
+        <caption class="sr-only">Every group’s plan, overdue first. Terms opens a group’s plan, status, trial and price.</caption>
         <thead>
-          <tr class="border-b border-line bg-bg-soft">
-            <th scope="col" class="meta px-5 py-3.5">Invoice</th>
-            <th scope="col" class="meta px-5 py-3.5">Group</th>
-            <th scope="col" class="meta px-5 py-3.5 text-right">Amount</th>
-            <th scope="col" class="meta px-5 py-3.5">Paid</th>
-            <th scope="col" class="meta px-5 py-3.5">Reference</th>
+          <tr>
+            <th scope="col" class="meta">Group</th>
+            <th scope="col" class="meta">Status</th>
+            <th scope="col" class="meta">Owes</th>
+            <th scope="col"><span class="sr-only">Terms</span></th>
           </tr>
         </thead>
         <tbody>
-          {paidOnlineList.length === 0 && <tr><td colspan="5" class="px-5 py-4 text-[15px] text-muted">None yet.</td></tr>}
-          {paidOnlineList.map((e, i) => (
-            <tr class:list={[i < paidOnlineList.length - 1 && 'border-b border-line-2']}>
-              <th scope="row" class="px-5 py-3.5 font-mono text-[13px] tracking-[0.04em] tabular-nums">{e.invoice_number ?? '—'}</th>
-              <td class="px-5 py-3.5 text-[15px]">{e.group_name ?? '—'}</td>
-              <td class="px-5 py-3.5 text-right text-[15px] font-semibold tabular-nums">{centavosText(e.amount_centavos)}</td>
-              <td class="px-5 py-3.5 text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{e.paid_at ? whenText(e.paid_at) : whenText(e.received_at)}</td>
-              <td class="px-5 py-3.5 text-[14px] text-ink-2">paid online <span class="block font-mono text-[12.5px] tabular-nums break-all">{e.payment_id}</span></td>
-            </tr>
-          ))}
+          {rows.map((r) => {
+            const st = standing(r);
+            return (
+              <tr id={`g-${r.group_id}`} class="max-lg:grid max-lg:grid-cols-2 max-lg:gap-x-4">
+                <td class="max-lg:col-span-2 lg:min-w-[13rem]">
+                  <p class="text-[15.5px] font-semibold [overflow-wrap:anywhere]">{r.group_name}</p>
+                  {r.owner_name ? (
+                    <div class="ops-who mt-1.5">
+                      <Avatar name={r.owner_name} size="sm" />
+                      <span class="ops-who-text text-[13.5px] text-ink-2">
+                        <span class="[overflow-wrap:anywhere]">{r.owner_name} · {plural(r.branches, 'branch', 'branches')}</span>
+                        {r.owner_phone && <span class="tabular-nums">{prettyPhone(r.owner_phone)}</span>}
+                      </span>
+                    </div>
+                  ) : <p class="mt-0.5 text-[13.5px] text-muted">No owner on file · {plural(r.branches, 'branch', 'branches')}</p>}
+                </td>
+                <td>
+                  <span class="meta ws-cell-label">Status</span>
+                  <Chip tone={st.tone} label={st.label} dot />
+                  {standingLine(r) && <span class="mt-1 block text-[13.5px] text-muted">{standingLine(r)}</span>}
+                </td>
+                <td class="text-[15px] tabular-nums max-lg:col-span-2">
+                  <span class="meta ws-cell-label">Owes</span>
+                  {r.due_count > 0
+                    ? <><span class="font-semibold">{peso(r.due_amount)}</span> <span class="text-[13.5px] text-muted">· {plural(r.due_count, 'invoice')}</span></>
+                    : <span class="text-ink-2">Nothing</span>}
+                  <span class="block text-[13.5px] text-muted">{r.last_paid ? `Last paid ${whenText(r.last_paid)}${lastOnline(r) ? ', online' : ''}` : 'Never paid yet'}</span>
+                </td>
+                <td class="text-right max-lg:col-span-2 max-lg:mt-2 max-lg:text-left">
+                  <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="terms" data-group={r.group_id}><Icon name="settings" /> Terms<span class="sr-only"> for {r.group_name}</span></button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
-    </div>
-  </section>
-  )}
+    )}
+    <p class="flex items-start gap-2 border-t border-[var(--ws-hair)] px-6 py-3.5 text-[13.5px] leading-snug text-ink-2 max-md:px-4">
+      <Icon name="info" class="mt-px flex-none text-muted" />
+      <span>Nothing here switches a clinic off. {BILLING_FINAL ? 'A late payment changes the status and the sentence the owner sees on their plan page; every' : 'Every'} action is recorded under your name in the operations log.</span>
+    </p>
+  </Pane>
 
-  <p class="mt-6 max-w-[64ch] text-[13.5px] leading-relaxed text-muted">
-    Nothing here switches a clinic off. {pricesFinal ? 'A late payment changes the status and the sentence the owner sees on their Billing page; every' : 'Every'} action is recorded under your name.
-  </p>
+  <!-- Paid ----------------------------------------------------------------------------------------- -->
+  <Pane id="paid" title="Paid lately" icon="check" meta={`Paid by GCash, Maya, bank${anyOnline ? ' or online' : ''}`} pad="none">
+    {paid.recent.length === 0 ? (
+      <div class="px-6 py-3 max-md:px-4"><Empty text="No invoice has been paid yet. Payments show here as they are marked, by you or by PayMongo." /></div>
+    ) : (
+      <ul class="ops-rows">
+        {paid.recent.map((p) => (
+          <li class="flex items-center justify-between gap-4">
+            <span class="min-w-0">
+              <span class="block text-[15px] font-semibold [overflow-wrap:anywhere]">{p.group_name}</span>
+              <span class="ops-ref block">{p.number} · {p.paid_via === 'paymongo' ? `online ${p.paid_ref ?? ''}` : `ref ${p.paid_ref ?? '—'}`}</span>
+            </span>
+            <span class="flex-none text-right">
+              <span class="ws-text-green block text-[15px] font-semibold tabular-nums">{peso(p.amount)}</span>
+              <span class="block text-[13.5px] whitespace-nowrap text-muted">{ago(p.paid_at, now)}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    )}
+    {(paidOnlineList.length > 0 || onlineOn) && (
+      <details id="online" class="ops-more border-t border-[var(--ws-hair)] px-6 max-md:px-4">
+        <summary>
+          <span class="ops-more-word text-[15px] font-semibold">Every payment made online <span class="ml-1 text-[14px] font-normal text-muted">{paidOnlineList.length >= PAID_SHOWN ? `the latest ${PAID_SHOWN}` : n(paidOnlineList.length)}</span></span>
+          <Icon name="chevron" class="ws-chev" />
+        </summary>
+        <p class="pb-3 text-[14px] leading-relaxed text-ink-2">Invoices PayMongo confirmed, newest first. The reference is PayMongo’s payment id; search for it in the PayMongo dashboard.</p>
+        {paidOnlineList.length === 0 ? (
+          <Empty text="None yet. An invoice a clinic pays online shows here." />
+        ) : (
+          <ul class="pb-3">
+            {paidOnlineList.map((e) => (
+              <li class="flex items-center justify-between gap-4 border-t border-[var(--ws-hair)] py-3">
+                <span class="min-w-0">
+                  <span class="block text-[14.5px] font-medium [overflow-wrap:anywhere]">{e.group_name ?? '—'}</span>
+                  <span class="ops-ref block">{e.invoice_number ?? '—'} · {e.payment_id}</span>
+                </span>
+                <span class="flex-none text-right">
+                  <span class="block text-[14.5px] font-semibold tabular-nums">{centavos(e.amount_centavos)}</span>
+                  <span class="block text-[13.5px] whitespace-nowrap text-muted">{whenText(e.paid_at ?? e.received_at)}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
+    )}
+  </Pane>
+
+  <!-- Mark an invoice paid: the Due list's buttons open it on their invoice. -->
+  <SidePanel id="pay" title="Mark an invoice paid" meta="Money in" open={!!payRefused}>
+    {payRefused && <p role="alert" class="ws-callout mb-5" data-tone="alert" data-pay-said><Icon name="alert" /><span>{payRefused.error}</span></p>}
+    {due.length === 0 ? (
+      <Empty icon="check" text="Nothing is due from any group." />
+    ) : (
+      <form method="post" action={here} class="grid gap-5">
+        <Csrf />
+        <input type="hidden" name="action" value="paid" />
+        <label class="field">
+          <span class="meta">Invoice</span>
+          <select name="invoice" required data-pay-invoice data-keep={payRefused ? '' : undefined}>
+            <option value="" disabled selected={!!payRefused && !payInvoice}>Choose an invoice</option>
+            {due.map((i) => <option value={i.id} selected={i.id === payInvoice}>{groupName.get(i.group_id) ?? 'A group'} · {peso(i.amount)} · {i.number}</option>)}
+          </select>
+        </label>
+        <label class="field">
+          <span class="meta">Reference</span>
+          <input name="ref" required maxlength={REF_MAX} autocomplete="off" value={payRef} placeholder="GCash ref no., or the bank reference" data-pay-ref />
+          <span class="text-[13.5px] text-ink-2">As it appears in the account. The clinic sees it on its plan page.</span>
+        </label>
+        {due.filter((i) => started.has(i.id)).map((i) => (
+          <div class="ws-callout text-[14px]" data-for-invoice={i.id} hidden={i.id !== (payRefused ? payInvoice : due[0].id)}>
+            <Icon name="info" />
+            <span class="grid gap-2">
+              <span>The clinic started paying {i.number} online {whenText(started.get(i.id)!)}. Ask PayMongo first{canAsk ? ': if it has the payment, the invoice is marked paid for you' : ''}. If you still mark it by hand for a PayMongo payment, type PayMongo’s payment id (pay_…) as the reference.</span>
+              {canAsk && <span><button type="submit" form={`check-${i.id}`} class="ws-btn ws-btn-quiet ws-btn-sm">Ask PayMongo about {i.number}</button></span>}
+            </span>
+          </div>
+        ))}
+        <button type="submit" class="ws-btn ws-btn-success w-full"><Icon name="check" /> Mark paid</button>
+        <p class="text-[13.5px] leading-snug text-ink-2">Recorded under your name. Marking by hand closes any online checkout still open for this invoice.</p>
+      </form>
+    )}
+    {canAsk && due.filter((i) => started.has(i.id)).map((i) => (
+      <form id={`check-${i.id}`} method="post" action={here} hidden>
+        <Csrf />
+        <input type="hidden" name="action" value="check" />
+        <input type="hidden" name="invoice" value={i.id} />
+      </form>
+    ))}
+  </SidePanel>
+
+  <!-- A group's terms: drawn from its template when Terms is pressed (or by the server, for ?terms= and a refused save). -->
+  <SidePanel id="terms" title={termsRow ? `Terms for ${termsRow.group_name}` : 'Terms'} meta="Plan and price" open={!!termsRow}>
+    <div data-terms-body data-keep={termsRow ? '' : undefined}>
+      {setRefused && <p role="alert" class="ws-callout mb-5" data-tone="alert"><Icon name="alert" /><span>{setRefused.error}</span></p>}
+      {termsRow && <TermsForm r={termsRow} note={notes[termsRow.group_id] ?? ''} />}
+    </div>
+  </SidePanel>
+  <div hidden>
+    {rows.map((r) => (
+      <template id={`terms-${r.group_id}`} data-title={`Terms for ${r.group_name}`}>
+        <TermsForm r={r} note={notes[r.group_id] ?? ''} />
+      </template>
+    ))}
+  </div>
+
+  <script>
+    // Mark paid: the panel opens on the invoice whose button opened it, and shows that invoice's PayMongo note.
+    // A reference typed for one invoice never rides along to another: opening on a different invoice clears it.
+    const pay = document.getElementById('pay');
+    const select = pay?.querySelector<HTMLSelectElement>('[data-pay-invoice]');
+    const ref = pay?.querySelector<HTMLInputElement>('[data-pay-ref]');
+    const notes = () => { for (const d of pay?.querySelectorAll<HTMLElement>('[data-for-invoice]') ?? []) d.hidden = d.dataset.forInvoice !== select?.value; };
+    pay?.addEventListener('ws:panel-open', (e) => {
+      if (!select) return;
+      // A refused form, drawn open by the server: keep what it chose (the invoice, or "Choose an invoice").
+      if (select.dataset.keep !== undefined) { delete select.dataset.keep; notes(); return; }
+      pay?.querySelector('[data-pay-said]')?.remove(); // its sentence was about the refused try
+      const id = ((e as CustomEvent).detail?.opener as HTMLElement | null)?.dataset?.invoice;
+      if (id && id !== select.value) {
+        select.value = id;
+        if (ref) ref.value = '';
+      }
+      notes();
+    });
+    select?.addEventListener('change', notes);
+
+    // Terms: the group's form, drawn into the panel as it opens — unless the server drew it (a refused save, ?terms=).
+    const terms = document.getElementById('terms');
+    const body = terms?.querySelector<HTMLElement>('[data-terms-body]');
+    terms?.addEventListener('ws:panel-open', (e) => {
+      if (!body || !terms) return;
+      if (body.dataset.keep !== undefined) { delete body.dataset.keep; return; }
+      const id = ((e as CustomEvent).detail?.opener as HTMLElement | null)?.dataset?.group;
+      const tpl = id ? (document.getElementById(`terms-${id}`) as HTMLTemplateElement | null) : null;
+      if (!tpl) return;
+      body.replaceChildren(tpl.content.cloneNode(true));
+      const title = terms.querySelector<HTMLElement>('[data-ws-title]');
+      if (title) title.textContent = tpl.dataset.title ?? 'Terms';
+    });
+  </script>
 </AdminLayout>
+

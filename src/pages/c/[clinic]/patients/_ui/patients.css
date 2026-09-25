@@ -1,0 +1,254 @@
+/* The patient pages — the record, Add patient, Import — and desk consent
+   (src/components/DeskConsent.astro, which imports this file): the few things
+   the shell does not already draw. Everything else is the shell's
+   (src/styles/global.css, "The workspace — the soft template"): panes, tiles,
+   chips, fields, buttons, callouts, tables, menus, the side panel.
+
+   The same layer order global.css declares, stated again so this file can
+   never be the first to name a layer (the first mention fixes the order);
+   inside the components layer, a utility in the markup still wins. Soft
+   template: rounded, slate words, pale tints; motion always on. */
+@layer theme, base, components, utilities;
+
+@layer components {
+
+/* --- pick chips: a checkbox or radio drawn as a rounded pill ---------------------------
+   <label class="pk"><input type="checkbox" …><span>Penicillin</span></label>
+   The box before the words fills and shows a tick when chosen, so the state is never colour
+   alone. data-tone on the label: red (allergies), amber (conditions), slate ("none"); teal
+   otherwise. .pk-radio: a round mark with a dot. .pk-card: a wide choice with a hint line
+   (<span class="pk-hint">) under its words. */
+.pk { position: relative; display: inline-flex; min-width: 0; cursor: pointer; user-select: none; -webkit-user-select: none; }
+.pk > input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.pk > span {
+  --pk-ink: var(--ws-teal-ink); --pk-tint: var(--ws-teal-tint); --pk-line: color-mix(in srgb, var(--ws-teal) 45%, transparent);
+  position: relative; display: inline-flex; align-items: center; gap: 0.625rem; min-width: 0; min-height: 44px;
+  padding: 0.5rem 1rem 0.5rem 0.75rem; border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-pill);
+  background: var(--ws-field); box-shadow: var(--ws-shadow);
+  font-size: 15.5px; font-weight: 500; line-height: 1.25; color: var(--c-ink-2);
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.pk[data-tone="red"] > span { --pk-ink: var(--ws-red-ink); --pk-tint: var(--ws-red-tint); --pk-line: color-mix(in srgb, var(--ws-red) 45%, transparent); }
+.pk[data-tone="amber"] > span { --pk-ink: var(--ws-amber-ink); --pk-tint: var(--ws-amber-tint); --pk-line: color-mix(in srgb, var(--ws-amber) 50%, transparent); }
+.pk[data-tone="slate"] > span { --pk-ink: var(--c-ink); --pk-tint: var(--c-bg-soft); --pk-line: var(--ws-field-line-hover); }
+.pk > span::before {
+  content: ""; flex: none; width: 18px; height: 18px; border: 1.5px solid var(--ws-field-line-hover); border-radius: 6px; background: var(--ws-field);
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.pk:hover > span { border-color: var(--ws-field-line-hover); color: var(--c-ink); }
+.pk > input:checked + span { background: var(--pk-tint); border-color: var(--pk-line); color: var(--pk-ink); font-weight: 600; }
+.pk > input:checked + span::before { border-color: var(--pk-ink); background: var(--pk-ink); }
+/* The tick, drawn in the chip's own tint on the filled box. */
+.pk > input[type="checkbox"]:checked + span::after {
+  content: ""; position: absolute; left: calc(0.75rem + 6.5px); top: 50%; width: 5px; height: 10px; margin-top: -6.5px;
+  border: solid var(--pk-tint); border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.pk-radio > span::before { border-radius: var(--ws-r-pill); }
+.pk-radio > input:checked + span::before { box-shadow: inset 0 0 0 3.5px var(--pk-tint); }
+.pk > input:focus-visible + span { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+.pk > input:disabled + span { opacity: 0.55; cursor: not-allowed; }
+
+.pk-card { display: flex; }
+.pk-card > span { flex: 1; align-items: flex-start; min-height: 52px; padding: 0.75rem 1rem 0.75rem 0.875rem; border-radius: var(--ws-r-ctl); font-weight: 600; color: var(--c-ink); }
+.pk-card > span::before { margin-top: 1px; }
+.pk-card > input[type="checkbox"]:checked + span::after { left: calc(0.875rem + 6.5px); top: calc(0.75rem + 10px); }
+.pk-hint { display: block; margin-top: 0.125rem; font-size: 13.5px; font-weight: 400; line-height: 1.4; color: var(--c-ink-2); }
+.pk > input:checked + span .pk-hint { color: var(--c-ink-2); }
+
+.pk-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+/* --- a one-line field beside its button (Add an allergy) ----------------------------- */
+.pt-inline { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.5rem; }
+.pt-inline > input { flex: 1 1 12rem; min-width: 0; max-width: 22rem; }
+
+/* --- disclosure: a quiet row that opens, with a chevron that turns ------------------------ */
+.pt-more > summary {
+  display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; cursor: pointer; list-style: none;
+  font-size: 14.5px; font-weight: 600; color: var(--ws-teal-ink);
+}
+.pt-more > summary::-webkit-details-marker { display: none; }
+.pt-more > summary:hover { text-decoration: underline; text-underline-offset: 4px; }
+.pt-more > summary .pt-chev { transition: transform 200ms ease; }
+.pt-more[open] > summary .pt-chev { transform: rotate(180deg); }
+
+/* --- a list of plain rows inside a card (visits, findings, people) --------------------------- */
+.pt-list { display: grid; }
+.pt-list > li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; padding: 0.75rem 0; border-bottom: 1px solid var(--ws-hair); }
+.pt-list > li:first-child { padding-top: 0.25rem; }
+.pt-list > li:last-child { border-bottom: 0; padding-bottom: 0.25rem; }
+
+/* An inset area inside a card: a past visit being typed, a finding, the notice in short. */
+.pt-inset { border-radius: var(--ws-r); background: var(--ws-subtle); border: 1px solid var(--ws-hair); }
+
+/* Label · value pairs. The label column is as wide as its longest label (at most 10rem), so a
+   narrow card (the Overview's Health beside Details at 1024px) leaves its values the room;
+   a word breaks only when it cannot fit a line of its own ("Hypertension", never "Hypertensi/on"). */
+.pt-facts { display: grid; gap: 0.625rem 1.25rem; }
+@media (min-width: 640px) { .pt-facts { grid-template-columns: fit-content(10rem) minmax(0, 1fr); } }
+.pt-facts > dt { font-size: 13.5px; font-weight: 500; color: var(--c-muted); padding-top: 0.1rem; }
+.pt-facts > dd { font-size: 15px; color: var(--c-ink); overflow-wrap: break-word; }
+@media (max-width: 639px) { .pt-facts > dd { margin-bottom: 0.375rem; } }
+
+/* A small pill for a reference number (chart no.): mono, quiet. */
+.pt-ref { display: inline-flex; align-items: center; min-height: 26px; padding: 0 0.625rem; border-radius: var(--ws-r-pill); background: var(--c-bg-soft); color: var(--c-ink-2); font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 13px; font-weight: 500; white-space: nowrap; }
+
+/* --- the record's head ------------------------------------------------------------------ */
+.rec-back { display: inline-flex; align-items: center; gap: 0.25rem; min-height: 44px; margin: -0.5rem 0 0.25rem -0.25rem; padding: 0 0.25rem; border-radius: var(--ws-r-ctl); font-size: 14px; font-weight: 500; color: var(--c-ink-2); }
+.rec-back:hover { color: var(--c-ink); background: var(--ws-hover); }
+.rec-who { display: flex; align-items: center; gap: 1rem; min-width: 0; }
+.rec-who > .rec-facts { margin-top: 0; }
+/* The facts under the name, a dot between each: the dot sits in the gap before a fact, and a
+   fact that starts a line puts its dot in the clipped margin, so no line starts with a dot. */
+.rec-facts { margin-top: 0.375rem; overflow: hidden; font-size: 15px; color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
+.rec-facts-in { display: flex; flex-wrap: wrap; align-items: center; row-gap: 0.25rem; margin-left: -1.5rem; }
+.rec-facts-in > span { position: relative; padding-left: 1.5rem; white-space: nowrap; }
+.rec-facts-in > span::before { content: "·" / ""; position: absolute; left: 0.6rem; color: var(--c-muted); }
+/* Summary numbers inside a card (the record's head, the import's rows and summary): one row when
+   the card has room for them (a container query: the sidebar takes 92–244px of the screen), two
+   columns when it has not, never three and one. On a phone the words get the width, the icons
+   step aside. */
+.pt-tiles-wrap { container-type: inline-size; }
+.ws-tiles.pt-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@container (min-width: 52rem) {
+  .ws-tiles.pt-tiles { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+}
+/* Three in two columns: the last one takes the row, so no card stands alone beside a hole. */
+@container (width < 52rem) {
+  .pt-tiles > :last-child:nth-child(odd) { grid-column: span 2; }
+}
+@media (max-width: 639px) {
+  .pt-tiles .ws-tile { min-height: 0; padding: 0.875rem 1rem; }
+  .pt-tiles .ws-tile-link { padding-right: 2.25rem; }
+  .pt-tiles .ws-tile-icon { display: none; }
+}
+/* A section reached by its address (#health, #money) lands under the sticky top, not behind it. */
+[data-rec-panel], [data-rec-panel] .ws-pane { scroll-margin-top: 5.5rem; }
+.rec-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+@media (max-width: 767px) {
+  .rec-actions { width: 100%; }
+  .rec-actions > .ws-btn-primary { flex: 1 1 100%; }
+  .rec-actions > :not(.ws-btn-primary) { flex: 1 1 0; }
+  .rec-actions .ws-menu > button { width: 100%; }
+}
+.rec-alerts { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.rec-alerts .ws-chip { min-height: 30px; padding-inline: 0.75rem; font-size: 13.5px; }
+
+/* Steps of the import: 1 Upload · 2 Check · 3 Done. */
+.imp-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.5rem; }
+.imp-step { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 36px; padding: 0 0.875rem 0 0.375rem; border-radius: var(--ws-r-pill); background: var(--c-bg-soft); font-size: 14px; font-weight: 500; color: var(--c-ink-2); }
+.imp-step-no { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--ws-r-pill); background: var(--c-surface); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.imp-step[aria-current="step"] { background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-weight: 600; }
+.imp-step[aria-current="step"] .imp-step-no { background: var(--ws-teal-fill); color: #fff; }
+.imp-step[data-done] .imp-step-no { background: var(--ws-green-tint); color: var(--ws-green-ink); }
+.imp-step-sep { width: 1.25rem; height: 1px; background: var(--ws-hair-strong); }
+
+/* A file field: the browser's own button, softened. */
+.ws .pt-file { min-height: 52px; padding: 0.375rem; cursor: pointer; font-size: 15px; }
+.pt-file::file-selector-button {
+  min-height: 40px; margin-right: 0.875rem; padding: 0 1rem; border: 1px solid var(--ws-field-line); border-radius: 8px;
+  background: var(--ws-subtle); color: var(--c-ink); font: inherit; font-weight: 600; cursor: pointer;
+}
+.pt-file::file-selector-button:hover { border-color: var(--ws-field-line-hover); }
+
+}
+
+/* === The chart (the record's Chart section) ===========================================================
+   src/components/Odontogram.astro is placed as it is (its offline logic is not ours to touch), so
+   the record draws it soft from here, scoped to the Chart card (.pt-chart-pane) and the box around
+   the component (.pt-chart). Selectors lean on the component's data- hooks, not its utility
+   classes, so a change to its markup falls back to its own look instead of breaking.
+
+   Unlayered on purpose: the component's look is Tailwind utilities (@layer utilities) and the
+   .tooth rules in global.css, which are unlayered; a rule in @layer components loses to both.
+
+   - Colours: the tooth tokens redrawn in the soft palette (white tiles with a slate hairline;
+     soft charcoal tiles in dark, never near-black). The finding colours are global.css's, as
+     they are: they carry the meaning.
+   - Shape: rounded tiles, pills for the notation, 12px boxes, soft buttons; no card in a card
+     (the component's own border and padding step aside inside the Chart card).
+   - Room: the teeth take the card's width — 44px wide when it has the room, down to 32px — so
+     both arches show whole from a 768px screen up (1024px: 39px teeth); the chart
+     note sits beside the arches only when the card is wide enough for both, under them
+     otherwise. Where an arch still cannot fit (a phone) it scrolls sideways inside the card, the
+     line above the chart says so, the edge where teeth wait fades, and the two arches scroll
+     together so 21–28 stay over 31–38 (the record's script sets data-pt-more). */
+.pt-chart-pane { --c-tooth-sound: #ffffff; --c-tooth-line: #c9cfd8; --c-tooth-missing: #e8ebf0; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ws .pt-chart-pane { --c-tooth-sound: #262d36; --c-tooth-line: #3f4956; --c-tooth-missing: #15191e; }
+}
+:root[data-theme="dark"] .ws .pt-chart-pane { --c-tooth-sound: #262d36; --c-tooth-line: #3f4956; --c-tooth-missing: #15191e; }
+
+.pt-chart { container: pt-chart / inline-size; --pt-tg: 4px; --pt-qg: 12px; }
+@container pt-chart (width < 44rem) { .pt-chart [data-odontogram] { --pt-tg: 3px; --pt-qg: 8px; } }
+
+.pt-chart [data-odontogram] { flex-direction: column; gap: 1.5rem; padding: 0; border: 0; background: none; }
+/* The arches: each scrolls inside a 4px margin (so a focused tooth's ring is never clipped), a
+   quadrant's teeth, and the gap at the midline. */
+.pt-chart [data-odontogram] div:has(> div > div > div > [data-tooth]) { padding: 4px; }
+.pt-chart [data-odontogram] div:has(> div > [data-tooth]) { gap: var(--pt-tg); }
+.pt-chart [data-odontogram] div:has(> div > div > [data-tooth]) { gap: var(--pt-qg); }
+.pt-chart .tooth {
+  width: clamp(32px, calc((100cqi - 14 * var(--pt-tg) - var(--pt-qg) - 10px) / 16), 44px);
+  border-radius: 8px;
+}
+/* A phone cannot show a whole arch at any usable size: the teeth keep the component's own 34px
+   and the arches scroll (a tablet at 768px fits both arches whole at 33px). */
+@container pt-chart (width < 36rem) { .pt-chart .tooth { width: 34px; } }
+.pt-chart .tooth[data-waiting]::after { border-top-right-radius: 8px; }
+.pt-chart .tooth:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+.pt-chart .pip { border-radius: 999px; }
+.pt-chart .swatch { border-radius: 4px; }
+.pt-chart [data-pt-more="right"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent); }
+.pt-chart [data-pt-more="left"] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 2.5rem), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 2.5rem), transparent); }
+.pt-chart [data-pt-more="both"] { -webkit-mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent); mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent); }
+
+/* The notation: one small segmented control, the chosen one tinted teal. */
+.pt-chart [data-odontogram] fieldset { gap: 2px; padding: 3px; border: 1px solid var(--ws-hair); border-radius: var(--ws-r-pill); background: var(--ws-subtle); }
+.pt-chart [data-notation-input] + span {
+  display: inline-flex; align-items: center; min-height: 36px; padding: 0 0.875rem; border: 1px solid transparent; border-radius: var(--ws-r-pill);
+  background: transparent; font-size: 14px; font-weight: 500; color: var(--c-ink-2);
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.pt-chart label:hover > [data-notation-input]:not(:checked) + span { background: var(--ws-hover); color: var(--c-ink); }
+.pt-chart [data-notation-input]:checked + span { background: var(--c-surface); border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent); color: var(--ws-teal-ink); font-weight: 600; box-shadow: var(--ws-shadow); }
+.pt-chart [data-notation-input]:focus-visible + span { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+
+/* The chart note: an inset box — under the arches, its list in columns and Clear chart at its
+   own width; beside them (a wide card), a 272px column as the component draws it. */
+.pt-chart [data-odontogram] > :has(> [data-note-list]) { width: 100%; padding: 1.25rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
+.pt-chart [data-note-list]:not([hidden]) { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.625rem 1.5rem; }
+.pt-chart [data-clear] { width: auto; align-self: flex-start; }
+@container pt-chart (width >= 68rem) {
+  .pt-chart [data-odontogram] { flex-direction: row; }
+  .pt-chart [data-odontogram] > :has(> [data-note-list]) { width: 272px; }
+  .pt-chart [data-note-list]:not([hidden]) { display: flex; }
+  .pt-chart [data-clear] { width: 100%; align-self: stretch; }
+  .pt-chart .tooth { width: 44px; }
+}
+
+/* Boxes the chart raises (changes held on this device, an offline copy, a colleague's newer finding). */
+.pt-chart :is([data-hold-note], [data-copy-note]) { border-color: var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
+.pt-chart [data-sync-notice] { border-color: color-mix(in srgb, var(--ws-amber) 45%, transparent); border-radius: var(--ws-r); background: var(--ws-amber-tint); }
+
+/* Its buttons: quiet ones (white, a hairline, 10px corners); Save them, the teal one. */
+.pt-chart :is([data-clear], [data-hold-signin], [data-hold-reload], [data-hold-delete], [data-copy-reload], [data-sync-notice-ok], [data-sync-notice-list] a) {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 1rem;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-ctl); background: var(--c-surface); box-shadow: var(--ws-shadow);
+  font-size: 14.5px; font-weight: 600; color: var(--c-ink);
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.pt-chart :is([data-clear], [data-hold-signin], [data-hold-reload], [data-copy-reload], [data-sync-notice-ok], [data-sync-notice-list] a):hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); color: var(--c-ink); }
+.pt-chart [data-hold-delete]:hover { background: var(--ws-red-tint); border-color: color-mix(in srgb, var(--ws-red) 45%, transparent); color: var(--ws-red-ink); }
+.pt-chart [data-hold-save] { min-height: 44px; padding: 0 1rem; border: 1px solid transparent; border-radius: var(--ws-r-ctl); background: var(--ws-teal-fill); box-shadow: var(--ws-shadow); font-size: 14.5px; font-weight: 600; color: #fff; }
+.pt-chart [data-hold-save]:hover { background: var(--ws-teal-fill-hover); opacity: 1; }
+
+/* The finding picker that opens at a tooth: a rounded sheet, soft buttons, the chosen surfaces tinted teal. */
+.pt-chart [data-palette] { padding: 1.125rem; border-color: var(--ws-hair); border-radius: var(--ws-r-lg); box-shadow: var(--ws-shadow-pop); }
+.pt-chart [data-palette] button { border-color: var(--ws-field-line); border-radius: var(--ws-r-ctl); background: var(--c-surface); transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease; }
+.pt-chart [data-palette] button:hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); }
+.pt-chart [data-palette] [aria-pressed="true"], .pt-chart [data-palette] [aria-pressed="true"]:hover { background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 55%, transparent); color: var(--ws-teal-ink); }
+.pt-chart [data-palette] [data-condition="sound"]:hover { background: var(--ws-red-tint); border-color: color-mix(in srgb, var(--ws-red) 45%, transparent); color: var(--ws-red-ink); }
+
+/* The line above the chart when an arch scrolls sideways; the swatch beside a finding. */
+.pt-chart-scroll:not([hidden]) { display: flex; align-items: center; gap: 0.375rem; margin: -0.25rem 0 0.75rem; font-size: 13.5px; font-weight: 500; color: var(--c-ink-2); }
+.tooth.pt-find-swatch { border-radius: 6px; }

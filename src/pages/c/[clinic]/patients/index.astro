@@ -1,76 +1,310 @@
 ---
+// The Patients tab (docs/workspace-redesign.md, "Patients tab"): every patient
+// of this branch on one list, so the clinic can check them all and what each
+// record still lacks — the owner, 26 Sep 2026: "a 'patients' tab where the
+// clinic can verify all their patients and their records on the clinic".
+// Simpler and friendlier than Molarsoft's plain table and SwiftCare's patient
+// pages: one card with a search, one row of filter pills with their counts,
+// a sort, and a row per patient — avatar, name, chart no., age and sex,
+// mobile and HMO, alert pills, next and last visit, the balance (finance
+// roles) and the record check ("Complete", or one short line: "Needs birth
+// date and consent"). A row opens the patient's record. + Add patient is the
+// one teal button; Import is quiet beside it (both only for people who may
+// edit records here). On a narrow card (a phone) More holds the sort and
+// Import, beside + Add patient. The record, Add patient and Import come back
+// to the view as it was left (./_list/back.ts: this page keeps its address).
+//
+// Reads: requireWorkspace (session + branch access, every request), then one
+// statement inside withClinic() (./_list/list.ts) — row-level security keeps
+// it to this branch; money only for canBill() (the Finances tab's rule), via
+// patient_balance(); for anyone else it is never read.
+//
+// The state is in the address, so a reload, a link and the back button come
+// back to the same view: ?q= (name, mobile or chart no.; the old /patients/?q=
+// links land here too), ?f=all|today|new|balance|attention, ?sort=name|last|next,
+// ?show= (rows from the start, for a browser without JavaScript). With
+// JavaScript the page asks itself for the changing part only: ?part=list (the
+// pills, the line, the rows) as the desk types, filters or sorts, and
+// ?part=rows&from=N (the next rows) for "Show more" — no layout, no-store.
 export const prerender = false;
 
 import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Pane from '../../../../components/ws/Pane.astro';
+import Icon from '../../../../components/ws/Icon.astro';
+import Menu from '../../../../components/ws/Menu.astro';
+import Region from './_list/Region.astro';
+import './_list/list.css';
 import { requireWorkspace } from '../../../../lib/workspace';
-import { withClinic } from '../../../../lib/db';
-import { peso } from '../../../../data/demo';
-import { ageOn, manilaToday } from '../../../../lib/health';
+import { canBill } from '../../../../lib/invoices';
+import { DAY_MS, startMs, ymdOf } from '../../../../components/ws/cal/model';
+import { loadList, readState, listHref, SORTS, type Sort } from './_list/list';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
 
-const { patients, area } = await withClinic(clinic.id, async (tx) => ({
-  area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area,
-  patients: (await tx.query(
-    `select p.id, p.chart_no, p.first_name, p.last_name, to_char(p.birth_date, 'YYYY-MM-DD') as birth,
-            (select h.allergies from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as allergies,
-            (select h.conditions from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as conditions,
-            (select max(a.starts_at) from appointment a where a.patient_id = p.id and a.status = 'completed') as last_visit,
-            patient_balance(p.id) as balance
-     from patient p where p.archived_at is null order by p.last_name, p.first_name`)).rows,
-}));
+const finance = canBill(session.role, clinic.can_view_finance);
+const base = `/c/${clinic.slug}/patients/`;
+const params = Astro.url.searchParams;
+const partAsked = params.get('part');
+const part: 'list' | 'rows' | null = partAsked === 'list' || partAsked === 'rows' ? partAsked : null;
+const state = readState(params, finance);
+if (part !== 'rows') state.from = 0;
 
-// Whole years on Manila's calendar, from the birth date the record page sets.
-const today = manilaToday();
-const age = (birth: string | null) => (birth ? ageOn(birth, today) : null);
-const day = (d: Date | null) => (d ? new Intl.DateTimeFormat('en-PH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(d) : '—');
-// Invoices and payments cannot be recorded in Flossify yet (only the development
-// seed writes them), so the Balance column shows only when some patient has one.
-const anyBalance = patients.some((p) => Number(p.balance) !== 0);
+const today = ymdOf(Date.now());
+const data = await loadList(clinic.id, {
+  state, finance, staffId: session.staffId, today,
+  todayFrom: new Date(startMs(today)), todayTo: new Date(startMs(today) + DAY_MS),
+});
+
+// A part is for this page's own script: never kept by a cache, never shown as a page.
+if (part) {
+  Astro.response.headers.set('cache-control', 'no-store');
+  Astro.response.headers.set('x-robots-tag', 'noindex');
+}
+
+const SORT_LABEL: Record<Sort, { label: string; hint: string }> = {
+  name: { label: 'Last name', hint: 'A to Z' },
+  last: { label: 'Last visit', hint: 'Most recent first' },
+  next: { label: 'Next visit', hint: 'Soonest first' },
+};
+const canEdit = data.canEdit;
+const regionProps = {
+  rows: data.rows, counts: data.counts, matched: data.matched, state, base, slug: clinic.slug, today, finance, canEdit, notice: data.notice,
+};
+const boot = JSON.stringify({ base, q: state.q, f: state.f, sort: state.sort }).replace(/</g, '\\u003c');
 ---
 
-<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Patients" section="patients" staff={{ name: session.name, role: session.role }} branches={branches}>
-  <div class="flex flex-wrap items-end justify-between gap-4">
-    <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Patients</h1>
-    <p class="text-[14.5px] text-muted">{patients.length} on file</p>
-  </div>
+{part ? (
+  <Region mode={part} {...regionProps} />
+) : (
+  <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title="Patients" section="patients" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+    <Pane pad="none" label="Every patient" class="pts-pane" id="patients-list">
+      <div class="pts" data-pts>
+        <div class="pts-head">
+          <form method="get" action={base} class="pts-find" role="search" data-pts-find>
+            {state.f !== 'all' && <input type="hidden" name="f" value={state.f} data-pts-keep="f" />}
+            {state.sort !== 'name' && <input type="hidden" name="sort" value={state.sort} data-pts-keep="sort" />}
+            <label class="pts-search">
+              <Icon name="search" class="pts-search-icon" />
+              <span class="sr-only">Search patients by name, mobile or chart no.</span>
+              <input type="search" name="q" value={state.q} maxlength={80} placeholder="Name, mobile or chart no." autocomplete="off" spellcheck="false" enterkeyhint="search" aria-controls="pts-region" data-pts-q />
+            </label>
+            <button type="submit" class="sr-only">Search</button>
+          </form>
+          <div class="pts-actions">
+            {/* A narrow card (a phone) keeps one row under the search: More (the sort and Import) and + Add
+                patient. Sort and Import are drawn apart from a wider card up (list.css). */}
+            {canEdit && (
+              <Menu id="pts-more" align="left" class="pts-more-menu" buttonClass="ws-btn ws-btn-quiet pts-more-btn">
+                <Fragment slot="button">More <Icon name="chevron" size={16} class="ws-chev" /></Fragment>
+                <p class="ws-menu-head">Sort by</p>
+                {SORTS.map((s) => (
+                  <a class="ws-menu-item" href={listHref(base, { ...state, sort: s })} aria-current={s === state.sort ? 'page' : undefined} data-pts-sort={s}>
+                    <span class="ws-menu-words">{SORT_LABEL[s].label}<span class="ws-menu-hint">{SORT_LABEL[s].hint}</span></span>
+                  </a>
+                ))}
+                <div class="ws-menu-sep" role="presentation"></div>
+                <a class="ws-menu-item" href={`/c/${clinic.slug}/patients/import/`}>
+                  <span class="ws-menu-icon" data-tint="teal"><Icon name="upload" /></span>
+                  <span class="ws-menu-words">Import<span class="ws-menu-hint">Patients or past visits from a spreadsheet</span></span>
+                </a>
+              </Menu>
+            )}
+            <Menu id="pts-sort" align="right" class="pts-sort-menu" buttonClass="ws-btn ws-btn-quiet pts-sort-btn" label={`Sort: ${SORT_LABEL[state.sort].label}`}>
+              <Fragment slot="button"><span class="pts-sort-k">Sort:</span> <span data-pts-sort-word>{SORT_LABEL[state.sort].label}</span> <Icon name="chevron" size={16} class="ws-chev" /></Fragment>
+              <p class="ws-menu-head">Sort by</p>
+              {SORTS.map((s) => (
+                <a class="ws-menu-item" href={listHref(base, { ...state, sort: s })} aria-current={s === state.sort ? 'page' : undefined} data-pts-sort={s}>
+                  <span class="ws-menu-words">{SORT_LABEL[s].label}<span class="ws-menu-hint">{SORT_LABEL[s].hint}</span></span>
+                </a>
+              ))}
+            </Menu>
+            {canEdit && (
+              <>
+                <a href={`/c/${clinic.slug}/patients/import/`} class="ws-btn ws-btn-quiet pts-import"><Icon name="upload" />Import</a>
+                <a href={`/c/${clinic.slug}/patients/new/`} class="ws-btn ws-btn-primary pts-add"><Icon name="plus" />Add patient</a>
+              </>
+            )}
+          </div>
+        </div>
 
-  <div class="mt-6 overflow-x-auto border border-line bg-surface">
-    <table class="w-full min-w-[680px] border-collapse text-left">
-      <caption class="sr-only">Patients registered at {clinic.name}</caption>
-      <thead>
-        <tr class="border-b border-line bg-bg-soft">
-          <th scope="col" class="meta px-5 py-3.5 font-normal">Chart</th>
-          <th scope="col" class="meta px-5 py-3.5 font-normal">Name</th>
-          <th scope="col" class="meta px-5 py-3.5 font-normal">Age</th>
-          <th scope="col" class="meta px-5 py-3.5 font-normal">Alerts</th>
-          <th scope="col" class="meta px-5 py-3.5 font-normal">Last visit</th>
-          {anyBalance && <th scope="col" class="meta px-5 py-3.5 text-right font-normal">Balance</th>}
-        </tr>
-      </thead>
-      <tbody>
-        {patients.length === 0 && <tr><td colspan="6" class="px-5 py-5 text-[15px] text-muted">No patients yet. They appear here after their first booking, from the website or the desk.</td></tr>}
-        {patients.map((p, i) => (
-          <tr class={i < patients.length - 1 ? 'border-b border-line-2' : ''}>
-            <td class="px-5 py-4 text-[14.5px] tabular-nums text-muted">{p.chart_no}</td>
-            <th scope="row" class="px-5 py-4">
-              <a href={`/c/${clinic.slug}/patients/${p.id}/`} class="text-[15.5px] font-semibold hover:text-accent">{p.last_name}, {p.first_name}</a>
-            </th>
-            <td class="px-5 py-4 text-[15px] tabular-nums text-ink-2">{age(p.birth) ?? '—'}</td>
-            <td class="px-5 py-4">
-              <div class="flex flex-wrap gap-1.5">
-                {(p.allergies ?? []).map((a: string) => <span class="bg-caries/15 px-2.5 py-1 text-[11.5px] font-semibold text-caries">{a}</span>)}
-                {(p.conditions ?? []).map((c: string) => <span class="bg-crown/15 px-2.5 py-1 text-[11.5px] font-semibold text-crown">{c}</span>)}
-                {!(p.allergies?.length || p.conditions?.length) && <span class="text-[14px] text-muted">—</span>}
-              </div>
-            </td>
-            <td class="px-5 py-4 text-[15px] tabular-nums text-ink-2">{day(p.last_visit)}</td>
-            {anyBalance && <td class="px-5 py-4 text-right text-[15px] font-semibold tabular-nums">{Number(p.balance) === 0 ? <span class="text-muted">—</span> : peso(Number(p.balance))}</td>}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-</ClinicLayout>
+        <div id="pts-region" class="pts-region" data-pts-region>
+          <Region mode="list" {...regionProps} />
+        </div>
+        <p class="sr-only" aria-live="polite" data-pts-live></p>
+        <p role="alert" class="ws-callout pts-error" data-tone="alert" data-pts-error hidden></p>
+      </div>
+    </Pane>
+    <script is:inline type="application/json" data-pts-boot set:html={boot}></script>
+  </ClinicLayout>
+)}
+
+<script>
+  // As the desk types (after a short pause), picks a filter or a sort, or asks for more, the page asks
+  // itself for the changing part and puts it in place; the address follows (replaceState), so a reload
+  // or a copied link shows the same view. Links and the form still work without this script.
+  //
+  // Only the answer to the latest request is shown (older ones are aborted). Focus stays where the
+  // person is: in the field while typing, on the chosen pill, on the sort button, on the first new row
+  // after "Show more". The count is said once, politely, for screen readers.
+  import { keepListAddress } from './_list/back';
+
+  const root = document.querySelector<HTMLElement>('[data-pts]');
+  const bootEl = document.querySelector<HTMLScriptElement>('[data-pts-boot]');
+  if (root && bootEl) {
+    const boot = JSON.parse(bootEl.textContent || '{}') as { base: string; q: string; f: string; sort: string };
+    const S = { q: boot.q, f: boot.f, sort: boot.sort };
+    const form = root.querySelector<HTMLFormElement>('[data-pts-find]')!;
+    const input = root.querySelector<HTMLInputElement>('[data-pts-q]')!;
+    const region = root.querySelector<HTMLElement>('[data-pts-region]')!;
+    const live = root.querySelector<HTMLElement>('[data-pts-live]')!;
+    const error = root.querySelector<HTMLElement>('[data-pts-error]')!;
+    const sortWord = root.querySelector<HTMLElement>('[data-pts-sort-word]');
+    const sortButton = root.querySelector<HTMLButtonElement>('.pts-sort-btn');
+    const SORT_WORD: Record<string, string> = { name: 'Last name', last: 'Last visit', next: 'Next visit' };
+
+    const query = (extra: Record<string, string | number> = {}) => {
+      const p = new URLSearchParams();
+      if (S.q) p.set('q', S.q);
+      if (S.f !== 'all') p.set('f', S.f);
+      if (S.sort !== 'name') p.set('sort', S.sort);
+      for (const [k, v] of Object.entries(extra)) p.set(k, String(v));
+      return p;
+    };
+    const address = () => { const s = query().toString(); return s ? `${boot.base}?${s}` : boot.base; };
+    // "Back to patients" on a record comes back to this view (./_list/back.ts); kept again after each change.
+    keepListAddress(boot.base, query().toString());
+    const parse = (html: string) => new DOMParser().parseFromString(html, 'text/html');
+    // The part's own markup only: in development the answer also carries the dev server's scripts and styles.
+    const markup = (from: ParentNode | null | undefined) => [...(from?.childNodes ?? [])]
+      .filter((n) => n.nodeType === Node.TEXT_NODE || (n.nodeType === Node.ELEMENT_NODE && !/^(SCRIPT|STYLE|LINK|META|TITLE)$/.test(n.nodeName)))
+      .map((n) => document.importNode(n, true));
+    /** Each sort choice's link keeps the rest of the state (the search, the filter), for a new tab. */
+    const sortLinks = () => {
+      for (const it of root.querySelectorAll<HTMLAnchorElement>('a[data-pts-sort]')) {
+        const p = query();
+        if (it.dataset.ptsSort === 'name') p.delete('sort'); else p.set('sort', it.dataset.ptsSort!);
+        const s = p.toString(); it.href = s ? `${boot.base}?${s}` : boot.base;
+      }
+    };
+    const fail = (text: string) => { error.replaceChildren(text); error.hidden = false; };
+    const ok = () => { error.hidden = true; error.replaceChildren(); };
+
+    let ctl: AbortController | null = null;
+    let seq = 0;
+    async function ask(extra: Record<string, string | number>): Promise<Document | null> {
+      ctl?.abort();
+      ctl = new AbortController();
+      const mine = ++seq;
+      region.setAttribute('aria-busy', 'true');
+      try {
+        const res = await fetch(`${boot.base}?${query(extra)}`, { credentials: 'same-origin', signal: ctl.signal, headers: { accept: 'text/html' } });
+        if (mine !== seq) return null;
+        // Signed out, or the branch closed to this person: the page itself says what to do.
+        if (res.redirected || res.status === 401 || res.status === 403) { location.assign(address()); return null; }
+        if (!res.ok) { fail('The list could not be loaded just now. Try again in a moment.'); return null; }
+        ok();
+        return parse(await res.text());
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError' && mine === seq) {
+          fail(navigator.onLine === false ? 'Offline: the list needs the connection to search.' : 'The list could not be loaded just now. Try again in a moment.');
+        }
+        return null;
+      } finally {
+        if (mine === seq) region.removeAttribute('aria-busy');
+      }
+    }
+
+    /** The whole changing part, for the state now. focus: what to put the focus back on. */
+    async function refresh(focus?: () => void) {
+      const doc = await ask({ part: 'list' });
+      if (!doc) return;
+      region.replaceChildren(...markup(doc.body));
+      history.replaceState(history.state, '', address());
+      keepListAddress(boot.base, query().toString());
+      sortLinks();
+      for (const k of ['f', 'sort'] as const) {
+        const keep = form.querySelector<HTMLInputElement>(`[data-pts-keep="${k}"]`);
+        const want = k === 'f' ? S.f !== 'all' : S.sort !== 'name';
+        if (want && !keep) {
+          const h = document.createElement('input');
+          h.type = 'hidden'; h.name = k; h.dataset.ptsKeep = k; form.prepend(h);
+        }
+        const el = form.querySelector<HTMLInputElement>(`[data-pts-keep="${k}"]`);
+        if (el) { if (want) el.value = S[k]; else el.remove(); }
+      }
+      live.textContent = region.querySelector('[data-pts-said]')?.textContent ?? '';
+      focus?.();
+    }
+
+    let timer = 0;
+    input.addEventListener('input', () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const q = input.value.replace(/\s+/g, ' ').trim().slice(0, 80);
+        if (q === S.q) return;
+        S.q = q;
+        void refresh();
+      }, 180);
+    });
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      window.clearTimeout(timer);
+      S.q = input.value.replace(/\s+/g, ' ').trim().slice(0, 80);
+      void refresh();
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && input.value) { e.preventDefault(); e.stopPropagation(); input.value = ''; S.q = ''; window.clearTimeout(timer); void refresh(); }
+    });
+
+    const plain = (e: MouseEvent) => e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+    region.addEventListener('click', async (e) => {
+      if (!plain(e)) return;
+      const pill = (e.target as Element).closest<HTMLAnchorElement>('a[data-pts-f]');
+      if (pill) {
+        e.preventDefault();
+        S.f = pill.dataset.ptsF ?? 'all';
+        await refresh(() => region.querySelector<HTMLElement>(`a[data-pts-f="${S.f}"]`)?.focus());
+        return;
+      }
+      const more = (e.target as Element).closest<HTMLAnchorElement>('a[data-pts-more]');
+      if (more) {
+        e.preventDefault();
+        const from = Number(more.dataset.from) || 0;
+        more.setAttribute('aria-disabled', 'true');
+        const doc = await ask({ part: 'rows', from });
+        more.removeAttribute('aria-disabled');
+        if (!doc) return;
+        const body = region.querySelector('[data-pts-rows]');
+        const fresh = [...doc.querySelectorAll('[data-pts-new-rows] > tr')].map((n) => document.importNode(n, true));
+        body?.append(...fresh);
+        const row = region.querySelector<HTMLElement>('[data-pts-more-row]');
+        const next = doc.querySelector('[data-pts-new-more]');
+        row?.replaceChildren(...markup(next));
+        fresh[0]?.querySelector<HTMLElement>('a.pts-link')?.focus();
+        live.textContent = `${fresh.length} more shown.`;
+      }
+    });
+
+    root.addEventListener('click', async (e) => {
+      if (!plain(e)) return;
+      const a = (e.target as Element).closest<HTMLAnchorElement>('a[data-pts-sort]');
+      if (!a) return;
+      e.preventDefault();
+      S.sort = a.dataset.ptsSort ?? 'name';
+      // Close the list (the shell's Menu) and hand the focus back to its button.
+      const menu = a.closest<HTMLElement>('[data-ws-menu]');
+      const pop = menu?.querySelector<HTMLElement>(':scope > .ws-menu-pop');
+      const button = menu?.querySelector<HTMLButtonElement>(':scope > button');
+      if (pop && button) { pop.hidden = true; button.setAttribute('aria-expanded', 'false'); }
+      for (const it of root.querySelectorAll<HTMLAnchorElement>('a[data-pts-sort]')) {
+        if (it.dataset.ptsSort === S.sort) it.setAttribute('aria-current', 'page'); else it.removeAttribute('aria-current');
+      }
+      if (sortWord) sortWord.textContent = SORT_WORD[S.sort] ?? 'Last name';
+      sortButton?.setAttribute('aria-label', `Sort: ${SORT_WORD[S.sort] ?? 'Last name'}`);
+      button?.focus();
+      await refresh();
+    });
+  }
+</script>

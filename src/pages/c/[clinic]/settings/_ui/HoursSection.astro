@@ -1,0 +1,59 @@
+---
+// Opening hours: seven days, each closed or open from one time to another.
+// Open times on the booking page are cut from these; a closed day offers nothing.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Note from './Note.astro';
+import { DOWS, type HoursValues } from '../_lib/profile';
+import { DAY_LONG } from '../_lib/common';
+
+interface Props {
+  base: string;
+  days: HoursValues;
+  problems: string[];
+  notes: { tone: 'ok' | 'alert' | 'warn'; text: string }[];
+  on: boolean;
+}
+const { base, days, problems, notes, on } = Astro.props;
+---
+
+<div class="set-panel" data-set-panel="hours" data-on={on ? '' : undefined}>
+<form method="post" action={base} data-set-form="hours" class="min-w-0">
+  <Csrf />
+  <input type="hidden" name="form" value="hours" />
+  <Pane id="hours" icon="clock" title="Opening hours" class="set-sec">
+    <p class="set-intro">Patients can book only while you are open.</p>
+    {(notes.length > 0 || problems.length > 0) && (
+      <div class="set-notes mt-5">
+        {notes.map((n) => <Note tone={n.tone} text={n.text} />)}
+        {problems.length > 0 && <Note tone="alert" title="Nothing was saved yet. Please fix:" items={problems} refused />}
+      </div>
+    )}
+    <div class="mt-5">
+    <div class="set-hours-head" aria-hidden="true">
+      <span class="meta">Day</span><span></span><span class="meta">Opens</span><span class="meta">Closes</span>
+    </div>
+    <div class="set-hours">
+      {DOWS.map((dow) => {
+        const d = days[dow];
+        return (
+          <div class="set-hours-row" data-day-row data-closed={d.closed ? '' : undefined}>
+            <span class="set-hours-day">{DAY_LONG[dow]}</span>
+            <label class="check set-check"><input type="checkbox" name={`closed[${dow}]`} checked={d.closed} data-day-closed /><span>Closed</span></label>
+            <div class="set-hours-times">
+              <label class="field"><span class="meta sm:sr-only">Opens<span class="sr-only"> on {DAY_LONG[dow]}</span></span><input type="time" name={`open[${dow}]`} value={d.open} step="900" /></label>
+              <label class="field"><span class="meta sm:sr-only">Closes<span class="sr-only"> on {DAY_LONG[dow]}</span></span><input type="time" name={`close[${dow}]`} value={d.close} step="900" /></label>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+    </div>
+    <div class="set-foot">
+      <button type="submit" class="ws-btn ws-btn-primary"><Icon name="check" />Save</button>
+      <span class="set-dirty-note" data-set-dirty-note hidden>Not saved yet</span>
+    </div>
+  </Pane>
+</form>
+</div>

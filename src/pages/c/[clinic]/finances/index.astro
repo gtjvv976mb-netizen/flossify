@@ -1,0 +1,535 @@
+---
+// Finances, for one branch, on one page: four numbers (collected today,
+// this month, what patients owe, what is stuck with HMOs), then two sections
+// switched in place — Statements & payments, and HMO & PhilHealth claims —
+// each with its own CSV. docs/workspace-redesign.md, "Finances".
+//
+// Statements & payments: today's charges, the unpaid balances oldest first,
+// every statement, and the void ones; one patient when the link says so
+// (?patient=), a name, chart no. or statement no. when searched (?q=). A row
+// opens the statement (/finances/<id>/), where payments are recorded and the
+// papers printed; + New charge starts one (/finances/new/). A balance is the
+// total less the payments that are not void; what a patient owes leaves out
+// the part an HMO or PhilHealth is still expected to send (DUE_SQL,
+// patient_balance()): that part is said beside it, never added in.
+//
+// Claims: everything the claims page did (_claims.ts, _Claims.astro). The
+// page's only posts are the claims' forms; each comes back here on the claims
+// section with ?done= or ?missed=, or with its panel open and the sentence.
+//
+// For the desk, the owner, the admin and anyone the owner lets see finance
+// here (canBill in src/lib/invoices.ts, the rule the Finances tab follows);
+// everyone else gets one sentence, and the claims list stays theirs at
+// /claims/ (their person menu). Claim amounts and moves are for canMoneyOf
+// (finance flag, owner, admin), as the claims page always had it. Every query
+// runs inside withClinic(): row-level security keeps it to this clinic.
+//
+// The URL keeps the state, so a reload, a post and the back button come back
+// to the same place: show=claims (the section; the script keeps it as the
+// tabs switch), view / q / patient (statements), claims / payor (claims).
+// ?export=statements|payments&from=&to= and ?export=claims answer with the
+// file instead of the page; an export of statements or payments is written
+// to the audit log, because the file names patients.
+//
+// Very simple (the owner, 26 Sep 2026): the title is the top bar's; four
+// tiles; one card with the two sections as tabs and the section's one main
+// action in teal beside them (New charge, or New claim); the filters as one
+// row of pills; Download and everything else quiet. A row is a person, what
+// for, when, what is left and where it stands — the statement's number
+// small under the date, because the paper carries it.
+//
+// The same words and colours as the rest of the workspace: a person is
+// "first last"; money a patient still owes is "Still to pay" (a person
+// "owes"), in amber, and red is kept for what is overdue. A statement with no
+// lines (a balance carried in without items) says so in words, the same words
+// an imported opening balance carries (OPENING_LINE).
+export const prerender = false;
+
+import './_fin.css';
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Pane from '../../../../components/ws/Pane.astro';
+import Tabs from '../../../../components/ws/Tabs.astro';
+import Tile from '../../../../components/ws/Tile.astro';
+import Chip from '../../../../components/ws/Chip.astro';
+import Empty from '../../../../components/ws/Empty.astro';
+import Icon from '../../../../components/ws/Icon.astro';
+import Avatar from '../../../../components/ws/Avatar.astro';
+import SidePanel from '../../../../components/ws/SidePanel.astro';
+import Claims from './_Claims.astro';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { OPENING_LINE } from '../../../../lib/import';
+import { withClinic } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import {
+  canBill, pesos, pesosWhole, fromDb, toDb, statementNo, day, stamp, isoDay, realDay, methodLabel,
+  STATUS, NOT_BIR, UUID, DUE_SQL, HMO_WAITING_SQL, DISCOUNTS,
+} from '../../../../lib/invoices';
+import {
+  canMoneyOf, claimFilterFrom, loadClaims, postClaim, claimsCsv, csvFile, CLAIM_DONE, CLAIM_MISSED, type ClaimPost,
+} from './_claims';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const may = canBill(session.role, clinic.can_view_finance);
+const canMoney = canMoneyOf(session.role, clinic.can_view_finance);
+const canSetUp = session.role === 'owner' || session.role === 'admin';
+const base = `/c/${clinic.slug}/finances/`;
+const q = Astro.url.searchParams;
+
+// --- the state in the URL ---------------------------------------------------
+
+// `list` names the rows (the table's caption, the line when a search finds none).
+const VIEWS = {
+  today: { label: 'Today', list: 'statements from today', where: `(i.issued_at at time zone 'Asia/Manila')::date = (now() at time zone 'Asia/Manila')::date`, order: 'i.issued_at desc, i.number desc' },
+  unpaid: { label: 'Still to pay', list: 'statements with something still to pay', where: `i.status in ('issued', 'partly_paid')`, order: 'i.issued_at asc, i.number asc' },
+  all: { label: 'All', list: 'statements', where: 'true', order: 'i.issued_at desc, i.number desc' },
+  void: { label: 'Void', list: 'void statements', where: `i.status = 'void'`, order: 'i.issued_at desc, i.number desc' },
+} as const;
+type View = keyof typeof VIEWS;
+const viewParam = q.get('view') ?? 'today';
+const view: View = Object.hasOwn(VIEWS, viewParam) ? (viewParam as View) : 'today';
+const patientParam = q.get('patient') ?? '';
+const patientId = UUID.test(patientParam) ? patientParam : '';
+const search = (q.get('q') ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+const show: 'statements' | 'claims' = q.get('show') === 'claims' ? 'claims' : 'statements';
+const claimFilter = claimFilterFrom(q, 'claims');
+
+/** Answers to one visit (a post's outcome, an export) that a link must not carry on. */
+const TRANSIENT = ['done', 'missed', 'stale', 'export', 'from', 'to'];
+/** The defaults are left out of the URL. */
+const DEFAULTS: Record<string, string> = { show: 'statements', view: 'today', claims: 'open' };
+/** This page with the state kept and `changes` applied (null removes a parameter). */
+const link = (changes: Record<string, string | null> = {}) => {
+  const s = new URLSearchParams(q);
+  for (const k of TRANSIENT) s.delete(k);
+  for (const [k, v] of Object.entries(changes)) if (v === null || v === '') s.delete(k); else s.set(k, v);
+  for (const [k, v] of Object.entries(DEFAULTS)) if (s.get(k) === v) s.delete(k);
+  const str = s.toString();
+  return base + (str ? `?${str}` : '');
+};
+
+// Only what is true for every one of them: claim amounts are narrower (canMoneyOf), and the claims list says so itself.
+const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the admin and anyone the owner lets see finance at this branch; ask the owner if you need them.';
+
+// --- a post: the claims' forms ----------------------------------------------
+
+let claimPost: ClaimPost | null = null;
+let claimError = q.get('stale') === '1' ? CSRF_MESSAGE : '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(link({ show: 'claims', stale: '1' }), 303);
+  // Nothing here is for someone without Finances; their notes go through /claims/.
+  if (!may) return Astro.redirect(base, 303);
+  const out = await postClaim(f, { clinicId: clinic.id, staffId: session.staffId, staffName: session.name, canMoney });
+  if ('go' in out) {
+    const to = out.go.done === 'new' ? { claims: 'drafts', payor: null } : {};
+    return Astro.redirect(link({ show: 'claims', ...to, done: out.go.done ?? null, missed: out.go.missed ?? null }), 303);
+  }
+  claimPost = out;
+}
+
+// --- a file instead of the page ---------------------------------------------
+
+const exportKind = q.get('export') ?? '';
+const monthStart = `${isoDay().slice(0, 8)}01`;
+const range = { from: q.get('from') ?? monthStart, to: q.get('to') ?? isoDay(), kind: exportKind === 'payments' ? 'payments' : 'statements' };
+let exportError = '';
+if (may && exportKind === 'claims') {
+  return claimsCsv(await loadClaims(clinic.id, claimFilter, canMoney), claimFilter, canMoney, clinic.slug);
+}
+if (may && (exportKind === 'statements' || exportKind === 'payments')) {
+  if (!realDay(range.from) || !realDay(range.to)) exportError = 'Pick both dates: the first day and the last day to put in the file.';
+  else if (range.from > range.to) exportError = 'The first day is after the last day. Swap them round.';
+  else {
+    const file = await withClinic(clinic.id, async (tx) => {
+      await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'clinic', $1)`,
+        [clinic.id, session.staffId, `finance.export.${exportKind}`]);
+      if (exportKind === 'payments') {
+        const rows = (await tx.query(
+          `select y.seq, y.paid_on::text as paid_on, y.received_at, y.method, y.amount, y.reference, y.bir_ref, y.voided_at, y.void_reason,
+                  i.series_prefix, i.number, p.first_name, p.last_name, p.chart_no, rs.full_name as received_by, vs.full_name as voided_by
+             from payment y
+             join invoice i on i.id = y.invoice_id
+             join patient p on p.id = y.patient_id
+             left join staff rs on rs.id = y.received_by
+             left join staff vs on vs.id = y.voided_by
+            where y.paid_on between $1::date and $2::date
+            order by y.paid_on, y.received_at, i.number, y.seq`, [range.from, range.to])).rows;
+        return [
+          ['Date paid', 'Statement no', 'Payment no', 'Patient', 'Chart no', 'Paid by', 'Amount', 'Reference', 'BIR invoice or receipt no', 'Recorded by', 'Recorded at', 'Status', 'Voided at', 'Voided by', 'Void reason'],
+          ...rows.map((r) => [
+            r.paid_on, statementNo(r.series_prefix, r.number), r.seq ?? '', `${r.last_name}, ${r.first_name}`, r.chart_no, methodLabel(r.method), toDb(fromDb(r.amount)),
+            r.reference, r.bir_ref, r.received_by, stamp(r.received_at), r.voided_at ? 'Void' : 'Stands',
+            r.voided_at ? stamp(r.voided_at) : '', r.voided_by, r.void_reason,
+          ]),
+        ];
+      }
+      const rows = (await tx.query(
+        `select i.series_prefix, i.number, i.issued_at, i.status, i.subtotal, i.discount, i.discount_kind, i.discount_id_no, i.total,
+                i.payor_name, i.payor_share, i.voided_at, i.void_reason,
+                p.first_name, p.last_name, p.chart_no, cs.full_name as created_by,
+                coalesce(y.paid, 0) as paid, coalesce(y.payor_paid, 0) as payor_paid,
+                (select json_agg(json_build_object('d', l.description, 'q', l.quantity) order by l.line_no nulls last, l.id)
+                   from invoice_line l where l.invoice_id = i.id) as lines
+           from invoice i
+           join patient p on p.id = i.patient_id
+           left join staff cs on cs.id = i.created_by
+           left join lateral (
+             select sum(amount) as paid, sum(amount) filter (where method in ('hmo', 'philhealth')) as payor_paid
+               from payment where invoice_id = i.id and voided_at is null) y on true
+          where i.status <> 'draft'
+            and (i.issued_at at time zone 'Asia/Manila')::date between $1::date and $2::date
+          order by i.issued_at, i.number`, [range.from, range.to])).rows;
+      return [
+        ['Statement no', 'Date', 'Time', 'Patient', 'Chart no', 'For', 'Charges', 'Discount', 'Discount kind', 'Discount ID no', 'Total',
+         'HMO or PhilHealth', 'Their part', 'Paid', 'Balance', 'Due from HMO or PhilHealth', 'Due from the patient', 'Status', 'Charged by', 'Voided at', 'Void reason'],
+        ...rows.map((r) => {
+          const isVoid = r.status === 'void';
+          const balance = isVoid ? 0n : fromDb(r.total) - fromDb(r.paid);
+          const payorLeft = fromDb(r.payor_share) - fromDb(r.payor_paid);
+          const payorDue = isVoid || balance <= 0n || payorLeft <= 0n ? 0n : payorLeft < balance ? payorLeft : balance;
+          const lines = ((r.lines ?? []) as { d: string; q: string | number }[])
+            .map((l) => { const n = String(l.q).replace(/\.0+$/, ''); return n === '1' ? l.d : `${l.d} × ${n}`; }).join('; ') || OPENING_LINE;
+          return [
+            statementNo(r.series_prefix, r.number), isoDay(r.issued_at), stamp(r.issued_at).split(', ').pop(), `${r.last_name}, ${r.first_name}`, r.chart_no, lines,
+            toDb(fromDb(r.subtotal)), toDb(fromDb(r.discount)), r.discount_kind && r.discount_kind !== 'none' ? (DISCOUNTS as Record<string, { label: string }>)[r.discount_kind]?.label ?? r.discount_kind : '',
+            r.discount_id_no, toDb(fromDb(r.total)), r.payor_name, fromDb(r.payor_share) > 0n ? toDb(fromDb(r.payor_share)) : '',
+            toDb(fromDb(r.paid)), toDb(balance), toDb(payorDue), toDb(balance - payorDue > 0n ? balance - payorDue : 0n),
+            (STATUS[r.status] ?? STATUS.issued).label, r.created_by, r.voided_at ? stamp(r.voided_at) : '', r.void_reason,
+          ];
+        }),
+      ];
+    });
+    return csvFile(file, `${exportKind}-${clinic.slug}-${range.from}-to-${range.to}.csv`);
+  }
+}
+
+// --- the page's data ----------------------------------------------------------
+
+interface Row {
+  id: string; series_prefix: string; number: string; issued_at: Date; status: string; total: string;
+  payor_share: string; payor_name: string | null; paid: string; payor_paid: string;
+  patient_id: string; first_name: string; last_name: string; chart_no: string; first_line: string | null; n_lines: number;
+}
+const like = (s: string) => '%' + s.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
+// "SOA-000012", "soa12", "12": a statement number, with its series when one is typed.
+const numberM = /^(?:([a-z]{1,4})-?)?0*(\d{1,9})$/i.exec(search);
+const numberQ = numberM?.[2] ?? null;
+const prefixQ = numberM?.[1]?.toUpperCase() ?? null;
+const ROWS_MAX = 300;
+
+const area = (await withClinic(clinic.id, async (tx) => (await tx.query('select area, tin from clinic where id = $1', [clinic.id])).rows[0])) as { area: string | null; tin: string | null };
+const data = may ? await withClinic(clinic.id, async (tx) => {
+  const rows = (await tx.query(
+    `select i.id, i.series_prefix, i.number, i.issued_at, i.status, i.total, i.payor_share, i.payor_name,
+            coalesce(y.paid, 0) as paid, coalesce(y.payor_paid, 0) as payor_paid,
+            p.id as patient_id, p.first_name, p.last_name, p.chart_no,
+            (select l.description from invoice_line l where l.invoice_id = i.id order by l.line_no nulls last limit 1) as first_line,
+            (select count(*)::int from invoice_line l where l.invoice_id = i.id) as n_lines
+       from invoice i
+       join patient p on p.id = i.patient_id
+       left join lateral (
+         select sum(amount) as paid, sum(amount) filter (where method in ('hmo', 'philhealth')) as payor_paid
+           from payment where invoice_id = i.id and voided_at is null) y on true
+      where i.status <> 'draft' and ${VIEWS[view].where}
+        and ($1::uuid is null or i.patient_id = $1)
+        and ($2::text is null or p.first_name ilike $2 or p.last_name ilike $2 or (p.first_name || ' ' || p.last_name) ilike $2
+             or p.chart_no ilike $2 or ($3::bigint is not null and i.number = $3 and ($4::text is null or i.series_prefix = $4)))
+      order by ${VIEWS[view].order}
+      limit ${ROWS_MAX}`,
+    [patientId || null, search ? like(search) : null, numberQ, prefixQ])).rows as Row[];
+  const m = (await tx.query(
+    `with due as (${DUE_SQL}),
+          d as (select (now() at time zone 'Asia/Manila')::date as today),
+          live as (select total, (issued_at at time zone 'Asia/Manila')::date as on_ from invoice where status in ('issued', 'partly_paid', 'paid')),
+          paid as (select amount, paid_on from payment where voided_at is null)
+     select (select coalesce(sum(amount), 0) from paid, d where paid_on = d.today) as collected_today,
+            (select count(*)::int from paid, d where paid_on = d.today) as collected_today_n,
+            (select coalesce(sum(total), 0) from live, d where on_ = d.today) as charged_today,
+            (select count(*)::int from live, d where on_ = d.today) as charged_today_n,
+            (select coalesce(sum(amount), 0) from paid, d where paid_on between date_trunc('month', d.today)::date and d.today) as collected_month,
+            (select count(*)::int from paid, d where paid_on between date_trunc('month', d.today)::date and d.today) as collected_month_n,
+            (select coalesce(sum(total), 0) from live, d where on_ between date_trunc('month', d.today)::date and d.today) as charged_month,
+            coalesce(sum(patient_due) filter (where patient_due > 0), 0) as owed,
+            count(distinct patient_id) filter (where patient_due > 0)::int as owed_patients,
+            coalesce(sum(payor_due), 0) as payor_owed
+       from due`)).rows[0];
+  const hmo = (await tx.query(HMO_WAITING_SQL, [null])).rows[0];
+  const who = patientId
+    ? (await tx.query(
+        `select p.id, p.first_name, p.last_name, p.chart_no, patient_balance(p.id) as balance,
+                (select coalesce(sum(d.payor_due), 0) from (${DUE_SQL}) d where d.patient_id = p.id) as payor_due,
+                (select string_agg(distinct d.payor_name, ', ') from (${DUE_SQL}) d where d.patient_id = p.id and d.payor_due > 0) as payors
+           from patient p where p.id = $1`, [patientId])).rows[0] ?? null
+    : null;
+  return { rows, m, hmo, who };
+}) : null;
+const claims = may ? await loadClaims(clinic.id, claimFilter, canMoney) : null;
+
+// --- words ------------------------------------------------------------------
+
+const n = (x: number, one: string, many = `${one}s`) => `${x} ${x === 1 ? one : many}`;
+const monthName = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'Asia/Manila' }).format(new Date());
+const M = data?.m;
+const H = data?.hmo;
+// Four numbers, each with an icon and one plain line. A tile links only where its own number can be
+// found again. Collected today has no such list here (Today lists what was charged today, not the
+// payments taken on older statements), so it links nowhere; the Payments download has them.
+const tiles = M && H ? [
+  { label: 'Collected today', value: pesosWhole(M.collected_today), icon: 'money' as const, tone: fromDb(M.collected_today) > 0n ? ('success' as const) : ('default' as const),
+    note: `${n(M.collected_today_n, 'payment')} · ${pesosWhole(M.charged_today)} charged` },
+  { label: 'This month', value: pesosWhole(M.collected_month), icon: 'calendar' as const, tone: 'default' as const,
+    note: `Since 1 ${monthName} · ${pesosWhole(M.charged_month)} charged` },
+  // The same figure as the Dashboard's: what patients themselves owe. The part HMOs or PhilHealth still owe is said, not added.
+  // Amber, the workspace's colour for money still owed; red is for what is overdue.
+  { label: 'Still to pay', value: pesosWhole(M.owed), icon: 'wallet' as const, tone: fromDb(M.owed) > 0n ? ('warn' as const) : ('default' as const),
+    note: `${n(M.owed_patients, 'patient')}${fromDb(M.payor_owed) > 0n ? ` · ${pesosWhole(M.payor_owed)} more from HMOs` : ''}`,
+    href: link({ show: null, view: 'unpaid', patient: null, q: null }) },
+  {
+    // Claims past their payor's own expected days: the ones to chase.
+    label: 'Overdue claims',
+    value: canMoney ? pesosWhole(H.stuck) : String(H.stuck_n),
+    icon: 'clock' as const,
+    note: canMoney
+      ? `${H.stuck_n ? n(H.stuck_n, 'claim') : 'None overdue'} · ${pesosWhole(H.waiting)} waiting in all`
+      : `${H.stuck_n === 1 ? 'claim' : 'claims'} · ${H.waiting_n} waiting in all`,
+    // The Open list holds exactly the claims this counts (CLAIM_VIEWS.open is HMO_WAITING_SQL's set), for every payor.
+    href: link({ show: 'claims', claims: null, payor: null }),
+    tone: H.stuck_n > 0 ? ('alert' as const) : ('default' as const),
+  },
+] : [];
+
+const EMPTY: Record<View, { text: string; icon: 'file' | 'check' | 'info'; go?: boolean }> = {
+  today: { text: 'Nothing charged yet today. Charge a patient after their visit.', icon: 'file', go: true },
+  unpaid: { text: 'Nobody owes the clinic. Everyone is paid up.', icon: 'check' },
+  all: { text: 'No statements yet. The first charge starts the list.', icon: 'file', go: true },
+  void: { text: 'No void statements.', icon: 'info' },
+};
+const filtered = !!(patientId || search);
+const empty = filtered
+  ? `No ${VIEWS[view].list}${data?.who ? ` for ${data.who.first_name} ${data.who.last_name}` : search ? ` matching “${search}”` : ''}.`
+  : EMPTY[view].text;
+const newCharge = `${base}new/${patientId ? `?patient=${patientId}` : ''}`;
+const time = (d: Date) => stamp(d).split(', ').pop();
+// Owed money is amber everywhere in the workspace (red is kept for overdue); "Unpaid" keeps its dot to tell it from "Part paid".
+const TONE_OF: Record<string, 'warn' | 'accent' | 'muted'> = { issued: 'warn', partly_paid: 'warn', paid: 'accent', void: 'muted', draft: 'muted' };
+
+const done = q.get('done') ?? '';
+const claimNotice = CLAIM_DONE[done] ?? '';
+const claimMissed = q.get('missed') ? CLAIM_MISSED : '';
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: area?.area }} title="Finances" section="finances" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  {!may || !data || !claims ? (
+    <Pane as="div" label="Finances">
+      <p class="ws-callout" data-tone="info" data-fin-closed><Icon name="info" /><span>{NO_ACCESS}</span></p>
+      <Empty icon="file" class="mt-3" text="The HMO and PhilHealth claims are still yours to read and add notes to." action={{ label: 'Open the claims', href: `/c/${clinic.slug}/claims/` }} />
+    </Pane>
+  ) : (
+    <>
+      {canSetUp && !area?.tin && (
+        <p class="ws-callout" data-tone="warn" data-fin-tin>
+          <Icon name="alert" />
+          <span>The clinic’s TIN is not set, so statements print without it. <a href={`/c/${clinic.slug}/settings/#tax`} class="fin-link">Add it in Clinic settings</a></span>
+        </p>
+      )}
+
+      <div class="ws-tiles" data-fin-tiles>
+        {tiles.map((t) => <Tile label={t.label} value={t.value} note={t.note} href={t.href} tone={t.tone} icon={t.icon} />)}
+      </div>
+
+      <Pane pad="none" label="Statements and claims" id="fin-sections" class="scroll-mt-28">
+        <header class="fin-head">
+          <Tabs label="Section" group="fin" current={show} variant="underline"
+            items={[{ id: 'statements', label: 'Statements' }, { id: 'claims', label: 'HMO claims' }]} />
+          <div class="fin-head-go">
+            <a href={newCharge} class="ws-btn ws-btn-primary" data-fin-new data-fin-for="statements" hidden={show !== 'statements'}>
+              <Icon name="plus" />New charge
+            </a>
+            {canMoney && (
+              <button type="button" class="ws-btn ws-btn-primary" data-ws-open="claim-new" data-fin-for="claims" hidden={show !== 'claims'}>
+                <Icon name="plus" />New claim
+              </button>
+            )}
+          </div>
+        </header>
+
+        <div id="statements" role="tabpanel" aria-labelledby="fin-statements-tab" hidden={show !== 'statements'}>
+          <div class="fin-bar">
+            <Tabs label="Which statements" current={view}
+              items={(Object.keys(VIEWS) as View[]).map((v) => ({ id: v, label: VIEWS[v].label, href: link({ show: null, view: v }) }))} />
+            <div class="fin-bar-end">
+              <form method="get" action={base} class="fin-find" role="search" data-fin-search>
+                {view !== 'today' && <input type="hidden" name="view" value={view} />}
+                {claimFilter.view !== 'open' && <input type="hidden" name="claims" value={claimFilter.view} />}
+                {claimFilter.payor && <input type="hidden" name="payor" value={claimFilter.payor} />}
+                <label class="field">
+                  <span class="sr-only">Find a patient or statement</span>
+                  <input type="search" name="q" value={search} placeholder="Name or statement no." autocomplete="off" enterkeyhint="search" />
+                </label>
+                <Icon name="search" />
+              </form>
+              <button type="button" class="ws-btn ws-btn-quiet fin-dl" data-ws-open="fin-export" title="Download for a spreadsheet"><Icon name="download" /><span class="max-md:sr-only">Download</span></button>
+            </div>
+          </div>
+
+          {(data.who || search) && (
+            <div class="fin-who" data-fin-filter>
+              {data.who ? (
+                <>
+                  <span class="fin-person">
+                    <Avatar name={`${data.who.first_name} ${data.who.last_name}`} size="sm" />
+                    <a href={`/c/${clinic.slug}/patients/${data.who.id}/`} class="fin-link">{data.who.first_name} {data.who.last_name}</a>
+                  </span>
+                  <span class="tabular-nums" data-fin-who-balance>
+                    Owes <strong class="font-semibold">{fromDb(data.who.balance) === 0n ? 'nothing' : pesos(data.who.balance)}</strong>
+                    {fromDb(data.who.payor_due) > 0n && <span class="text-muted"> · {pesos(data.who.payor_due)} more from {data.who.payors}</span>}
+                  </span>
+                  <span class="fin-who-end">
+                    <a href={`${base}new/?patient=${data.who.id}`} class="fin-link">Charge this patient</a>
+                    <a href={link({ patient: null, q: null })} class="fin-link"><Icon name="close" size={16} />Show everyone</a>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span class="text-ink-2">Matching “{search}”</span>
+                  <span class="fin-who-end"><a href={link({ patient: null, q: null })} class="fin-link"><Icon name="close" size={16} />Show everyone</a></span>
+                </>
+              )}
+            </div>
+          )}
+
+          {data.rows.length === 0 ? (
+            <div class="fin-empty">
+              <Empty icon={filtered ? 'search' : EMPTY[view].icon} text={empty}
+                action={!filtered && EMPTY[view].go ? { label: 'New charge', href: newCharge } : filtered && data.who ? { label: 'Charge this patient', href: newCharge } : undefined} />
+            </div>
+          ) : (
+            <table class="ws-table fin-table" data-fin-statements>
+              <caption class="sr-only">{VIEWS[view].list[0].toUpperCase() + VIEWS[view].list.slice(1)} at {clinic.name}</caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="meta">Patient</th>
+                  <th scope="col" class="meta">For</th>
+                  <th scope="col" class="meta">{view === 'today' ? 'Time' : 'Date'}</th>
+                  <th scope="col" class="meta fin-num">Still to pay</th>
+                  <th scope="col" class="meta">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((r) => {
+                  const st = STATUS[r.status] ?? STATUS.issued;
+                  const isVoid = r.status === 'void';
+                  const balance = isVoid ? 0n : fromDb(r.total) - fromDb(r.paid);
+                  const payorLeft = fromDb(r.payor_share) - fromDb(r.payor_paid);
+                  const fromPayor = !isVoid && balance > 0n && payorLeft > 0n ? (payorLeft < balance ? payorLeft : balance) : 0n;
+                  const when = view === 'today' ? time(r.issued_at) : day(r.issued_at);
+                  const name = `${r.first_name} ${r.last_name}`;
+                  // The whole row opens the statement: the name's link stretches over it. On a phone
+                  // the row is a small card: who and what is left, what for and the status, when.
+                  return (
+                    <tr data-fin-row={r.id}>
+                      <td class="fin-c-who">
+                        <a href={`${base}${r.id}/`} class="fin-person fin-row-link">
+                          <Avatar name={name} size="sm" />
+                          <span class="fin-person-words">
+                            <span class="fin-person-name">{name}</span>
+                            <span class="fin-sub max-lg:hidden">{r.chart_no}</span>
+                          </span>
+                          <span class="sr-only">, statement {statementNo(r.series_prefix, r.number)}</span>
+                        </a>
+                      </td>
+                      <td class="fin-c-what fin-for">
+                        {r.first_line ?? OPENING_LINE}{r.n_lines > 1 && <span class="text-muted"> + {r.n_lines - 1} more</span>}
+                      </td>
+                      <td class="fin-c-when">
+                        <span class="text-[14.5px] tabular-nums text-ink-2 max-lg:text-[13px] max-lg:text-muted">{when}<span class="lg:hidden"> · </span></span>
+                        <span class="fin-sub fin-no max-lg:inline">{statementNo(r.series_prefix, r.number)}</span>
+                      </td>
+                      <td class="fin-c-amount fin-num">
+                        {isVoid
+                          ? <span class="fin-money text-[15px] text-muted">—</span>
+                          : <span class:list={['fin-money', balance === 0n ? 'text-[15px] text-muted' : 'text-[15.5px] font-semibold']}>{pesos(balance)}</span>}
+                        <span class:list={['fin-sub fin-money', isVoid && 'line-through']}>of {pesos(r.total)}</span>
+                        {fromPayor > 0n && <span class="fin-sub max-lg:hidden">{pesos(fromPayor)} from {r.payor_name}</span>}
+                      </td>
+                      <td class="fin-c-state">
+                        <Chip tone={TONE_OF[r.status] ?? 'warn'} label={st.label} dot={r.status === 'issued'} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+          {data.rows.length === ROWS_MAX && <p class="fin-more">Showing the first {ROWS_MAX}. Find a patient to narrow it, or download every one.</p>}
+          <p class="fin-foot fin-foot-row" data-not-bir><Icon name="info" size={16} />{NOT_BIR}</p>
+        </div>
+
+        <div id="claims" role="tabpanel" aria-labelledby="fin-claims-tab" hidden={show !== 'claims'}>
+          <Claims slug={clinic.slug} data={claims} filter={claimFilter} canMoney={canMoney} viewKey="claims"
+            link={(c) => link({ show: 'claims', ...c })} action={link({ show: 'claims' })} csvHref={link({ show: 'claims', export: 'claims' })}
+            post={claimPost} error={claimError} notice={claimNotice} missed={claimMissed} />
+        </div>
+      </Pane>
+
+      <SidePanel id="fin-export" title="Download for a spreadsheet" meta="A CSV file, for Excel or Google Sheets" open={Boolean(exportError)}>
+        {exportError && <p role="alert" class="ws-callout mb-5" data-tone="alert"><Icon name="alert" /><span>{exportError}</span></p>}
+        <form method="get" action={base} class="grid gap-5" data-fin-export>
+          <fieldset>
+            <legend class="meta">What to download</legend>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <label class="chip-radio"><input type="radio" name="export" value="statements" checked={range.kind === 'statements'} /><span class="min-h-11 text-[15px]">Statements</span></label>
+              <label class="chip-radio"><input type="radio" name="export" value="payments" checked={range.kind === 'payments'} /><span class="min-h-11 text-[15px]">Payments</span></label>
+            </div>
+          </fieldset>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="field"><span class="meta">From</span><input type="date" name="from" value={realDay(range.from) ? range.from : monthStart} required /></label>
+            <label class="field"><span class="meta">To</span><input type="date" name="to" value={realDay(range.to) ? range.to : isoDay()} required /></label>
+          </div>
+          <ul class="grid gap-2 text-[14px] leading-relaxed text-ink-2">
+            <li><strong class="font-semibold text-ink">Statements</strong> by the day they were charged: what for, the total, any discount and HMO part, what is paid and what is left.</li>
+            <li><strong class="font-semibold text-ink">Payments</strong> by the day they were paid: how, the reference and the BIR invoice or receipt number.</li>
+            <li>Void ones are in the file, marked void.</li>
+          </ul>
+          <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="download" />Download</button>
+          <p class="ws-callout" data-tone="info"><Icon name="info" /><span>The file names patients. Keep it on the clinic’s own computer.</span></p>
+        </form>
+      </SidePanel>
+    </>
+  )}
+</ClinicLayout>
+
+<script>
+  // The two sections switch in place (the shell's <Tabs>); the URL follows,
+  // so a reload, a post and the back button come back to the same section,
+  // and the head's one main action follows the section (New charge, New
+  // claim). A tile that points at the other section switches it in place too,
+  // when it asks for nothing else. The download panel closes once the file is
+  // asked for.
+  const tabs = document.querySelector<HTMLElement>('#fin-sections [data-ws-tabs]');
+  const clean = (u: URL) => { for (const k of ['done', 'missed', 'stale', 'export', 'from', 'to']) u.searchParams.delete(k); return u; };
+  tabs?.addEventListener('ws:tab', (e) => {
+    const id = (e as CustomEvent<{ id: string }>).detail.id;
+    for (const b of document.querySelectorAll<HTMLElement>('[data-fin-for]')) b.hidden = b.dataset.finFor !== id;
+    const u = clean(new URL(location.href));
+    if (id === 'claims') u.searchParams.set('show', 'claims'); else u.searchParams.delete('show');
+    history.replaceState(history.state, '', u);
+  });
+  const rest = (u: URL) => { const s = clean(new URL(u)).searchParams; s.delete('show'); s.sort(); return s.toString(); };
+  for (const a of document.querySelectorAll<HTMLAnchorElement>('[data-fin-tiles] a[href]')) {
+    a.addEventListener('click', (e) => {
+      const to = new URL(a.href, location.href);
+      if (e.metaKey || e.ctrlKey || e.shiftKey || to.pathname !== location.pathname || rest(to) !== rest(new URL(location.href))) return;
+      const want = to.searchParams.get('show') === 'claims' ? 'claims' : 'statements';
+      const tab = document.getElementById(`fin-${want}-tab`);
+      if (!tab) return;
+      e.preventDefault();
+      if (tab.getAttribute('aria-selected') !== 'true') tab.click();
+      document.getElementById('fin-sections')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+  const exp = document.querySelector<HTMLFormElement>('[data-fin-export]');
+  exp?.addEventListener('submit', () => { window.setTimeout(() => window.ws?.closePanel('fin-export'), 400); });
+</script>

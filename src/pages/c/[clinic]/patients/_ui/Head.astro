@@ -1,0 +1,29 @@
+---
+// A card's head for a <Pane> whose icon is one of the patient pages' own glyphs
+// (a heart, a tooth, a shield): the shell's pane head exactly (ws-pane-head,
+// ws-pane-icon, ws-pane-title), with <Glyph> in the icon square. Use it inside
+// a <Pane label="…"> that has no title of its own (the Pane's label names the
+// section for a screen reader).
+//
+//   <Pane as="section" label="Health" id="health">
+//     <Head icon="heart" title="Health" meta="Updated 25 Sep" />
+//     …
+//   </Pane>
+import Glyph from './Glyph.astro';
+import type { GlyphName } from './glyphs';
+
+interface Props { title: string; icon: GlyphName; meta?: string; id?: string; level?: 2 | 3 }
+const { title, icon, meta, id, level = 2 } = Astro.props;
+const H = level === 3 ? 'h3' : 'h2';
+---
+
+<header class="ws-pane-head">
+  <div class="ws-pane-heading">
+    <span class="ws-pane-icon"><Glyph name={icon} /></span>
+    <div class="min-w-0">
+      {meta && <p class="meta ws-pane-meta">{meta}</p>}
+      <H id={id} class="ws-pane-title">{title}</H>
+    </div>
+  </div>
+  {Astro.slots.has('actions') && <div class="ws-pane-actions"><slot name="actions" /></div>}
+</header>

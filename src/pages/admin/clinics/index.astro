@@ -1,111 +1,424 @@
 ---
-// Every clinic on the service, newest first, with its owner and three counts.
-// Nothing is done from here yet; it is the list operations reads before
-// picking up the phone. Admins have no tenant: admin_clinics() (009) returns
-// these columns and nothing else — no patient, no appointment, no invoice.
+// Flossify control › Clinics (/admin/clinics/): every clinic on the service,
+// newest first — search, one row of filter pills (the rest under More), and a
+// side panel with each clinic's detail (a name opens it; ?clinic=<id> opens it
+// on arrival). The search and the filters work in place and the URL keeps
+// them (?q=, ?show=), so a reload or a shared link lands on the same rows;
+// `/` goes to the search. The old ?show=month (signed up this calendar month)
+// becomes New: signed up in the last 30 days, the same window as the
+// Overview's New clinics.
+//
+// Counts only: admin_clinic_rows (027) returns aggregates. The people named
+// are staff — the owner to call.
 export const prerender = false;
 
 import AdminLayout from '../../../layouts/Admin.astro';
-import { requireAdmin } from '../../../lib/admin';
-import { publicRead } from '../../../lib/db';
+import Pane from '../../../components/ws/Pane.astro';
+import Tile from '../../../components/ws/Tile.astro';
+import Chip from '../../../components/ws/Chip.astro';
+import Empty from '../../../components/ws/Empty.astro';
+import Icon from '../../../components/ws/Icon.astro';
+import Avatar from '../../../components/ws/Avatar.astro';
+import Menu from '../../../components/ws/Menu.astro';
+import SidePanel from '../../../components/ws/SidePanel.astro';
+import { requireAdmin, clinicRows, isQuiet, QUIET_DAYS, ago, daysSince, dateText, daysUntil, type ClinicRow } from '../../../lib/admin';
 import { prettyPhone } from '../../../lib/messages';
+import { peso } from '../../../data/demo';
+import { STATUS_WORDS } from '../../../lib/billing';
 
 const admin = await requireAdmin(Astro);
 if (admin instanceof Response) return admin;
 
-interface Row {
-  id: string; name: string; slug: string; area: string | null; listed: boolean; booking_mode: string; created_at: Date;
-  owner_name: string | null; owner_email: string | null; owner_phone: string | null;
-  dentists: number; patients: number; bookings_web_30d: number;
-}
-const rows = await publicRead<Row>('select * from admin_clinics()');
+const rows = await clinicRows();
+const now = new Date();
+const q = Astro.url.searchParams;
+const n = (x: number) => x.toLocaleString('en-PH');
+const plural = (k: number, one: string, many = `${one}s`) => `${n(k)} ${k === 1 ? one : many}`;
 
-// Dates are Manila dates; "this month" is the Manila calendar month.
-const day = (d: Date) => new Intl.DateTimeFormat('en-PH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(d);
-const month = (d: Date) => new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', timeZone: 'Asia/Manila' }).format(d);
-const thisMonth = month(new Date());
-
-const FILTERS: { id: string; label: string; keep: (r: Row) => boolean; empty: string }[] = [
-  { id: 'all', label: 'All', keep: () => true, empty: 'No clinics yet.' },
-  { id: 'listed', label: 'Listed', keep: (r) => r.listed, empty: 'No clinic is listed yet.' },
-  { id: 'unlisted', label: 'Not listed', keep: (r) => !r.listed, empty: 'Every clinic is listed.' },
-  { id: 'month', label: 'Signed up this month', keep: (r) => month(r.created_at) === thisMonth, empty: 'Nothing signed up this month yet.' },
+// --- filters ------------------------------------------------------------------------------------
+// "New" is the same 30 days as the Overview's New clinics; "Trial ending" the same 7 days as its Needs you.
+const DAY = 86_400_000;
+const NEW_DAYS = 30;
+const isNew = (r: ClinicRow) => now.getTime() - new Date(r.created_at).getTime() <= NEW_DAYS * DAY;
+const trialEnding = (r: ClinicRow) => {
+  if (r.plan_status !== 'trial' || !r.trial_ends_at) return false;
+  const left = new Date(r.trial_ends_at).getTime() - now.getTime();
+  return left > 0 && left <= 7 * DAY;
+};
+type Filter = { id: string; label: string; keep: (r: ClinicRow) => boolean; empty: string };
+// The pills: the few that decide the next step. The rest wait under More.
+const PILLS: Filter[] = [
+  { id: 'all', label: 'All', keep: () => true, empty: 'No clinics yet. A clinic shows here as soon as its owner signs up.' },
+  { id: 'trial', label: 'On trial', keep: (r) => r.plan_status === 'trial', empty: 'No clinic is on trial.' },
+  { id: 'past_due', label: 'Past due', keep: (r) => r.plan_status === 'past_due', empty: 'Nobody is past due.' },
+  { id: 'new', label: 'New', keep: isNew, empty: `No clinic has signed up in the last ${NEW_DAYS} days.` },
+  { id: 'quiet', label: 'Inactive', keep: (r) => isQuiet(r, now), empty: `Every clinic has been active in the last ${QUIET_DAYS} days.` },
 ];
-const filter = FILTERS.find((f) => f.id === (Astro.url.searchParams.get('show') ?? 'all')) ?? FILTERS[0];
-const shown = rows.filter(filter.keep);
+const MORE: Filter[] = [
+  { id: 'ending', label: 'Trial ending this week', keep: trialEnding, empty: 'No trial ends in the next 7 days.' },
+  { id: 'active', label: 'Active plan', keep: (r) => r.plan_status === 'active', empty: 'No clinic is on an active plan yet.' },
+  { id: 'listed', label: 'Listed', keep: (r) => r.listed, empty: 'No clinic is listed on Find a clinic yet.' },
+  { id: 'unlisted', label: 'Not listed', keep: (r) => !r.listed, empty: 'Every clinic is listed.' },
+];
+const FILTERS = [...PILLS, ...MORE];
+const asked = q.get('show') === 'month' ? 'new' : (q.get('show') ?? 'all'); // ?show=month from before
+const filter = FILTERS.find((f) => f.id === asked) ?? FILTERS[0];
+const inMore = MORE.includes(filter);
+const search = (q.get('q') ?? '').trim().slice(0, 80);
+const flagsOf = (r: ClinicRow) => FILTERS.filter((f) => f.keep(r)).map((f) => f.id).join(' ');
+const digits = (s: string | null) => (s ?? '').replace(/\D/g, '');
+const haystack = (r: ClinicRow) =>
+  [r.name, r.slug, r.area, r.city, r.province, r.group_name, r.owner_name, r.owner_email, digits(r.owner_phone), r.owner_phone]
+    .filter(Boolean).join(' ').toLowerCase();
+const words = search.toLowerCase().split(/\s+/).filter(Boolean);
+const shows = (r: ClinicRow) => filter.keep(r) && words.every((w) => haystack(r).includes(w));
+const shownCount = rows.filter(shows).length;
+const countOf = (f: Filter) => rows.filter(f.keep).length;
+const hrefOf = (f: Filter) => (f.id === 'all' ? '/admin/clinics/' : `/admin/clinics/?show=${f.id}`);
+const branchesOf = new Map<string, string[]>();
+for (const r of rows) branchesOf.set(r.group_id, [...(branchesOf.get(r.group_id) ?? []), r.name]);
 
-const MODE: Record<string, string> = { live: 'Live', request: 'Request' };
-const th = 'meta px-5 py-3.5';
-const td = 'px-5 py-4 align-top text-[14.5px]';
+// --- plan ---------------------------------------------------------------------------------------
+// Never colour alone: the words carry it (STATUS_WORDS, src/lib/billing.ts).
+const PLAN_TONE = { trial: 'warn', active: 'accent', past_due: 'alert', cancelled: 'muted' } as const;
+const planChip = (r: ClinicRow) =>
+  r.plan_status ? { tone: PLAN_TONE[r.plan_status], label: STATUS_WORDS[r.plan_status] } : { tone: 'muted' as const, label: 'Not started' };
+const planLine = (r: ClinicRow) => {
+  if (r.plan_status === 'trial' && r.trial_ends_at) {
+    const d = daysUntil(r.trial_ends_at, now);
+    return d > 1 ? `ends in ${d} days` : d === 1 ? 'ends tomorrow' : d === 0 ? 'ends today' : `ended ${dateText(r.trial_ends_at)}`;
+  }
+  if (r.due_count > 0) return `owes ${peso(r.due_amount)}`;
+  if (!r.plan_status) return 'starts when the owner first signs in';
+  return r.price_per_branch !== null ? `${peso(r.price_per_branch)} a branch` : '';
+};
+const BOOKING_MODE: Record<string, string> = { live: 'patients book a time themselves', request: 'patients send a request' };
+const stepsOf = (r: ClinicRow) => [
+  { label: 'hours', done: r.hours_days > 0 },
+  { label: 'services', done: r.services > 0 },
+  { label: 'a dentist', done: r.dentists > 0 },
+  { label: 'listing', done: r.listed },
+  { label: 'first booking', done: r.bookings_30d > 0 || r.visits_next_7d > 0 },
+];
 ---
 
-<AdminLayout title="Clinics" section="clinics" admin={{ name: admin.name }}>
-  <div class="flex flex-wrap items-end justify-between gap-4">
-    <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Clinics</h1>
-    <p class="text-[14.5px] text-muted">{shown.length === rows.length ? `${rows.length} on the service` : `${shown.length} of ${rows.length}`}</p>
-  </div>
+<AdminLayout title="Clinics" section="clinics" admin={{ name: admin.name, email: admin.email }} wide>
+  <Pane id="clinics" title="Every clinic" icon="clinic" meta={`${plural(rows.length, 'clinic')} on Flossify · newest first`} pad="none">
+    <label slot="actions" class="field ops-grow">
+      <span class="sr-only">Find a clinic</span>
+      <input type="search" name="q" value={search} placeholder="Find a clinic, owner or mobile" autocomplete="off" spellcheck="false"
+        aria-keyshortcuts="/" aria-describedby="clinics-count" data-clinic-q />
+    </label>
 
-  <nav class="mt-6 flex flex-wrap gap-2" aria-label="Which clinics to show">
-    {FILTERS.map((f) => (
-      <a
-        href={f.id === 'all' ? '/admin/clinics/' : `/admin/clinics/?show=${f.id}`}
-        aria-current={f.id === filter.id ? 'page' : undefined}
-        class:list={['border px-3.5 py-2 text-[13.5px] font-medium', f.id === filter.id ? 'border-ink bg-ink text-bg' : 'border-line text-ink-2 hover:border-ink hover:text-ink']}
-      >
-        {f.label}
-      </a>
-    ))}
-  </nav>
+    <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-[var(--ws-hair)] px-6 py-3 max-md:px-4" data-filters
+      data-empties={JSON.stringify(Object.fromEntries(FILTERS.map((f) => [f.id, f.empty])))}>
+      <!-- The pills and More wrap together: on a phone they take a second row, and no word is cut short. -->
+      <nav aria-label="Which clinics" class="ws-seg ops-pills" data-pills>
+        {PILLS.map((f) => (
+          <a href={hrefOf(f)} class="ws-seg-item" data-show={f.id} aria-current={f.id === filter.id ? 'page' : undefined}>
+            <span class="ws-seg-label">{f.label}</span>{f.id !== 'all' && countOf(f) > 0 && <span class="ws-seg-count">{countOf(f)}</span>}
+          </a>
+        ))}
+        <Menu id="clinics-more" align="right" buttonClass="ws-seg-item" title="More ways to filter" describedby="clinics-more-on">
+          <Fragment slot="button">
+            <span class="ws-seg-label" data-more-word>{inMore ? filter.label : 'More'}</span>
+            <Icon name="chevron" size={16} class="ws-chev" />
+          </Fragment>
+          <p class="ws-menu-head">Show only</p>
+          {MORE.map((f) => (
+            <a class="ws-menu-item" href={hrefOf(f)} data-show={f.id} aria-current={f.id === filter.id ? 'page' : undefined}>
+              <span class="ws-menu-words">{f.label}</span><span class="text-[13px] tabular-nums text-muted">{countOf(f)}</span>
+            </a>
+          ))}
+        </Menu>
+        <span id="clinics-more-on" class="sr-only" data-more-on>{inMore ? `Showing: ${filter.label}` : ''}</span>
+      </nav>
+      <p id="clinics-count" class="meta" aria-live="polite" data-clinic-count>
+        {shownCount === rows.length ? `${n(rows.length)} shown` : `${n(shownCount)} of ${n(rows.length)}`}
+      </p>
+    </div>
 
-  <div class="mt-6 overflow-x-auto border border-line bg-surface">
-    <table class="w-full min-w-[980px] border-collapse text-left">
-      <caption class="sr-only">Clinics on Flossify, newest first</caption>
+    <table class="ws-table">
+      <caption class="sr-only">Clinics on Flossify, newest first. Choose a clinic’s name for its detail.</caption>
       <thead>
-        <tr class="border-b border-line bg-bg-soft">
-          <th scope="col" class={th}>Clinic</th>
-          <th scope="col" class={th}>Owner</th>
-          <th scope="col" class={th}>Listed</th>
-          <th scope="col" class={th}>Booking</th>
-          <th scope="col" class={`${th} text-right`}>Dentists</th>
-          <th scope="col" class={`${th} text-right`}>Patients</th>
-          <th scope="col" class={`${th} text-right`}>Web bookings, 30 days</th>
-          <th scope="col" class={th}>Signed up</th>
+        <tr>
+          <th scope="col" class="meta">Clinic</th>
+          <th scope="col" class="meta">Owner</th>
+          <th scope="col" class="meta">Plan</th>
+          <th scope="col" class="meta">Activity</th>
         </tr>
       </thead>
       <tbody>
-        {shown.length === 0 && <tr><td colspan="8" class="px-5 py-4 text-[15px] text-muted">{filter.empty}</td></tr>}
-        {shown.map((c, i) => (
-          <tr class={i < shown.length - 1 ? 'border-b border-line-2' : ''}>
-            <th scope="row" class="px-5 py-4 align-top">
-              {c.listed ? (
-                <a href={`/find/${c.slug}/`} class="text-[15.5px] font-semibold hover:text-accent">{c.name}</a>
-              ) : (
-                <span class="text-[15.5px] font-semibold">{c.name}</span>
-              )}
-              <p class="text-[13px] font-normal text-muted">{c.area ?? 'Area not set'} · <span class="font-mono">{c.slug}</span></p>
-            </th>
-            <td class={td}>
-              {c.owner_name ? (
-                <>
-                  <span class="font-medium">{c.owner_name}</span>
-                  <p class="text-[13px] text-muted">
-                    {c.owner_email && <a href={`mailto:${c.owner_email}`} class="underline underline-offset-4 hover:text-accent">{c.owner_email}</a>}
-                    {c.owner_phone && <span class="tabular-nums">{c.owner_email ? ' · ' : ''}{prettyPhone(c.owner_phone)}</span>}
-                  </p>
-                </>
-              ) : (
-                <span class="text-muted">No owner on file</span>
-              )}
-            </td>
-            <td class={`${td} text-ink-2`}>{c.listed ? 'Yes' : 'No'}</td>
-            <td class={`${td} text-ink-2`}>{MODE[c.booking_mode] ?? c.booking_mode}</td>
-            <td class={`${td} text-right tabular-nums`}>{c.dentists}</td>
-            <td class={`${td} text-right tabular-nums`}>{c.patients}</td>
-            <td class={`${td} text-right tabular-nums`}>{c.bookings_web_30d}</td>
-            <td class={`${td} whitespace-nowrap tabular-nums text-ink-2`}>{day(c.created_at)}</td>
-          </tr>
-        ))}
+        {rows.map((r) => {
+          const chip = planChip(r);
+          const quiet = isQuiet(r, now);
+          return (
+            <tr data-clinic={r.id} data-f={flagsOf(r)} data-q={haystack(r)} hidden={!shows(r)} class="max-lg:grid max-lg:grid-cols-2 max-lg:gap-x-4">
+              <td class="max-lg:col-span-2 lg:min-w-[12rem]">
+                <button type="button" class="ops-open" data-ws-open="clinic" data-clinic-open={r.id}>{r.name}</button>
+                <p class="text-[13.5px] [overflow-wrap:anywhere] text-muted">{r.area ?? 'Area not set'}{r.group_branches > 1 && ` · ${r.group_branches} branches`}</p>
+              </td>
+              <td class="max-lg:col-span-2">
+                <span class="meta ws-cell-label">Owner</span>
+                {r.owner_name ? (
+                  <div class="ops-who">
+                    <Avatar name={r.owner_name} size="sm" />
+                    <span class="ops-who-text">
+                      <span class="text-[14.5px] font-medium [overflow-wrap:anywhere]">{r.owner_name}</span>
+                      {r.owner_phone && <a href={`tel:${digits(r.owner_phone)}`} class="ops-call -my-2.5 self-start">{prettyPhone(r.owner_phone)}<span class="sr-only">: call {r.owner_name}</span></a>}
+                    </span>
+                  </div>
+                ) : <span class="text-[14.5px] text-muted">No owner on file</span>}
+              </td>
+              <td class="max-lg:col-span-2">
+                <span class="meta ws-cell-label">Plan</span>
+                <Chip tone={chip.tone} label={chip.label} dot />
+                {planLine(r) && <p class="mt-1 text-[13.5px] text-muted lg:max-w-[24ch]">{planLine(r)}</p>}
+              </td>
+              <td class="max-lg:col-span-2">
+                <span class="meta ws-cell-label">Activity</span>
+                <span class="block text-[14.5px] tabular-nums">{plural(r.bookings_30d, 'booking')} in 30 days{r.bookings_web_30d > 0 && <span class="text-muted"> · {n(r.bookings_web_30d)} on the web</span>}</span>
+                {quiet
+                  ? <span class="mt-1 flex flex-wrap items-center gap-2 text-[13.5px] text-muted"><span class="ws-pill ws-tint-red">Inactive</span>{r.last_activity ? `last ${ago(r.last_activity, now)}` : 'nothing yet'}</span>
+                  : <span class="block text-[13.5px] text-muted">Active {ago(r.last_activity, now)}</span>}
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
+    <div class="px-6 py-2 max-md:px-4" data-clinic-empty hidden={shownCount > 0}>
+      <Empty icon="search" text={rows.length === 0 ? PILLS[0].empty : words.length ? `No clinic matches “${search}” here. Try a shorter word, or All.` : filter.empty}
+        action={rows.length > 0 ? { label: 'Show every clinic', href: '/admin/clinics/' } : undefined} />
+    </div>
+    <p class="flex items-start gap-2 border-t border-[var(--ws-hair)] px-6 py-3.5 text-[13.5px] leading-snug text-ink-2 max-md:px-4">
+      <Icon name="info" class="mt-px flex-none text-muted" />
+      <span>Choose a clinic’s name for its detail. Inactive: no sign-in, booking or change there in {QUIET_DAYS} days.<span class="max-md:hidden"> Press <kbd class="ws-kbd !m-0 !inline-flex">/</kbd> to search.</span></span>
+    </p>
+  </Pane>
+
+  <!-- A clinic's detail: filled from its template when its name is chosen. -->
+  <SidePanel id="clinic" title="Clinic" meta="Clinic" wide>
+    <div data-clinic-body></div>
+  </SidePanel>
+
+  <div hidden>
+    {rows.map((r) => {
+      const chip = planChip(r);
+      const siblings = (branchesOf.get(r.group_id) ?? []).filter((x) => x !== r.name);
+      const steps = stepsOf(r);
+      const done = steps.filter((s) => s.done).length;
+      const left = steps.filter((s) => !s.done).map((s) => s.label);
+      const quiet = isQuiet(r, now);
+      return (
+        <template id={`cd-${r.id}`} data-title={r.name} data-meta={r.area ?? 'Area not set'}>
+          <div class="flex flex-wrap gap-2">
+            <a href={`/admin/billing/?terms=${r.group_id}`} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="wallet" /> Billing and terms</a>
+            {r.listed && <a href={`/find/${r.slug}/`} target="_blank" rel="noopener" class="ws-btn ws-btn-quiet ws-btn-sm">Public page <Icon name="arrow-right" size={16} /><span class="sr-only">(opens in a new tab)</span></a>}
+          </div>
+          <div class="ws-tiles mt-5 grid-cols-2!">
+            <Tile label="Patients" value={n(r.patients)} note="a count only" />
+            <Tile label="Bookings, 30 days" value={n(r.bookings_30d)} note={`${n(r.visits_next_7d)} in the next 7 days`} />
+            <Tile label="Team" value={n(r.team)} note={`${plural(r.dentists, 'dentist')}${r.invited ? ` · ${n(r.invited)} invited` : ''}`} />
+            <Tile label="Texts failed" value={n(r.texts_failed_7d)} tone={r.texts_failed_7d ? 'alert' : 'default'} note={`this week · ${n(r.texts_queued)} waiting`} />
+          </div>
+          <dl class="ops-facts mt-5">
+            <dt class="meta">Plan</dt>
+            <dd>
+              <Chip tone={chip.tone} label={chip.label} dot />
+              {planLine(r) && <span class="ml-2 text-ink-2">{planLine(r)}</span>}
+              {r.due_count > 0 && <span class="mt-1 block text-[14px] text-ink-2">{plural(r.due_count, 'invoice')} due, {peso(r.due_amount)} in all</span>}
+            </dd>
+            <dt class="meta">Owner</dt>
+            <dd>
+              {r.owner_name ? (
+                <div class="ops-who">
+                  <Avatar name={r.owner_name} />
+                  <span class="ops-who-text">
+                    <span class="font-medium">{r.owner_name}</span>
+                    <span class="flex flex-wrap gap-x-5">
+                      {r.owner_phone && <a href={`tel:${digits(r.owner_phone)}`} class="ops-call">{prettyPhone(r.owner_phone)}</a>}
+                      {r.owner_email && <a href={`mailto:${r.owner_email}`} class="ops-call min-w-0 whitespace-normal [overflow-wrap:anywhere]">{r.owner_email}</a>}
+                    </span>
+                  </span>
+                </div>
+              ) : 'No owner on file'}
+            </dd>
+            <dt class="meta">Group</dt>
+            <dd>{r.group_name} · {plural(r.group_branches, 'branch', 'branches')}{siblings.length > 0 && <span class="block text-[14px] text-ink-2">Also: {siblings.join(', ')}</span>}</dd>
+            <dt class="meta">Where</dt>
+            <dd>{[r.area, r.city, r.province].filter((x, i, a) => x && a.indexOf(x) === i).join(', ') || 'Not set'}</dd>
+            <dt class="meta">Public page</dt>
+            <dd>{r.listed ? 'Listed on Find a clinic' : 'Not listed'}<span class="block text-[14px] text-ink-2">{BOOKING_MODE[r.booking_mode] ?? r.booking_mode} · <span class="ops-ref">{r.slug}</span></span></dd>
+            <dt class="meta">Joined</dt>
+            <dd>{dateText(r.created_at)} <span class="text-ink-2">({daysSince(r.created_at, now)})</span></dd>
+            <dt class="meta">Last active</dt>
+            <dd>
+              {ago(r.last_activity, now)}{quiet && <span class="ws-pill ws-tint-red ml-2">Inactive</span>}
+              <span class="block text-[14px] text-ink-2">Last sign-in by anyone there: {ago(r.last_signin, now)}</span>
+            </dd>
+            <dt class="meta">Set up</dt>
+            <dd>
+              {left.length === 0 ? <span class="ws-pill ws-tint-green"><Icon name="check" size={14} />All set up</span> : <>{done} of {steps.length} · still to do: {left.join(', ')}</>}
+              <span class="block text-[14px] text-ink-2">{plural(r.hours_days, 'open day')} · {plural(r.services, 'service')} · {plural(r.photos, 'photo')}</span>
+            </dd>
+            {r.prc_pending > 0 && (
+              <>
+                <dt class="meta">PRC checks</dt>
+                <dd>{plural(r.prc_pending, 'dentist')} waiting · <a href="/admin/prc/" class="font-semibold text-[var(--ws-teal-ink)] underline decoration-transparent underline-offset-4 hover:decoration-current">Check licences</a></dd>
+              </>
+            )}
+          </dl>
+          <p class="ws-callout mt-5 text-[14px]"><Icon name="info" /><span>Counts only. A clinic’s patients, visits and texts are its own; nothing here names one.</span></p>
+        </template>
+      );
+    })}
   </div>
+
+  <script>
+    // Search and filters in place (the URL keeps them), the detail panel, and `/` to search.
+    const pane = document.getElementById('clinics');
+    const field = pane?.querySelector<HTMLInputElement>('[data-clinic-q]');
+    const trs = [...(pane?.querySelectorAll<HTMLTableRowElement>('tr[data-f]') ?? [])];
+    const bar = pane?.querySelector<HTMLElement>('[data-filters]');
+    const links = [...(bar?.querySelectorAll<HTMLAnchorElement>('a[data-show]') ?? [])];
+    const moreMenu = bar?.querySelector<HTMLElement>('[data-ws-menu]');
+    const moreButton = moreMenu?.querySelector<HTMLButtonElement>(':scope > button');
+    const morePop = moreMenu?.querySelector<HTMLElement>(':scope > .ws-menu-pop');
+    const moreWord = bar?.querySelector<HTMLElement>('[data-more-word]');
+    const moreOn = bar?.querySelector<HTMLElement>('[data-more-on]');
+    const count = pane?.querySelector<HTMLElement>('[data-clinic-count]');
+    const empty = pane?.querySelector<HTMLElement>('[data-clinic-empty]');
+    const emptyText = empty?.querySelector<HTMLElement>('.ws-empty > span');
+    const emptyGo = empty?.querySelector<HTMLElement>('.ws-empty-go');
+    const url = new URL(location.href);
+    let show = links.find((a) => a.getAttribute('aria-current') === 'page')?.dataset.show ?? 'all';
+    let EMPTY: Record<string, string> = {};
+    try { EMPTY = JSON.parse(bar?.dataset.empties ?? '{}'); } catch { /* the server's words are a nicety */ }
+    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+    const fmt = (k: number) => k.toLocaleString('en-PH');
+
+    // A filter under More shows on the More button itself, tinted like a chosen pill.
+    const markMore = () => {
+      const chosen = links.find((a) => a.dataset.show === show && morePop?.contains(a));
+      if (moreButton) {
+        if (chosen) moreButton.setAttribute('aria-current', 'page'); else moreButton.removeAttribute('aria-current');
+      }
+      if (moreWord) moreWord.textContent = chosen ? (chosen.querySelector('.ws-menu-words')?.textContent ?? 'More') : 'More';
+      if (moreOn) moreOn.textContent = chosen ? `Showing: ${moreWord?.textContent}` : '';
+    };
+    markMore();
+
+    const apply = (writeUrl = true) => {
+      if (!field) return;
+      const words = norm(field.value).split(' ').filter(Boolean);
+      let shown = 0;
+      for (const tr of trs) {
+        const ok = (tr.dataset.f ?? '').split(' ').includes(show) && words.every((w) => (tr.dataset.q ?? '').includes(w));
+        tr.hidden = !ok;
+        if (ok) shown++;
+      }
+      if (count) count.textContent = shown === trs.length ? `${fmt(trs.length)} shown` : `${fmt(shown)} of ${fmt(trs.length)}`;
+      if (empty) {
+        empty.hidden = shown > 0;
+        if (emptyText && shown === 0) emptyText.textContent = words.length ? `No clinic matches “${field.value.trim()}” here. Try a shorter word, or All.` : (EMPTY[show] ?? 'No clinic here.');
+        if (emptyGo) emptyGo.style.display = show === 'all' && !words.length ? 'none' : '';
+      }
+      if (writeUrl) {
+        const u = new URL(location.href);
+        if (show === 'all') u.searchParams.delete('show'); else u.searchParams.set('show', show);
+        if (field.value.trim()) u.searchParams.set('q', field.value.trim()); else u.searchParams.delete('q');
+        history.replaceState(history.state, '', u);
+      }
+    };
+    const choose = (id: string) => {
+      show = id;
+      for (const a of links) {
+        if (a.dataset.show === id) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+      }
+      markMore();
+      apply();
+    };
+    bar?.addEventListener('click', (e) => {
+      const a = (e.target as Element).closest<HTMLAnchorElement>('a[data-show]');
+      if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      const fromMenu = !!morePop?.contains(a);
+      choose(a.dataset.show!);
+      if (fromMenu && morePop && moreButton) { morePop.hidden = true; moreButton.setAttribute('aria-expanded', 'false'); moreButton.focus(); }
+    });
+    // "Show every clinic" under an empty list: clear the search and the filter in place.
+    emptyGo?.addEventListener('click', (e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      if (field) field.value = '';
+      choose('all');
+      field?.focus();
+    });
+    let t = 0;
+    field?.addEventListener('input', () => { clearTimeout(t); t = window.setTimeout(() => apply(), 60); });
+    field?.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && field.value) { e.preventDefault(); field.value = ''; apply(); }
+    });
+    // A search typed before the script ran, or kept by the browser on Back.
+    if (field && field.value !== (url.searchParams.get('q') ?? '')) apply();
+
+    // `/` searches the clinics, unless someone is typing or a panel is open.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== '/' || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (document.querySelector('dialog[open]') || document.documentElement.hasAttribute('data-ws-drawer')) return;
+      e.preventDefault();
+      field?.focus();
+      field?.select();
+    });
+
+    // The detail panel: the chosen clinic's template, drawn into the panel as it opens.
+    const panel = document.getElementById('clinic') as HTMLDialogElement | null;
+    const body = panel?.querySelector<HTMLElement>('[data-clinic-body]');
+    let openRow: HTMLElement | null = null;
+    const fill = (id: string) => {
+      const tpl = document.getElementById(`cd-${id}`) as HTMLTemplateElement | null;
+      if (!panel || !body || !tpl) return false;
+      body.replaceChildren(tpl.content.cloneNode(true));
+      const title = panel.querySelector<HTMLElement>('[data-ws-title]');
+      const meta = panel.querySelector<HTMLElement>('[data-ws-meta]');
+      if (title) title.textContent = tpl.dataset.title ?? 'Clinic';
+      if (meta) { meta.textContent = tpl.dataset.meta ?? ''; meta.hidden = !tpl.dataset.meta; }
+      openRow?.removeAttribute('data-open');
+      openRow = document.querySelector<HTMLElement>(`tr[data-clinic="${id}"]`);
+      openRow?.setAttribute('data-open', '');
+      const u = new URL(location.href);
+      u.searchParams.set('clinic', id);
+      history.replaceState(history.state, '', u);
+      return true;
+    };
+    panel?.addEventListener('ws:panel-open', (e) => {
+      const id = ((e as CustomEvent).detail?.opener as HTMLElement | null)?.dataset?.clinicOpen;
+      if (id) fill(id);
+    });
+    panel?.addEventListener('ws:panel-close', () => {
+      openRow?.removeAttribute('data-open');
+      openRow = null;
+      const u = new URL(location.href);
+      u.searchParams.delete('clinic');
+      history.replaceState(history.state, '', u);
+    });
+    // ?clinic=<id>: open that clinic's panel once the shell is ready (a row the filter hides still opens).
+    const deep = url.searchParams.get('clinic');
+    if (deep) {
+      let done = false;
+      const go = () => {
+        const ws = (window as any).ws as { openPanel: (id: string, opener?: Element | null) => void } | undefined;
+        if (done || !ws) return;
+        done = true;
+        const opener = document.querySelector<HTMLElement>(`[data-clinic-open="${CSS.escape(deep)}"]`);
+        if (opener) ws.openPanel('clinic', opener);
+      };
+      go();
+      document.addEventListener('DOMContentLoaded', go, { once: true });
+      addEventListener('load', go, { once: true });
+    }
+  </script>
 </AdminLayout>

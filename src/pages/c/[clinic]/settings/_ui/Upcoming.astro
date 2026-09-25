@@ -1,0 +1,83 @@
+---
+// A dentist's coming visits at this branch, read only: grouped by day (Manila),
+// each with the time, the patient and chart no., the service, the chair and
+// the status. A web request the desk has not placed shows the time the patient
+// asked for, in those words, and the Dashboard's "Request, not placed yet". The patient's name opens their record; "Calendar" opens
+// that day with that booking (the shell's own link, routes.ts). Used by a
+// person's page and by My page.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import { shellLinks } from '../../../../../components/ws/routes';
+import { timeText } from '../../../../../lib/schedule';
+import type { Upcoming } from '../_lib/people';
+
+interface Props {
+  rows: Upcoming[];
+  total: number;
+  slug: string;
+  title: string;
+  id?: string;
+  emptyText: string;
+}
+const { rows, total, slug, title, id = 'upcoming', emptyText } = Astro.props;
+const links = shellLinks(slug);
+
+const ymd = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+// "Mon 28 Sep", in Manila, day before month.
+const dayFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', weekday: 'short', day: 'numeric', month: 'short' });
+const dayWords = (d: Date) => { const p = dayFmt.formatToParts(d); const g = (t: string) => p.find((x) => x.type === t)?.value ?? ''; return `${g('weekday')} ${g('day')} ${g('month')}`; };
+// "10:00–10:30 am", or "11:30 am–12:15 pm" across noon.
+const span = (a: Date, b: Date) => { const x = timeText(a), y = timeText(b); return x.slice(-2) === y.slice(-2) ? `${x.slice(0, -3)}–${y}` : `${x}–${y}`; };
+const today = ymd(new Date());
+const tomorrow = ymd(new Date(Date.now() + 86_400_000));
+const days: { key: string; label: string; rows: Upcoming[] }[] = [];
+for (const r of rows) {
+  const key = ymd(r.startsAt);
+  let d = days.find((x) => x.key === key);
+  if (!d) {
+    const words = dayWords(r.startsAt);
+    d = { key, label: key === today ? `Today · ${words}` : key === tomorrow ? `Tomorrow · ${words}` : words, rows: [] };
+    days.push(d);
+  }
+  d.rows.push(r);
+}
+const meta = total === 0 ? 'None coming' : total > rows.length ? `The next ${rows.length} of ${total}` : `${total} coming`;
+const calendar = links.dashboard;
+---
+
+<Pane id={id} title={title} meta={meta} icon="calendar" pad="none" class="set-sec">
+  {rows.length === 0 ? (
+    <div class="px-6 py-3 max-md:px-4"><Empty icon="calendar" text={emptyText} action={{ label: 'Open the calendar', href: calendar }} /></div>
+  ) : (
+    <div class="set-visits">
+      {days.map((d) => (
+        <section aria-label={d.label}>
+          <h3 class="set-visits-day">{d.label}</h3>
+          <ul>
+            {d.rows.map((r) => (
+              <li class="set-visit">
+                {r.unplaced
+                  ? <span class="set-visit-time font-normal text-muted">Asked for {timeText(r.startsAt)}</span>
+                  : <span class="set-visit-time">{span(r.startsAt, r.endsAt)}</span>}
+                <span class="set-visit-who">
+                  <a href={`/c/${slug}/patients/${r.patientId}/`} class="-my-[13px] inline-block py-[13px] text-[15px] font-semibold underline-offset-4 hover:text-[var(--ws-teal-ink)] hover:underline">{r.patientName}</a>
+                  <span class="block text-[13.5px] text-muted">
+                    <span class="tabular-nums">{r.chartNo}</span>{r.service && <> · {r.service}</>} · {r.chair ? `Chair ${r.chair}` : 'No chair yet'}
+                  </span>
+                </span>
+                <span class="set-visit-act">
+                  {r.unplaced ? <Chip tone="warn" label="Request, not placed yet" /> : <Chip status={r.status} />}
+                  <a href={links.booking(ymd(r.startsAt), r.id)} class="set-link text-[13.5px]">
+                    Calendar<span class="sr-only">: {r.patientName}, {timeText(r.startsAt)}</span><Icon name="arrow-right" size={16} class="set-arrow" />
+                  </a>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  )}
+</Pane>

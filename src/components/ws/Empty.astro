@@ -1,0 +1,27 @@
+---
+// A friendly empty state: a small icon, one line that says what is not there
+// (and what will appear), and the one thing to do next. Never a paragraph.
+//
+//   <Empty text="No patients match “Santos”." action={{ label: 'Add patient', href: '/c/x/patients/new/' }} />
+//   <Empty icon="message" text="No replies yet. A patient’s text back shows here." />
+//
+// icon: one of the names in icons.ts (default 'info'). The action is a quiet
+// button; a page's one main action stays the teal one. The words are the
+// first <span> inside (.ws-empty > span), for a script that changes them.
+import Icon from './Icon.astro';
+import type { IconName } from './icons';
+
+interface Props {
+  text: string;
+  action?: { label: string; href: string };
+  icon?: IconName;
+  class?: string;
+}
+const { text, action, icon = 'info', class: extra } = Astro.props;
+---
+
+<p class:list={['ws-empty', extra]}>
+  <Icon name={icon} size={20} class="ws-empty-icon" />
+  <span class="ws-empty-text">{text}</span>
+  {action && <a href={action.href} class="ws-empty-go">{action.label} <Icon name="arrow-right" size={16} /></a>}
+</p>

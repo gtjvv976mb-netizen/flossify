@@ -1,71 +1,245 @@
 ---
-// Flossify's own front page: the numbers that say where the work is, each
-// with the way to it. Admins have no tenant, so the numbers come from
-// admin_overview() (009), a definer function that returns these eight counts
-// and nothing behind them — no patient, no text, no clinic's books.
+// Flossify control › Overview (/admin/): what needs a person now, four
+// numbers across the service, the newest clinics and how far each has got,
+// and the rest of the numbers one click away. docs/workspace-redesign.md,
+// "The operator's master page", in the soft, very simple template: one
+// screen, one clear next step (the first thing that needs you is the teal
+// button), at most four summary numbers.
 //
-// The line under the heading says how this account's password is reset,
-// because Forgot password cannot do it: a text is a clinic's row
-// (message_log.clinic_id is not null, under RLS) and an operations account
-// has no clinic, so /auth/forgot/ queues nothing for it. Whoever runs the
-// server sets a new one with the operations-account script in docs/deploy.md,
-// which takes the account's email, so the line shows it.
+// Counts only. Everything read across clinics comes from definer functions
+// (009, 011, 024, 027) that return aggregates: no patient's name, number or
+// record reaches this page, and no text a clinic sent. People named here are
+// staff — an owner to call.
+//
+// The other sections have their own pages now: Clinics (/admin/clinics/),
+// PRC checks (/admin/prc/), Billing (/admin/billing/) and System
+// (/admin/system/). This address still answers everything it used to:
+// - a form posted here from a page opened before (a PRC mark, or a billing
+//   action, each with its CSRF token) is handed on with a 307, so the browser
+//   posts the same form to the page that now carries it out;
+// - an old link's query (?show= / ?q= / ?clinic= for the clinics, ?prc= for a
+//   PRC sentence, ?done= for a billing one, ?stale=) goes to that page with it;
+// - an old link's #section goes there too (a line of script: the server never
+//   sees the #).
 export const prerender = false;
 
 import AdminLayout from '../../layouts/Admin.astro';
-import { requireAdmin } from '../../lib/admin';
-import { pool, publicRead } from '../../lib/db';
+import Pane from '../../components/ws/Pane.astro';
+import Tile from '../../components/ws/Tile.astro';
+import Empty from '../../components/ws/Empty.astro';
+import Icon from '../../components/ws/Icon.astro';
+import type { IconName } from '../../components/ws/icons';
+import { requireAdmin, control, clinicRows, ago, type ClinicRow } from '../../lib/admin';
+import { peso } from '../../data/demo';
+import { BILLING_FINAL } from '../../lib/billing';
+import { paymentsToLookAt } from '../../lib/payments';
 
 const admin = await requireAdmin(Astro);
 if (admin instanceof Response) return admin;
-// Staff has no tenant (not under RLS), so the email is a plain read by id.
-const email: string = (await pool.query('select email from staff where id = $1', [admin.session.staffId])).rows[0]?.email ?? '';
 
-interface Overview {
-  dentists_pending: number; dentists_mismatch: number;
-  clinics_total: number; clinics_listed: number; clinics_this_month: number;
-  texts_failed_7d: number; texts_queued: number; bookings_web_7d: number;
+// --- a form from a page opened before the sections had their own pages ----------------------------
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const to = String(form.get('section') ?? '') === 'prc' ? '/admin/prc/' : '/admin/billing/';
+  // 307: the browser sends the same form (token and all) to the page that carries it out.
+  return new Response(null, { status: 307, headers: { Location: to } });
 }
-const o = (await publicRead<Overview>('select * from admin_overview()'))[0];
 
-// Each tile names the page where that work is done. Texts have no page on
-// this side: the sender moves them, and each clinic reads its own on Messages.
-const tiles: { label: string; value: number; note: string; href?: string; link?: string }[] = [
-  { label: 'PRC checks waiting', value: o.dentists_pending, note: 'dentists whose licence nobody has looked up yet', href: '/admin/prc/', link: 'Check them' },
-  { label: 'PRC mismatches', value: o.dentists_mismatch, note: 'licences that did not match at the PRC', href: '/admin/prc/#decided', link: 'See them' },
-  { label: 'Clinics', value: o.clinics_total, note: `${o.clinics_listed} listed on Find a clinic`, href: '/admin/clinics/', link: 'All clinics' },
-  { label: 'Signed up this month', value: o.clinics_this_month, note: 'new clinics, by Manila calendar', href: '/admin/clinics/?show=month', link: 'See them' },
-  { label: 'Texts waiting', value: o.texts_queued, note: 'queued across every clinic. Reminders and clinic-written texts wait from 9 pm to 8 am; confirmations and codes go at any hour.' },
-  { label: 'Texts failed, 7 days', value: o.texts_failed_7d, note: 'each clinic sees its own on Messages and can send again. No texts page here.' },
-  { label: 'Web bookings, 7 days', value: o.bookings_web_7d, note: 'booked or requested on the public site', href: '/admin/clinics/', link: 'By clinic, 30 days' },
+// --- an old link's query ----------------------------------------------------------------------
+const q = Astro.url.searchParams;
+const carry = (keys: string[]) => {
+  const out = new URLSearchParams();
+  for (const k of keys) { const v = q.get(k); if (v !== null) out.set(k, v); }
+  return out.size ? `?${out}` : '';
+};
+if (q.has('show') || q.has('q') || q.has('clinic')) return Astro.redirect(`/admin/clinics/${carry(['show', 'q', 'clinic'])}`, 302);
+if (q.has('prc') || q.get('stale') === 'prc') return Astro.redirect(`/admin/prc/${carry(['prc', 'texted', 'stale'])}`, 302);
+if (q.has('done') || q.get('stale') === 'billing') return Astro.redirect(`/admin/billing/${carry(['done', 'n', 'number', 'group', 'r', 'stale'])}`, 302);
+
+// --- reads -----------------------------------------------------------------------------------
+const [c, rows, toLook] = await Promise.all([control(), clinicRows(), paymentsToLookAt()]);
+const now = new Date();
+const n = (x: number) => x.toLocaleString('en-PH');
+const plural = (k: number, one: string, many = `${one}s`) => `${n(k)} ${k === 1 ? one : many}`;
+
+const DAY = 86_400_000;
+const NEW_DAYS = 30;
+const isNew = (r: ClinicRow) => now.getTime() - new Date(r.created_at).getTime() <= NEW_DAYS * DAY;
+// "Ending" is the same 7 days as the Clinics page's Trial ending filter.
+const trialEnding = (r: ClinicRow) => {
+  if (r.plan_status !== 'trial' || !r.trial_ends_at) return false;
+  const left = new Date(r.trial_ends_at).getTime() - now.getTime();
+  return left > 0 && left <= 7 * DAY;
+};
+
+// --- what needs a person now, most urgent first ------------------------------------------------
+// The sender's heartbeat: past six minutes it has not been heard from (System explains the numbers).
+const BEAT_LATE_MS = 6 * 60_000;
+const beatAt = c.sender_beat_at;
+const beatLate = beatAt !== null && now.getTime() - new Date(beatAt).getTime() > BEAT_LATE_MS;
+type Tint = 'red' | 'amber' | 'blue' | 'teal';
+const needs: { text: string; go: string; href: string; icon: IconName; tint: Tint }[] = [];
+if (beatLate || c.texts_overdue > 0) {
+  needs.push({
+    text: beatLate ? `The text sender was last heard from ${ago(beatAt, now)}.` : `${plural(c.texts_overdue, 'text')} ${c.texts_overdue === 1 ? 'is' : 'are'} late going out.`,
+    go: 'Check the system', href: '/admin/system/', icon: 'message', tint: 'red',
+  });
+}
+if (toLook.length > 0) needs.push({ text: `${plural(toLook.length, 'online payment')} to look at.`, go: 'Look at them', href: '/admin/billing/#look', icon: 'money', tint: 'red' });
+if (c.prc_pending > 0) needs.push({ text: `${plural(c.prc_pending, 'dentist')} waiting for a PRC check.`, go: 'Check licences', href: '/admin/prc/', icon: 'check', tint: 'amber' });
+if (c.branches_past_due > 0) needs.push({ text: `${plural(c.branches_past_due, 'branch', 'branches')} past due.`, go: 'See who', href: '/admin/clinics/?show=past_due', icon: 'wallet', tint: 'red' });
+const ending = rows.filter(trialEnding).length;
+if (ending > 0) needs.push({ text: `${plural(ending, 'trial')} ${ending === 1 ? 'ends' : 'end'} this week.`, go: 'See which', href: '/admin/clinics/?show=ending', icon: 'clock', tint: 'amber' });
+const newThisWeek = rows.filter((r) => now.getTime() - new Date(r.created_at).getTime() <= 7 * DAY).length;
+if (newThisWeek > 0) needs.push({ text: `${plural(newThisWeek, 'new clinic')} this week.`, go: 'See them', href: '#signups', icon: 'clinic', tint: 'blue' });
+
+// --- the newest clinics, and what each still has to set up -----------------------------------------
+const SIGNUPS_SHOWN = 5;
+const recent = rows.filter(isNew);
+const signups = recent.slice(0, SIGNUPS_SHOWN);
+const stepsOf = (r: ClinicRow) => [
+  { label: 'hours', done: r.hours_days > 0 },
+  { label: 'services', done: r.services > 0 },
+  { label: 'a dentist', done: r.dentists > 0 },
+  { label: 'listing', done: r.listed },
+  { label: 'first booking', done: r.bookings_30d > 0 || r.visits_next_7d > 0 },
 ];
+// Money follows each group's own price (subscription.price_per_branch: what its invoices are made at
+// and what its owner sees on their plan page), never the list price. admin_clinic_rows gives it per
+// branch, over the same branches admin_control counts.
+const priceOf = (r: ClinicRow) => r.price_per_branch ?? 0;
+const activeRows = rows.filter((r) => r.plan_status === 'active');
+const trialRows = rows.filter((r) => r.plan_status === 'trial');
+const revenue = activeRows.reduce((s, r) => s + priceOf(r), 0);
+const pipeline = trialRows.reduce((s, r) => s + priceOf(r), 0);
+const activePrices = [...new Set(activeRows.map(priceOf))];
+const revenueNote =
+  (activeRows.length === 0 ? 'No active branch yet'
+    : activePrices.length === 1 ? `${plural(activeRows.length, 'active branch', 'active branches')} × ${peso(activePrices[0])}`
+    : `${plural(activeRows.length, 'active branch', 'active branches')}, each at its group’s price`)
+  + (BILLING_FINAL ? '' : ', not invoiced yet');
 ---
 
-<AdminLayout title="Operations" section="home" admin={{ name: admin.name }}>
-  <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Operations</h1>
-  <p class="mt-3 max-w-[60ch] text-[15px] text-ink-2">Across every clinic, as of now. Each number says where the work is.</p>
-  <p class="mt-2 max-w-[100ch] text-[14px] text-ink-2">Signed in as {admin.name}{email && <> ({email})</>}. Forgot your password? A text can’t reset it: whoever runs the server sets a new one with the script in docs/deploy.md.</p>
+<AdminLayout title="Overview" section="overview" admin={{ name: admin.name, email: admin.email }} wide>
+  <script is:inline>
+    // An old link to a section of the one long page (/admin/#prc …) goes to that section's own page.
+    (function () {
+      var to = { '#clinics': '/admin/clinics/', '#prc': '/admin/prc/', '#decided': '/admin/prc/', '#billing': '/admin/billing/',
+        '#look-title': '/admin/billing/#look', '#system': '/admin/system/', '#log': '/admin/system/#log' }[location.hash];
+      if (to) location.replace(to);
+    })();
+  </script>
 
-  <dl class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-    {tiles.map((t) => (
-      <div class="border border-line bg-surface p-5">
-        <dt class="meta">{t.label}</dt>
-        <dd class="mt-2">
-          <span class="block font-display text-[32px] leading-none font-bold tabular-nums">{t.value}</span>
-          <span class="mt-1.5 block text-[13px] leading-snug text-muted">{t.note}</span>
-          {t.href && <a href={t.href} class="mt-3 inline-block text-[14px] underline underline-offset-4 hover:text-accent">{t.link}</a>}
-        </dd>
+  <Pane id="needs" title="Needs you" icon="inbox" meta={`${needs.length === 0 ? 'All clear' : plural(needs.length, 'thing')} · as of now`} pad="none">
+    {needs.length === 0 ? (
+      <div class="px-6 py-3 max-md:px-4">
+        <Empty icon="check" text="Nothing needs you right now. New clinics, PRC checks and payments show here when they come in." action={{ label: 'See every clinic', href: '/admin/clinics/' }} />
       </div>
-    ))}
-  </dl>
+    ) : (
+      <ul class="ops-rows">
+        {needs.map((x, i) => (
+          <li class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span class="ws-menu-icon" data-tint={x.tint} aria-hidden="true"><Icon name={x.icon} /></span>
+            <span class="min-w-0 flex-[1_1_14rem] text-[15.5px] font-medium">{x.text}</span>
+            {i === 0 ? (
+              <a href={x.href} class="ws-btn ws-btn-primary max-sm:w-full">{x.go} <Icon name="arrow-right" size={16} /></a>
+            ) : (
+              <a href={x.href} class="ws-empty-go px-1 max-sm:pl-[3.125rem]">{x.go} <Icon name="arrow-right" size={16} /></a>
+            )}
+          </li>
+        ))}
+      </ul>
+    )}
+  </Pane>
 
-  <section class="mt-12 max-w-[64ch]" aria-labelledby="texts-title">
-    <h2 id="texts-title" class="font-display text-[22px] font-semibold">Texts</h2>
-    <p class="mt-2 text-[15px] leading-relaxed text-ink-2">
-      There is no texts page on this side. Queued texts leave through the sender, a separate process that runs beside the app (<code class="text-[14px]">npm run sms:worker</code>).
-      It holds reminders and clinic-written texts from 9 pm to 8 am; booking confirmations and sign-in codes go out at any hour, so they do not stay in Texts waiting for long.
-      If the count climbs during the day, or through the night as patients book, the sender has stopped: check that it is running.
-      A failed text is the clinic’s to send again from its Messages page. A reset or invitation code is shown nowhere, on either side.
-    </p>
+  <section aria-label="The numbers" class="ws-tiles">
+    <Tile label="Clinics" value={n(c.clinics_total)} icon="clinic" href="/admin/clinics/"
+      note={`${n(c.branches_trial)} on trial · ${n(c.branches_active)} active`} />
+    <Tile label="Monthly revenue" value={peso(revenue)} icon="money" href="/admin/billing/" tone={revenue ? 'success' : 'default'}
+      note={revenueNote} />
+    <Tile label="PRC checks" value={n(c.prc_pending)} icon="check" href="/admin/prc/" tone={c.prc_pending ? 'warn' : 'default'} tint={c.prc_pending > 0}
+      note={c.prc_pending ? 'waiting to be looked up' : 'nobody waiting'} />
+    <Tile label="Bookings today" value={n(c.visits_today)} icon="calendar"
+      note={`${n(c.visits_next_7d)} in the next 7 days`} />
   </section>
+
+  <div class="grid items-start gap-4 max-md:gap-3 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+    <Pane id="signups" title="New clinics" icon="clinic" meta={`${plural(recent.length, 'clinic')} in the last ${NEW_DAYS} days`} pad="none">
+      {signups.length === 0 ? (
+        <div class="px-6 py-3 max-md:px-4"><Empty text={`No clinic has signed up in the last ${NEW_DAYS} days. New ones show here with how far they have got.`} /></div>
+      ) : (
+        <ul class="ops-rows">
+          {signups.map((r) => {
+            const steps = stepsOf(r);
+            const done = steps.filter((s) => s.done).length;
+            const left = steps.filter((s) => !s.done).map((s) => s.label);
+            return (
+              <li>
+                <div class="flex flex-wrap items-baseline justify-between gap-x-4">
+                  <a href={`/admin/clinics/?clinic=${r.id}`} class="ops-open">{r.name}</a>
+                  <span class="text-[13px] whitespace-nowrap text-muted">Joined {ago(r.created_at, now)}</span>
+                </div>
+                <p class="text-[14px] [overflow-wrap:anywhere] text-ink-2">{[r.area, r.owner_name].filter(Boolean).join(' · ') || 'No owner on file'}</p>
+                <div class="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <span class="h-2 w-28 flex-none overflow-hidden rounded-full bg-[var(--c-bg-soft)]" aria-hidden="true">
+                    <span class="block h-full rounded-full bg-[var(--ws-teal)]" style={`width: ${(done / steps.length) * 100}%`}></span>
+                  </span>
+                  {left.length === 0 ? (
+                    <span class="ws-pill ws-tint-green"><Icon name="check" size={14} />All set up</span>
+                  ) : (
+                    <span class="text-[13.5px] text-ink-2">{done} of {steps.length} set up · still to do: {left.join(', ')}</span>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {recent.length > signups.length && (
+        <p class="border-t border-[var(--ws-hair)] px-6 max-md:px-4">
+          <a href="/admin/clinics/?show=new" class="ws-empty-go text-[15px]">All {n(recent.length)} new clinics <Icon name="arrow-right" size={16} /></a>
+        </p>
+      )}
+    </Pane>
+
+    <Pane title="More numbers" icon="dashboard" meta="Across every clinic">
+      <dl class="ops-facts">
+        <dt class="meta">Clinics</dt>
+        <dd>
+          {n(c.clinics_listed)} listed on Find a clinic
+          <span class="block text-[14px] text-ink-2">{n(c.branches_trial)} on trial · {n(c.branches_active)} active · {n(c.branches_past_due)} past due{c.branches_no_plan ? ` · ${n(c.branches_no_plan)} not started` : ''}</span>
+        </dd>
+        <dt class="meta">Trials</dt>
+        <dd>
+          {ending === 0 ? 'None end this week' : `${n(ending)} ${ending === 1 ? 'ends' : 'end'} this week`}
+          <span class="block text-[14px] text-ink-2">{n(c.branches_trial_ended)} ended{trialRows.length > 0 && ` · ${peso(pipeline)} a month if they all stay`}</span>
+        </dd>
+        <dt class="meta">People</dt>
+        <dd>
+          {plural(c.staff_total, 'person', 'people')}
+          <span class="block text-[14px] text-ink-2">{plural(c.staff_owners, 'owner')} · {plural(c.staff_dentists, 'dentist')} · {n(c.staff_desk)} at the desk{c.staff_invited ? ` · ${n(c.staff_invited)} invited` : ''}</span>
+        </dd>
+        <dt class="meta">Patients</dt>
+        <dd>
+          {n(c.patients_total)}
+          <span class="block text-[14px] text-ink-2">{n(c.patients_this_month)} added this month. A count only.</span>
+        </dd>
+        <dt class="meta">Bookings</dt>
+        <dd>
+          {n(c.bookings_made_7d)} made this week
+          <span class="block text-[14px] text-ink-2">{n(c.bookings_web_7d)} of them on the web</span>
+        </dd>
+        <dt class="meta">Texts</dt>
+        <dd>
+          {n(c.texts_queued)} waiting · {n(c.texts_failed_7d)} failed this week
+          <span class="block text-[14px] text-ink-2">Last sent {c.last_sent_at ? ago(c.last_sent_at, now) : 'never'} · <a href="/admin/system/" class="font-semibold text-[var(--ws-teal-ink)] underline decoration-transparent underline-offset-4 hover:decoration-current">System</a></span>
+        </dd>
+      </dl>
+      <p class="mt-4 flex items-start gap-2 text-[13.5px] leading-snug text-ink-2">
+        <Icon name="info" class="mt-px flex-none text-muted" />
+        <span>Counts only: no patient’s name, number or record reaches these pages.</span>
+      </p>
+    </Pane>
+  </div>
+
 </AdminLayout>

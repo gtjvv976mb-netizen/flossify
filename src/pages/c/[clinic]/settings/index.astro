@@ -1,378 +1,522 @@
 ---
-// The clinic's own settings: who it is, when it is open, what it takes, and
-// the switch that lists it on Find a clinic. The owner's and the admin's;
-// everyone else sees one sentence. One form, one Save. Every write runs
-// inside withClinic(), so row-level security is the fence on top of the
-// WHERE, and the checklist at the top is computed from the same rows the
-// form edits — it can only say "done" when the data does.
+// Clinic settings: one page, in the treatment room, in the soft template. A
+// list of seven sections (beside the section once the page is wide enough;
+// above it below that, with a slim bar under the top bar to change section
+// from further down) and one section on screen at a time, each saved on its
+// own, each with one teal main action:
 //
-// The listing switch is the one thing that is not simply saved: it stays off
-// until the clinic has an about, hours and a dentist with days here, because
-// a listing with none of those is a card patients cannot act on.
+//   Clinic profile      _lib/profile.ts   (the listing switch, the clinic, how it works, HMOs; TIN under More)
+//   Opening hours       _lib/profile.ts
+//   Services & prices   _lib/fees.ts      (Edit prices and Add service in side panels)
+//   People              _lib/people.ts    (Add person in a side panel; each person has a page, people/<id>/)
+//   Photos              _lib/photos.ts
+//   Privacy             _lib/privacy.ts
+//   Your Flossify plan  _lib/plan.ts      (was "Billing")
+//
+// Without the script every section shows, one under the other, and the list's
+// links jump to them. The address's #section (or any id inside one: #hmos,
+// #invoices) picks the section; a refused form's section wins over it.
+//
+// These were six pages (settings, fees, team, photos, privacy, billing); the
+// old addresses redirect to their section, query and all (_lib/common.ts),
+// so PayMongo's return to /settings/billing/?paid=<number> still lands.
+//
+// The owner's and the admin's; everyone else sees one sentence (the tab is
+// not in their top bar either). Every form carries <Csrf /> and a `form`
+// field naming its section; a post whose token does not match changes
+// nothing and comes back to its section with the sentence. A refused form
+// comes back drawn with what was typed and the reasons, in its section, or in
+// its side panel, open. A saved one redirects to its section with one line.
+// Every write goes through withClinic() (RLS) except the group's own rows
+// (staff, staff_access, clinic_group), which are keyed on this branch's ids
+// that requireWorkspace() has already checked.
 export const prerender = false;
 
 import ClinicLayout from '../../../../layouts/Clinic.astro';
-import Csrf from '../../../../components/Csrf.astro';
+import Pane from '../../../../components/ws/Pane.astro';
+import Menu from '../../../../components/ws/Menu.astro';
+import Icon from '../../../../components/ws/Icon.astro';
+import Empty from '../../../../components/ws/Empty.astro';
+import SidePanel from '../../../../components/ws/SidePanel.astro';
+import ProfileSection from './_ui/ProfileSection.astro';
+import HoursSection from './_ui/HoursSection.astro';
+import FeesSection from './_ui/FeesSection.astro';
+import PeopleSection from './_ui/PeopleSection.astro';
+import PhotosSection from './_ui/PhotosSection.astro';
+import PrivacySection from './_ui/PrivacySection.astro';
+import PlanSection from './_ui/PlanSection.astro';
+import './_ui/settings.css';
 import { requireWorkspace } from '../../../../lib/workspace';
-import { withClinic } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
-import { hmos } from '../../../../data/directory';
-import { AREAS, placeOf } from '../../../../lib/slug';
-import { parseTin, tinParts } from '../../../../lib/invoices';
+import { SECTIONS, isSection, daysText, type SectionId } from './_lib/common';
+import { loadClinic, saveClinic, savedProfile, savedHours, heldText, type ClinicRefused } from './_lib/profile';
+import { loadFees, saveFees, addFee, emptyAdd, type FeesRefused } from './_lib/fees';
+import { listPeople, addPerson, addedText, emptyPerson, emailOn, type AddRefused } from './_lib/people';
+import { photoKeys, photoAction, MAX_PHOTOS, type PhotosRefused } from './_lib/photos';
+import { loadPrivacy, savePrivacy, savedPrivacy, type PrivacyRefused } from './_lib/privacy';
+import { loadPlan } from './_lib/plan';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
 const canSetUp = session.role === 'owner' || session.role === 'admin';
-const q = Astro.url.searchParams;
 const base = `/c/${clinic.slug}/settings/`;
+const q = Astro.url.searchParams;
 
-const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const DOWS = [1, 2, 3, 4, 5, 6, 0];
-const ABOUT_MAX = 600;
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// --- a post: which form, then its handler ---------------------------------------------
+type Which = 'profile' | 'hours' | 'legacy' | 'fees' | 'fee-add' | 'person-add' | 'photos' | 'privacy';
+const SECTION_OF: Record<Which, SectionId> = { profile: 'profile', hours: 'hours', legacy: 'profile', fees: 'fees', 'fee-add': 'fees', 'person-add': 'people', photos: 'photos', privacy: 'privacy' };
+let clinicRefused: ClinicRefused | null = null;
+let feesRefused: FeesRefused | null = null;
+let addRefused: AddRefused | null = null;
+let photosRefused: PhotosRefused | null = null;
+let privacyRefused: PrivacyRefused | null = null;
 
-// "09:30" ⇄ 570. clinic_hours keeps minutes from midnight.
-const toMin = (s: string): number | null => { const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s); if (!m) return null; const n = +m[1] * 60 + +m[2]; return n >= 0 && n <= 1440 ? n : null; };
-const toTime = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
-
-interface DayRow { closed: boolean; open: string; close: string }
-interface Values {
-  name: string; area: string; address_line: string; phone: string; email: string; maps_url: string; about: string;
-  chairs: number; walk_ins: boolean; philhealth_dental: boolean; booking_mode: string;
-  days: Record<number, DayRow>; hmoIds: string[]; noHmos: boolean; listed: boolean;
-}
-
-const data = await withClinic(clinic.id, async (tx) => ({
-  c: (await tx.query(
-    `select name, area, address_line, city, province, phone, email, maps_url, about, chairs, walk_ins, philhealth_dental, booking_mode, listed, photo_keys
-     from clinic where id = $1`, [clinic.id])).rows[0],
-  hours: (await tx.query('select dow, open_min, close_min from clinic_hours order by dow')).rows as { dow: number; open_min: number; close_min: number }[],
-  hmoIds: (await tx.query('select hmo_id from clinic_hmo order by hmo_id')).rows.map((r) => r.hmo_id as string),
-  // A dentist with a public profile who sits here on at least one day: what the booking page needs to offer a slot.
-  dentist: (await tx.query(
-    `select exists (select 1 from staff_schedule ss join staff s on s.id = ss.staff_id
-                     where ss.clinic_id = $1 and s.slug is not null and s.disabled_at is null) as yes`, [clinic.id])).rows[0].yes as boolean,
-  // "We don't take HMOs" stores no HMO row; the choice is kept as the audit entry the save wrote.
-  saidNoHmos: (await tx.query(`select exists (select 1 from audit_log where action = 'clinic.hmos_none') as yes`)).rows[0].yes as boolean,
-  // TIN and BIR branch code: they print on statements of account (Billing).
-  tax: (await tx.query('select tin, bir_branch_code from clinic where id = $1', [clinic.id])).rows[0] as { tin: string | null; bir_branch_code: string | null },
-}));
-
-// The listing's prerequisites, from the data as it is now.
-const hasAbout = (data.c.about ?? '').trim().length > 0;
-const hasHours = data.hours.length > 0;
-const missing = [!hasAbout && 'a few sentences about the clinic', !hasHours && 'opening hours', !data.dentist && 'a dentist with days at this branch'].filter((s): s is string => !!s);
-const canList = missing.length === 0;
-const listWords = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
-
-const problems: string[] = [];
-let posted: Values | null = null;
-// The TIN / branch code as typed, kept on the form when something needs fixing.
-let taxPosted: { tin: string; branch: string } | null = null;
-
-if (Astro.request.method === 'POST' && canSetUp) {
+if (Astro.request.method === 'POST') {
+  if (!canSetUp) return Astro.redirect(base, 303);
   const form = await Astro.request.formData();
-  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(base + '?stale=1', 303);
-  const s = (k: string) => String(form.get(k) ?? '').trim();
-  const p: Values = {
-    name: s('name'), area: s('area'), address_line: s('address_line'), phone: s('phone'), email: s('email'), maps_url: s('maps_url'), about: s('about'),
-    chairs: Number(s('chairs')), walk_ins: s('walk_ins') === 'yes', philhealth_dental: s('philhealth_dental') === 'yes', booking_mode: s('booking_mode'),
-    days: {}, hmoIds: form.getAll('hmo').map(String).filter((id) => hmos.some((h) => h.id === id)),
-    noHmos: form.get('hmo_none') === 'on', listed: form.get('listed') === 'on',
-  };
-  for (const dow of DOWS) p.days[dow] = { closed: form.get(`closed[${dow}]`) === 'on', open: s(`open[${dow}]`), close: s(`close[${dow}]`) };
-
-  if (!p.name) problems.push('The clinic needs a name.');
-  else if (p.name.length > 80) problems.push('Keep the clinic name under 80 characters.');
-  if (!(AREAS as readonly string[]).includes(p.area) && p.area !== (data.c.area ?? '')) problems.push('Pick where the clinic is from the list.');
-  if (!p.address_line) problems.push('Add the clinic’s address, so patients can find the door.');
-  const phoneDigits = p.phone.replace(/\D/g, '');
-  if (phoneDigits.length < 7 || phoneDigits.length > 13) problems.push('The clinic phone needs to be a number patients can call.');
-  if (p.email && !EMAIL.test(p.email)) problems.push('The clinic email does not look like an email address.');
-  if (p.maps_url && !/^https?:\/\/\S{4,500}$/.test(p.maps_url)) problems.push('The map link needs to be a full web address, starting with https://.');
-  if (p.about.length > ABOUT_MAX) problems.push(`Keep the about under ${ABOUT_MAX} characters; it is ${p.about.length} now.`);
-  if (!Number.isInteger(p.chairs) || p.chairs < 1 || p.chairs > 12) problems.push('Chairs is a whole number from 1 to 12.');
-  if (p.booking_mode !== 'live' && p.booking_mode !== 'request') problems.push('Pick how patients book.');
-
-  const hours: { dow: number; open_min: number; close_min: number }[] = [];
-  for (const dow of DOWS) {
-    const d = p.days[dow];
-    if (d.closed) continue;
-    const o = toMin(d.open), c = toMin(d.close);
-    if (o === null || c === null) { problems.push(`${DAY[dow]} needs an opening and a closing time, or tick closed.`); continue; }
-    if (c <= o) { problems.push(`${DAY[dow]} closes before it opens.`); continue; }
-    hours.push({ dow, open_min: o, close_min: c });
+  // The section's own field; else a form drawn before Settings was one page, re-sent here by its
+  // old address (?from=); else the old one-page form, which posted profile and hours together.
+  const from = q.get('from') ?? '';
+  const named = String(form.get('form') ?? '');
+  const which: Which = (['profile', 'hours', 'fees', 'fee-add', 'person-add', 'photos', 'privacy'] as const).find((w) => w === named)
+    ?? (from === 'fees' ? (form.get('do') === 'add' ? 'fee-add' : 'fees')
+      : from === 'team' ? 'person-add'
+      : from === 'photos' ? 'photos'
+      : from === 'privacy' ? 'privacy'
+      : form.has('open[1]') ? 'legacy' : 'profile');
+  const section = SECTION_OF[which];
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(`${base}?stale=${section}#${section}`, 303);
+  const who = { clinicId: clinic.id, staffId: session.staffId, base, form };
+  let out: Response | object;
+  if (which === 'profile' || which === 'hours' || which === 'legacy') {
+    const r = await saveClinic({ ...who, data: await loadClinic(clinic.id), parts: { profile: which !== 'hours', hours: which !== 'profile' } });
+    out = r; if (!(r instanceof Response)) clinicRefused = r;
+  } else if (which === 'fees') {
+    const r = await saveFees({ ...who, rows: await loadFees(clinic.id) });
+    out = r; if (!(r instanceof Response)) feesRefused = r;
+  } else if (which === 'fee-add') {
+    const r = await addFee(who);
+    out = r; if (!(r instanceof Response)) feesRefused = r;
+  } else if (which === 'person-add') {
+    const r = await addPerson({ clinic, session, cookies: Astro.cookies, site: Astro.site, base }, form);
+    out = r; if (!(r instanceof Response)) addRefused = r;
+  } else if (which === 'photos') {
+    const r = await photoAction(who);
+    out = r; if (!(r instanceof Response)) photosRefused = r;
+  } else {
+    const r = await savePrivacy({ ...who, groupId: clinic.group_id });
+    out = r; if (!(r instanceof Response)) privacyRefused = r;
   }
-  if (p.noHmos && p.hmoIds.length > 0) problems.push('You ticked HMOs and also “We don’t take HMOs”. Keep one.');
-  // A form drawn before these fields existed sends neither; it must not clear a saved TIN.
-  taxPosted = form.has('tin') ? { tin: s('tin'), branch: s('bir_branch_code') } : null;
-  const tax = taxPosted ? parseTin(taxPosted.tin, taxPosted.branch) : null;
-  if (tax) problems.push(...tax.problems);
-
-  if (problems.length === 0) {
-    // The switch needs the about and hours being saved now, and a dentist that is already here.
-    const okToList = p.about.length > 0 && hours.length > 0 && data.dentist;
-    const listed = p.listed && okToList;
-    const held = (p.listed || data.c.listed) && !okToList;
-    const place = placeOf(p.area);
-    await withClinic(clinic.id, async (tx) => {
-      await tx.query(
-        `update clinic set name = $2, area = $3, address_line = $4, city = $5, province = $6, phone = $7, email = $8, maps_url = $9, about = $10,
-                chairs = $11, walk_ins = $12, philhealth_dental = $13, booking_mode = $14, listed = $15
-         where id = $1`,
-        [clinic.id, p.name, p.area, p.address_line, place.city === undefined ? data.c.city : place.city, place.province === undefined ? data.c.province : place.province,
-         p.phone, p.email || null, p.maps_url || null, p.about || null, p.chairs, p.walk_ins, p.philhealth_dental, p.booking_mode, listed]);
-      if (tax) await tx.query('update clinic set tin = $2, bir_branch_code = $3 where id = $1', [clinic.id, tax.tin, tax.branch]);
-      await tx.query('delete from clinic_hours where clinic_id = $1', [clinic.id]);
-      for (const h of hours) await tx.query('insert into clinic_hours (clinic_id, dow, open_min, close_min) values ($1, $2, $3, $4)', [clinic.id, h.dow, h.open_min, h.close_min]);
-      await tx.query('delete from clinic_hmo where clinic_id = $1', [clinic.id]);
-      for (const id of p.noHmos ? [] : p.hmoIds) await tx.query('insert into clinic_hmo (clinic_id, hmo_id) values ($1, $2)', [clinic.id, id]);
-      await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'clinic.settings', 'clinic', $1)`, [clinic.id, session.staffId]);
-      if (p.noHmos) await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'clinic.hmos_none', 'clinic', $1)`, [clinic.id, session.staffId]);
-    });
-    return Astro.redirect(base + '?saved=1' + (held ? '&held=1' : ''), 303);
-  }
-  posted = p;
+  if (out instanceof Response) return out;
 }
 
-// What the form shows: what was typed when there is something to fix, otherwise what is saved.
-const v: Values = posted ?? {
-  name: data.c.name, area: data.c.area ?? '', address_line: data.c.address_line ?? '', phone: data.c.phone ?? '', email: data.c.email ?? '',
-  maps_url: data.c.maps_url ?? '', about: data.c.about ?? '', chairs: data.c.chairs, walk_ins: data.c.walk_ins, philhealth_dental: data.c.philhealth_dental,
-  booking_mode: data.c.booking_mode, hmoIds: data.hmoIds, noHmos: data.hmoIds.length === 0 && data.saidNoHmos, listed: data.c.listed,
-  days: Object.fromEntries(DOWS.map((dow) => {
-    const h = data.hours.find((r) => r.dow === dow);
-    return [dow, h ? { closed: false, open: toTime(h.open_min), close: toTime(h.close_min) } : { closed: true, open: '09:00', close: '17:00' }];
-  })),
+// --- what the page shows -------------------------------------------------------------------
+const [data, fees, people, keys, privacy, plan] = canSetUp
+  ? await Promise.all([
+      loadClinic(clinic.id), loadFees(clinic.id), listPeople(clinic.id), photoKeys(clinic.id),
+      loadPrivacy(clinic.id, clinic.group_id), loadPlan({ groupId: clinic.group_id, q }),
+    ])
+  : [null, null, null, null, null, null];
+
+type N = { tone: 'ok' | 'alert' | 'warn'; text: string };
+const notes: Record<SectionId, N[]> = { profile: [], hours: [], fees: [], people: [], photos: [], privacy: [], plan: [] };
+const stale = q.get('stale');
+if (isSection(stale) && stale !== 'plan') notes[stale].push({ tone: 'alert', text: CSRF_MESSAGE });
+if (data && Astro.request.method === 'GET') {
+  const saved = q.get('saved');
+  const held = q.get('held') === '1';
+  // ?saved=1 is what the one-page form said before sections; it was the profile.
+  if (saved === 'profile' || saved === 'hours' || saved === '1') notes[saved === 'hours' ? 'hours' : 'profile'].push(held ? { tone: 'warn', text: heldText(data) } : { tone: 'ok', text: 'Saved.' });
+  if (saved === 'fees') notes.fees.push({ tone: 'ok', text: 'Saved.' });
+  if (q.get('added') === 'fee') notes.fees.push({ tone: 'ok', text: 'Added. It is offered and on your page from now.' });
+  if (saved === 'privacy') notes.privacy.push({ tone: 'ok', text: 'Saved.' });
+  if (q.get('person') === 'added') {
+    const p = people?.find((x) => x.id === q.get('id'));
+    notes.people.push({ tone: 'ok', text: addedText(p?.full_name ?? 'them', q.get('via') ?? 'sms') });
+  }
+  const ph = q.get('photos');
+  const n = Number(q.get('n'));
+  if (ph === 'added' && n > 0) notes.photos.push({ tone: 'ok', text: `Added ${n === 1 ? 'one photo' : `${n} photos`}. ${(keys?.length ?? 0) <= 2 ? 'It is on your public page now.' : 'Move it up to put it on your public page.'}` });
+  if (ph === 'removed') notes.photos.push({ tone: 'ok', text: 'Removed.' });
+  if (ph === 'moved') notes.photos.push({ tone: 'ok', text: 'Moved.' });
+}
+if (photosRefused?.notice) notes.photos.push({ tone: 'ok', text: photosRefused.notice });
+
+// --- the index: one word per section on where it stands -----------------------------------------
+const openDays = data ? data.hours.map((h) => h.dow) : [];
+const active = people ? people.filter((p) => !p.disabled_at).length : 0;
+const STATUS: Record<SectionId, { text: string; tone?: 'warn' | 'alert' }> = !data ? {} as never : {
+  profile: data.c.listed ? { text: 'Listed on Find a clinic' } : { text: 'Not listed yet', tone: 'warn' },
+  hours: openDays.length ? { text: daysText(openDays) } : { text: 'No hours yet', tone: 'warn' },
+  fees: { text: `${fees!.filter((r) => r.active).length} offered` },
+  people: { text: `${active} ${active === 1 ? 'person' : 'people'}` },
+  photos: keys!.length ? { text: `${keys!.length} of ${MAX_PHOTOS}` } : { text: 'No photos yet', tone: 'warn' },
+  privacy: privacy!.group.dpo_name ? { text: 'Officer named' } : { text: 'No officer named', tone: 'warn' },
+  plan: plan ? { text: plan.short, tone: plan.short === 'Overdue' ? 'alert' : plan.short === 'Invoice due' ? 'warn' : undefined } : { text: 'Could not be read now' },
 };
-const taxSaved = tinParts(data.tax.tin, data.tax.bir_branch_code);
-const taxShown = taxPosted ?? { tin: taxSaved?.tin ?? '', branch: taxSaved?.branch || data.tax.bir_branch_code || '00000' };
-const areaOptions: string[] = (AREAS as readonly string[]).includes(v.area) || !v.area ? [...AREAS] : [v.area, ...AREAS];
-
-const checklist = [
-  { done: hasAbout, text: hasAbout ? 'The about is written.' : 'Nothing about the clinic yet.', href: '#about', link: 'Write it' },
-  { done: hasHours, text: hasHours ? 'Opening hours are set.' : 'No opening hours yet.', href: '#hours', link: 'Set them' },
-  { done: data.dentist, text: data.dentist ? 'A dentist has days at this branch.' : 'No dentist has days at this branch yet.', href: `${base}team/`, link: 'Add one on Team' },
-  { done: data.hmoIds.length > 0 || data.saidNoHmos, text: data.hmoIds.length > 0 ? 'HMOs are chosen.' : data.saidNoHmos ? 'No HMOs, and that is said.' : 'Which HMOs you take is not set.', href: '#hmos', link: 'Pick them' },
-  { done: (data.c.photo_keys ?? []).length > 0, text: (data.c.photo_keys ?? []).length > 0 ? 'A photo is up.' : 'No photo yet.', href: `${base}photos/`, link: 'Add one on Photos' },
-  { done: data.c.listed, text: data.c.listed ? 'Listed on Find a clinic.' : 'Not listed yet, so patients cannot find you.', href: '#listing', link: 'Flip the switch' },
-];
-
-const welcome = q.get('welcome') === '1';
-const saved = q.get('saved') === '1';
-const held = q.get('held') === '1';
-const stale = q.get('stale') === '1';
-
-const sectionTitle = 'font-display text-[22px] font-semibold';
-const help = 'text-[13px] leading-snug text-muted';
+// The one section on screen when the page opens: a refused form's, else the one a notice is about
+// (the address's #section says the same, and the page's first script follows it), else the profile.
+const fromSection = (q.get('stale') ?? q.get('saved') ?? '') as string;
+const noticeFor: SectionId | null = q.get('person') === 'added' ? 'people' : q.get('added') === 'fee' ? 'fees' : q.get('photos') ? 'photos'
+  : (q.has('paid') || q.has('unpaid') || q.has('pay')) ? 'plan' : null;
+const firstOn: SectionId = clinicRefused ? clinicRefused.part : feesRefused ? 'fees' : addRefused ? 'people' : photosRefused ? 'photos' : privacyRefused ? 'privacy'
+  : isSection(fromSection) ? fromSection : noticeFor ?? 'profile';
 ---
 
-<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.c.area }} title="Settings" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
-  <div class="flex flex-wrap items-end justify-between gap-4">
-    <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Settings</h1>
-    {canSetUp && (
-      <nav class="flex flex-wrap gap-x-5 gap-y-1 text-[14.5px]" aria-label="Also in settings">
-        <a href={`${base}fees/`} class="underline underline-offset-4 hover:text-accent">Fee guide</a>
-        <a href={`${base}team/`} class="underline underline-offset-4 hover:text-accent">Team</a>
-        <a href={`${base}photos/`} class="underline underline-offset-4 hover:text-accent">Photos</a>
-        <a href={`${base}privacy/`} class="underline underline-offset-4 hover:text-accent">Privacy</a>
-        <a href={`${base}billing/`} class="underline underline-offset-4 hover:text-accent">Billing</a>
-      </nav>
-    )}
-  </div>
-
-  {!canSetUp ? (
-    <p class="mt-6 max-w-[60ch] text-[15.5px] leading-relaxed text-ink-2">Settings are the owner’s and the admin’s. If something here needs changing, ask them; the rest of the workspace is yours as before.</p>
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data?.c.area }} title="Clinic settings" section="settings" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  {!canSetUp || !data ? (
+    <Pane as="div" label="Clinic settings" class="max-w-[46rem]">
+      <Empty icon="settings" text="Clinic settings belong to the owner and the admin. If something here needs changing, ask them." />
+      <div class="set-btn-row mt-3">
+        <a href={`/c/${clinic.slug}/account/`} class="ws-btn ws-btn-quiet"><Icon name="user" />My page</a>
+        <a href={`/c/${clinic.slug}/`} class="ws-btn ws-btn-quiet"><Icon name="dashboard" />Dashboard</a>
+      </div>
+    </Pane>
   ) : (
-    <>
-      {welcome && (
-        <p class="mt-6 max-w-[64ch] border border-accent/40 bg-accent/10 p-4 text-[15px] leading-relaxed">
-          Your clinic exists. Nobody can find it yet — work down this list and flip the switch at the end. Nothing is final; every line can be changed later.
-        </p>
-      )}
-      {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
-      {saved && !held && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">Saved.</p>}
-      {saved && held && (
-        <p role="status" class="mt-6 border border-crown/40 bg-crown/10 p-4 text-[14.5px] leading-relaxed">
-          Saved. The listing switch stayed off: the clinic still needs {listWords(missing) || 'a moment'}.
-        </p>
-      )}
-      {problems.length > 0 && (
-        <div role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">
-          <p class="font-semibold">Nothing was saved. A few things to fix:</p>
-          <ul class="mt-2 list-disc space-y-1 pl-5">{problems.map((p) => <li>{p}</li>)}</ul>
+    <div class="set set-shell" data-set-page>
+      <div class="set-layout">
+        <aside class="set-side" aria-label="Clinic settings, sections">
+          <Pane as="div" label="Sections" pad="tight">
+            <nav class="set-toc" aria-label="Sections of Clinic settings" data-set-toc>
+              {SECTIONS.map((s) => (
+                <a href={`#${s.id}`} class="set-toc-item" data-set-toc-item={s.id} aria-current={s.id === firstOn ? 'location' : undefined}>
+                  <span class="set-toc-icon"><Icon name={s.icon} /></span>
+                  <span class="set-toc-label">{s.label}</span>
+                  <span class="set-toc-note" data-tone={STATUS[s.id].tone}>{STATUS[s.id].text}</span>
+                  <span class="set-toc-dirty">Not saved yet</span>
+                </a>
+              ))}
+            </nav>
+          </Pane>
+        </aside>
+
+        <div class="set-main">
+          <div class="set-jump ws-glass" data-set-jump>
+            <Menu id="set-jump-menu" align="left" buttonClass="set-jump-btn" label={undefined} wide>
+              <Fragment slot="button">
+                <Icon name="settings" />
+                <span class="set-jump-now" data-set-jump-now>{SECTIONS.find((s) => s.id === firstOn)!.label}</span>
+                <span class="text-[13px] font-medium text-muted">Change</span>
+                <Icon name="chevron" />
+              </Fragment>
+              <p class="ws-menu-head">Clinic settings</p>
+              {SECTIONS.map((s) => (
+                <a class="ws-menu-item" href={`#${s.id}`} data-set-toc-item={s.id} aria-current={s.id === firstOn ? 'location' : undefined}>
+                  <span class="ws-menu-icon"><Icon name={s.icon} /></span>
+                  <span class="ws-menu-words">{s.label}<span class="ws-menu-hint">{STATUS[s.id].text}</span><span class="set-toc-dirty">Not saved yet</span></span>
+                </a>
+              ))}
+            </Menu>
+          </div>
+
+          <ProfileSection
+            base={base} data={data} welcome={q.get('welcome') === '1'} staffCount={active} on={firstOn === 'profile'}
+            v={clinicRefused?.profile ?? savedProfile(data)}
+            problems={clinicRefused?.part === 'profile' ? clinicRefused.problems : []}
+            notes={notes.profile}
+          />
+          <HoursSection
+            base={base} on={firstOn === 'hours'}
+            days={clinicRefused?.hours ?? savedHours(data)}
+            problems={clinicRefused?.part === 'hours' ? clinicRefused.problems : []}
+            notes={notes.hours}
+          />
+          <FeesSection
+            base={base} clinicName={clinic.name} rows={fees!} on={firstOn === 'fees'}
+            keep={feesRefused?.kind === 'table' ? feesRefused.keep : null}
+            problems={feesRefused?.kind === 'table' ? feesRefused.problems : []}
+            add={feesRefused?.kind === 'add' ? feesRefused.add : emptyAdd()}
+            addProblems={feesRefused?.kind === 'add' ? feesRefused.problems : []}
+            notes={notes.fees}
+          />
+          <PeopleSection
+            base={base} clinicName={clinic.name} people={people!} me={session.staffId} isOwner={session.role === 'owner'} emailOn={emailOn()} on={firstOn === 'people'}
+            add={addRefused?.add ?? emptyPerson()} addError={addRefused?.error ?? ''}
+            notes={notes.people} highlight={q.get('person') === 'added' ? (q.get('id') ?? '') : ''}
+          />
+          <PhotosSection base={base} clinicId={clinic.id} clinicName={clinic.name} keys={keys!} error={photosRefused?.error ?? ''} notes={notes.photos} on={firstOn === 'photos'} />
+          <PrivacySection base={base} data={privacy!} v={privacyRefused?.posted ?? savedPrivacy(privacy!)} problems={privacyRefused?.problems ?? []} notes={notes.privacy} on={firstOn === 'privacy'} />
+          <PlanSection v={plan} slug={clinic.slug} on={firstOn === 'plan'} />
         </div>
-      )}
+      </div>
 
-      <section class="mt-8" aria-labelledby="checklist-title">
-        <h2 id="checklist-title" class="sec-no">Ready to be found?</h2>
-        <ol class="mt-3 divide-y divide-line-2 border border-line bg-surface">
-          {checklist.map((row) => (
-            <li class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 py-3.5">
-              <span class={`meta w-16 shrink-0 ${row.done ? 'meta-accent' : ''}`}>{row.done ? 'Done' : 'Not yet'}</span>
-              <span class={`flex-1 text-[15px] ${row.done ? 'text-ink-2' : 'text-ink'}`}>{row.text}</span>
-              {!row.done && <a href={row.href} class="text-[14px] underline underline-offset-4 hover:text-accent">{row.link}</a>}
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <form method="post" class="mt-12 max-w-[760px]">
-        <Csrf />
-
-        <section>
-          <p class="sec-no">01 &mdash; Profile</p>
-          <h2 class={`mt-1 ${sectionTitle}`}>Who you are</h2>
-          <div class="mt-5 grid gap-4">
-            <label class="field"><span class="meta">Clinic name</span><input name="name" value={v.name} required maxlength="80" /></label>
-            <div class="grid gap-4 sm:grid-cols-2">
-              <label class="field"><span class="meta">Where</span><select name="area">{areaOptions.map((a) => <option value={a} selected={v.area === a}>{a}</option>)}</select></label>
-              <label class="field"><span class="meta">Address</span><input name="address_line" value={v.address_line} required /></label>
-              <label class="field"><span class="meta">Phone</span><input type="tel" name="phone" value={v.phone} required /></label>
-              <label class="field"><span class="meta">Email</span><input type="email" name="email" value={v.email} /></label>
-            </div>
-            <label class="field">
-              <span class="meta">Map link</span>
-              <input type="url" name="maps_url" value={v.maps_url} placeholder="https://maps.app.goo.gl/…" />
-              <span class={help}>Open the clinic on Google Maps, tap Share, and paste the link. Patients get a “Directions” button.</span>
-            </label>
-            <label class="field scroll-mt-24" id="about">
-              <span class="meta">About</span>
-              <textarea name="about" rows="5" maxlength={ABOUT_MAX} data-about-field>{v.about}</textarea>
-              <span class={help}>The first thing patients read. What you do, who you see, what to expect. <span data-about-count>{v.about.length}</span>/{ABOUT_MAX}</span>
-            </label>
-          </div>
-        </section>
-
-        <hr class="rule my-10" />
-
-        <section>
-          <p class="sec-no">02 &mdash; The chairs</p>
-          <h2 class={`mt-1 ${sectionTitle}`}>How the clinic runs</h2>
-          <div class="mt-5 grid gap-6">
-            <label class="field sm:max-w-[12rem]">
-              <span class="meta">Chairs</span>
-              <input type="number" name="chairs" value={v.chairs} min="1" max="12" step="1" required />
-              <span class={help}>How many patients can be seen at once.</span>
-            </label>
-            <fieldset>
-              <legend class="meta">Walk-ins</legend>
-              <div class="mt-2 flex flex-wrap gap-2">
-                <label class="chip-radio"><input type="radio" name="walk_ins" value="yes" checked={v.walk_ins} /><span>Welcome</span></label>
-                <label class="chip-radio"><input type="radio" name="walk_ins" value="no" checked={!v.walk_ins} /><span>Appointments only</span></label>
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend class="meta">PhilHealth</legend>
-              <div class="mt-2 flex flex-wrap gap-2">
-                <label class="chip-radio"><input type="radio" name="philhealth_dental" value="yes" checked={v.philhealth_dental} /><span>Accredited for the preventive dental benefit</span></label>
-                <label class="chip-radio"><input type="radio" name="philhealth_dental" value="no" checked={!v.philhealth_dental} /><span>Not accredited</span></label>
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend class="meta">How patients book</legend>
-              <div class="mt-2 grid gap-2">
-                <label class="row-radio"><input type="radio" name="booking_mode" value="live" checked={v.booking_mode === 'live'} /><span><strong class="font-semibold">Live</strong><span class="block text-[14px] text-ink-2">Patients pick a real open slot; the desk confirms.</span></span></label>
-                <label class="row-radio"><input type="radio" name="booking_mode" value="request" checked={v.booking_mode !== 'live'} /><span><strong class="font-semibold">Request</strong><span class="block text-[14px] text-ink-2">Patients send a request; the desk texts back a time.</span></span></label>
-              </div>
-            </fieldset>
-          </div>
-        </section>
-
-        <hr class="rule my-10" />
-
-        <section id="hours" class="scroll-mt-24">
-          <p class="sec-no">03 &mdash; Hours</p>
-          <h2 class={`mt-1 ${sectionTitle}`}>When you are open</h2>
-          <p class="mt-2 text-[14.5px] text-ink-2">Open slots are cut from these. A closed day offers nothing.</p>
-          <div class="mt-5 divide-y divide-line-2 border border-line bg-surface">
-            {DOWS.map((dow) => {
-              const d = v.days[dow];
-              return (
-                <div class="grid grid-cols-2 items-center gap-x-4 gap-y-2 px-4 py-3 sm:grid-cols-[7rem_8rem_1fr_1fr]" data-day-row>
-                  <span class="text-[15px] font-medium">{DAY[dow]}</span>
-                  <label class="check"><input type="checkbox" name={`closed[${dow}]`} checked={d.closed} data-day-closed /><span>Closed</span></label>
-                  <label class="field"><span class="sr-only">{DAY[dow]} opens</span><input type="time" name={`open[${dow}]`} value={d.open} step="900" /></label>
-                  <label class="field"><span class="sr-only">{DAY[dow]} closes</span><input type="time" name={`close[${dow}]`} value={d.close} step="900" /></label>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        <hr class="rule my-10" />
-
-        <section id="hmos" class="scroll-mt-24">
-          <p class="sec-no">04 &mdash; HMOs</p>
-          <h2 class={`mt-1 ${sectionTitle}`}>Cards you take</h2>
-          <p class="mt-2 text-[14.5px] text-ink-2">Shown on your page as what the clinic reported; every card says “confirm with your HMO”.</p>
-          <div class="mt-5 grid gap-2.5 sm:grid-cols-2">
-            {hmos.map((h) => <label class="check"><input type="checkbox" name="hmo" value={h.id} checked={v.hmoIds.includes(h.id)} /><span>{h.name}</span></label>)}
-          </div>
-          <label class="check mt-5 border-t border-line-2 pt-5"><input type="checkbox" name="hmo_none" checked={v.noHmos} /><span>We don’t take HMOs.</span></label>
-        </section>
-
-        <hr class="rule my-10" />
-
-        <section id="listing" class="scroll-mt-24">
-          <p class="sec-no">05 &mdash; Listing</p>
-          <h2 class={`mt-1 ${sectionTitle}`}>Find a clinic</h2>
-          <label class="check mt-4 items-start">
-            <input type="checkbox" name="listed" checked={v.listed} disabled={!canList} />
-            <span>
-              List this clinic on Find a clinic.
-              {!canList && <span class="block text-muted">Not yet: the clinic still needs {listWords(missing)}. Save those first, then tick this and save again.</span>}
-              {canList && <span class="block text-muted">Patients in your area see the card, the fee guide and {v.booking_mode === 'live' ? 'the open slots' : 'a “Request a time” button; the desk confirms by text'}.</span>}
-            </span>
-          </label>
-        </section>
-
-        <hr class="rule my-10" />
-
-        <section id="tax" class="scroll-mt-24">
-          <p class="sec-no">06 &mdash; Statements</p>
-          <h2 class={`mt-1 ${sectionTitle}`}>TIN and BIR branch code</h2>
-          <p class="mt-2 max-w-[62ch] text-[14.5px] text-ink-2">Both print on the statements and payment acknowledgments from Billing. Flossify is not a BIR-registered invoicing system, so keep issuing your BIR invoices or receipts from your own booklet or system.</p>
-          <div class="mt-5 grid gap-4 sm:grid-cols-2">
-            <label class="field">
-              <span class="meta">TIN</span>
-              <input name="tin" value={taxShown.tin} inputmode="numeric" autocomplete="off" maxlength="20" placeholder="123-456-789-000" class="text-[16px] tabular-nums" />
-              <span class={help}>Written like 123-456-789-000, as on the clinic’s BIR Certificate of Registration (Form 2303). Leave it empty and statements print without one.</span>
-            </label>
-            <label class="field">
-              <span class="meta">BIR branch code</span>
-              <input name="bir_branch_code" value={taxShown.branch} inputmode="numeric" autocomplete="off" maxlength="7" placeholder="00000" class="text-[16px] tabular-nums" />
-              <span class={help}>Five digits: 00000 for the main office, another for a branch. Older papers show three (000).</span>
-            </label>
-          </div>
-        </section>
-
-        <div class="mt-10 flex flex-wrap items-center gap-4">
-          <button type="submit" class="btn btn-primary">Save</button>
-          <span class="text-[13.5px] text-muted">Saves every section on this page at once.</span>
+      {/* Asked when a form is sent while another section has changes not saved yet; the script fills the names. */}
+      <SidePanel id="set-unsaved" title="Changes not saved yet" meta="Clinic settings">
+        <p class="ws-callout" data-tone="warn"><Icon name="alert" /><span id="set-unsaved-what" data-unsaved-what>Another section has changes you have not saved. Each section saves on its own, so going on drops them.</span></p>
+        <div class="mt-6 grid gap-3">
+          <button type="button" class="ws-btn ws-btn-primary w-full" data-unsaved-back>Go back to them</button>
+          <button type="button" class="ws-btn ws-btn-quiet w-full" data-unsaved-go>Go on without them</button>
         </div>
-      </form>
+        <p class="set-help mt-4">Going back keeps everything you typed.</p>
+      </SidePanel>
 
+      {/* Before the first paint: one section at a time, the one the address names (#hours, #hmos …)
+          unless the server brought back a refused form, which it has put on screen already. */}
       <script is:inline>
-        // Two conveniences the server does not need: the about counter, and
-        // time fields that grey out while a day is ticked closed. The server
-        // treats a closed day as closed whatever the times say, so without
-        // this script the times are simply ignored.
-        (() => {
-          const field = document.querySelector('[data-about-field]');
-          const count = document.querySelector('[data-about-count]');
-          if (field && count) field.addEventListener('input', () => { count.textContent = String(field.value.length); });
-          for (const row of document.querySelectorAll('[data-day-row]')) {
-            const closed = row.querySelector('[data-day-closed]');
-            const times = row.querySelectorAll('input[type="time"]');
-            if (!closed) continue;
-            const sync = () => { for (const t of times) t.disabled = closed.checked; };
-            closed.addEventListener('change', sync);
-            sync();
-          }
+        (function () {
+          var page = document.querySelector('[data-set-page]');
+          if (!page) return;
+          page.setAttribute('data-one', '');
+          var refused = Array.prototype.some.call(page.querySelectorAll('[data-set-refused]'), function (n) { return !n.closest('dialog'); });
+          var id = location.hash.slice(1);
+          try { id = decodeURIComponent(id); } catch (e) {}
+          var el = id && !refused ? document.getElementById(id) : null;
+          var panel = el && el.closest('[data-set-panel]');
+          if (!panel) return;
+          page.querySelectorAll('[data-set-panel]').forEach(function (p) { if (p === panel) p.setAttribute('data-on', ''); else p.removeAttribute('data-on'); });
+          page.querySelectorAll('[data-set-toc-item]').forEach(function (a) { if (a.getAttribute('data-set-toc-item') === panel.getAttribute('data-set-panel')) a.setAttribute('aria-current', 'location'); else a.removeAttribute('aria-current'); });
         })();
       </script>
-    </>
+    </div>
   )}
 </ClinicLayout>
+
+<script>
+  // Conveniences the server does not need; without this script every section shows, one under the
+  // other, and every form still posts and saves.
+  //  - one section at a time: a link to any id on the page (the list, the slim bar, "Go" in the
+  //    profile's checklist) shows the section that holds it, brings it into view and puts focus there
+  //    (the title, or the field it names); so does a new #hash from outside (the sidebar's plan line);
+  //  - below the wide layout the list folds into a slim bar under the top bar once it has scrolled away;
+  //  - a section with changes not saved yet says so, in the section and in the list (a form the server
+  //    refused counts: what it shows was typed, not saved); another section's Save asks first in the
+  //    page's own panel, naming them, and the browser asks before leaving the page;
+  //  - the about counter; time fields grey out while a day is ticked closed (the server treats a
+  //    closed day as closed whatever the times say);
+  //  - PRC and specialty show for dentists only in Add person (the server checks the same rule);
+  //  - Edit prices opens at the service that was tapped;
+  //  - a refused form is brought into view, and one-shot notices leave the address.
+  const page = document.querySelector<HTMLElement>('[data-set-page]');
+  const topBar = document.querySelector<HTMLElement>('[data-ws-top]');
+  const root = document.documentElement;
+
+  // The top bar's height, for the sticky list and the sections' scroll margin.
+  const measure = () => { if (topBar) root.style.setProperty('--set-top', `${Math.round(topBar.getBoundingClientRect().height)}px`); };
+  measure();
+  if (topBar && 'ResizeObserver' in window) new ResizeObserver(measure).observe(topBar);
+
+  if (page) {
+    const panels = [...page.querySelectorAll<HTMLElement>('[data-set-panel]')];
+    const items = [...page.querySelectorAll<HTMLElement>('[data-set-toc-item]')];
+    const toc = page.querySelector<HTMLElement>('[data-set-toc]');
+    const jump = page.querySelector<HTMLElement>('[data-set-jump]');
+    const jumpNow = page.querySelector<HTMLElement>('[data-set-jump-now]');
+    const label = (id: string) => page.querySelector<HTMLElement>(`.set-toc [data-set-toc-item="${id}"] .set-toc-label`)?.textContent ?? '';
+    const current = () => panels.find((p) => p.hasAttribute('data-on'))?.dataset.setPanel ?? panels[0]?.dataset.setPanel ?? '';
+    const show = (id: string) => {
+      for (const p of panels) p.toggleAttribute('data-on', p.dataset.setPanel === id);
+      for (const a of items) {
+        if (a.dataset.setTocItem === id) a.setAttribute('aria-current', 'location');
+        else a.removeAttribute('aria-current');
+      }
+      if (jumpNow) jumpNow.textContent = label(id);
+    };
+    show(current());
+
+    // The slim bar: shown once the list has gone up under the top bar (it is display: none in the wide layout).
+    const topOf = () => parseFloat(getComputedStyle(root).getPropertyValue('--set-top')) || 64;
+    const spy = () => {
+      if (!jump || !toc) return;
+      jump.toggleAttribute('data-show', getComputedStyle(jump).display !== 'none' && toc.getBoundingClientRect().bottom < topOf());
+    };
+    let ticking = false;
+    addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(() => { ticking = false; spy(); }); } }, { passive: true });
+    addEventListener('resize', spy);
+
+    // Show the section that holds this id, bring the id into view and put focus there: a section's
+    // title, the field a link names (#about), or the id itself.
+    const go = (id: string, smooth = true) => {
+      const el = id ? document.getElementById(id) : null;
+      const panel = el?.closest<HTMLElement>('[data-set-panel]');
+      if (!el || !panel || !page.contains(panel)) return false;
+      show(panel.dataset.setPanel!);
+      el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+      const to = el.matches('.ws-pane')
+        ? el.querySelector<HTMLElement>('.ws-pane-title') ?? el
+        : el.matches('input, select, textarea') ? el : el.querySelector<HTMLElement>('input:not([type="hidden"]):not(:disabled), select, textarea') ?? el;
+      if (!to.matches('input, select, textarea, a, button') && !to.hasAttribute('tabindex')) to.setAttribute('tabindex', '-1');
+      to.focus({ preventScroll: true });
+      history.replaceState(history.state, '', `${location.pathname}${location.search}#${id}`);
+      requestAnimationFrame(spy);
+      return true;
+    };
+    page.addEventListener('click', (e) => {
+      const a = (e.target as Element).closest<HTMLAnchorElement>('a[href^="#"]');
+      if (!a || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (!go(a.getAttribute('href')!.slice(1))) return;
+      e.preventDefault();
+      // A link in the slim bar's list: close the list on the way.
+      const menu = a.closest<HTMLElement>('[data-ws-menu]');
+      if (menu) {
+        const pop = menu.querySelector<HTMLElement>(':scope > .ws-menu-pop');
+        if (pop) pop.hidden = true;
+        menu.querySelector<HTMLButtonElement>(':scope > button')?.setAttribute('aria-expanded', 'false');
+      }
+    });
+    // A #section link from outside the page (the sidebar's plan line) while the page is open.
+    addEventListener('hashchange', () => { go(decodeURIComponent(location.hash.slice(1))); });
+
+    // Changes not saved yet.
+    const forms = [...page.querySelectorAll<HTMLFormElement>('form[data-set-form]')];
+    const snap = (f: HTMLFormElement) => [...new FormData(f)].filter(([k]) => k !== '_csrf')
+      .map(([k, v]) => `${k}=${v instanceof File ? `${v.name}:${v.size}` : v}`).join('&');
+    const initial = new Map(forms.map((f) => [f, snap(f)]));
+    const dirty = new Set<HTMLFormElement>();
+    // A form the server refused came back drawn with what was typed, none of it saved: changed from the start.
+    const refusedForms = new Set(forms.filter((f) => f.querySelector('[data-set-refused]')));
+    const mark = (f: HTMLFormElement) => {
+      const is = refusedForms.has(f) || snap(f) !== initial.get(f);
+      if (is) dirty.add(f); else dirty.delete(f);
+      const id = f.dataset.setForm!;
+      f.querySelectorAll<HTMLElement>('[data-set-dirty-note]').forEach((n) => { n.hidden = !is; });
+      page.querySelectorAll<HTMLElement>(`[data-set-dirty-for="${id}"]`).forEach((n) => { n.hidden = !is; });
+      page.querySelectorAll<HTMLElement>(`[data-set-toc-item="${id}"]`).forEach((a) => { if (is) a.dataset.dirty = ''; else delete a.dataset.dirty; });
+    };
+    for (const f of forms) {
+      f.addEventListener('input', () => mark(f));
+      f.addEventListener('change', () => mark(f));
+    }
+
+    // A Save (or any form on this page) pressed while another section has changes not saved yet: the
+    // page asks, in its own panel, naming those sections — go back to them, or go on and drop them.
+    // The browser's own "Leave site?" is kept for leaving the page (a link, a tab, back, reload).
+    let sending: HTMLFormElement | null = null;
+    let dropping = false;
+    let confirmed: HTMLFormElement | null = null;
+    let pending: { form: HTMLFormElement; submitter: HTMLElement | null; back: string } | null = null;
+    const ask = document.getElementById('set-unsaved') as HTMLDialogElement | null;
+    const askWhat = ask?.querySelector<HTMLElement>('[data-unsaved-what]');
+    const askBack = ask?.querySelector<HTMLButtonElement>('[data-unsaved-back]');
+    const askGo = ask?.querySelector<HTMLButtonElement>('[data-unsaved-go]');
+    document.addEventListener('submit', (e) => {
+      const f = e.target as HTMLFormElement;
+      if (f === confirmed) { confirmed = null; sending = f; dropping = true; return; }
+      const others = forms.filter((d) => dirty.has(d) && d !== f);
+      if (!others.length || !page.contains(f) || !ask || !window.ws) { sending = f; return; }
+      e.preventDefault();
+      const submitter = (e as SubmitEvent).submitter ?? null;
+      const ids = others.map((d) => d.dataset.setForm!);
+      const names = ids.map(label);
+      const own = f.dataset.setForm;
+      pending = { form: f, submitter, back: ids[0] };
+      if (askWhat) {
+        askWhat.replaceChildren();
+        names.forEach((n, i) => {
+          if (i) askWhat.append(i === names.length - 1 ? ' and ' : ', ');
+          const b = document.createElement('strong'); b.textContent = n; askWhat.append(b);
+        });
+        askWhat.append(` ${names.length === 1 ? 'has' : 'have'} changes you have not saved. Each section saves on its own, so going on drops ${names.length === 1 ? 'them' : 'those changes'}.`);
+      }
+      if (askBack) askBack.textContent = `Go back to ${names[0]}`;
+      // "Save Opening hours only" for a section's Save; otherwise the button's own words: "Remove anyway", "Add service anyway".
+      const shown = (el: HTMLElement | null) => { if (!el) return ''; const c = el.cloneNode(true) as HTMLElement; c.querySelectorAll('.sr-only').forEach((n) => n.remove()); return (c.textContent ?? '').replace(/\s+/g, ' ').trim(); };
+      if (askGo) askGo.textContent = own && own !== 'photos' ? `Save ${label(own)} only` : `${shown(submitter) || 'Go on'} anyway`;
+      window.ws.openPanel('set-unsaved', submitter ?? f);
+    }, true);
+    askGo?.addEventListener('click', () => {
+      if (!pending) return;
+      const { form, submitter } = pending;
+      pending = null;
+      confirmed = form;
+      if (submitter instanceof HTMLButtonElement || submitter instanceof HTMLInputElement) form.requestSubmit(submitter);
+      else form.requestSubmit();
+    });
+    askBack?.addEventListener('click', () => {
+      if (!pending || !ask || !window.ws) return;
+      const { form, back } = pending;
+      pending = null;
+      // A form in a side panel (Add service, Add person, Edit prices) keeps what was typed; its panel closes too.
+      const host = form.closest('dialog');
+      const last = host instanceof HTMLDialogElement && host.open ? host : ask;
+      last.addEventListener('ws:panel-close', () => {
+        go(back);
+        // The changes are in a side panel (Edit prices): open it again, as it was left.
+        const where = forms.find((x) => x.dataset.setForm === back)?.closest('dialog');
+        if (where instanceof HTMLDialogElement && !where.open) window.ws?.openPanel(where.id);
+      }, { once: true });
+      window.ws.closePanel(ask);
+      if (last !== ask) window.ws.closePanel(last);
+    });
+    ask?.addEventListener('ws:panel-close', () => { pending = null; });
+    // Back to this page from the history (the browser kept it): nothing is on its way out any more.
+    addEventListener('pageshow', (e) => { if (e.persisted) { dropping = false; sending = null; confirmed = null; if (ask?.open) ask.close(); } });
+    addEventListener('beforeunload', (e) => {
+      if (dropping) return;
+      const lost = [...dirty].filter((f) => f !== sending);
+      sending = null;
+      if (lost.length) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    // The about counter, and closed days.
+    const about = page.querySelector<HTMLTextAreaElement>('[data-about-field]');
+    const count = page.querySelector<HTMLElement>('[data-about-count]');
+    about?.addEventListener('input', () => { if (count) count.textContent = String(about.value.length); });
+    for (const row of page.querySelectorAll<HTMLElement>('[data-day-row]')) {
+      const closed = row.querySelector<HTMLInputElement>('[data-day-closed]');
+      const times = row.querySelectorAll<HTMLInputElement>('input[type="time"]');
+      if (!closed) continue;
+      const sync = () => { for (const t of times) t.disabled = closed.checked; if (closed.checked) row.dataset.closed = ''; else delete row.dataset.closed; };
+      closed.addEventListener('change', sync);
+      sync();
+    }
+    // The snapshot is taken after the closed days are synced, so a disabled time field is not a change.
+    for (const f of forms) initial.set(f, snap(f));
+    for (const f of refusedForms) mark(f);
+
+    // Add person: PRC and specialty for dentists only.
+    document.querySelectorAll<HTMLFormElement>('[data-team-form]').forEach((form) => {
+      const role = form.querySelector<HTMLSelectElement>('[data-team-role]');
+      if (!role) return;
+      const dentistOnly = [...form.querySelectorAll<HTMLElement>('[data-team-dentist]')];
+      const finance = form.querySelector<HTMLElement>('[data-team-finance]');
+      const sync = () => {
+        const on = role.value === 'dentist' || role.value === 'associate';
+        dentistOnly.forEach((el) => {
+          el.hidden = !on;
+          const input = el.querySelector<HTMLInputElement>('input[data-prc-required]');
+          if (input) input.required = on;
+        });
+        // An admin sees money always; the desk has Finances by role, so for them the box is the claim amounts.
+        if (finance) {
+          finance.hidden = role.value === 'admin';
+          finance.querySelectorAll<HTMLElement>('[data-finance-for]').forEach((s) => { s.hidden = (s.dataset.financeFor === 'desk') !== (role.value === 'secretary'); });
+        }
+      };
+      role.addEventListener('change', sync);
+      sync();
+    });
+
+    // Edit prices opens at the service that was tapped (the whole guide is one form, one Save).
+    const prices = document.getElementById('fees-edit');
+    prices?.addEventListener('ws:panel-open', (e) => {
+      const opener = (e as CustomEvent<{ opener: Element | null }>).detail?.opener;
+      const row = opener?.closest<HTMLElement>('[data-fee-row]')?.dataset.feeRow;
+      prices.querySelectorAll('[data-focus]').forEach((n) => n.removeAttribute('data-focus'));
+      const block = row ? prices.querySelector<HTMLElement>(`[data-fee-edit="${row}"]`) : null;
+      requestAnimationFrame(() => {
+        if (!block) { prices.querySelector('.ws-panel-inner')?.scrollTo({ top: 0 }); return; }
+        block.dataset.focus = '';
+        block.scrollIntoView({ block: 'start' });
+        block.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true });
+      });
+    });
+
+    // Where to start: a refused form (not one in a side panel: the shell opens that), else the address's #id.
+    const refused = [...page.querySelectorAll<HTMLElement>('[data-set-refused]')].find((n) => !n.closest('dialog'));
+    const target = refused ?? (location.hash ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null);
+    if (target && page.contains(target)) {
+      requestAnimationFrame(() => {
+        target.scrollIntoView({ block: refused ? 'center' : 'start' });
+        if (refused) refused.focus({ preventScroll: true });
+        spy();
+      });
+    } else spy();
+
+    // One-shot notices: the line stays on screen, the address loses it, so a reload does not say it again.
+    const url = new URL(location.href);
+    let changed = false;
+    for (const k of ['saved', 'held', 'added', 'stale', 'person', 'via', 'id', 'photos', 'n', 'from']) if (url.searchParams.has(k)) { url.searchParams.delete(k); changed = true; }
+    if (changed) history.replaceState(history.state, '', url.pathname + (url.search ? url.search : '') + url.hash);
+  }
+</script>

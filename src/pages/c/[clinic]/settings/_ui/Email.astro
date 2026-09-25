@@ -1,0 +1,11 @@
+---
+// An email address that wraps, when it must, before the "@" rather than in the
+// middle of a word: "rowena.bautista" / "@example.com", not "…example.co" / "m".
+// A part longer than its line still breaks (overflow-wrap: anywhere).
+//
+//   <Email address={t.email} />
+interface Props { address: string; class?: string }
+const { address, class: extra } = Astro.props;
+const at = address.lastIndexOf('@');
+---
+<span class:list={['set-email', extra]}>{at > 0 ? <>{address.slice(0, at)}<wbr />{address.slice(at)}</> : address}</span>

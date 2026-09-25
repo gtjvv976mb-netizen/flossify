@@ -5,6 +5,10 @@
 //                                                  → 201 { appointment }   a new visit, status 'booked', source 'staff'
 //   PATCH { clinic, id, startsAt?, minutes?, chair?, dentistId?, status?, reason?, notes? }
 //                                                  → 200 { appointment }   a move, a status change, or both
+//   Every visit in an answer also carries the Dashboard's extras (service, fee-guide price, who booked it
+//   and when, conditions, birth date, whether it was brought in with its day only, and for such a visit
+//   the dentist its old record names as dentistName; src/components/ws/cal/data.ts), and POST and PATCH
+//   say whether a text to the patient was queued: { appointment, texted }. All additions; nothing above changed.
 //   409 { error }  the chair or the dentist is taken: one sentence naming who is in the way
 //   400 { error }  something in the body; 401 not signed in; 403 wrong clinic or a stale CSRF token; 429 too many changes
 //
@@ -31,6 +35,7 @@ import { csrfHeaderOk, CSRF_MESSAGE } from '../../../lib/csrf';
 import { hit, waitText, LIMITS } from '../../../lib/throttle';
 import { queueText, normalizePhone, PH_MOBILE } from '../../../lib/messages';
 import { loadRange, findClash, applyStatus, dropStaleTexts, readAppt, canText, scheduleTexts, ALLOWED, DONE, WORDS, StatusRefused, type Appt } from '../../../lib/schedule';
+import { extrasFor, mergeExtras, withExtras } from '../../../components/ws/cal/data';
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -161,7 +166,9 @@ export const GET: APIRoute = async ({ url, cookies }) => {
     const from = isoDate(url.searchParams.get('from'), 'From'), to = isoDate(url.searchParams.get('to'), 'To');
     if (to <= from) throw refuse(400, 'The range ends before it starts.');
     if (to.getTime() - from.getTime() > MAX_DAYS * 86_400_000) throw refuse(400, `Ask for ${MAX_DAYS} days at most.`);
-    return json(await loadRange(clinic.id, from.toISOString(), to.toISOString()));
+    const range = await loadRange(clinic.id, from.toISOString(), to.toISOString());
+    const extras = await withClinic(clinic.id, (tx) => extrasFor(tx, range.appointments.map((a) => a.id)));
+    return json({ ...range, appointments: range.appointments.map((a) => { const ex = extras.get(a.id); return ex ? mergeExtras(a, ex) : a; }) });
   } catch (e) { return answer(e); }
 };
 
@@ -198,7 +205,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       newPatient = { name, phone };
     }
 
-    const appointment = await withClinic(clinic.id, async (tx) => {
+    const saved = await withClinic(clinic.id, async (tx) => {
       const c = await clinicRow(tx, clinic.id);
       checkChair(chair, c);
       await checkDentist(tx, clinic.id, dentistId);
@@ -234,13 +241,14 @@ export const POST: APIRoute = async ({ request, cookies }) => {
          values ($1, $2, $3, $4, $5, $6, $7, 'booked', 'staff', $8, $9, $10, $11) returning id`,
         [clinic.id, pid, dentistId, chair, startsAt, endsAt, why, ref, catalogId, notes, session.staffId]);
 
+      let texted = false;
       if (canText(phone) && startsAt.getTime() > Date.now()) {
-        await queueText(tx, { clinicId: clinic.id, to: phone!, body: scheduleTexts.confirmation(c.name, why, startsAt, ref, c.phone), kind: 'confirmation', patientId: pid, appointmentId: row.id, staffId: session.staffId });
+        texted = (await queueText(tx, { clinicId: clinic.id, to: phone!, body: scheduleTexts.confirmation(c.name, why, startsAt, ref, c.phone), kind: 'confirmation', patientId: pid, appointmentId: row.id, staffId: session.staffId })) !== null;
       }
       await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.create', 'appointment', $3)`, [clinic.id, session.staffId, row.id]);
-      return mustRead(tx, row.id);
+      return { appointment: await withExtras(tx, await mustRead(tx, row.id)), texted };
     });
-    return json({ appointment }, 201);
+    return json(saved, 201);
   } catch (e) { return answer(e); }
 };
 
@@ -265,7 +273,8 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
     const wantReason = has('reason') ? text(b.reason, REASON_MAX) : undefined;
     const wantNotes = has('notes') ? text(b.notes, NOTES_MAX) : undefined;
 
-    const appointment = await withClinic(clinic.id, async (tx) => {
+    const saved = await withClinic(clinic.id, async (tx) => {
+      let texted = false;
       const c = await clinicRow(tx, clinic.id);
       const { rows: [cur] } = await tx.query<{ patient_id: string; starts_at: Date; ends_at: Date; chair: number | null; dentist_id: string | null; status: string; public_ref: string | null; phone: string | null }>(
         `select a.patient_id, a.starts_at, a.ends_at, a.chair, a.dentist_id, a.status, a.public_ref, coalesce(nullif(a.booked_by_phone, ''), p.phone) as phone
@@ -293,7 +302,7 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
         // dropping the texts that still name the old time, so nobody gets both.
         if (timeChanged) await dropStaleTexts(tx, id);
         if (startsAt.getTime() !== new Date(cur.starts_at).getTime() && startsAt.getTime() > Date.now() && canText(cur.phone)) {
-          await queueText(tx, { clinicId: clinic.id, to: cur.phone!, body: scheduleTexts.moved(c.name, startsAt, cur.public_ref, c.phone), kind: 'confirmation', patientId: cur.patient_id, appointmentId: id, staffId: session.staffId });
+          texted = (await queueText(tx, { clinicId: clinic.id, to: cur.phone!, body: scheduleTexts.moved(c.name, startsAt, cur.public_ref, c.phone), kind: 'confirmation', patientId: cur.patient_id, appointmentId: id, staffId: session.staffId })) !== null;
         }
       }
 
@@ -304,8 +313,8 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
       }
 
       if (status !== null && status !== cur.status) await applyStatus(tx, clinic.id, session.staffId, id, status, cur.status);
-      return mustRead(tx, id);
+      return { appointment: await withExtras(tx, await mustRead(tx, id)), texted };
     });
-    return json({ appointment });
+    return json(saved);
   } catch (e) { return answer(e); }
 };

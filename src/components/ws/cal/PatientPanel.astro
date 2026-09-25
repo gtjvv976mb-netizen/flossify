@@ -1,0 +1,23 @@
+---
+// A patient from the Patients list, beside it: the few facts the desk and the
+// dentist need, and what to do next — New booking (the one teal button), Open
+// record, and behind More: charge and text. The shell's <SidePanel>; board.ts
+// fills it with textContent from the Dashboard's own patient list, so opening
+// it asks the server nothing.
+import SidePanel from '../SidePanel.astro';
+import Menu from '../Menu.astro';
+import Icon from '../Icon.astro';
+---
+
+<SidePanel id="patient" title="Patient" meta="Patient">
+  <div slot="actions" class="vp-actions">
+    <div class="vp-main" data-pp-actions></div>
+    <Menu id="pp-more" align="right" label="More for this patient" buttonClass="ws-btn ws-btn-quiet ws-btn-sm" class="vp-more">
+      <Fragment slot="button">More <Icon name="chevron" size={16} class="ws-chev" /></Fragment>
+      <div data-pp-more></div>
+    </Menu>
+  </div>
+  <div class="vp-who" data-pp-who></div>
+  <div class="vp-alerts" data-pp-alerts></div>
+  <dl class="vp-dl" data-pp-facts></dl>
+</SidePanel>

@@ -1,0 +1,6 @@
+---
+// /c/<slug>/settings/people/ — the list lives in Clinic settings (the People
+// section); each person's own page is people/<id>/.
+export const prerender = false;
+return Astro.redirect(`/c/${Astro.params.clinic ?? ''}/settings/#people`, 302);
+---

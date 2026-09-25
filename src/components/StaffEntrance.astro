@@ -7,28 +7,31 @@
 // two pages open already at the desk. Motion is always on, as everywhere on
 // this site (CLAUDE.md, "The tour").
 //
-// The form sits on a compact pane of smoked glass on the right, so the clinic
-// stays the background, not a picture behind paper. Nothing runs along the
-// foot: the top bar names the page, and the pane says the rest.
+// The form sits on one bright white card with soft corners — the workspace's
+// soft template (docs/workspace-redesign.md), so the door into the workspace
+// looks like the workspace. The clinic stays the background around it. The
+// only other thing on the film is a quiet pill for patients who came to the
+// wrong door. Nothing runs along the foot.
+//
+// The styles are the staff-entrance section of src/styles/global.css
+// (.entrance-* for this frame, .entry-* for what the pages put on the card).
 import Base from '../layouts/Base.astro';
+import Icon from './ws/Icon.astro';
 import { SIGNIN_WALK } from '../data/film';
 
 interface Props {
   title: string;
   description: string;
-  /** The page's name in the top bar: "Sign in", "Forgot password", … */
-  page: string;
   /** Walk from the door to the desk (sign-in). Otherwise open at the desk. */
   walk?: boolean;
 }
 
-const { title, description, page, walk = false } = Astro.props;
-
+const { title, description, walk = false } = Astro.props;
 ---
 
 <Base title={title} description={description}>
   <div class="entrance" data-entrance data-walk={walk ? '' : undefined} data-walk-from={SIGNIN_WALK.from} data-walk-to={SIGNIN_WALK.to} data-walk-rate={SIGNIN_WALK.rate}>
-    <!-- The clinic. Decorative: everything it says is said in words on the pane. -->
+    <!-- The clinic. Decorative: everything it says is said in words on the card. -->
     <div class="entrance-film" aria-hidden="true">
       <img
         class="entrance-still"
@@ -44,82 +47,27 @@ const { title, description, page, walk = false } = Astro.props;
     </div>
 
     <header class="entrance-top">
-      <a href="/" class="font-display text-[17px] font-bold tracking-[-0.05em] text-[#f2f2ef]">Flossify</a>
-      <span class="meta">Staff entrance <span class="meta-ink">/ {page}</span></span>
-      <a href="/find/" class="meta ml-auto hover:text-ink">Patients: find a clinic &rarr;</a>
+      <a href="/find/" class="entrance-out">
+        <span>Patients: find a clinic</span>
+        <Icon name="arrow-right" size={16} />
+      </a>
     </header>
 
     <main id="main" class="entrance-main">
-      <div class="entrance-pane">
+      <div class="entrance-card">
+        <div class="entrance-head">
+          <a href="/" class="entrance-mark" aria-label="Flossify home">
+            <svg class="entrance-mark-sq" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="9" /><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z" /></svg>
+            <span>Flossify</span>
+          </a>
+          {/* The head's right: "Staff entrance", or a page's own way back (slot="head"). */}
+          <slot name="head"><span class="entrance-where">Staff entrance</span></slot>
+        </div>
         <slot />
       </div>
     </main>
-
   </div>
 </Base>
-
-<style>
-  @layer components {
-    /* One screen: the clinic behind everything, a glass bar at the top and
-       the glass pane. On every width. */
-    .entrance {
-      position: relative;
-      min-height: 100vh;
-      min-height: 100dvh;
-      display: grid;
-      grid-template-rows: auto 1fr;
-      background: #e6e2da; /* the film's own mean tone, so nothing flashes before it paints */
-    }
-    .entrance-film { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: #e6e2da; }
-    .entrance-still, .entrance-video {
-      position: absolute; inset: 0; width: 100%; height: 100%;
-      object-fit: cover;
-      /* The desk sits in the left third of the frame; keep it in view at every width. */
-      object-position: 30% 50%;
-    }
-    .entrance-video { opacity: 0; transition: opacity 500ms ease; }
-    .entrance-video[data-on] { opacity: 1; }
-
-    /* Smoked glass: the same material as the home page's opening. */
-    .entrance-top, .entrance-pane {
-      background: rgb(7 16 15 / 0.62);
-      -webkit-backdrop-filter: blur(14px) saturate(1.15); backdrop-filter: blur(14px) saturate(1.15);
-      color: #f2f2ef;
-    }
-    .entrance-top {
-      position: relative; z-index: 2;
-      display: flex; align-items: baseline; gap: 1rem;
-      padding: 1rem 1.25rem;
-      border-bottom: 1px solid rgb(242 242 239 / 0.18);
-      background: rgb(7 16 15 / 0.5);
-    }
-    .entrance-top .meta { color: rgb(242 242 239 / 0.7); }
-    .entrance-top .meta-ink { color: #f2f2ef; }
-    .entrance-top a:hover { color: #f2f2ef; }
-
-    .entrance-main {
-      position: relative; z-index: 1;
-      display: grid; align-items: center; justify-items: end;
-      padding: clamp(1rem, 4vh, 2.5rem) clamp(1rem, 5vw, 4.5rem);
-    }
-
-    /* Compact: the form and nothing else, so the clinic fills the screen. */
-    .entrance-pane {
-      width: min(100%, 25rem);
-      padding: clamp(1.25rem, 2.2vw, 1.85rem);
-      border: 1px solid rgb(242 242 239 / 0.2);
-    }
-
-
-    @media (max-width: 767px) {
-      /* On a phone the clinic is still the background: the desk shows above the
-         pane, and the pane scrolls over the clinic. */
-      .entrance-top a.ml-auto { display: none; }
-      .entrance-main { align-items: start; justify-items: stretch; padding: 30vh 1rem 1.5rem; }
-      .entrance-pane { width: 100%; padding: 1.25rem 1rem 1.5rem; }
-    }
-  }
-</style>
 
 <script>
   /* --- the walk: the front door to the reception desk, then hold ----------

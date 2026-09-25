@@ -1,0 +1,63 @@
+---
+// One past visit on Add patient: date, dentist (the team, people no longer on
+// it, or someone else by name), service, teeth, notes, and — for people who see
+// finances here — what it cost, what was paid and how. The same markup is the
+// page's <template> for "Add a past visit" (no row: blank fields), so a row
+// added in the browser posts exactly like one drawn by the server. The page's
+// script wires it through data-visit-*.
+import Icon from '../../../../../components/ws/Icon.astro';
+import { SERVICE_MAX, VISIT_NOTE_MAX } from '../../../../../lib/import';
+
+interface Row { date: string; dentist: string; dentistName: string; service: string; teeth: string; notes: string; charged: string; paid: string; method: string }
+interface Props {
+  row?: Row;
+  /** 1-based; the page's script renumbers rows added or removed in the browser. */
+  n?: number;
+  today: string;
+  dentists: { id: string; full_name: string; active: boolean }[];
+  money: boolean;
+  methods: [string, string][];
+}
+const { row, n, today, dentists, money, methods } = Astro.props;
+const r: Row = row ?? { date: '', dentist: '', dentistName: '', service: '', teeth: '', notes: '', charged: '', paid: '', method: '' };
+const active = dentists.filter((d) => d.active);
+const past = dentists.filter((d) => !d.active);
+---
+
+<li class="pt-inset p-4 sm:p-5" data-visit>
+  <div class="mb-3 flex items-center justify-between gap-3">
+    <p class="text-[15px] font-semibold" data-visit-no>Visit {n ?? ''}</p>
+    <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-visit-remove><Icon name="close" size={16} />Remove</button>
+  </div>
+  <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-[11rem_minmax(0,1.2fr)_minmax(0,1.4fr)_8rem]">
+    <label class="field"><span class="meta">Date</span><input type="date" name="visit_date" value={r.date} min="1900-01-01" max={today} /></label>
+    <div class="field">
+      <label class="field">
+        <span class="meta">Dentist</span>
+        <select name="visit_dentist" data-visit-dentist>
+          <option value="" selected={!r.dentist}>Not in the records</option>
+          {active.map((d) => <option value={d.id} selected={r.dentist === d.id}>{d.full_name}</option>)}
+          {past.length > 0 && <optgroup label="No longer on the team">{past.map((d) => <option value={d.id} selected={r.dentist === d.id}>{d.full_name}</option>)}</optgroup>}
+          <option value="__other" selected={r.dentist === '__other'}>Someone else…</option>
+        </select>
+      </label>
+      <input name="visit_dentist_name" value={r.dentistName} maxlength="120" autocomplete="off" aria-label="The dentist’s name, as the record has it" placeholder="Their name, as the record has it" hidden={r.dentist !== '__other'} data-visit-dentist-name />
+    </div>
+    <label class="field"><span class="meta">Service</span><input name="visit_service" value={r.service} maxlength={SERVICE_MAX} list="services" autocomplete="off" placeholder="From the fee guide, or as written" /></label>
+    <label class="field"><span class="meta">Teeth</span><input name="visit_teeth" value={r.teeth} maxlength="120" inputmode="numeric" autocomplete="off" placeholder="16, 26" /></label>
+    <label class="field sm:col-span-2 lg:col-span-4"><span class="meta">Notes</span><textarea name="visit_notes" rows="1" maxlength={VISIT_NOTE_MAX}>{r.notes}</textarea></label>
+    {money && (
+      <div class="grid gap-x-4 gap-y-3 sm:col-span-2 sm:grid-cols-3 lg:col-span-4 lg:grid-cols-[11rem_11rem_minmax(0,16rem)]">
+        <label class="field"><span class="meta">Charged, ₱</span><input name="visit_charged" value={r.charged} inputmode="decimal" autocomplete="off" placeholder="0" /></label>
+        <label class="field"><span class="meta">Paid, ₱</span><input name="visit_paid" value={r.paid} inputmode="decimal" autocomplete="off" placeholder="0" /></label>
+        <label class="field">
+          <span class="meta">Paid by</span>
+          <select name="visit_method">
+            <option value="" selected={!r.method}>Choose, when paid</option>
+            {methods.map(([id, label]) => <option value={id} selected={r.method === id}>{label}</option>)}
+          </select>
+        </label>
+      </div>
+    )}
+  </div>
+</li>

@@ -1,53 +1,152 @@
 ---
-// The frame around every workspace page: who is signed in, which branch is
-// open, and the way out. Pages behind it have already passed requireWorkspace,
-// so a rendered page always has a staff member; the props say who.
+// The frame around every workspace page, in the soft template
+// (docs/workspace-redesign.md, "The soft template" and "Very simple, tabs on
+// the left"): the room of the clinic behind it, softly veiled; a white
+// sidebar on the left with the clinic, the four tabs and — at the foot of the
+// sidebar's own column, never fixed to the screen — the person, My page, the
+// plan line and Sign out; and at the top of the content the page's title,
+// search, + New and the inbox. The page sits on bright white rounded cards.
+// "Shell API" in the same document says how pages use it. Pages behind it
+// have already passed requireWorkspace, so a rendered page always has a
+// staff member; the props say who.
+//
+// Sizes: from 1024px the sidebar is a 244px column, 220px to 1279px (icon +
+// word, 48px rows, the chosen tab a soft teal pill); 768–1023px it narrows to an icon rail
+// with a small word under each icon; to 767px there is no sidebar on screen:
+// a slim top bar (menu, the clinic's name, search, inbox, + New) with the
+// tabs as a simple row under it (words only when there are four: an icon
+// beside each would cut "Dashboard" short on a 390px phone), and the menu
+// button slides the same sidebar in from the left.
+//
+// The four tabs: Dashboard (today, schedule, messages), Patients (every
+// patient; a record, Add patient, Import), Finances (billing, claims) and
+// Clinic settings (settings, people). Patients is everyone's: anyone who may
+// open this branch may open its patients' records. Finances is shown
+// only to people who may see money here — the rule the billing pages enforce,
+// canBill() in src/lib/invoices.ts: owner, admin, the desk, or anyone the
+// owner gave finance at this branch. Clinic settings is the owner's and the
+// admin's, as the settings pages enforce. For others a tab is absent, not
+// disabled. The pages re-check all of this on the server; the shell only
+// decides what to show. Every link it makes comes from shellLinks()
+// (src/components/ws/routes.ts): a rebuilt page once it has landed, today's
+// page until then.
 import '../styles/global.css';
 import Csrf from '../components/Csrf.astro';
 import BillingNotice from '../components/BillingNotice.astro';
+import Menu from '../components/ws/Menu.astro';
+import Icon from '../components/ws/Icon.astro';
+import Avatar from '../components/ws/Avatar.astro';
+import type { IconName } from '../components/ws/icons';
 import { canBill as mayBill } from '../lib/invoices';
 import { readSession, canOpen } from '../lib/auth';
+import { inboxFor, seenAt, SEEN_COOKIE } from '../components/ws/inbox';
+import { planLine } from '../components/ws/plan';
+import { LANDED, shellLinks } from '../components/ws/routes';
+import { withClinic } from '../lib/db';
+
+type Section =
+  | 'dashboard' | 'today' | 'schedule' | 'messages'
+  | 'patients' | 'patient' | 'add-patient' | 'import'
+  | 'finances' | 'billing' | 'claims'
+  | 'settings' | 'people'
+  | 'account';
+type Tab = 'dashboard' | 'patients' | 'finances' | 'settings';
+type Room = 'reception' | 'waiting' | 'corridor' | 'chair';
 
 interface Props {
   clinic: { slug: string; name: string; area?: string | null };
   title: string;
-  section: 'today' | 'schedule' | 'patients' | 'messages' | 'billing' | 'claims' | 'settings';
+  section: Section;
   staff: { name: string; role: string };
   branches: { slug: string; name: string }[];
-  /** The clinic's group, for the billing notice. Pages pass clinic.group_id. */
+  /** The clinic's group, for the plan line. Pages pass clinic.group_id. */
   groupId?: string;
   /** This person may see finance at this branch (staff_access.can_view_finance). Pages that know pass clinic.can_view_finance. */
   finance?: boolean;
+  /** 'sheet' (default): the page sits on one white card. 'panes': the page lays out its own <Pane>s on the room. */
+  layout?: 'sheet' | 'panes';
+  /** 1600px wide instead of 1280px (the Dashboard's calendar). */
+  wide?: boolean;
+  /** The room behind the page; by default the tab's own. */
+  room?: Room;
+  /**
+   * The title at the top of the content is the page's <h1>: the page draws no big title of its own.
+   * Without it the top shows the title as a label only, and steps aside when the page draws its own
+   * visible <h1 class="ws-title"> (so nothing is said twice).
+   */
+  heading?: boolean;
 }
 
-const { clinic, title, section, staff, branches, groupId, finance } = Astro.props;
+const { clinic, title, section, staff, branches, groupId, finance, layout = 'sheet', wide = false, room, heading = false } = Astro.props;
 
-// Settings is the owner's and the admin's: hours, fees, the team, the listing.
-const canSetUp = staff.role === 'owner' || staff.role === 'admin';
-// Billing (patient charges and payments) is the desk's, the owner's and the admin's,
-// and anyone the owner lets see finance here: the same rule the billing pages enforce.
-// A page that did not say (finance undefined) is asked about only for a role that
-// needs the finance switch, so the link is the same on every page.
-let sees = finance ?? false;
-if (finance === undefined && !mayBill(staff.role, false)) {
-  const session = readSession(Astro.cookies);
-  sees = session ? (await canOpen(session, clinic.slug))?.can_view_finance === true : false;
-}
+const TAB_OF: Record<Section, Tab | null> = {
+  dashboard: 'dashboard', today: 'dashboard', schedule: 'dashboard', messages: 'dashboard',
+  patients: 'patients', patient: 'patients', 'add-patient': 'patients', import: 'patients',
+  finances: 'finances', billing: 'finances', claims: 'finances',
+  settings: 'settings', people: 'settings',
+  account: null,
+};
+// Patients stands in the waiting area beside the front desk (the bench the patients sit on), a frame
+// of the same film between reception and the corridor.
+const ROOM_OF: Record<Tab, Room> = { dashboard: 'reception', patients: 'waiting', finances: 'corridor', settings: 'chair' };
+const tab = TAB_OF[section] ?? null;
+const roomName: Room = room ?? (tab ? ROOM_OF[tab] : 'reception');
+
+// Who, and what they may see here: one read of their access to this branch
+// (the same check requireWorkspace made), for the finance switch and the inbox.
+const session = readSession(Astro.cookies);
+const access = session ? await canOpen(session, clinic.slug) : undefined;
+const sees = finance ?? access?.can_view_finance === true;
 const canBill = mayBill(staff.role, sees);
-const nav = [
-  { id: 'today', label: 'Today', href: `/c/${clinic.slug}/` },
-  { id: 'schedule', label: 'Schedule', href: `/c/${clinic.slug}/schedule/` },
-  { id: 'patients', label: 'Patients', href: `/c/${clinic.slug}/patients/` },
-  { id: 'messages', label: 'Messages', href: `/c/${clinic.slug}/messages/` },
-  ...(canBill ? [{ id: 'billing', label: 'Billing', href: `/c/${clinic.slug}/billing/` }] : []),
-  { id: 'claims', label: 'Claims', href: `/c/${clinic.slug}/claims/` },
-  ...(canSetUp ? [{ id: 'settings', label: 'Settings', href: `/c/${clinic.slug}/settings/` }] : []),
+const canSetUp = staff.role === 'owner' || staff.role === 'admin';
+
+// Where each link goes: the rebuilt page once it has landed, today's page until then (routes.ts).
+const links = shellLinks(clinic.slug);
+const tabs: { id: Tab; label: string; short: string; href: string; icon: IconName }[] = [
+  { id: 'dashboard', label: 'Dashboard', short: 'Dashboard', href: links.dashboard, icon: 'dashboard' },
+  { id: 'patients', label: 'Patients', short: 'Patients', href: links.patients, icon: 'patients' },
+  ...(canBill ? [{ id: 'finances' as const, label: 'Finances', short: 'Finances', href: links.finances, icon: 'wallet' as const }] : []),
+  ...(canSetUp ? [{ id: 'settings' as const, label: 'Clinic settings', short: 'Settings', href: links.settings, icon: 'settings' as const }] : []),
 ];
+
+// The clinic's area for the sidebar's clinic card ("Baguio City"). A page that has it passes
+// it; otherwise it is read here, so the card is the same size on every page and the sidebar
+// holds still as the person moves around.
+const areaOf = async (): Promise<string | null> => {
+  if (clinic.area !== undefined) return clinic.area;
+  if (!access) return null;
+  try {
+    return await withClinic(access.id, async (tx) => (await tx.query('select area from clinic where id = $1', [access.id])).rows[0]?.area ?? null);
+  } catch {
+    return null;
+  }
+};
+
+// The inbox's counts, the plan line and the area (read once). None of them ever breaks the page.
+const [inbox, plan, area] = await Promise.all([
+  access ? inboxFor(access.id, seenAt(Astro.cookies.get(SEEN_COOKIE)?.value)) : null,
+  groupId && canSetUp ? planLine(groupId) : null,
+  areaOf(),
+]);
+const inboxCount = inbox?.total ?? 0;
+const inboxLabel = inbox === null ? 'Inbox' : inboxCount ? `Inbox, ${inboxCount} waiting` : 'Inbox, nothing waiting';
+
+const ROLE: Record<string, string> = {
+  owner: 'Owner', dentist: 'Dentist', associate: 'Associate dentist', secretary: 'Secretary', assistant: 'Dental assistant', admin: 'Admin',
+};
+const roleLabel = ROLE[staff.role] ?? staff.role;
 const others = branches.filter((b) => b.slug !== clinic.slug);
+// The clinic's badge in the sidebar: the first letters of its first two words ("Session Road Dental" → SR).
+const clinicWords = clinic.name.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+const clinicBadge = ((clinicWords[0]?.[0] ?? '') + (clinicWords[1]?.[0] ?? '')).toUpperCase() || '·';
+
+const img = (w: number) => `/img/ws/${roomName}-${w}.webp`;
+const srcset = `${img(960)} 960w, ${img(1920)} 1920w`;
 // The seeded development data carries a warning, on the owner's own machine only — the same
 // switch as the test logins on sign-in, read at request time (and from .env under `astro dev`
 // only; a build compiles that half away). A real clinic's records are real.
 const devData = process.env.SHOW_DEMO_LOGINS === '1' || (import.meta.env.DEV && import.meta.env.SHOW_DEMO_LOGINS === '1');
+const BarTitle = heading ? 'h1' : 'p';
 ---
 
 <!doctype html>
@@ -61,10 +160,10 @@ const devData = process.env.SHOW_DEMO_LOGINS === '1' || (import.meta.env.DEV && 
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-    <meta name="theme-color" content="#f2f2ef" />
+    <meta name="theme-color" content="#f3f5f8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#15191e" media="(prefers-color-scheme: dark)" />
     <script src="/pwa.js" defer></script>
-    <link rel="preload" href="/fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/IBMPlexMono-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" as="image" href={img(1920)} imagesrcset={srcset} imagesizes="100vw" />
     <script is:inline>
       try {
         const saved = localStorage.getItem('theme');
@@ -73,60 +172,220 @@ const devData = process.env.SHOW_DEMO_LOGINS === '1' || (import.meta.env.DEV && 
         /* storage blocked: fall back to the OS preference */
       }
     </script>
+    <style is:global>
+      /* Moving between workspace pages is one continuous place: the sidebar holds still, the page
+         cross-fades, the room changes under it, and the teal pill of the current tab slides to the
+         new tab. Only workspace pages opt in, so signing out (or any other page) is an ordinary load. */
+      @view-transition { navigation: auto; }
+      @media (min-width: 768px) {
+        .ws-side { view-transition-name: ws-side; }
+        .ws-nav .ws-nav-item[aria-current="page"] { view-transition-name: ws-tab-on; }
+      }
+      @media (max-width: 767px) {
+        .ws-tabrow .ws-tabrow-item[aria-current="page"] { view-transition-name: ws-tab-on; }
+      }
+      ::view-transition-group(ws-tab-on) { animation-duration: 320ms; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+      ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 220ms; }
+    </style>
   </head>
-  <body>
-    {devData && (
-      <p role="note" class="border-b border-crown/40 bg-crown/10 px-5 py-2 text-center text-[13px] text-ink sm:px-8">
-        Development database with invented patients. Do not enter real patient records.
-      </p>
-    )}
-    {groupId && canSetUp && <BillingNotice groupId={groupId} slug={clinic.slug} />}
+  <body class:list={['ws', 'ws-soft', wide && 'ws-wide']} data-room={roomName} data-tab={tab ?? 'none'}>
+    <div class="ws-backdrop" aria-hidden="true">
+      <img src={img(1920)} srcset={srcset} sizes="100vw" alt="" decoding="async" />
+    </div>
+    <a href="#main" class="ws-skip">Skip to the page</a>
 
-    <header class="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur">
-      <div class="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-8">
-        <div class="flex items-center gap-3">
-          <a href="/" class="font-display text-[17px] font-bold tracking-[-0.05em]" aria-label="Flossify, home">Flossify</a>
-          <span class="h-5 w-px bg-line"></span>
-          <div>
-            <p class="font-display text-[17px] leading-tight font-bold">{clinic.name}</p>
-            <p class="meta">{clinic.area}</p>
+    <div class="ws-app">
+      <aside id="ws-side" class="ws-side" aria-label="Clinic menu" data-ws-side>
+        <div class="ws-side-scroll">
+          <div class="ws-side-top">
+            <div class="ws-side-brand">
+              <a href={links.dashboard} class="ws-mark" aria-label="Flossify, to the Dashboard">
+                <svg class="ws-mark-sq" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" /><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z" /></svg>
+                <span class="ws-mark-word">Flossify</span>
+              </a>
+              <button type="button" class="ws-tool ws-side-close" data-ws-side-close aria-label="Close the menu">
+                <Icon name="close" size={20} />
+              </button>
+            </div>
+
+            {others.length > 0 ? (
+              <Menu id="ws-branches" align="left" buttonClass="ws-branch" title={`${clinic.name} — switch branch`}>
+                <Fragment slot="button">
+                  <span class="ws-branch-badge" aria-hidden="true">{clinicBadge}</span>
+                  <span class="ws-branch-face">
+                    <span class="ws-branch-name">{clinic.name}</span>
+                    {area && <span class="ws-branch-area">{area}</span>}
+                  </span>
+                  <Icon name="chevron" size={16} class="ws-chev" />
+                  <span class="sr-only">, switch branch</span>
+                </Fragment>
+                <p class="ws-menu-head">Your branches</p>
+                {branches.map((b) => (
+                  <a class="ws-menu-item" href={`/c/${b.slug}/`} aria-current={b.slug === clinic.slug ? 'page' : undefined}>{b.name}</a>
+                ))}
+              </Menu>
+            ) : (
+              <div class="ws-branch" title={clinic.name}>
+                <span class="ws-branch-badge" aria-hidden="true">{clinicBadge}</span>
+                <span class="ws-branch-face">
+                  <span class="ws-branch-name">{clinic.name}</span>
+                  {area && <span class="ws-branch-area">{area}</span>}
+                </span>
+              </div>
+            )}
+
+            <nav class="ws-nav" aria-label="Workspace">
+              {tabs.map((t) => (
+                <a href={t.href} class="ws-nav-item" aria-current={t.id === tab ? 'page' : undefined}>
+                  <Icon name={t.icon} size={20} />
+                  <span class="ws-nav-word ws-nav-long">{t.label}</span>
+                  <span class="ws-nav-word ws-nav-short" aria-hidden="true">{t.short}</span>
+                </a>
+              ))}
+            </nav>
           </div>
         </div>
 
-        <nav class="flex flex-wrap items-center gap-1" aria-label="Clinic sections">
-          {nav.map((n) => (
-            <a
-              href={n.href}
-              aria-current={n.id === section ? 'page' : undefined}
-              class:list={[
-                'px-3.5 py-2 text-[13.5px] font-medium',
-                n.id === section ? 'bg-accent text-surface' : 'text-ink-2 hover:bg-bg-soft hover:text-accent',
-              ]}
-            >
-              {n.label}
+        <div class="ws-side-foot">
+          <div class="ws-me" title={`${staff.name} · ${roleLabel}`}>
+            <Avatar name={staff.name} />
+            <span class="ws-me-text">
+              <span class="ws-me-name">{staff.name}</span>
+              <span class="ws-pill ws-me-role">{roleLabel}</span>
+            </span>
+          </div>
+          {links.myPage && (
+            <a class="ws-side-link" href={links.myPage} aria-current={section === 'account' ? 'page' : undefined}>
+              <Icon name="user" /><span class="ws-side-word">My page</span>
             </a>
-          ))}
-        </nav>
-
-        <div class="flex items-center gap-3">
-          {others.length > 0 && (
-            <details class="relative">
-              <summary class="meta cursor-pointer list-none hover:text-ink">Branch &darr;</summary>
-              <ul class="absolute right-0 z-50 mt-2 min-w-[14rem] border border-line bg-surface p-1">
-                {others.map((b) => <li><a href={`/c/${b.slug}/`} class="block px-3 py-2 text-[14px] hover:bg-bg-soft">{b.name}</a></li>)}
-              </ul>
-            </details>
           )}
-          <span class="text-[13.5px] text-ink-2"><span class="font-medium text-ink">{staff.name}</span> · {staff.role}</span>
-          <button type="button" hidden data-install class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Install on this device</button>
-          <form method="post" action="/auth/logout" data-staff={readSession(Astro.cookies)?.staffId}><Csrf /><button type="submit" class="meta hover:text-ink">Sign out</button></form>
+          {!canBill && (
+            // Claims were in everyone's menu before the three tabs; for people without the
+            // Finances tab they stay one click away here (the list and its notes; the claims
+            // page keeps the amounts to finance, as it always has).
+            <a class="ws-side-link" href={links.claims} aria-current={section === 'claims' ? 'page' : undefined}>
+              <Icon name="file" /><span class="ws-side-word"><span class="ws-side-long">HMO &amp; PhilHealth claims</span><span class="ws-side-short" aria-hidden="true">Claims</span></span>
+            </a>
+          )}
+          <BillingNotice line={plan} slug={clinic.slug} />
+          <button type="button" hidden data-install class="ws-side-link">
+            <Icon name="download" /><span class="ws-side-word"><span class="ws-side-long">Install on this device</span><span class="ws-side-short" aria-hidden="true">Install</span></span>
+          </button>
+          {/* The button holds its word only: the sign-out guard (guardSignOut in src/lib/offline-queue.ts)
+              writes "Signing out…" into it with textContent, so its icon is drawn by CSS
+              (.ws-signout .ws-side-link::before) and stays through that and back. */}
+          <form method="post" action="/auth/logout" data-staff={session?.staffId} class="ws-signout"><Csrf /><button type="submit" class="ws-side-link">Sign out</button></form>
         </div>
-      </div>
-    </header>
+      </aside>
+      <div class="ws-scrim" data-ws-side-scrim hidden></div>
 
-    <main class="mx-auto max-w-[1280px] px-5 py-8 sm:px-8">
-      <slot />
-    </main>
+      <div class="ws-col" data-ws-col>
+        <header class="ws-top ws-bar" data-ws-top>
+          <div class="ws-bar-row">
+            <button type="button" class="ws-tool ws-side-open" aria-label="Menu" aria-controls="ws-side" aria-expanded="false" data-ws-side-open>
+              <Icon name="menu" size={22} />
+            </button>
+            <div class="ws-bar-where">
+              <p class="ws-bar-clinic" title={clinic.name}>{clinic.name}</p>
+              <BarTitle class:list={['ws-bar-title', heading && 'ws-bar-h1']} aria-hidden={heading ? undefined : 'true'}>{title}</BarTitle>
+            </div>
+
+            <div class="ws-right">
+              <div id="ws-search" class="ws-search" role="search" data-clinic={clinic.slug} data-add-patient={links.addPatient ?? undefined}>
+                <Icon name="search" class="ws-search-icon" />
+                <label for="ws-q" class="sr-only">Search patients and bookings</label>
+                <input id="ws-q" class="ws-search-input" type="search" placeholder="Search patients, bookings" autocomplete="off" spellcheck="false" enterkeyhint="go"
+                  role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="ws-results" aria-keyshortcuts="/" />
+                <kbd class="ws-kbd" aria-hidden="true" title="Press / to search">/</kbd>
+                <div id="ws-results" class="ws-results" hidden></div>
+                <p class="sr-only" aria-live="polite" data-ws-search-said></p>
+              </div>
+
+              <div class="ws-tools">
+                <button type="button" class="ws-tool ws-search-toggle" aria-label="Search" aria-expanded="false" aria-controls="ws-search" data-ws-search-toggle>
+                  <Icon name="search" size={20} />
+                </button>
+
+                <Menu id="ws-inbox" label={inboxLabel} title="Inbox" wide>
+                  <Fragment slot="button">
+                    <Icon name="inbox" size={20} />
+                    {inboxCount > 0 && <span class="ws-count" aria-hidden="true">{inboxCount > 99 ? '99+' : inboxCount}</span>}
+                  </Fragment>
+                  <p class="ws-menu-head">Inbox</p>
+                  {inbox === null && <p class="ws-results-note">The counts could not be read just now.</p>}
+                  <a class="ws-menu-item" href={`${links.messages}?show=failed`}>
+                    <span class="ws-menu-icon" data-tint="red"><Icon name="alert" /></span>
+                    <span class="ws-menu-words">Texts that failed<span class="ws-menu-hint">In the last 7 days; send them again</span></span>
+                    {inbox && <span class="ws-count" data-zero={inbox.failed ? undefined : ''}>{inbox.failed}</span>}
+                  </a>
+                  <a class="ws-menu-item" href={`${links.messages}?show=replies`}>
+                    <span class="ws-menu-icon" data-tint="blue"><Icon name="message" /></span>
+                    <span class="ws-menu-words">New replies<span class="ws-menu-hint">Texts from patients since this device last opened Messages</span></span>
+                    {inbox && <span class="ws-count" data-zero={inbox.replies ? undefined : ''}>{inbox.replies}</span>}
+                  </a>
+                  <a class="ws-menu-item" href={links.requests}>
+                    <span class="ws-menu-icon" data-tint="amber"><Icon name="clock" /></span>
+                    <span class="ws-menu-words">Web requests to place<span class="ws-menu-hint">Patients waiting for the desk to give a time</span></span>
+                    {inbox && <span class="ws-count" data-zero={inbox.requests ? undefined : ''}>{inbox.requests}</span>}
+                  </a>
+                  <div class="ws-menu-sep"></div>
+                  <a class="ws-menu-item" href={links.messages}><span class="ws-menu-words">All messages</span> <Icon name="arrow-right" size={16} /></a>
+                </Menu>
+
+                {/* Quiet (white, a hairline, a teal plus): one main action per screen is teal, and
+                    that is the page's own ("Text a patient", "New charge"), not the shell's. */}
+                <Menu id="ws-new" label="New" title="New (N)" buttonClass="ws-btn ws-btn-quiet ws-new" wide>
+                  <Fragment slot="button">
+                    <Icon name="plus" size={18} />
+                    <span class="ws-new-word" aria-hidden="true">New</span>
+                  </Fragment>
+                  <p class="ws-menu-head">New <span class="ws-menu-key">· press N</span></p>
+                  <a class="ws-menu-item" href={links.newBooking}>
+                    <span class="ws-menu-icon" data-tint="teal"><Icon name="calendar" /></span>
+                    <span class="ws-menu-words">New booking<span class="ws-menu-hint">{LANDED.dashboard ? 'A time on the calendar, for a patient' : 'On the Schedule: day and week, by chair or dentist'}</span></span>
+                  </a>
+                  {links.addPatient && (
+                    <a class="ws-menu-item" href={links.addPatient}>
+                      <span class="ws-menu-icon" data-tint="blue"><Icon name="patients" /></span>
+                      <span class="ws-menu-words">Add patient<span class="ws-menu-hint">Details, health history and past visits</span></span>
+                    </a>
+                  )}
+                  {canBill && (
+                    <a class="ws-menu-item" href={links.newCharge}>
+                      <span class="ws-menu-icon" data-tint="green"><Icon name="money" /></span>
+                      <span class="ws-menu-words">New charge<span class="ws-menu-hint">A statement for a patient to pay</span></span>
+                    </a>
+                  )}
+                </Menu>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* A phone's tab row, only when there is a choice (everyone has Dashboard and Patients now).
+            With four tabs the row carries words only: four icons and words do not fit 390px whole. */}
+        {tabs.length > 1 && (
+          <nav class="ws-tabrow" aria-label="Workspace tabs">
+            {tabs.map((t) => (
+              <a href={t.href} class="ws-tabrow-item" aria-current={t.id === tab ? 'page' : undefined}>
+                {tabs.length < 4 && <Icon name={t.icon} />}
+                <span>{t.short}</span>
+              </a>
+            ))}
+          </nav>
+        )}
+
+        {devData && (
+          <p role="note" class="ws-devline"><Icon name="info" />Development database with invented patients. Do not enter real patient records.</p>
+        )}
+
+        <main id="main" tabindex="-1" class:list={['ws-main', layout === 'panes' && 'ws-main-panes']}>
+          {heading && <h1 class="ws-phone-title">{title}</h1>}
+          {layout === 'panes' ? <slot /> : <div class="ws-sheet ws-glass"><slot /></div>}
+        </main>
+      </div>
+    </div>
     <script>import { keepSending } from '../lib/offline-queue'; keepSending();</script>
+    <script>import '../components/ws/shell';</script>
   </body>
 </html>

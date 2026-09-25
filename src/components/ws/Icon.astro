@@ -1,0 +1,41 @@
+---
+// A small line icon, drawn inline: 24-unit paths shown at 18px, a 1.75
+// stroke in currentColor, round ends, no fill. Hand-written for Flossify (no
+// icon font, no third-party request); the set is small on purpose — one icon
+// per idea, the same icon everywhere for it.
+//
+//   <Icon name="calendar" />                      decorative (aria-hidden), beside a word
+//   <Icon name="search" size={20} label="Search" />  the only thing in a control: it gets a name
+//
+// Beside a nav item, a section title and a main action (the soft template,
+// docs/workspace-redesign.md). Colour comes from the text around it.
+import { PATHS, type IconName } from './icons';
+
+interface Props {
+  name: IconName;
+  /** Pixels; 18 by default (20 in the sidebar). */
+  size?: number;
+  /** A name for the icon when it stands alone; without one it is hidden from screen readers. */
+  label?: string;
+  class?: string;
+}
+const { name, size = 18, label, class: extra } = Astro.props;
+const inner = PATHS[name] ?? PATHS.info;
+---
+
+<svg
+  class:list={['ws-icon', extra]}
+  width={size}
+  height={size}
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  role={label ? 'img' : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : 'true'}
+  focusable="false"
+  set:html={inner}
+/>

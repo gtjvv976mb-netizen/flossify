@@ -1,0 +1,35 @@
+---
+// One notice inside a section, as the shell's callout: what just happened (ok,
+// green), what stopped a save (alert, red), something to know before acting
+// (warn, amber) or plain information (info, blue). A tinted box with an icon
+// first, in plain words; the words carry the meaning, never the colour alone.
+//
+//   <Note tone="ok" text="Saved." />
+//   <Note tone="alert" title="Nothing was saved. Please fix:" items={problems} />
+import Icon from '../../../../../components/ws/Icon.astro';
+
+interface Props {
+  tone?: 'ok' | 'alert' | 'warn' | 'info';
+  text?: string;
+  title?: string;
+  items?: string[];
+  class?: string;
+  id?: string;
+  /** The sentence a refused form came back with: the page scrolls to it. */
+  refused?: boolean;
+}
+const { tone = 'ok', text, title, items, class: extra, id, refused = false } = Astro.props;
+const role = tone === 'alert' ? 'alert' : tone === 'ok' ? 'status' : 'note';
+const data = { ok: 'success', alert: 'alert', warn: 'warn', info: 'info' }[tone];
+const icon = tone === 'ok' ? 'check' : tone === 'info' ? 'info' : 'alert';
+---
+
+<div id={id} role={role} class:list={['ws-callout set-note', extra]} data-tone={data} data-set-note={tone} data-set-refused={refused ? '' : undefined} tabindex={refused ? -1 : undefined}>
+  <Icon name={icon} />
+  <div class="min-w-0">
+    {title && <p class="font-semibold">{title}</p>}
+    {text && <p>{text}</p>}
+    {items && items.length > 0 && <ul>{items.map((i) => <li>{i}</li>)}</ul>}
+    <slot />
+  </div>
+</div>

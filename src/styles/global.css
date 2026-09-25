@@ -824,98 +824,1282 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
 /* ===========================================================================
    The staff entrance — sign-in, forgot, I have a code (StaffEntrance.astro)
    ---------------------------------------------------------------------------
-   The clinic is the background, not a picture behind a sheet of paper. The
-   form sits on dark smoked glass — the same material as the home page's
-   opening text — compact enough that the reception desk and
-   the corridor fill the screen around it. Dark, not pale: the footage is a
-   white, brightly lit interior, and pale glass over it washes out both the
-   picture and the words. Fixed light-on-dark in both themes, like every
-   overlay on the film.
+   The door into the workspace, in the workspace's soft template
+   (docs/workspace-redesign.md): one bright white card with 12px corners on
+   the clinic from the home page's film, slate words in one friendly sans,
+   13px sentence-case labels, 16px rounded fields, the device choice as two
+   soft pills, one teal button, the other ways in as quiet rows with line
+   icons, soft tinted callouts. No uppercase typewriter labels, no dark glass.
+   The film stays the ground, with its walk from the door to the desk: no
+   veil in light mode (the card is almost opaque), a soft charcoal one in
+   dark mode so a charcoal card does not sit on a glaring white room.
 
-   Still built for a front desk between patients: 16px fields that phones do
-   not zoom into, targets at least 48px tall, a Show button, a Caps Lock line,
-   and one choice that matters on a clinic computer — shared or my own.
+   Contrast is measured, not judged: every text colour on its surface, the
+   surface composited over pure black and pure white (the film's frames reach
+   both), worst case at least 4.5:1, light and dark. So small words on the
+   card are ink-2, never the workspace's muted slate (#667085 is 4.4:1 on the
+   card over black); muted is only for placeholders, on an opaque field.
+
+   Still built for a front desk between patients: 16px fields 50px tall that
+   phones do not zoom into, every target at least 44px, a Show button, a
+   Caps Lock line, and one choice that matters on a clinic computer — shared
+   or my own. Nothing along the foot. The tokens live on .entrance, not .ws
+   (the entrance is not the workspace shell), and repeat the workspace's.
    =========================================================================== */
-.entrance-pane, .entrance-pane * { --g-ink: #f2f2ef; --g-ink-2: rgb(242 242 239 / 0.82); --g-muted: rgb(242 242 239 / 0.68); --g-line: rgb(242 242 239 / 0.24); --g-accent: #7df0b4; }
-.entrance-pane { color: var(--g-ink); }
-.entrance-pane .meta { color: var(--g-muted); }
-.entrance-pane a.meta:hover { color: var(--g-ink); }
-/* Own classes, not the colour utilities: utilities outrank this layer by design,
-   so a text-ink-2 left in the markup paints dark grey on the dark glass (1.2:1). */
-.entry-dim { color: var(--g-ink-2); }
-.entry-rule { border-color: var(--g-line); }
+.entrance {
+  --en-font: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --en-r: 12px; --en-r-ctl: 10px; --en-r-pill: 999px;
+  --en-shadow: 0 1px 2px rgb(16 24 40 / 0.05);
+  --en-shadow-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 18px 44px -18px rgb(16 24 40 / 0.3);
+  --en-veil: transparent;
+  --en-card: rgb(255 255 255 / 0.95);
+  --en-float: rgb(255 255 255 / 0.92);
+  --en-ink: #1f2937; --en-ink-2: #475467; --en-muted: #667085;
+  --en-line: #e6e9ee; --en-subtle: #f2f4f7; --en-hover: rgb(16 24 40 / 0.04);
+  --en-field: #ffffff; --en-field-line: #d0d5dd; --en-field-line-hover: #aab2bf;
+  --en-teal: #14908f; --en-teal-ink: #0d706d; --en-teal-fill: #0e7471; --en-teal-fill-hover: #0b5f5d; --en-teal-tint: #e8f6f5;
+  --en-green: #1f9d63; --en-green-ink: #16734a; --en-green-tint: #e9f7ef;
+  --en-amber: #d97706; --en-amber-ink: #8a4604; --en-amber-tint: #fff5e6;
+  --en-blue: #3b82f6; --en-blue-ink: #2359c9; --en-blue-tint: #eef4ff;
+  --en-red: #dc4c4c; --en-red-ink: #ac3232; --en-red-tint: #fdeeee;
 
-.entry-title { font-size: clamp(1.65rem, 2.4vw, 2rem); line-height: 1.06; font-weight: 600; letter-spacing: -0.025em; }
-
-.entry-field { display: grid; gap: 0.4rem; }
-.entry-field input {
-  width: 100%; min-height: 3.1rem; padding: 0.7rem 0.9rem;
-  font-size: 1rem; /* 16px: phones do not zoom into the field */
-  color: var(--g-ink); background: rgb(242 242 239 / 0.07);
-  border: 1px solid var(--g-line); border-radius: 0;
-  caret-color: var(--g-accent);
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: 1fr;
+  background: #e6e2da; /* the film's own mean tone, so nothing flashes before it paints */
+  color: var(--en-ink);
+  font-family: var(--en-font);
+  font-size: 15px;
+  line-height: 1.5;
 }
-.entry-field input::placeholder { color: rgb(242 242 239 / 0.5); }
-.entry-field input:hover { border-color: rgb(242 242 239 / 0.45); }
-.entry-field input:focus { outline: 2px solid var(--g-accent); outline-offset: 1px; border-color: var(--g-ink); background: rgb(242 242 239 / 0.1); }
-.entry-field input[aria-invalid="true"] { border-color: #fb923c; }
-/* A browser's saved-password fill paints its own pale background; keep the glass. */
-.entry-field input:-webkit-autofill { -webkit-text-fill-color: var(--g-ink); caret-color: var(--g-accent); transition: background-color 600000s 0s, color 600000s 0s; }
-.entry-field input.entry-code { font-family: var(--font-mono); font-size: 1.3rem; letter-spacing: 0.35em; }
+/* Dark: soft charcoal, the same tints dimmed; never pure black. Twice, as the site's tokens are. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .entrance {
+    --en-shadow: 0 1px 2px rgb(0 0 0 / 0.28);
+    --en-shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 18px 44px -18px rgb(0 0 0 / 0.6);
+    --en-veil: rgb(21 25 30 / 0.45);
+    --en-card: rgb(29 35 42 / 0.95);
+    --en-float: rgb(29 35 42 / 0.92);
+    --en-ink: #e7ebf0; --en-ink-2: #c3cad4; --en-muted: #9ea8b6;
+    --en-line: #2a323b; --en-subtle: #262d36; --en-hover: rgb(255 255 255 / 0.055);
+    --en-field: #161b21; --en-field-line: #3a4450; --en-field-line-hover: #56626f;
+    --en-teal: #2bb3ad; --en-teal-ink: #7fdcd4; --en-teal-fill: #0e7471; --en-teal-fill-hover: #11807d; --en-teal-tint: #163a3b;
+    --en-green: #34b97a; --en-green-ink: #7fdcaa; --en-green-tint: #173a2b;
+    --en-amber: #f0a33a; --en-amber-ink: #f3c47a; --en-amber-tint: #3b2f1a;
+    --en-blue: #6fa3f8; --en-blue-ink: #9fc0fb; --en-blue-tint: #1d2c47;
+    --en-red: #ec7070; --en-red-ink: #f5a3a3; --en-red-tint: #3f2327;
+  }
+}
+:root[data-theme="dark"] .entrance {
+  --en-shadow: 0 1px 2px rgb(0 0 0 / 0.28);
+  --en-shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 18px 44px -18px rgb(0 0 0 / 0.6);
+  --en-veil: rgb(21 25 30 / 0.45);
+  --en-card: rgb(29 35 42 / 0.95);
+  --en-float: rgb(29 35 42 / 0.92);
+  --en-ink: #e7ebf0; --en-ink-2: #c3cad4; --en-muted: #9ea8b6;
+  --en-line: #2a323b; --en-subtle: #262d36; --en-hover: rgb(255 255 255 / 0.055);
+  --en-field: #161b21; --en-field-line: #3a4450; --en-field-line-hover: #56626f;
+  --en-teal: #2bb3ad; --en-teal-ink: #7fdcd4; --en-teal-fill: #0e7471; --en-teal-fill-hover: #11807d; --en-teal-tint: #163a3b;
+  --en-green: #34b97a; --en-green-ink: #7fdcaa; --en-green-tint: #173a2b;
+  --en-amber: #f0a33a; --en-amber-ink: #f3c47a; --en-amber-tint: #3b2f1a;
+  --en-blue: #6fa3f8; --en-blue-ink: #9fc0fb; --en-blue-tint: #1d2c47;
+  --en-red: #ec7070; --en-red-ink: #f5a3a3; --en-red-tint: #3f2327;
+}
+
+/* --- the clinic behind everything ------------------------------------------------- */
+.entrance-film { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: #e6e2da; }
+.entrance-film::after { content: ""; position: absolute; inset: 0; background: var(--en-veil); pointer-events: none; }
+.entrance-still, .entrance-video {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover;
+  /* The desk sits in the left third of the frame; keep it in view at every width. */
+  object-position: 30% 50%;
+}
+.entrance-video { opacity: 0; transition: opacity 500ms ease; }
+.entrance-video[data-on] { opacity: 1; }
+
+/* --- the top: one quiet pill for a patient at the wrong door --------------------- */
+/* From 768px it floats at the top left, over the film, so the card on the right has the
+   whole height of a 1366x768 clinic monitor; on a phone it sits above the card. */
+.entrance-top {
+  position: absolute; top: 0; left: 0; z-index: 2;
+  display: flex;
+  padding: 1rem clamp(1rem, 5vw, 4.5rem);
+}
+.entrance-out {
+  display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 1rem;
+  border: 1px solid var(--en-line); border-radius: var(--en-r-pill);
+  background: var(--en-float);
+  -webkit-backdrop-filter: blur(12px) saturate(1.05); backdrop-filter: blur(12px) saturate(1.05);
+  box-shadow: var(--en-shadow);
+  color: var(--en-ink); font-size: 14px; font-weight: 600; line-height: 1.2;
+  transition: background-color 160ms ease;
+}
+.entrance-out:hover { background: var(--en-field); }
+.entrance-out .ws-icon { flex: none; color: var(--en-teal-ink); transition: transform 180ms ease; }
+.entrance-out:hover .ws-icon { transform: translateX(3px); }
+
+/* --- the card ---------------------------------------------------------------------- */
+.entrance-main {
+  position: relative; z-index: 1;
+  display: grid; align-items: center; justify-items: end;
+  padding: clamp(0.75rem, 3vh, 2.5rem) clamp(1rem, 5vw, 4.5rem);
+}
+@keyframes entrance-rise { from { opacity: 0; transform: translateY(12px); } }
+.entrance-card {
+  width: min(100%, 26rem);
+  padding: 1.5rem 1.75rem;
+  border: 1px solid var(--en-line); border-radius: var(--en-r);
+  background: var(--en-card);
+  -webkit-backdrop-filter: blur(16px) saturate(1.05); backdrop-filter: blur(16px) saturate(1.05);
+  box-shadow: var(--en-shadow-card);
+  animation: entrance-rise 560ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.entrance-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin: -0.375rem 0 0.75rem; }
+.entrance-mark { display: inline-flex; align-items: center; gap: 0.625rem; min-height: 44px; border-radius: var(--en-r-ctl); color: var(--en-ink); font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
+.entrance-mark-sq { width: 28px; height: 28px; flex: none; }
+.entrance-mark-sq rect { fill: var(--en-teal-fill); }
+.entrance-mark-sq path { fill: #fff; }
+.entrance-where { padding: 0.25rem 0.625rem; border-radius: var(--en-r-pill); background: var(--en-subtle); color: var(--en-ink-2); font-size: 13px; font-weight: 600; line-height: 1.4; white-space: nowrap; }
+
+/* --- words -------------------------------------------------------------------------- */
+.entry-title { color: var(--en-ink); font-size: 24px; font-weight: 600; }
+.entry-sub { display: block; margin-top: 0.25rem; color: var(--en-ink-2); font-size: 16px; font-weight: 400; letter-spacing: 0; }
+.entry-lede { margin-top: 0.5rem; color: var(--en-ink-2); font-size: 15px; line-height: 1.5; }
+.entry-label { display: block; padding: 0; color: var(--en-ink-2); font-size: 13px; font-weight: 600; line-height: 1.4; }
+/* The way back, at the right of the card's head (forgot, I have a code). */
+.entry-back {
+  display: inline-flex; align-items: center; gap: 0.25rem; min-height: 44px; margin-right: -0.5rem; padding: 0 0.625rem 0 0.375rem;
+  border-radius: var(--en-r-ctl); color: var(--en-teal-ink); font-size: 14.5px; font-weight: 600;
+  transition: background-color 160ms ease;
+}
+.entry-back:hover { background: var(--en-teal-tint); }
+.entry-aside { display: flex; align-items: flex-start; gap: 0.5rem; margin-top: 1rem; color: var(--en-ink-2); font-size: 14px; line-height: 1.5; }
+.entry-aside > .ws-icon { flex: none; margin-top: 2px; color: var(--en-blue-ink); }
+.entry-aside strong { color: var(--en-ink); font-weight: 600; }
+
+/* --- the form ----------------------------------------------------------------------- */
+.entry-form { display: grid; gap: 0.875rem; margin-top: 1.125rem; }
+.entry-field { display: grid; gap: 0.375rem; min-width: 0; }
+/* Two short fields side by side (the mobile and the code; the new password and again), so the
+   code page fits a 1366x768 screen; one column on a phone. An email needs the width, so the who
+   pair stacks when the code came by email (the pill's radio, or the page's hidden `via`). Each
+   field keeps its own height (start), so a line under one never stretches the other. */
+.entry-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0.875rem 0.75rem; align-items: start; }
+:root:has(input[name='via'][value='email']:is(:checked, [type='hidden'])) .entry-pair-who { grid-template-columns: 1fr; }
+@media (max-width: 419px) { .entry-pair { grid-template-columns: 1fr; } }
+/* "Came by email?", when the code page already knows how the code came: a link to the other way.
+   Under the mobile (half a card wide) its 44px target reaches into the gaps around it (the field's
+   6px above, the form's 14px below), never over the field, so it costs one short line. */
+.entry-flip {
+  justify-self: start; display: inline-flex; align-items: center; min-height: 44px;
+  margin: -0.375rem 0 -0.875rem -0.375rem; padding: 0 0.375rem;
+  border-radius: 8px; color: var(--en-teal-ink); font-size: 14px; font-weight: 600; white-space: nowrap;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px;
+  transition: background-color 160ms ease;
+}
+.entry-flip:hover { background: var(--en-teal-tint); }
+/* Beside the email's label (a card wide): at the right, costing no height. The words sit on the
+   label's line; the 44px target reaches up into the space above and down to the field's top
+   edge (the 6px gap), never over the field. */
+.entry-label-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 0.75rem; }
+.entry-label-row .entry-flip { align-items: flex-end; margin: -1.625rem -0.375rem -0.375rem 0; padding-bottom: 0.375rem; }
+.entry-field input {
+  width: 100%; min-height: 50px; padding: 0 0.875rem;
+  font-size: 16px; /* phones do not zoom into the field */
+  line-height: 1.4;
+  color: var(--en-ink); background: var(--en-field);
+  border: 1px solid var(--en-field-line); border-radius: var(--en-r-ctl);
+  box-shadow: var(--en-shadow);
+  caret-color: var(--en-teal);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.entry-field input::placeholder { color: var(--en-muted); opacity: 1; }
+.entry-field input:hover { border-color: var(--en-field-line-hover); }
+.entry-field input:focus { outline: none; border-color: var(--en-teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--en-teal) 24%, transparent); }
+.entry-field input[aria-invalid="true"] { border-color: var(--en-red); }
+.entry-field input[aria-invalid="true"]:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--en-red) 22%, transparent); }
+/* A browser's saved-password fill paints its own background and words; keep the field's. */
+.entry-field input:-webkit-autofill { -webkit-text-fill-color: var(--en-ink); caret-color: var(--en-teal); transition: background-color 600000s 0s, color 600000s 0s; }
+/* The six digits: a number read off a phone, so evenly spaced figures. */
+.entry-field input.entry-code { font-family: var(--font-mono); font-size: 20px; letter-spacing: 0.32em; font-variant-numeric: tabular-nums; }
 
 .entry-secret { position: relative; }
-.entry-secret input { padding-right: 4.75rem; }
+.entry-secret input { padding-right: 5.25rem; }
 .entry-show {
-  position: absolute; top: 0.35rem; right: 0.35rem; bottom: 0.35rem;
-  padding: 0 0.85rem; border: 1px solid var(--g-line); background: rgb(242 242 239 / 0.1);
-  font-size: 13.5px; font-weight: 600; color: var(--g-ink); cursor: pointer;
+  position: absolute; top: 3px; right: 3px; bottom: 3px; min-width: 4.25rem; padding: 0 0.75rem;
+  border: 0; border-radius: 8px; background: transparent;
+  color: var(--en-teal-ink); font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: background-color 160ms ease;
 }
-.entry-show:hover { border-color: var(--g-ink); }
-.entry-show:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 1px; }
-.entry-caps { font-size: 13.5px; font-weight: 600; color: #fcd34d; }
+.entry-show:hover { background: var(--en-teal-tint); }
+/* Half a card wide (the new password and again, side by side): a narrower Show, more room to type. */
+.entry-pair .entry-secret input { padding-right: 4.25rem; }
+.entry-pair .entry-show { min-width: 3.5rem; padding: 0 0.625rem; }
+.entry-caps {
+  display: inline-flex; align-items: center; gap: 0.375rem; justify-self: start; padding: 0.3rem 0.625rem;
+  border-radius: 8px; background: var(--en-amber-tint); color: var(--en-amber-ink); font-size: 13.5px; font-weight: 600;
+}
+.entry-caps > .ws-icon { flex: none; }
 
-.entry-link { justify-self: start; font-size: 13.5px; color: var(--g-ink-2); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; background: none; border: 0; padding: 0.15rem 0; }
-.entry-link:hover { color: var(--g-accent); }
+/* "Not you?": only there when this device remembered an email. */
+.entry-link {
+  justify-self: start; display: inline-flex; align-items: center; min-height: 44px; margin: -0.25rem 0 -0.5rem -0.375rem; padding: 0 0.375rem;
+  border: 0; border-radius: 8px; background: none;
+  color: var(--en-teal-ink); font-size: 14px; font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px;
+  cursor: pointer;
+}
+.entry-link:hover { background: var(--en-teal-tint); }
 
-/* This device: two halves of one control, and one line saying what the chosen half does. */
-.entry-devices { border: 0; padding: 0; margin: 0; display: grid; gap: 0.45rem; }
-.entry-devices legend { margin-bottom: 0.45rem; padding: 0; }
-.entry-seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--g-line); }
+/* This device (and Text / Email): two soft pills, and one line saying what the chosen one does. */
+.entry-devices { display: grid; gap: 0.375rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+.entry-devices legend { margin-bottom: 0.375rem; }
+.entry-seg { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .entry-seg label {
-  display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; padding: 0 0.75rem;
-  font-size: 14.5px; font-weight: 600; color: var(--g-ink); cursor: pointer; text-align: center;
-  transition: background-color 160ms ease, color 160ms ease;
+  position: relative; flex: 1 1 auto;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 44px; padding: 0 0.875rem;
+  border: 1px solid var(--en-field-line); border-radius: var(--en-r-pill); background: var(--en-field);
+  color: var(--en-ink-2); font-size: 14.5px; font-weight: 600; line-height: 1.2; text-align: center; white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
 }
-.entry-seg label + label { border-left: 1px solid var(--g-line); }
-.entry-seg label:hover { color: var(--g-ink); background: rgb(242 242 239 / 0.06); }
-.entry-seg label:has(:checked) { background: var(--g-ink); color: #0e0f0f; }
-.entry-seg label:has(:focus-visible) { outline: 2px solid var(--g-accent); outline-offset: 2px; position: relative; z-index: 1; }
-.entry-hint { font-size: 13.5px; line-height: 1.4; color: var(--g-ink-2); }
+/* A radio dot, so the choice is never colour alone. */
+.entry-seg label::before {
+  content: ""; flex: none; width: 16px; height: 16px; border-radius: 50%;
+  border: 1.5px solid var(--en-field-line-hover); background: var(--en-field);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.entry-seg label:hover { border-color: var(--en-field-line-hover); color: var(--en-ink); }
+.entry-seg label:has(:checked) { border-color: color-mix(in srgb, var(--en-teal) 45%, transparent); background: var(--en-teal-tint); color: var(--en-teal-ink); }
+.entry-seg label:has(:checked)::before { border-color: var(--en-teal-fill); box-shadow: inset 0 0 0 3px var(--en-field), inset 0 0 0 8px var(--en-teal-fill); }
+.entry-seg label:has(:focus-visible) { outline: 2px solid var(--en-teal); outline-offset: 2px; }
+/* Forced colours (Windows High Contrast) drop the tint and the drawn dot, and the real radio is
+   hidden: repaint the choice in the system's own colours — the chosen pill filled with Highlight,
+   its dot filled — so it still shows which one is on. */
+@media (forced-colors: active) {
+  .entry-seg label, .entry-seg label::before { forced-color-adjust: none; }
+  .entry-seg label, .entry-seg label:hover { border-color: CanvasText; background: Canvas; color: CanvasText; }
+  .entry-seg label::before { border-color: CanvasText; background: Canvas; box-shadow: none; }
+  .entry-seg label:has(:checked), .entry-seg label:has(:checked):hover { border-color: Highlight; background: Highlight; color: HighlightText; }
+  .entry-seg label:has(:checked)::before { border-color: HighlightText; background: Highlight; box-shadow: inset 0 0 0 3px Highlight, inset 0 0 0 8px HighlightText; }
+  .entry-seg label:has(:focus-visible) { outline-color: CanvasText; }
+}
+.entry-hint { color: var(--en-ink-2); font-size: 13.5px; line-height: 1.45; }
 
-/* The light button on the glass, like the film's own call to action. */
-.entry-go { width: 100%; min-height: 3.35rem; font-size: 1rem; background: var(--g-ink); color: #0e0f0f; border: 1px solid var(--g-ink); }
-.entry-go:hover { background: var(--g-accent); border-color: var(--g-accent); color: #0e0f0f; }
-.entry-go:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
-.entry-go[disabled] { opacity: 0.55; cursor: progress; }
+/* The one teal button. */
+.entry-go {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  width: 100%; min-height: 52px; margin-top: 0.25rem; padding: 0 1.25rem;
+  border: 1px solid transparent; border-radius: var(--en-r-ctl);
+  background: var(--en-teal-fill); color: #fff; box-shadow: var(--en-shadow);
+  font-size: 16px; font-weight: 600; line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+.entry-go:hover { background: var(--en-teal-fill-hover); }
+.entry-go .ws-icon { flex: none; transition: transform 180ms ease; }
+.entry-go:hover .ws-icon:last-child { transform: translateX(3px); }
+/* Never faded: the words on the button stay readable (4.5:1) in every state. */
+.entry-go[disabled] { cursor: not-allowed; }
+/* Held while offline: a quiet grey button, its words in ink-2 on the subtle grey. */
+.entry-go[disabled]:not([aria-busy="true"]),
+.entry-go[disabled]:not([aria-busy="true"]):hover { border-color: var(--en-line); background: var(--en-subtle); color: var(--en-ink-2); box-shadow: none; }
+.entry-go[disabled]:not([aria-busy="true"]) .ws-icon { transform: none; }
+/* Pressed, waiting for the server: the teal stays, the words say what is happening, and a small
+   ring turns in place of the icon, so a slow clinic line still shows the press was taken. */
+.entry-go[aria-busy="true"] { cursor: progress; }
+.entry-go[aria-busy="true"] .ws-icon { display: none; }
+.entry-go[aria-busy="true"]::after {
+  content: ""; flex: none; width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid rgb(255 255 255 / 0.4); border-top-color: #fff;
+  animation: entry-spin 800ms linear infinite;
+}
+@keyframes entry-spin { to { transform: rotate(360deg); } }
 
-.entry-note { border: 1px solid; padding: 0.75rem 0.9rem; font-size: 14px; line-height: 1.45; color: var(--g-ink); }
-.entry-note-ok { border-color: rgb(125 240 180 / 0.55); background: rgb(125 240 180 / 0.12); }
-.entry-note-warn { border-color: rgb(252 211 77 / 0.55); background: rgb(252 211 77 / 0.12); }
-.entry-note-bad { border-color: rgb(251 146 60 / 0.65); background: rgb(251 146 60 / 0.16); }
+/* Callouts: a soft tint, an icon, plain words. Blue a note, green done, amber attention, red blocked. */
+.entry-note {
+  display: flex; align-items: flex-start; gap: 0.625rem; padding: 0.75rem 0.875rem;
+  border: 1px solid color-mix(in srgb, var(--en-blue) 22%, transparent); border-radius: var(--en-r-ctl);
+  background: var(--en-blue-tint); color: var(--en-ink); font-size: 14px; line-height: 1.45;
+}
+.entry-note > .ws-icon { flex: none; margin-top: 1px; color: var(--en-blue-ink); }
+.entry-note-ok { border-color: color-mix(in srgb, var(--en-green) 25%, transparent); background: var(--en-green-tint); }
+.entry-note-ok > .ws-icon { color: var(--en-green-ink); }
+.entry-note-warn { border-color: color-mix(in srgb, var(--en-amber) 28%, transparent); background: var(--en-amber-tint); }
+.entry-note-warn > .ws-icon { color: var(--en-amber-ink); }
+.entry-note-bad { border-color: color-mix(in srgb, var(--en-red) 25%, transparent); background: var(--en-red-tint); }
+.entry-note-bad > .ws-icon { color: var(--en-red-ink); }
 
-/* Other ways in: one line each, the arrow says it is a door. */
-.entry-way { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; min-height: 2.75rem; padding: 0.55rem 0.05rem; color: var(--g-ink); }
-.entry-way-hint { font-size: 13px; color: var(--g-muted); }
-.entry-way-arrow { font-size: 1rem; color: var(--g-muted); transition: transform 180ms ease, color 180ms ease; }
-.entry-way:hover .entry-way-arrow, .entry-way:focus-visible .entry-way-arrow { transform: translateX(4px); color: var(--g-accent); }
-.entry-way:hover { color: var(--g-accent); }
-.entry-way:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
+/* Other ways in: quiet rows, a line icon in a pale teal square, the chevron says it is a door. */
+.entry-ways { display: grid; gap: 0.125rem; margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid var(--en-line); }
+.entry-way {
+  display: flex; align-items: center; gap: 0.75rem; min-height: 48px; margin: 0 -0.5rem; padding: 0.25rem 0.5rem;
+  border-radius: var(--en-r-ctl); color: var(--en-ink);
+  transition: background-color 160ms ease;
+}
+.entry-way:hover { background: var(--en-hover); }
+.entry-way-icon { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 9px; background: var(--en-teal-tint); color: var(--en-teal-ink); }
+.entry-way-words { display: grid; flex: 1 1 auto; min-width: 0; line-height: 1.35; }
+.entry-way-title { font-size: 15px; font-weight: 600; }
+.entry-way-hint { color: var(--en-ink-2); font-size: 13.5px; }
+.entry-way-go { flex: none; color: var(--en-ink-2); transition: transform 180ms ease, color 180ms ease; }
+.entry-way:hover .entry-way-go, .entry-way:focus-visible .entry-way-go { transform: translateX(3px); color: var(--en-teal-ink); }
 
-.entry-dev summary { cursor: pointer; list-style: none; }
+/* The seeded logins, on the owner's own machine only (SHOW_DEMO_LOGINS=1): a blue note. */
+.entry-dev { margin-top: 1.25rem; border: 1px solid color-mix(in srgb, var(--en-blue) 22%, transparent); border-radius: var(--en-r-ctl); background: var(--en-blue-tint); }
+.entry-dev summary { display: flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 0.875rem; border-radius: inherit; color: var(--en-blue-ink); font-size: 14px; font-weight: 600; list-style: none; cursor: pointer; }
 .entry-dev summary::-webkit-details-marker { display: none; }
-.entry-dev summary::after { content: " +"; }
-.entry-dev[open] summary::after { content: " \2212"; }
-.entry-dev code { color: var(--g-ink); }
+.entry-dev summary > .ws-icon { flex: none; }
+.entry-dev-chev { margin-left: auto; transition: transform 180ms ease; }
+.entry-dev[open] .entry-dev-chev { transform: rotate(180deg); }
+.entry-dev p { padding: 0 0.875rem 0.875rem; color: var(--en-ink-2); font-size: 13.5px; line-height: 1.55; }
+.entry-dev code { color: var(--en-ink); font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+
+/* Phones: the clinic is still the background — the desk shows above the card, and the card
+   scrolls over the clinic. */
+@media (max-width: 767px) {
+  .entrance { grid-template-rows: auto 1fr; }
+  .entrance-top { position: relative; justify-content: flex-end; padding: 0.75rem 1rem 0; }
+  .entrance-main { align-items: start; justify-items: stretch; padding: 22vh 1rem 1.5rem; }
+  .entrance-card { width: 100%; padding: 1.25rem 1.25rem 1.5rem; }
+  .entry-title { font-size: 22px; }
+}
 
 }  /* end @layer components */
 
+/* The staff entrance, outside the layer on purpose (as the workspace's own block is): the site's
+   base rules for the headings and the focus ring are unlayered, so only an unlayered rule can
+   change them — here, on the entrance only. */
+.entrance :is(h1, h2, h3) { font-family: var(--en-font); letter-spacing: -0.012em; line-height: 1.25; }
+.entrance :focus-visible { outline: 2px solid var(--en-teal); outline-offset: 2px; border-radius: revert-layer; }
+.entrance .entry-field input:focus-visible, .entrance .entry-seg input:focus-visible { outline: none; }
+
+
+/* ===========================================================================
+   The workspace — the soft template
+   (src/layouts/Clinic.astro, src/components/ws/, docs/workspace-redesign.md:
+   "The soft template" and "Very simple, tabs on the left")
+   ---------------------------------------------------------------------------
+   The owner compared the clinic workspace with a soft, friendly admin page
+   and asked for the same: soft, friendly, accommodating, very simple, the
+   tabs on the left. So inside the workspace (and only there — every rule
+   below is under .ws) the Swiss rules give way: bright white cards with
+   gently rounded corners and a whisper of shadow, slate words instead of
+   black, one calm teal for the main action and the chosen tab, pale tints
+   for status, round avatars, sentence-case labels, a line icon beside every
+   nav item. The marketing site above is untouched.
+
+   The room stays: each tab stands in its room of the clinic (reception,
+   corridor, treatment room), softened and under a light veil (a soft
+   charcoal one in dark mode — never pure black), with the cards standing on
+   it. The card's white is drawn on a ::before behind it, not on the card:
+   an element with backdrop-filter becomes the containing block of every
+   position: fixed element inside it, and pages put fixed things in their
+   content (the calendar's drag ghost, desk consent facing the patient).
+
+   Contrast is measured, not judged: every text colour against the card
+   composited over the veil over pure black and pure white (the frames reach
+   both), worst case ≥4.5:1 in both themes — the numbers are in the Shell API
+   section of the brief. Nothing here is gated by Reduce Motion (CLAUDE.md).
+   =========================================================================== */
+@layer components {
+
+/* --- tokens ------------------------------------------------------------------ */
+.ws {
+  --ws-max: 1280px;
+  --ws-side-w: 244px;
+  --ws-font: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ws-r: 12px;
+  --ws-r-lg: 16px;
+  --ws-r-ctl: 10px;
+  --ws-r-pill: 999px;
+  --ws-shadow: 0 1px 2px rgb(16 24 40 / 0.05);
+  --ws-shadow-pop: 0 12px 32px -8px rgb(16 24 40 / 0.16), 0 2px 6px rgb(16 24 40 / 0.06);
+
+  /* the room, and what stands on it */
+  --ws-veil: rgb(243 245 248 / 0.62);
+  --ws-card: rgb(255 255 255 / 0.94);
+  --ws-side-bg: rgb(255 255 255 / 0.96);
+  --ws-side-solid: #ffffff;
+  --ws-bar-bg: rgb(251 252 253 / 0.95);
+  --ws-subtle: #f8fafc;
+  --ws-glass: var(--ws-card);
+  --ws-glass-strong: #ffffff;
+  --ws-hair: #e6e9ee;
+  --ws-hair-strong: #d9dee5;
+  --ws-hover: rgb(16 24 40 / 0.035);
+  --ws-field: #ffffff;
+  --ws-field-line: #d0d5dd;
+  --ws-field-line-hover: #aab2bf;
+  --ws-scrim: rgb(16 24 40 / 0.32);
+
+  /* colour: each one a mark (icons, rings), words (-ink), a fill under white words (-fill), a pale tint */
+  --ws-teal: #14908f; --ws-teal-ink: #0d706d; --ws-teal-fill: #0e7471; --ws-teal-fill-hover: #0b5f5d; --ws-teal-tint: #e8f6f5;
+  --ws-green: #1f9d63; --ws-green-ink: #16734a; --ws-green-fill: #16784d; --ws-green-fill-hover: #11613e; --ws-green-tint: #e9f7ef;
+  --ws-amber: #d97706; --ws-amber-ink: #8a4604; --ws-amber-tint: #fff5e6;
+  --ws-blue: #3b82f6; --ws-blue-ink: #2359c9; --ws-blue-tint: #eef4ff;
+  --ws-red: #dc4c4c; --ws-red-ink: #ac3232; --ws-red-fill: #c43c3c; --ws-red-tint: #fdeeee;
+  --ws-violet-ink: #5b3fc4; --ws-violet-tint: #f1eefd;
+  --ws-rose-ink: #a3294f; --ws-rose-tint: #fdeef4;
+
+  /* The site's tokens, redrawn soft inside the workspace, so every page and every utility
+     (text-ink, bg-accent/10, border-line, text-crown …) follows with no change in the markup:
+     slate words, a teal accent, amber and a soft red for the queue's warnings. */
+  --c-bg: #f3f5f8;
+  --c-bg-soft: #f2f4f7;
+  --c-surface: #ffffff;
+  --c-ink: #1f2937;
+  --c-ink-2: #475467;
+  --c-muted: #667085;
+  --c-faint: #667085;
+  --c-line: #e6e9ee;
+  --c-line-2: #eef1f4;
+  --c-accent: #0d706d;
+  --c-accent-deep: #0b5d5b;
+  --c-caries: #ac3232;
+  --c-crown: #8a4604;
+
+  min-height: 100dvh;
+  background: var(--c-bg);
+  color: var(--c-ink);
+}
+.ws-wide { --ws-max: 1600px; }
+
+/* Dark: soft charcoal, the same tints dimmed; never pure black. Written twice (the OS preference
+   and the explicit toggle), as the site's own tokens are. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ws {
+    --ws-shadow: 0 1px 2px rgb(0 0 0 / 0.28);
+    --ws-shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.3);
+    --ws-veil: rgb(21 25 30 / 0.74);
+    --ws-card: rgb(29 35 42 / 0.94);
+    --ws-side-bg: rgb(26 31 37 / 0.96);
+    --ws-side-solid: #1a1f25;
+    --ws-bar-bg: rgb(23 27 32 / 0.9);
+    --ws-subtle: #20272f;
+    --ws-glass-strong: #1d232a;
+    --ws-hair: #2a323b;
+    --ws-hair-strong: #36404b;
+    --ws-hover: rgb(255 255 255 / 0.055);
+    --ws-field: #161b21;
+    --ws-field-line: #3a4450;
+    --ws-field-line-hover: #56626f;
+    --ws-scrim: rgb(0 0 0 / 0.5);
+    --ws-teal: #2bb3ad; --ws-teal-ink: #7fdcd4; --ws-teal-fill: #0e7471; --ws-teal-fill-hover: #11807d; --ws-teal-tint: #163a3b;
+    --ws-green: #34b97a; --ws-green-ink: #7fdcaa; --ws-green-fill: #16784d; --ws-green-fill-hover: #1a8a59; --ws-green-tint: #173a2b;
+    --ws-amber: #f0a33a; --ws-amber-ink: #f3c47a; --ws-amber-tint: #3b2f1a;
+    --ws-blue: #6fa3f8; --ws-blue-ink: #9fc0fb; --ws-blue-tint: #1d2c47;
+    --ws-red: #ec7070; --ws-red-ink: #f5a3a3; --ws-red-fill: #c43c3c; --ws-red-tint: #3f2327;
+    --ws-violet-ink: #c3b5fb; --ws-violet-tint: #2a2346;
+    --ws-rose-ink: #f5a8c6; --ws-rose-tint: #3d2130;
+    --c-bg: #15191e;
+    --c-bg-soft: #262d36;
+    --c-surface: #1d232a;
+    --c-ink: #e7ebf0;
+    --c-ink-2: #c3cad4;
+    --c-muted: #9ea8b6;
+    --c-faint: #9ea8b6;
+    --c-line: #2a323b;
+    --c-line-2: #232a32;
+    --c-accent: #5ccfc6;
+    --c-accent-deep: #98e3dc;
+    --c-caries: #f59b9b;
+    --c-crown: #f3bd6a;
+  }
+}
+:root[data-theme="dark"] .ws {
+  --ws-shadow: 0 1px 2px rgb(0 0 0 / 0.28);
+  --ws-shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.3);
+  --ws-veil: rgb(21 25 30 / 0.74);
+  --ws-card: rgb(29 35 42 / 0.94);
+  --ws-side-bg: rgb(26 31 37 / 0.96);
+  --ws-side-solid: #1a1f25;
+  --ws-bar-bg: rgb(23 27 32 / 0.9);
+  --ws-subtle: #20272f;
+  --ws-glass-strong: #1d232a;
+  --ws-hair: #2a323b;
+  --ws-hair-strong: #36404b;
+  --ws-hover: rgb(255 255 255 / 0.055);
+  --ws-field: #161b21;
+  --ws-field-line: #3a4450;
+  --ws-field-line-hover: #56626f;
+  --ws-scrim: rgb(0 0 0 / 0.5);
+  --ws-teal: #2bb3ad; --ws-teal-ink: #7fdcd4; --ws-teal-fill: #0e7471; --ws-teal-fill-hover: #11807d; --ws-teal-tint: #163a3b;
+  --ws-green: #34b97a; --ws-green-ink: #7fdcaa; --ws-green-fill: #16784d; --ws-green-fill-hover: #1a8a59; --ws-green-tint: #173a2b;
+  --ws-amber: #f0a33a; --ws-amber-ink: #f3c47a; --ws-amber-tint: #3b2f1a;
+  --ws-blue: #6fa3f8; --ws-blue-ink: #9fc0fb; --ws-blue-tint: #1d2c47;
+  --ws-red: #ec7070; --ws-red-ink: #f5a3a3; --ws-red-fill: #c43c3c; --ws-red-tint: #3f2327;
+  --ws-violet-ink: #c3b5fb; --ws-violet-tint: #2a2346;
+  --ws-rose-ink: #f5a8c6; --ws-rose-tint: #3d2130;
+  --c-bg: #15191e;
+  --c-bg-soft: #262d36;
+  --c-surface: #1d232a;
+  --c-ink: #e7ebf0;
+  --c-ink-2: #c3cad4;
+  --c-muted: #9ea8b6;
+  --c-faint: #9ea8b6;
+  --c-line: #2a323b;
+  --c-line-2: #232a32;
+  --c-accent: #5ccfc6;
+  --c-accent-deep: #98e3dc;
+  --c-caries: #f59b9b;
+  --c-crown: #f3bd6a;
+}
+
+/* --- the room ------------------------------------------------------------------ */
+.ws-backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--c-bg); pointer-events: none; }
+.ws-backdrop img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 45%;
+  /* Softened, and scaled so the blur's soft edge sits off screen. */
+  filter: blur(3px) saturate(1.02); transform: scale(1.04);
+}
+.ws-backdrop::after { content: ""; position: absolute; inset: 0; background: var(--ws-veil); }
+
+/* --- cards ------------------------------------------------------------------------ */
+/* .ws-glass is the card (the name is older than the soft template): white, rounded, a hairline,
+   a whisper of shadow, the white drawn on ::before (see the top of this section). */
+.ws-glass { position: relative; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); box-shadow: var(--ws-shadow); }
+.ws-glass::before {
+  content: ""; position: absolute; inset: -1px; z-index: -1; pointer-events: none; border-radius: inherit;
+  background: var(--ws-card);
+  -webkit-backdrop-filter: blur(14px) saturate(1.05);
+  backdrop-filter: blur(14px) saturate(1.05);
+}
+
+.ws-skip { position: absolute; left: 0.75rem; top: -5rem; z-index: 90; padding: 0.75rem 1rem; border-radius: var(--ws-r-ctl); background: var(--ws-teal-fill); color: #fff; font-weight: 600; }
+.ws-skip:focus { top: 0.75rem; }
+
+/* --- the frame: sidebar | content ------------------------------------------------ */
+.ws-app { display: grid; grid-template-columns: var(--ws-side-w) minmax(0, 1fr); min-height: 100dvh; }
+.ws-col { min-width: 0; }
+
+/* The sidebar is a column as tall as the page. Its top (the clinic and the tabs) stays in view
+   while the page scrolls; its foot (the person, My page, the plan, Sign out) sits at the end of
+   the column — at the bottom of a short page, after the content of a long one — never fixed to
+   the screen. The top is sticky inside .ws-side-scroll, which ends where the foot begins, so the
+   foot pushes it up rather than slide under it. */
+.ws-side {
+  position: relative; z-index: 45; display: flex; flex-direction: column; min-width: 0;
+  background: var(--ws-side-bg); border-right: 1px solid var(--ws-hair); color: var(--c-ink);
+}
+.ws-side-scroll { flex: 1 0 auto; }
+.ws-side-top { position: sticky; top: 0; display: grid; gap: 0.875rem; padding: 1.125rem 0.875rem 1rem; }
+.ws-side-brand { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-height: 44px; padding-left: 0.375rem; }
+.ws-side .ws-side-close { display: none; }
+.ws-side-top > .ws-menu { width: 100%; }
+
+.ws-mark { display: inline-flex; align-items: center; gap: 0.6rem; min-height: 44px; padding-right: 0.5rem; font-size: 17px; font-weight: 700; letter-spacing: -0.02em; color: var(--c-ink); }
+.ws-mark-sq { width: 28px; height: 28px; flex: none; }
+.ws-mark-sq rect { fill: var(--ws-teal-fill); rx: 9px; }
+.ws-mark-sq path { fill: #fff; }
+
+/* The clinic, and the branch switcher when there is more than one branch. */
+.ws-branch { display: flex; align-items: center; gap: 0.625rem; min-width: 0; min-height: 44px; text-align: left; color: var(--c-ink); }
+.ws-side .ws-branch {
+  width: 100%; min-height: 58px; padding: 0.5rem 0.625rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r);
+  background: var(--c-surface);
+}
+button.ws-branch { cursor: pointer; transition: border-color 160ms ease, background-color 160ms ease; }
+button.ws-branch:hover, button.ws-branch[aria-expanded="true"] { border-color: var(--ws-field-line-hover); }
+.ws-branch-badge {
+  display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; flex: none; border-radius: var(--ws-r-ctl);
+  background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-size: 13.5px; font-weight: 700; letter-spacing: 0.02em;
+}
+.ws-branch-face { display: grid; flex: 1; min-width: 0; }
+.ws-branch-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 14.5px; font-weight: 600; line-height: 1.3; }
+.ws-branch-area { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; line-height: 1.35; color: var(--c-muted); }
+.ws-chev { flex: none; color: var(--c-muted); transition: transform 180ms ease; }
+[aria-expanded="true"] > .ws-chev { transform: rotate(180deg); }
+
+/* The three tabs. */
+.ws-nav { display: grid; gap: 0.25rem; margin-top: 0.25rem; }
+.ws-nav-item {
+  display: flex; align-items: center; gap: 0.75rem; min-height: 48px; padding: 0 0.875rem; border-radius: var(--ws-r-pill);
+  font-size: 15px; font-weight: 500; line-height: 1.2; color: var(--c-ink-2);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+.ws-nav-item .ws-icon { flex: none; color: var(--c-muted); transition: color 180ms ease; }
+.ws-nav-item:hover { background: var(--ws-hover); color: var(--c-ink); }
+.ws-nav-item:hover .ws-icon { color: var(--c-ink-2); }
+.ws-nav-item[aria-current="page"] { background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-weight: 600; }
+.ws-nav-item[aria-current="page"] .ws-icon { color: var(--ws-teal-ink); }
+.ws-nav-short { display: none; }
+
+/* The foot: who is signed in, My page, the plan, Sign out. */
+.ws-side-foot { display: grid; gap: 0.25rem; padding: 0.875rem 0.875rem 1.125rem; border-top: 1px solid var(--ws-hair); }
+.ws-me { display: flex; align-items: center; gap: 0.75rem; min-width: 0; padding: 0.375rem 0.5rem 0.625rem; }
+.ws-me-text { display: grid; justify-items: start; gap: 0.2rem; min-width: 0; }
+.ws-me-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-width: 100%; overflow: hidden; overflow-wrap: anywhere; font-size: 14.5px; font-weight: 600; line-height: 1.3; }
+.ws-side-link {
+  display: flex; align-items: center; gap: 0.75rem; width: 100%; min-height: 44px; padding: 0 0.875rem; border-radius: var(--ws-r-pill);
+  font-size: 14.5px; font-weight: 500; line-height: 1.25; text-align: left; color: var(--c-ink-2); cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.ws-side-link .ws-icon { flex: none; color: var(--c-muted); }
+.ws-side-link:hover { background: var(--ws-hover); color: var(--c-ink); }
+.ws-side-link[aria-current="page"] { background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-weight: 600; }
+.ws-side-link[aria-current="page"] .ws-icon { color: var(--ws-teal-ink); }
+.ws-side-link[hidden] { display: none; }
+.ws-side-short { display: none; }
+/* Sign out holds only its word: the sign-out guard (guardSignOut, src/lib/offline-queue.ts) writes
+   "Signing out…" into the button with textContent and puts the word back after, so the icon is drawn
+   here and stays through both. The logout line icon (icons.ts) as a mask, in the icons' muted slate. */
+.ws-signout .ws-side-link::before {
+  content: ""; width: 18px; height: 18px; flex: none; background: var(--c-muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.5 20.5H6A1.5 1.5 0 0 1 4.5 19V5A1.5 1.5 0 0 1 6 3.5h3.5'/%3E%3Cpath d='M15.5 16.5L20 12l-4.5-4.5M20 12H9.5'/%3E%3C/svg%3E") center / 18px 18px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.5 20.5H6A1.5 1.5 0 0 1 4.5 19V5A1.5 1.5 0 0 1 6 3.5h3.5'/%3E%3Cpath d='M15.5 16.5L20 12l-4.5-4.5M20 12H9.5'/%3E%3C/svg%3E") center / 18px 18px no-repeat;
+}
+@media (forced-colors: active) { .ws-signout .ws-side-link::before { background: ButtonText; forced-color-adjust: none; } }
+
+/* The plan line (BillingNotice): a small tinted callout — blue, or soft red when an invoice is
+   overdue. Operator pages put a plain <p class="ws-plan"> in a menu; it gets the same box. */
+.ws-plan { margin: 0.375rem 0; padding: 0.75rem 0.875rem; border-radius: var(--ws-r); background: var(--ws-blue-tint); color: var(--c-ink); font-size: 13.5px; line-height: 1.45; }
+.ws-plan[data-plan-alert] { background: var(--ws-red-tint); }
+div.ws-plan { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.2rem 0.625rem; align-items: start; }
+.ws-plan-icon { margin-top: 1px; color: var(--ws-blue-ink); }
+.ws-plan[data-plan-alert] .ws-plan-icon { color: var(--ws-red-ink); }
+.ws-plan-text { grid-column: 2; }
+.ws-plan-go {
+  grid-column: 2; justify-self: start; display: inline-flex; align-items: center; gap: 0.35rem; min-height: 44px; margin: -0.5rem 0 -0.625rem;
+  font-weight: 600; color: var(--ws-blue-ink); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px;
+  transition: text-decoration-color 160ms ease;
+}
+.ws-plan[data-plan-alert] .ws-plan-go { color: var(--ws-red-ink); }
+.ws-plan-go:hover { text-decoration-color: currentColor; }
+.ws-plan-go-icon, .ws-plan-go-short { display: none; }
+
+/* --- the top of the content ----------------------------------------------------------- */
+/* Sticky at the top of the content column: the page's title, search, the inbox and + New. Its
+   height is what pages measure ([data-ws-top]) to keep their own sticky parts under it. */
+.ws-top { position: sticky; top: 0; z-index: 40; color: var(--c-ink); }
+.ws-top::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--ws-bar-bg); border-bottom: 1px solid var(--ws-hair);
+  -webkit-backdrop-filter: blur(16px) saturate(1.05);
+  backdrop-filter: blur(16px) saturate(1.05);
+}
+.ws-bar-row {
+  position: relative; display: flex; align-items: center; gap: 0.75rem;
+  max-width: calc(var(--ws-max) + 3rem); min-height: 72px; margin-inline: auto; padding: 0.75rem 1.5rem;
+}
+.ws-bar-where { display: grid; flex: 1 1 auto; min-width: 0; }
+.ws-bar-clinic { display: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; font-weight: 500; line-height: 1.35; color: var(--c-muted); }
+.ws-bar-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -0.015em; color: var(--c-ink); }
+/* The page draws its own big title: the bar's steps aside, so nothing is said twice. */
+.ws:has(.ws-main h1.ws-title) .ws-bar-title:not(.ws-bar-h1) { display: none; }
+.ws-phone-title { display: none; }
+.ws-bar .ws-side-open { display: none; }
+.ws-right { display: flex; align-items: center; justify-content: flex-end; gap: 0.625rem; min-width: 0; margin-left: auto; }
+.ws-tools { display: flex; align-items: center; gap: 0.5rem; }
+
+/* --- buttons ---------------------------------------------------------------------------- */
+/* One main action per screen, in teal (green when it takes money in); white with a hairline for
+   the rest. 44px tall, rounded. The site's .btn / .btn-primary / .btn-quiet look the same inside
+   the workspace (below), so pages that use them stop showing black buttons. */
+.ws-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 44px; padding: 0 1rem;
+  border: 1px solid transparent; border-radius: var(--ws-r-ctl); font-size: 15px; font-weight: 600; line-height: 1.2; white-space: nowrap;
+  text-decoration: none; cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+.ws-btn-primary { background: var(--ws-teal-fill); color: #fff; box-shadow: var(--ws-shadow); }
+.ws-btn-primary:hover, .ws-btn-primary[aria-expanded="true"] { background: var(--ws-teal-fill-hover); }
+.ws-btn-success { background: var(--ws-green-fill); color: #fff; box-shadow: var(--ws-shadow); }
+.ws-btn-success:hover { background: var(--ws-green-fill-hover); }
+.ws-btn-quiet { background: var(--c-surface); color: var(--c-ink); border-color: var(--ws-field-line); box-shadow: var(--ws-shadow); }
+.ws-btn-quiet:hover, .ws-btn-quiet[aria-expanded="true"] { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); }
+.ws-btn-danger { background: var(--c-surface); color: var(--ws-red-ink); border-color: color-mix(in srgb, var(--ws-red) 45%, transparent); }
+.ws-btn-danger:hover { background: var(--ws-red-tint); }
+.ws-btn:disabled, .ws-btn[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+
+.ws .btn { gap: 0.5rem; min-height: 44px; padding: 0.625rem 1.125rem; border-radius: var(--ws-r-ctl); font-family: inherit; font-size: 15px; font-weight: 600; letter-spacing: 0; line-height: 1.2; }
+.ws .btn-primary { background: var(--ws-teal-fill); border-color: transparent; color: #fff; box-shadow: var(--ws-shadow); }
+.ws .btn-primary:hover { background: var(--ws-teal-fill-hover); color: #fff; }
+.ws .btn-quiet { background: var(--c-surface); border-color: var(--ws-field-line); color: var(--c-ink); box-shadow: var(--ws-shadow); }
+.ws .btn-quiet:hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); }
+.ws .ws-btn-sm { min-height: 44px; padding: 0 0.875rem; font-size: 14.5px; }
+
+/* An icon button, 44px. */
+.ws-tool {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  min-width: 44px; min-height: 44px; padding: 0 0.625rem; border: 1px solid transparent; border-radius: var(--ws-r-ctl);
+  font-size: 15px; font-weight: 600; color: var(--c-ink-2); cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.ws-tool:hover, .ws-tool[aria-expanded="true"] { background: var(--ws-hover); color: var(--c-ink); }
+/* In the top bar the icon buttons stand like the search field: white, a hairline. */
+.ws-bar .ws-tools .ws-tool { border-color: var(--ws-field-line); background: var(--ws-field); box-shadow: var(--ws-shadow); }
+.ws-bar .ws-tools .ws-tool:hover, .ws-bar .ws-tools .ws-tool[aria-expanded="true"] { border-color: var(--ws-field-line-hover); background: var(--ws-subtle); }
+/* + New is quiet (white, a hairline) with a teal plus: the one teal button on a screen is the
+   page's own main action. */
+.ws-new { padding-inline: 0.75rem 1rem; }
+.ws-new .ws-icon { color: var(--ws-teal-ink); }
+.ws-search-toggle { display: none; }
+.ws-bar .ws-tools .ws-search-toggle { display: none; }
+
+.ws-count {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 1.3rem; height: 1.3rem; padding: 0 0.375rem; border-radius: var(--ws-r-pill);
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; background: var(--ws-red-fill); color: #fff;
+}
+.ws-tool .ws-count { position: absolute; top: -7px; right: -7px; box-shadow: 0 0 0 2px var(--c-surface); }
+.ws-count[data-zero] { background: var(--c-bg-soft); color: var(--c-muted); }
+
+/* --- people ------------------------------------------------------------------------------ */
+.ws-avatar {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; border-radius: var(--ws-r-pill);
+  background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-size: 13px; font-weight: 600; letter-spacing: 0.02em; line-height: 1; user-select: none;
+}
+.ws-avatar-sm { width: 28px; height: 28px; font-size: 12px; }
+.ws-avatar-lg { width: 48px; height: 48px; font-size: 16px; }
+.ws-avatar[data-tint="blue"] { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
+.ws-avatar[data-tint="green"] { background: var(--ws-green-tint); color: var(--ws-green-ink); }
+.ws-avatar[data-tint="amber"] { background: var(--ws-amber-tint); color: var(--ws-amber-ink); }
+.ws-avatar[data-tint="violet"] { background: var(--ws-violet-tint); color: var(--ws-violet-ink); }
+.ws-avatar[data-tint="rose"] { background: var(--ws-rose-tint); color: var(--ws-rose-ink); }
+/* The operator's person button (Admin.astro) is initials too. */
+.ws-person { padding-inline: 0.25rem; }
+.ws-initials {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex: none; border-radius: var(--ws-r-pill);
+  background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+}
+.ws-plan-mark { display: none; }
+.ws-menu-name { font-size: 15px; font-weight: 600; line-height: 1.35; }
+
+/* A rounded pill: a role, a status, a fact. Tints: .ws-tint-teal · -green · -amber · -blue · -red · -slate. */
+.ws-pill {
+  display: inline-flex; align-items: center; gap: 0.3rem; min-height: 22px; padding: 0.05rem 0.55rem; border-radius: var(--ws-r-pill);
+  background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-size: 12.5px; font-weight: 600; line-height: 1.3; white-space: nowrap;
+}
+.ws-tint-teal { background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+.ws-tint-green { background: var(--ws-green-tint); color: var(--ws-green-ink); }
+.ws-tint-amber { background: var(--ws-amber-tint); color: var(--ws-amber-ink); }
+.ws-tint-blue { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
+.ws-tint-red { background: var(--ws-red-tint); color: var(--ws-red-ink); }
+.ws-tint-slate { background: var(--c-bg-soft); color: var(--c-ink-2); }
+.ws-text-green { color: var(--ws-green-ink); }
+
+/* A callout: a tinted box with an icon, in plain words. data-tone: info (blue, the default) ·
+   warn (amber, needs attention) · alert (red, blocked) · success (green, done). */
+.ws-callout {
+  display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.875rem 1rem; border-radius: var(--ws-r);
+  border: 1px solid color-mix(in srgb, var(--ws-blue) 22%, transparent); background: var(--ws-blue-tint); color: var(--c-ink);
+  font-size: 15px; line-height: 1.5;
+}
+.ws-callout > .ws-icon { flex: none; margin-top: 2px; color: var(--ws-blue-ink); }
+.ws-callout[data-tone="warn"] { border-color: color-mix(in srgb, var(--ws-amber) 28%, transparent); background: var(--ws-amber-tint); }
+.ws-callout[data-tone="warn"] > .ws-icon { color: var(--ws-amber-ink); }
+.ws-callout[data-tone="alert"] { border-color: color-mix(in srgb, var(--ws-red) 25%, transparent); background: var(--ws-red-tint); }
+.ws-callout[data-tone="alert"] > .ws-icon { color: var(--ws-red-ink); }
+.ws-callout[data-tone="success"] { border-color: color-mix(in srgb, var(--ws-green) 25%, transparent); background: var(--ws-green-tint); }
+.ws-callout[data-tone="success"] > .ws-icon { color: var(--ws-green-ink); }
+
+/* --- menus -------------------------------------------------------------------------------- */
+.ws-menu { position: relative; }
+.ws-menu-pop {
+  position: absolute; top: calc(100% + 0.5rem); z-index: 50; min-width: 15rem; max-width: min(24rem, calc(100vw - 1rem));
+  max-height: calc(100dvh - 6rem); overflow-y: auto; padding: 0.375rem;
+  border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-glass-strong); color: var(--c-ink);
+  box-shadow: var(--ws-shadow-pop);
+  animation: ws-pop 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ws-menu-pop[hidden] { display: none; }
+.ws-menu-pop[data-align="right"] { right: 0; }
+.ws-menu-pop[data-align="left"] { left: 0; }
+.ws-menu-wide { min-width: 22rem; }
+.ws-side .ws-menu-pop { left: 0; right: 0; min-width: 0; }
+.ws-menu-head { padding: 0.5rem 0.75rem 0.375rem; font-size: 13px; font-weight: 600; line-height: 1.4; color: var(--c-muted); }
+.ws-menu-sep { height: 1px; margin: 0.375rem 0.25rem; background: var(--ws-hair); }
+.ws-menu-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; width: 100%; min-height: 44px;
+  padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 15px; font-weight: 500; line-height: 1.3; text-align: left; color: var(--c-ink); cursor: pointer;
+  transition: background-color 140ms ease;
+}
+.ws-menu-item:hover { background: var(--ws-hover); }
+.ws-menu-item[hidden] { display: none; }
+.ws-menu-item[aria-current="page"] { font-weight: 600; color: var(--ws-teal-ink); }
+.ws-menu-item[aria-current="page"]::after { content: ""; width: 8px; height: 8px; flex: none; border-radius: var(--ws-r-pill); background: currentColor; }
+.ws-menu-words { flex: 1; min-width: 0; }
+.ws-menu-icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex: none; border-radius: var(--ws-r-ctl);
+  background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+}
+.ws-menu-icon[data-tint="green"] { background: var(--ws-green-tint); color: var(--ws-green-ink); }
+.ws-menu-icon[data-tint="amber"] { background: var(--ws-amber-tint); color: var(--ws-amber-ink); }
+.ws-menu-icon[data-tint="blue"] { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
+.ws-menu-icon[data-tint="red"] { background: var(--ws-red-tint); color: var(--ws-red-ink); }
+.ws-menu-hint { display: block; margin-top: 1px; font-size: 13px; font-weight: 400; line-height: 1.4; color: var(--c-muted); }
+.ws-menu-key { font-size: 12.5px; font-weight: 500; color: var(--c-muted); }
+
+/* --- search ----------------------------------------------------------------------------- */
+.ws-search {
+  /* It gives way first when the bar is tight (20rem down to 11rem); the input's own width is 0
+     so it never holds the box open. */
+  position: relative; display: flex; align-items: center; flex: 0 1 20rem; width: 20rem; min-width: 11rem; min-height: 44px;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-ctl); background: var(--ws-field); color: var(--c-ink); box-shadow: var(--ws-shadow);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.ws-search:hover { border-color: var(--ws-field-line-hover); }
+.ws-search:focus-within { border-color: var(--ws-teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws-teal) 24%, transparent); }
+.ws-search-icon { flex: none; margin-left: 0.75rem; color: var(--c-muted); }
+.ws-search-input {
+  flex: 1; width: 0; min-width: 0; height: 42px; padding: 0 0.5rem 0 0.625rem; border: 0; border-radius: 0; background: transparent;
+  font-size: 16px; color: var(--c-ink); -webkit-appearance: none; appearance: none;
+}
+.ws-search-input:focus, .ws-search-input:focus-visible { outline: none; }
+.ws-search-input::placeholder { color: var(--c-muted); opacity: 1; }
+.ws-search-input::-webkit-search-cancel-button, .ws-search-input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
+.ws-kbd {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; min-width: 1.5rem; height: 1.5rem; margin-right: 0.625rem;
+  border: 1px solid var(--ws-hair-strong); border-radius: 6px; background: var(--ws-subtle); font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--c-muted);
+}
+.ws-search:focus-within .ws-kbd { display: none; }
+.ws-results {
+  position: absolute; top: calc(100% + 0.5rem); right: -1px; z-index: 50; width: max(calc(100% + 2px), 26rem); max-width: calc(100vw - 1rem);
+  max-height: min(34rem, calc(100dvh - 6rem)); overflow-y: auto; padding: 0.375rem;
+  border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-glass-strong); color: var(--c-ink); box-shadow: var(--ws-shadow-pop);
+  animation: ws-pop 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ws-results[hidden] { display: none; }
+.ws-results-head { padding: 0.5rem 0.75rem 0.25rem; font-weight: 600; }
+.ws-results-note { padding: 0.625rem 0.75rem; font-size: 14px; line-height: 1.45; color: var(--c-ink-2); }
+.ws-results-note a { font-weight: 600; color: var(--ws-teal-ink); text-decoration: underline; text-underline-offset: 4px; }
+.ws-result {
+  display: flex; flex-direction: column; justify-content: center; gap: 0.1rem; min-height: 44px; padding: 0.5rem 0.75rem;
+  border-radius: 8px; color: var(--c-ink); transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+.ws-result:hover, .ws-result[aria-selected="true"] { background: var(--ws-hover); }
+.ws-result[aria-selected="true"] { box-shadow: inset 3px 0 0 var(--ws-teal); }
+.ws-result-main { font-size: 15px; font-weight: 600; line-height: 1.3; }
+.ws-result-sub { font-size: 13px; line-height: 1.35; color: var(--c-muted); font-variant-numeric: tabular-nums; }
+
+/* --- the phone's tab row (hidden from 768px: the sidebar has the tabs) ----------------------- */
+.ws-tabrow { display: none; }
+
+/* --- under the top bar -------------------------------------------------------------------- */
+.ws-devline {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  margin: 1rem max(1.5rem, calc((100% - var(--ws-max)) / 2)) 0; padding: 0.5rem 0.875rem; border-radius: var(--ws-r);
+  border: 1px solid color-mix(in srgb, var(--ws-amber) 30%, transparent); background: var(--ws-amber-tint);
+  text-align: center; font-size: 13.5px; line-height: 1.4; color: var(--c-ink);
+}
+.ws-devline > .ws-icon { flex: none; color: var(--ws-amber-ink); }
+.ws-main { max-width: calc(var(--ws-max) + 3rem); margin-inline: auto; padding: 1.5rem 1.5rem 4rem; }
+.ws-main-panes { display: grid; gap: 1rem; align-content: start; }
+.ws-sheet { padding: 1.75rem 2rem 2.25rem; }
+.ws-title { font-size: 24px; font-weight: 600; line-height: 1.25; letter-spacing: -0.015em; color: var(--c-ink); }
+.ws-lede { max-width: 62ch; margin-top: 0.375rem; font-size: 15px; line-height: 1.55; color: var(--c-ink-2); }
+
+/* --- panes -------------------------------------------------------------------------------- */
+.ws-pane { min-width: 0; color: var(--c-ink); }
+.ws-pad-normal { padding: 1.5rem; }
+.ws-pad-tight { padding: 1rem 1.25rem; }
+.ws-pad-none { padding: 0; }
+.ws-pane-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1rem; margin-bottom: 1.125rem; }
+.ws-pad-none > .ws-pane-head { margin: 0; padding: 1.125rem 1.5rem 1rem; border-bottom: 1px solid var(--ws-hair); }
+.ws-pane-heading { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+.ws-pane-icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex: none; border-radius: var(--ws-r-ctl);
+  background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+}
+.ws-pane-meta { margin-bottom: 0.125rem; }
+.ws-pane-title { font-size: 17px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+.ws-pane-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+
+/* --- summary numbers ------------------------------------------------------------------------ */
+.ws-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; }
+/* A row of tiles is not a card itself (from before the soft template pages wrote ws-tiles ws-glass). */
+.ws-tiles.ws-glass { border: 0; border-radius: 0; box-shadow: none; }
+.ws-tiles.ws-glass::before { content: none; }
+.ws-tile {
+  position: relative; display: flex; flex-direction: column; gap: 0.375rem; min-width: 0; min-height: 7rem; padding: 1.125rem 1.25rem;
+  border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-card); box-shadow: var(--ws-shadow); color: var(--c-ink);
+  -webkit-backdrop-filter: blur(14px) saturate(1.05);
+  backdrop-filter: blur(14px) saturate(1.05);
+}
+.ws-pane .ws-tile { background: var(--ws-subtle); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.ws-tile-has-icon { padding-right: 4rem; }
+.ws-tile-icon {
+  position: absolute; top: 1rem; right: 1rem; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px;
+  border-radius: var(--ws-r-ctl); background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+}
+.ws-tile[data-tone="success"] .ws-tile-icon { background: var(--ws-green-tint); color: var(--ws-green-ink); }
+.ws-tile[data-tone="warn"] .ws-tile-icon { background: var(--ws-amber-tint); color: var(--ws-amber-ink); }
+.ws-tile[data-tone="alert"] .ws-tile-icon { background: var(--ws-red-tint); color: var(--ws-red-ink); }
+.ws-tile-value { margin-top: 0.125rem; font-size: clamp(1.5rem, 1.2rem + 0.7vw, 1.875rem); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.ws-tile-note { font-size: 13px; line-height: 1.4; color: var(--c-muted); }
+.ws-tile[data-tint] { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.ws-tile[data-tint] .meta, .ws-tile[data-tint] .ws-tile-note { color: var(--c-ink-2); }
+.ws-tile[data-tint] .ws-tile-icon { background: var(--c-surface); }
+.ws-tile[data-tint="teal"] { background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 22%, transparent); }
+.ws-tile[data-tint="green"] { background: var(--ws-green-tint); border-color: color-mix(in srgb, var(--ws-green) 22%, transparent); }
+.ws-tile[data-tint="amber"] { background: var(--ws-amber-tint); border-color: color-mix(in srgb, var(--ws-amber) 25%, transparent); }
+.ws-tile[data-tint="blue"] { background: var(--ws-blue-tint); border-color: color-mix(in srgb, var(--ws-blue) 22%, transparent); }
+.ws-tile[data-tint="red"] { background: var(--ws-red-tint); border-color: color-mix(in srgb, var(--ws-red) 22%, transparent); }
+.ws-tile-link { transition: border-color 160ms ease, box-shadow 160ms ease; }
+.ws-tile-link:hover { border-color: var(--ws-field-line-hover); box-shadow: var(--ws-shadow-pop); }
+.ws-tile-go { position: absolute; right: 1rem; bottom: 1rem; display: inline-flex; color: var(--c-muted); transition: transform 180ms ease, color 180ms ease; }
+.ws-tile-link:hover .ws-tile-go, .ws-tile-link:focus-visible .ws-tile-go { transform: translateX(3px); color: var(--ws-teal-ink); }
+
+/* --- chips and empty lists ------------------------------------------------------------------ */
+.ws-chip {
+  display: inline-flex; align-items: center; gap: 0.375rem; min-height: 1.625rem; padding: 0.1rem 0.625rem; border-radius: var(--ws-r-pill);
+  font-size: 13px; font-weight: 600; line-height: 1.2; white-space: nowrap;
+}
+.ws-chip-dot::before { content: ""; width: 7px; height: 7px; flex: none; border-radius: var(--ws-r-pill); background: currentColor; }
+
+.ws-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem 0.875rem; min-height: 3rem; padding: 0.625rem 0; font-size: 15px; line-height: 1.5; color: var(--c-ink-2); }
+.ws-empty-icon { box-sizing: content-box; flex: none; padding: 9px; border-radius: var(--ws-r-pill); background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+.ws-empty-text { flex: 1 1 14rem; min-width: 0; }
+.ws-empty-go {
+  display: inline-flex; align-items: center; gap: 0.375rem; min-height: 44px; font-weight: 600; color: var(--ws-teal-ink);
+  text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; transition: text-decoration-color 160ms ease;
+}
+.ws-empty-go:hover { text-decoration-color: currentColor; }
+
+/* --- in-page switches (<Tabs>) ---------------------------------------------------------------- */
+/* A small row of soft pills, the chosen one tinted teal; .ws-seg-line: words with a teal line
+   under the chosen one, for switching inside a card. */
+.ws-seg { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; min-width: 0; max-width: 100%; }
+.ws-seg-item {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-width: 0; min-height: 44px; padding: 0 1rem;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-pill); background: var(--c-surface);
+  font-size: 14.5px; font-weight: 500; line-height: 1.15; white-space: nowrap; color: var(--c-ink-2); cursor: pointer;
+  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
+}
+.ws-seg-item:hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); color: var(--c-ink); }
+.ws-seg-item[aria-current="page"], .ws-seg-item[aria-selected="true"] {
+  background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent); color: var(--ws-teal-ink); font-weight: 600;
+}
+.ws-seg-count {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 1.375rem; height: 1.375rem; padding: 0 0.375rem; border-radius: var(--ws-r-pill);
+  background: var(--c-bg-soft); color: var(--c-ink-2); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.ws-seg-item[aria-current="page"] .ws-seg-count, .ws-seg-item[aria-selected="true"] .ws-seg-count { background: var(--c-surface); color: var(--ws-teal-ink); }
+.ws-seg-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Full width: one segmented control, the choices sharing a pale track and the row's width. When
+   the words do not fit on one row the choices go on to a second row inside the same track — a
+   word is never cut short ("Tod…"). Each choice starts at its words' own width (flex-basis auto),
+   so the row breaks before anything shrinks. */
+.ws-seg-full { display: flex; flex-wrap: wrap; gap: 2px; width: 100%; padding: 3px; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
+.ws-seg-full .ws-seg-item { flex: 1 1 auto; padding-inline: 0.625rem; border-color: transparent; border-radius: 9px; background: transparent; }
+.ws-seg-full .ws-seg-count { min-width: 0; height: auto; padding: 0; background: none; color: inherit; font-weight: 500; opacity: 0.85; }
+.ws-seg-full .ws-seg-item:hover { background: var(--ws-hover); border-color: transparent; }
+.ws-seg-full .ws-seg-item[aria-current="page"], .ws-seg-full .ws-seg-item[aria-selected="true"] { background: var(--c-surface); border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent); box-shadow: var(--ws-shadow); }
+.ws-seg-item > span:not(.ws-seg-count) { overflow: hidden; text-overflow: ellipsis; }
+.ws-seg-line { gap: 0.25rem; border-bottom: 1px solid var(--ws-hair); }
+.ws-seg-line .ws-seg-item {
+  margin-bottom: -1px; padding: 0 0.75rem; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none;
+}
+.ws-seg-line .ws-seg-item:hover { background: none; color: var(--c-ink); border-bottom-color: var(--ws-hair-strong); }
+.ws-seg-line .ws-seg-item[aria-current="page"], .ws-seg-line .ws-seg-item[aria-selected="true"] { background: none; border-bottom-color: var(--ws-teal); }
+.ws-tab-short { display: none; }
+
+/* --- lists: a table that becomes a list below 1024px ------------------------------------------ */
+/* Columns from 1024px up; below that each row is a block with its cells stacked and labelled
+   (<span class="meta ws-cell-label">). A table that must keep its columns everywhere goes in
+   .ws-table-wrap instead, which scrolls sideways inside its card, never the page. */
+.ws-table { width: 100%; border-collapse: collapse; text-align: left; }
+.ws-table th { padding: 0.625rem 1.25rem; border-bottom: 1px solid var(--ws-hair); background: var(--ws-subtle); font-weight: 500; }
+.ws-table td { padding: 0.875rem 1.25rem; vertical-align: top; border-bottom: 1px solid var(--ws-hair); }
+.ws-table tbody tr:last-child td { border-bottom: 0; }
+.ws-cell-label { display: none; }
+.ws-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+/* A table that cannot fit its card at this width scrolls sideways inside itself, never the page
+   (shell.ts measures it and sets data-ws-overflow). */
+.ws-table[data-ws-overflow] { position: relative; display: block; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+/* …and says so: a line above it ("Scroll sideways to see every column"), which holds still while the
+   table moves, and the edge where more columns wait fades out (shell.ts sets data-ws-more to
+   right · left · both as it scrolls). The line is decoration for sighted people only (the "/ ''"
+   alternative keeps it out of screen readers, which read every column anyway). */
+.ws-table[data-ws-overflow]::before {
+  content: "Scroll sideways to see every column \2192"; content: "Scroll sideways to see every column \2192" / "";
+  position: sticky; left: 0; display: block; width: max-content; max-width: 100%; padding: 0.5rem 1.25rem 0.375rem;
+  font-size: 13px; font-weight: 500; line-height: 1.4; color: var(--c-muted);
+}
+.ws-table[data-ws-more="right"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 4rem), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 4rem), transparent); }
+.ws-table[data-ws-more="left"] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 4rem), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 4rem), transparent); }
+.ws-table[data-ws-more="both"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 4rem, #000 calc(100% - 4rem), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 4rem, #000 calc(100% - 4rem), transparent);
+}
+/* Once it has been scrolled the line has done its job (and would sit in the left fade). */
+.ws-table:is([data-ws-more="left"], [data-ws-more="both"])::before { visibility: hidden; }
+.ws-table-wrap > table { width: 100%; border-collapse: collapse; text-align: left; }
+@media (max-width: 1023px) {
+  .ws-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .ws-table, .ws-table tbody, .ws-table tr, .ws-table td { display: block; }
+  .ws-table tr { padding: 0.875rem 1.5rem; border-bottom: 1px solid var(--ws-hair); }
+  .ws-table tbody tr:last-child { border-bottom: 0; }
+  .ws-table td { padding: 0.15rem 0; border: 0; }
+  .ws-cell-label { display: block; margin-top: 0.375rem; }
+}
+
+/* --- the side panel: a white rounded sheet from the right --------------------------------------- */
+.ws-panel {
+  position: fixed; inset: 0.75rem 0.75rem 0.75rem auto; width: min(30rem, calc(100vw - 1.5rem)); max-width: none;
+  height: calc(100dvh - 1.5rem); max-height: none; margin: 0; padding: 0; overflow: hidden;
+  border: 1px solid var(--ws-hair); border-radius: var(--ws-r-lg); color: var(--c-ink);
+  background: var(--ws-glass-strong); box-shadow: var(--ws-shadow-pop);
+}
+.ws-panel-wide { width: min(40rem, calc(100vw - 1.5rem)); }
+.ws-panel::backdrop { background: var(--ws-scrim, rgb(16 24 40 / 0.32)); }
+.ws-panel[open] { animation: ws-panel-in 320ms cubic-bezier(0.22, 1, 0.36, 1); }
+.ws-panel[open]::backdrop { animation: ws-fade 300ms ease; }
+.ws-panel[data-closing] { animation: ws-panel-out 190ms cubic-bezier(0.4, 0, 1, 1) forwards; }
+.ws-panel[data-closing]::backdrop { animation: ws-fade-out 190ms ease forwards; }
+.ws-panel-inner { display: flex; flex-direction: column; height: 100%; overflow-y: auto; overscroll-behavior: contain; }
+.ws-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.125rem 1rem 1rem 1.5rem; border-bottom: 1px solid var(--ws-hair); }
+.ws-panel-title { margin-top: 0.125rem; font-size: 20px; font-weight: 600; line-height: 1.25; letter-spacing: -0.015em; }
+.ws-panel-title:focus { outline: none; }
+.ws-panel-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.875rem 1.5rem; border-bottom: 1px solid var(--ws-hair); }
+.ws-panel-body { padding: 1.25rem 1.5rem 2rem; }
+html:has(.ws-panel[open]) { overflow: hidden; }
+
+/* --- the site's own components, softened inside the workspace only ------------------------------ */
+/* Labels: sentence case, 13px, medium, slate — no uppercase typewriter labels in the workspace. */
+.ws .meta { font-family: inherit; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; line-height: 1.4; color: var(--c-muted); }
+.ws .sec-no { font-family: inherit; font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--c-muted); }
+.ws .field { gap: 0.375rem; }
+.ws .field > .meta:first-child { font-size: 14px; color: var(--c-ink-2); }
+.ws .field :is(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+  min-height: 46px; padding: 0.625rem 0.875rem; border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-ctl);
+  background: var(--ws-field); color: var(--c-ink); font-size: 16px; box-shadow: var(--ws-shadow);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.ws .field :is(input:not([type="checkbox"], [type="radio"]), select, textarea):hover { border-color: var(--ws-field-line-hover); }
+/* Every field's placeholder in muted slate (4.97:1 on a white field, 7.3:1 on a dark one). Tailwind's
+   default is the text colour at 50%, which fell to about 3:1 once the ink became slate. */
+.ws ::placeholder { color: var(--c-muted); opacity: 1; }
+.ws .field :is(input, select, textarea):focus { outline: none; border-color: var(--ws-teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws-teal) 24%, transparent); }
+.ws .field input:user-invalid { border-color: var(--ws-red); }
+.ws .check input { accent-color: var(--ws-teal-fill); }
+.ws .card { border-color: var(--ws-hair); border-radius: var(--ws-r); }
+.ws .tag { border-color: transparent; border-radius: var(--ws-r-pill); background: var(--c-bg-soft); color: var(--c-ink-2); }
+.ws .tag-accent { background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+.ws .status-dot { border-radius: var(--ws-r-pill); }
+.ws .tab {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 1rem; border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-pill);
+  background: var(--c-surface); font-family: inherit; font-size: 14.5px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--c-ink-2);
+}
+.ws .tab:hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); color: var(--c-ink); }
+.ws .tab[aria-selected="true"] { background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent); color: var(--ws-teal-ink); font-weight: 600; }
+.ws .chip { border-color: var(--ws-field-line); border-radius: var(--ws-r-pill); }
+.ws .chip:hover { border-color: var(--ws-field-line-hover); color: var(--c-ink); }
+.ws .chip[aria-pressed="true"] { background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent); color: var(--ws-teal-ink); }
+.ws .chip-urgent::before { border-radius: var(--ws-r-pill); }
+.ws .chip-urgent[aria-pressed="true"] { background: var(--ws-red-tint); border-color: color-mix(in srgb, var(--ws-red) 45%, transparent); color: var(--ws-red-ink); }
+.ws :is(.chip-radio, .slot-radio) > span { border-color: var(--ws-field-line); border-radius: var(--ws-r-pill); }
+.ws :is(.chip-radio, .slot-radio):hover > span { border-color: var(--ws-field-line-hover); }
+.ws :is(.chip-radio, .slot-radio) input:checked + span { background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent); color: var(--ws-teal-ink); }
+.ws .chip-radio input:checked + span .text-muted { color: var(--ws-teal-ink); }
+.ws .row-radio > span { border-color: var(--ws-field-line); border-radius: var(--ws-r-ctl); }
+.ws .row-radio:hover > span { border-color: var(--ws-field-line-hover); }
+.ws .row-radio input:checked + span { border-color: var(--ws-teal); box-shadow: inset 0 0 0 1px var(--ws-teal); background: var(--ws-teal-tint); }
+.ws table tr.is-today th::after { font-family: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+
+/* --- the operator's top bar (src/layouts/Admin.astro): brand · tabs · tools in one row ------------ */
+/* One row from 1280px (brand and tools either side of the centred tabs), two rows below that. */
+.ws-top-row {
+  position: relative; display: grid; align-items: center; column-gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-areas: "brand tabs right";
+  max-width: 1600px; min-height: 4.25rem; margin-inline: auto; padding: 0.625rem 1.5rem;
+}
+.ws-brand { grid-area: brand; display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.ws-tabs { grid-area: tabs; }
+.ws-top-row .ws-right { grid-area: right; justify-self: stretch; margin-left: 0; }
+.ws-brand .ws-branch { max-width: 17rem; padding: 0.125rem 0.625rem 0.125rem 0.75rem; border-left: 1px solid var(--ws-hair-strong); }
+@media (max-width: 1279px) {
+  .ws-top-row { grid-template-columns: minmax(0, max-content) minmax(22.5rem, 1fr); grid-template-areas: "brand right" "tabs tabs"; row-gap: 0.5rem; padding-bottom: 0.75rem; }
+  .ws-top-row .ws-tabs { justify-self: center; }
+}
+
+/* A 1024–1279px screen keeps the whole sidebar, a little narrower. */
+@media (max-width: 1279px) {
+  .ws { --ws-side-w: 220px; }
+  .ws-plan-go-arrow { display: none; }
+}
+
+/* --- tablets, 768–1023px: the sidebar narrows to an icon rail with a small word under each ------ */
+@media (max-width: 1023px) {
+  .ws { --ws-side-w: 92px; }
+  .ws-side-top { gap: 0.625rem; justify-items: center; padding: 0.875rem 0.5rem; }
+  .ws-side-brand { justify-content: center; padding-left: 0; }
+  .ws-side .ws-mark { justify-content: center; min-width: 44px; padding-right: 0; }
+  .ws-side .ws-mark-word { display: none; }
+  .ws-side-top > .ws-menu { width: auto; }
+  .ws-side .ws-branch { width: auto; min-height: 48px; padding: 0.25rem; border-color: transparent; background: none; }
+  .ws-side button.ws-branch:hover, .ws-side button.ws-branch[aria-expanded="true"] { border-color: var(--ws-field-line); }
+  .ws-side .ws-menu-pop { right: auto; min-width: 15rem; }
+  .ws-side .ws-branch-face, .ws-nav-long, .ws-me-text, .ws-side-long, .ws-side div.ws-plan .ws-plan-text, .ws-plan-go-long {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .ws-side .ws-chev { display: none; }
+  .ws-nav { width: 100%; gap: 0.375rem; }
+  .ws-nav-item { flex-direction: column; justify-content: center; gap: 0.25rem; min-height: 60px; padding: 0.5rem 0.25rem; border-radius: 14px; font-size: 12px; text-align: center; }
+  .ws-nav-short { display: block; }
+  .ws-side-foot { justify-items: stretch; padding: 0.625rem 0.5rem 0.875rem; }
+  .ws-me { justify-content: center; padding: 0.25rem 0 0.5rem; }
+  .ws-side-link { flex-direction: column; justify-content: center; gap: 0.25rem; min-height: 58px; padding: 0.375rem 0.25rem; border-radius: 14px; font-size: 12px; text-align: center; }
+  .ws-side-short { display: inline; }
+  .ws-side div.ws-plan { display: flex; justify-content: center; margin: 0; padding: 0; background: none; }
+  .ws-side .ws-plan-icon, .ws-side .ws-plan-go-arrow { display: none; }
+  .ws-side .ws-plan-go {
+    position: relative; flex-direction: column; justify-content: center; gap: 0.25rem; width: 100%; min-height: 58px; margin: 0; padding: 0.375rem 0.25rem;
+    border-radius: 14px; font-size: 12px; font-weight: 500; text-decoration: none; color: var(--c-ink-2);
+  }
+  .ws-side .ws-plan-go:hover { background: var(--ws-hover); color: var(--c-ink); }
+  .ws-side .ws-plan-go-icon { display: block; color: var(--ws-blue-ink); }
+  .ws-side .ws-plan[data-plan-alert] .ws-plan-go-icon { color: var(--ws-red-ink); }
+  .ws-side .ws-plan[data-plan-alert] .ws-plan-go::after { content: ""; position: absolute; top: 8px; right: calc(50% - 16px); width: 9px; height: 9px; border-radius: var(--ws-r-pill); background: var(--ws-red-fill); box-shadow: 0 0 0 2px var(--c-surface); }
+  .ws-plan-go-short { display: inline; }
+  .ws-bar-row { padding-inline: 1.25rem; }
+  .ws-bar-clinic { display: block; }
+  /* The field takes the room the title leaves (up to 20rem), so its placeholder is not cut short. */
+  .ws-bar-where { flex: 0 1 auto; }
+  .ws-right { flex: 1 1 auto; }
+  .ws-search { flex: 1 1 16rem; width: auto; max-width: 20rem; min-width: 10rem; }
+  .ws-main { padding: 1.25rem 1.25rem 3.5rem; }
+  .ws-devline { margin-inline: 1.25rem; }
+}
+
+/* --- phones, to 767px: a slim top bar, the tabs as a row under it; the sidebar slides in ---------- */
+@media (max-width: 767px) {
+  .ws { --ws-side-w: 0px; }
+  .ws-app { display: block; }
+  .ws-side {
+    position: fixed; inset: 0 auto 0 0; z-index: 70; width: min(300px, 86vw); height: 100dvh; overflow-y: auto; overscroll-behavior: contain;
+    border-right: 1px solid var(--ws-hair); background: var(--ws-side-solid); box-shadow: var(--ws-shadow-pop);
+    transform: translateX(-104%); visibility: hidden;
+    transition: transform 260ms cubic-bezier(0.4, 0, 1, 1), visibility 0s linear 260ms;
+  }
+  .ws-side[data-open] { transform: none; visibility: visible; transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s; }
+  .ws-side-scroll { flex: none; }
+  .ws-side-top { position: static; justify-items: stretch; gap: 0.875rem; padding: 0.75rem 0.875rem 1rem; }
+  .ws-side-brand { justify-content: space-between; padding-left: 0.375rem; }
+  .ws-side .ws-mark-word { display: inline; }
+  .ws-side-top > .ws-menu { width: 100%; }
+  .ws-side .ws-branch { width: 100%; min-height: 58px; padding: 0.5rem 0.625rem; border-color: var(--ws-hair); background: var(--c-surface); }
+  .ws-side .ws-menu-pop { right: 0; min-width: 0; }
+  .ws-side .ws-branch-face, .ws-nav-long, .ws-me-text, .ws-side-long, .ws-side div.ws-plan .ws-plan-text, .ws-plan-go-long {
+    position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: normal;
+  }
+  .ws-side .ws-branch-face { display: grid; }
+  .ws-me-text { display: grid; }
+  .ws-side .ws-chev { display: block; }
+  .ws-side .ws-side-close { display: inline-flex; }
+  .ws-nav-item { flex-direction: row; justify-content: flex-start; gap: 0.75rem; min-height: 48px; padding: 0 0.875rem; border-radius: var(--ws-r-pill); font-size: 15px; text-align: left; }
+  .ws-nav-short, .ws-side-short, .ws-plan-go-short { display: none; }
+  .ws-side-foot { padding: 0.75rem 0.875rem 1.5rem; }
+  .ws-me { justify-content: flex-start; padding: 0.375rem 0.5rem 0.625rem; }
+  .ws-side-link { flex-direction: row; justify-content: flex-start; gap: 0.75rem; min-height: 44px; padding: 0 0.875rem; border-radius: var(--ws-r-pill); font-size: 14.5px; text-align: left; }
+  .ws-side div.ws-plan { display: grid; margin: 0.375rem 0; padding: 0.75rem 0.875rem; background: var(--ws-blue-tint); }
+  .ws-side div.ws-plan[data-plan-alert] { background: var(--ws-red-tint); }
+  .ws-side .ws-plan-icon, .ws-side .ws-plan-go-arrow { display: block; }
+  .ws-side .ws-plan-go { flex-direction: row; width: auto; min-height: 44px; margin: -0.5rem 0 -0.625rem; padding: 0; border-radius: 0; font-size: inherit; font-weight: 600; color: var(--ws-blue-ink); }
+  .ws-side .ws-plan[data-plan-alert] .ws-plan-go { color: var(--ws-red-ink); }
+  .ws-side .ws-plan-go:hover { background: none; }
+  .ws-side .ws-plan-go-icon { display: none; }
+  .ws-side .ws-plan[data-plan-alert] .ws-plan-go::after { content: none; }
+  .ws-scrim { position: fixed; inset: 0; z-index: 65; background: var(--ws-scrim); animation: ws-fade 260ms ease; }
+  .ws-scrim[hidden] { display: none; }
+  html[data-ws-drawer] { overflow: hidden; }
+
+  .ws-bar-row { flex-wrap: wrap; gap: 0.375rem; min-height: 0; padding: 0.5rem 0.625rem; }
+  .ws-bar .ws-side-open { display: inline-flex; margin-left: -0.25rem; color: var(--c-ink); }
+  .ws-bar-where { flex: 1 1 0; }
+  .ws-bar-clinic {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal;
+    font-size: 15px; font-weight: 600; line-height: 1.25; color: var(--c-ink);
+  }
+  .ws-bar-title { display: none; }
+  .ws-right { display: contents; }
+  .ws-tools { gap: 0.375rem; }
+  .ws-search { order: 10; display: none; flex: 1 1 100%; width: auto; min-width: 0; max-width: none; margin-top: 0.25rem; }
+  .ws-top[data-search-open] .ws-search { display: flex; }
+  .ws-kbd { display: none; }
+  .ws-bar .ws-tools .ws-search-toggle { display: inline-flex; }
+  .ws-new { padding-inline: 0.625rem 0.75rem; gap: 0.3rem; }
+  /* Menus open full width under the bar, not off the edge of the screen. */
+  .ws-top .ws-menu { position: static; }
+  .ws-top .ws-menu-pop[data-align], .ws-top .ws-menu-wide { top: calc(100% + 0.25rem); left: 0.5rem; right: 0.5rem; min-width: 0; max-width: none; }
+  .ws-results { left: -1px; right: -1px; width: auto; }
+
+  .ws-tabrow {
+    display: flex; gap: 0.375rem; margin: 0.625rem 0.75rem 0; padding: 0.3125rem; border: 1px solid var(--ws-hair); border-radius: 14px;
+    background: var(--ws-card); box-shadow: var(--ws-shadow);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  }
+  .ws-tabrow-item {
+    display: flex; flex: 1 1 0; align-items: center; justify-content: center; gap: 0.375rem; min-width: 0; min-height: 44px; padding: 0 0.375rem;
+    border-radius: var(--ws-r-ctl); font-size: 14px; font-weight: 500; color: var(--c-ink-2); white-space: nowrap;
+    transition: background-color 180ms ease, color 180ms ease;
+  }
+  .ws-tabrow-item > span { overflow: hidden; text-overflow: ellipsis; }
+  .ws-tabrow-item .ws-icon { flex: none; color: var(--c-muted); }
+  .ws-tabrow-item:hover { background: var(--ws-hover); color: var(--c-ink); }
+  .ws-tabrow-item[aria-current="page"] { background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-weight: 600; }
+  .ws-tabrow-item[aria-current="page"] .ws-icon { color: var(--ws-teal-ink); }
+
+  .ws-phone-title { display: block; margin: 0.25rem 0.25rem 0; font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -0.015em; }
+  .ws-main { padding: 0.75rem 0.75rem 3rem; }
+  .ws-devline { margin: 0.625rem 0.75rem 0; text-align: left; justify-content: flex-start; }
+  .ws-main-panes { gap: 0.75rem; }
+  .ws-sheet { padding: 1.25rem 1rem 1.5rem; }
+  .ws-title { font-size: 22px; }
+  .ws-pad-normal { padding: 1.125rem 1rem 1.25rem; }
+  .ws-pad-none > .ws-pane-head { padding: 1rem 1rem 0.875rem; }
+  .ws-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.625rem; }
+  .ws-tile { min-height: 6rem; padding: 0.875rem 1rem; }
+  .ws-tile-has-icon { padding-right: 3.5rem; }
+  .ws-tile-icon { top: 0.75rem; right: 0.75rem; width: 32px; height: 32px; }
+  .ws-table tr { padding-inline: 1rem; }
+
+  .ws-panel, .ws-panel-wide { inset: 0; width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
+  .ws-panel-head { padding: 0.625rem 0.5rem 0.75rem 1rem; }
+  .ws-panel-actions { padding: 0.75rem 1rem; }
+  .ws-panel-body { padding: 1rem 1rem 2rem; }
+
+  /* The operator's top bar on a phone: the brand row, the tabs under it. */
+  .ws-top-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "brand tools" "tabs tabs"; column-gap: 0.25rem; row-gap: 0.4rem; padding: 0.25rem 0.5rem 0.5rem; min-height: 0; }
+  .ws-top-row .ws-right { display: contents; }
+  .ws-top-row .ws-tools { grid-area: tools; gap: 0; }
+  .ws-top-row .ws-mark { justify-content: center; min-width: 44px; padding-right: 0; }
+  .ws-top-row .ws-mark-word { display: none; }
+  .ws-top-row .ws-branch { max-width: none; padding-left: 0.5rem; border-left: 0; }
+  .ws-top-row .ws-tabs { display: flex; flex-wrap: nowrap; width: 100%; justify-self: stretch; }
+  .ws-top-row .ws-tabs .ws-seg-item { flex: 1 1 0; padding-inline: 0.5rem; }
+  .ws-top-row .ws-tab-long { display: none; }
+  .ws-top-row .ws-tab-short { display: inline; }
+  .ws-top-row .ws-menu-pop[data-align], .ws-top-row .ws-menu-wide { top: 3.25rem; }
+}
+@media (max-width: 380px) {
+  .ws-tabrow-item .ws-icon { display: none; }
+}
+
+@keyframes ws-pop { from { opacity: 0; transform: translateY(-6px) scale(0.98); } }
+@keyframes ws-panel-in { from { transform: translateX(calc(100% + 1.5rem)); } }
+@keyframes ws-panel-out { to { transform: translateX(calc(100% + 1.5rem)); } }
+@keyframes ws-fade { from { opacity: 0; } }
+@keyframes ws-fade-out { to { opacity: 0; } }
+
+@media print {
+  .ws-side, .ws-scrim, .ws-tabrow, .ws-top, .ws-backdrop, .ws-skip, .ws-devline { display: none !important; }
+  .ws-app { display: block; }
+  .ws-glass, .ws-tile { box-shadow: none; }
+}
+
+}  /* end @layer components */
+
+/* Outside the layer on purpose: the site's base rules for the body, the headings and the focus
+   ring are unlayered, so only an unlayered rule can change them — inside the workspace only. One
+   friendly sans (Inter where it is installed, the system's own UI face otherwise: no font is
+   fetched from a third party, CLAUDE.md), sentence case, rounded focus rings in teal. */
+body.ws { font-family: var(--ws-font); font-size: 15px; line-height: 1.5; }
+.ws :is(h1, h2, h3) { font-family: var(--ws-font); letter-spacing: -0.012em; line-height: 1.25; }
+.ws .font-display { font-family: var(--ws-font); }
+.ws :focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; border-radius: revert-layer; }
+/* Fields ring their whole box (a soft teal halo, in the layer above); the search field rings its
+   box, not the bare input; a side panel's title takes focus only so a screen reader starts there. */
+.ws .field :is(input, select, textarea):focus-visible, .ws-search-input:focus-visible, .ws-panel-title:focus-visible { outline: none; }

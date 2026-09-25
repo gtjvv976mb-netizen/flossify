@@ -1,0 +1,91 @@
+---
+// A new booking, at the desk: who, what, when, which chair and dentist. The
+// shell's <SidePanel>. Opened by + New → New booking (/c/<slug>/?new=booking),
+// by a free slot on the calendar (the chair or dentist and the time filled
+// in), by "New booking" on a patient, and by the New booking button.
+//
+// Very simple: the patient, the service, the day and time, the chair and the
+// dentist; the length (filled in from the service), the reason and a note are
+// folded under "More details" — opened by itself when one of them needs a word.
+//
+// The patient comes from the Dashboard's own list (every patient, already on
+// the page, so the answer is instant) and, when nothing there matches, from
+// the shell's /api/search — someone added a minute ago in another tab. A new patient is
+// a name and a mobile, as at the desk today; the full record is Add patient.
+// Saving is one POST to /api/schedule, which refuses a clash with one sentence.
+import SidePanel from '../SidePanel.astro';
+import Icon from '../Icon.astro';
+import type { Service } from './model';
+import { priceShort } from './model';
+
+// addPatient is null for someone who may not add patients here (can_edit_records): the hint is not shown.
+interface Props { chairs: number; catalog: Service[]; date: string; addPatient: string | null }
+const { chairs, catalog, date, addPatient } = Astro.props;
+---
+
+<SidePanel id="book" title="New booking" meta="Calendar">
+  <form class="bk-form" data-bk-form novalidate>
+    <p role="alert" class="ws-callout" data-tone="alert" data-bk-error hidden></p>
+
+    <fieldset class="bk-who" data-bk-lookup>
+      <legend class="bk-legend">Patient</legend>
+      <label class="bk-find">
+        <Icon name="search" class="bk-find-icon" />
+        <span class="sr-only">Find the patient</span>
+        <input type="search" data-bk-search autocomplete="off" spellcheck="false" placeholder="Name, chart no. or mobile" aria-describedby="bk-hint" aria-controls="bk-results" />
+      </label>
+      <ul id="bk-results" class="bk-results" data-bk-results hidden></ul>
+      <p id="bk-hint" class="bk-hint" data-bk-hint>Type two letters of a name, a chart number or a mobile.</p>
+      <label class="check bk-check"><input type="checkbox" data-bk-toggle /><span>New patient (a name and a mobile)</span></label>
+    </fieldset>
+    <div class="bk-chosen" data-bk-chosen hidden>
+      <span data-bk-chosen-face></span>
+      <p class="min-w-0 flex-1"><strong class="block font-semibold" data-bk-chosen-name></strong> <span class="text-[13.5px] text-ink-2 tabular-nums" data-bk-chosen-more></span></p>
+      <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-bk-change>Change</button>
+    </div>
+    <div class="grid gap-3" data-bk-new hidden>
+      <label class="field"><span class="meta">Name</span><input data-bk-name maxlength="80" autocomplete="off" /></label>
+      <label class="field"><span class="meta">Mobile</span><input type="tel" data-bk-phone placeholder="0917 000 0000" autocomplete="off" inputmode="tel" /></label>
+      {addPatient && <p class="bk-hint">For health history, consent and past visits, use <a href={addPatient}>Add patient</a> instead.</p>}
+    </div>
+
+    <label class="field">
+      <span class="meta">Service</span>
+      <select data-bk-service>
+        <option value="">Choose from the fee guide</option>
+        {catalog.map((c) => <option value={c.code} data-minutes={c.minutes} data-name={c.name} data-id={c.id}>{c.name} · {c.minutes} min{c.price ? ` · ${priceShort(c.price)}` : ''}</option>)}
+      </select>
+      <span class="bk-hint" data-bk-price></span>
+    </label>
+    <div class="bk-two">
+      <label class="field"><span class="meta">Date</span><input type="date" data-bk-date value={date} required /></label>
+      <label class="field"><span class="meta">Time</span><input type="time" step="900" data-bk-time required /></label>
+    </div>
+    <div class="bk-two">
+      <label class="field">
+        <span class="meta">Chair</span>
+        <select data-bk-chair>
+          <option value="">No chair yet</option>
+          {Array.from({ length: chairs }, (_, i) => <option value={i + 1}>Chair {i + 1}</option>)}
+        </select>
+      </label>
+      <label class="field"><span class="meta">Dentist</span><select data-bk-dentist><option value="">Any dentist</option></select></label>
+    </div>
+    <p class="bk-hint bk-free" data-bk-free></p>
+
+    <details class="bk-more" data-bk-more>
+      <summary class="bk-more-head"><Icon name="chevron" size={16} class="bk-more-chev" />More details <span class="bk-more-hint">length, reason, a note</span></summary>
+      <div class="bk-more-body">
+        <label class="field"><span class="meta">Minutes</span><input type="number" data-bk-minutes min="5" max="480" step="5" value="30" inputmode="numeric" required /></label>
+        <label class="field"><span class="meta">Reason</span><input data-bk-reason maxlength="120" placeholder="What the visit is for" /></label>
+        <label class="field"><span class="meta">Note</span><textarea data-bk-notes rows="2" maxlength="500"></textarea></label>
+      </div>
+    </details>
+
+    <p class="bk-hint" data-bk-text>A booking still ahead is texted to the patient when they have a mobile on file.</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" class="ws-btn ws-btn-primary" data-bk-save><Icon name="check" /><span data-bk-save-word>Save booking</span></button>
+      <button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Cancel</button>
+    </div>
+  </form>
+</SidePanel>

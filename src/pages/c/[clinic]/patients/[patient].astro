@@ -1,12 +1,35 @@
 ---
-// One patient's record: alerts, privacy consent, health, the chart, visits.
+// One patient's record, in the workspace (the Patients tab lit): a head
+// of the facts that decide the next step — name, age, mobile, HMO, alerts,
+// balance (finance roles), next and last visit, consent — then seven
+// sections switched in place: Overview · Health · Chart · Visits · Money ·
+// Consent · Texts (docs/workspace-redesign.md, "Patients"). The section is in
+// the address (#health, #chart, …), so a reload, a post that comes back and
+// a link all land on it. Money is shown only to people who may bill here
+// (canBill in src/lib/invoices.ts), like the Finances tab.
+//
+// Drawn in the soft, very simple template (docs/workspace-redesign.md, "The
+// soft template" and "Very simple"): the patient's avatar, name and a few facts
+// with the chart no. as a small reference pill; one teal main action, New
+// booking (the Dashboard's booking panel, the patient filled in), Edit details
+// beside it and the rest under More (New charge, Bring in past visits); the
+// alert chips; at most four numbers (next visit, last visit, balance, consent
+// — the last two open their sections); the sections as one segmented control.
+// The pages' own pieces are in ./_ui/ (patients.css, HealthLists, Callout,
+// Head, Glyph).
 //
 // Every query runs inside withClinic(), so row-level security decides whether
 // this patient exists here; a patient of another clinic (or a made-up id) is
 // a 404 on reading and on every post. Opening the record writes
 // patient.view to the audit log.
 //
-// Two forms post back to this page, each with the CSRF token, checked before
+// The odontogram is src/components/Odontogram.astro, placed as it is: its
+// offline logic (the kept copy of this page, changes waiting on the device)
+// is untouched. A copy served offline opens on the Chart, and a notice the
+// chart raises (a colleague's newer finding, changes waiting) brings the
+// Chart forward.
+//
+// Four forms post back to this page, each with the CSRF token, checked before
 // anything else (a miss comes back with ?stale=1):
 //   intent=health   birth date, allergies, conditions, medicines, a note.
 //                   saveHealth() in src/lib/health.ts: a new medical_history
@@ -21,7 +44,16 @@
 //                   patient, or a parent or guardian, named), audit
 //                   consent.desk. Under 18 by the birth date on file, only a
 //                   parent or guardian; with none on file, the desk says which.
-// Both need staff_access.can_edit_records for this branch (every role has it
+//   intent=paper    a consent signed on paper (recordPaperConsent): a printed
+//                   copy of the notice in force, dated on a day it was in
+//                   force, or the clinic's own form (026). Audit consent.paper
+//                   / consent.paper_form.
+//   intent=details  Edit details (a side panel): name, chart no., sex, mobile,
+//                   email, address, HMO, emergency contact, notes —
+//                   updateDetails() in src/lib/import.ts, audit patient.update.
+//                   The birth date stays with the health form, which keeps its
+//                   history.
+// All need staff_access.can_edit_records for this branch (every role has it
 // today; see canEditRecords()). On success the page redirects to itself
 // (?saved=…) so a reload does not post again; on a problem it renders again
 // with what was typed.
@@ -31,20 +63,41 @@ import ClinicLayout from '../../../../layouts/Clinic.astro';
 import Csrf from '../../../../components/Csrf.astro';
 import DeskConsent from '../../../../components/DeskConsent.astro';
 import Odontogram from '../../../../components/Odontogram.astro';
+import Pane from '../../../../components/ws/Pane.astro';
+import Tile from '../../../../components/ws/Tile.astro';
+import Chip from '../../../../components/ws/Chip.astro';
+import Tabs from '../../../../components/ws/Tabs.astro';
+import Empty from '../../../../components/ws/Empty.astro';
+import SidePanel from '../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../components/ws/Icon.astro';
+import Avatar from '../../../../components/ws/Avatar.astro';
+import Menu from '../../../../components/ws/Menu.astro';
+import Head from './_ui/Head.astro';
+import Callout from './_ui/Callout.astro';
+import HealthLists from './_ui/HealthLists.astro';
+import './_ui/patients.css';
+import { shellLinks } from '../../../../components/ws/routes';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
 import { csrfOk, csrfToken, CSRF_MESSAGE } from '../../../../lib/csrf';
 import { hit, waitText, LIMITS } from '../../../../lib/throttle';
 import {
-  LISTS, ITEM_MAX, NOTE_MAX, NAME_MAX, manilaToday, ageOn, ageText, when, oneLine, readHealthForm, saveHealth, readHealth,
-  canEditRecords, readConsents, noticeInForce, recordDeskConsent, versionChanges, listText, answered, dateText,
-  consentInForce, type HealthAnswers, type HealthVersion, type AgreedAs,
+  LISTS, NOTE_MAX, NAME_MAX, manilaToday, ageOn, ageText, when, day, oneLine, readHealthForm, saveHealth, readHealth,
+  canEditRecords, readConsents, noticeInForce, recordDeskConsent, versionChanges, listText, answered, dateText, capitalise,
+  consentInForce, readPaperForms, readPaperForm, recordPaperConsent, PAPER_WORDS,
+  type HealthAnswers, type HealthVersion, type AgreedAs, type PaperIn,
 } from '../../../../lib/health';
-import { peso, CONDITION_LABEL, surfaceSummary, type ToothCondition, type ToothMark, type Surface, type Notation } from '../../../../data/demo';
+import { readPersonForm, updateDetails, hmoSuggestions, SEXES, NOTES_MAX, type PersonIn } from '../../../../lib/import';
+import { canBill, pesos, statementNo, STATUS as BILL_STATUS, fromDb } from '../../../../lib/invoices';
+import { prettyPhone } from '../../../../lib/messages';
+import { hmos } from '../../../../data/directory';
+import { CONDITION_LABEL, surfaceSummary, type ToothCondition, type ToothMark, type Surface, type Notation } from '../../../../data/demo';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
+const money = canBill(session.role, clinic.can_view_finance);
+const links = shellLinks(clinic.slug);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const patientId = Astro.params.patient ?? '';
@@ -60,6 +113,11 @@ let conflict: { latest: HealthVersion | null; birth: string | null; versionMoved
 let consentProblem: string | null = null;
 let givenBy = '';
 let agreedAs: AgreedAs | null = null;
+let paperState: { open: boolean; problem: string | null; values: Partial<PaperIn> } = { open: false, problem: null, values: {} };
+let detailsProblems: string[] = [];
+let detailsPosted: PersonIn | null = null;
+// The section a post came back to.
+let backTo: string | null = null;
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -70,6 +128,7 @@ if (Astro.request.method === 'POST') {
   const slow = rate.allowed ? null : 'Too many saves at once. ' + waitText(rate.retryAfter);
 
   if (intent === 'health') {
+    backTo = 'health';
     const { answers, birth, problems } = readHealthForm(form);
     let base = String(form.get('base') ?? '');
     // The birth date this page opened with: a save changes the birth date only when this person changed it.
@@ -97,6 +156,7 @@ if (Astro.request.method === 'POST') {
     healthProblems = problems;
     posted = { answers, birth: birthShown, birthWas, base };
   } else if (intent === 'consent') {
+    backTo = 'consent';
     givenBy = oneLine(form.get('given_by_name'));
     const who = String(form.get('agreed_as') ?? '');
     agreedAs = who === 'patient' || who === 'guardian' ? who : null;
@@ -121,27 +181,81 @@ if (Astro.request.method === 'POST') {
       }[r];
       if (r === 'minor') agreedAs = 'guardian';
     }
+  } else if (intent === 'paper') {
+    backTo = 'consent';
+    const { paper, problems } = readPaperForm(form);
+    paperState = { open: true, problem: slow ?? (problems.length ? problems.join(' ') : null), values: paper };
+    if (!paperState.problem) {
+      const r = await withClinic(clinic.id, async (tx) =>
+        (await canEditRecords(tx, session.staffId, clinic.id))
+          ? recordPaperConsent(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, ...paper })
+          : ('denied' as const));
+      if (r === 'none') return notFound();
+      if (r === 'saved') return Astro.redirect(`${here}?saved=paper#consent-paper`, 303);
+      paperState.problem = r === 'denied' ? 'Your account cannot record consent at this branch. Ask the owner.' : `${PAPER_WORDS[r]} Nothing was recorded.`;
+    }
+  } else if (intent === 'details') {
+    backTo = 'overview';
+    const { person, problems } = readPersonForm(form);
+    detailsPosted = person;
+    if (slow) problems.unshift(slow);
+    if (!problems.length) {
+      const r = await withClinic(clinic.id, async (tx) =>
+        (await canEditRecords(tx, session.staffId, clinic.id))
+          ? updateDetails(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, p: person })
+          : ('denied' as const));
+      if (r === 'none') return notFound();
+      if (r === 'saved') return Astro.redirect(`${here}?saved=details#overview`, 303);
+      problems.push(r === 'denied' ? 'Your account cannot change records at this branch. Ask the owner.' : r.taken);
+    }
+    detailsProblems = problems;
   }
 }
 
 const data = await withClinic(clinic.id, async (tx) => {
   const me = (await tx.query('select area, notation from clinic where id = $1', [clinic.id])).rows[0];
   const p = (await tx.query(
-    `select p.id, p.chart_no, p.first_name, p.last_name, p.phone, to_char(p.birth_date, 'YYYY-MM-DD') as birth,
+    `select p.id, p.chart_no, p.first_name, p.middle_name, p.last_name, p.suffix, p.sex, p.phone, p.email::text as email,
+            p.address_line, p.city, p.province, p.hmo_name, p.hmo_member_no, p.emergency_name, p.emergency_relation, p.emergency_phone, p.notes,
+            to_char(p.birth_date, 'YYYY-MM-DD') as birth, p.created_at, p.import_id is not null as imported, cs.full_name as created_by_name,
             patient_balance(p.id) as balance
-     from patient p where p.id = $1 and p.archived_at is null`, [patientId])).rows[0];
+       from patient p left join staff cs on cs.id = p.created_by
+      where p.id = $1 and p.archived_at is null`, [patientId])).rows[0];
   if (!p) return null;
   const teeth = (await tx.query(`select fdi, surface, condition from tooth_state where patient_id = $1 and superseded_at is null order by fdi`, [p.id])).rows;
-  const visits = (await tx.query(`select starts_at, reason, status from appointment a where patient_id = $1 order by starts_at desc limit 8`, [p.id])).rows;
+  const visits = (await tx.query(
+    `select a.id, a.starts_at, a.reason, a.status, a.source, a.date_only, a.teeth, a.notes, a.chair,
+            coalesce(s.full_name, a.dentist_name) as dentist, a.dentist_name is not null as dentist_free,
+            (select i.total from invoice i where i.appointment_id = a.id and i.status <> 'void' order by i.issued_at limit 1) as charged
+       from appointment a left join staff s on s.id = a.dentist_id
+      where a.patient_id = $1 order by a.starts_at desc limit 200`, [p.id])).rows;
+  const next = (await tx.query(
+    `select a.starts_at, a.reason, a.status, s.full_name as dentist from appointment a left join staff s on s.id = a.dentist_id
+      where a.patient_id = $1 and a.status not in ('cancelled', 'no_show', 'completed')
+        and (a.starts_at >= now() - interval '1 hour' or a.status in ('arrived', 'in_lobby', 'in_chair'))
+      order by a.status in ('arrived', 'in_lobby', 'in_chair') desc, a.starts_at limit 1`, [p.id])).rows[0] ?? null;
   // Who looked. Required to answer a subject-access request.
   await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'patient.view', 'patient', $3)`, [clinic.id, session.staffId, p.id]);
   const health = await readHealth(tx, p.id);
   const consents = await readConsents(tx, p.id);
+  const paperForms = await readPaperForms(tx, p.id);
   const notice = await noticeInForce(tx);
   const canEdit = await canEditRecords(tx, session.staffId, clinic.id);
   // clinic_group has no tenant; the group id came from requireWorkspace().
   const dpo = (await tx.query('select dpo_name from clinic_group where id = $1', [clinic.group_id])).rows[0]?.dpo_name ?? null;
-  return { me, p, teeth, visits, health, consents, notice, canEdit, dpo: dpo as string | null };
+  const statements = money ? (await tx.query(
+    `select i.id, i.series_prefix, i.number, i.issued_at, i.status, i.total, i.payor_name, i.payor_share, i.imported_at, coalesce(y.paid, 0) as paid,
+            (select l.description from invoice_line l where l.invoice_id = i.id order by l.line_no nulls last, l.id limit 1) as first_line,
+            (select count(*)::int from invoice_line l where l.invoice_id = i.id) as n_lines
+       from invoice i left join lateral (select sum(amount) as paid from payment where invoice_id = i.id and voided_at is null) y on true
+      where i.patient_id = $1 and i.status <> 'draft' order by i.issued_at desc, i.number desc limit 100`, [p.id])).rows : [];
+  // Texts about this patient. A sign-in code is never one of them, and its body is never read (CLAUDE.md, Backend).
+  const texts = (await tx.query(
+    `select m.id, m.direction, m.kind, m.status, m.created_at, m.sent_at, m.failed_reason,
+            case when m.kind in ('reset', 'invite') then null else m.body end as body
+       from message_log m where m.patient_id = $1 and m.channel = 'sms' order by m.created_at desc limit 50`, [p.id])).rows;
+  const hmoNames = canEdit ? await hmoSuggestions(tx, new Map(hmos.map((h) => [h.id, h.name]))) : [];
+  return { me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames };
 });
 if (!data) return notFound();
 const { me, p: patient, visits, health, canEdit } = data;
@@ -185,7 +299,12 @@ const findings = Object.entries(marks)
   .map(([fdi, m]) => ({ fdi: Number(fdi), condition: m!.condition, codes: surfaceSummary(Number(fdi), m!.surfaces) }))
   .sort((a, b) => ORDER.indexOf(a.condition) - ORDER.indexOf(b.condition) || a.fdi - b.fdi);
 
-const visitWhen = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(d);
+// The same way every date on the record reads: "Fri 25 Sep 2026, 9:00 am".
+const visitWhen = (d: Date) => when(d);
+const manilaDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+/** A visit's day and time, or its day alone when only the day is known (brought in from old records). */
+const visitText = (v: { starts_at: Date; date_only: boolean }) => (v.date_only ? dateText(manilaDay(v.starts_at))! : visitWhen(v.starts_at));
+const SOURCE: Record<string, string> = { web: 'Web', request: 'Web request', staff: 'Desk', import: 'Imported' };
 
 // The chips: the quick picks in a fixed order (the same place every time), then
 // anything else on the record or typed, ticked.
@@ -195,234 +314,598 @@ const chipsFor = (key: (typeof LISTS)[number]['key'], picks: readonly string[]) 
   const extra = on.filter((v) => !picks.some((p) => lower(p) === lower(v)));
   return [...picks, ...extra].map((v) => ({ value: v, on: on.some((x) => lower(x) === lower(v)) }));
 };
-// Checked chips carry the alert strip's colours, plus a filled square, so the state is never colour alone.
-const TONE: Record<string, string> = {
-  allergies: 'peer-checked:border-caries peer-checked:bg-caries/15 peer-checked:text-caries',
-  conditions: 'peer-checked:border-crown peer-checked:bg-crown/15 peer-checked:text-crown',
-  medications: 'peer-checked:border-ink peer-checked:bg-ink peer-checked:text-bg',
-  none: 'peer-checked:border-ink peer-checked:bg-ink peer-checked:text-bg',
-};
-const chip = "inline-flex min-h-[48px] items-center gap-2.5 border border-line bg-surface px-4 text-[16px] font-medium text-ink-2 transition-colors before:h-3 before:w-3 before:shrink-0 before:border before:border-current before:content-[''] peer-hover:border-ink peer-hover:text-ink peer-checked:font-semibold peer-checked:before:bg-current peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent";
-const hiddenBox = 'peer absolute inset-0 m-0 h-full w-full cursor-pointer opacity-0';
-const textBox = 'min-h-[50px] border border-line bg-surface px-3.5 text-[16px] text-ink focus:border-ink focus:outline-2 focus:outline-offset-1 focus:outline-accent';
+const healthChips = Object.fromEntries(LISTS.map((l) => [l.key, chipsFor(l.key, l.picks)]));
+const healthNone = Object.fromEntries(LISTS.map((l) => [l.key, shown[l.key]?.length === 0]));
 
+const byLine = (v: HealthVersion) => `${when(new Date(v.at))}${v.by ? ` by ${v.by}` : ''}`;
 const stateLine = (v: HealthAnswers) =>
   [...LISTS.map((l) => `${l.label} ${listText(v[l.key], l.key === 'allergies' ? 'none known' : 'none')}`), v.note && `Note: ${v.note}`].filter(Boolean).join(' · ');
-const byLine = (v: HealthVersion) => `${when(new Date(v.at))}${v.by ? ` by ${v.by}` : ''}`;
 const birthLine = (b: string | null) => `Birth date ${dateText(b) ?? 'not on file'}`;
+/** A list as one plain line: "Penicillin, Latex", "None known", "Not asked yet". */
+const listLine = (v: string[] | null, none: string) => (v === null ? 'Not asked yet' : capitalise(listText(v, none)));
+
+// --- the head ---------------------------------------------------------------
+const fullName = [patient.first_name, patient.middle_name, patient.last_name, patient.suffix].filter(Boolean).join(' ');
+const shortName = `${patient.first_name} ${patient.last_name}`;
+const titleName = patient.suffix ? `${shortName} ${patient.suffix}` : shortName;
+const SEX: Record<string, string> = { female: 'Female', male: 'Male', other: 'Other', undisclosed: 'Sex not said' };
+// Under the name: the few facts the desk reads out. The chart no. sits beside them as a small reference pill.
+const facts = [
+  age !== null ? ageText(age) : null,
+  patient.sex ? SEX[patient.sex] : null,
+  patient.phone ? prettyPhone(patient.phone) : null,
+  patient.hmo_name ? patient.hmo_name : null,
+].filter(Boolean) as string[];
+const balance = fromDb(patient.balance);
+const lastVisit = visits.find((v) => v.status === 'completed') ?? null;
+const nextVisit = data.next;
+const nextParts = (d: Date) => new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).formatToParts(d).reduce((o, x) => ({ ...o, [x.type]: x.value }), {} as Record<string, string>);
+// A visit under way (arrived, waiting, in the chair) is the one that matters now.
+const HERE: Record<string, string> = { arrived: 'Arrived', in_lobby: 'Waiting', in_chair: 'In the chair' };
+const hereNow = nextVisit ? HERE[nextVisit.status] ?? null : null;
+const nextValue = hereNow ?? (nextVisit ? (() => { const x = nextParts(nextVisit.starts_at); return `${x.weekday} ${x.day} ${x.month}`; })() : 'None');
+const nextNote = nextVisit ? (() => { const x = nextParts(nextVisit.starts_at); return [`${x.hour}:${x.minute} ${String(x.dayPeriod).toLowerCase()}`, nextVisit.reason, nextVisit.dentist].filter(Boolean).join(' · '); })() : 'Nothing on the calendar yet';
+const consentValue = !data.notice ? '—' : consentNow && !guardianNeeded ? 'On record' : guardianNeeded && consentNow ? 'Guardian needed' : 'Not yet';
+const consentNote = !data.notice ? 'No notice in force'
+  : consentNow && !guardianNeeded ? (consentNow.channel === 'paper' && consentNow.signed_on ? `Signed on paper ${dateText(consentNow.signed_on)}` : `Given ${day(new Date(consentNow.given_at))}`)
+  : data.paperForms.length ? 'Clinic’s own form on file; ask for the notice' : 'Ask at the desk';
+const bookHref = `${links.newBooking}&patient=${patient.id}`;
+const chargeHref = `${links.newCharge}?patient=${patient.id}`;
+const importHref = `/c/${clinic.slug}/patients/import/`;
+
+// --- sections ---------------------------------------------------------------
+const SECTIONS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'health', label: 'Health' },
+  { id: 'chart', label: 'Chart' },
+  { id: 'visits', label: 'Visits', count: visits.length || null },
+  ...(money ? [{ id: 'money', label: 'Money', count: data.statements.filter((s) => s.status === 'issued' || s.status === 'partly_paid').length || null }] : []),
+  { id: 'consent', label: 'Consent' },
+  { id: 'texts', label: 'Texts', count: data.texts.length || null },
+];
+const savedTo: Record<string, string> = { health: 'health', birth: 'health', nothing: 'health', consent: 'consent', 'consent-already': 'consent', paper: 'consent', details: 'overview', new: 'overview' };
+const current = backTo ?? savedTo[saved ?? ''] ?? 'overview';
+const tabItems = SECTIONS.map((s) => ({ id: `rec-${s.id}`, label: s.label, count: 'count' in s ? s.count : null }));
+
+// --- money --------------------------------------------------------------------
+const stmts = data.statements.map((s) => {
+  const total = fromDb(s.total), paid = fromDb(s.paid);
+  return { ...s, total, paid, left: s.status === 'void' ? 0n : total - paid };
+});
+const paidAll = stmts.filter((s) => s.status !== 'void').reduce((n, s) => n + s.paid, 0n);
+const openCount = stmts.filter((s) => s.status === 'issued' || s.status === 'partly_paid').length;
+// A statement's status as a soft pill: paid is green (money in), unpaid red, part-paid amber, void quiet.
+const STMT_TINT: Record<string, string> = { paid: 'ws-tint-green', issued: 'ws-tint-red', partly_paid: 'ws-tint-amber' };
+
+// --- texts ---------------------------------------------------------------------
+const TEXT_KIND: Record<string, string> = { confirmation: 'Booking confirmation', reminder: 'Reminder', manual: 'Note', reply: 'Reply' };
+const textStatus = (m: { direction: string; status: string }) =>
+  m.direction === 'in' ? { label: 'Received', tone: 'accent' as const }
+  : m.status === 'failed' ? { label: 'Failed', tone: 'alert' as const }
+  : m.status === 'delivered' ? { label: 'Delivered', tone: 'accent' as const }
+  : m.status === 'sent' ? { label: 'Sent', tone: 'muted' as const }
+  : m.status === 'cancelled' ? { label: 'Cancelled', tone: 'muted' as const }
+  : { label: 'Waiting to send', tone: 'neutral' as const };
+
+// --- details -------------------------------------------------------------------
+const d = detailsPosted ?? {
+  chartNo: patient.chart_no, first: patient.first_name, middle: patient.middle_name, last: patient.last_name, suffix: patient.suffix, sex: patient.sex,
+  phone: patient.phone, email: patient.email, address: patient.address_line, city: patient.city, province: patient.province, hmoName: patient.hmo_name,
+  hmoMemberNo: patient.hmo_member_no, emergencyName: patient.emergency_name, emergencyRelation: patient.emergency_relation, emergencyPhone: patient.emergency_phone, notes: patient.notes,
+};
+const address = [patient.address_line, patient.city, patient.province].filter(Boolean).join(', ');
+const detailRows: [string, string | null][] = [
+  ['Full name', fullName],
+  ['Birth date', patient.birth ? `${dateText(patient.birth)}${age !== null ? ` · ${ageText(age)}` : ''}` : null],
+  ['Sex', patient.sex ? SEX[patient.sex] : null],
+  ['Mobile', patient.phone ? prettyPhone(patient.phone) : null],
+  ['Email', patient.email],
+  ['Address', address || null],
+  ['HMO', patient.hmo_name ? `${patient.hmo_name}${patient.hmo_member_no ? ` · member no. ${patient.hmo_member_no}` : ''}` : null],
+  ['Emergency contact', patient.emergency_name ? [patient.emergency_name, patient.emergency_relation, patient.emergency_phone && prettyPhone(patient.emergency_phone)].filter(Boolean).join(' · ') : null],
+  ['Chart no.', patient.chart_no],
+  ['On file since', `${dateText(manilaDay(patient.created_at))}${patient.imported ? ', from an import' : patient.created_by_name ? `, added by ${patient.created_by_name}` : ''}`],
+];
+// Only what is on file is listed; what is missing is one line, with the way to add it.
+const present = detailRows.filter(([, v]) => v);
+const missing = detailRows.filter(([, v]) => !v).map(([k]) => (k === 'HMO' ? k : k.toLowerCase()));
+const help = 'text-[13px] leading-snug text-muted';
+const moreItems = (money ? 1 : 0) + (canEdit ? 1 : 0);
 ---
 
-<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: me.area }} title={`${patient.first_name} ${patient.last_name}`} section="patients" staff={{ name: session.name, role: session.role }} branches={branches}>
-  <a href={`/c/${clinic.slug}/patients/`} class="inline-flex min-h-[44px] items-center text-[14.5px] font-medium text-accent">&larr; All patients</a>
-
-  <div class="mt-2 flex flex-wrap items-start justify-between gap-6">
-    <div>
-      <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] leading-tight font-semibold tracking-[-0.02em]">{patient.first_name} {patient.last_name}</h1>
-      <p class="mt-1.5 text-[15px] text-muted">{patient.chart_no}{age !== null && ` · ${ageText(age)}`}{patient.phone && ` · ${patient.phone}`}</p>
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: me.area }} title={titleName} section="patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  {/* The patient's name is the page's title, in the top bar (the layout's heading), as on a
+      person's page and a statement: this card is who they are beside it — the avatar, the few
+      facts, the actions and the four numbers — with no second name. */}
+  <Pane as="div" label={`${shortName}, patient record`}>
+    <a href={`/c/${clinic.slug}/patients/`} class="rec-back" data-pts-back><Icon name="chevron-left" />Back to patients</a>
+    <script>
+      // Back to the list as it was left: the same search, filter and sort (./_list/back.ts).
+      import { restoreBackLinks } from './_list/back';
+      restoreBackLinks();
+    </script>
+    <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+      <div class="rec-who">
+        <Avatar name={shortName} size="lg" />
+        <p class="rec-facts min-w-0"><span class="rec-facts-in"><span><span class="pt-ref" title="Chart no."><span class="sr-only">Chart no. </span>{patient.chart_no}</span></span>{facts.map((f) => <span>{f}</span>)}</span></p>
+      </div>
+      <div class="rec-actions">
+        <a href={bookHref} class="ws-btn ws-btn-primary md:order-last"><Icon name="calendar" />New booking</a>
+        {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="details"><Icon name="user" />Edit details</button>}
+        {moreItems > 0 && (
+          <Menu id="rec-more" label={`More for ${shortName}`} buttonClass="ws-btn ws-btn-quiet" align="right">
+            <Fragment slot="button">More <Icon name="chevron" size={16} /></Fragment>
+            {money && (
+              <a class="ws-menu-item" href={chargeHref}>
+                <span class="ws-menu-icon" data-tint="green"><Icon name="money" /></span>
+                <span class="ws-menu-words">New charge<span class="ws-menu-hint">A statement for {patient.first_name} to pay</span></span>
+              </a>
+            )}
+            {canEdit && (
+              <a class="ws-menu-item" href={importHref}>
+                <span class="ws-menu-icon" data-tint="blue"><Icon name="upload" /></span>
+                <span class="ws-menu-words">Bring in past visits<span class="ws-menu-hint">From a spreadsheet of old records</span></span>
+              </a>
+            )}
+          </Menu>
+        )}
+      </div>
     </div>
-    {Number(patient.balance) !== 0 && (
-      <div class="text-right">
-        <p class="meta">Balance</p>
-        <p class="mt-1 font-display text-[30px] leading-none font-bold tabular-nums">{peso(Number(patient.balance))}</p>
+
+    {(allergies.length > 0 || conditions.length > 0 || medications.length > 0 || minor) && (
+      <div role="alert" class="rec-alerts mt-5">
+        {allergies.map((a) => <Chip tone="alert" icon="alert">Allergy: {a}</Chip>)}
+        {conditions.map((c) => <Chip tone="warn">{c}</Chip>)}
+        {medications.map((m) => <Chip tone="neutral">Takes {m}</Chip>)}
+        {minor && <Chip tone="warn" icon="user">{guardianNeeded ? 'Under 18: a guardian must agree' : `Under 18 · guardian ${consentNow?.given_by_name}`}</Chip>}
       </div>
     )}
+    {latest?.note && <Callout tone="alert" role="none" class="mt-3" title="Note for the dentist" text={latest.note} />}
+    {stale && <Callout tone="alert" class="mt-4" text={CSRF_MESSAGE} />}
+    {saved === 'new' && <Callout tone="success" class="mt-4" text={`Added. ${shortName} is on file as ${patient.chart_no}; everything from the form is below.`} />}
+    {saved === 'details' && <Callout tone="success" class="mt-4" text="Details saved." />}
+
+    <div class="pt-tiles-wrap mt-5"><div class="ws-tiles pt-tiles">
+      <Tile label={hereNow ? 'Today, now' : 'Next visit'} value={nextValue} tone={hereNow ? 'accent' : 'default'} note={nextNote} icon="calendar" />
+      <Tile label="Last visit" value={lastVisit ? dateText(manilaDay(lastVisit.starts_at))! : 'None yet'} note={lastVisit ? [lastVisit.reason, lastVisit.dentist].filter(Boolean).join(' · ') : 'No finished visit on file'} icon="clock" />
+      {money && <Tile label="Balance" value={pesos(balance > 0n ? balance : -balance)} tone={balance > 0n ? 'alert' : 'default'} note={balance > 0n ? `Owed${openCount ? ` on ${openCount} ${openCount === 1 ? 'statement' : 'statements'}` : ''}` : balance < 0n ? 'In credit' : 'Nothing owed'} icon="money" href="#money" />}
+      <Tile label="Consent" value={consentValue} tone={consentValue === 'On record' ? 'accent' : consentValue === '—' ? 'default' : 'warn'} note={consentNote} icon="file" href="#consent" />
+    </div></div>
+
+    <div class="mt-5">
+      <Tabs label="Sections of the record" group="rec" current={`rec-${current}`} items={tabItems} full class="rec-tabs" />
+    </div>
+  </Pane>
+
+  <!-- Overview -->
+  <div id="rec-overview" role="tabpanel" aria-labelledby="rec-rec-overview-tab" hidden={current !== 'overview'} class="min-w-0 grid items-start gap-4 max-md:gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]" data-rec-panel="overview">
+    <Pane title="Details" icon="user" id="overview">
+      <dl class="pt-facts">
+        {present.map(([k, v]) => <><dt>{k}</dt><dd>{v}</dd></>)}
+      </dl>
+      {missing.length > 0 && (
+        <p class="mt-4 flex flex-wrap items-center gap-x-3 text-[14px] text-ink-2">
+          <span>Not on file yet: {missing.join(', ')}.</span>
+          {canEdit && <button type="button" class="ws-empty-go" data-ws-open="details">Add them <Icon name="arrow-right" size={16} /></button>}
+        </p>
+      )}
+      {patient.notes && (
+        <div class="mt-5 border-t border-[var(--ws-hair)] pt-4">
+          <p class="meta">Notes</p>
+          <p class="mt-1.5 max-w-[70ch] text-[15px] leading-relaxed whitespace-pre-line text-ink-2">{patient.notes}</p>
+        </div>
+      )}
+      <p class="mt-5 flex items-start gap-2 border-t border-[var(--ws-hair)] pt-4 text-[13.5px] leading-relaxed text-muted">
+        <Icon name="info" size={16} class="mt-0.5 shrink-0" />
+        <span>X-rays, treatment plans, prescriptions and signed treatment forms are not kept here yet. Every look at this record, and every change to it, is logged.</span>
+      </p>
+    </Pane>
+    <div class="grid content-start gap-4 max-md:gap-3">
+      <Pane as="section" label="Health, in short">
+        <Head icon="heart" title="Health">
+          <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="health">{canEdit ? 'Update' : 'Open'}</button>
+        </Head>
+        {latest && answered(latest) ? (
+          <>
+            <dl class="pt-facts">
+              {LISTS.map((l) => <><dt>{l.key === 'medications' ? 'Medicines' : l.label}</dt><dd>{listLine(latest[l.key], l.none)}</dd></>)}
+            </dl>
+            <p class="mt-3 text-[13.5px] text-muted">Updated {byLine(latest)}.</p>
+          </>
+        ) : (
+          <Empty icon="info" text="No health answers yet. Ask the patient before treatment." />
+        )}
+      </Pane>
+      <Pane title="Recent visits" icon="calendar">
+        {visits.length > 4 && <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="visits">See all {visits.length}</button>}
+        {visits.length === 0 ? <Empty icon="calendar" text="No visits yet." action={{ label: 'Book the first one', href: bookHref }} /> : (
+          <ul class="pt-list">
+            {visits.slice(0, 4).map((v) => (
+              <li>
+                <span class="min-w-0 text-[14.5px]"><span class="font-semibold tabular-nums">{visitText(v)}</span><span class="block text-ink-2">{[v.reason, v.dentist].filter(Boolean).join(' · ') || '—'}</span></span>
+                <span class="flex gap-1.5">{v.source === 'import' && <Chip tone="neutral" label="Imported" />}<Chip status={v.status} /></span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Pane>
+    </div>
   </div>
 
-  {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
+  <!-- Health -->
+  <div id="rec-health" role="tabpanel" aria-labelledby="rec-rec-health-tab" hidden={current !== 'health'} class="min-w-0" data-rec-panel="health">
+    <Pane as="section" label="Health" id="health">
+      <Head icon="heart" title="Health" />
+      <p class="-mt-2 text-[14px] text-muted">
+        {!latest ? 'Nothing recorded yet. Ask the patient before treatment.'
+          : answered(latest) ? `Updated ${byLine(latest)}.`
+          : `No health answers yet. Ask the patient before treatment. Last saved ${byLine(latest)}.`}
+      </p>
 
-  {(allergies.length > 0 || conditions.length > 0 || medications.length > 0 || latest?.note || minor) && (
-    <div role="alert" class="mt-6 grid gap-2.5">
-      <div class="flex flex-wrap gap-2.5">
-        {allergies.map((a) => <span class="bg-caries/10 px-4 py-2 text-[13.5px] font-semibold text-caries">Allergy: {a}</span>)}
-        {conditions.map((c) => <span class="bg-crown/15 px-4 py-2 text-[13.5px] font-semibold text-crown">{c}</span>)}
-        {medications.map((m) => <span class="border border-line bg-surface px-4 py-2 text-[13.5px] font-semibold text-ink">Takes: {m}</span>)}
-        {minor && <span class="bg-crown/15 px-4 py-2 text-[13.5px] font-semibold text-crown">{guardianNeeded ? 'Minor — guardian consent required' : `Minor · guardian: ${consentNow?.given_by_name}`}</span>}
+      {(saved === 'health' || saved === 'birth') && <Callout tone="success" class="mt-4" text="Saved." />}
+      {saved === 'nothing' && <Callout tone="info" class="mt-4" text="Nothing was saved: nothing is ticked or typed yet." />}
+      {conflict && (
+        <Callout tone="warn" role="alert" class="mt-4">
+          <p class="font-semibold">
+            {conflict.versionMoved && conflict.latest ? `${conflict.latest.by ?? 'Someone'} saved this record ${when(new Date(conflict.latest.at))}, after you opened it.`
+              : conflict.birthMoved ? `The birth date on file changed to ${dateText(conflict.birth) ?? 'none'} after you opened this page.`
+              : 'This record changed after you opened it.'} Nothing of yours was saved yet.
+          </p>
+          <p class="mt-1.5 text-ink-2">On file now: {birthLine(conflict.birth)}{conflict.latest && <> · {stateLine(conflict.latest)}</>}.</p>
+          <p class="mt-1.5 text-ink-2">Your answers are still below. Check them against what is on file, then press Save again.</p>
+        </Callout>
+      )}
+      {healthProblems.length > 0 && <Callout tone="alert" class="mt-4" title={`Nothing was saved. ${healthProblems.length === 1 ? 'One thing' : 'A few things'} to fix:`} items={healthProblems} />}
+
+      {canEdit ? (
+        <form method="post" action={`${here}#health`} class="mt-5" data-health-form data-health-unsaved={posted ? '' : undefined}>
+          <Csrf />
+          <input type="hidden" name="intent" value="health" />
+          <input type="hidden" name="base" value={base} />
+          <input type="hidden" name="birth_was" value={birthWas} />
+
+          <div class="field border-b border-[var(--ws-hair)] pb-5">
+            <label for="birth_date" class="meta">Birth date</label>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <input id="birth_date" type="date" name="birth_date" value={birthValue} min="1900-01-01" max={today} class="w-[13.5rem]" data-health-birth data-today={today} />
+              <span class="text-[15px] text-ink-2" aria-live="polite" data-health-age>{formAge !== null && formAge >= 0 ? ageText(formAge) : birthValue ? '' : 'Not on file yet'}</span>
+            </div>
+          </div>
+
+          <HealthLists chips={healthChips} none={healthNone} />
+
+          <label class="field border-t border-[var(--ws-hair)] pt-5">
+            <span class="meta">Note for the dentist</span>
+            <textarea name="note" rows="2" maxlength={NOTE_MAX} placeholder="Anything to know before starting. For example: faints at injections.">{shown.note ?? ''}</textarea>
+          </label>
+
+          <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <button type="submit" class="ws-btn ws-btn-primary min-w-[9rem]" data-health-save><Icon name="check" />Save</button>
+            <span class="ws-pill ws-tint-amber" data-health-dirty hidden={!posted}>Not saved yet</span>
+            <span class="text-[13.5px] text-muted">Saved as a new version under your name. Earlier versions stay.</span>
+          </div>
+        </form>
+      ) : (
+        <dl class="pt-facts mt-5">
+          <dt>Birth date</dt><dd>{patient.birth ? `${dateText(patient.birth)}${age !== null ? ` · ${ageText(age)}` : ''}` : 'Not on file'}</dd>
+          {LISTS.map((l) => <><dt>{l.label}</dt><dd>{listLine(latest?.[l.key] ?? null, l.none)}</dd></>)}
+          <dt>Note</dt><dd>{latest?.note ?? '—'}</dd>
+        </dl>
+      )}
+
+      {health.total > 0 && (
+        <details class="pt-more mt-5 border-t border-[var(--ws-hair)] pt-2">
+          <summary>Earlier versions ({health.total}) <Icon name="chevron" size={16} class="pt-chev" /></summary>
+          <ol class="pt-list mt-1">
+            {health.versions.map((v, i) => {
+              const prev = health.versions[i + 1] ?? health.older;
+              const what = versionChanges(prev, v);
+              return (
+                <li class="!block">
+                  <p class="text-[14.5px] font-semibold">{byLine(v)}</p>
+                  <p class="mt-0.5 text-[14.5px] text-ink-2">{!prev ? [...what, 'First record.'].join(' · ') : what.length ? what.join(' · ') : 'Checked, no change.'}</p>
+                  <p class="mt-0.5 text-[13.5px] text-muted">{stateLine(v)}</p>
+                </li>
+              );
+            })}
+          </ol>
+          {health.total > health.versions.length && <p class="mt-2 text-[13.5px] text-muted">The {health.versions.length} newest are shown.</p>}
+        </details>
+      )}
+    </Pane>
+  </div>
+
+  <!-- Chart -->
+  <div id="rec-chart" role="tabpanel" aria-labelledby="rec-rec-chart-tab" hidden={current !== 'chart'} class="min-w-0" data-rec-panel="chart">
+    <Pane as="section" label="Chart" id="chart" class="pt-chart-pane">
+      <Head icon="tooth" title="Chart" />
+      <p class="-mt-2 mb-4 text-[14px] text-muted">Every change is saved as you make it, under your name.</p>
+      {/* The odontogram as it is (src/components/Odontogram.astro, its offline logic untouched),
+          drawn soft by patients.css ("The chart") and laid out by the width of this card: the
+          teeth fit the card's width, the chart note goes under the arches when there is no room
+          beside them, and where a whole arch still cannot fit (a phone) the line below says so. */}
+      <p class="pt-chart-scroll" data-pt-chart-scroll hidden>Scroll sideways to see every tooth <Icon name="arrow-right" size={16} /></p>
+      <div class="pt-chart" data-pt-chart>
+        <Odontogram marks={marks} notation={me.notation as Notation} saveUrl="/api/chart" patientId={patient.id} clinic={clinic.slug} csrf={csrf} />
       </div>
-      {latest?.note && <p class="max-w-[80ch] border-l-2 border-caries pl-3 text-[15px] font-medium text-ink">{latest.note}</p>}
+
+      {/* The findings as the server had them, newest concern first. When there are none the chart
+          note above already says so, once. */}
+      {findings.length > 0 && (
+        <>
+          <h3 class="mt-8 text-[16px] font-semibold">Findings</h3>
+          <p class="mt-0.5 text-[13.5px] text-muted">As they stood when this page opened.</p>
+          <ul class="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+            {findings.map((f) => (
+              <li class="pt-inset flex items-center gap-3 px-4 py-3">
+                <span class="tooth pt-find-swatch h-8! w-6! shrink-0" data-state={f.condition} aria-hidden="true"></span>
+                <div>
+                  <p class="text-[15px] font-semibold tabular-nums">Tooth {f.fdi}{f.codes && <span class="text-accent"> {f.codes}</span>}</p>
+                  <p class="text-[13.5px] text-ink-2">{CONDITION_LABEL[f.condition]}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </Pane>
+  </div>
+
+  <!-- Visits -->
+  <div id="rec-visits" role="tabpanel" aria-labelledby="rec-rec-visits-tab" hidden={current !== 'visits'} class="min-w-0" data-rec-panel="visits">
+    <Pane title="Visits" icon="calendar" id="visits" meta={visits.length === 200 ? 'The newest 200' : `${visits.length} on record`} pad="none">
+      {visits.length === 0 ? (
+        <div class="px-6 py-3 max-md:px-4"><Empty icon="calendar" text="No visits yet." action={canEdit ? { label: 'Bring in past visits from a spreadsheet', href: importHref } : { label: 'Book the first one', href: bookHref }} /></div>
+      ) : (
+        <table class="ws-table">
+          <caption class="sr-only">Visits of {shortName}, newest first</caption>
+          <thead>
+            <tr>
+              <th scope="col" class="meta">When</th>
+              <th scope="col" class="meta">Service</th>
+              <th scope="col" class="meta">Dentist</th>
+              <th scope="col" class="meta">Teeth</th>
+              <th scope="col" class="meta">Status</th>
+              {money && <th scope="col" class="meta text-right">Charged</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {visits.map((v) => (
+              <tr>
+                <td class="text-[14.5px] whitespace-nowrap tabular-nums">
+                  <span class="font-semibold">{visitText(v)}</span>
+                  <span class="block text-[13px] text-muted">{SOURCE[v.source] ?? v.source}{v.chair ? ` · chair ${v.chair}` : ''}</span>
+                </td>
+                <td class="text-[15px]"><span class="meta ws-cell-label">Service</span>{v.reason ?? '—'}{v.notes && <span class="block max-w-[40ch] text-[13.5px] text-ink-2 max-lg:max-w-none">{v.notes}</span>}</td>
+                <td class="text-[15px]"><span class="meta ws-cell-label">Dentist</span>{v.dentist ?? <span class="text-muted">—</span>}{v.dentist_free && <span class="block text-[13px] text-muted">As the old record has it</span>}</td>
+                <td class="text-[15px] tabular-nums"><span class="meta ws-cell-label">Teeth</span>{v.teeth?.length ? v.teeth.join(', ') : <span class="text-muted">—</span>}</td>
+                <td><span class="meta ws-cell-label">Status</span><Chip status={v.status} /></td>
+                {money && <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Charged</span>{v.charged ? pesos(v.charged) : <span class="text-muted">—</span>}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Pane>
+  </div>
+
+  <!-- Money -->
+  {money && (
+    <div id="rec-money" role="tabpanel" aria-labelledby="rec-rec-money-tab" hidden={current !== 'money'} class="min-w-0" data-rec-panel="money">
+      <Pane title="Money" icon="money" id="money" pad="none">
+        <Fragment slot="actions">
+          <a href={`${links.finances}?patient=${patient.id}&view=all`} class="ws-btn ws-btn-quiet ws-btn-sm">In Finances <Icon name="arrow-right" size={16} /></a>
+          <a href={chargeHref} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="plus" />New charge</a>
+        </Fragment>
+        <p class="border-b border-[var(--ws-hair)] px-6 py-4 text-[15px] text-ink-2 max-md:px-4">
+          {balance > 0n ? <>Owes <span class="font-semibold text-caries tabular-nums">{pesos(balance)}</span>{openCount ? ` on ${openCount} ${openCount === 1 ? 'statement' : 'statements'}` : ''}.</>
+            : balance < 0n ? <>In credit <span class="font-semibold tabular-nums">{pesos(-balance)}</span>.</>
+            : <>Nothing owed.</>}
+          {' '}Paid <span class="font-semibold tabular-nums">{pesos(paidAll)}</span> in all.
+          <span class="mt-0.5 block text-[13px] text-muted">Statements of account, not BIR receipts.</span>
+        </p>
+        {stmts.length === 0 ? (
+          <div class="px-6 py-3 max-md:px-4"><Empty icon="money" text="No statements for this patient yet." action={{ label: 'New charge', href: chargeHref }} /></div>
+        ) : (
+          <table class="ws-table">
+            <caption class="sr-only">Statements of {shortName}, newest first</caption>
+            <thead>
+              <tr>
+                <th scope="col" class="meta">Statement</th>
+                <th scope="col" class="meta">For</th>
+                <th scope="col" class="meta text-right">Total</th>
+                <th scope="col" class="meta text-right">Paid</th>
+                <th scope="col" class="meta text-right">Left</th>
+                <th scope="col" class="meta">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stmts.map((s) => {
+                const st = BILL_STATUS[s.status] ?? BILL_STATUS.issued;
+                return (
+                  <tr>
+                    <td class="whitespace-nowrap"><a href={`${links.finances}${s.id}/`} class="inline-flex min-h-11 items-center font-mono text-[14px] font-medium text-accent underline-offset-4 hover:underline">{statementNo(s.series_prefix, s.number)}</a><span class="block text-[13px] text-muted tabular-nums">{dateText(manilaDay(s.issued_at))}{s.imported_at ? ' · brought in' : ''}</span></td>
+                    <td class="text-[14.5px]"><span class="meta ws-cell-label">For</span>{s.first_line ?? '—'}{s.n_lines > 1 && <span class="text-muted"> and {s.n_lines - 1} more</span>}{s.payor_name && <span class="block text-[13px] text-muted">{s.payor_name} part {pesos(fromDb(s.payor_share))}</span>}</td>
+                    <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Total</span>{pesos(s.total)}</td>
+                    <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Paid</span>{pesos(s.paid)}</td>
+                    <td class="text-right text-[15px] font-semibold tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Left</span>{pesos(s.left)}</td>
+                    <td><span class="meta ws-cell-label">Status</span><span class:list={['ws-chip', STMT_TINT[s.status] ?? 'ws-tint-slate']}>{st.label}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </Pane>
     </div>
   )}
 
-  <DeskConsent notice={data.notice} consents={data.consents} canRecord={canEdit} minor={minor} birthKnown={!!patient.birth} dpo={data.dpo} action={`${here}#consent`}
-    problem={consentProblem} givenBy={givenBy} agreedAs={agreedAs} recorded={saved === 'consent' ? 'saved' : saved === 'consent-already' ? 'already' : null} />
+  <!-- Consent -->
+  <div id="rec-consent" role="tabpanel" aria-labelledby="rec-rec-consent-tab" hidden={current !== 'consent'} class="min-w-0" data-rec-panel="consent">
+    <Pane as="section" label="Privacy consent">
+      <Head icon="shield" title="Privacy consent" />
+      <DeskConsent notice={data.notice} consents={data.consents} canRecord={canEdit} minor={minor} birthKnown={!!patient.birth} dpo={data.dpo} action={`${here}#consent`}
+        problem={consentProblem} givenBy={givenBy} agreedAs={agreedAs} recorded={saved === 'consent' ? 'saved' : saved === 'consent-already' ? 'already' : null}
+        paperForms={data.paperForms} paper={{ ...paperState, recorded: saved === 'paper' ? 'saved' : null }} />
+    </Pane>
+  </div>
 
-  <section id="health" class="mt-10 scroll-mt-24" aria-labelledby="health-title">
-    <h2 id="health-title" class="font-display text-[22px] font-semibold">Health</h2>
-    <p class="mt-1 text-[13.5px] text-muted">
-      {!latest ? 'Nothing recorded yet. Ask the patient before treatment.'
-        : answered(latest) ? `Updated ${byLine(latest)}.`
-        : `No health answers yet. Ask the patient before treatment. Last saved ${byLine(latest)}.`}
-    </p>
+  <!-- Texts -->
+  <div id="rec-texts" role="tabpanel" aria-labelledby="rec-rec-texts-tab" hidden={current !== 'texts'} class="min-w-0" data-rec-panel="texts">
+    <Pane title="Texts" icon="message" id="texts" meta={data.texts.length === 50 ? 'The newest 50' : `${data.texts.length} about this patient`} pad="none">
+      <a slot="actions" href={links.messages} class="ws-btn ws-btn-quiet ws-btn-sm">All messages <Icon name="arrow-right" size={16} /></a>
+      {data.texts.length === 0 ? (
+        <div class="px-6 py-3 max-md:px-4"><Empty icon="message" text="No texts to or from this patient yet. Booking confirmations and reminders show here." /></div>
+      ) : (
+        <table class="ws-table">
+          <caption class="sr-only">Texts to and from {shortName}, newest first</caption>
+          <thead><tr><th scope="col" class="meta">When</th><th scope="col" class="meta">Status</th><th scope="col" class="meta">Text</th></tr></thead>
+          <tbody>
+            {data.texts.map((m) => {
+              const st = textStatus(m);
+              return (
+                <tr>
+                  <td class="text-[14.5px] whitespace-nowrap tabular-nums">{when(new Date(m.created_at))}<span class="block text-[13px] text-muted">{m.direction === 'in' ? 'Reply' : TEXT_KIND[m.kind ?? ''] ?? 'Text'}</span></td>
+                  <td><span class="meta ws-cell-label">Status</span><Chip tone={st.tone} label={st.label} dot={st.tone === 'alert'} /></td>
+                  <td class="max-w-[40rem] text-[14.5px] leading-relaxed break-words whitespace-pre-wrap"><span class="meta ws-cell-label">Text</span>{m.body ?? <span class="text-muted">A sign-in code. It is not shown here.</span>}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </Pane>
+  </div>
 
-    {(saved === 'health' || saved === 'birth') && <p role="status" class="mt-4 border border-accent/40 bg-accent/10 p-4 text-[15px]">Saved.</p>}
-    {saved === 'nothing' && <p role="status" class="mt-4 border border-line bg-bg-soft p-4 text-[15px]">Nothing was saved: nothing is ticked or typed yet.</p>}
-    {conflict && (
-      <div role="alert" class="mt-4 border border-crown/40 bg-crown/10 p-4 text-[15px]">
-        <p class="font-semibold">
-          {conflict.versionMoved && conflict.latest ? `${conflict.latest.by ?? 'Someone'} saved this record ${when(new Date(conflict.latest.at))}, after you opened it.`
-            : conflict.birthMoved ? `The birth date on file changed to ${dateText(conflict.birth) ?? 'none'} after you opened this page.`
-            : 'This record changed after you opened it.'} Nothing of yours was saved yet.
-        </p>
-        <p class="mt-1.5 text-ink-2">On file now: {birthLine(conflict.birth)}{conflict.latest && <> · {stateLine(conflict.latest)}</>}.</p>
-        <p class="mt-1.5 text-ink-2">Your answers are still below. Check them against what is on file, then press Save again.</p>
-      </div>
-    )}
-    {healthProblems.length > 0 && (
-      <div role="alert" class="mt-4 border border-caries/40 bg-caries/10 p-4 text-[15px]">
-        <p class="font-semibold">Nothing was saved. {healthProblems.length === 1 ? 'One thing' : 'A few things'} to fix:</p>
-        <ul class="mt-2 list-disc space-y-1 pl-5">{healthProblems.map((p) => <li>{p}</li>)}</ul>
-      </div>
-    )}
-
-    {canEdit ? (
-      <form method="post" action={`${here}#health`} class="mt-4 border border-line bg-surface" data-health-form data-health-unsaved={posted ? '' : undefined}>
+  {canEdit && (
+    <SidePanel id="details" title="Edit details" meta={shortName} wide open={detailsProblems.length > 0}>
+      {detailsProblems.length > 0 && <Callout tone="alert" class="mb-5" title="Nothing was saved." items={detailsProblems} />}
+      <form method="post" action={`${here}#overview`} class="grid gap-4">
         <Csrf />
-        <input type="hidden" name="intent" value="health" />
-        <input type="hidden" name="base" value={base} />
-        <input type="hidden" name="birth_was" value={birthWas} />
-
-        <div class="divide-y divide-line-2">
-          <div class="p-5 sm:p-6">
-            <label for="birth_date" class="meta">Birth date</label>
-            <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
-              <input id="birth_date" type="date" name="birth_date" value={birthValue} min="1900-01-01" max={today} class={`${textBox} w-[13.5rem]`} data-health-birth data-today={today} />
-              <span class="text-[16px] text-ink-2" aria-live="polite" data-health-age>{formAge !== null && formAge >= 0 ? ageText(formAge) : birthValue ? '' : 'Not on file yet'}</span>
-            </div>
-          </div>
-
-          {LISTS.map((l) => (
-            <fieldset class="min-w-0 p-5 sm:p-6" data-health-list={l.key}>
-              <legend class="meta float-left w-full">{l.label}</legend>
-              <div class="clear-both flex flex-wrap gap-2.5 pt-3" data-health-chips>
-                <label class="relative inline-flex cursor-pointer select-none">
-                  <input type="checkbox" name={`${l.key}_none`} value="1" checked={shown[l.key]?.length === 0} class={hiddenBox} data-health-none />
-                  <span class={`${chip} ${TONE.none}`}>{l.none}</span>
-                </label>
-                {chipsFor(l.key, l.picks).map((c) => (
-                  <label class="relative inline-flex cursor-pointer select-none">
-                    <input type="checkbox" name={l.key} value={c.value} checked={c.on} class={hiddenBox} />
-                    <span class={`${chip} ${TONE[l.key]}`}>{c.value}</span>
-                  </label>
-                ))}
-              </div>
-              <div class="mt-3 flex gap-2.5">
-                <input id={`${l.key}_add`} name={`${l.key}_add`} maxlength={ITEM_MAX * 4} autocomplete="off" aria-label={`Another ${l.one}`} placeholder={`Another ${l.one}`} class={`${textBox} min-w-0 flex-1 sm:max-w-[22rem]`} data-health-add-input />
-                <button type="button" class="btn btn-quiet min-h-[50px] min-w-[5.5rem] !py-0 text-[16px]" data-health-add>Add</button>
-              </div>
-              <template data-health-tpl>
-                <label class="relative inline-flex cursor-pointer select-none">
-                  <input type="checkbox" name={l.key} value="" checked class={hiddenBox} />
-                  <span class={`${chip} ${TONE[l.key]}`} data-health-chip-text></span>
-                </label>
-              </template>
-            </fieldset>
-          ))}
-
-          <div class="p-5 sm:p-6">
-            <label class="field">
-              <span class="meta">Note for the dentist</span>
-              <textarea name="note" rows="2" maxlength={NOTE_MAX} placeholder="Anything to know before starting. For example: faints at injections." class="min-h-[50px] text-[16px]">{shown.note ?? ''}</textarea>
-            </label>
-          </div>
+        <input type="hidden" name="intent" value="details" />
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="field"><span class="meta">Last name</span><input name="last_name" value={d.last} required maxlength="60" autocomplete="off" /></label>
+          <label class="field"><span class="meta">First name</span><input name="first_name" value={d.first} required maxlength="60" autocomplete="off" /></label>
+          <label class="field"><span class="meta">Middle name</span><input name="middle_name" value={d.middle ?? ''} maxlength="60" autocomplete="off" /></label>
+          <label class="field"><span class="meta">Suffix</span><input name="suffix" value={d.suffix ?? ''} maxlength="10" autocomplete="off" placeholder="Jr., Sr., III" /></label>
         </div>
-
-        <div class="flex flex-wrap items-center gap-4 border-t border-line bg-bg-soft px-5 py-4 sm:px-6">
-          <button type="submit" class="btn btn-primary min-h-[52px] min-w-[10rem] text-[16px]" data-health-save>Save</button>
-          <span class="text-[14.5px] text-ink-2" data-health-dirty hidden={!posted}>Not saved yet.</span>
-          <span class="text-[13.5px] text-muted">Saved as a new version under your name. Earlier versions stay.</span>
+        <fieldset class="min-w-0">
+          <legend class="float-left w-full text-[14px] font-medium text-ink-2">Sex</legend>
+          <div class="pk-row clear-both pt-2">
+            {SEXES.map((x) => (
+              <label class="pk pk-radio"><input type="radio" name="sex" value={x.id} checked={d.sex === x.id} /><span>{x.label}</span></label>
+            ))}
+          </div>
+        </fieldset>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="field"><span class="meta">Mobile</span><input type="tel" name="mobile" value={d.phone ? prettyPhone(d.phone) : ''} inputmode="tel" autocomplete="off" /><span class={help}>Reminders go to it.</span></label>
+          <label class="field"><span class="meta">Email</span><input type="email" name="email" value={d.email ?? ''} maxlength="120" autocomplete="off" /></label>
+          <label class="field sm:col-span-2"><span class="meta">Address</span><input name="address" value={d.address ?? ''} maxlength="200" autocomplete="off" /></label>
+          <label class="field"><span class="meta">City or town</span><input name="city" value={d.city ?? ''} maxlength="80" autocomplete="off" /></label>
+          <label class="field"><span class="meta">Province</span><input name="province" value={d.province ?? ''} maxlength="80" autocomplete="off" /></label>
+          <label class="field"><span class="meta">HMO</span><input name="hmo_name" value={d.hmoName ?? ''} maxlength="80" autocomplete="off" list="rec-hmo-names" /></label>
+          <label class="field"><span class="meta">HMO member no.</span><input name="hmo_member_no" value={d.hmoMemberNo ?? ''} maxlength="40" autocomplete="off" /></label>
+          <label class="field"><span class="meta">Emergency contact</span><input name="emergency_name" value={d.emergencyName ?? ''} maxlength="120" autocomplete="off" /></label>
+          <label class="field"><span class="meta">Relation</span><input name="emergency_relation" value={d.emergencyRelation ?? ''} maxlength="40" autocomplete="off" /></label>
+          <label class="field"><span class="meta">Their number</span><input type="tel" name="emergency_phone" value={d.emergencyPhone ? prettyPhone(d.emergencyPhone) : ''} maxlength="20" inputmode="tel" autocomplete="off" /></label>
+          <label class="field"><span class="meta">Chart no.</span><input name="chart_no" value={d.chartNo ?? ''} maxlength="20" autocomplete="off" /><span class={help}>Change it only to match the card.</span></label>
         </div>
+        <label class="field"><span class="meta">Notes</span><textarea name="notes" rows="3" maxlength={NOTES_MAX}>{d.notes ?? ''}</textarea></label>
+        <datalist id="rec-hmo-names">{data.hmoNames.map((h) => <option value={h} />)}</datalist>
+        <p class="flex items-start gap-2 text-[13.5px] text-muted"><Icon name="info" size={16} class="mt-0.5 shrink-0" />The birth date is changed on Health, where its history is kept.</p>
+        <div><button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save details</button></div>
       </form>
-    ) : (
-      <dl class="mt-4 grid gap-x-8 gap-y-3 border border-line bg-surface p-5 sm:grid-cols-[12rem_1fr] sm:p-6">
-        <dt class="meta">Birth date</dt><dd class="text-[15px]">{patient.birth ? `${patient.birth}${age !== null ? ` · ${ageText(age)}` : ''}` : 'Not on file'}</dd>
-        {LISTS.map((l) => <><dt class="meta">{l.label}</dt><dd class="text-[15px]">{listText(latest?.[l.key] ?? null, l.none.toLowerCase())}</dd></>)}
-        <dt class="meta">Note</dt><dd class="text-[15px]">{latest?.note ?? '—'}</dd>
-      </dl>
-    )}
-
-    {health.total > 0 && (
-      <details class="mt-4">
-        <summary class="meta inline-flex min-h-[44px] cursor-pointer items-center hover:text-ink">History ({health.total} {health.total === 1 ? 'version' : 'versions'})</summary>
-        <ol class="divide-y divide-line-2 border border-line bg-surface">
-          {health.versions.map((v, i) => {
-            const prev = health.versions[i + 1] ?? health.older;
-            const what = versionChanges(prev, v);
-            return (
-              <li class="px-4 py-3">
-                <p class="text-[14.5px] font-semibold">{byLine(v)}</p>
-                <p class="mt-0.5 text-[14.5px] text-ink-2">{!prev ? [...what, 'First record.'].join(' · ') : what.length ? what.join(' · ') : 'Checked, no change.'}</p>
-                <p class="mt-0.5 text-[13.5px] text-muted">{stateLine(v)}</p>
-              </li>
-            );
-          })}
-        </ol>
-        {health.total > health.versions.length && <p class="mt-2 text-[13.5px] text-muted">The {health.versions.length} newest are shown.</p>}
-      </details>
-    )}
-  </section>
-
-  <section class="mt-10">
-    <div class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h2 class="font-display text-[22px] font-semibold">Odontogram</h2>
-        <p class="mt-1 text-[13.5px] text-muted">Every change is saved as you make it, under your name.</p>
-      </div>
-      <p class="text-[13.5px] text-muted">Stored in FDI; displayed in this clinic's preference. Click a tooth to change a finding.</p>
-    </div>
-    <div class="mt-4">
-      <Odontogram marks={marks} notation={me.notation as Notation} saveUrl="/api/chart" patientId={patient.id} clinic={clinic.slug} csrf={csrf} />
-    </div>
-  </section>
-
-  <section class="mt-10">
-    <h2 class="font-display text-[22px] font-semibold">Findings on record</h2>
-    <p class="mt-1 text-[13.5px] text-muted">As they stood when this page opened. The chart note above follows your changes as you make them.</p>
-    {findings.length === 0 ? (
-      <p class="mt-3 text-[15px] text-muted">Nothing charted yet.</p>
-    ) : (
-      <ul class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {findings.map((f) => (
-          <li class="flex items-center gap-3 border border-line bg-surface px-4 py-3.5">
-            <span class="tooth h-8! w-6! shrink-0" data-state={f.condition} aria-hidden="true"></span>
-            <div>
-              <p class="text-[15px] font-semibold tabular-nums">Tooth {f.fdi}{f.codes && <span class="text-accent"> {f.codes}</span>}</p>
-              <p class="text-[13.5px] text-ink-2">{CONDITION_LABEL[f.condition]}</p>
-            </div>
-          </li>
-        ))}
-      </ul>
-    )}
-  </section>
-
-  <section class="mt-10">
-    <h2 class="font-display text-[22px] font-semibold">Visits</h2>
-    {visits.length === 0 ? (
-      <p class="mt-3 text-[15px] text-muted">No visits on record.</p>
-    ) : (
-      <ul class="mt-4 divide-y divide-line-2 border border-line bg-surface">
-        {visits.map((v) => (
-          <li class="flex flex-wrap items-baseline justify-between gap-3 px-4 py-3 text-[15px]"><span>{visitWhen(v.starts_at)} · {v.reason}</span><span class="meta">{String(v.status).replace('_', ' ')}</span></li>
-        ))}
-      </ul>
-    )}
-  </section>
-
-  <section class="mt-10 border border-line-2 bg-bg-soft p-6">
-    <h2 class="font-display text-[19px] font-semibold">Not on this record yet</h2>
-    <p class="mt-2 max-w-[640px] text-[15px] leading-relaxed text-ink-2">
-      Procedures, treatment plans, prescriptions, signed treatment consent forms, X-rays and invoices are not kept here yet; keep them the way the clinic does now. Reading this record, and every change to the chart, the health record and consent, is written to the audit log.
-    </p>
-  </section>
+    </SidePanel>
+  )}
 </ClinicLayout>
 
 <script>
   import { ageOn, ageText, capitalise } from '../../../../lib/health';
+
+  // --- the sections: in the address, so a reload or a post lands where it was ---
+  const list = document.querySelector<HTMLElement>('.rec-tabs');
+  const tabFor = (name: string) => document.getElementById(`rec-rec-${name}-tab`) as HTMLButtonElement | null;
+  const panelOf = (el: Element | null) => el?.closest<HTMLElement>('[data-rec-panel]')?.dataset.recPanel ?? null;
+  const show = (name: string, focus = false) => {
+    const t = tabFor(name);
+    if (!t) return false;
+    if (t.getAttribute('aria-selected') !== 'true') t.click();
+    t.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (focus) t.focus();
+    return true;
+  };
+  const fromHash = () => {
+    const id = decodeURIComponent(location.hash.slice(1));
+    if (!id) return;
+    const target = document.getElementById(id);
+    const name = panelOf(target) ?? id.replace(/^rec-/, '');
+    if (show(name) && target && !target.matches('[data-rec-panel]')) requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
+  };
+  list?.addEventListener('ws:tab', (e) => {
+    const id = String((e as CustomEvent).detail?.id ?? '').replace(/^rec-/, '');
+    if (id && location.hash !== `#${id}`) history.replaceState(null, '', `${location.pathname}${location.search}#${id}`);
+    tabFor(id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  });
+  window.addEventListener('hashchange', fromHash);
+  fromHash();
+  document.querySelectorAll<HTMLElement>('[data-rec-go]').forEach((b) => b.addEventListener('click', () => { show(b.dataset.recGo!, true); }));
+
+  // The chart speaks up: a copy of this page kept for a brownout opens on the Chart, and a
+  // notice the chart raises (a colleague's newer finding, changes waiting on this device)
+  // brings the Chart forward, wherever the person was.
+  if (document.documentElement.dataset.offlineCopy) show('chart');
+  const notices = document.querySelectorAll<HTMLElement>('[data-hold-note], [data-sync-notice], [data-copy-note]');
+  const watch = new MutationObserver(() => { if ([...notices].some((n) => !n.hidden)) show('chart'); });
+  notices.forEach((n) => watch.observe(n, { attributes: true, attributeFilter: ['hidden'] }));
+  if ([...notices].some((n) => !n.hidden)) show('chart');
+
+  // The chart in its card (the look and the layout are patients.css, "The chart"). The
+  // component's empty line was written for a demo chart; a record says what to do. Where an
+  // arch is wider than the card (a phone), the line above the chart says so, the edge where
+  // teeth wait fades (data-pt-more), and the two arches scroll together, so the upper teeth
+  // stay over the lower ones — arrow keys moving to a hidden tooth scroll both.
+  const chart = document.querySelector<HTMLElement>('[data-pt-chart]');
+  if (chart) {
+    const empty = chart.querySelector<HTMLElement>('[data-note-empty]');
+    if (empty) empty.textContent = 'Nothing charted yet. Pick a tooth to add a finding.';
+    const hint = document.querySelector<HTMLElement>('[data-pt-chart-scroll]');
+    const arches = [...new Set([...chart.querySelectorAll<HTMLElement>('[data-tooth]')]
+      .map((t) => t.closest<HTMLElement>('.overflow-x-auto'))
+      .filter((a): a is HTMLElement => !!a))];
+    const measure = () => {
+      let any = false;
+      for (const a of arches) {
+        const room = a.scrollWidth - a.clientWidth;
+        const over = a.clientWidth > 0 && room > 1;
+        any ||= over;
+        const left = over && a.scrollLeft > 1;
+        const right = over && a.scrollLeft < room - 1;
+        if (left || right) a.dataset.ptMore = left && right ? 'both' : left ? 'left' : 'right';
+        else delete a.dataset.ptMore;
+      }
+      if (hint) hint.hidden = !any;
+    };
+    let lead: HTMLElement | null = null;
+    for (const a of arches) {
+      a.addEventListener('scroll', () => {
+        if (lead && lead !== a) return;
+        lead = a;
+        for (const b of arches) if (b !== a && Math.abs(b.scrollLeft - a.scrollLeft) > 1) b.scrollLeft = a.scrollLeft;
+        measure();
+        requestAnimationFrame(() => { if (lead === a) lead = null; });
+      }, { passive: true });
+    }
+    const sized = new ResizeObserver(measure);
+    arches.forEach((a) => { sized.observe(a); if (a.firstElementChild) sized.observe(a.firstElementChild); });
+    measure();
+  }
 
   // The health form. Chips are checkboxes, so the form posts without this
   // script too (what is left in an "add" box is split on commas and saved).
   // With it: Enter or Add turns the typed words into ticked chips, the none
   // chip and the others untick each other, the age follows the birth date,
   // and leaving with unsaved changes asks first. "Unsaved" is the form's
-  // data-health-unsaved attribute, so the consent form above can see it.
+  // data-health-unsaved attribute, so the consent form can see it.
   document.querySelectorAll<HTMLFormElement>('[data-health-form]').forEach((form) => {
     const note = form.querySelector<HTMLElement>('[data-health-dirty]');
     const mark = () => { form.toggleAttribute('data-health-unsaved', true); if (note) note.hidden = false; };

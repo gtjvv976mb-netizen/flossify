@@ -1,0 +1,156 @@
+---
+// Flossify control › System (/admin/system/): is everything running? The
+// text sender (its heartbeat and the queue), the database, the deployed
+// version, whether billing and online payment are on — and the operations
+// log: what Flossify's own people did, newest first (admin_audit, 027).
+// Read-only: nothing here changes anything.
+export const prerender = false;
+
+import AdminLayout from '../../../layouts/Admin.astro';
+import Pane from '../../../components/ws/Pane.astro';
+import Chip from '../../../components/ws/Chip.astro';
+import Empty from '../../../components/ws/Empty.astro';
+import Icon from '../../../components/ws/Icon.astro';
+import Avatar from '../../../components/ws/Avatar.astro';
+import { requireAdmin, control, operatorLog, health, ago, clock, shortDay, manilaYmd, ACTION_WORDS } from '../../../lib/admin';
+import { BILLING_FINAL, daysBetween, manilaToday } from '../../../lib/billing';
+import { payConfig } from '../../../lib/payments';
+
+const admin = await requireAdmin(Astro);
+if (admin instanceof Response) return admin;
+
+const [c, log, sys] = await Promise.all([control(), operatorLog(30), health()]);
+const canAsk = payConfig() !== null;
+const now = new Date();
+const today = manilaToday();
+const n = (x: number) => x.toLocaleString('en-PH');
+const plural = (k: number, one: string, many = `${one}s`) => `${n(k)} ${k === 1 ? one : many}`;
+
+// --- the sender's heartbeat ---------------------------------------------------------------------
+// The sender stamps worker_heartbeat on every pass (027, through the claim it already makes): every
+// ten seconds while it runs. The longest gap a running sender can leave is one batch it is working
+// through: 20 texts (BATCH in scripts/sms/worker.ts) at the text service's 15-second timeout each is
+// five minutes. Past BEAT_LATE, longer than that, it has not been heard from. Before its first stamp
+// (just after 027 went in) the page has only the queue to go by, and says so rather than calling a
+// quiet queue healthy.
+const BEAT_LATE_MS = 6 * 60_000;
+const beatAt = c.sender_beat_at;
+const beatLate = beatAt !== null && now.getTime() - new Date(beatAt).getTime() > BEAT_LATE_MS;
+const overdue = c.texts_overdue > 0
+  ? `${plural(c.texts_overdue, 'text')} should have gone ${c.texts_overdue_since ? ago(c.texts_overdue_since, now) : 'a while ago'} and ${c.texts_overdue === 1 ? 'has' : 'have'} not.`
+  : 'No text is waiting past its time.';
+type Tone = 'accent' | 'alert' | 'neutral';
+const sender: { tone: Tone; label: string; line: string } =
+  beatAt === null
+    ? c.texts_overdue > 0
+      ? { tone: 'alert', label: 'Behind', line: `${overdue} No heartbeat has come in from the sender yet: check that it is running.` }
+      : { tone: 'neutral', label: 'No heartbeat yet', line: `The sender sends a heartbeat on every pass once it runs after this update; until then a stopped sender and a quiet one look the same here. ${overdue}` }
+    : beatLate
+      ? { tone: 'alert', label: 'Not heard from', line: `It last asked for texts to send ${ago(beatAt, now)}, at ${clock(beatAt)}. It asks every ten seconds while it runs: check that it is running.${c.texts_overdue > 0 ? ` ${overdue}` : ''}` }
+      : c.texts_overdue > 0
+        ? { tone: 'alert', label: 'Behind', line: `${overdue} The sender is running (it asked for work ${ago(beatAt, now)}), so the text service may be slow or refusing: see the sender’s log.` }
+        : { tone: 'accent', label: 'Running', line: `It asked for texts to send ${ago(beatAt, now)}, and asks every ten seconds. ${overdue}` };
+const SMS_WORDS: Record<string, string> = { semaphore: 'Semaphore', console: 'the console (printed in the sender’s log, not sent)' };
+const allWell = sender.tone === 'accent' && sys.db.ok;
+
+// --- the log, by day ------------------------------------------------------------------------------
+const dayWord = (d: Date) => {
+  const k = daysBetween(manilaYmd(d), today);
+  return k === 0 ? 'Today' : k === 1 ? 'Yesterday' : shortDay(d);
+};
+const logDays: { day: string; items: typeof log }[] = [];
+for (const e of log) {
+  const day = dayWord(e.at);
+  const last = logDays[logDays.length - 1];
+  if (last?.day === day) last.items.push(e);
+  else logDays.push({ day, items: [e] });
+}
+---
+
+<AdminLayout title="System" section="system" admin={{ name: admin.name, email: admin.email }} wide>
+  {allWell
+    ? <p role="status" class="ws-callout" data-tone="success"><Icon name="check" /><span>Everything is running. The text sender asked for work {ago(beatAt, now)} and the database answered in {sys.db.ms} ms.</span></p>
+    : sender.tone === 'alert' || !sys.db.ok
+      ? <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{!sys.db.ok ? 'The database did not answer. The numbers on these pages may be missing.' : `The text sender needs a look: ${sender.label.toLowerCase()}.`}</span></p>
+      : null}
+
+  <div class="grid items-start gap-4 max-md:gap-3 xl:grid-cols-[minmax(0,6fr)_minmax(0,5fr)]">
+    <Pane id="system" title="How it is running" icon="settings" meta={`As of ${clock(now)}`}>
+      <dl class="ops-facts">
+        <dt class="meta">Text sender</dt>
+        <dd>
+          <Chip tone={sender.tone} label={sender.label} dot />
+          <p class="mt-1.5">{sender.line}</p>
+          <p class="mt-1 text-[14px] text-ink-2">
+            {`Last text sent ${c.last_sent_at ? `${ago(c.last_sent_at, now)} (${clock(c.last_sent_at)}${daysBetween(manilaYmd(c.last_sent_at), today) > 0 ? `, ${shortDay(c.last_sent_at)}` : ''})` : 'never'} · ${n(c.texts_sent_24h)} in 24 hours · ${n(c.texts_queued)} waiting (some may be held for quiet hours, 9 pm to 8 am) · ${n(c.texts_failed_7d)} failed this week.`}
+          </p>
+          {c.texts_sending > 0 && (
+            <p class="mt-1 text-[14px] text-ink-2">{plural(c.texts_sending, 'text')} taken by the sender and never marked: a crash mid-send leaves them, and they are not sent twice.</p>
+          )}
+          <p class="mt-1 text-[13.5px] text-muted">Texts go through {SMS_WORDS[sys.sms] ?? sys.sms}.</p>
+        </dd>
+        <dt class="meta">Database</dt>
+        <dd>
+          {sys.db.ok ? (
+            <>
+              <Chip tone="accent" label="Answering" dot />
+              <p class="mt-1.5">Answered in {sys.db.ms} ms{sys.db.version && <> · PostgreSQL {sys.db.version}</>}{sys.db.size && <> · {sys.db.size}</>}</p>
+              {sys.db.newest && <p class="mt-1 text-[14px] text-ink-2">Schema at <span class="ops-ref text-ink-2">{sys.db.newest}</span>{sys.db.applied !== null && ` (${plural(sys.db.applied, 'file')} applied)`}{sys.db.migratedAt && `, last ${ago(sys.db.migratedAt, now)}`}</p>}
+            </>
+          ) : (
+            <><Chip tone="alert" label="Not answering" dot /><p class="mt-1.5">The database did not answer a simple question. The numbers on these pages may be missing.</p></>
+          )}
+        </dd>
+        <dt class="meta">Deployed</dt>
+        <dd>
+          {sys.deploy.commit ? (
+            <p>Commit <span class="ops-ref text-ink">{sys.deploy.commit.slice(0, 7)}</span>{sys.deploy.branch && <> from <span class="ops-ref text-ink">{sys.deploy.branch}</span></>}</p>
+          ) : (
+            <p>Version not known here: it is shown on Render only.</p>
+          )}
+          <p class="mt-1 text-[14px] text-ink-2">This server started {ago(sys.deploy.startedAt, now)} · Node {sys.deploy.node}</p>
+        </dd>
+        <dt class="meta">Billing</dt>
+        <dd>
+          <Chip tone={BILLING_FINAL ? 'accent' : 'warn'} label={BILLING_FINAL ? 'On' : 'Off'} dot />
+          <p class="mt-1.5">{BILLING_FINAL ? 'The sender’s pass issues each month’s invoices.' : 'No invoice is issued, by the sender or from Billing, until BILLING_FINAL is switched on.'}</p>
+          <p class="mt-1 text-[14px] text-ink-2">Online payment {canAsk ? 'is set up on this server (PayMongo).' : 'is not set up on this server.'}</p>
+        </dd>
+      </dl>
+    </Pane>
+
+    <Pane id="log" title="Operations log" icon="file" meta="What Flossify’s own people did, newest first" pad="none">
+      {log.length === 0 ? (
+        <div class="px-6 py-3 max-md:px-4"><Empty text="Nothing yet. Sign-ins, PRC checks and billing actions show here." /></div>
+      ) : (
+        <ol>
+          {logDays.map((g) => (
+            <li>
+              <p class="border-t border-[var(--ws-hair)] bg-[var(--ws-subtle)] px-6 py-2 text-[13.5px] font-semibold text-ink-2 first:border-t-0 max-md:px-4">{g.day}</p>
+              <ol>
+                {g.items.map((e) => {
+                  const who = e.staff_id === admin.session.staffId ? 'You' : e.staff_name;
+                  return (
+                    <li class="flex gap-3 border-t border-[var(--ws-hair)] px-6 py-3 max-md:px-4">
+                      <Avatar name={e.staff_name} size="sm" />
+                      <span class="min-w-0 flex-1">
+                        <span class="flex flex-wrap items-baseline justify-between gap-x-3">
+                          <span class="text-[14.5px] font-medium">{ACTION_WORDS[e.action] ?? e.action}</span>
+                          <span class="text-[13px] whitespace-nowrap tabular-nums text-muted">{clock(e.at)}</span>
+                        </span>
+                        {(e.subject || e.clinic_name || e.detail) && (
+                          <span class="block text-[13.5px] break-words text-ink-2">{[e.subject, e.clinic_name, e.detail].filter(Boolean).join(' · ')}</span>
+                        )}
+                        <span class="block text-[13px] text-muted">{who}</span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Pane>
+  </div>
+</AdminLayout>

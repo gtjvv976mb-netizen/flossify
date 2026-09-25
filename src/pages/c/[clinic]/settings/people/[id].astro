@@ -1,0 +1,343 @@
+---
+// One person's page: /c/<slug>/settings/people/<id>/. Everything about one
+// owner, dentist or staff member at this branch, in one place — who they are
+// and how to reach them, their PRC licence and where its check stands, the
+// days they sit here, finance access, their sign-in (a new invitation or
+// reset code, disable, enable), and, for someone who sees patients, their
+// coming appointments here (read only; the calendar is where they change).
+//
+// Owner and admin only, as Settings → Team was; a person may always open their
+// own page (read only unless they are the owner or an admin; their password is
+// on My page). The id must have access to this branch (staff_access), so an id
+// from another branch or group is "not on this branch". Every action is the
+// Team page's, unchanged, in _lib/people.ts: the same rules (an owner's row by
+// an owner only, nobody changes their own role, one email and one mobile per
+// account across the service, a new PRC number or name goes back for a check),
+// the same audit lines. Every form carries <Csrf />; a post without a matching
+// token changes nothing and says so.
+export const prerender = false;
+
+import ClinicLayout from '../../../../../layouts/Clinic.astro';
+import Pane from '../../../../../components/ws/Pane.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Avatar from '../../../../../components/ws/Avatar.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Note from '../_ui/Note.astro';
+import Upcoming from '../_ui/Upcoming.astro';
+import Email from '../_ui/Email.astro';
+import '../_ui/settings.css';
+import { requireWorkspace } from '../../../../../lib/workspace';
+import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
+import { ROLES, ROLE_LABEL, DAYS, ago, clinician, dateText, daysText, prcState, treats } from '../_lib/common';
+import {
+  member, daysOf, upcomingFor, personAction, personNotice, accountState, reachable, emailOn, prettyPhone,
+  SPECIALTIES, EMAIL_MAX, type ActionRefused, type EditValues,
+} from '../_lib/people';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const canSetUp = session.role === 'owner' || session.role === 'admin';
+const isOwner = session.role === 'owner';
+const id = Astro.params.id ?? '';
+const base = `/c/${clinic.slug}/settings/`;
+const here = `${base}people/${id}/`;
+
+let t = await member(clinic.id, id);
+const self = t?.id === session.staffId;
+const allowed = !!t && (canSetUp || self);
+if (!t) Astro.response.status = 404;
+else if (!allowed) Astro.response.status = 403;
+
+let refused: ActionRefused | null = null;
+if (Astro.request.method === 'POST' && t) {
+  if (!canSetUp) return Astro.redirect(here, 303);
+  const form = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, form)) refused = { error: CSRF_MESSAGE, action: String(form.get('action') ?? '') };
+  else {
+    const r = await personAction({ clinic, session, cookies: Astro.cookies, site: Astro.site, here }, t, form);
+    if (r instanceof Response) return r;
+    refused = r;
+    t = await member(clinic.id, id);
+  }
+}
+
+const q = Astro.url.searchParams;
+const [days, upcoming] = t && allowed
+  ? await Promise.all([daysOf(clinic.id, t.id), treats(t.role) ? upcomingFor(clinic.id, t.id) : Promise.resolve(null)])
+  : [[] as number[], null];
+const notice = t && allowed && !refused ? personNotice(q, t, session.staffId) : '';
+const doneTo = q.get('done') === 'schedule' ? 'days' : q.get('done') === 'finance' ? 'finance' : ['invite', 'reset', 'disable', 'enable'].includes(q.get('done') ?? '') ? 'signin' : 'head';
+// Where a refused action's sentence goes: the pane it came from. A refused edit comes back in its panel.
+const errorIn = refused?.edit ? 'edit' : refused?.action === 'finance' ? 'finance' : refused?.action === 'schedule' ? 'days' : ['invite', 'reset', 'disable', 'enable'].includes(refused?.action ?? '') ? 'signin' : 'head';
+
+// What the edit form shows: what was typed when it came back with an error, else what is on file.
+const v: EditValues | null = t ? (refused?.edit ?? { name: t.full_name, role: t.role, phone: t.phone ? prettyPhone(t.phone) : '', email: t.email, prc: t.prc_licence ?? '', specialty: t.specialty ?? '' }) : null;
+const roleLocked = !!t && (t.role === 'owner' || self);
+const showPrc = !!t && !!v && (roleLocked ? !!t.slug : clinician(v.role));
+const mayEdit = !!t && canSetUp && (isOwner || t.role !== 'owner');
+const mayDisable = !!t && canSetUp && !self && (isOwner || t.role !== 'owner');
+const acct = t ? accountState(t) : null;
+const prc = t ? prcState(t) : null;
+const financeByRole = !!t && (t.role === 'owner' || t.role === 'admin');
+// The desk has Finances by role (canBill in src/lib/invoices.ts); for them the branch's flag decides the
+// claim amounts and claim moves only (canMoneyOf in ../../finances/_claims.ts).
+const deskByRole = !!t && t.role === 'secretary';
+const canSend = !!t && reachable(t);
+const first = t ? t.full_name.replace(/^Dra?\.?\s+/i, '').split(/\s+/)[0] : '';
+// What they practise, for the pills under the name (someone who sees patients).
+const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', ') : 'General dentist')) : '';
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name }} title={t && allowed ? t.full_name : 'People'} section={canSetUp ? 'people' : 'account'} staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  {!t || !allowed ? (
+    <Pane as="div" label="People" class="max-w-[46rem]">
+      <Empty icon="user" text={!t
+        ? `No one with that link can open ${clinic.name}. They may have moved to another branch, or the link is cut short.`
+        : 'Only the owner or an admin opens other people’s pages. Your own details and password are on My page.'} />
+      <div class="set-btn-row mt-3">
+        {canSetUp && <a href={`${base}#people`} class="ws-btn ws-btn-quiet"><Icon name="patients" />Everyone at {clinic.name}</a>}
+        <a href={`/c/${clinic.slug}/account/`} class="ws-btn ws-btn-quiet"><Icon name="user" />My page</a>
+      </div>
+    </Pane>
+  ) : (
+    <div class="set grid gap-4" data-person-page>
+      {/* Their name is the page's title, in the top bar (the layout's heading), as on Clinic settings:
+          this card is who they are beside it — the avatar, their role and state, how to reach them. */}
+      <Pane as="div" class="set-sec" id="head">
+        {canSetUp && <a href={`${base}#people`} class="set-back"><Icon name="chevron-left" size={16} />People</a>}
+        <div class="set-person">
+          <div class="set-person-who set-person-bare">
+            <Avatar name={t.full_name} size="lg" />
+            <div class="min-w-0">
+              <div class="set-person-chips">
+                <span class="ws-pill ws-tint-slate">{ROLE_LABEL[t.role] ?? t.role}</span>
+                {treats(t.role) && <span class="ws-pill ws-tint-slate whitespace-normal">{practice}</span>}
+                <Chip tone={acct!.tone} label={acct!.label} />
+                {self && <span class="ws-pill ws-tint-blue">You</span>}
+              </div>
+              <p class="set-person-facts">
+                <span><Icon name="message" size={16} /><span class="tabular-nums">{t.phone ? prettyPhone(t.phone) : 'No mobile on file'}</span></span>
+                <span class="min-w-0"><Icon name="inbox" size={16} /><Email address={t.email} /></span>
+                <span><Icon name="clock" size={16} />{t.disabled_at ? `Disabled ${dateText(t.disabled_at)}` : t.has_password && t.last_seen_at ? `Last seen ${ago(t.last_seen_at)}` : 'Has not signed in yet'}</span>
+              </p>
+            </div>
+          </div>
+          {mayEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="edit"><Icon name="user" />Edit details</button>}
+          {!canSetUp && self && <a href={`/c/${clinic.slug}/account/`} class="ws-btn ws-btn-quiet"><Icon name="user" />My page</a>}
+        </div>
+        {notice && doneTo === 'head' && <Note tone="ok" text={notice} class="mt-5" />}
+        {refused && errorIn === 'head' && <Note tone="alert" text={refused.error} class="mt-5" refused />}
+      </Pane>
+
+      <div class="set-two">
+        <div class="set-col">
+          {upcoming && (
+            <Upcoming rows={upcoming.rows} total={upcoming.total} slug={clinic.slug} title="Coming appointments" emptyText={`Nothing booked for ${self ? 'you' : first} at ${clinic.name} yet.`} />
+          )}
+
+          <Pane id="days" icon="calendar" title="Days at this branch" meta={daysText(days)} class="set-sec">
+            <p class="set-intro mb-4">
+              {treats(t.role) ? 'The days patients can book them here.' : 'The days they work here.'}
+            </p>
+            {notice && doneTo === 'days' && <Note tone="ok" text={notice} class="mb-4" />}
+            {refused && errorIn === 'days' && <Note tone="alert" text={refused.error} class="mb-4" refused />}
+            {canSetUp ? (
+              <form method="post" action={here} class="grid gap-4">
+                <Csrf />
+                <input type="hidden" name="action" value="schedule" />
+                <fieldset>
+                  <legend class="sr-only">Days {t.full_name} is at {clinic.name}</legend>
+                  <div class="set-days">
+                    {DAYS.map(([n, label]) => (
+                      <label class="set-day"><input type="checkbox" name="dow" value={n} checked={days.includes(n)} /><span>{label}</span></label>
+                    ))}
+                  </div>
+                </fieldset>
+                <div><button type="submit" class="ws-btn ws-btn-quiet"><Icon name="check" />Save days</button></div>
+              </form>
+            ) : (
+              <p class="set-days-ro" aria-label={`Days here: ${daysText(days)}`}>
+                {DAYS.map(([n, label]) => <span class="set-day-ro" data-on={days.includes(n) ? '' : undefined} aria-hidden="true">{label}</span>)}
+              </p>
+            )}
+            {t.slug && days.length === 0 && <p class="set-help mt-3">Not on the public page until they have days here.</p>}
+          </Pane>
+        </div>
+
+        <div class="set-col">
+          {(treats(t.role) || t.prc_licence) && (
+            <Pane id="prc" icon="file" title="PRC licence" class="set-sec">
+              <div class="set-state">
+                <Chip tone={prc!.tone} label={prc!.short} icon={prc!.tone === 'accent' ? 'check' : prc!.tone === 'muted' ? undefined : 'alert'} />
+                {t.prc_licence && <span class="text-[15px] tabular-nums">Licence no. {t.prc_licence}</span>}
+                <p class="text-[14.5px]">{prc!.long}</p>
+              </div>
+              {t.prc_status === 'mismatch' && t.prc_note && <p class="ws-callout mt-3" data-tone="alert"><Icon name="alert" /><span>Flossify’s note: {t.prc_note}</span></p>}
+              {t.slug && (days.length > 0
+                ? <a href={`/dentists/${t.slug}/`} target="_blank" rel="noopener" class="set-link mt-1">Public profile<span class="sr-only"> (opens in a new tab)</span><Icon name="arrow-right" size={16} class="set-arrow" /></a>
+                : <p class="set-help mt-2">No public profile until they have days here.</p>)}
+              {mayEdit && <p class="set-help mt-2">A new number or name goes back for a check. Change them in Edit details.</p>}
+            </Pane>
+          )}
+
+          <Pane id="finance" icon="wallet" title="Finances" class="set-sec">
+            {notice && doneTo === 'finance' && <Note tone="ok" text={notice} class="mb-4" />}
+            {refused && errorIn === 'finance' && <Note tone="alert" text={refused.error} class="mb-4" refused />}
+            {financeByRole ? (
+              <div class="set-state">
+                <span class="ws-pill ws-tint-green">Sees Finances, always</span>
+                <p>An {ROLE_LABEL[t.role]?.toLowerCase()} sees balances, payments, the day’s takings and claim amounts at every branch they open.</p>
+              </div>
+            ) : (
+              <>
+                {deskByRole ? (
+                  <div class="set-state" data-claim-amounts>
+                    <span class="ws-pill ws-tint-green">Sees Finances</span>
+                    <p>A secretary sees balances, payments and the day’s takings, and records payments.</p>
+                    <span class:list={['ws-pill', t.can_view_finance ? 'ws-tint-green' : 'ws-tint-slate']}>Claim amounts: {t.can_view_finance ? 'shown' : 'hidden'}</span>
+                    <p>{t.can_view_finance
+                      ? `${self ? 'You see' : 'They see'} the amounts on HMO and PhilHealth claims, and move claims along.`
+                      : `${self ? 'You see' : 'They see'} the claims list and leave notes, but not the amounts, and do not move claims along.`}</p>
+                  </div>
+                ) : (
+                  <div class="set-state">
+                    <span class:list={['ws-pill', t.can_view_finance ? 'ws-tint-green' : 'ws-tint-slate']}>{t.can_view_finance ? 'Sees Finances here' : 'No Finances here'}</span>
+                    <p>Finances shows balances, payments, the day’s takings and claim amounts at this branch.</p>
+                  </div>
+                )}
+                {isOwner && !self ? (
+                  <form method="post" action={here} class="mt-4">
+                    <Csrf />
+                    <input type="hidden" name="action" value="finance" />
+                    <button type="submit" name="sees" value={t.can_view_finance ? '0' : '1'} class="ws-btn ws-btn-quiet">
+                      {deskByRole
+                        ? (t.can_view_finance ? 'Hide claim amounts' : 'Show claim amounts')
+                        : (t.can_view_finance ? 'Hide Finances' : 'Let them see Finances')}
+                    </button>
+                  </form>
+                ) : canSetUp && !isOwner ? (
+                  <p class="set-help mt-3">Only an owner changes {deskByRole ? 'who sees claim amounts' : 'who sees Finances'}.</p>
+                ) : null}
+              </>
+            )}
+          </Pane>
+
+          <Pane id="signin" icon="logout" title="Sign-in" class="set-sec">
+            {notice && doneTo === 'signin' && <Note tone="ok" text={notice} class="mb-4" />}
+            {refused && errorIn === 'signin' && <Note tone="alert" text={refused.error} class="mb-4" refused />}
+            <div class="set-state">
+              {t.disabled_at
+                ? <><span class="ws-pill ws-tint-slate">Disabled since {dateText(t.disabled_at)}</span><p>They cannot sign in at any branch.</p></>
+                : t.has_password
+                  ? <><span class="ws-pill ws-tint-green">Has a password</span><p>{t.password_set_at ? `Set ${dateText(t.password_set_at)}. ` : ''}{t.last_seen_at ? `Last seen ${ago(t.last_seen_at)}.` : 'Has not signed in yet.'}</p></>
+                  : <><span class="ws-pill ws-tint-amber">Invited, no password yet</span><p>{t.invited_at ? `The last code went ${ago(t.invited_at)}. ` : ''}A code works for 24 hours.</p></>}
+            </div>
+            {canSetUp && (
+              <div class="set-btn-row mt-4">
+                {!t.has_password && !t.disabled_at && canSend && (
+                  <form method="post" action={here}><Csrf /><input type="hidden" name="action" value="invite" /><button type="submit" class="ws-btn ws-btn-quiet"><Icon name="message" />Send the invitation again</button></form>
+                )}
+                {t.has_password && !t.disabled_at && canSend && (
+                  <form method="post" action={here}><Csrf /><input type="hidden" name="action" value="reset" /><button type="submit" class="ws-btn ws-btn-quiet"><Icon name="message" />{emailOn() ? 'Send a reset code' : 'Text a reset code'}</button></form>
+                )}
+                {mayDisable && (
+                  <form method="post" action={here}><Csrf /><input type="hidden" name="action" value={t.disabled_at ? 'enable' : 'disable'} /><button type="submit" class:list={['ws-btn', t.disabled_at ? 'ws-btn-quiet' : 'ws-btn-danger']}>{t.disabled_at ? 'Enable' : 'Disable'}</button></form>
+                )}
+              </div>
+            )}
+            {canSetUp && !t.disabled_at && !canSend && <p class="ws-callout mt-3" data-tone="warn"><Icon name="alert" /><span>No mobile on file, so a code has nowhere to go. Add one in Edit details.</span></p>}
+            {canSetUp && mayDisable && !t.disabled_at && <p class="set-help mt-3">Disable signs them out of every branch at once. Nothing they did is deleted.</p>}
+            {self && <p class="set-help mt-3">Your own password is on <a href={`/c/${clinic.slug}/account/`} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">My page</a>.</p>}
+          </Pane>
+        </div>
+      </div>
+
+      {mayEdit && v && (
+        <SidePanel id="edit" title="Edit details" meta={t.full_name} open={!!refused?.edit}>
+          {refused?.edit && <Note tone="alert" text={refused.error} class="mb-5" refused />}
+          <form method="post" action={here} class="grid gap-4" data-team-form>
+            <Csrf />
+            <input type="hidden" name="action" value="edit" />
+            <label class="field">
+              <span class="meta">Full name</span>
+              <input name="name" value={v.name} required minlength="2" maxlength="80" autocomplete="off" />
+              {t.slug && t.prc_licence && <span class="set-help">As on their PRC ID. A new name goes back for a PRC check.</span>}
+            </label>
+            {roleLocked ? (
+              <div class="field">
+                <span class="meta">Role</span>
+                <p class="set-readonly">{ROLE_LABEL[t.role] ?? t.role}</p>
+                <span class="set-help">{t.role === 'owner' ? 'An owner stays an owner.' : 'Ask the owner to change your own role.'}</span>
+              </div>
+            ) : (
+              <label class="field">
+                <span class="meta">Role</span>
+                <select name="role" data-team-role>
+                  {Object.entries(ROLES).map(([r, l]) => <option value={r} selected={v.role === r}>{l}</option>)}
+                </select>
+                <span class="set-help">A new role signs them out everywhere.{t.slug && ' Only dentists have a public profile.'}</span>
+              </label>
+            )}
+            <label class="field"><span class="meta">Mobile</span><input name="phone" type="tel" inputmode="numeric" value={v.phone} required={!!t.phone} autocomplete="off" placeholder="0917 000 0000" class="tabular-nums" /><span class="set-help">Invitation and reset codes go here by text.</span></label>
+            <label class="field">
+              <span class="meta">Email</span>
+              <input name="email" type="email" value={v.email} required maxlength={EMAIL_MAX} autocomplete="off" autocapitalize="off" spellcheck="false" />
+              <span class="set-help">A new email signs {self ? 'you out on your other devices' : 'them out everywhere'}.</span>
+            </label>
+            <label class="field" data-team-dentist hidden={!showPrc}>
+              <span class="meta">PRC licence</span>
+              <input name="prc" inputmode="numeric" value={v.prc} maxlength="10" autocomplete="off" placeholder="0043321" required={showPrc && clinician(v.role)} data-prc-required={t.role === 'owner' ? undefined : ''} class="tabular-nums" />
+              <span class="set-help">{t.prc_status === 'mismatch' && t.slug
+                ? 'PRC’s records did not match this number. Correct it, or save it as it is to have it checked again.'
+                : 'A new number goes back for a check.'}</span>
+            </label>
+            <label class="field" data-team-dentist hidden={!showPrc}>
+              <span class="meta">Specialty</span>
+              <select name="specialty">
+                <option value="">General dentist</option>
+                {SPECIALTIES.map((s) => <option value={s} selected={v.specialty === s}>{s}</option>)}
+              </select>
+            </label>
+            <div><button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save changes</button></div>
+          </form>
+        </SidePanel>
+      )}
+    </div>
+  )}
+</ClinicLayout>
+
+<script>
+  // The PRC and specialty fields belong to dentists only, in a form with a role to choose. The server
+  // checks the same rule; this only keeps the form short. A form whose role is fixed (an owner, or your
+  // own) shows what the server decided and is left alone. A refused action's sentence is brought into
+  // view (a refused edit comes back in its panel, which the shell opens).
+  document.querySelectorAll<HTMLFormElement>('[data-team-form]').forEach((form) => {
+    const role = form.querySelector<HTMLSelectElement>('[data-team-role]');
+    if (!role) return;
+    const dentistOnly = [...form.querySelectorAll<HTMLElement>('[data-team-dentist]')];
+    const sync = () => {
+      const on = role.value === 'dentist' || role.value === 'associate';
+      dentistOnly.forEach((el) => {
+        el.hidden = !on;
+        const input = el.querySelector<HTMLInputElement>('input[data-prc-required]');
+        if (input) input.required = on;
+      });
+    };
+    role.addEventListener('change', sync);
+    sync();
+  });
+  const topBar = document.querySelector<HTMLElement>('[data-ws-top]');
+  if (topBar) document.documentElement.style.setProperty('--set-top', `${Math.round(topBar.getBoundingClientRect().height)}px`);
+  const refused = [...document.querySelectorAll<HTMLElement>('[data-set-refused]')].find((n) => !n.closest('dialog'));
+  if (refused) { refused.closest<HTMLElement>('.set-sec')?.scrollIntoView({ block: 'start' }); refused.focus({ preventScroll: true }); }
+  else if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' });
+  // One-shot notices leave the address, so a reload does not say them again.
+  const url = new URL(location.href);
+  let changed = false;
+  for (const k of ['done', 'via', 'email', 'role', 'prc', 'profile', 'resend']) if (url.searchParams.has(k)) { url.searchParams.delete(k); changed = true; }
+  if (changed) history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+</script>

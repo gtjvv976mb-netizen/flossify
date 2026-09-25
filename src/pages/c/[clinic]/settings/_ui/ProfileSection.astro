@@ -1,0 +1,181 @@
+---
+// Clinic profile: the listing switch first (the one decision here, with what
+// it still needs), then the clinic, how it works and the HMOs it accepts; the
+// TIN and BIR branch code, changed once, are folded under "More" in the same
+// form. One form, saved on its own (Opening hours saves separately).
+import Pane from '../../../../../components/ws/Pane.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Note from './Note.astro';
+import { hmos } from '../../../../../data/directory';
+import { AREAS } from '../../../../../lib/slug';
+import { ABOUT_MAX, missingForListing, type ClinicData, type ProfileValues } from '../_lib/profile';
+import { listWords } from '../_lib/common';
+
+interface Props {
+  base: string;
+  data: ClinicData;
+  v: ProfileValues;
+  problems: string[];
+  notes: { tone: 'ok' | 'alert' | 'warn'; text: string }[];
+  welcome: boolean;
+  staffCount: number;
+  /** The section on screen when the page opens. */
+  on: boolean;
+}
+const { base, data, v, problems, notes, welcome, on } = Astro.props;
+
+const missing = missingForListing(data);
+const canList = missing.length === 0;
+const photos = (data.c.photo_keys ?? []).length;
+const checklist = [
+  { done: !!(data.c.about ?? '').trim(), text: 'Write a few lines about the clinic', href: '#about' },
+  { done: data.hours.length > 0, text: 'Set your opening hours', href: '#hours' },
+  { done: data.dentist, text: 'Give a dentist days at this branch', href: '#people' },
+  { done: data.hmoIds.length > 0 || data.saidNoHmos, text: 'Say which HMOs you accept', href: '#hmos' },
+  { done: photos > 0, text: 'Add a photo of the clinic', href: '#photos' },
+];
+const ready = checklist.filter((c) => c.done).length;
+const todo = checklist.filter((c) => !c.done);
+const areaOptions: string[] = (AREAS as readonly string[]).includes(v.area) || !v.area ? [...AREAS] : [v.area, ...AREAS];
+// A refused save that was about the tax numbers opens "More", so the reason sits beside its field.
+const taxProblem = problems.some((p) => /TIN|BIR|branch code/i.test(p));
+---
+
+<div class="set-panel" data-set-panel="profile" data-on={on ? '' : undefined}>
+<form method="post" action={base} data-set-form="profile" class="min-w-0">
+  <Csrf />
+  <input type="hidden" name="form" value="profile" />
+  <Pane id="profile" icon="clinic" title="Clinic profile" class="set-sec">
+    <Fragment slot="actions">
+      <span class="set-dirty-note" data-set-dirty-note hidden>Not saved yet</span>
+      <button type="submit" class="ws-btn ws-btn-primary"><Icon name="check" />Save</button>
+    </Fragment>
+    <p class="set-intro">What patients see about you on Find a clinic.</p>
+
+    {(welcome || notes.length > 0 || problems.length > 0) && (
+      <div class="set-notes mt-5">
+        {welcome && <Note tone="info" text="Welcome! Your clinic is set up. Finish the few things below, then switch on the listing so patients can find you. You can change anything later." />}
+        {notes.map((n) => <Note tone={n.tone} text={n.text} />)}
+        {problems.length > 0 && <Note tone="alert" title="Nothing was saved yet. Please fix:" items={problems} refused />}
+      </div>
+    )}
+
+    <div id="listing" class="set-listing set-sec mt-5" data-on={v.listed && canList ? '' : undefined}>
+      <label class="check set-check items-start">
+        <input type="checkbox" name="listed" checked={v.listed} disabled={!canList} />
+        <span>
+          <span class="block text-[16px] font-semibold text-ink">Show this clinic on Find a clinic</span>
+          {!canList && <span class="set-listing-say mt-0.5 block text-[14.5px] text-ink-2">First add {listWords(missing)}. Then switch this on and save.</span>}
+          {canList && <span class="set-listing-say mt-0.5 block text-[14.5px] text-ink-2">Patients nearby see your card, your prices and {v.booking_mode === 'live' ? 'your open times' : 'a “Request a time” button'}.</span>}
+        </span>
+      </label>
+      {data.c.listed && (
+        <a href={`/find/${data.c.slug}/`} target="_blank" rel="noopener" class="set-link ml-[1.95rem] justify-self-start">
+          See your public page <Icon name="arrow-right" size={16} class="set-arrow" /><span class="sr-only">(opens in a new tab)</span>
+        </a>
+      )}
+    </div>
+
+    {todo.length > 0 && (
+      <div class="set-ready">
+        <p class="text-[15px] font-semibold">Ready to be found: {ready} of {checklist.length} done</p>
+        <div class="set-ready-bar" role="presentation"><span style={`width:${Math.round((ready / checklist.length) * 100)}%`}></span></div>
+        <ul>
+          {todo.map((row) => (
+            <li>
+              <span class="set-ready-mark" data-todo aria-hidden="true"></span>
+              <span>{row.text}</span>
+              <a href={row.href} class="set-link">Go<span class="sr-only">: {row.text}</span> <Icon name="arrow-right" size={16} class="set-arrow" /></a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    <h3 class="set-sub">Your clinic</h3>
+    <div class="mt-4 grid gap-4">
+      <label class="field"><span class="meta">Clinic name</span><input name="name" value={v.name} required maxlength="80" autocomplete="organization" /></label>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="field"><span class="meta">City</span><select name="area">{areaOptions.map((a) => <option value={a} selected={v.area === a}>{a}</option>)}</select></label>
+        <label class="field"><span class="meta">Address</span><input name="address_line" value={v.address_line} required autocomplete="street-address" /></label>
+        <label class="field"><span class="meta">Phone</span><input type="tel" name="phone" value={v.phone} required autocomplete="tel" /></label>
+        <label class="field"><span class="meta">Email (optional)</span><input type="email" name="email" value={v.email} autocomplete="email" autocapitalize="off" spellcheck="false" /></label>
+      </div>
+      <label class="field">
+        <span class="meta">Google Maps link (optional)</span>
+        <input type="url" name="maps_url" value={v.maps_url} placeholder="https://maps.app.goo.gl/…" autocapitalize="off" spellcheck="false" />
+        <span class="set-help">In Google Maps, open your clinic, tap Share and paste the link. Patients get a Directions button.</span>
+      </label>
+      <label class="field set-sec" id="about">
+        <span class="meta">About the clinic</span>
+        <textarea name="about" rows="4" maxlength={ABOUT_MAX} data-about-field>{v.about}</textarea>
+        <span class="set-help">What you do, who you see, what to expect. <span class="tabular-nums" data-about-count>{v.about.length}</span> of {ABOUT_MAX} letters.</span>
+      </label>
+    </div>
+
+    <h3 class="set-sub">How you work</h3>
+    <div class="mt-4 grid gap-5">
+      <label class="field sm:max-w-[12rem]">
+        <span class="meta">Dental chairs</span>
+        <input type="number" name="chairs" value={v.chairs} min="1" max="12" step="1" required inputmode="numeric" />
+      </label>
+      <fieldset>
+        <legend class="meta">Walk-ins</legend>
+        <div class="set-pills mt-2">
+          <label class="chip-radio set-choice"><input type="radio" name="walk_ins" value="yes" checked={v.walk_ins} /><span>Welcome</span></label>
+          <label class="chip-radio set-choice"><input type="radio" name="walk_ins" value="no" checked={!v.walk_ins} /><span>Appointments only</span></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend class="meta">PhilHealth dental benefit</legend>
+        <div class="set-pills mt-2">
+          <label class="chip-radio set-choice"><input type="radio" name="philhealth_dental" value="yes" checked={v.philhealth_dental} /><span>Accredited</span></label>
+          <label class="chip-radio set-choice"><input type="radio" name="philhealth_dental" value="no" checked={!v.philhealth_dental} /><span>Not accredited</span></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend class="meta">How patients book online</legend>
+        <div class="mt-2 grid gap-2 sm:grid-cols-2">
+          <label class="row-radio"><input type="radio" name="booking_mode" value="live" checked={v.booking_mode === 'live'} /><span><strong class="font-semibold">They pick a time</strong><span class="block text-[14px] text-ink-2">From your open times. The desk confirms.</span></span></label>
+          <label class="row-radio"><input type="radio" name="booking_mode" value="request" checked={v.booking_mode !== 'live'} /><span><strong class="font-semibold">They send a request</strong><span class="block text-[14px] text-ink-2">The desk texts back a time.</span></span></label>
+        </div>
+      </fieldset>
+    </div>
+
+    <h3 class="set-sub" id="hmos">HMOs you accept</h3>
+    <p class="mt-1 text-[14.5px] text-ink-2">Shown on your page. Patients are told to check with their HMO too.</p>
+    <div class="set-pills mt-3">
+      {hmos.map((h) => <label class="chip-radio set-choice set-tick"><input type="checkbox" name="hmo" value={h.id} checked={v.hmoIds.includes(h.id)} /><span>{h.name}</span></label>)}
+    </div>
+    <label class="check set-check mt-2"><input type="checkbox" name="hmo_none" checked={v.noHmos} /><span>We don’t accept HMOs</span></label>
+
+    <details class="set-more" id="tax" open={taxProblem || undefined}>
+      <summary>
+        <span>More<span class="set-more-hint">: TIN and BIR branch code</span></span>
+        <Icon name="chevron" />
+      </summary>
+      <div class="set-more-body">
+        <p class="text-[14.5px] text-ink-2">Printed on statements from Finances. Flossify does not issue BIR receipts: keep using your own booklet or system.</p>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <label class="field">
+            <span class="meta">TIN</span>
+            <input name="tin" value={v.tin} inputmode="numeric" autocomplete="off" maxlength="20" placeholder="123-456-789-000" class="tabular-nums" />
+            <span class="set-help">As on your BIR Form 2303. Leave empty to print without one.</span>
+          </label>
+          <label class="field">
+            <span class="meta">BIR branch code</span>
+            <input name="bir_branch_code" value={v.branch} inputmode="numeric" autocomplete="off" maxlength="7" placeholder="00000" class="tabular-nums" />
+            <span class="set-help">00000 for the main office.</span>
+          </label>
+        </div>
+      </div>
+    </details>
+
+    <div class="set-foot">
+      <button type="submit" class="ws-btn ws-btn-primary"><Icon name="check" />Save</button>
+      <span class="set-dirty-note" data-set-dirty-note hidden>Not saved yet</span>
+    </div>
+  </Pane>
+</form>
+</div>

@@ -1,0 +1,36 @@
+---
+// A status pill: a word on a pale tint of its colour, fully rounded. Status is
+// never colour alone, so a chip always has text; `dot` adds a small round dot
+// before it for scanning, `icon` a small line icon instead.
+//
+//   <Chip status="in_chair" />                        a visit's status, the queue colours
+//   <Chip tone="alert" icon="alert">Allergy: latex</Chip>   anything else, by tone
+//
+// Tones: neutral · muted · accent · solid · warn · alert (src/components/ws/status.ts).
+// The tints come from the workspace's tokens (teal, amber, soft red on pale
+// washes of themselves), measured at 4.5:1 or better in both themes.
+import Icon from './Icon.astro';
+import type { IconName } from './icons';
+import { TONE, statusOf, type Tone } from './status';
+
+interface Props {
+  /** appointment.status; sets the word and the colour. */
+  status?: string;
+  tone?: Tone;
+  /** The word, when the slot is not used. */
+  label?: string;
+  dot?: boolean;
+  icon?: IconName;
+  title?: string;
+  class?: string;
+}
+const { status, tone, label, dot = false, icon, title, class: extra } = Astro.props;
+const s = status ? statusOf(status) : null;
+const cls = tone ? TONE[tone] : s ? s.cls : TONE.neutral;
+const text = label ?? s?.label;
+---
+
+<span class:list={['ws-chip', cls, dot && !icon && 'ws-chip-dot', extra]} title={title} data-status={status}>
+  {icon && <Icon name={icon} size={14} />}
+  {Astro.slots.has('default') ? <slot /> : text}
+</span>

@@ -28,9 +28,21 @@ work that was already rejected once. Do not quietly relax them.
 - The site is judged on **user experience and user-friendliness**, for **both
   patients and clinic owners**.
 
-## Art direction — Swiss clinical
+## Art direction — Swiss clinical (the public site) and soft clinical (the app)
 
-Three rules govern everything. Breaking any one collapses the page back into a
+**Two looks, by the owner's decision (26 Sep 2026).** The public marketing
+pages — the film home page, /find/, /coverage/, /websites/, /privacy/ — keep
+the Swiss rules below. The clinic side — the workspace (/c/<slug>/…), the
+staff sign-in (/auth/…) and the operator's page (/admin/) — uses the **soft
+template** in `docs/workspace-redesign.md`: white rounded cards on the clinic
+backdrop, a teal primary, pastel tinted callouts, sentence-case labels, line
+icons, round initial avatars, no black buttons, very simple screens, and a
+left sidebar with four tabs (Dashboard · Patients · Finances · Clinic
+settings). The owner called the Swiss workspace "hard, angry and dark" next to
+SwiftCare's "soft, friendly and accommodating". Motion always on, nothing
+fixed to the bottom of the screen and measured contrast apply to both.
+
+Three rules govern the public pages. Breaking any one collapses the page back into a
 generic SaaS template, which is what the owner rejected.
 
 1. **Nothing is rounded.** `border-radius: 0` everywhere.
@@ -483,6 +495,7 @@ The rules that live in code:
 src/pages/index.astro          the marketing page (tour, product, services, FAQ)
 src/pages/clinics.astro        workspace directory
 src/pages/c/[clinic]/…         prototype clinic workspace
+src/pages/c/[clinic]/patients/ the Patients tab (Dashboard · Patients · Finances · Clinic settings): every patient + a record check, one query (_list/list.ts)
 src/pages/websites.astro       the clinic-website service, with the sample framed
 src/pages/find/index.astro     patients: find a clinic by symptom, service, HMO, PhilHealth, open now
 src/pages/find/[clinic]/…      the clinic's public page, and its five-step booking (no account)
@@ -526,6 +539,13 @@ Dockerfile, Procfile           one image: web (npm start), worker (sms:worker), 
 render.yaml                    Render Blueprint (web + worker + disk, Singapore); scripts/deploy/render-values.sh
                                hands its secret values over through the clipboard
 docs/deploy.md, docs/launch.md how to deploy; the owner's launch checklist
+docs/workspace-redesign.md     the clinic workspace's design: tabs, soft template, Shell API
+src/layouts/Clinic.astro, src/components/ws/   the workspace shell (sidebar, cards, icons, panels)
+src/components/ws/cal/         the Dashboard's calendar (day/week, drag, panels)
+src/pages/c/[clinic]/patients/ Patients tab (list + record check), record, new (add), import (CSV/XLSX)
+src/pages/c/[clinic]/finances/ Finances tab: statements, payments, claims, new charge, print
+src/pages/c/[clinic]/account/  My page (details, password, my schedule)
+src/data/migrations/026, 027   patient import (past visits, paper consent), operator aggregates (counts only)
 scripts/sms/worker.ts          the sender: npm run sms:worker (loop) / sms:once
 public/samples/swiftcare/       sample clinic website (see "Sample client sites")
 docs/service-map.md            what to build for patients, dentists and clinics, and why (Sept 2026)

@@ -1,0 +1,44 @@
+---
+// A button that opens a short list under it, on a white rounded card: the
+// sidebar's branch switcher, the top's + New and inbox, and any row's "more"
+// menu. The disclosure pattern (a button with aria-expanded, a list of links
+// and forms), not an ARIA menu: Tab and the arrow keys both walk the list,
+// Escape closes it and puts focus back on the button, a click anywhere else
+// closes it. One open at a time.
+//
+//   <Menu id="row-7" label="More for Maria Santos" align="right">
+//     <span slot="button">More</span>
+//     <a class="ws-menu-item" href="…">Open record</a>
+//   </Menu>
+//
+// An item can lead with a tinted icon and carry a hint under its words:
+//   <a class="ws-menu-item" href="…">
+//     <span class="ws-menu-icon" data-tint="green"><Icon name="money" /></span>
+//     <span class="ws-menu-words">New charge<span class="ws-menu-hint">A statement to pay</span></span>
+//   </a>
+//
+// label: the button's accessible name when its face is an icon or a number;
+// leave it out when the button's own words say it. describedby: an id whose
+// text the button is described by (it may sit inside the closed list).
+interface Props {
+  id: string;
+  label?: string;
+  align?: 'left' | 'right';
+  class?: string;
+  buttonClass?: string;
+  title?: string;
+  describedby?: string;
+  /** Wider list (22rem), for lines with a count or a sentence. */
+  wide?: boolean;
+}
+const { id, label, align = 'right', class: extra, buttonClass = 'ws-tool', title, describedby, wide = false } = Astro.props;
+---
+
+<div class:list={['ws-menu', extra]} data-ws-menu>
+  <button type="button" class={buttonClass} aria-expanded="false" aria-controls={id} aria-label={label} title={title} aria-describedby={describedby}>
+    <slot name="button" />
+  </button>
+  <div id={id} class:list={['ws-menu-pop', wide && 'ws-menu-wide']} data-align={align} hidden>
+    <slot />
+  </div>
+</div>
