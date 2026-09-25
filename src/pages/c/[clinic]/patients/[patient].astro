@@ -1,37 +1,150 @@
 ---
+// One patient's record: alerts, privacy consent, health, the chart, visits.
+//
+// Every query runs inside withClinic(), so row-level security decides whether
+// this patient exists here; a patient of another clinic (or a made-up id) is
+// a 404 on reading and on every post. Opening the record writes
+// patient.view to the audit log.
+//
+// Two forms post back to this page, each with the CSRF token, checked before
+// anything else (a miss comes back with ?stale=1):
+//   intent=health   birth date, allergies, conditions, medicines, a note.
+//                   saveHealth() in src/lib/health.ts: a new medical_history
+//                   version under the person who saved it (a birth date
+//                   change is kept in it, from and to), audit health.update /
+//                   patient.birth_date. A save that started from an older
+//                   version than the newest, or that changes a birth date
+//                   someone else changed since, writes nothing and shows what
+//                   the other person saved.
+//   intent=consent  the privacy notice agreed at the desk (DeskConsent.astro),
+//                   recordDeskConsent(): channel 'desk', who agreed (the
+//                   patient, or a parent or guardian, named), audit
+//                   consent.desk. Under 18 by the birth date on file, only a
+//                   parent or guardian; with none on file, the desk says which.
+// Both need staff_access.can_edit_records for this branch (every role has it
+// today; see canEditRecords()). On success the page redirects to itself
+// (?saved=…) so a reload does not post again; on a problem it renders again
+// with what was typed.
 export const prerender = false;
 
 import ClinicLayout from '../../../../layouts/Clinic.astro';
-import Consents from '../../../../components/Consents.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import DeskConsent from '../../../../components/DeskConsent.astro';
 import Odontogram from '../../../../components/Odontogram.astro';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
-import { csrfToken } from '../../../../lib/csrf';
+import { csrfOk, csrfToken, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { hit, waitText, LIMITS } from '../../../../lib/throttle';
+import {
+  LISTS, ITEM_MAX, NOTE_MAX, NAME_MAX, manilaToday, ageOn, ageText, when, oneLine, readHealthForm, saveHealth, readHealth,
+  canEditRecords, readConsents, noticeInForce, recordDeskConsent, versionChanges, listText, answered, dateText,
+  consentInForce, type HealthAnswers, type HealthVersion, type AgreedAs,
+} from '../../../../lib/health';
 import { peso, CONDITION_LABEL, surfaceSummary, type ToothCondition, type ToothMark, type Surface, type Notation } from '../../../../data/demo';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const patientId = Astro.params.patient ?? '';
+const notFound = () => new Response('No such patient', { status: 404 });
+if (!UUID.test(patientId)) return notFound();
+const here = `/c/${clinic.slug}/patients/${patientId}/`;
+const q = Astro.url.searchParams;
+
+// What a post left behind for the page to show.
+let healthProblems: string[] = [];
+let posted: { answers: HealthAnswers; birth: string; birthWas: string; base: string } | null = null;
+let conflict: { latest: HealthVersion | null; birth: string | null; versionMoved: boolean; birthMoved: boolean } | null = null;
+let consentProblem: string | null = null;
+let givenBy = '';
+let agreedAs: AgreedAs | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(here + '?stale=1', 303);
+  const intent = String(form.get('intent') ?? '');
+  // Same allowance as the chart: a person saving never meets it; a script does.
+  const rate = await hit('record:s:' + session.staffId, ...LIMITS.chart.staff);
+  const slow = rate.allowed ? null : 'Too many saves at once. ' + waitText(rate.retryAfter);
+
+  if (intent === 'health') {
+    const { answers, birth, problems } = readHealthForm(form);
+    let base = String(form.get('base') ?? '');
+    // The birth date this page opened with: a save changes the birth date only when this person changed it.
+    let birthWas = oneLine(form.get('birth_was'));
+    let birthShown = oneLine(form.get('birth_date'));
+    if (slow) problems.unshift(slow);
+    if (problems.length === 0) {
+      const r = await withClinic(clinic.id, async (tx) =>
+        (await canEditRecords(tx, session.staffId, clinic.id))
+          ? saveHealth(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, base, answers, birth, birthWas: birthWas || null })
+          : ({ kind: 'denied' } as const));
+      if (r.kind === 'none') return notFound();
+      if (r.kind === 'saved') return Astro.redirect(`${here}?saved=${r.answers ? 'health' : 'birth'}#health`, 303);
+      if (r.kind === 'unchanged') return Astro.redirect(`${here}?saved=nothing#health`, 303);
+      if (r.kind === 'denied') problems.push('Your account cannot change records at this branch. Ask the owner.');
+      if (r.kind === 'conflict') {
+        conflict = { latest: r.latest, birth: r.birth, versionMoved: (r.latest?.id ?? 'none') !== base, birthMoved: (r.birth ?? '') !== birthWas };
+        // The next Save starts from what is on file now. A birth date this person
+        // did not change shows the one on file; one they changed stays as typed.
+        if (birthShown === birthWas) birthShown = r.birth ?? '';
+        base = r.latest?.id ?? 'none';
+        birthWas = r.birth ?? '';
+      }
+    }
+    healthProblems = problems;
+    posted = { answers, birth: birthShown, birthWas, base };
+  } else if (intent === 'consent') {
+    givenBy = oneLine(form.get('given_by_name'));
+    const who = String(form.get('agreed_as') ?? '');
+    agreedAs = who === 'patient' || who === 'guardian' ? who : null;
+    if (slow) consentProblem = slow;
+    else if (form.get('agreed') !== '1') consentProblem = 'Tick the box that says they agreed, once they have. Nothing was recorded.';
+    else if (givenBy.length > NAME_MAX) consentProblem = `Keep the name under ${NAME_MAX} characters.`;
+    else {
+      const r = await withClinic(clinic.id, async (tx) =>
+        (await canEditRecords(tx, session.staffId, clinic.id))
+          ? recordDeskConsent(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, version: String(form.get('version') ?? ''), givenBy: givenBy || null, agreedAs })
+          : ('denied' as const));
+      if (r === 'none') return notFound();
+      if (r === 'saved') return Astro.redirect(`${here}?saved=consent#consent`, 303);
+      if (r === 'already') return Astro.redirect(`${here}?saved=consent-already#consent`, 303);
+      consentProblem = {
+        denied: 'Your account cannot record consent at this branch. Ask the owner.',
+        who: 'Choose who is agreeing: the patient, 18 or over, or a parent or guardian. Nothing was recorded.',
+        minor: 'The birth date on file makes the patient under 18, so a parent or guardian agrees for them. Ask them to type their name. Nothing was recorded.',
+        'guardian-name': 'A parent or guardian is agreeing, so they type their name. Nothing was recorded.',
+        'no-notice': 'No privacy notice is in force, so there is nothing to record.',
+        changed: 'The privacy notice changed while this page was open. Show the patient the new one below.',
+      }[r];
+      if (r === 'minor') agreedAs = 'guardian';
+    }
+  }
+}
+
 const data = await withClinic(clinic.id, async (tx) => {
   const me = (await tx.query('select area, notation from clinic where id = $1', [clinic.id])).rows[0];
   const p = (await tx.query(
-    `select p.*,
-            (select h.allergies from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as allergies,
-            (select h.conditions from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as conditions,
-            coalesce((select sum(i.total) from invoice i where i.patient_id = p.id and i.status in ('issued', 'partly_paid')), 0)
-              - coalesce((select sum(y.amount) from payment y where y.patient_id = p.id), 0) as balance
-     from patient p where p.id = $1 and p.archived_at is null`, [Astro.params.patient])).rows[0];
+    `select p.id, p.chart_no, p.first_name, p.last_name, p.phone, to_char(p.birth_date, 'YYYY-MM-DD') as birth,
+            patient_balance(p.id) as balance
+     from patient p where p.id = $1 and p.archived_at is null`, [patientId])).rows[0];
   if (!p) return null;
   const teeth = (await tx.query(`select fdi, surface, condition from tooth_state where patient_id = $1 and superseded_at is null order by fdi`, [p.id])).rows;
   const visits = (await tx.query(`select starts_at, reason, status from appointment a where patient_id = $1 order by starts_at desc limit 8`, [p.id])).rows;
   // Who looked. Required to answer a subject-access request.
   await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'patient.view', 'patient', $3)`, [clinic.id, session.staffId, p.id]);
-  const consents = (await tx.query(`select version_id, given_at, channel, given_by_name from patient_consent where patient_id = $1 order by given_at desc`, [p.id])).rows;
-  return { me, p, teeth, visits, consents };
+  const health = await readHealth(tx, p.id);
+  const consents = await readConsents(tx, p.id);
+  const notice = await noticeInForce(tx);
+  const canEdit = await canEditRecords(tx, session.staffId, clinic.id);
+  // clinic_group has no tenant; the group id came from requireWorkspace().
+  const dpo = (await tx.query('select dpo_name from clinic_group where id = $1', [clinic.group_id])).rows[0]?.dpo_name ?? null;
+  return { me, p, teeth, visits, health, consents, notice, canEdit, dpo: dpo as string | null };
 });
-if (!data) return new Response('No such patient', { status: 404 });
-const { me, p: patient, visits } = data;
+if (!data) return notFound();
+const { me, p: patient, visits, health, canEdit } = data;
 
 // Rows per (tooth, surface) become one mark per tooth for the chart. The chart
 // keeps one biting-surface slot and names it incisal on anteriors itself, so an
@@ -47,10 +160,24 @@ for (const t of data.teeth) {
 // The chart posts each change to /api/chart with this token in the X-CSRF header.
 const csrf = csrfToken(Astro.cookies);
 
-const age = patient.birth_date ? Math.floor((Date.now() - new Date(patient.birth_date).getTime()) / 31_557_600_000) : null;
+const today = manilaToday();
+const age = patient.birth ? ageOn(patient.birth, today) : null;
 const minor = age !== null && age < 18;
-const allergies: string[] = patient.allergies ?? [];
-const conditions: string[] = patient.conditions ?? [];
+// The consent that counts for the notice in force, and whether a minor still needs a parent's or guardian's.
+const consentNow = consentInForce(data.notice?.id, data.consents);
+const guardianNeeded = minor && consentNow?.agreed_as !== 'guardian';
+const latest = health.versions[0] ?? null;
+// The alert strip is what is saved; the form shows what was typed when a post came back.
+const allergies: string[] = latest?.allergies ?? [];
+const conditions: string[] = latest?.conditions ?? [];
+const medications: string[] = latest?.medications ?? [];
+const shown: HealthAnswers = posted?.answers ?? { allergies: latest?.allergies ?? null, conditions: latest?.conditions ?? null, medications: latest?.medications ?? null, note: latest?.note ?? null };
+const birthValue = posted ? posted.birth : patient.birth ?? '';
+const birthWas = posted ? posted.birthWas : patient.birth ?? '';
+const formAge = birthValue ? ageOn(birthValue, today) : null;
+const base = posted?.base ?? latest?.id ?? 'none';
+const saved = q.get('saved');
+const stale = q.get('stale') === '1';
 
 // Existing findings, newest concern first so the dentist reads problems before completed work.
 const ORDER: ToothCondition[] = ['caries', 'missing', 'impacted', 'unerupted', 'root_canal', 'crown', 'bridge', 'implant', 'veneer', 'filled', 'sealant', 'sound'];
@@ -58,32 +185,182 @@ const findings = Object.entries(marks)
   .map(([fdi, m]) => ({ fdi: Number(fdi), condition: m!.condition, codes: surfaceSummary(Number(fdi), m!.surfaces) }))
   .sort((a, b) => ORDER.indexOf(a.condition) - ORDER.indexOf(b.condition) || a.fdi - b.fdi);
 
-const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(d);
+const visitWhen = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(d);
+
+// The chips: the quick picks in a fixed order (the same place every time), then
+// anything else on the record or typed, ticked.
+const lower = (s: string) => s.toLocaleLowerCase('en');
+const chipsFor = (key: (typeof LISTS)[number]['key'], picks: readonly string[]) => {
+  const on = shown[key] ?? [];
+  const extra = on.filter((v) => !picks.some((p) => lower(p) === lower(v)));
+  return [...picks, ...extra].map((v) => ({ value: v, on: on.some((x) => lower(x) === lower(v)) }));
+};
+// Checked chips carry the alert strip's colours, plus a filled square, so the state is never colour alone.
+const TONE: Record<string, string> = {
+  allergies: 'peer-checked:border-caries peer-checked:bg-caries/15 peer-checked:text-caries',
+  conditions: 'peer-checked:border-crown peer-checked:bg-crown/15 peer-checked:text-crown',
+  medications: 'peer-checked:border-ink peer-checked:bg-ink peer-checked:text-bg',
+  none: 'peer-checked:border-ink peer-checked:bg-ink peer-checked:text-bg',
+};
+const chip = "inline-flex min-h-[48px] items-center gap-2.5 border border-line bg-surface px-4 text-[16px] font-medium text-ink-2 transition-colors before:h-3 before:w-3 before:shrink-0 before:border before:border-current before:content-[''] peer-hover:border-ink peer-hover:text-ink peer-checked:font-semibold peer-checked:before:bg-current peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent";
+const hiddenBox = 'peer absolute inset-0 m-0 h-full w-full cursor-pointer opacity-0';
+const textBox = 'min-h-[50px] border border-line bg-surface px-3.5 text-[16px] text-ink focus:border-ink focus:outline-2 focus:outline-offset-1 focus:outline-accent';
+
+const stateLine = (v: HealthAnswers) =>
+  [...LISTS.map((l) => `${l.label} ${listText(v[l.key], l.key === 'allergies' ? 'none known' : 'none')}`), v.note && `Note: ${v.note}`].filter(Boolean).join(' · ');
+const byLine = (v: HealthVersion) => `${when(new Date(v.at))}${v.by ? ` by ${v.by}` : ''}`;
+const birthLine = (b: string | null) => `Birth date ${dateText(b) ?? 'not on file'}`;
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: me.area }} title={`${patient.first_name} ${patient.last_name}`} section="patients" staff={{ name: session.name, role: session.role }} branches={branches}>
-  <a href={`/c/${clinic.slug}/patients/`} class="text-[14.5px] font-medium text-accent">&larr; All patients</a>
+  <a href={`/c/${clinic.slug}/patients/`} class="inline-flex min-h-[44px] items-center text-[14.5px] font-medium text-accent">&larr; All patients</a>
 
-  <div class="mt-4 flex flex-wrap items-start justify-between gap-6">
+  <div class="mt-2 flex flex-wrap items-start justify-between gap-6">
     <div>
       <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] leading-tight font-semibold tracking-[-0.02em]">{patient.first_name} {patient.last_name}</h1>
-      <p class="mt-1.5 text-[15px] text-muted">{patient.chart_no}{age !== null && ` · ${age} years old`}{patient.phone && ` · ${patient.phone}`}</p>
+      <p class="mt-1.5 text-[15px] text-muted">{patient.chart_no}{age !== null && ` · ${ageText(age)}`}{patient.phone && ` · ${patient.phone}`}</p>
     </div>
-    <div class="text-right">
-      <p class="text-xs font-semibold tracking-[0.09em] text-muted uppercase">Balance</p>
-      <p class="mt-1 font-display text-[30px] leading-none font-bold tabular-nums">{Number(patient.balance) === 0 ? '—' : peso(Number(patient.balance))}</p>
-    </div>
+    {Number(patient.balance) !== 0 && (
+      <div class="text-right">
+        <p class="meta">Balance</p>
+        <p class="mt-1 font-display text-[30px] leading-none font-bold tabular-nums">{peso(Number(patient.balance))}</p>
+      </div>
+    )}
   </div>
 
-  {(allergies.length > 0 || conditions.length > 0 || minor) && (
-    <div role="alert" class="mt-6 flex flex-wrap gap-2.5">
-      {allergies.map((a) => <span class="bg-caries/15 px-4 py-2 text-[13.5px] font-semibold text-caries">Allergy: {a}</span>)}
-      {conditions.map((c) => <span class="bg-crown/15 px-4 py-2 text-[13.5px] font-semibold text-crown">{c}</span>)}
-      {minor && <span class="bg-crown/15 px-4 py-2 text-[13.5px] font-semibold text-crown">Minor — guardian consent required</span>}
+  {stale && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{CSRF_MESSAGE}</p>}
+
+  {(allergies.length > 0 || conditions.length > 0 || medications.length > 0 || latest?.note || minor) && (
+    <div role="alert" class="mt-6 grid gap-2.5">
+      <div class="flex flex-wrap gap-2.5">
+        {allergies.map((a) => <span class="bg-caries/10 px-4 py-2 text-[13.5px] font-semibold text-caries">Allergy: {a}</span>)}
+        {conditions.map((c) => <span class="bg-crown/15 px-4 py-2 text-[13.5px] font-semibold text-crown">{c}</span>)}
+        {medications.map((m) => <span class="border border-line bg-surface px-4 py-2 text-[13.5px] font-semibold text-ink">Takes: {m}</span>)}
+        {minor && <span class="bg-crown/15 px-4 py-2 text-[13.5px] font-semibold text-crown">{guardianNeeded ? 'Minor — guardian consent required' : `Minor · guardian: ${consentNow?.given_by_name}`}</span>}
+      </div>
+      {latest?.note && <p class="max-w-[80ch] border-l-2 border-caries pl-3 text-[15px] font-medium text-ink">{latest.note}</p>}
     </div>
   )}
 
-  <section class="mt-8">
+  <DeskConsent notice={data.notice} consents={data.consents} canRecord={canEdit} minor={minor} birthKnown={!!patient.birth} dpo={data.dpo} action={`${here}#consent`}
+    problem={consentProblem} givenBy={givenBy} agreedAs={agreedAs} recorded={saved === 'consent' ? 'saved' : saved === 'consent-already' ? 'already' : null} />
+
+  <section id="health" class="mt-10 scroll-mt-24" aria-labelledby="health-title">
+    <h2 id="health-title" class="font-display text-[22px] font-semibold">Health</h2>
+    <p class="mt-1 text-[13.5px] text-muted">
+      {!latest ? 'Nothing recorded yet. Ask the patient before treatment.'
+        : answered(latest) ? `Updated ${byLine(latest)}.`
+        : `No health answers yet. Ask the patient before treatment. Last saved ${byLine(latest)}.`}
+    </p>
+
+    {(saved === 'health' || saved === 'birth') && <p role="status" class="mt-4 border border-accent/40 bg-accent/10 p-4 text-[15px]">Saved.</p>}
+    {saved === 'nothing' && <p role="status" class="mt-4 border border-line bg-bg-soft p-4 text-[15px]">Nothing was saved: nothing is ticked or typed yet.</p>}
+    {conflict && (
+      <div role="alert" class="mt-4 border border-crown/40 bg-crown/10 p-4 text-[15px]">
+        <p class="font-semibold">
+          {conflict.versionMoved && conflict.latest ? `${conflict.latest.by ?? 'Someone'} saved this record ${when(new Date(conflict.latest.at))}, after you opened it.`
+            : conflict.birthMoved ? `The birth date on file changed to ${dateText(conflict.birth) ?? 'none'} after you opened this page.`
+            : 'This record changed after you opened it.'} Nothing of yours was saved yet.
+        </p>
+        <p class="mt-1.5 text-ink-2">On file now: {birthLine(conflict.birth)}{conflict.latest && <> · {stateLine(conflict.latest)}</>}.</p>
+        <p class="mt-1.5 text-ink-2">Your answers are still below. Check them against what is on file, then press Save again.</p>
+      </div>
+    )}
+    {healthProblems.length > 0 && (
+      <div role="alert" class="mt-4 border border-caries/40 bg-caries/10 p-4 text-[15px]">
+        <p class="font-semibold">Nothing was saved. {healthProblems.length === 1 ? 'One thing' : 'A few things'} to fix:</p>
+        <ul class="mt-2 list-disc space-y-1 pl-5">{healthProblems.map((p) => <li>{p}</li>)}</ul>
+      </div>
+    )}
+
+    {canEdit ? (
+      <form method="post" action={`${here}#health`} class="mt-4 border border-line bg-surface" data-health-form data-health-unsaved={posted ? '' : undefined}>
+        <Csrf />
+        <input type="hidden" name="intent" value="health" />
+        <input type="hidden" name="base" value={base} />
+        <input type="hidden" name="birth_was" value={birthWas} />
+
+        <div class="divide-y divide-line-2">
+          <div class="p-5 sm:p-6">
+            <label for="birth_date" class="meta">Birth date</label>
+            <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+              <input id="birth_date" type="date" name="birth_date" value={birthValue} min="1900-01-01" max={today} class={`${textBox} w-[13.5rem]`} data-health-birth data-today={today} />
+              <span class="text-[16px] text-ink-2" aria-live="polite" data-health-age>{formAge !== null && formAge >= 0 ? ageText(formAge) : birthValue ? '' : 'Not on file yet'}</span>
+            </div>
+          </div>
+
+          {LISTS.map((l) => (
+            <fieldset class="min-w-0 p-5 sm:p-6" data-health-list={l.key}>
+              <legend class="meta float-left w-full">{l.label}</legend>
+              <div class="clear-both flex flex-wrap gap-2.5 pt-3" data-health-chips>
+                <label class="relative inline-flex cursor-pointer select-none">
+                  <input type="checkbox" name={`${l.key}_none`} value="1" checked={shown[l.key]?.length === 0} class={hiddenBox} data-health-none />
+                  <span class={`${chip} ${TONE.none}`}>{l.none}</span>
+                </label>
+                {chipsFor(l.key, l.picks).map((c) => (
+                  <label class="relative inline-flex cursor-pointer select-none">
+                    <input type="checkbox" name={l.key} value={c.value} checked={c.on} class={hiddenBox} />
+                    <span class={`${chip} ${TONE[l.key]}`}>{c.value}</span>
+                  </label>
+                ))}
+              </div>
+              <div class="mt-3 flex gap-2.5">
+                <input id={`${l.key}_add`} name={`${l.key}_add`} maxlength={ITEM_MAX * 4} autocomplete="off" aria-label={`Another ${l.one}`} placeholder={`Another ${l.one}`} class={`${textBox} min-w-0 flex-1 sm:max-w-[22rem]`} data-health-add-input />
+                <button type="button" class="btn btn-quiet min-h-[50px] min-w-[5.5rem] !py-0 text-[16px]" data-health-add>Add</button>
+              </div>
+              <template data-health-tpl>
+                <label class="relative inline-flex cursor-pointer select-none">
+                  <input type="checkbox" name={l.key} value="" checked class={hiddenBox} />
+                  <span class={`${chip} ${TONE[l.key]}`} data-health-chip-text></span>
+                </label>
+              </template>
+            </fieldset>
+          ))}
+
+          <div class="p-5 sm:p-6">
+            <label class="field">
+              <span class="meta">Note for the dentist</span>
+              <textarea name="note" rows="2" maxlength={NOTE_MAX} placeholder="Anything to know before starting. For example: faints at injections." class="min-h-[50px] text-[16px]">{shown.note ?? ''}</textarea>
+            </label>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-4 border-t border-line bg-bg-soft px-5 py-4 sm:px-6">
+          <button type="submit" class="btn btn-primary min-h-[52px] min-w-[10rem] text-[16px]" data-health-save>Save</button>
+          <span class="text-[14.5px] text-ink-2" data-health-dirty hidden={!posted}>Not saved yet.</span>
+          <span class="text-[13.5px] text-muted">Saved as a new version under your name. Earlier versions stay.</span>
+        </div>
+      </form>
+    ) : (
+      <dl class="mt-4 grid gap-x-8 gap-y-3 border border-line bg-surface p-5 sm:grid-cols-[12rem_1fr] sm:p-6">
+        <dt class="meta">Birth date</dt><dd class="text-[15px]">{patient.birth ? `${patient.birth}${age !== null ? ` · ${ageText(age)}` : ''}` : 'Not on file'}</dd>
+        {LISTS.map((l) => <><dt class="meta">{l.label}</dt><dd class="text-[15px]">{listText(latest?.[l.key] ?? null, l.none.toLowerCase())}</dd></>)}
+        <dt class="meta">Note</dt><dd class="text-[15px]">{latest?.note ?? '—'}</dd>
+      </dl>
+    )}
+
+    {health.total > 0 && (
+      <details class="mt-4">
+        <summary class="meta inline-flex min-h-[44px] cursor-pointer items-center hover:text-ink">History ({health.total} {health.total === 1 ? 'version' : 'versions'})</summary>
+        <ol class="divide-y divide-line-2 border border-line bg-surface">
+          {health.versions.map((v, i) => {
+            const prev = health.versions[i + 1] ?? health.older;
+            const what = versionChanges(prev, v);
+            return (
+              <li class="px-4 py-3">
+                <p class="text-[14.5px] font-semibold">{byLine(v)}</p>
+                <p class="mt-0.5 text-[14.5px] text-ink-2">{!prev ? [...what, 'First record.'].join(' · ') : what.length ? what.join(' · ') : 'Checked, no change.'}</p>
+                <p class="mt-0.5 text-[13.5px] text-muted">{stateLine(v)}</p>
+              </li>
+            );
+          })}
+        </ol>
+        {health.total > health.versions.length && <p class="mt-2 text-[13.5px] text-muted">The {health.versions.length} newest are shown.</p>}
+      </details>
+    )}
+  </section>
+
+  <section class="mt-10">
     <div class="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 class="font-display text-[22px] font-semibold">Odontogram</h2>
@@ -123,7 +400,7 @@ const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', d
     ) : (
       <ul class="mt-4 divide-y divide-line-2 border border-line bg-surface">
         {visits.map((v) => (
-          <li class="flex flex-wrap items-baseline justify-between gap-3 px-4 py-3 text-[15px]"><span>{when(v.starts_at)} · {v.reason}</span><span class="meta">{String(v.status).replace('_', ' ')}</span></li>
+          <li class="flex flex-wrap items-baseline justify-between gap-3 px-4 py-3 text-[15px]"><span>{visitWhen(v.starts_at)} · {v.reason}</span><span class="meta">{String(v.status).replace('_', ' ')}</span></li>
         ))}
       </ul>
     )}
@@ -132,8 +409,93 @@ const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', d
   <section class="mt-10 border border-line-2 bg-bg-soft p-6">
     <h2 class="font-display text-[19px] font-semibold">Not on this record yet</h2>
     <p class="mt-2 max-w-[640px] text-[15px] leading-relaxed text-ink-2">
-      Procedures, treatment plans, prescriptions, signed consent forms, X-rays and invoices are not kept here yet; keep them the way the clinic does now. Reading this record, and every change to the chart, is written to the audit log.
+      Procedures, treatment plans, prescriptions, signed treatment consent forms, X-rays and invoices are not kept here yet; keep them the way the clinic does now. Reading this record, and every change to the chart, the health record and consent, is written to the audit log.
     </p>
   </section>
-  <Consents consents={data.consents} />
 </ClinicLayout>
+
+<script>
+  import { ageOn, ageText, capitalise } from '../../../../lib/health';
+
+  // The health form. Chips are checkboxes, so the form posts without this
+  // script too (what is left in an "add" box is split on commas and saved).
+  // With it: Enter or Add turns the typed words into ticked chips, the none
+  // chip and the others untick each other, the age follows the birth date,
+  // and leaving with unsaved changes asks first. "Unsaved" is the form's
+  // data-health-unsaved attribute, so the consent form above can see it.
+  document.querySelectorAll<HTMLFormElement>('[data-health-form]').forEach((form) => {
+    const note = form.querySelector<HTMLElement>('[data-health-dirty]');
+    const mark = () => { form.toggleAttribute('data-health-unsaved', true); if (note) note.hidden = false; };
+    form.addEventListener('input', mark);
+    form.addEventListener('change', mark);
+    form.addEventListener('submit', () => { form.removeAttribute('data-health-unsaved'); });
+    window.addEventListener('beforeunload', (e) => { if (form.hasAttribute('data-health-unsaved')) { e.preventDefault(); e.returnValue = ''; } });
+
+    form.querySelectorAll<HTMLElement>('[data-health-list]').forEach((group) => {
+      const chips = group.querySelector<HTMLElement>('[data-health-chips]')!;
+      const none = group.querySelector<HTMLInputElement>('[data-health-none]')!;
+      const box = group.querySelector<HTMLInputElement>('[data-health-add-input]')!;
+      const tpl = group.querySelector<HTMLTemplateElement>('[data-health-tpl]')!;
+      const items = () => [...chips.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:not([data-health-none])')];
+
+      chips.addEventListener('change', (e) => {
+        const t = e.target as HTMLInputElement;
+        if (t === none) { if (t.checked) items().forEach((i) => { i.checked = false; }); }
+        else if (t.checked) none.checked = false;
+      });
+
+      const add = () => {
+        const words = box.value.split(/[,;\n]/).map((s) => capitalise(s.replace(/\s+/g, ' ').trim())).filter(Boolean);
+        for (const w of words) {
+          const same = items().find((i) => i.value.toLocaleLowerCase('en') === w.toLocaleLowerCase('en'));
+          if (same) { same.checked = true; continue; }
+          const node = tpl.content.firstElementChild!.cloneNode(true) as HTMLElement;
+          const input = node.querySelector('input')!;
+          input.value = w;
+          input.checked = true;
+          node.querySelector('[data-health-chip-text]')!.textContent = w;
+          chips.append(node);
+        }
+        if (words.length) { none.checked = false; mark(); }
+        box.value = '';
+        box.focus();
+      };
+      box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+      group.querySelector<HTMLButtonElement>('[data-health-add]')!.addEventListener('click', add);
+    });
+
+    // The age beside the birth date. A date field fills its year a digit at a
+    // time (0001, 0019, 0197, 1975), so nothing shows until the year is a
+    // real one; a year still before 1900 when the field is left says so.
+    const birth = form.querySelector<HTMLInputElement>('[data-health-birth]');
+    const age = form.querySelector<HTMLElement>('[data-health-age]');
+    const showAge = (leaving: boolean) => {
+      if (!birth || !age) return;
+      const today = birth.dataset.today ?? '';
+      const v = birth.value;
+      const years = v ? ageOn(v, today) : null;
+      age.textContent = !v ? 'Not on file yet'
+        : v < '1900-01-01' ? (leaving ? 'Check the year' : '')
+        : years === null || years < 0 || v > today ? 'Check the date'
+        : ageText(years);
+    };
+    birth?.addEventListener('input', () => showAge(false));
+    birth?.addEventListener('blur', () => showAge(true));
+  });
+
+  // Recording consent reloads the page. With health answers typed and not
+  // saved, that would throw them away behind a browser "Leave site?" box, so
+  // the consent form stops and says so, with a button that saves them.
+  const health = document.querySelector<HTMLFormElement>('[data-health-form]');
+  const consent = document.querySelector<HTMLFormElement>('[data-desk-consent-form]');
+  const held = document.querySelector<HTMLElement>('[data-desk-consent-held]');
+  if (health && consent && held) {
+    consent.addEventListener('submit', (e) => {
+      if (!health.hasAttribute('data-health-unsaved')) return;
+      e.preventDefault();
+      held.hidden = false;
+      held.querySelector<HTMLButtonElement>('button')?.focus();
+    });
+    held.querySelector<HTMLButtonElement>('button')?.addEventListener('click', () => health.requestSubmit());
+  }
+</script>

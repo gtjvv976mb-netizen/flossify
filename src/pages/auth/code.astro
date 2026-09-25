@@ -1,21 +1,40 @@
 ---
-// I have a code: the six digits we texted, and the password to set. Used two
-// ways — after "forgot your password", and by staff a clinic owner has just
-// added, who have no password yet. Which one is decided by the account, not
-// the form: no password on file means the code is an invitation. Either way
-// it ends signed in, on their home branch.
+// I have a code: the six digits we texted or emailed, and the password to set.
+// Used two ways — after "forgot your password", and by staff a clinic owner
+// has just added, who have no password yet. Which one is decided by the
+// account, not the form: no password on file means the code is an invitation.
+// Either way it ends signed in, on their home branch.
 //
-// Guarded like sign-in: the CSRF token, a rate limit per number and per
-// address, every try written to auth_event, and the code itself dies after
+// The person says who they are the way the code reached them: the mobile it
+// was texted to, or the email it was sent to. A code belongs to the account,
+// not the channel, so an invitation that went by text and by email is one
+// code, and works once. When email is on (EMAIL_PROVIDER) a two-half switch,
+// Text or Email, picks the field; with email off the page is the text-only
+// page it was, unless the person arrived from an email (?via=email).
+//
+// Guarded like sign-in: the CSRF token, a rate limit per number or address and
+// per caller, every try written to auth_event, and the code itself dies after
 // five misses (codes.ts). The code field is the only thing that ever says
-// "not right": a number that is not on file gets the same sentence as a
-// wrong code, so the form cannot be used to find out which numbers are staff.
+// "not right": a number or address that is not on file gets the same sentence
+// as a wrong code, so the form cannot be used to find out who is staff. That
+// sentence also takes the same time: every miss after the lookup is held to
+// MISS_FLOOR_MS, so a known account (which costs more queries) answers no
+// slower than an unknown one.
 //
-// The number is never in the address. /auth/forgot/ leaves it in a 15-minute
-// httpOnly cookie sent to this page only; it fills the field and is cleared
-// once the code is used. No cookie (expired, another device, a link from an
-// invitation text) and the person types the number. Old links that carried
-// ?phone= still fill the field for now; nothing makes new ones.
+// Flossify's operations accounts are never reset by code (they keep no mobile,
+// and npm run admin:create resets them); a code for one is refused like any
+// miss, whichever way it arrived.
+//
+// The Text/Email switch works without script, as on /auth/forgot/: the
+// stylesheet shows the chosen half from the checked radio, neither field is
+// required in the markup, and the server reads only the one `via` names.
+//
+// Neither the number nor the address is ever in the page address.
+// /auth/forgot/ leaves the one it was asked with in a 15-minute httpOnly
+// cookie sent to this page only (fl_code_phone or fl_code_email); it fills the
+// field and both are cleared once the code is used. No cookie (expired,
+// another device, an invitation) and the person types it. Old links that
+// carried ?phone= still fill the field for now; nothing makes new ones.
 export const prerender = false;
 
 import StaffEntrance from '../../components/StaffEntrance.astro';
@@ -26,49 +45,84 @@ import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
 import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
 import { redeemCode, REDEEM_TEXT } from '../../lib/codes';
 import { normalizePhone, PH_MOBILE, prettyPhone } from '../../lib/messages';
+import { emailEnabled, normalizeEmail, EMAIL_ADDRESS, EMAIL_MAX } from '../../lib/email';
 
-// Set by /auth/forgot/ (same name, same path).
-const PHONE_COOKIE = 'fl_code_phone', PHONE_COOKIE_PATH = '/auth/code';
+// Set by /auth/forgot/ (same names, same path).
+const PHONE_COOKIE = 'fl_code_phone', EMAIL_COOKIE = 'fl_code_email', COOKIE_PATH = '/auth/code';
+// REDEEM_TEXT says "check the text"; the same one sentence for every miss, for an email.
+const EMAIL_MISS = 'That code is not right, or it has expired. Check the email, or ask for a new one.';
+// Every miss after the lookup answers no sooner than this (plus up to 100 ms), well above what the
+// lookup and the redeem take against a remote database, so the time says nothing about the account.
+const MISS_FLOOR_MS = 400;
+const holdUntilFloor = (since: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, MISS_FLOOR_MS + Math.floor(Math.random() * 100) - (Date.now() - since))));
 
+type Via = 'sms' | 'email';
 const sent = Astro.url.searchParams.get('sent') === '1';
-const remembered = Astro.cookies.get(PHONE_COOKIE)?.value ?? '';
-let typed = prettyPhone(PH_MOBILE.test(remembered) ? remembered : (Astro.url.searchParams.get('phone') ?? ''));
+const rememberedPhone = Astro.cookies.get(PHONE_COOKIE)?.value ?? '';
+const rememberedEmail = normalizeEmail(Astro.cookies.get(EMAIL_COOKIE)?.value ?? '');
+const hasEmail = EMAIL_ADDRESS.test(rememberedEmail);
+// The cookie says how the code went; otherwise the link that brought them here (an email's link asks for the Email half).
+let via: Via = hasEmail ? 'email' : PH_MOBILE.test(rememberedPhone) ? 'sms' : Astro.url.searchParams.get('via') === 'email' ? 'email' : 'sms';
+// The switch shows when email is on, and for anyone who came here from an email even if it has since been turned off.
+const showSwitch = emailEnabled() || via === 'email';
+let typedPhone = prettyPhone(PH_MOBILE.test(rememberedPhone) ? rememberedPhone : (Astro.url.searchParams.get('phone') ?? ''));
+let typedEmail = hasEmail ? rememberedEmail : '';
 let error = '';
 let device: Device = 'shared';
 
+/** The staff row behind an email, with what the code page needs. One account per email across the service. */
+async function staffByEmail(email: string) {
+  const { rows } = await pool.query(
+    `select id, group_id, full_name, email, phone, role, token_version, home_clinic_id, password_hash
+       from staff where email = $1 and disabled_at is null order by created_at limit 1`, [email]);
+  return rows[0] as Awaited<ReturnType<typeof staffByPhone>>;
+}
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  typed = String(form.get('phone') ?? '').trim();
-  const phone = normalizePhone(typed);
+  via = form.get('via') === 'email' ? 'email' : 'sms';
+  typedPhone = String(form.get('phone') ?? '').trim();
+  typedEmail = String(form.get('email') ?? '').trim();
+  const phone = normalizePhone(typedPhone);
+  const email = normalizeEmail(typedEmail);
   const code = String(form.get('code') ?? '').replace(/\D/g, '');
   const password = String(form.get('password') ?? ''), confirm = String(form.get('confirm') ?? '');
   device = form.get('device') === 'own' ? 'own' : 'shared';
   const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
+  const byEmail = via === 'email';
   if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
-  else if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
+  else if (byEmail && (!EMAIL_ADDRESS.test(email) || email.length > EMAIL_MAX)) error = 'That email doesn’t look complete. Use the one the code was sent to.';
+  else if (!byEmail && !PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
   else {
-    const [byPhone, byIp] = await Promise.all([hit(`code:p:${phone}`, ...LIMITS.code.phone), hit(`code:ip:${ip}`, ...LIMITS.code.ip)]);
+    const key = byEmail ? `code:e:${email}` : `code:p:${phone}`;
+    const [byWho, byIp] = await Promise.all([hit(key, ...LIMITS.code.phone), hit(`code:ip:${ip}`, ...LIMITS.code.ip)]);
     const problem = passwordProblem(password);
-    if (!byPhone.allowed || !byIp.allowed) {
-      error = `Too many tries. ${waitText(Math.max(byPhone.retryAfter, byIp.retryAfter))}`;
+    if (!byWho.allowed || !byIp.allowed) {
+      error = `Too many tries. ${waitText(Math.max(byWho.retryAfter, byIp.retryAfter))}`;
       await authEvent('code.locked', { ip, ua });
     }
-    else if (code.length !== 6) error = 'Enter the six digits from the text.';
+    else if (code.length !== 6) error = byEmail ? 'Enter the six digits from the email.' : 'Enter the six digits from the text.';
     else if (problem) error = problem;
     else if (password !== confirm) error = 'The two passwords don’t match.';
     else {
-      const staff = await staffByPhone(phone);
+      const since = Date.now();
+      let staff = byEmail ? await staffByEmail(email) : await staffByPhone(phone);
+      // An operations account is not reset here (see the top of this file): as if it were not on file.
+      if (staff && (await pool.query('select 1 from platform_admin where staff_id = $1', [staff.id])).rowCount) staff = undefined;
       // The account decides what the code is for: no password yet means it is an invitation.
       const purpose = staff?.password_hash ? 'reset' : 'invite';
       const result = staff ? await redeemCode(staff.id, purpose, code) : 'wrong';
       if (!staff || result !== 'ok') {
-        // One sentence for every miss, whether or not the number is on file: the form cannot be used to find staff numbers.
-        error = REDEEM_TEXT.wrong;
+        // One sentence for every miss, whether or not the number or address is on file: the form cannot be used to find staff.
+        error = byEmail ? EMAIL_MISS : REDEEM_TEXT.wrong;
         await authEvent('code.fail', { email: staff?.email, staffId: staff?.id, ip, ua });
+        await holdUntilFloor(since);
       } else {
         const tv = await setPassword(staff.id, password);
-        // The code is spent: the number has no more reason to be on this computer.
-        Astro.cookies.delete(PHONE_COOKIE, { path: PHONE_COOKIE_PATH });
+        // The code is spent: the number or address has no more reason to be on this computer.
+        Astro.cookies.delete(PHONE_COOKIE, { path: COOKIE_PATH });
+        Astro.cookies.delete(EMAIL_COOKIE, { path: COOKIE_PATH });
         if (purpose === 'invite') await pool.query('update staff set invited_at = coalesce(invited_at, now()) where id = $1', [staff.id]);
         await authEvent(purpose === 'invite' ? 'invite.accept' : 'reset.ok', { email: staff.email, staffId: staff.id, ip, ua });
         // Sign them in with the new token version; every older session is already out.
@@ -83,27 +137,53 @@ if (Astro.request.method === 'POST') {
     }
   }
 }
+
+const byEmail = via === 'email';
+const filled = byEmail ? !!typedEmail : !!typedPhone;
+// Words that follow the switch: [text, email].
+const W = {
+  sent: ['If that number belongs to a staff account, a code is on its way. It works for 15 minutes.', 'If that email belongs to a staff account, a code is on its way. It works for 15 minutes. Not there in a minute? Look in spam.'],
+  again: ['Didn’t get a text?', 'Didn’t get the email?'],
+  forgot: ['/auth/forgot/', '/auth/forgot/?via=email'],
+};
+const i = byEmail ? 1 : 0;
 ---
 
-<StaffEntrance title="I have a code — Flossify" description="Enter the six-digit code we texted you and set your password." page="I have a code">
+<StaffEntrance title="I have a code — Flossify" description={showSwitch ? 'Enter the six-digit code we sent you and set your password.' : 'Enter the six-digit code we texted you and set your password.'} page="I have a code">
   <a href="/auth/login/" class="meta hover:text-ink">&larr; Staff sign-in</a>
   <h1 class="entry-title font-display mt-4">
     <span class="block">Almost in.</span>
     <span class="block entry-dim">Enter your code.</span>
   </h1>
-  <p class="mt-2 text-[14.5px] leading-relaxed entry-dim">The six digits we texted, and a password you’ll remember. You’re signed in straight away.</p>
+  <p class="mt-2 text-[14.5px] leading-relaxed entry-dim">The six digits we {showSwitch ? 'sent you' : 'texted'}, and a password you’ll remember. You’re signed in straight away.</p>
 
-  {sent && !error && <p role="status" class="entry-note entry-note-ok mt-5">If that number belongs to a staff account, a code is on its way. It works for 15 minutes.</p>}
+  {sent && !error && <p role="status" class="entry-note entry-note-ok mt-5">{W.sent[i]}</p>}
 
   <form method="post" class="mt-5 grid gap-4" data-entry-form>
     <Csrf />
-    <div class="entry-field">
+    {showSwitch && (
+      <fieldset class="entry-devices">
+        <legend class="meta">The code came by</legend>
+        <div class="entry-seg">
+          <label><input type="radio" name="via" value="sms" class="sr-only" checked={!byEmail} data-via-pick />Text</label>
+          <label><input type="radio" name="via" value="email" class="sr-only" checked={byEmail} data-via-pick />Email</label>
+        </div>
+      </fieldset>
+    )}
+    {/* With the switch, neither field is required or disabled in the markup: without script both are sent and the server reads the one `via` names. */}
+    <div class="entry-field" data-via-field="sms">
       <label for="phone" class="meta">Mobile number</label>
-      <input id="phone" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0917 000 0000" value={typed} required autofocus={!typed} />
+      <input id="phone" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0917 000 0000" value={typedPhone} required={!showSwitch} autofocus={!byEmail && !filled} />
     </div>
+    {showSwitch && (
+      <div class="entry-field" data-via-field="email">
+        <label for="email" class="meta">Email</label>
+        <input id="email" type="email" name="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" maxlength={EMAIL_MAX} placeholder="you@clinic.ph" value={typedEmail} autofocus={byEmail && !filled} />
+      </div>
+    )}
     <div class="entry-field">
       <label for="code" class="meta">Code</label>
-      <input id="code" type="text" name="code" class="entry-code" inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="000000" required autofocus={!!typed}
+      <input id="code" type="text" name="code" class="entry-code" inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="000000" required autofocus={filled}
         aria-invalid={error ? 'true' : undefined} aria-describedby={error ? 'code-error' : undefined} />
     </div>
     <div class="entry-field">
@@ -137,10 +217,19 @@ if (Astro.request.method === 'POST') {
   </form>
 
   <ul class="mt-6 border-t entry-rule" aria-label="Other ways in">
-    <li class="border-b entry-rule"><a href="/auth/forgot/" class="entry-way"><span><span class="text-[14.5px] font-semibold">Didn’t get a text?</span> <span class="entry-way-hint">Ask for another code.</span></span><span aria-hidden="true" class="entry-way-arrow">&rarr;</span></a></li>
+    <li class="border-b entry-rule"><a href={W.forgot[i]} class="entry-way" data-again data-forgot-sms={W.forgot[0]} data-forgot-email={W.forgot[1]}><span><span class="text-[14.5px] font-semibold">{showSwitch ? <><span data-via-field="sms">{W.again[0]}</span><span data-via-field="email">{W.again[1]}</span></> : W.again[i]}</span> <span class="entry-way-hint">Ask for another code.</span></span><span aria-hidden="true" class="entry-way-arrow">&rarr;</span></a></li>
   </ul>
   <p class="mt-4 text-[13.5px] leading-relaxed entry-dim">An invitation code from your clinic works here too — it sets your first password.</p>
 </StaffEntrance>
+
+<style is:global>
+  /* Text or Email, without script: the checked radio shows its own field and words and hides the
+     other half's (the same rule as /auth/forgot/). */
+  @layer components {
+    :root:has(input[name='via'][value='email']:checked) [data-via-field='sms'],
+    :root:has(input[name='via'][value='sms']:checked) [data-via-field='email'] { display: none; }
+  }
+</style>
 
 <script>
   // An old link may still carry the number as ?phone=. The field has it now; take it out of the address bar.
@@ -149,6 +238,37 @@ if (Astro.request.method === 'POST') {
     here.searchParams.delete('phone');
     history.replaceState(history.state, '', here.pathname + here.search + here.hash);
   }
+  // Text or Email. The stylesheet already shows the chosen half; this makes its field the required
+  // one and switches the other off (neither required nor sent), and keeps the link and the address bar in step.
+  const picks = Array.from(document.querySelectorAll<HTMLInputElement>('[data-via-pick]'));
+  const again = document.querySelector<HTMLAnchorElement>('[data-again]');
+  const sync = (via: string) => {
+    document.querySelectorAll<HTMLElement>('[data-via-field]').forEach((field) => {
+      const on = field.dataset.viaField === via;
+      field.hidden = !on;
+      const input = field.querySelector<HTMLInputElement>('input');
+      if (input) { input.disabled = !on; input.required = on; }
+    });
+    if (again) again.href = (via === 'email' ? again.dataset.forgotEmail : again.dataset.forgotSms) ?? again.href;
+  };
+  const chosen = picks.find((r) => r.checked);
+  if (chosen) sync(chosen.value);
+  let keyed = false;
+  document.addEventListener('pointerdown', () => { keyed = false; });
+  picks.forEach((r) => {
+    r.addEventListener('keydown', () => { keyed = true; });
+    r.addEventListener('change', () => {
+      const byKey = keyed;
+      keyed = false;
+      if (!r.checked) return;
+      const via = r.value === 'email' ? 'email' : 'sms';
+      sync(via);
+      const u = new URL(location.href);
+      if (via === 'email') u.searchParams.set('via', 'email'); else u.searchParams.delete('via');
+      history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+      if (!byKey) document.querySelector<HTMLInputElement>(`[data-via-field="${via}"] input`)?.focus();
+    });
+  });
   // Show the password, and warn about Caps Lock: the same help as sign-in.
   document.querySelectorAll<HTMLButtonElement>('[data-show]').forEach((btn) => {
     const input = document.getElementById(btn.getAttribute('aria-controls') ?? '') as HTMLInputElement | null;

@@ -1,24 +1,53 @@
 ---
 // Settings › Team. Everyone who can open this branch, and what an owner does
-// about them: add a person (we text them a code and they choose their own
-// password), send that code again, text a reset code, set the days they sit
-// here, decide who sees finance, switch an account off.
+// about them: add a person (we text them a code, and email it too when email
+// is on, and they choose their own password), send that code again, send a
+// reset code, edit their details, set the days they sit here, decide who sees
+// finance, switch an account off.
 //
 // staff and staff_access are group tables outside row-level security, so the
 // list is a plain pool query keyed on this clinic's id. Days (staff_schedule),
-// the text queue and the audit trail are clinic data and go through
+// the message queue and the audit trail are clinic data and go through
 // withClinic(). Every action looks the target up through staff_access for
 // this clinic before touching the row, so an id lifted from another branch's
 // page changes nothing here.
+//
+// Editing a person (Edit details): name, role, mobile, email, PRC licence and
+// specialty, by the owner or an admin; an owner's row by an owner only. The
+// rules that make it safe:
+//   - One email and one mobile per staff account across the whole service,
+//     checked here as the add form checks them (sign-in finds people by email,
+//     resets find them by mobile).
+//   - A new email or a new role bumps staff.token_version, so every session
+//     that person has ends at once (canOpen compares it on every request; the
+//     cookie carries the role the pages read). Editing your own email keeps you
+//     signed in on this device only; nobody edits their own role.
+//   - A new email or mobile voids any code already sent: it went somewhere
+//     that is no longer theirs. An invitation is then sent again by hand.
+//   - A new PRC number, or a new name on a dentist with a public profile (a
+//     PRC check pairs the two), clears the check (prc_status pending,
+//     prc_checked_on null): the public profile says "PRC check pending" again
+//     and the dentist goes back to the top of Flossify's queue (/admin/prc/,
+//     009). A number PRC's records did not match goes back too when the form is
+//     saved, corrected or not: that is the owner's way to say "it is right".
+//   - Nobody changes their own role, and an owner stays an owner: only an
+//     owner's own row can say 'owner', and a posted role must be one of ROLES,
+//     so nobody is made an owner from here. A dentist
+//     moved to a role without patients loses the public profile (slug null);
+//     someone moved to dentist gets one, with the check pending.
+//   - Every changed field is one audit_log row (staff.name, staff.email,
+//     staff.phone, staff.role, staff.prc, staff.specialty).
 export const prerender = false;
 
 import ClinicLayout from '../../../../layouts/Clinic.astro';
 import Csrf from '../../../../components/Csrf.astro';
 import { requireWorkspace } from '../../../../lib/workspace';
+import { setSession } from '../../../../lib/auth';
 import { pool, withClinic, type Tx } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
 import { issueCode } from '../../../../lib/codes';
-import { queueText, texts, normalizePhone, prettyPhone, PH_MOBILE } from '../../../../lib/messages';
+import { queueText, queueEmail, texts, emails, codePageFor, normalizePhone, prettyPhone, PH_MOBILE } from '../../../../lib/messages';
+import { emailEnabled, normalizeEmail, EMAIL_ADDRESS, EMAIL_MAX } from '../../../../lib/email';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -26,6 +55,8 @@ const { clinic, session, branches } = ws;
 const isOwner = session.role === 'owner';
 const canSetUp = isOwner || session.role === 'admin';
 const here = Astro.url.pathname;
+// Codes go by text, and by email too when the service has an email channel (EMAIL_PROVIDER).
+const emailOn = emailEnabled();
 
 // The roles an owner hands out. 'owner' is not on the list: a second owner is a sign-up matter, not a team one.
 const ROLES: Record<string, string> = { dentist: 'Dentist', associate: 'Associate dentist', secretary: 'Secretary', assistant: 'Dental assistant', admin: 'Admin' };
@@ -34,27 +65,59 @@ const ROLE_LABEL: Record<string, string> = { owner: 'Owner', ...ROLES };
 const SPECIALTIES = ['Endodontics', 'Oral & maxillofacial surgery', 'Orthodontics', 'Pediatric dentistry', 'Periodontics', 'Prosthodontics', 'Dental public health'];
 const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']] as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PRC = /^\d{4,10}$/;
 const clinician = (role: string) => role === 'dentist' || role === 'associate';
+/** The same sentence wherever a mobile is checked across the service. */
+const phoneTaken = (phone: string, notId: string | null) => pool.query(
+  `select 1 from staff where ($2::uuid is null or id <> $2) and right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $1`, [phone.slice(-10), notId]);
+const emailTaken = (email: string, notId: string | null) => pool.query(
+  'select 1 from staff where email = $1 and ($2::uuid is null or id <> $2)', [email, notId]);
 
 let error = '';
 let notice = '';
 // What the add form holds; kept when it comes back with an error.
 const add = { name: '', role: 'dentist', phone: '', email: '', prc: '', specialty: '', days: [1, 2, 3, 4, 5, 6] as number[], finance: false };
+// What an edit form held when it came back with an error, and whose it was.
+let edit: { id: string; name: string; role: string; phone: string; email: string; prc: string; specialty: string } | null = null;
 
 const dows = (form: FormData) => [...new Set(form.getAll('dow').map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))];
 
+interface Member {
+  id: string; full_name: string; role: string; phone: string | null; email: string; prc_licence: string | null; specialty: string | null;
+  slug: string | null; practices: string[]; has_password: boolean; disabled_at: Date | null; can_view_finance: boolean;
+  prc_status: 'pending' | 'checked' | 'mismatch';
+}
 /** The target of a per-person action, only if they have access to this branch. */
 async function member(id: string) {
   if (!UUID.test(id)) return undefined;
   const { rows } = await pool.query(
-    `select s.id, s.full_name, s.role, s.phone, s.password_hash is not null as has_password, s.disabled_at, a.can_view_finance
+    `select s.id, s.full_name, s.role, s.phone, s.email::text as email, s.prc_licence, s.specialty, s.slug, s.practices,
+            s.password_hash is not null as has_password, s.disabled_at, a.can_view_finance, s.prc_status
        from staff_access a join staff s on s.id = a.staff_id
       where a.clinic_id = $1 and s.id = $2`, [clinic.id, id]);
-  return rows[0] as { id: string; full_name: string; role: string; phone: string | null; has_password: boolean; disabled_at: Date | null; can_view_finance: boolean } | undefined;
+  return rows[0] as Member | undefined;
 }
 const audit = (tx: Tx, action: string, staffId: string) =>
   tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'staff', $4)`, [clinic.id, session.staffId, action, staffId]);
+
+/** Queue a code by every channel this person can take: text when they have a mobile, email when email is on. Returns what was used. */
+async function sendCode(tx: Tx, t: { id: string; phone: string | null; email: string }, kind: 'invite' | 'reset', code: string): Promise<'both' | 'sms' | 'email'> {
+  const texted = !!t.phone && PH_MOBILE.test(normalizePhone(t.phone));
+  if (texted) {
+    await queueText(tx, { clinicId: clinic.id, to: t.phone!, body: kind === 'invite' ? texts.invite(session.name, clinic.name, code) : texts.reset(code), kind, staffId: t.id });
+  }
+  let emailed = false;
+  if (emailOn && EMAIL_ADDRESS.test(normalizeEmail(t.email))) {
+    const page = codePageFor(Astro.site);
+    const mail = kind === 'invite' ? emails.invite(session.name, clinic.name, code, page, texted) : emails.reset(code, page);
+    await queueEmail(tx, { clinicId: clinic.id, to: t.email, subject: mail.subject, body: mail.body, kind, staffId: t.id });
+    emailed = true;
+  }
+  return texted && emailed ? 'both' : emailed ? 'email' : 'sms';
+}
+/** Can a code reach them at all? sendCode() then queues at least one. */
+const reachable = (t: { phone: string | null; email: string }) =>
+  PH_MOBILE.test(normalizePhone(t.phone ?? '')) || (emailOn && EMAIL_ADDRESS.test(normalizeEmail(t.email)));
 
 /** 'Dr. Ana Reyes-Cariño' → 'ana-reyes-carino', then -2, -3… until no staff row has it. */
 function slugify(name: string) {
@@ -77,7 +140,7 @@ if (Astro.request.method === 'POST') {
     add.name = String(form.get('name') ?? '').trim().replace(/\s+/g, ' ');
     add.role = String(form.get('role') ?? '');
     add.phone = String(form.get('phone') ?? '').trim();
-    add.email = String(form.get('email') ?? '').trim().toLowerCase();
+    add.email = normalizeEmail(String(form.get('email') ?? ''));
     add.prc = String(form.get('prc') ?? '').trim();
     add.specialty = String(form.get('specialty') ?? '');
     add.days = dows(form);
@@ -87,17 +150,17 @@ if (Astro.request.method === 'POST') {
     if (add.name.length < 2 || add.name.length > 80) error = 'Give us their full name, as patients should see it.';
     else if (!Object.hasOwn(ROLES, add.role)) error = 'Choose a role.';
     else if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000. The code goes there by text.';
-    else if (!EMAIL.test(add.email) || add.email.length > 120) error = 'That email doesn’t look complete.';
-    else if (dentist && !/^\d{4,10}$/.test(add.prc)) error = 'A dentist needs their PRC licence number: digits only, usually seven.';
+    else if (!EMAIL_ADDRESS.test(add.email) || add.email.length > EMAIL_MAX) error = 'That email doesn’t look complete.';
+    else if (dentist && !PRC.test(add.prc)) error = 'A dentist needs their PRC licence number: digits only, usually seven.';
     else if (dentist && add.specialty && !SPECIALTIES.includes(add.specialty)) error = 'Pick a specialty from the list, or leave it blank for a general dentist.';
     // Across the whole service, not just this group: sign-in finds a person by email and a reset
     // finds them by mobile, so each may belong to one staff account only (as /start/ checks).
-    else if ((await pool.query('select 1 from staff where email = $1', [add.email])).rowCount) error = 'That email is already on a Flossify staff account. Use another one for them.';
-    else if ((await pool.query(`select 1 from staff where right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $1`, [phone.slice(-10)])).rowCount) error = 'That mobile number is already on a Flossify staff account. Use another one for them.';
+    else if ((await emailTaken(add.email, null)).rowCount) error = 'That email is already on a Flossify staff account. Use another one for them.';
+    else if ((await phoneTaken(phone, null)).rowCount) error = 'That mobile number is already on a Flossify staff account. Use another one for them.';
     else {
       // The staff row and its access are group data and commit first; the code
-      // references the row, so it is minted after. Days, the text and the
-      // audit line are clinic data and go in one clinic transaction.
+      // references the row, so it is minted after. Days, the text, the email and
+      // the audit line are clinic data and go in one clinic transaction.
       const slug = dentist ? await uniqueSlug(add.name) : null;
       const specialty = dentist && add.specialty ? add.specialty : null;
       const { rows: [created] } = await pool.query(
@@ -108,50 +171,162 @@ if (Astro.request.method === 'POST') {
         'insert into staff_access (staff_id, clinic_id, can_view_finance, can_edit_records, can_manage_staff) values ($1, $2, $3, true, $4)',
         [created.id, clinic.id, add.finance, add.role === 'admin']);
       const code = await issueCode(created.id, 'invite');
-      await withClinic(clinic.id, async (tx) => {
+      const via = await withClinic(clinic.id, async (tx) => {
         for (const d of add.days) await tx.query('insert into staff_schedule (staff_id, clinic_id, dow) values ($1, $2, $3)', [created.id, clinic.id, d]);
-        await queueText(tx, { clinicId: clinic.id, to: phone, body: texts.invite(session.name, clinic.name, code), kind: 'invite', staffId: created.id });
+        const used = await sendCode(tx, { id: created.id, phone, email: add.email }, 'invite', code);
         await audit(tx, 'staff.invite', created.id);
+        return used;
       });
-      return Astro.redirect(`${here}?saved=1&id=${created.id}`, 303);
+      return Astro.redirect(`${here}?saved=1&via=${via}&id=${created.id}`, 303);
     }
   } else {
     const t = await member(String(form.get('id') ?? ''));
     if (!t) error = 'That person is not on this branch.';
     else if (action === 'invite') {
       if (t.disabled_at) error = `${t.full_name} is disabled. Enable them first.`;
-      else if (t.has_password) error = `${t.full_name} already has a password. Text a reset code instead.`;
-      else if (!t.phone) error = `${t.full_name} has no mobile number on file, so there is nowhere to send the code.`;
+      else if (t.has_password) error = `${t.full_name} already has a password. ${emailOn ? 'Send' : 'Text'} a reset code instead.`;
+      else if (!reachable(t)) error = `${t.full_name} has no mobile number on file, so there is nowhere to send the code. Add one under Edit details.`;
       else {
         const code = await issueCode(t.id, 'invite');
         await pool.query('update staff set invited_at = now(), invited_by = $2 where id = $1', [t.id, session.staffId]);
-        await withClinic(clinic.id, async (tx) => {
-          await queueText(tx, { clinicId: clinic.id, to: t.phone!, body: texts.invite(session.name, clinic.name, code), kind: 'invite', staffId: t.id });
+        const via = await withClinic(clinic.id, async (tx) => {
+          const used = await sendCode(tx, t, 'invite', code);
           await audit(tx, 'staff.invite', t.id);
+          return used;
         });
-        return Astro.redirect(`${here}?done=invite&id=${t.id}`, 303);
-      }
-    } else if (action === 'phone') {
-      // The mobile is where codes go. An owner adds or corrects it here, then texts a code.
-      const phone = normalizePhone(String(form.get('phone') ?? ''));
-      if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
-      else if ((await pool.query(`select 1 from staff where id <> $1 and right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $2`, [t.id, phone.slice(-10)])).rowCount) error = 'That mobile number is already on another Flossify staff account. Codes go to one person only.';
-      else {
-        await pool.query('update staff set phone = $2 where id = $1', [t.id, phone]);
-        await withClinic(clinic.id, (tx) => audit(tx, 'staff.phone', t.id));
-        return Astro.redirect(`${here}?done=phone&id=${t.id}`, 303);
+        return Astro.redirect(`${here}?done=invite&via=${via}&id=${t.id}`, 303);
       }
     } else if (action === 'reset') {
       if (t.disabled_at) error = `${t.full_name} is disabled. Enable them first.`;
       else if (!t.has_password) error = `${t.full_name} hasn’t set a password yet. Resend the invitation instead.`;
-      else if (!t.phone) error = `${t.full_name} has no mobile number on file, so there is nowhere to send the code.`;
+      else if (!reachable(t)) error = `${t.full_name} has no mobile number on file, so there is nowhere to send the code. Add one under Edit details.`;
       else {
         const code = await issueCode(t.id, 'reset');
-        await withClinic(clinic.id, async (tx) => {
-          await queueText(tx, { clinicId: clinic.id, to: t.phone!, body: texts.reset(code), kind: 'reset', staffId: t.id });
+        const via = await withClinic(clinic.id, async (tx) => {
+          const used = await sendCode(tx, t, 'reset', code);
           await audit(tx, 'staff.reset', t.id);
+          return used;
         });
-        return Astro.redirect(`${here}?done=reset&id=${t.id}`, 303);
+        return Astro.redirect(`${here}?done=reset&via=${via}&id=${t.id}`, 303);
+      }
+    } else if (action === 'edit' && t.role === 'owner' && !isOwner) {
+      error = 'Only an owner can change an owner’s details.';
+    } else if (action === 'edit') {
+      const me = t.id === session.staffId;
+      edit = {
+        id: t.id,
+        name: String(form.get('name') ?? '').trim().replace(/\s+/g, ' '),
+        // An owner stays an owner, and nobody changes their own role: the posted value is ignored for both.
+        role: t.role === 'owner' || me ? t.role : String(form.get('role') ?? ''),
+        phone: String(form.get('phone') ?? '').trim(),
+        email: normalizeEmail(String(form.get('email') ?? '')),
+        prc: String(form.get('prc') ?? '').replace(/\s+/g, ''),
+        specialty: String(form.get('specialty') ?? ''),
+      };
+      const phone = edit.phone ? normalizePhone(edit.phone) : '';
+      // A public profile after the change: dentists always; an owner keeps theirs if they have one.
+      const profile = edit.role === 'owner' ? !!t.slug : clinician(edit.role);
+      if (edit.name.length < 2 || edit.name.length > 80) error = 'Give their full name, as patients should see it.';
+      // Only an owner's own row may say 'owner' (it was never taken from the form). Anyone else's role
+      // must be one an owner hands out, so a posted role=owner is refused, never saved.
+      else if (t.role !== 'owner' && !Object.hasOwn(ROLES, edit.role)) error = 'Choose a role.';
+      else if (!phone && t.phone) error = 'Keep a mobile number on file: invitation and reset codes go there by text.';
+      else if (phone && !PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
+      else if (!EMAIL_ADDRESS.test(edit.email) || edit.email.length > EMAIL_MAX) error = 'That email doesn’t look complete.';
+      else if (clinician(edit.role) && !PRC.test(edit.prc)) error = 'A dentist needs their PRC licence number: digits only, usually seven.';
+      else if (profile && edit.prc && !PRC.test(edit.prc)) error = 'A PRC licence number is digits only, usually seven.';
+      else if (profile && edit.specialty && !SPECIALTIES.includes(edit.specialty)) error = 'Pick a specialty from the list, or leave it blank for a general dentist.';
+      else if (edit.email !== normalizeEmail(t.email) && (await emailTaken(edit.email, t.id)).rowCount) error = 'That email is already on another Flossify staff account. Use another one for them.';
+      else if (phone && normalizePhone(t.phone ?? '') !== phone && (await phoneTaken(phone, t.id)).rowCount) error = 'That mobile number is already on another Flossify staff account. Codes go to one person only.';
+      else {
+        // What the row becomes. Someone who is no longer a dentist keeps no licence, specialty or profile.
+        const next = {
+          name: edit.name,
+          role: edit.role,
+          phone: phone || null,
+          email: edit.email,
+          prc: profile ? (edit.prc || null) : edit.role === 'owner' ? t.prc_licence : null,
+          specialty: profile ? (edit.specialty || null) : edit.role === 'owner' ? t.specialty : null,
+          slug: profile ? (t.slug ?? await uniqueSlug(edit.name)) : edit.role === 'owner' ? t.slug : null,
+        };
+        const practices = profile && !next.specialty && !(t.practices?.length) ? ['General dentistry'] : (t.practices ?? []);
+        const changed = {
+          name: next.name !== t.full_name,
+          email: next.email !== normalizeEmail(t.email),
+          phone: (next.phone ?? '') !== normalizePhone(t.phone ?? ''),
+          role: next.role !== t.role,
+          prc: (next.prc ?? '') !== (t.prc_licence ?? ''),
+          specialty: (next.specialty ?? '') !== (t.specialty ?? ''),
+        };
+        // A PRC check pairs the licence number with the licensee's name, so a public profile goes back
+        // for a check when either changes: the old "checked" date must not stand under a name nobody
+        // checked. A number PRC's records did not match goes back too when the clinic saves the form,
+        // corrected or as it is (the mismatch text tells the owner to look here).
+        const checkable = !!next.slug && !!next.prc;
+        const mismatchKept = checkable && t.prc_status === 'mismatch' && !changed.prc && !changed.name;
+        const prcReset = changed.prc || (checkable && changed.name) || mismatchKept;
+        if (!Object.values(changed).some(Boolean) && !mismatchKept) return Astro.redirect(`${here}?done=same&id=${t.id}`, 303);
+        // For Flossify's PRC queue: why this dentist is waiting again.
+        const prcNote = !checkable ? null : [
+          changed.prc && (t.prc_licence ? `The clinic changed the number (was ${t.prc_licence}).` : 'The clinic added the number.'),
+          changed.name && `The clinic changed the name (was ${t.full_name}).`,
+          mismatchKept && 'The clinic says the number on file is right. Check it again.',
+        ].filter(Boolean).join(' ') || null;
+        // A new email, or a new role, ends every session they have: the cookie carries the role, and
+        // pages read their rights from it, so a demoted admin must not keep an admin's cookie.
+        const signOut = changed.email || changed.role;
+        let tv: number;
+        try {
+          const { rows } = await pool.query(
+            `update staff set full_name = $2, email = $3, phone = $4, role = $5, prc_licence = $6, specialty = $7, slug = $8, practices = $9,
+                    token_version = token_version + case when $10::boolean then 1 else 0 end,
+                    prc_status     = case when $11::boolean then 'pending' else prc_status end,
+                    prc_checked_on = case when $11::boolean then null else prc_checked_on end,
+                    prc_checked_by = case when $11::boolean then null else prc_checked_by end,
+                    prc_note       = case when $11::boolean then $12 else prc_note end
+              where id = $1
+              returning token_version`,
+            // The mobile is written only when it changed, so a number on file as '0917 555 2003' is left as it was.
+            [t.id, next.name, next.email, changed.phone ? next.phone : t.phone, next.role, next.prc, next.specialty, next.slug, practices, signOut, prcReset, prcNote]);
+          tv = rows[0].token_version;
+        } catch (e) {
+          // Two edits at once can both pass the checks above; the database's own unique keys have the last word.
+          const { code, constraint } = e as { code?: string; constraint?: string };
+          if (code !== '23505') throw e;
+          error = /email/.test(constraint ?? '')
+            ? 'That email is already on another Flossify staff account. Use another one for them.'
+            : 'Someone saved a change to the team at the same moment. Check the details and save again.';
+        }
+        if (!error) {
+          if (changed.role) await pool.query('update staff_access set can_manage_staff = $3 where staff_id = $1 and clinic_id = $2', [t.id, clinic.id, next.role === 'admin' || next.role === 'owner']);
+          // A code already sent to the old mobile or email stops working: it went somewhere that is no longer theirs.
+          if (changed.email || changed.phone) await pool.query('update one_time_code set used_at = now() where staff_id = $1 and used_at is null', [t.id]);
+          await withClinic(clinic.id, async (tx) => {
+            // And a code still waiting in the queue would arrive dead: it does not go.
+            if (changed.email || changed.phone) {
+              await tx.query(`update message_log set status = 'cancelled' where staff_id = $1 and direction = 'out' and status = 'queued' and kind in ('invite', 'reset')`, [t.id]);
+            }
+            for (const [field, did] of Object.entries(changed)) if (did) await audit(tx, `staff.${field}`, t.id);
+            // Nothing typed changed, but the number went back for a check: that is a PRC change too.
+            if (mismatchKept) await audit(tx, 'staff.prc', t.id);
+          });
+          // Your own new email ends your other sessions; this one carries on with the new version and name.
+          if (me && (changed.email || changed.name)) {
+            // Whole hours: the cookie's maxAge must be a whole number of seconds. What is left, rounded down.
+            const hours = Math.max(1, Math.floor((session.exp - Date.now()) / 3_600_000));
+            setSession(Astro.cookies, { staffId: session.staffId, groupId: session.groupId, clinicId: session.clinicId, name: next.name, role: session.role, tv: tv! }, hours);
+          }
+          const flags = [
+            changed.email && 'email=1',
+            // Signed out for the new role; only worth saying to someone who has a password to sign in with.
+            changed.role && !changed.email && t.has_password && !t.disabled_at && 'role=1',
+            prcReset && checkable && `prc=${changed.prc ? 'number' : changed.name ? 'name' : 'again'}`,
+            !t.slug && next.slug && 'profile=on',
+            t.slug && !next.slug && 'profile=off',
+            (changed.email || changed.phone) && !t.has_password && !t.disabled_at && 'resend=1',
+          ].filter(Boolean).join('&');
+          return Astro.redirect(`${here}?done=edit&id=${t.id}${flags ? `&${flags}` : ''}`, 303);
+        }
       }
     } else if (action === 'disable') {
       if (t.id === session.staffId) error = 'You can’t disable your own account. Ask another owner.';
@@ -191,11 +366,12 @@ if (Astro.request.method === 'POST') {
 
 interface Person {
   id: string; full_name: string; role: string; prc_licence: string | null; prc_checked_on: Date | null; phone: string | null; email: string; slug: string | null;
-  has_password: boolean; disabled_at: Date | null; last_seen_at: Date | null; invited_at: Date | null; can_view_finance: boolean;
+  specialty: string | null; has_password: boolean; disabled_at: Date | null; last_seen_at: Date | null; invited_at: Date | null; can_view_finance: boolean;
+  prc_status: 'pending' | 'checked' | 'mismatch';
 }
 const people = (await pool.query(
-  `select s.id, s.full_name, s.role, s.prc_licence, s.prc_checked_on, s.phone, s.email, s.slug,
-          s.password_hash is not null as has_password, s.disabled_at, s.last_seen_at, s.invited_at, a.can_view_finance
+  `select s.id, s.full_name, s.role, s.prc_licence, s.prc_checked_on, s.phone, s.email::text as email, s.slug, s.specialty,
+          s.password_hash is not null as has_password, s.disabled_at, s.last_seen_at, s.invited_at, a.can_view_finance, s.prc_status
      from staff_access a join staff s on s.id = a.staff_id
     where a.clinic_id = $1
     order by s.role = 'owner' desc, s.disabled_at is not null, s.full_name`, [clinic.id])).rows as Person[];
@@ -210,11 +386,28 @@ const q = Astro.url.searchParams;
 if (!error) {
   const who = people.find((p) => p.id === q.get('id'))?.full_name ?? 'them';
   const done = q.get('saved') === '1' ? 'saved' : q.get('done') ?? '';
+  // How the code went: by text (the sentences texts-only Flossify always said), by email, or both.
+  const via = q.get('via') ?? 'sms';
+  const how = via === 'both' ? 'by text and email' : via === 'email' ? 'by email' : '';
+  const editWords = [
+    `Saved ${who}’s details.`,
+    q.get('email') === '1' && q.get('resend') !== '1' && (q.get('id') === session.staffId ? 'Your other devices are signed out; sign in there with the new email.' : `${who} is signed out everywhere and signs in with the new email.`),
+    q.get('profile') === 'off' && 'Their public profile is down: only dentists have one.',
+    q.get('role') === '1' && `${who} is signed out everywhere and signs in again as ${ROLE_LABEL[people.find((p) => p.id === q.get('id'))?.role ?? ''] ?? 'their new role'}.`,
+    q.get('profile') === 'on' && 'They have a public profile now, marked “PRC check pending” until Flossify checks the number.',
+    q.get('profile') !== 'on' && ({
+      number: 'The new PRC number goes back for a check; their profile says “PRC check pending” until then.',
+      name: 'A PRC licence is checked against the name, so the new name goes back for a check; their profile says “PRC check pending” until then.',
+      again: 'The number goes back to Flossify for another check; their profile says “PRC check pending” until then.',
+    } as Record<string, string>)[q.get('prc') ?? ''],
+    q.get('resend') === '1' && 'The code we sent before no longer works: resend the invitation.',
+  ].filter(Boolean).join(' ');
   const NOTICES: Record<string, string> = {
-  phone: 'Mobile saved. You can text them a code now.',
-    saved: `Added. We texted ${who} a code that works for 24 hours.`,
-    invite: `We texted ${who} a new code. It works for 24 hours.`,
-    reset: `We texted ${who} a reset code. It works for 15 minutes.`,
+    saved: how ? `Added. We sent ${who} a code ${how}. It works for 24 hours.` : `Added. We texted ${who} a code that works for 24 hours.`,
+    invite: how ? `We sent ${who} a new code ${how}. It works for 24 hours.` : `We texted ${who} a new code. It works for 24 hours.`,
+    reset: how ? `We sent ${who} a reset code ${how}. It works for 15 minutes.` : `We texted ${who} a reset code. It works for 15 minutes.`,
+    edit: editWords,
+    same: `Nothing changed in ${who}’s details.`,
     disable: `${who} can no longer sign in.`,
     enable: `${who} can sign in again.`,
     schedule: `Saved ${who}’s days.`,
@@ -222,6 +415,8 @@ if (!error) {
   };
   notice = NOTICES[done] ?? '';
 }
+// An edit that came back with an error shows it in that person's form, open, not at the top.
+const editErrorFor = error && edit ? edit.id : '';
 
 const dayFmt = new Intl.DateTimeFormat('en-PH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' });
 /** 'Just now', '3 hours ago', 'Yesterday', then a Manila date. */
@@ -243,6 +438,10 @@ const statusOf = (p: Person) =>
   p.disabled_at ? { label: 'Disabled', cls: 'bg-bg-soft text-muted' }
   : !p.has_password ? { label: 'Invited, hasn’t set a password', cls: 'bg-crown/20 text-crown' }
   : { label: 'Active', cls: 'bg-accent/15 text-accent' };
+
+// Small row buttons, still a 44px target for a gloved hand.
+const small = 'btn btn-quiet min-h-11 !px-3 !py-1.5 text-[13px]';
+const input16 = 'text-[16px]';
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Team" section="settings" staff={{ name: session.name, role: session.role }} branches={branches}>
@@ -258,7 +457,7 @@ const statusOf = (p: Person) =>
       </p>
 
       {notice && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">{notice}</p>}
-      {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
+      {error && !editErrorFor && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
 
       <ul class="mt-8 divide-y divide-line-2 border border-line bg-surface">
         {people.map((p) => {
@@ -266,8 +465,15 @@ const statusOf = (p: Person) =>
           const days = daysOf(p.id);
           const me = p.id === session.staffId;
           const mayDisable = !me && (isOwner || p.role !== 'owner');
+          const mayEdit = isOwner || p.role !== 'owner';
+          const roleLocked = p.role === 'owner' || me;
+          // The form shows what was typed when it came back with an error, else what is on file.
+          const mine = editErrorFor === p.id && edit ? edit : null;
+          const v = mine ?? { name: p.full_name, role: p.role, phone: p.phone ? prettyPhone(p.phone) : '', email: p.email, prc: p.prc_licence ?? '', specialty: p.specialty ?? '' };
+          const showPrc = roleLocked ? !!p.slug : clinician(v.role);
+          const canSend = reachable(p);
           return (
-            <li class="p-5 sm:px-6">
+            <li class="p-5 sm:px-6" id={`person-${p.id}`}>
               <div class="flex flex-wrap items-start justify-between gap-4">
                 <div class="min-w-0">
                   <p class="text-[16px] font-semibold">
@@ -282,49 +488,39 @@ const statusOf = (p: Person) =>
                     Last seen {ago(p.last_seen_at)} · Sees finance: {p.can_view_finance ? 'yes' : 'no'}
                     {p.slug && days.length > 0 && <span> · <a href={`/dentists/${p.slug}/`} class="underline underline-offset-4 hover:text-accent">Public profile</a></span>}
                     {p.slug && days.length === 0 && <span> · Not on the public page until they have days here</span>}
-                    {p.slug && !p.prc_checked_on && <span class="ml-2 bg-crown/20 px-2 py-0.5 text-[12px] font-semibold text-crown">PRC check pending</span>}
+                    {p.slug && !p.prc_checked_on && <span class="ml-2 bg-crown/20 px-2 py-0.5 text-[12px] font-semibold text-crown">{p.prc_status === 'mismatch' ? 'PRC number did not match' : 'PRC check pending'}</span>}
                   </p>
                 </div>
                 <span class={`px-3 py-1.5 text-xs font-semibold ${st.cls}`}>{st.label}</span>
               </div>
 
               <div class="mt-4 flex flex-wrap items-center justify-between gap-x-8 gap-y-3">
-                <form method="post" class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <form method="post" class="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <Csrf />
                   <input type="hidden" name="action" value="schedule" />
                   <input type="hidden" name="id" value={p.id} />
                   <span class="meta mr-1">Days here</span>
                   {DAYS.map(([n, label]) => (
-                    <label class="check"><input type="checkbox" name="dow" value={n} checked={days.includes(n)} /><span>{label}</span></label>
+                    <label class="check min-h-11"><input type="checkbox" name="dow" value={n} checked={days.includes(n)} /><span>{label}</span></label>
                   ))}
-                  <button type="submit" class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Save days</button>
+                  <button type="submit" class={small}>Save days</button>
                 </form>
 
                 <div class="flex flex-wrap gap-1.5">
-                  {!p.has_password && !p.disabled_at && (
+                  {!p.has_password && !p.disabled_at && canSend && (
                     <form method="post">
                       <Csrf />
                       <input type="hidden" name="action" value="invite" />
                       <input type="hidden" name="id" value={p.id} />
-                      <button type="submit" class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Resend invitation</button>
+                      <button type="submit" class={small}>Resend invitation</button>
                     </form>
                   )}
-                  {!p.disabled_at && (
-                    <form method="post" class="flex items-center gap-1.5">
-                      <Csrf />
-                      <input type="hidden" name="action" value="phone" />
-                      <input type="hidden" name="id" value={p.id} />
-                      <label class="sr-only" for={`phone-${p.id}`}>Mobile number for {p.full_name}</label>
-                      <input id={`phone-${p.id}`} type="tel" name="phone" value={p.phone ?? ''} placeholder="0917 000 0000" autocomplete="off" class="w-[10.5rem] border border-line bg-surface px-2.5 py-1.5 text-[13px] tabular-nums focus:border-ink focus:outline-2 focus:outline-offset-1 focus:outline-accent" />
-                      <button type="submit" class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Save mobile</button>
-                    </form>
-                  )}
-                  {p.has_password && p.phone && !p.disabled_at && (
+                  {p.has_password && !p.disabled_at && canSend && (
                     <form method="post">
                       <Csrf />
                       <input type="hidden" name="action" value="reset" />
                       <input type="hidden" name="id" value={p.id} />
-                      <button type="submit" class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Text a reset code</button>
+                      <button type="submit" class={small}>{emailOn ? 'Send a reset code' : 'Text a reset code'}</button>
                     </form>
                   )}
                   {isOwner && !me && (
@@ -332,7 +528,7 @@ const statusOf = (p: Person) =>
                       <Csrf />
                       <input type="hidden" name="action" value="finance" />
                       <input type="hidden" name="id" value={p.id} />
-                      <button type="submit" name="sees" value={p.can_view_finance ? '0' : '1'} class="btn btn-quiet !px-3 !py-1.5 text-[13px]">
+                      <button type="submit" name="sees" value={p.can_view_finance ? '0' : '1'} class={small}>
                         {p.can_view_finance ? 'Hide finance' : 'Let them see finance'}
                       </button>
                     </form>
@@ -342,11 +538,66 @@ const statusOf = (p: Person) =>
                       <Csrf />
                       <input type="hidden" name="action" value={p.disabled_at ? 'enable' : 'disable'} />
                       <input type="hidden" name="id" value={p.id} />
-                      <button type="submit" class="btn btn-quiet !px-3 !py-1.5 text-[13px]">{p.disabled_at ? 'Enable' : 'Disable'}</button>
+                      <button type="submit" class={small}>{p.disabled_at ? 'Enable' : 'Disable'}</button>
                     </form>
                   )}
                 </div>
               </div>
+
+              {mayEdit && (
+                <details class="mt-3 border-t border-line-2" open={!!mine}>
+                  <summary class="meta inline-flex min-h-11 cursor-pointer list-none items-center hover:text-ink">Edit details &darr;</summary>
+                  <form method="post" class="grid gap-4 pb-1 pt-2 sm:grid-cols-2" data-team-form>
+                    <Csrf />
+                    <input type="hidden" name="action" value="edit" />
+                    <input type="hidden" name="id" value={p.id} />
+                    <label class="field">
+                      <span class="meta">Full name</span>
+                      <input name="name" value={v.name} required minlength="2" maxlength="80" autocomplete="off" class={input16} />
+                      {p.slug && p.prc_licence && <span class="text-[13px] text-muted">As on their PRC ID. A new name goes back for a PRC check.</span>}
+                    </label>
+                    {roleLocked ? (
+                      <div class="field">
+                        <span class="meta">Role</span>
+                        <p class="flex min-h-[2.9rem] items-center border border-line-2 bg-bg-soft px-3 text-[16px]">{ROLE_LABEL[p.role] ?? p.role}</p>
+                        <span class="text-[13px] text-muted">{p.role === 'owner' ? 'An owner stays an owner.' : 'Ask the owner to change your own role.'}</span>
+                      </div>
+                    ) : (
+                      <label class="field">
+                        <span class="meta">Role</span>
+                        <select name="role" data-team-role class={input16}>
+                          {Object.entries(ROLES).map(([r, l]) => <option value={r} selected={v.role === r}>{l}</option>)}
+                        </select>
+                        <span class="text-[13px] text-muted">A new role signs them out everywhere.{p.slug && ' Only dentists have a public profile; another role takes theirs down.'}</span>
+                      </label>
+                    )}
+                    <label class="field"><span class="meta">Mobile</span><input name="phone" type="tel" inputmode="numeric" value={v.phone} required={!!p.phone} autocomplete="off" placeholder="0917 000 0000" class={`${input16} tabular-nums`} /></label>
+                    <label class="field">
+                      <span class="meta">Email</span>
+                      <input name="email" type="email" value={v.email} required maxlength={EMAIL_MAX} autocomplete="off" autocapitalize="off" spellcheck="false" class={input16} />
+                      <span class="text-[13px] text-muted">A new email signs {me ? 'you out on your other devices' : 'them out everywhere'}.</span>
+                    </label>
+                    <label class="field" data-team-dentist hidden={!showPrc}>
+                      <span class="meta">PRC licence</span>
+                      <input name="prc" inputmode="numeric" value={v.prc} maxlength="10" autocomplete="off" placeholder="0043321" required={showPrc && clinician(v.role)} data-prc-required={p.role === 'owner' ? undefined : ''} class={`${input16} tabular-nums`} />
+                      <span class="text-[13px] text-muted">{p.prc_status === 'mismatch' && p.slug
+                        ? 'PRC’s records did not match this number. Correct it, or save it as it is to have it checked again.'
+                        : 'A new number goes back for a check: “PRC check pending” until then.'}</span>
+                    </label>
+                    <label class="field" data-team-dentist hidden={!showPrc}>
+                      <span class="meta">Specialty</span>
+                      <select name="specialty" class={input16}>
+                        <option value="">General dentist</option>
+                        {SPECIALTIES.map((s) => <option value={s} selected={v.specialty === s}>{s}</option>)}
+                      </select>
+                    </label>
+                    {mine && <p role="alert" data-edit-error class="border border-caries/40 bg-caries/10 p-4 text-[14.5px] sm:col-span-2">{error}</p>}
+                    <div class="sm:col-span-2">
+                      <button type="submit" class="btn btn-primary">Save changes</button>
+                    </div>
+                  </form>
+                </details>
+              )}
             </li>
           );
         })}
@@ -355,45 +606,47 @@ const statusOf = (p: Person) =>
       <section class="mt-12" aria-labelledby="add-title">
         <h2 id="add-title" class="font-display text-[22px] font-semibold">Add a person</h2>
         <p class="mt-1.5 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
-          We text them a six-digit code. On the staff sign-in page they choose “I have a code”, enter it, and pick their own password. No password passes through you.
+          {emailOn
+            ? 'We send them a six-digit code by text and by email. On the staff sign-in page they choose “I have a code”, enter it, and pick their own password. No password passes through you.'
+            : 'We text them a six-digit code. On the staff sign-in page they choose “I have a code”, enter it, and pick their own password. No password passes through you.'}
         </p>
 
-        <form method="post" class="mt-5 grid gap-4 border border-line bg-surface p-5 sm:grid-cols-2 sm:p-6">
+        <form method="post" class="mt-5 grid gap-4 border border-line bg-surface p-5 sm:grid-cols-2 sm:p-6" data-team-form>
           <Csrf />
           <input type="hidden" name="action" value="add" />
-          <label class="field"><span class="meta">Full name</span><input name="name" value={add.name} required maxlength="80" autocomplete="off" placeholder="Dr. Ana Reyes" /></label>
+          <label class="field"><span class="meta">Full name</span><input name="name" value={add.name} required maxlength="80" autocomplete="off" placeholder="Dr. Ana Reyes" class={input16} /></label>
           <label class="field">
             <span class="meta">Role</span>
-            <select name="role" data-team-role>
+            <select name="role" data-team-role class={input16}>
               {Object.entries(ROLES).map(([v, l]) => <option value={v} selected={add.role === v}>{l}</option>)}
             </select>
           </label>
-          <label class="field"><span class="meta">Mobile</span><input name="phone" type="tel" inputmode="numeric" value={add.phone} required autocomplete="off" placeholder="0917 000 0000" /></label>
-          <label class="field"><span class="meta">Email</span><input name="email" type="email" value={add.email} required maxlength="120" autocomplete="off" /></label>
+          <label class="field"><span class="meta">Mobile</span><input name="phone" type="tel" inputmode="numeric" value={add.phone} required autocomplete="off" placeholder="0917 000 0000" class={input16} /></label>
+          <label class="field"><span class="meta">Email</span><input name="email" type="email" value={add.email} required maxlength={EMAIL_MAX} autocomplete="off" autocapitalize="off" spellcheck="false" class={input16} /></label>
           <label class="field" data-team-dentist hidden={!clinician(add.role)}>
             <span class="meta">PRC licence</span>
-            <input name="prc" inputmode="numeric" value={add.prc} maxlength="10" autocomplete="off" placeholder="0043321" required={clinician(add.role)} />
+            <input name="prc" inputmode="numeric" value={add.prc} maxlength="10" autocomplete="off" placeholder="0043321" required={clinician(add.role)} data-prc-required class={input16} />
           </label>
           <label class="field" data-team-dentist hidden={!clinician(add.role)}>
             <span class="meta">Specialty</span>
-            <select name="specialty">
+            <select name="specialty" class={input16}>
               <option value="">General dentist</option>
               {SPECIALTIES.map((s) => <option value={s} selected={add.specialty === s}>{s}</option>)}
             </select>
           </label>
           <fieldset class="sm:col-span-2">
             <legend class="meta">Days at this branch</legend>
-            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1">
               {DAYS.map(([n, label]) => (
-                <label class="check"><input type="checkbox" name="dow" value={n} checked={add.days.includes(n)} /><span>{label}</span></label>
+                <label class="check min-h-11"><input type="checkbox" name="dow" value={n} checked={add.days.includes(n)} /><span>{label}</span></label>
               ))}
             </div>
           </fieldset>
           {isOwner && (
-            <label class="check sm:col-span-2"><input type="checkbox" name="finance" checked={add.finance} /><span>Sees finance: balances, payments and the day’s takings at this branch</span></label>
+            <label class="check min-h-11 sm:col-span-2"><input type="checkbox" name="finance" checked={add.finance} /><span>Sees finance: balances, payments and the day’s takings at this branch</span></label>
           )}
           <div class="sm:col-span-2">
-            <button type="submit" class="btn btn-primary">Add and text the code</button>
+            <button type="submit" class="btn btn-primary">{emailOn ? 'Add and send the code' : 'Add and text the code'}</button>
           </div>
         </form>
       </section>
@@ -401,18 +654,25 @@ const statusOf = (p: Person) =>
   )}
 
   <script>
-    // The PRC and specialty fields belong to dentists only. The server checks the same rule; this only keeps the form short.
-    const role = document.querySelector<HTMLSelectElement>('[data-team-role]');
-    const dentistOnly = Array.from(document.querySelectorAll<HTMLElement>('[data-team-dentist]'));
-    const sync = () => {
-      const on = role?.value === 'dentist' || role?.value === 'associate';
-      dentistOnly.forEach((el) => {
-        el.hidden = !on;
-        const input = el.querySelector<HTMLInputElement>('input');
-        if (input) input.required = on;
-      });
-    };
-    role?.addEventListener('change', sync);
-    sync();
+    // The PRC and specialty fields belong to dentists only, in each form that has a role to choose.
+    // The server checks the same rule; this only keeps the forms short. A form whose role is fixed
+    // (an owner, or your own) shows what the server decided and is left alone.
+    document.querySelectorAll<HTMLFormElement>('[data-team-form]').forEach((form) => {
+      const role = form.querySelector<HTMLSelectElement>('[data-team-role]');
+      if (!role) return;
+      const dentistOnly = Array.from(form.querySelectorAll<HTMLElement>('[data-team-dentist]'));
+      const sync = () => {
+        const on = role.value === 'dentist' || role.value === 'associate';
+        dentistOnly.forEach((el) => {
+          el.hidden = !on;
+          const input = el.querySelector<HTMLInputElement>('input[data-prc-required]');
+          if (input) input.required = on;
+        });
+      };
+      role.addEventListener('change', sync);
+      sync();
+    });
+    // An edit that came back with an error: bring its form into view.
+    document.querySelector<HTMLElement>('[data-edit-error]')?.scrollIntoView({ block: 'center' });
   </script>
 </ClinicLayout>

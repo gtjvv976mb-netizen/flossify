@@ -15,11 +15,14 @@ import { withClinic } from '../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../lib/csrf';
 import { peso } from '../../../data/demo';
 import { hmoById } from '../../../data/directory';
+import { pesosWhole, canBill, DUE_SQL } from '../../../lib/invoices';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
 const stale = Astro.url.searchParams.get('stale') === '1';
+// Patient balances are finance: the same people who may open Billing see the tile.
+const seesMoney = canBill(session.role, clinic.can_view_finance);
 
 const NEXT: Record<string, { label: string; to: string }[]> = {
   booked: [{ label: 'Confirm', to: 'confirmed' }, { label: 'Arrived', to: 'arrived' }],
@@ -66,9 +69,16 @@ const data = await withClinic(clinic.id, async (tx) => {
      where a.source in ('web', 'request') and a.status = 'booked' and a.starts_at >= now() - interval '1 day'
      order by a.created_at desc limit 25`)).rows;
   const counts = (await tx.query(`select (select count(*) from patient where archived_at is null)::int as patients`)).rows[0];
-  const money = (await tx.query(
-    `select coalesce((select sum(total) from invoice where status in ('issued', 'partly_paid')), 0)::numeric as billed,
-            coalesce((select sum(amount) from payment), 0)::numeric as paid`)).rows[0];
+  // What patients themselves still owe on statements that are not void
+  // (Billing; the part an HMO or PhilHealth still owes is left out, as on the
+  // Billing page), and how many owe it. Only read for those who see it.
+  const money = seesMoney
+    ? (await tx.query(
+        `select count(*)::int as statements,
+                coalesce(sum(patient_due) filter (where patient_due > 0), 0) as owed,
+                count(distinct patient_id) filter (where patient_due > 0)::int as owing
+           from (${DUE_SQL}) s`)).rows[0]
+    : { statements: 0, owed: '0', owing: 0 };
   const claims = (await tx.query(
     `select c.id, c.claimed, c.approved, c.status, c.filed_at, extract(day from now() - c.filed_at)::int as days,
             pr.name as provider, p.first_name, p.last_name
@@ -79,19 +89,18 @@ const data = await withClinic(clinic.id, async (tx) => {
 
 const inChair = data.today.filter((a) => a.status === 'in_chair').length;
 const waiting = data.today.filter((a) => a.status === 'in_lobby' || a.status === 'arrived').length;
-const receivable = Number(data.money.billed) - Number(data.money.paid);
 const open = data.claims.filter((c) => c.status === 'filed' || c.status === 'partly_approved');
 const overdue = open.filter((c) => c.days > 60);
 const stuck = overdue.reduce((n, c) => n + (Number(c.claimed) - Number(c.approved ?? 0)), 0);
 
-// Patient invoices and payments cannot be recorded in Flossify yet (only the
-// development seed writes them), so a real clinic would see a made-up ₱0:
-// the balances tile shows only when there is something behind it.
-const hasLedger = Number(data.money.billed) > 0 || Number(data.money.paid) > 0;
+// The balances tile shows once the branch has a statement (Billing), to those
+// who may open Billing: before that it would be a made-up ₱0. It opens the
+// unpaid list, where the same figure stands.
+const hasLedger = seesMoney && data.money.statements > 0;
 const tiles = [
   { label: 'In the chair', value: String(inChair), note: `${data.me.chairs} ${data.me.chairs === 1 ? 'chair' : 'chairs'}` },
   { label: 'Waiting', value: String(waiting), note: 'arrived or in lobby' },
-  ...(hasLedger ? [{ label: 'Patient balances', value: peso(receivable), note: `${data.counts.patients} patients` }] : []),
+  ...(hasLedger ? [{ label: 'Patient balances', value: pesosWhole(data.money.owed), note: `${data.money.owing} ${data.money.owing === 1 ? 'patient owes' : 'patients owe'}`, href: `/c/${clinic.slug}/billing/?view=unpaid` }] : []),
   { label: 'Stuck with HMOs', value: peso(stuck), note: `${overdue.length} past 60 days` },
 ];
 
@@ -128,7 +137,7 @@ const when = (d: Date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short', d
     {tiles.map((t) => (
       <div class="border border-line bg-surface p-5">
         <dt class="meta">{t.label}</dt>
-        <dd class="mt-2 font-display text-[32px] leading-none font-bold tabular-nums">{t.value}</dd>
+        <dd class="mt-2 font-display text-[32px] leading-none font-bold tabular-nums">{'href' in t && t.href ? <a href={t.href} class="inline-flex min-h-11 items-center hover:text-accent">{t.value}</a> : t.value}</dd>
         <p class="mt-1.5 text-[13px] text-muted">{t.note}</p>
       </div>
     ))}

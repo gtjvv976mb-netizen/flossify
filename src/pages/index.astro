@@ -29,16 +29,16 @@ const stops = [
 
 // 02 — what Flossify does, for each side of the chair. Only what the product
 // does today: every line here is a screen a clinic or a patient can open.
-// Billing, health history and desk consent join these lists (and 04's) the
-// day those features are live, not before.
+// A feature joins these lists (and 04's) the day it is live, not before.
 const forClinics = [
   { title: 'Online booking', body: 'Your clinic page on Find a clinic. Patients book a real open slot, or send a request, day or night.' },
   { title: 'The day list and schedule', body: 'Who has arrived, who is waiting, who is in the chair. Plan by chair and dentist; drag a visit and it will not double-book.' },
-  { title: 'Patient records and charting', body: 'Every tooth and surface, charted at the chair, on a record the whole team can find in one search.' },
+  { title: 'Patient records and charting', body: 'Every tooth and surface, with health history, allergies and medicines on the record where the dentist sees them. Charting keeps working through a brownout.' },
   { title: 'Text confirmations and reminders', body: 'A text when a visit is booked and a reminder before it, sent for you.' },
+  { title: 'Billing', body: 'Charges, senior and PWD discounts, payments and balances, with a printable statement. BIR invoices still come from your own registered booklet.' },
   { title: 'HMO and PhilHealth claims', body: 'Every claim logged and aged, so you can see who has been sitting on your money.' },
   { title: 'Your whole team', body: 'An account for every dentist and staff member, with the right access for each role.' },
-  { title: 'Privacy, done properly', body: 'Consent recorded with every online booking, and each clinic’s records kept apart from every other clinic’s.' },
+  { title: 'Privacy, done properly', body: 'Consent recorded online and at the desk, and each clinic’s records kept apart from every other clinic’s.' },
 ];
 const forPatients = [
   { title: 'Find a clinic', body: 'By what hurts, by area, by your HMO or PhilHealth, or by who is open now.' },
@@ -67,10 +67,12 @@ const included = [
   'Online booking and your clinic page',
   'The day list and the schedule',
   'Patient records and tooth charting',
+  'Health history and allergies',
   'Text confirmations and reminders',
+  'Billing: charges, payments, statements',
   'HMO and PhilHealth claims tracking',
   'Accounts for your whole team',
-  'Privacy consent with every booking',
+  'Consent online and at the desk',
   'Works on tablet, phone and computer',
 ];
 

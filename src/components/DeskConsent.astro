@@ -1,0 +1,359 @@
+---
+// Privacy consent on the patient record, and taking it at the desk.
+//
+// With a consent row for the notice in force, this is one line: "Consent on
+// record: <version>, <date>, at the desk / online". Without one, it is the
+// desk's form: a short, plain reading of the notice the patient can read on
+// the desk screen or a tablet, their name typed by them, and a box the staff
+// member ticks once they have agreed. The post goes to the record page
+// (intent=consent), which checks the CSRF token and writes the row through
+// recordDeskConsent() in src/lib/health.ts: channel 'desk', the version in
+// force, who agreed (agreed_as) and who recorded it.
+//
+// Who agrees:
+// - Under 18 by the birth date on file: a parent or guardian, who types
+//   their name. A minor whose consent for this notice is not a parent's or
+//   guardian's (taken as the patient's own before the birth date showed a
+//   child, or given online) gets the form again, saying why.
+// - No birth date on file: the desk says which it is, "the patient, 18 or
+//   over" or "a parent or guardian", before anything is recorded.
+//
+// "Show the patient" fills the screen with the notice. Everything else on
+// the page is made inert (no Tab, no click, no Enter reaches it) and focus
+// stays in the panel. "Done reading" does not reveal the record: it shows
+// "Please hand the screen back", and the desk presses "Back to the record".
+// The full notice is named by its address there, not linked, so the patient
+// never gets a second tab beside the workspace.
+//
+// The page reads everything inside its own withClinic() and passes it in.
+import Csrf from './Csrf.astro';
+import {
+  when, day, CONSENT_HOW, NAME_MAX, consentInForce, guardianStillNeeded,
+  type AgreedAs, type ConsentRow, type NoticeInForce,
+} from '../lib/health';
+
+interface Props {
+  notice: NoticeInForce | null;
+  consents: ConsentRow[];
+  /** May this person record it (staff_access.can_edit_records)? */
+  canRecord: boolean;
+  /** Under 18 by the birth date on file: a parent or guardian agrees, and names themselves. */
+  minor: boolean;
+  /** Is a birth date on file? Without one, the desk says who is agreeing. */
+  birthKnown: boolean;
+  /** The group's Data Protection Officer, when Settings → Privacy names one. */
+  dpo: string | null;
+  /** Where the form posts: the record page. */
+  action: string;
+  /** Set when a post came back: what to fix, and what was typed. */
+  problem?: string | null;
+  givenBy?: string;
+  agreedAs?: AgreedAs | null;
+  /** A post just recorded it (?saved=consent), or found it already recorded (?saved=consent-already). */
+  recorded?: 'saved' | 'already' | null;
+}
+const { notice, consents, canRecord, minor, birthKnown, dpo, action, problem = null, givenBy = '', agreedAs = null, recorded = null } = Astro.props;
+
+// A short reading of each notice, for the person at the desk. Each entry is a
+// summary of that version's own words on /privacy/ and says nothing they do
+// not; a new version gets its own entry, written from its own words, when
+// /privacy/ is published for it (CLAUDE.md, "Open"). A notice with no entry
+// here shows its one-line summary and points to the full notice.
+// privacy-2026-09 also says texts let a patient "confirm or cancel by text";
+// the texts are one-way (Semaphore), so the summary leaves that out rather
+// than repeat it — a new version is needed for the notice itself.
+const SHORT: Record<string, { head: string; body: string }[]> = {
+  'privacy-2026-09': [
+    { head: 'What is kept', body: 'Your name and mobile number, your visits and the texts sent about them, and what the clinic records about your teeth.' },
+    { head: 'Why', body: 'To run your visit, to remind you of it by text, to bill you and file with your HMO or PhilHealth, and for the clinic’s legal duties. Nothing else, and no marketing.' },
+    { head: 'Who sees it', body: 'The staff of this branch, and each time someone opens your record it is written down. Flossify’s operations people, only to keep the service running. The text provider sees your number and the message, nothing more. It is never sold.' },
+    { head: 'How long', body: 'Clinical records, as long as the law requires the clinic to keep them. Text logs, two years. You may ask for the rest to be deleted.' },
+    { head: 'Your rights', body: 'To be told what is kept and why, to see it, have it corrected, object to a use you did not agree to, have it erased or blocked, take a copy, be paid for harm its misuse causes, and complain to the National Privacy Commission.' },
+  ],
+};
+
+const inForce = consentInForce(notice?.id, consents);
+const needsGuardian = guardianStillNeeded(minor, inForce);
+const earlier = consents.filter((c) => c !== inForce);
+const latest = consents[0] ?? null;
+const short = notice ? SHORT[notice.id] ?? null : null;
+// The whole notice is public; the patient is told where, not handed a link.
+const noticeAddress = `${Astro.url.host}/privacy/`;
+
+// Who is agreeing: fixed by the birth date on file, or chosen by the desk.
+const fixed: AgreedAs | null = minor ? 'guardian' : birthKnown ? 'patient' : null;
+const who: AgreedAs | 'unknown' = fixed ?? agreedAs ?? 'unknown';
+const WORDS = {
+  patient: {
+    show: 'Show the patient',
+    name: 'Patient’s name, if they like', nameFacing: 'Your name, if you like',
+    tick: 'The patient agreed',
+    hint: 'The name is typed by the patient and kept with the consent.', hintFacing: 'It is kept with your agreement.',
+  },
+  guardian: {
+    show: 'Show the parent or guardian',
+    name: 'Parent or guardian’s name', nameFacing: 'Your name, as parent or guardian',
+    tick: 'The parent or guardian agreed',
+    hint: 'A parent or guardian agrees for a patient under 18, and types their own name.', hintFacing: 'The patient is under 18, so you agree for them. Type your name.',
+  },
+  unknown: {
+    show: 'Show the patient',
+    name: 'Name of the person agreeing', nameFacing: 'Your name',
+    tick: 'They agreed',
+    hint: 'A parent or guardian must type their name; the patient may.', hintFacing: 'It is kept with your agreement.',
+  },
+} as const;
+const WHO = ['patient', 'guardian', 'unknown'] as const;
+
+/** "at the desk, recorded by Liwayway Domingo, agreed by Lorna Reyes (parent or guardian)" — the parts that are known. */
+const agreedBy = (c: ConsentRow) => c.given_by_name && `agreed by ${c.given_by_name}${c.agreed_as === 'guardian' ? ' (parent or guardian)' : ''}`;
+const how = (c: ConsentRow) =>
+  [CONSENT_HOW[c.channel] ?? c.channel, c.recorded_by_name && `recorded by ${c.recorded_by_name}`, agreedBy(c)].filter(Boolean).join(', ');
+
+const summaryClass = 'meta inline-flex min-h-[44px] cursor-pointer items-center hover:text-ink';
+const choiceChip = "inline-flex min-h-[52px] items-center gap-3 border border-line bg-bg-soft px-4 text-[16px] font-semibold text-ink-2 transition-colors before:h-3.5 before:w-3.5 before:shrink-0 before:border before:border-current before:content-[''] peer-hover:border-ink peer-hover:text-ink peer-checked:border-ink peer-checked:bg-ink peer-checked:text-bg peer-checked:before:bg-current peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent";
+---
+
+{notice && inForce && !needsGuardian ? (
+  <section id="consent" class="mt-6 scroll-mt-24" aria-labelledby="consent-title">
+    <h2 id="consent-title" class="sr-only">Privacy consent</h2>
+    <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 border border-line bg-surface px-4 py-3 text-[15px]">
+      <span class="meta meta-accent">Consent on record</span>
+      <span><span class="font-mono text-[14px]">{inForce.version_id}</span>, {day(new Date(inForce.given_at))}, {CONSENT_HOW[inForce.channel] ?? inForce.channel}</span>
+      {(inForce.recorded_by_name || inForce.given_by_name) && (
+        <span class="text-[13.5px] text-muted">{[inForce.recorded_by_name && `recorded by ${inForce.recorded_by_name}`, agreedBy(inForce)].filter(Boolean).join(' · ')}</span>
+      )}
+      {recorded === 'saved' && <span role="status" class="text-[13.5px] font-semibold text-accent">Recorded just now.</span>}
+    </p>
+    {recorded === 'already' && (
+      <p role="status" class="mt-2 border border-line bg-bg-soft px-4 py-3 text-[15px]">
+        Already on record: {inForce.recorded_by_name ? `${inForce.recorded_by_name} recorded it` : `given ${CONSENT_HOW[inForce.channel] ?? inForce.channel}`} {when(new Date(inForce.given_at))}, so yours was not added.
+      </p>
+    )}
+    {earlier.length > 0 && (
+      <details class="mt-2">
+        <summary class={summaryClass}>Earlier consents ({earlier.length})</summary>
+        <ul class="divide-y divide-line-2 border border-line bg-surface">
+          {earlier.map((c) => (
+            <li class="px-4 py-3 text-[14.5px]"><span class="font-mono text-[13.5px]">{c.version_id}</span> · {when(new Date(c.given_at))} · {how(c)}</li>
+          ))}
+        </ul>
+      </details>
+    )}
+  </section>
+) : (
+  <section id="consent" class="group mt-6 scroll-mt-24 border border-line bg-surface data-[facing]:fixed data-[facing]:inset-0 data-[facing]:z-[60] data-[facing]:m-0 data-[facing]:overflow-y-auto data-[facing]:border-0 data-[facing]:bg-bg" aria-labelledby="consent-title" data-desk-consent data-who={who}>
+    <form method="post" action={action} class="mx-auto p-5 group-data-[facing]:max-w-[760px] group-data-[facing]:py-10 group-data-[facing=hold]:hidden sm:p-6" data-desk-consent-form>
+      <Csrf />
+      <input type="hidden" name="intent" value="consent" />
+      {notice && <input type="hidden" name="version" value={notice.id} />}
+      {fixed && <input type="hidden" name="agreed_as" value={fixed} />}
+
+      <div class="flex flex-wrap items-start justify-between gap-4 group-data-[facing]:hidden">
+        <div class="max-w-[62ch]">
+          <p class="meta meta-ink">Consent</p>
+          <h2 id="consent-title" class="mt-1 font-display text-[22px] font-semibold">
+            {!notice ? 'No privacy notice in force' : needsGuardian ? 'A parent or guardian needs to agree' : 'No consent on record for the privacy notice in force'}
+          </h2>
+          {!notice ? (
+            <p class="mt-1.5 text-[15px] text-ink-2">There is nothing to ask the patient to agree to yet.</p>
+          ) : needsGuardian && inForce ? (
+            <p class="mt-1.5 text-[15px] leading-relaxed text-ink-2">
+              {inForce.channel === 'desk'
+                ? `On ${day(new Date(inForce.given_at))} it was recorded as the patient’s own agreement, but the birth date on file makes them under 18.`
+                : `It was given ${CONSENT_HOW[inForce.channel] ?? inForce.channel} on ${day(new Date(inForce.given_at))}${inForce.given_by_name ? ` by ${inForce.given_by_name}` : ''}, and the patient is under 18.`}
+              {' '}Show a parent or guardian the notice, and record their agreement here.
+            </p>
+          ) : (
+            <p class="mt-1.5 text-[15px] leading-relaxed text-ink-2">
+              Show the patient the privacy notice. When they have read it and agree, tick the box and record it.
+              {latest && <> They agreed to <span class="font-mono text-[14px]">{latest.version_id}</span> on {day(new Date(latest.given_at))}; the notice has changed since.</>}
+            </p>
+          )}
+        </div>
+        {notice && canRecord && (
+          <button type="button" class="btn btn-quiet min-h-[48px] text-[16px]" data-desk-consent-face aria-controls="consent">
+            {WHO.map((k) => <span data-who-text={k} hidden={k !== who}>{WORDS[k].show}</span>)}
+          </button>
+        )}
+      </div>
+
+      {problem && <p role="alert" class="mt-4 border border-caries/40 bg-caries/10 p-4 text-[15px] group-data-[facing]:hidden">{problem}</p>}
+
+      {notice && canRecord && !fixed && (
+        <fieldset class="mt-5 min-w-0 group-data-[facing]:hidden" data-desk-consent-who>
+          <legend class="meta meta-ink float-left w-full">Who is agreeing</legend>
+          <p class="clear-both pt-1.5 text-[14.5px] text-ink-2">No birth date is on file yet, so choose one.</p>
+          <div class="flex flex-wrap gap-2.5 pt-3">
+            <label class="relative inline-flex cursor-pointer select-none">
+              <input type="radio" name="agreed_as" value="patient" required checked={agreedAs === 'patient'} class="peer absolute inset-0 m-0 h-full w-full cursor-pointer opacity-0" />
+              <span class={choiceChip}>The patient, 18 or over</span>
+            </label>
+            <label class="relative inline-flex cursor-pointer select-none">
+              <input type="radio" name="agreed_as" value="guardian" required checked={agreedAs === 'guardian'} class="peer absolute inset-0 m-0 h-full w-full cursor-pointer opacity-0" />
+              <span class={choiceChip}>A parent or guardian, for a patient under 18</span>
+            </label>
+          </div>
+        </fieldset>
+      )}
+
+      {notice && (
+        <details class="mt-4 border-t border-line-2 pt-2 group-data-[facing]:mt-0 group-data-[facing]:border-0 group-data-[facing]:pt-0" data-desk-consent-read>
+          <summary class={`${summaryClass} group-data-[facing]:hidden`}>The notice, in short</summary>
+          <div class="pt-2 pb-2 group-data-[facing]:pt-0">
+            <p class="meta">Privacy notice <span class="meta-ink">{notice.id}</span> &middot; in force from {notice.effective}</p>
+            <h3 class="mt-2 font-display text-[20px] font-semibold tracking-tight group-data-[facing]:text-[clamp(1.75rem,4vw,2.5rem)] group-data-[facing]:leading-tight" tabindex="-1" data-desk-consent-title>
+              What the clinic keeps about you, and why
+            </h3>
+            {short ? (
+              <dl class="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-[10rem_1fr] group-data-[facing]:mt-8 group-data-[facing]:gap-y-5">
+                {short.map((s) => (
+                  <>
+                    <dt class="text-[15px] font-semibold group-data-[facing]:text-[19px]">{s.head}</dt>
+                    <dd class="text-[15px] leading-relaxed text-ink-2 group-data-[facing]:text-[19px]">{s.body}</dd>
+                  </>
+                ))}
+              </dl>
+            ) : (
+              <p class="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-ink-2 group-data-[facing]:text-[19px]">{notice.summary}</p>
+            )}
+            <p class="mt-4 max-w-[62ch] text-[15px] leading-relaxed text-ink-2 group-data-[facing]:mt-6 group-data-[facing]:text-[19px]">
+              To use a right, write to the clinic’s Data Protection Officer{dpo ? <>, {dpo}</> : ''}. When this notice changes, you will be asked again.{' '}
+              <a href="/privacy/" target="_blank" rel="noopener" class="font-medium whitespace-nowrap text-accent underline underline-offset-4 group-data-[facing]:hidden">Read the whole notice</a>
+              <span class="hidden group-data-[facing]:inline">The whole notice is public at <span class="font-mono text-[0.9em] break-all text-ink">{noticeAddress}</span>, to read on your own phone.</span>
+            </p>
+          </div>
+        </details>
+      )}
+
+      {notice && canRecord && (
+        <>
+          <div class="mt-3 flex flex-wrap items-end gap-4 border-t border-line-2 pt-5 group-data-[facing]:mt-10">
+            <label class="field w-full max-w-[22rem] group-data-[facing]:max-w-[28rem]">
+              {/* The desk reads one label; the patient, facing the screen, reads the other. */}
+              <span class="meta group-data-[facing]:hidden">{WHO.map((k) => <span data-who-text={k} hidden={k !== who}>{WORDS[k].name}</span>)}</span>
+              <span class="meta hidden group-data-[facing]:inline">{WHO.map((k) => <span data-who-text={k} hidden={k !== who}>{WORDS[k].nameFacing}</span>)}</span>
+              <input name="given_by_name" value={givenBy} maxlength={NAME_MAX} autocomplete="off" required={who === 'guardian'} class="min-h-[50px] text-[16px]" data-desk-consent-name />
+            </label>
+            <label class="inline-flex min-h-[52px] cursor-pointer items-center gap-3 border border-line bg-bg-soft px-4 text-[16px] font-semibold hover:border-ink group-data-[facing]:hidden">
+              <input type="checkbox" name="agreed" value="1" required class="h-6 w-6 shrink-0 accent-accent" data-desk-consent-tick />
+              {WHO.map((k) => <span data-who-text={k} hidden={k !== who}>{WORDS[k].tick}</span>)}
+            </label>
+            <button type="submit" class="btn btn-primary min-h-[52px] text-[16px] group-data-[facing]:hidden">Record consent</button>
+          </div>
+          <div data-desk-consent-held hidden role="alert" class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3 border border-crown/40 bg-crown/10 p-4 text-[15px] group-data-[facing]:hidden">
+            <span class="max-w-[52ch]">The health answers below are not saved yet. Save them first, then record consent.</span>
+            <button type="button" class="btn btn-quiet min-h-[48px] bg-surface text-[16px]">Save the health answers</button>
+          </div>
+          <p class="mt-2 text-[13.5px] leading-snug text-muted group-data-[facing]:text-[15px]">
+            <span class="group-data-[facing]:hidden">{WHO.map((k) => <span data-who-text={k} hidden={k !== who}>{WORDS[k].hint}</span>)} Recorded as agreed at the desk, today, under your name.</span>
+            <span class="hidden group-data-[facing]:inline">{WHO.map((k) => <span data-who-text={k} hidden={k !== who}>{WORDS[k].hintFacing}</span>)}</span>
+          </p>
+          <div class="mt-8 hidden border-t border-line-2 pt-6 group-data-[facing]:flex group-data-[facing]:flex-wrap group-data-[facing]:items-center group-data-[facing]:gap-4">
+            <button type="button" class="btn btn-primary min-h-[56px] text-[17px]" data-desk-consent-done>Done reading</button>
+          </div>
+        </>
+      )}
+      {notice && !canRecord && (
+        <p class="mt-5 text-[14.5px] text-muted">Your account cannot record consent at this branch. Ask the owner, or someone at the desk.</p>
+      )}
+
+      {consents.length > 0 && (
+        <details class="mt-5 group-data-[facing]:hidden">
+          <summary class={summaryClass}>Consents on record ({consents.length})</summary>
+          <ul class="divide-y divide-line-2 border border-line bg-surface">
+            {consents.map((c) => (
+              <li class="px-4 py-3 text-[14.5px]"><span class="font-mono text-[13.5px]">{c.version_id}</span> · {when(new Date(c.given_at))} · {how(c)}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </form>
+
+    {notice && canRecord && (
+      <div class="mx-auto hidden min-h-full max-w-[760px] flex-col justify-center gap-6 p-5 group-data-[facing=hold]:flex sm:p-6">
+        <p class="font-display text-[clamp(1.75rem,4vw,2.5rem)] leading-tight font-semibold tracking-tight" tabindex="-1" data-desk-consent-hold-title>Thank you. Please hand the screen back to the desk.</p>
+        <div class="flex flex-wrap items-center gap-4 border-t border-line-2 pt-6">
+          <button type="button" class="btn btn-quiet min-h-[52px] text-[16px]" data-desk-consent-back>Back to the record</button>
+          <span class="text-[15px] text-ink-2">For the desk.</span>
+        </div>
+      </div>
+    )}
+  </section>
+)}
+
+<script>
+  // "Show the patient": the consent panel fills the screen with the notice
+  // unfolded; the staff-only parts (the tick, the button, the record behind)
+  // are out of sight AND out of reach: every element outside the panel is
+  // made inert while it faces the patient, and Tab cycles inside the panel.
+  // "Done reading" (or Escape) hides the notice too and asks the patient to
+  // hand the screen back; only "Back to the record" puts the page back, with
+  // the cursor on the tick box. The CSS lives in the markup's data-[facing]
+  // and group-data-[facing] classes; this sets the attribute.
+  document.querySelectorAll<HTMLElement>('[data-desk-consent]').forEach((root) => {
+    const open = root.querySelector<HTMLButtonElement>('[data-desk-consent-face]');
+    const done = root.querySelector<HTMLButtonElement>('[data-desk-consent-done]');
+    const back = root.querySelector<HTMLButtonElement>('[data-desk-consent-back]');
+    const title = root.querySelector<HTMLElement>('[data-desk-consent-title]');
+    const holdTitle = root.querySelector<HTMLElement>('[data-desk-consent-hold-title]');
+    const tick = root.querySelector<HTMLInputElement>('[data-desk-consent-tick]');
+    const read = root.querySelector<HTMLDetailsElement>('[data-desk-consent-read]');
+    const name = root.querySelector<HTMLInputElement>('[data-desk-consent-name]');
+
+    // Who is agreeing, when the desk chooses it: the labels and the rule for the name follow.
+    root.querySelectorAll<HTMLInputElement>('input[name="agreed_as"][type="radio"]').forEach((r) => {
+      r.addEventListener('change', () => {
+        if (!r.checked) return;
+        root.dataset.who = r.value;
+        root.querySelectorAll<HTMLElement>('[data-who-text]').forEach((t) => { t.hidden = t.dataset.whoText !== r.value; });
+        if (name) name.required = r.value === 'guardian';
+      });
+    });
+
+    if (!open) return;
+    // Everything on the page but the panel: the siblings of the panel and of each of its ancestors.
+    let fenced: HTMLElement[] = [];
+    const fence = (on: boolean) => {
+      if (!on) { fenced.forEach((el) => { el.inert = false; }); fenced = []; return; }
+      for (let el: HTMLElement | null = root; el && el !== document.body; el = el.parentElement) {
+        for (const sib of Array.from(el.parentElement?.children ?? [])) {
+          if (sib !== el && sib instanceof HTMLElement && !sib.inert) { sib.inert = true; fenced.push(sib); }
+        }
+      }
+    };
+    let wasOpen = false;
+    const face = (state: 'read' | 'hold' | null) => {
+      const was = root.getAttribute('data-facing');
+      if (state) root.setAttribute('data-facing', state); else root.removeAttribute('data-facing');
+      document.documentElement.style.overflow = state ? 'hidden' : '';
+      if (state && !was) fence(true);
+      if (!state) fence(false);
+      if (read && state === 'read' && !was) { wasOpen = read.open; read.open = true; }
+      if (read && !state) read.open = wasOpen;
+      root.scrollTop = 0;
+      if (state === 'read') title?.focus();
+      else if (state === 'hold') holdTitle?.focus();
+      else { root.scrollIntoView({ block: 'start' }); tick?.focus(); }
+    };
+    open.addEventListener('click', () => face('read'));
+    done?.addEventListener('click', () => face('hold'));
+    back?.addEventListener('click', () => face(null));
+    document.addEventListener('keydown', (e) => {
+      const state = root.getAttribute('data-facing');
+      if (!state) return;
+      if (e.key === 'Escape' && state === 'read') { e.preventDefault(); face('hold'); return; }
+      // Enter in the name field would submit the form behind the patient's back; only the desk records it.
+      if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') { e.preventDefault(); return; }
+      if (e.key !== 'Tab') return;
+      // Tab and Shift+Tab go round the panel's own controls, never out of it.
+      const stops = Array.from(root.querySelectorAll<HTMLElement>('a[href], button, input:not([type="hidden"]), textarea, select, summary'))
+        .filter((el) => !(el as HTMLButtonElement).disabled && el.getClientRects().length > 0);
+      if (!stops.length) { e.preventDefault(); return; }
+      const i = stops.indexOf(document.activeElement as HTMLElement);
+      const next = e.shiftKey ? (i <= 0 ? stops.length - 1 : i - 1) : (i === -1 || i === stops.length - 1 ? 0 : i + 1);
+      e.preventDefault();
+      stops[next].focus();
+    });
+  });
+</script>

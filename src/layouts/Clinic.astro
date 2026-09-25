@@ -5,6 +5,8 @@
 import '../styles/global.css';
 import Csrf from '../components/Csrf.astro';
 import BillingNotice from '../components/BillingNotice.astro';
+import { canBill as mayBill } from '../lib/invoices';
+import { readSession, canOpen } from '../lib/auth';
 
 interface Props {
   clinic: { slug: string; name: string; area?: string | null };
@@ -14,17 +16,30 @@ interface Props {
   branches: { slug: string; name: string }[];
   /** The clinic's group, for the billing notice. Pages pass clinic.group_id. */
   groupId?: string;
+  /** This person may see finance at this branch (staff_access.can_view_finance). Pages that know pass clinic.can_view_finance. */
+  finance?: boolean;
 }
 
-const { clinic, title, section, staff, branches, groupId } = Astro.props;
+const { clinic, title, section, staff, branches, groupId, finance } = Astro.props;
 
 // Settings is the owner's and the admin's: hours, fees, the team, the listing.
 const canSetUp = staff.role === 'owner' || staff.role === 'admin';
+// Billing (patient charges and payments) is the desk's, the owner's and the admin's,
+// and anyone the owner lets see finance here: the same rule the billing pages enforce.
+// A page that did not say (finance undefined) is asked about only for a role that
+// needs the finance switch, so the link is the same on every page.
+let sees = finance ?? false;
+if (finance === undefined && !mayBill(staff.role, false)) {
+  const session = readSession(Astro.cookies);
+  sees = session ? (await canOpen(session, clinic.slug))?.can_view_finance === true : false;
+}
+const canBill = mayBill(staff.role, sees);
 const nav = [
   { id: 'today', label: 'Today', href: `/c/${clinic.slug}/` },
   { id: 'schedule', label: 'Schedule', href: `/c/${clinic.slug}/schedule/` },
   { id: 'patients', label: 'Patients', href: `/c/${clinic.slug}/patients/` },
   { id: 'messages', label: 'Messages', href: `/c/${clinic.slug}/messages/` },
+  ...(canBill ? [{ id: 'billing', label: 'Billing', href: `/c/${clinic.slug}/billing/` }] : []),
   { id: 'claims', label: 'Claims', href: `/c/${clinic.slug}/claims/` },
   ...(canSetUp ? [{ id: 'settings', label: 'Settings', href: `/c/${clinic.slug}/settings/` }] : []),
 ];
@@ -104,7 +119,7 @@ const devData = process.env.SHOW_DEMO_LOGINS === '1' || (import.meta.env.DEV && 
           )}
           <span class="text-[13.5px] text-ink-2"><span class="font-medium text-ink">{staff.name}</span> · {staff.role}</span>
           <button type="button" hidden data-install class="btn btn-quiet !px-3 !py-1.5 text-[13px]">Install on this device</button>
-          <form method="post" action="/auth/logout"><Csrf /><button type="submit" class="meta hover:text-ink">Sign out</button></form>
+          <form method="post" action="/auth/logout" data-staff={readSession(Astro.cookies)?.staffId}><Csrf /><button type="submit" class="meta hover:text-ink">Sign out</button></form>
         </div>
       </div>
     </header>
@@ -112,5 +127,6 @@ const devData = process.env.SHOW_DEMO_LOGINS === '1' || (import.meta.env.DEV && 
     <main class="mx-auto max-w-[1280px] px-5 py-8 sm:px-8">
       <slot />
     </main>
+    <script>import { keepSending } from '../lib/offline-queue'; keepSending();</script>
   </body>
 </html>

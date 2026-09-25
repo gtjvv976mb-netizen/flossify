@@ -457,12 +457,12 @@ The rules that live in code:
   pay-to details and the pause policy are placeholders in
   `src/lib/billing.ts`, and `BILLING_FINAL` (`src/lib/billing-config.ts`)
   stays false until the owner sets them: nothing is invoiced before that.
-- **Not recordable yet, for real patients:** medical history / allergies,
-  birth date, and patient invoices and payments (only `seed.ts` writes
-  `medical_history`, `birth_date`, `invoice`, `payment`). The screens hide
-  what would be empty (balances tile, Balance column) and the marketing copy
-  no longer claims them. These are the next features a clinic will ask for.
-- Nothing is deployed: no host is chosen, flossify.ph is parked at Namecheap.
+- Health history, allergies, birth date (021), patient billing (022), email
+  (023), online payment of Flossify's own invoices (024) and offline charting
+  (025) are built. Patient invoices are Flossify statements and
+  acknowledgments only: BIR invoices still come from the clinic's registered
+  booklet or system. `patient_balance()` is the one balance definition.
+- Live since 24 Sep 2026: flossify.ph on Render (web + worker, Singapore) with DigitalOcean Managed PostgreSQL 17 (SGP1, trusted sources = Render's Singapore ranges).
 - "Any available dentist" slots count chairs, not which days dentists work.
 - Settings → Team cannot edit a staff member's name, email or PRC number after
   the invite, and the clinic's founding year / PDA membership / staff bios

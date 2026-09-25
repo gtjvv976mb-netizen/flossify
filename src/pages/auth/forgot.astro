@@ -1,19 +1,45 @@
 ---
 // Forgot your password. Give us the mobile on your staff account and we text
-// a six-digit code; the next page takes the code and the new password. The
-// answer is the same whether or not the number is on file, so the form cannot
-// be used to find out which numbers belong to staff.
+// a six-digit code, or, when email is on (EMAIL_PROVIDER, src/lib/email.ts),
+// the email on it and we email the code; the next page takes the code and the
+// new password. The answer is the same whether or not the number or address
+// is on file, so the form cannot be used to find out who is staff.
 //
-// Guarded like sign-in: the CSRF token, a rate limit per number and per
-// address (three asks an hour for one number; a script gets nowhere), and
-// every ask written to auth_event. Nothing is sent from here: the text is
-// queued in message_log under the person's home branch and the worker sends it.
+// Text or Email is a two-half switch, like "This device" on sign-in. Text is
+// the default, as it always was; Email is there for a front desk whose phone
+// is shared, and for staff with no mobile on file. With email off the page is
+// exactly the text-only page it was.
 //
-// The number goes on to the code page in a cookie, never in the address: a
-// URL with a mobile in it sits in proxy logs and in the history of a shared
-// clinic computer. The cookie is httpOnly, lives 15 minutes (as long as the
-// code), is sent to the code page only, and is set whether or not the number
-// is on file, like everything else here.
+// Guarded like sign-in: the CSRF token, a rate limit per number or address
+// and per caller (three asks an hour for one number or one email; a script
+// gets nowhere), and every ask written to auth_event. On top of those, three
+// codes an hour per account, whichever way it is asked for: a code is the
+// account's, not the channel's, so asking by text and by email must not
+// double the codes (and the guesses) an attacker gets. Nothing is sent from
+// here: the text or the email is queued in message_log under the person's
+// home branch and the worker sends it.
+//
+// The answer goes first. Looking the person up, minting the code and queueing
+// it run after the redirect is on its way, so a known number or address takes
+// exactly as long to answer as an unknown one: the time the page takes cannot
+// be used to find out who is staff either.
+//
+// A code is minted only when a message will carry it. An account with no
+// clinic (Flossify's operations accounts, which keep no mobile) has nowhere to
+// queue a message, so it gets no code at all; /auth/code/ refuses those
+// accounts too. Their password is reset with npm run admin:create.
+//
+// The number or address goes on to the code page in a cookie, never in the
+// page address: a URL with a mobile or an email in it sits in proxy logs and
+// in the history of a shared clinic computer. The cookie is httpOnly, lives 15
+// minutes (as long as the code), is sent to the code page only, and is set
+// whether or not the number or address is on file, like everything else here.
+// Only one of the two is ever set: the one that was asked with.
+//
+// The switch works without script: the stylesheet below shows the chosen
+// half's field and button words from the checked radio alone, and the server
+// reads only the field that `via` names. The script adds focus, `required` on
+// the shown field, and the address bar.
 export const prerender = false;
 
 import StaffEntrance from '../../components/StaffEntrance.astro';
@@ -23,96 +49,223 @@ import { pool, withClinic } from '../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
 import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
 import { issueCode } from '../../lib/codes';
-import { normalizePhone, PH_MOBILE, queueText, texts } from '../../lib/messages';
+import { normalizePhone, PH_MOBILE, queueText, queueEmail, texts, emails, codePageFor } from '../../lib/messages';
+import { emailEnabled, normalizeEmail, EMAIL_ADDRESS, EMAIL_MAX } from '../../lib/email';
 
-// Read back by /auth/code/, which clears it once the code is used.
-const CODE_PHONE_COOKIE = 'fl_code_phone';
+// Read back by /auth/code/, which clears them once the code is used.
+const CODE_PHONE_COOKIE = 'fl_code_phone', CODE_EMAIL_COOKIE = 'fl_code_email', CODE_COOKIE_PATH = '/auth/code';
 
-let typed = '';
+const emailOn = emailEnabled();
+type Via = 'sms' | 'email';
+let via: Via = emailOn && Astro.url.searchParams.get('via') === 'email' ? 'email' : 'sms';
+let typedPhone = '';
+let typedEmail = '';
 let error = '';
+
+/** A staff row by the email they sign in with (one account per email across the service). Never an operations account. */
+async function staffByEmail(email: string) {
+  const { rows } = await pool.query(
+    `select s.id, s.email, s.home_clinic_id from staff s
+      where s.email = $1 and s.disabled_at is null
+        and not exists (select 1 from platform_admin a where a.staff_id = s.id)
+      order by s.created_at limit 1`, [email]);
+  return rows[0] as { id: string; email: string; home_clinic_id: string | null } | undefined;
+}
+
+/**
+ * A text or an email is a clinic's row (message_log.clinic_id is not null, and RLS), so it needs a
+ * clinic: their home branch, else the first one they may open. Flossify's operations accounts have
+ * no clinic, so nothing is minted or queued for them and the answer stays the same; whoever runs the
+ * server resets those (npm run admin:create).
+ */
+async function clinicFor(staff: { id: string; home_clinic_id: string | null }): Promise<string | null> {
+  return staff.home_clinic_id ?? (await pool.query('select id from staff_branches($1)', [staff.id])).rows[0]?.id ?? null;
+}
+
+/**
+ * Mint a reset code and queue it, for someone who can be reached, at most three times an hour per
+ * account. Run after the answer (see the top of this file): it never throws into the request, and
+ * logs a failure without the number, the address or the code.
+ */
+function afterAnswer(work: () => Promise<void>) {
+  // setImmediate: not one query of it starts before this request has handed back its redirect.
+  setImmediate(() => { work().catch((e) => console.error(`[forgot] could not queue a reset code: ${(e as Error).message}`)); });
+}
+async function sendReset(
+  staff: { id: string; email: string; home_clinic_id: string | null } | undefined,
+  queue: (clinicId: string, staffId: string, code: string) => Promise<unknown>,
+  event: string, ip: string, ua: string | null,
+) {
+  if (!staff) return;
+  // Operations accounts are reset with npm run admin:create, never by code (staffByPhone does not know them).
+  if ((await pool.query('select 1 from platform_admin where staff_id = $1', [staff.id])).rowCount) return;
+  const clinicId = await clinicFor(staff);
+  if (!clinicId) return;
+  const mine = await hit(`forgot:s:${staff.id}`, ...LIMITS.forgot.phone);
+  if (!mine.allowed) {
+    await authEvent('reset.locked', { email: staff.email, staffId: staff.id, ip, ua });
+    return;
+  }
+  const code = await issueCode(staff.id, 'reset');
+  await queue(clinicId, staff.id, code);
+  await authEvent(event, { email: staff.email, staffId: staff.id, ip, ua });
+}
+
+const cookie = { httpOnly: true, sameSite: 'lax' as const, secure: import.meta.env.PROD, path: CODE_COOKIE_PATH, maxAge: 15 * 60 };
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  typed = String(form.get('phone') ?? '').trim();
-  const phone = normalizePhone(typed);
+  via = emailOn && form.get('via') === 'email' ? 'email' : 'sms';
+  typedPhone = String(form.get('phone') ?? '').trim();
+  typedEmail = String(form.get('email') ?? '').trim();
   const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
   if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
-  else if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
-  else {
-    const [byPhone, byIp] = await Promise.all([hit(`forgot:p:${phone}`, ...LIMITS.forgot.phone), hit(`forgot:ip:${ip}`, ...LIMITS.forgot.ip)]);
-    if (!byPhone.allowed || !byIp.allowed) {
-      error = `Too many requests. ${waitText(Math.max(byPhone.retryAfter, byIp.retryAfter))}`;
-      await authEvent('reset.locked', { ip, ua });
-    } else {
-      const staff = await staffByPhone(phone);
-      if (staff) {
-        const code = await issueCode(staff.id, 'reset');
-        // A text is a clinic's row (message_log.clinic_id is not null, and RLS), so it needs a clinic: their home
-        // branch, else the first one they may open. Flossify's operations accounts have no clinic, so nothing is
-        // queued for them and the answer stays the same; whoever runs the server resets those (see /admin/).
-        const clinicId: string | null = staff.home_clinic_id
-          ?? (await pool.query('select id from staff_branches($1)', [staff.id])).rows[0]?.id ?? null;
-        if (clinicId) await withClinic(clinicId, (tx) => queueText(tx, { clinicId, to: phone, body: texts.reset(code), kind: 'reset', staffId: staff.id }));
-        await authEvent('reset.request', { email: staff.email, staffId: staff.id, ip, ua });
+  else if (via === 'email') {
+    const email = normalizeEmail(typedEmail);
+    if (!EMAIL_ADDRESS.test(email) || email.length > EMAIL_MAX) error = 'That email doesn’t look complete. Use the one you sign in with.';
+    else {
+      const [byEmail, byIp] = await Promise.all([hit(`forgot:e:${email}`, ...LIMITS.forgot.phone), hit(`forgot:ip:${ip}`, ...LIMITS.forgot.ip)]);
+      if (!byEmail.allowed || !byIp.allowed) {
+        error = `Too many requests. ${waitText(Math.max(byEmail.retryAfter, byIp.retryAfter))}`;
+        await authEvent('reset.locked', { ip, ua });
+      } else {
+        const page = codePageFor(Astro.site);
+        afterAnswer(async () => sendReset(await staffByEmail(email), (clinicId, staffId, code) => {
+          const mail = emails.reset(code, page);
+          return withClinic(clinicId, (tx) => queueEmail(tx, { clinicId, to: email, subject: mail.subject, body: mail.body, kind: 'reset', staffId }));
+        }, 'reset.request.email', ip, ua));
+        // Found or not, the same answer, with the address carried in the cookie, never in a URL.
+        Astro.cookies.delete(CODE_PHONE_COOKIE, { path: CODE_COOKIE_PATH });
+        Astro.cookies.set(CODE_EMAIL_COOKIE, email, cookie);
+        return Astro.redirect('/auth/code/?sent=1', 303);
       }
-      // Found or not, the same answer: the code page, told a text may be coming, with the number
-      // carried in the cookie so it never appears in a URL.
-      Astro.cookies.set(CODE_PHONE_COOKIE, phone, { httpOnly: true, sameSite: 'lax', secure: import.meta.env.PROD, path: '/auth/code', maxAge: 15 * 60 });
-      return Astro.redirect('/auth/code/?sent=1', 303);
+    }
+  } else {
+    const phone = normalizePhone(typedPhone);
+    if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
+    else {
+      const [byPhone, byIp] = await Promise.all([hit(`forgot:p:${phone}`, ...LIMITS.forgot.phone), hit(`forgot:ip:${ip}`, ...LIMITS.forgot.ip)]);
+      if (!byPhone.allowed || !byIp.allowed) {
+        error = `Too many requests. ${waitText(Math.max(byPhone.retryAfter, byIp.retryAfter))}`;
+        await authEvent('reset.locked', { ip, ua });
+      } else {
+        afterAnswer(async () => sendReset(await staffByPhone(phone), (clinicId, staffId, code) =>
+          withClinic(clinicId, (tx) => queueText(tx, { clinicId, to: phone, body: texts.reset(code), kind: 'reset', staffId })),
+        'reset.request', ip, ua));
+        // Found or not, the same answer: the code page, told a text may be coming, with the number
+        // carried in the cookie so it never appears in a URL.
+        Astro.cookies.delete(CODE_EMAIL_COOKIE, { path: CODE_COOKIE_PATH });
+        Astro.cookies.set(CODE_PHONE_COOKIE, phone, cookie);
+        return Astro.redirect('/auth/code/?sent=1', 303);
+      }
     }
   }
 }
+
+const byEmail = via === 'email';
+const GO = { sms: 'Text me a code', email: 'Email me a code' };
 ---
 
-<StaffEntrance title="Reset your password — Flossify" description="We text a six-digit code to the mobile number on your staff account." page="Forgot password">
+<StaffEntrance title="Reset your password — Flossify" description={emailOn ? 'We send a six-digit code to the mobile number or email on your staff account.' : 'We text a six-digit code to the mobile number on your staff account.'} page="Forgot password">
   <a href="/auth/login/" class="meta hover:text-ink">&larr; Staff sign-in</a>
   <h1 class="entry-title font-display mt-4">
     <span class="block">Locked out?</span>
-    <span class="block entry-dim">We’ll text you a code.</span>
+    <span class="block entry-dim">{emailOn ? 'We’ll send you a code.' : 'We’ll text you a code.'}</span>
   </h1>
-  <p class="mt-2 text-[14.5px] leading-relaxed entry-dim">Type the mobile number on your staff account. The code works for 15 minutes.</p>
+  <p class="mt-2 text-[14.5px] leading-relaxed entry-dim">
+    {emailOn ? 'To the mobile or the email on your staff account. It works for 15 minutes.' : 'Type the mobile number on your staff account. The code works for 15 minutes.'}
+  </p>
 
   <form method="post" class="mt-5 grid gap-4" data-entry-form>
     <Csrf />
-    <div class="entry-field">
+    {emailOn && (
+      <fieldset class="entry-devices">
+        <legend class="meta">Send the code by</legend>
+        <div class="entry-seg">
+          <label><input type="radio" name="via" value="sms" class="sr-only" checked={!byEmail} data-via-pick />Text</label>
+          <label><input type="radio" id="via-email" name="via" value="email" class="sr-only" checked={byEmail} aria-label="Email" data-via-pick />Email</label>
+        </div>
+      </fieldset>
+    )}
+    {/* With the switch, neither field is required or disabled in the markup: without script both are sent and the server reads the one `via` names. */}
+    <div class="entry-field" data-via-field="sms">
       <label for="phone" class="meta">Mobile number</label>
-      <input id="phone" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0917 000 0000" value={typed} required autofocus
-        aria-invalid={error ? 'true' : undefined} aria-describedby={error ? 'forgot-error' : undefined} />
+      <input id="phone" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0917 000 0000" value={typedPhone} required={!emailOn} autofocus={!byEmail}
+        aria-invalid={error && !byEmail ? 'true' : undefined} aria-describedby={error && !byEmail ? 'forgot-error' : undefined} />
     </div>
+    {emailOn && (
+      <div class="entry-field" data-via-field="email">
+        <label for="email" class="meta">Email</label>
+        <input id="email" type="email" name="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" maxlength={EMAIL_MAX} placeholder="you@clinic.ph" value={typedEmail} autofocus={byEmail}
+          aria-invalid={error && byEmail ? 'true' : undefined} aria-describedby={error && byEmail ? 'forgot-error' : undefined} />
+      </div>
+    )}
     {error && <p id="forgot-error" role="alert" class="entry-note entry-note-bad">{error}</p>}
-    <button type="submit" class="btn btn-primary entry-go" data-go data-busy="Sending…">Text me a code</button>
+    <button type="submit" class="btn btn-primary entry-go" data-go data-busy="Sending…">{emailOn ? <><span data-via-field="sms">{GO.sms}</span><span data-via-field="email">{GO.email}</span></> : GO.sms}</button>
   </form>
 
-  <p class="mt-4 text-[13.5px] leading-relaxed entry-dim">No mobile on file? Your clinic owner can add it on <strong class="font-semibold">Settings → Team</strong> and text you a code from there.</p>
+  {emailOn ? (
+    <p class="mt-4 text-[13.5px] leading-relaxed entry-dim">No mobile on file, or the clinic phone is shared? Choose <label for="via-email" class="cursor-pointer font-semibold underline underline-offset-4">Email</label>.</p>
+  ) : (
+    <p class="mt-4 text-[13.5px] leading-relaxed entry-dim">No mobile on file? Your clinic owner can add it on <strong class="font-semibold">Settings → Team</strong> and text you a code from there.</p>
+  )}
 
   <ul class="mt-6 border-t entry-rule" aria-label="Other ways in">
-    <li class="border-b entry-rule"><a href="/auth/code/" class="entry-way"><span><span class="text-[14.5px] font-semibold">Already have a code?</span> <span class="entry-way-hint">Enter it and choose a new password.</span></span><span aria-hidden="true" class="entry-way-arrow">&rarr;</span></a></li>
+    <li class="border-b entry-rule"><a href={byEmail ? '/auth/code/?via=email' : '/auth/code/'} class="entry-way" data-code-link><span><span class="text-[14.5px] font-semibold">Already have a code?</span> <span class="entry-way-hint">Enter it and choose a new password.</span></span><span aria-hidden="true" class="entry-way-arrow">&rarr;</span></a></li>
     <li class="border-b entry-rule"><a href="/auth/login/" class="entry-way"><span><span class="text-[14.5px] font-semibold">Remembered it?</span> <span class="entry-way-hint">Back to sign-in.</span></span><span aria-hidden="true" class="entry-way-arrow">&rarr;</span></a></li>
   </ul>
 </StaffEntrance>
 
+<style is:global>
+  /* Text or Email, without script: the checked radio shows its own field and button words and hides
+     the other half's. Only the chosen half is ever on screen. */
+  @layer components {
+    :root:has(input[name='via'][value='email']:checked) [data-via-field='sms'],
+    :root:has(input[name='via'][value='sms']:checked) [data-via-field='email'] { display: none; }
+  }
+</style>
+
 <script>
-  // Show the password, and warn about Caps Lock: the same help as sign-in.
-  document.querySelectorAll<HTMLButtonElement>('[data-show]').forEach((btn) => {
-    const input = document.getElementById(btn.getAttribute('aria-controls') ?? '') as HTMLInputElement | null;
-    btn.addEventListener('click', () => {
-      if (!input) return;
-      const on = input.type === 'password';
-      input.type = on ? 'text' : 'password';
-      btn.textContent = on ? 'Hide' : 'Show';
-      btn.setAttribute('aria-pressed', String(on));
-      input.focus();
+  // Text or Email. The stylesheet already shows the chosen half; this makes its field the required
+  // one and switches the other off (neither required nor sent), and keeps the code link and the
+  // address bar in step.
+  const codeLink = document.querySelector<HTMLAnchorElement>('[data-code-link]');
+  const picks = Array.from(document.querySelectorAll<HTMLInputElement>('[data-via-pick]'));
+  const sync = (via: string) => {
+    document.querySelectorAll<HTMLElement>('[data-via-field]').forEach((field) => {
+      const on = field.dataset.viaField === via;
+      field.hidden = !on;
+      const input = field.querySelector<HTMLInputElement>('input');
+      if (input) { input.disabled = !on; input.required = on; }
     });
-  });
-  const caps = document.querySelector<HTMLElement>('[data-caps]');
-  document.querySelectorAll<HTMLInputElement>('input[type=password]').forEach((input) => {
-    const check = (e: KeyboardEvent) => { if (caps && typeof e.getModifierState === 'function') caps.hidden = !e.getModifierState('CapsLock'); };
-    input.addEventListener('keydown', check);
-    input.addEventListener('keyup', check);
-  });
+    if (codeLink) codeLink.href = via === 'email' ? '/auth/code/?via=email' : '/auth/code/';
+  };
+  const chosen = picks.find((r) => r.checked);
+  if (chosen) sync(chosen.value);
+  // A tap on a half moves the cursor into its field; arrow keys stay on the switch.
+  let keyed = false;
+  picks.forEach((r) => r.addEventListener('keydown', () => { keyed = true; }));
+  document.addEventListener('pointerdown', () => { keyed = false; });
+  picks.forEach((r) => r.addEventListener('change', () => {
+    const byKey = keyed;
+    keyed = false;
+    if (!r.checked) return;
+    const via = r.value === 'email' ? 'email' : 'sms';
+    sync(via);
+    document.querySelectorAll<HTMLInputElement>('[data-via-field] input').forEach((input) => {
+      input.removeAttribute('aria-invalid');
+      input.removeAttribute('aria-describedby');
+    });
+    document.getElementById('forgot-error')?.remove();
+    // The address bar remembers the choice, so a reload or Back lands on the same half.
+    const here = new URL(location.href);
+    if (via === 'email') here.searchParams.set('via', 'email'); else here.searchParams.delete('via');
+    history.replaceState(history.state, '', here.pathname + here.search + here.hash);
+    if (!byKey) document.querySelector<HTMLInputElement>(`[data-via-field="${via}"] input`)?.focus();
+  }));
   // One press.
   document.querySelector<HTMLFormElement>('[data-entry-form]')?.addEventListener('submit', (e) => {
-    const go = (e.currentTarget as HTMLFormElement).querySelector<HTMLButtonElement>('[data-go]');
-    if (go) { go.disabled = true; go.textContent = go.dataset.busy ?? 'Working…'; }
+    const btn = (e.currentTarget as HTMLFormElement).querySelector<HTMLButtonElement>('[data-go]');
+    if (btn) { btn.disabled = true; btn.textContent = btn.dataset.busy ?? 'Working…'; }
   });
 </script>

@@ -11,6 +11,19 @@
 //
 // A miss (a stale token, an invoice already marked, a bad number) shows one
 // plain sentence and changes nothing; a success redirects with ?done=.
+//
+// Invoices a clinic paid online (PayMongo, src/lib/payments.ts, migration 024)
+// mark themselves: they are listed under "Paid online" with PayMongo's payment
+// id as the reference. A payment PayMongo reported that no invoice could take
+// (wrong amount, an invoice already paid or cancelled, a checkout we have no
+// record of, a paid event that could not be read) is listed under "Online
+// payments to look at", every one until a person presses Handled: money may
+// have moved, and the fix (a refund, or marking an invoice by hand) is a
+// person's. Both read admin_online_payments(), a definer function, like the
+// rest here. When an online payment was started for a due invoice, its Mark
+// paid form says so and offers Check with PayMongo, which asks PayMongo and
+// marks it paid online if it was, so a person does not mark by hand what
+// PayMongo already took. Marking by hand closes the invoice's open checkouts.
 export const prerender = false;
 
 import AdminLayout from '../../../layouts/Admin.astro';
@@ -25,6 +38,10 @@ import {
   adminRows, allDue, notesByGroup, issueInvoices, markPaid, adminSet,
   manilaToday, manilaDate, monthText, dayText, whenText, type PlanId, type SubStatus,
 } from '../../../lib/billing';
+import {
+  onlineEvents, paymentsToLookAt, lastPaidOnline, checkoutsStarted, onlinePayReady, payConfig, markReviewed, closeCheckouts, confirmPending,
+  ADMIN_CONFIRM_DAYS, OUTCOME_WORDS, type Asked,
+} from '../../../lib/payments';
 
 const admin = await requireAdmin(Astro);
 if (admin instanceof Response) return admin;
@@ -68,8 +85,29 @@ if (Astro.request.method === 'POST') {
       }
       if (!error) {
         await authEvent('billing.paid', { staffId: session.staffId, ip, ua });
+        // Paid now: close any PayMongo checkout still open for it, so the clinic cannot pay it twice. Not awaited.
+        void closeCheckouts({ invoiceId: inv.id });
         return Astro.redirect(`${here}?done=paid&number=${encodeURIComponent(inv.number)}&group=${inv.group_id}`, 303);
       }
+    }
+  } else if (action === 'check') {
+    // Before marking by hand: ask PayMongo about the invoice's checkouts, and mark it paid online if it was.
+    const id = s('invoice');
+    const inv = UUID.test(id) ? (await allDue()).find((i) => i.id === id) : undefined;
+    if (!inv) error = 'That invoice is no longer due. It may have been marked paid a moment ago; check the list.';
+    else {
+      const r = await confirmPending(inv.group_id, inv.number, ADMIN_CONFIRM_DAYS);
+      await authEvent('billing.check', { staffId: session.staffId, ip, ua });
+      return Astro.redirect(`${here}?done=check&r=${r}&number=${encodeURIComponent(inv.number)}&group=${inv.group_id}`, 303);
+    }
+  } else if (action === 'reviewed') {
+    // A refused online payment, dealt with in the PayMongo dashboard or by marking an invoice by hand.
+    const id = s('event');
+    if (!/^(evt_|check:pay_)[A-Za-z0-9]{8,64}$/.test(id) || !(await markReviewed(id, session.staffId))) {
+      error = 'That payment is not on the list any more. Someone may have marked it a moment ago.';
+    } else {
+      await authEvent('billing.reviewed', { staffId: session.staffId, ip, ua });
+      return Astro.redirect(`${here}?done=reviewed#look-title`, 303);
     }
   } else if (action === 'set') {
     const group = s('group'), plan = s('plan'), status = s('status'), ends = s('trial_ends'), notes = s('notes');
@@ -97,8 +135,21 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [rows, due, notes] = await Promise.all([adminRows(), allDue(), notesByGroup()]);
+// Online: what PayMongo paid (the newest PAID_SHOWN), every refused payment nobody has handled
+// (no limit: one must never drop off behind newer ones), whose last payment was online, and
+// which due invoices have a payment under way.
+const PAID_SHOWN = 100;
+const [rows, due, notes, paidOnlineList, toLook, onlineLast] = await Promise.all([
+  adminRows(), allDue(), notesByGroup(), onlineEvents({ limit: PAID_SHOWN, outcomes: ['paid'] }), paymentsToLookAt(), lastPaidOnline(),
+]);
 const dueOf = (groupId: string) => due.filter((i) => i.group_id === groupId);
+const started = await checkoutsStarted(due.map((i) => i.id));
+const lastOnline = (r: (typeof rows)[number]) => !!r.last_paid && onlineLast.has(r.group_id);
+const centavosText = (n: number | null) => (n === null ? '—' : peso(n / 100));
+const onlineOn = onlinePayReady();
+// PayMongo can be asked whenever this server has its keys, even with billing not final: a checkout opened earlier still needs an answer.
+const canAsk = payConfig() !== null;
+const anyOnline = onlineOn || paidOnlineList.length > 0 || toLook.length > 0;
 
 const q = Astro.url.searchParams;
 const openGroup = q.get('group') ?? '';
@@ -110,6 +161,21 @@ if (!error) {
   if (done === 'issue') notice = n > 0 ? `Issued ${n} invoice${n === 1 ? '' : 's'} for ${monthText(today)}.` : `Nothing to issue: every group past its trial already has its ${monthText(today)} invoice, or has no open branch.`;
   else if (done === 'paid') notice = `Marked ${q.get('number') ?? 'the invoice'} paid. If nothing else of theirs was overdue, ${named} is active again.`;
   else if (done === 'set') notice = `Saved ${named}’s terms.`;
+  else if (done === 'reviewed') notice = 'Taken off the list of online payments to look at.';
+  else if (done === 'check') {
+    const num = q.get('number') ?? 'the invoice';
+    const said: Record<Asked, string> = {
+      paid: `PayMongo has a payment for ${num}: it is marked paid online.`,
+      refused: `PayMongo has a payment for ${num} that the invoice did not take. It is under Online payments to look at, below.`,
+      unpaid: `PayMongo has no payment for ${num} yet. If the clinic paid by transfer instead, mark it by hand with that reference.`,
+      noanswer: 'PayMongo did not answer. Nothing was changed. Try again in a minute.',
+      busy: `PayMongo was asked about ${named} a moment ago. Nothing was changed. Try again in a minute.`,
+      none: `There is no online payment for ${num} from the last ${ADMIN_CONFIRM_DAYS} days left to ask PayMongo about. Anything it already reported is in the lists below.`,
+      off: 'PayMongo is not set up on this server, so it cannot be asked. Nothing was changed.',
+    };
+    const r = q.get('r') ?? '';
+    notice = Object.hasOwn(said, r) ? said[r as Asked] : '';
+  }
 }
 
 const overdueCount = rows.filter((r) => r.status === 'past_due').length;
@@ -135,7 +201,7 @@ const standing = (r: (typeof rows)[number]) =>
     <div>
       <h1 class="font-display text-[clamp(1.75rem,4vw,2.5rem)] font-semibold tracking-[-0.02em]">Billing</h1>
       <p class="mt-2 max-w-[64ch] text-[15px] leading-relaxed text-ink-2">
-        Every group, what it is on and what it owes. Payments arrive by GCash, Maya or bank transfer with the invoice number as the reference; when you see one in the account, mark it here.
+        Every group, what it is on and what it owes. Payments arrive by GCash, Maya or bank transfer with the invoice number as the reference; when you see one in the account, mark it here.{anyOnline && ' A payment made online through PayMongo marks its invoice itself.'}
       </p>
     </div>
     {pricesFinal ? (
@@ -220,7 +286,10 @@ const standing = (r: (typeof rows)[number]) =>
                   {r.due_count > 0 ? <><span class="font-semibold">{peso(r.due_amount)}</span><span class="block text-[13px] text-muted">{r.due_count} invoice{r.due_count === 1 ? '' : 's'}</span></> : <span class="text-muted">nothing</span>}
                 </td>
                 <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{r.oldest_due ? dayText(r.oldest_due) : '—'}</td>
-                <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{r.last_paid ? whenText(r.last_paid) : 'never'}</td>
+                <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">
+                  {r.last_paid ? whenText(r.last_paid) : 'never'}
+                  {lastOnline(r) && <span class="block text-[13px] text-muted">paid online</span>}
+                </td>
                 <td class="px-5 py-4 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{r.trial_ends_at ? whenText(r.trial_ends_at) : '—'}</td>
               </tr>
               <tr class="border-b border-line">
@@ -247,10 +316,27 @@ const standing = (r: (typeof rows)[number]) =>
                               <input name="ref" required maxlength={REF_MAX} autocomplete="off" placeholder="GCash ref no., or the bank transfer reference" />
                               <span class="text-[13px] text-muted">As it appears in the account. It shows on the clinic’s page.</span>
                             </label>
+                            {mine.filter((i) => started.has(i.id)).map((i) => (
+                              <div class="grid gap-2 border border-crown/40 bg-crown/10 p-3 text-[13.5px] leading-snug">
+                                <p>
+                                  {i.number}: the clinic started paying online {whenText(started.get(i.id)!)}. Ask PayMongo first{canAsk ? ': if it has the payment, the invoice is marked paid online for you' : ''}. If you still mark it by hand for a PayMongo payment, type PayMongo’s payment id (pay_…) as the reference, so a late confirmation matches it.
+                                </p>
+                                {canAsk && (
+                                  <div><button type="submit" form={`check-${i.id}`} class="btn btn-quiet min-h-11 !px-4 !py-2 text-[13.5px]">Check {i.number} with PayMongo</button></div>
+                                )}
+                              </div>
+                            ))}
                             <div><button type="submit" class="btn btn-primary !px-4 !py-2 text-[13.5px]">Mark paid</button></div>
                           </>
                         )}
                       </form>
+                      {canAsk && mine.filter((i) => started.has(i.id)).map((i) => (
+                        <form id={`check-${i.id}`} method="post" hidden>
+                          <Csrf />
+                          <input type="hidden" name="action" value="check" />
+                          <input type="hidden" name="invoice" value={i.id} />
+                        </form>
+                      ))}
 
                       <form method="post" class="grid content-start gap-3 border border-line bg-bg-soft p-4 sm:grid-cols-2">
                         <Csrf />
@@ -296,7 +382,102 @@ const standing = (r: (typeof rows)[number]) =>
     </table>
   </div>
 
-  <p class="mt-4 max-w-[64ch] text-[13.5px] leading-relaxed text-muted">
+  {toLook.length > 0 && (
+    <section class="mt-10" aria-labelledby="look-title">
+      <h2 id="look-title" class="font-display text-[22px] font-semibold">Online payments to look at</h2>
+      <p class="mt-1.5 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
+        PayMongo reported these payments and no invoice took them, so nothing was marked. Find each one in the PayMongo dashboard by its payment id, then refund it or mark the right invoice by hand above. Then press Handled to take it off this list. The clinic’s Billing page says it is being sorted out, and shows no Pay now for that invoice, until you do.
+      </p>
+      <!-- relative: the visually hidden header in the last column is absolutely positioned, and must be clipped by this scroller, not widen the page (it did: 875 px at 390). -->
+      <div class="relative mt-4 overflow-x-auto border border-line bg-surface">
+        <table class="w-full min-w-[960px] border-collapse text-left">
+          <caption class="sr-only">Online payments that no invoice took, newest first</caption>
+          <thead>
+            <tr class="border-b border-line bg-bg-soft">
+              <th scope="col" class="meta px-5 py-3.5">Received</th>
+              <th scope="col" class="meta px-5 py-3.5">Group and invoice</th>
+              <th scope="col" class="meta px-5 py-3.5 text-right">Paid</th>
+              <th scope="col" class="meta px-5 py-3.5">Payment</th>
+              <th scope="col" class="meta px-5 py-3.5">What happened</th>
+              <th scope="col" class="px-5 py-3.5"><span class="sr-only">Action</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {toLook.map((e, i) => (
+              <tr class:list={[i < toLook.length - 1 && 'border-b border-line-2']}>
+                <td class="px-5 py-3.5 align-top text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{whenText(e.received_at)}</td>
+                <th scope="row" class="px-5 py-3.5 align-top text-[15px] font-normal">
+                  {e.group_name ?? 'No group'}
+                  <span class="block font-mono text-[13px] tracking-[0.04em] tabular-nums text-ink-2">{e.invoice_number ?? 'no invoice'}{e.invoice_amount !== null && ` · ${peso(e.invoice_amount)}`}</span>
+                </th>
+                <td class="px-5 py-3.5 align-top text-right text-[15px] font-semibold tabular-nums">{centavosText(e.amount_centavos)}</td>
+                <td class="px-5 py-3.5 align-top font-mono text-[13px] tabular-nums break-all text-ink-2">
+                  {e.payment_id ?? e.session_id ?? '—'}
+                  {!e.payment_id && e.session_id && <span class="block font-sans text-[12.5px] text-muted">checkout; no payment id could be read</span>}
+                </td>
+                <td id={`look-${i}`} class="px-5 py-3.5 align-top text-[14.5px]">
+                  <span class="font-semibold text-caries">{e.outcome === 'paid_twice' && e.paid_via === 'paymongo'
+                    ? 'The invoice was already paid online with another PayMongo payment: the clinic paid twice. Return one payment, then press Handled.'
+                    : (OUTCOME_WORDS[e.outcome] ?? e.outcome)}</span>
+                  {e.invoice_status === 'paid' && (
+                    <span class="mt-1 block text-[13.5px] text-ink-2">
+                      The invoice: {e.paid_via === 'paymongo' ? 'paid online' : 'marked paid by hand'}{e.paid_at && ` ${whenText(e.paid_at)}`}, reference <span class="font-mono text-[12.5px] break-all">{e.paid_ref ?? '—'}</span>.
+                    </span>
+                  )}
+                  {e.reports > 1 && <span class="mt-1 block text-[13px] text-muted">Reported {e.reports} times; one Handled takes all of them off.</span>}
+                </td>
+                <td class="px-5 py-3.5 align-top text-right">
+                  <form method="post">
+                    <Csrf />
+                    <input type="hidden" name="action" value="reviewed" />
+                    <input type="hidden" name="event" value={e.event_id} />
+                    <button type="submit" class="btn btn-quiet min-h-11 !px-4 !py-2 text-[13.5px]" aria-describedby={`look-${i}`}>Handled</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+
+  {(paidOnlineList.length > 0 || onlineOn) && (
+  <section class="mt-10" aria-labelledby="online-title">
+    <h2 id="online-title" class="font-display text-[22px] font-semibold">Paid online</h2>
+    <p class="mt-1.5 max-w-[64ch] text-[14.5px] leading-relaxed text-ink-2">
+      Invoices PayMongo confirmed, newest first{paidOnlineList.length >= PAID_SHOWN ? ` (the latest ${PAID_SHOWN})` : ''}. The reference is PayMongo’s payment id; search for it in the PayMongo dashboard.
+    </p>
+    <div class="mt-4 overflow-x-auto border border-line bg-surface">
+      <table class="w-full min-w-[760px] border-collapse text-left">
+        <caption class="sr-only">Invoices paid online through PayMongo, newest first</caption>
+        <thead>
+          <tr class="border-b border-line bg-bg-soft">
+            <th scope="col" class="meta px-5 py-3.5">Invoice</th>
+            <th scope="col" class="meta px-5 py-3.5">Group</th>
+            <th scope="col" class="meta px-5 py-3.5 text-right">Amount</th>
+            <th scope="col" class="meta px-5 py-3.5">Paid</th>
+            <th scope="col" class="meta px-5 py-3.5">Reference</th>
+          </tr>
+        </thead>
+        <tbody>
+          {paidOnlineList.length === 0 && <tr><td colspan="5" class="px-5 py-4 text-[15px] text-muted">None yet.</td></tr>}
+          {paidOnlineList.map((e, i) => (
+            <tr class:list={[i < paidOnlineList.length - 1 && 'border-b border-line-2']}>
+              <th scope="row" class="px-5 py-3.5 font-mono text-[13px] tracking-[0.04em] tabular-nums">{e.invoice_number ?? '—'}</th>
+              <td class="px-5 py-3.5 text-[15px]">{e.group_name ?? '—'}</td>
+              <td class="px-5 py-3.5 text-right text-[15px] font-semibold tabular-nums">{centavosText(e.amount_centavos)}</td>
+              <td class="px-5 py-3.5 text-[14.5px] whitespace-nowrap tabular-nums text-ink-2">{e.paid_at ? whenText(e.paid_at) : whenText(e.received_at)}</td>
+              <td class="px-5 py-3.5 text-[14px] text-ink-2">paid online <span class="block font-mono text-[12.5px] tabular-nums break-all">{e.payment_id}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  )}
+
+  <p class="mt-6 max-w-[64ch] text-[13.5px] leading-relaxed text-muted">
     Nothing here switches a clinic off. {pricesFinal ? 'A late payment changes the status and the sentence the owner sees on their Billing page; every' : 'Every'} action is recorded under your name.
   </p>
 </AdminLayout>

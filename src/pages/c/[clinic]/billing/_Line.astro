@@ -1,0 +1,47 @@
+---
+// One line of a new charge: what it is, how many, at what price, and what it
+// comes to. The same markup is drawn by the server (lines kept after a refused
+// save) and cloned by the page's script from a <template> (a new line), so the
+// two can never drift apart. Field names repeat on purpose: the handler reads
+// them with getAll(), in order, one entry per line.
+//
+// A line from the fee guide carries its row id and the guide's range, which
+// the script checks as you type; the server checks it again on save. A line
+// that is "something else" has no id and any price above zero.
+interface Props {
+  catalogId?: string;
+  desc?: string;
+  qty?: string;
+  price?: string;
+  /** The guide's range in centavos, for the script. max '' = no ceiling. */
+  min?: string;
+  max?: string;
+  fixed?: boolean;
+  hint?: string;
+}
+const { catalogId = '', desc = '', qty = '1', price = '', min = '', max = '', fixed = false, hint = '' } = Astro.props;
+const input = 'text-[16px]';
+---
+
+<li data-line class="grid gap-3 border-b border-line-2 px-4 py-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_5.5rem_9rem_8.5rem_auto] sm:items-end sm:px-5"
+    data-line-min={min} data-line-max={max} data-line-fixed={fixed ? '1' : undefined}>
+  <input type="hidden" name="line_catalog" value={catalogId} data-line-catalog />
+  <label class="field">
+    <span class="meta">{catalogId ? 'From the fee guide' : 'Something else'}</span>
+    <input name="line_desc" value={desc} maxlength="120" autocomplete="off" class={input} data-line-desc placeholder={catalogId ? '' : 'What it is for'} />
+  </label>
+  <label class="field">
+    <span class="meta">Qty</span>
+    <input name="line_qty" type="number" value={qty} min="1" max="99" step="1" inputmode="numeric" class={`${input} tabular-nums`} data-line-qty />
+  </label>
+  <label class="field">
+    <span class="meta">Price each</span>
+    <input name="line_price" value={price} inputmode="decimal" autocomplete="off" readonly={fixed} class={`${input} tabular-nums read-only:bg-bg-soft`} data-line-price placeholder="0.00" />
+  </label>
+  <div class="flex flex-col gap-[0.4rem]">
+    <span class="meta sm:text-right">Amount</span>
+    <output class="flex min-h-[2.9rem] items-center text-[16px] font-semibold tabular-nums sm:justify-end" data-line-amount>—</output>
+  </div>
+  <button type="button" class="btn btn-quiet min-h-11 !px-3.5 !py-2 text-[14px]" data-line-remove>Remove</button>
+  <p class="text-[13px] leading-snug text-muted sm:col-span-5" data-line-hint>{hint || (catalogId ? '' : 'Not in the fee guide: any price above zero.')}</p>
+</li>
