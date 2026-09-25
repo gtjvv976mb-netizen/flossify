@@ -49,6 +49,22 @@ inside that layer or they beat Tailwind utilities on equal specificity.
 
 ## The tour
 
+**The home page's pages** (the owner's layout, 25 Sep 2026), all standing on
+the film: 01 *Your clinic, in the Web* — "Switch to paperless, seamless,
+effortless daily operations:" and the buttons *Open your clinic in the web*
+(/start/) and *I'm a Patient* (/find/); 02 Services, for clinics and for
+patients; 03 How it works, both ways in; 04 Pricing — ₱800 a month per
+branch, everything included (`PRICE_PER_BRANCH` in `src/lib/billing.ts`, the
+one number); 05 Partners — the clinics really listed, read live from the
+directory (the page is server-rendered for this); 06 How to register — two
+walkthroughs recorded from the real product with sample data
+(`scripts/record-walkthroughs.mjs`, `public/video/register-*.mp4`); 07 Know
+the team — from `src/data/team.ts`, and left out while that list is empty:
+real people only, never a placeholder person. The service and price lists
+name only what is live; billing, health history and desk consent go in when
+those features ship.
+
+
 The film is the ground of the **whole home page**: one continuous 39.8s film
 from the street to the chair in a fixed layer (`.film-bg`) behind everything.
 It opens on the clinic building from outside — a white single-storey clinic

@@ -79,7 +79,7 @@ if (Astro.request.method === 'POST') {
     else if (!(PLAN_IDS as string[]).includes(plan)) error = 'Pick a plan from the list.';
     else if (!(SUB_STATUSES as string[]).includes(status)) error = 'Pick a status from the list.';
     else if (!ISO_DAY.test(ends) || Number.isNaN(Date.parse(`${ends}T00:00:00Z`))) error = 'The trial end needs a date.';
-    else if (!Number.isFinite(price) || price > PRICE_MAX) error = `Enter the price per branch in pesos, like 1990 or 1990.50 (0 to ${peso(PRICE_MAX)}).`;
+    else if (!Number.isFinite(price) || price > PRICE_MAX) error = `Enter the price per branch in pesos, like 800 or 800.50 (0 to ${peso(PRICE_MAX)}).`;
     else if (notes.length > NOTES_MAX) error = `Keep the note under ${NOTES_MAX} characters.`;
     else {
       // The trial ends at the end of that Manila day.
