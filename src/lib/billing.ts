@@ -4,19 +4,22 @@
 // anywhere: a clinic pays by GCash, Maya or bank transfer with the invoice
 // number as the reference, and a person on the operations page marks it paid.
 //
-// PLACEHOLDERS. Every peso amount below, the pay-to details and the address
-// to write to are stand-ins for the owner to set before launch. The README's
+// The price is set (₱800 per branch a month). The pay-to details and the address
+// to write to are still stand-ins for the owner to set before invoicing starts. The README's
 // "Before this goes live" list names them. Do not present them as final.
 // Nothing is invoiced until BILLING_FINAL (below) is true.
 
 import { pool } from './db';
 import { BILLING_FINAL } from './billing-config';
 
-/** Per branch per month, in pesos. PLACEHOLDER numbers — the owner sets the real ones. */
+/** The one price, per branch per month, in pesos: ₱800 with everything included
+ *  (the owner, 25 Sep 2026). The home page's Pricing page reads it from here. The
+ *  three plan ids stay because subscription.plan is checked against them (011). */
+export const PRICE_PER_BRANCH = 800;
 export const PLANS = {
-  starter: { name: 'Starter', perBranch: 990, blurb: '1 chair, the day list, patients, texts' },
-  clinic: { name: 'Clinic', perBranch: 1990, blurb: 'Everything, one branch' },
-  group: { name: 'Group', perBranch: 1490, blurb: 'Everything, three branches or more' },
+  starter: { name: 'Flossify', perBranch: PRICE_PER_BRANCH, blurb: 'Everything included' },
+  clinic: { name: 'Flossify', perBranch: PRICE_PER_BRANCH, blurb: 'Everything included' },
+  group: { name: 'Flossify', perBranch: PRICE_PER_BRANCH, blurb: 'Everything included, every branch' },
 } as const;
 export type PlanId = keyof typeof PLANS;
 export const PLAN_IDS = Object.keys(PLANS) as PlanId[];
