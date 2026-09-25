@@ -1,15 +1,18 @@
 ---
 import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/site/SiteHeader.astro';
+import Icon from '../components/ws/Icon.astro';
+import type { IconName } from '../components/ws/icons';
 
 // What every clinic site ships with. The sample under /samples/swiftcare/ is
 // the reference build; keep this list honest to what is actually in it.
-const included = [
-  { title: 'Booking, one tap away', body: 'Every screen ends in the clinic’s booking flow: for a Flossify clinic, the five-step booking with no account. The sample keeps SwiftCare’s own.' },
-  { title: 'Live clinic hours', body: 'Open, closing soon or closed, worked out in Manila time and shown at the top of every screen. Sunday reads “by appointment”.' },
-  { title: 'Services and prices', body: 'Every service with a range or a starting price, filterable by kind, plus a running estimate a patient can copy and bring to the desk.' },
-  { title: 'Smile Finder', body: 'Pick what hurts. It shows which services usually help, what they cost, how urgent it is, and what to do tonight.' },
-  { title: 'Patient care hub', body: 'Emergency first aid, aftercare after each treatment, a two-minute brushing timer, a check-up reminder that writes to the calendar, and a plain-language guide to PhilHealth’s ₱1,000 dental benefit and HMO cards.' },
-  { title: 'Phone-first', body: 'A pinned Call · Directions · Message · Book bar on phones, which is where most patients arrive from.' },
+const included: { title: string; body: string; icon: IconName }[] = [
+  { icon: 'calendar', title: 'Booking, one tap away', body: 'Every screen ends in the clinic’s booking flow: for a Flossify clinic, the five-step booking with no account. The sample keeps SwiftCare’s own.' },
+  { icon: 'clock', title: 'Live clinic hours', body: 'Open, closing soon or closed, worked out in Manila time and shown at the top of every screen. Sunday reads “by appointment”.' },
+  { icon: 'money', title: 'Services and prices', body: 'Every service with a range or a starting price, filterable by kind, plus a running estimate a patient can copy and bring to the desk.' },
+  { icon: 'search', title: 'Smile Finder', body: 'Pick what hurts. It shows which services usually help, what they cost, how urgent it is, and what to do tonight.' },
+  { icon: 'info', title: 'Patient care hub', body: 'Emergency first aid, aftercare after each treatment, a two-minute brushing timer, a check-up reminder that writes to the calendar, and a plain-language guide to PhilHealth’s ₱1,000 dental benefit and HMO cards.' },
+  { icon: 'message', title: 'Phone-first', body: 'A pinned Call · Directions · Message · Book bar on phones, which is where most patients arrive from.' },
 ];
 ---
 
@@ -17,11 +20,12 @@ const included = [
   title="Clinic websites — Flossify"
   description="A patient-facing website for your clinic, built alongside the workspace so a booking on the site is a booking at the desk. See the sample."
 >
-  <main id="main" class="mx-auto max-w-[1280px] px-5 py-16 sm:px-8">
-    <a href="/" class="meta hover:text-ink">&larr; Back to the site</a>
+  <!-- Open your clinic is quiet here: the page's own teal button is the sample. -->
+  <SiteHeader current="websites" cta="quiet" />
 
-    <p class="meta mt-10">Service &middot; Clinic websites</p>
-    <h1 class="mt-6 max-w-[760px] font-display text-[clamp(2rem,5vw,3rem)] leading-tight font-semibold tracking-[-0.025em]">
+  <main id="main" class="mx-auto max-w-[1280px] px-5 pt-10 pb-16 sm:px-8 sm:pt-14">
+    <p class="ws-pill ws-tint-teal"><Icon name="clinic" size={14} />Clinic websites</p>
+    <h1 class="mt-4 max-w-[760px] text-[clamp(1.9rem,4.2vw,2.75rem)] leading-tight tracking-[-0.025em]">
       The front door your patients see first.
     </h1>
     <p class="mt-4 max-w-[640px] text-[17px] leading-relaxed text-ink-2">
@@ -30,48 +34,62 @@ const included = [
       workspace, and the price list online is copied from the fee guide the desk uses.
     </p>
 
-    <div class="mt-8 flex flex-wrap gap-3">
-      <a href="/samples/swiftcare/" class="btn btn-primary">Open the sample site</a>
-      <a href="https://swiftcaredental.com" class="btn btn-quiet" rel="noopener">The clinic’s live site &nearr;</a>
+    <div class="mt-7 flex flex-wrap gap-3">
+      <a href="/samples/swiftcare/" class="btn btn-primary btn-lg"><span>Open the sample site</span><Icon name="arrow-right" /></a>
+      <a href="https://swiftcaredental.com" class="btn btn-quiet btn-lg" rel="noopener">The clinic’s live site <span aria-hidden="true">&nearr;</span></a>
     </div>
 
-    <figure class="mt-12 border border-line bg-surface">
-      <div class="flex items-center gap-3 border-b border-line px-4 py-2.5">
-        <span class="meta meta-ink">swiftcaredental.com &middot; concept</span>
-        <span class="meta ml-auto">Sample &middot; Tarlac City</span>
+    <!-- The sample, framed in a soft window. -->
+    <figure class="frame mt-10">
+      <div class="frame-bar">
+        <span class="inline-flex gap-[5px]" aria-hidden="true"><i class="h-[9px] w-[9px] rounded-full bg-[var(--ws-hair-strong)]"></i><i class="h-[9px] w-[9px] rounded-full bg-[var(--ws-hair-strong)]"></i><i class="h-[9px] w-[9px] rounded-full bg-[var(--ws-hair-strong)]"></i></span>
+        <span class="text-ink-2">swiftcaredental.com &middot; concept</span>
+        <span class="ml-auto hidden sm:inline">Sample &middot; Tarlac City</span>
       </div>
       <iframe
         src="/samples/swiftcare/"
         title="Sample clinic website: a concept redesign for SwiftCare Dental Clinic"
         loading="lazy"
-        class="block aspect-[16/10] w-full bg-bg"
+        class="block aspect-[4/5] w-full bg-bg sm:aspect-[16/10]"
       ></iframe>
-      <figcaption class="border-t border-line px-4 py-3 text-[14px] leading-relaxed text-ink-2">
-        A concept redesign of SwiftCare Dental Clinic’s website in Tarlac City, built by Flossify
-        with the clinic’s public branding, photographs and price list. It is not the clinic’s live
-        site; the booking and staff links open the real ones.
+      <figcaption class="flex items-start gap-3 border-t border-hair px-4 py-3.5 text-[14px] leading-relaxed text-ink-2 sm:px-5">
+        <Icon name="info" class="mt-0.5 flex-none text-blue-ink" />
+        <span>
+          A concept redesign of SwiftCare Dental Clinic’s website in Tarlac City, built by Flossify
+          with the clinic’s public branding, photographs and price list. It is not the clinic’s live
+          site; the booking and staff links open the real ones.
+        </span>
       </figcaption>
     </figure>
 
-    <h2 class="mt-16 font-display text-[26px] font-semibold tracking-tight">What a clinic site includes</h2>
-    <div class="rule mt-6"></div>
-    <ul class="grid gap-x-10 md:grid-cols-2">
-      {included.map((f, i) => (
-        <li class="border-b border-line py-6">
-          <p class="sec-no">{String(i + 1).padStart(2, '0')}</p>
-          <h3 class="mt-2 font-display text-[19px] font-semibold">{f.title}</h3>
-          <p class="mt-2 max-w-[46ch] text-[15.5px] leading-relaxed text-ink-2">{f.body}</p>
-        </li>
-      ))}
-    </ul>
+    <section class="card mt-8 p-5 sm:p-8" aria-labelledby="includes-title">
+      <div class="flex items-center gap-3.5">
+        <span class="inline-flex h-11 w-11 flex-none items-center justify-center rounded-card bg-teal-tint text-teal-ink" aria-hidden="true"><Icon name="check" size={20} /></span>
+        <h2 id="includes-title" class="text-[clamp(1.25rem,2.2vw,1.5rem)] leading-snug tracking-[-0.015em]">What a clinic site includes</h2>
+      </div>
+      <ul class="mt-6 grid gap-3 md:grid-cols-2">
+        {included.map((f) => (
+          <li class="flex items-start gap-3.5 rounded-card border border-hair bg-subtle p-4 sm:p-5">
+            <span class="inline-flex h-10 w-10 flex-none items-center justify-center rounded-ctl bg-teal-tint text-teal-ink" aria-hidden="true"><Icon name={f.icon} /></span>
+            <div class="min-w-0">
+              <h3 class="text-[16px] leading-snug tracking-[-0.005em]">{f.title}</h3>
+              <p class="mt-1 max-w-[52ch] text-[15px] leading-relaxed text-ink-2">{f.body}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
 
-    <div role="note" class="mt-12 max-w-[760px] border border-line bg-bg-soft p-5 text-[14.5px] leading-relaxed">
-      <strong class="font-semibold">Each clinic site carries the clinic’s own look.</strong>
-      The sample is gold and espresso because that is SwiftCare’s logo and lobby; Flossify’s
-      own pages stay flat and Swiss. What crosses over is the rule that matters on a page a
-      patient reads: no third-party fonts or scripts; the one embed is a map that loads when a patient reaches it. Health guidance on the site is general
-      first aid and aftercare, labelled as such, and the clinic’s dentist signs off on the copy
-      before it goes live.
+    <div role="note" class="ws-callout mt-8 max-w-[820px]">
+      <Icon name="info" />
+      <p>
+        <strong class="font-semibold">Each clinic site carries the clinic’s own look.</strong>{" "}
+        The sample is gold and espresso because that is SwiftCare’s logo and lobby; Flossify’s
+        own pages keep Flossify’s look. What crosses over is the rule that matters on a page a
+        patient reads: no third-party fonts or scripts; the one embed is a map that loads when a
+        patient reaches it. Health guidance on the site is general first aid and aftercare,
+        labelled as such, and the clinic’s dentist signs off on the copy before it goes live.
+      </p>
     </div>
   </main>
 </Base>

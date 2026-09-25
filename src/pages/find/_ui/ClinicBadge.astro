@@ -1,0 +1,13 @@
+---
+// A clinic's initials badge — the workspace sidebar's (.ws-branch-badge): the first letters of its
+// first two words ("Session Road Dental" → SR) on the pale teal. Decorative beside the written name.
+//
+//   <ClinicBadge name={l.name} />             38px, beside a result's name
+//   <ClinicBadge name={l.name} size="lg" />   56px, at the head of the clinic's page
+interface Props { name: string; size?: 'md' | 'lg'; class?: string }
+const { name, size = 'md', class: extra } = Astro.props;
+const words = name.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+const badge = ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase() || '·';
+---
+
+<span class:list={['ws-branch-badge', size === 'lg' && 'pt-badge-lg', extra]} aria-hidden="true">{badge}</span>

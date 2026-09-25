@@ -3,7 +3,11 @@
 // they agreed to, when, and how. A patient with no row is said so in one
 // sentence, so the desk asks before the visit rather than after it. The rows
 // come from patient_consent, newest first; the page that places this reads
-// them inside its own withClinic().
+// them inside its own withClinic(). In the soft template: a white rounded
+// list with a teal check on each agreement; none on record is an amber
+// "needs attention" callout.
+import Icon from './ws/Icon.astro';
+
 interface Props {
   consents: { version_id: string; given_at: Date; channel: string; given_by_name: string | null }[];
 }
@@ -22,14 +26,17 @@ const when = (d: Date) => {
 ---
 
 <section class="mt-10" aria-labelledby="consent-title">
-  <h2 id="consent-title" class="font-display text-[22px] font-semibold">Consent</h2>
+  <h2 id="consent-title" class="text-[17px] font-semibold">Consent</h2>
   {consents.length === 0 ? (
-    <p class="mt-3 text-[15px] text-muted">No consent on record — ask before the next visit.</p>
+    <p class="ws-callout mt-3" data-tone="warn"><Icon name="alert" /><span>No consent on record — ask before the next visit.</span></p>
   ) : (
-    <ul class="mt-4 divide-y divide-line-2 border border-line bg-surface">
+    <ul class="mt-3 divide-y divide-line overflow-hidden rounded-card border border-hair bg-surface shadow-[var(--ws-shadow)]">
       {consents.map((c) => (
-        <li class="flex flex-wrap items-baseline justify-between gap-3 px-4 py-3 text-[15px]">
-          <span>Privacy notice <span class="font-mono text-[14px]">{c.version_id}</span> · {HOW[c.channel] ?? c.channel}, {when(new Date(c.given_at))}</span>
+        <li class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-4 py-3 text-[15px]">
+          <span class="inline-flex min-w-0 items-baseline gap-2">
+            <Icon name="check" size={16} class="relative top-[3px] flex-none text-teal-ink" />
+            <span>Privacy notice <span class="font-mono text-[14px]">{c.version_id}</span> · {HOW[c.channel] ?? c.channel}, {when(new Date(c.given_at))}</span>
+          </span>
           {c.given_by_name && <span class="text-[13.5px] text-muted">ticked by {c.given_by_name}</span>}
         </li>
       ))}

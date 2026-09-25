@@ -1,8 +1,13 @@
 ---
 import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/site/SiteHeader.astro';
+import Icon from '../components/ws/Icon.astro';
+import Avatar from '../components/ws/Avatar.astro';
+import ClinicBadge from './find/_ui/ClinicBadge.astro';
+import type { IconName } from '../components/ws/icons';
 import { ROOM_FROM } from '../data/film';
 import { TEAM } from '../data/team';
-import { PRICE_PER_BRANCH } from '../lib/billing';
+import { BILLING_FINAL, PRICE_PER_BRANCH } from '../lib/billing';
 import { loadDirectory, type DbListing } from '../lib/directory-db';
 
 // Server-rendered: the Partners page lists the clinics that are really on
@@ -22,38 +27,41 @@ try {
 // the walk: the top of the document is the pavement, the last page the chair.
 const stops = [
   { at: '08:55', from: ROOM_FROM.outside, label: 'Outside', body: 'The clinic from the street.' },
-  { at: '09:00', from: ROOM_FROM.reception, label: 'Reception', body: 'The front desk, with the day list open.' },
+  { at: '09:00', from: ROOM_FROM.reception, label: 'Reception', body: 'The front desk, with today’s calendar open.' },
   { at: '09:12', from: ROOM_FROM.corridor, label: 'The corridor', body: 'On the way to the chair.' },
   { at: '09:15', from: ROOM_FROM.chair, label: 'The chair', body: 'The treatment room.' },
 ];
 
-// 02 — what Flossify does, for each side of the chair. Only what the product
-// does today: every line here is a screen a clinic or a patient can open.
-// A feature joins these lists (and 04's) the day it is live, not before.
-const forClinics = [
-  { title: 'Online booking', body: 'Your clinic page on Find a clinic. Patients book a real open slot, or send a request, day or night.' },
-  { title: 'The day list and schedule', body: 'Who has arrived, who is waiting, who is in the chair. Plan by chair and dentist; drag a visit and it will not double-book.' },
-  { title: 'Patient records and charting', body: 'Every tooth and surface, with health history, allergies and medicines on the record where the dentist sees them. Charting keeps working through a brownout.' },
-  { title: 'Text confirmations and reminders', body: 'A text when a visit is booked and a reminder before it, sent for you.' },
-  { title: 'Billing', body: 'Charges, senior and PWD discounts, payments and balances, with a printable statement. BIR invoices still come from your own registered booklet.' },
-  { title: 'HMO and PhilHealth claims', body: 'Every claim logged and aged, so you can see who has been sitting on your money.' },
-  { title: 'Your whole team', body: 'An account for every dentist and staff member, with the right access for each role.' },
-  { title: 'Privacy, done properly', body: 'Consent recorded online and at the desk, and each clinic’s records kept apart from every other clinic’s.' },
+type Item = { title: string; body: string; icon: IconName };
+
+// Services — what Flossify does, for each side of the chair. Only what the
+// product does today: every line here is a screen a clinic or a patient can
+// open. A feature joins these lists (and Pricing's) the day it is live, not
+// before. One icon per idea, the workspace's own (ws/icons.ts).
+const forClinics: Item[] = [
+  { icon: 'calendar', title: 'Online booking', body: 'Your clinic page on Find a clinic. Patients book a real open slot, or send a request, day or night.' },
+  { icon: 'dashboard', title: 'The Dashboard: today at a glance', body: 'Who has arrived, who is waiting, who is in the chair. A calendar by chair or by dentist; drag a visit and it will not double-book.' },
+  { icon: 'file', title: 'Patient records and charting', body: 'Every tooth and surface, with health history, allergies and medicines on the record where the dentist sees them. Charting keeps working through a brownout.' },
+  { icon: 'message', title: 'Text confirmations and reminders', body: 'A text when a visit is booked and a reminder before it, sent for you.' },
+  { icon: 'wallet', title: 'Billing', body: 'Charges, senior and PWD discounts, payments and balances, with a printable statement. BIR invoices still come from your own registered booklet.' },
+  { icon: 'money', title: 'HMO and PhilHealth claims', body: 'Every claim logged and aged, so you can see who has been sitting on your money.' },
+  { icon: 'patients', title: 'Your whole team', body: 'An account for every dentist and staff member, with the right access for each role.' },
+  { icon: 'check', title: 'Privacy, done properly', body: 'Consent recorded online and at the desk, and each clinic’s records kept apart from every other clinic’s.' },
 ];
-const forPatients = [
-  { title: 'Find a clinic', body: 'By what hurts, by area, by your HMO or PhilHealth, or by who is open now.' },
-  { title: 'Book in five steps', body: 'No account, no phone call. See the price and a real time before you choose.' },
-  { title: 'A text, then a reminder', body: 'Your booking confirmed by text, and a reminder before the visit.' },
-  { title: 'My visits', body: 'See, confirm or cancel your visits with a code sent to your phone.' },
-  { title: 'Know what is covered', body: 'A plain guide to PhilHealth’s dental benefit and HMO cards.' },
+const forPatients: Item[] = [
+  { icon: 'search', title: 'Find a clinic', body: 'By what hurts, by area, by your HMO or PhilHealth, or by who is open now.' },
+  { icon: 'clock', title: 'Book in five steps', body: 'No account, no phone call. See the price and a real time before you choose.' },
+  { icon: 'message', title: 'A text, then a reminder', body: 'Your booking confirmed by text, and a reminder before the visit.' },
+  { icon: 'calendar', title: 'My visits', body: 'See, confirm or cancel your visits with a code sent to your phone.' },
+  { icon: 'file', title: 'Know what is covered', body: 'A plain guide to PhilHealth’s dental benefit and HMO cards.' },
 ];
 
-// 03 — the process, both ways in.
+// How it works — the process, both ways in.
 const clinicSteps = [
   { title: 'Sign up', body: 'Name the clinic and yourself. A few minutes, no card.' },
   { title: 'Set it up', body: 'Hours, fees, dentists and photos, one page each.' },
   { title: 'Invite your team', body: 'Each person gets a code by text and sets a password.' },
-  { title: 'Go live', body: 'Switch on your listing. Bookings land on the day list.' },
+  { title: 'Go live', body: 'Switch on your listing. Bookings land on your Dashboard.' },
 ];
 const patientSteps = [
   { title: 'Find a clinic', body: 'Search by what you need.' },
@@ -61,11 +69,15 @@ const patientSteps = [
   { title: 'Get a text', body: 'Confirmed, then reminded.' },
   { title: 'Walk in', body: 'The desk already has you.' },
 ];
+const tracks: { id: string; who: string; icon: IconName; steps: typeof clinicSteps; href: string; cta: string }[] = [
+  { id: 'clinics', who: 'For clinics', icon: 'clinic', steps: clinicSteps, href: '/start/', cta: 'Start now' },
+  { id: 'patients', who: 'For patients', icon: 'user', steps: patientSteps, href: '/find/', cta: 'Find a clinic' },
+];
 
-// 04 — everything the ₱800 includes.
+// Pricing — everything the ₱800 includes.
 const included = [
   'Online booking and your clinic page',
-  'The day list and the schedule',
+  'The Dashboard: today’s calendar and patients',
   'Patient records and tooth charting',
   'Health history and allergies',
   'Text confirmations and reminders',
@@ -76,20 +88,22 @@ const included = [
   'Works on tablet, phone and computer',
 ];
 
-// 06 — the two walkthroughs, recorded from the real product with sample data.
-const films = [
-  { id: 'clinic', tab: 'As a clinic', src: '/video/register-clinic.mp4', poster: '/video/register-clinic.webp', steps: ['Open your clinic in the web', 'Name the clinic, then yourself', 'Set your hours and fees', 'Your day list is ready'] },
-  { id: 'patient', tab: 'As a patient', src: '/video/register-patient.mp4', poster: '/video/register-patient.webp', steps: ['Tap “I’m a Patient”', 'Choose a clinic', 'Pick a service and a time', 'Your name and mobile, and it is booked'] },
+// How to register — the two ways in, each with its walkthrough, its steps and its one way to start.
+// The walkthroughs (public/video/register-*.mp4) are recorded from the real product with sample data
+// by scripts/record-walkthroughs.mjs; their captions are these steps, so change both together.
+const ways: { id: string; who: string; icon: IconName; video: string; steps: string[]; href: string; cta: string; main: boolean }[] = [
+  { id: 'clinic', who: 'As a clinic', icon: 'clinic', video: 'register-clinic', steps: ['Open your clinic in the web', 'Name the clinic, then yourself', 'Set your hours and fees', 'Your Dashboard is ready'], href: '/start/', cta: 'Open your clinic in the web', main: true },
+  { id: 'patient', who: 'As a patient', icon: 'user', video: 'register-patient', steps: ['Tap “I’m a Patient”', 'Choose a clinic', 'Pick a service and a time', 'Your name and mobile, and it is booked'], href: '/find/', cta: 'I’m a Patient', main: false },
 ];
 
 const peso = (n: number) => `₱${n.toLocaleString('en-PH')}`;
-const pages = TEAM.length ? 7 : 6;
-const no = (n: number) => String(n).padStart(2, '0');
+// The copyright goes on the last page: the team's once src/data/team.ts names real people.
+const lastIsTeam = TEAM.length > 0;
 ---
 
 <Base
   title="Flossify — your clinic, in the web"
-  description="Practice software for Philippine dental clinics. Switch to paperless, seamless, effortless daily operations: online booking, the day list, charting, texts, billing and claims, for ₱800 a month."
+  description="Practice software for Philippine dental clinics. Switch to paperless, seamless, effortless daily operations: online booking, today’s calendar, charting, texts, billing and claims, for ₱800 a month."
 >
   <!-- The film is the ground of the whole page: one fixed layer, one uncut
        take, scrubbed by the document's own scroll. Every section is a page
@@ -99,110 +113,106 @@ const no = (n: number) => String(n).padStart(2, '0');
     <video class="film-video" data-film-video muted playsinline preload="auto" disablepictureinpicture></video>
   </div>
 
-  <header class="sticky top-0 z-40 border-b border-line bg-bg/75 backdrop-blur-md">
-    <div class="mx-auto flex max-w-[1480px] items-center justify-between gap-6 px-5 py-4 sm:px-8">
-      <a href="/" class="font-display text-[17px] font-bold tracking-[-0.05em]">Flossify</a>
-
-      <!-- Where you are: the page, and the room the camera is in. -->
-      <span class="meta hidden md:block" aria-hidden="true"><span data-readout>01 / Your clinic</span><span class="film-room" data-room data-rooms={JSON.stringify(stops.map((t) => [t.from, t.label]))}> &middot; {stops[0].label}</span></span>
-
-      <nav class="flex items-center gap-6" aria-label="Primary">
-        <a href="#services" class="meta hidden hover:text-ink sm:block">Services</a>
-        <a href="#pricing" class="meta hidden hover:text-ink sm:block">Pricing</a>
-        <a href="/find/" class="meta hover:text-ink">Find a clinic</a>
-        <a href="/clinics/" class="meta meta-ink underline decoration-line underline-offset-4 hover:decoration-accent">
-          Workspaces
-        </a>
-      </nav>
-    </div>
-    <div class="absolute inset-x-0 bottom-0 h-px"><div class="h-px w-0 bg-accent" data-progress></div></div>
-  </header>
+  <!-- The site's soft bar (1480px, the pages' width). Beside the links, from 1180px: where you are —
+       the page and the room the camera is in. Along its foot: how far along the walk you are.
+       Open your clinic is quiet here: the page's own buttons (the hero's, the price's) are the teal ones. -->
+  <SiteHeader wide cta="quiet">
+    <span slot="aside" class="home-where" aria-hidden="true">
+      <span class="home-where-dot"></span>
+      <span><span data-readout>Your clinic</span><span class="film-room home-where-room" data-room data-rooms={JSON.stringify(stops.map((t) => [t.from, t.label]))}> &middot; {stops[0].label}</span></span>
+    </span>
+    <div class="home-progress" aria-hidden="true"><div class="home-progress-bar" data-progress></div></div>
+  </SiteHeader>
 
   <main id="main" class="relative z-10">
-    <!-- 01 — Your clinic, in the web -->
-    <section id="tour" data-sec="01 / Your clinic" class="page page-hero" aria-labelledby="hero-title">
+    <!-- Your clinic, in the web: light words on the film's scrim -->
+    <section id="tour" data-sec="Your clinic" class="page page-hero" aria-labelledby="hero-title">
       <div class="relative mx-auto w-full max-w-[1480px] px-5 sm:px-8">
         <div class="max-w-[40rem]">
-          <p class="meta" style="color: rgb(242 242 239 / 0.72)">Practice software for Philippine dental clinics</p>
-          <h1 id="hero-title" data-lines class="mt-5 font-display text-[clamp(2.6rem,6.4vw,5.4rem)] font-semibold">
+          <p class="hero-eyebrow"><span class="hero-dot" aria-hidden="true"></span>Practice software for Philippine dental clinics</p>
+          <h1 id="hero-title" data-lines class="hero-title mt-5">
             <span class="line-clip"><span>Your clinic,</span></span>
             <span class="line-clip"><span>in the Web</span></span>
           </h1>
-          <p class="mt-4 max-w-[30ch] text-[clamp(1.15rem,1.8vw,1.45rem)] leading-snug sm:mt-6" style="color: rgb(242 242 239 / 0.9)">
-            Switch to paperless, seamless, effortless daily operations:
-          </p>
+          <p class="hero-lede mt-4 sm:mt-6">Switch to paperless, seamless, effortless daily operations:</p>
           <div class="mt-6 flex flex-wrap gap-3 sm:mt-8">
-            <a href="/start/" class="btn btn-film">Open your clinic in the web</a>
-            <a href="/find/" class="btn btn-film-quiet">I’m a Patient</a>
+            <a href="/start/" class="btn btn-lg btn-film"><span>Open your clinic in the web</span><Icon name="arrow-right" /></a>
+            <a href="/find/" class="btn btn-lg btn-film-quiet"><Icon name="search" /><span>I’m a Patient</span></a>
           </div>
         </div>
       </div>
-      <p class="meta film-hint" data-film-hint>Scroll to walk in</p>
+      <p class="film-hint hero-hint" data-film-hint><span>Scroll to walk in</span><Icon name="chevron" size={16} /></p>
     </section>
 
-    <!-- 02 — Services -->
-    <section id="services" data-sec="02 / Services" class="page">
+    <!-- Services -->
+    <section id="services" data-sec="Services" class="page" aria-labelledby="services-title">
       <div class="mx-auto max-w-[1480px] px-4 sm:px-8">
         <div class="pane">
-          <div class="flex items-baseline gap-6">
-            <span class="sec-no">02</span>
-            <h2 class="font-display text-[clamp(1.9rem,4vw,3.2rem)] font-semibold">What Flossify does.</h2>
+          <div class="home-head">
+            <span class="home-head-icon" aria-hidden="true"><Icon name="dashboard" size={22} /></span>
+            <h2 id="services-title" class="home-title">What Flossify does.</h2>
           </div>
-          <div class="rule rule-draw mt-8"></div>
+          <div class="rule rule-draw mt-6"></div>
 
-          <div class="mt-10 grid grid-cols-1 gap-12 lg:grid-cols-12 lg:gap-14">
-            <div class="lg:col-span-7">
-              <p class="meta meta-ink">For dental clinics</p>
-              <ul class="mt-5 grid grid-cols-1 sm:grid-cols-2">
+          <div class="mt-8 grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-8">
+            <div class="lg:col-span-8">
+              <h3 class="home-group"><Icon name="clinic" />For dental clinics</h3>
+              <ul class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {forClinics.map((s, i) => (
-                  <li class:list={['reveal', `reveal-d${i % 3}`, 'border-t border-line py-5 sm:pr-8']}>
-                    <h3 class="font-display text-[1.25rem] font-semibold tracking-[-0.02em]">{s.title}</h3>
-                    <p class="mt-2 max-w-[38ch] text-[15px] text-ink-2">{s.body}</p>
+                  <li class:list={['home-feat reveal', `reveal-d${i % 3}`]}>
+                    <span class="home-feat-icon" aria-hidden="true"><Icon name={s.icon} /></span>
+                    <div class="min-w-0">
+                      <h4 class="home-feat-title">{s.title}</h4>
+                      <p class="home-feat-body">{s.body}</p>
+                    </div>
                   </li>
                 ))}
               </ul>
-              <a href="/start/" class="meta meta-accent mt-6 inline-block">Open your clinic in the web &rarr;</a>
+              <a href="/start/" class="home-link mt-3"><span>Open your clinic in the web</span><Icon name="arrow-right" size={16} /></a>
             </div>
 
-            <div class="lg:col-span-5 lg:border-l lg:border-line lg:pl-14">
-              <p class="meta meta-ink">For patients</p>
-              <ul class="mt-5">
+            <div class="lg:col-span-4">
+              <h3 class="home-group"><Icon name="user" />For patients</h3>
+              <ul class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
                 {forPatients.map((s, i) => (
-                  <li class:list={['reveal', `reveal-d${i % 3}`, 'border-t border-line py-5']}>
-                    <h3 class="font-display text-[1.25rem] font-semibold tracking-[-0.02em]">{s.title}</h3>
-                    <p class="mt-2 max-w-[40ch] text-[15px] text-ink-2">{s.body}</p>
+                  <li class:list={['home-feat reveal', `reveal-d${i % 3}`]}>
+                    <span class="home-feat-icon" aria-hidden="true"><Icon name={s.icon} /></span>
+                    <div class="min-w-0">
+                      <h4 class="home-feat-title">{s.title}</h4>
+                      <p class="home-feat-body">{s.body}</p>
+                    </div>
                   </li>
                 ))}
               </ul>
-              <a href="/find/" class="meta meta-accent mt-6 inline-block">Find a clinic &rarr;</a>
+              <a href="/find/" class="home-link mt-3"><span>Find a clinic</span><Icon name="arrow-right" size={16} /></a>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- 03 — The process -->
-    <section id="process" data-sec="03 / How it works" class="page">
+    <!-- How it works -->
+    <section id="process" data-sec="How it works" class="page" aria-labelledby="process-title">
       <div class="mx-auto max-w-[1480px] px-4 sm:px-8">
         <div class="pane">
-          <div class="flex items-baseline gap-6">
-            <span class="sec-no">03</span>
-            <h2 class="font-display text-[clamp(1.9rem,4vw,3.2rem)] font-semibold">How it works.</h2>
+          <div class="home-head">
+            <span class="home-head-icon" aria-hidden="true"><Icon name="clock" size={22} /></span>
+            <h2 id="process-title" class="home-title">How it works.</h2>
           </div>
-          <div class="rule rule-draw mt-8"></div>
+          <div class="rule rule-draw mt-6"></div>
 
-          {[{ who: 'For clinics', steps: clinicSteps, href: '/start/', cta: 'Start now' }, { who: 'For patients', steps: patientSteps, href: '/find/', cta: 'Find a clinic' }].map((track) => (
-            <div class="mt-10">
-              <div class="flex flex-wrap items-baseline justify-between gap-4">
-                <p class="meta meta-ink">{track.who}</p>
-                <a href={track.href} class="meta meta-accent">{track.cta} &rarr;</a>
+          {tracks.map((track) => (
+            <div class="mt-8">
+              <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                <h3 class="home-group"><Icon name={track.icon} />{track.who}</h3>
+                <a href={track.href} class="home-link"><span>{track.cta}</span><Icon name="arrow-right" size={16} /></a>
               </div>
-              <ol class="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+              <ol class="home-steps mt-3">
                 {track.steps.map((s, i) => (
-                  <li class:list={['reveal', `reveal-d${i % 3}`, 'border-t border-line pt-6 pb-4 lg:pr-8', i > 0 && 'lg:border-l lg:pl-8']}>
-                    <p class="font-display text-[clamp(2.4rem,4vw,3.4rem)] font-semibold leading-none tabular-nums" aria-hidden="true">{i + 1}</p>
-                    <h3 class="mt-4 font-display text-[1.2rem] font-semibold tracking-[-0.02em]"><span class="sr-only">Step {i + 1}: </span>{s.title}</h3>
-                    <p class="mt-2 max-w-[30ch] text-[15px] text-ink-2">{s.body}</p>
+                  <li class:list={['home-step reveal', `reveal-d${i % 3}`]}>
+                    <span class="home-step-no" aria-hidden="true">{i + 1}</span>
+                    <h4 class="home-feat-title mt-3"><span class="sr-only">Step {i + 1}: </span>{s.title}</h4>
+                    <p class="home-feat-body">{s.body}</p>
                   </li>
                 ))}
               </ol>
@@ -212,149 +222,148 @@ const no = (n: number) => String(n).padStart(2, '0');
       </div>
     </section>
 
-    <!-- 04 — Pricing -->
-    <section id="pricing" data-sec="04 / Pricing" class="page">
+    <!-- Pricing -->
+    <section id="pricing" data-sec="Pricing" class="page" aria-labelledby="pricing-title">
       <div class="mx-auto max-w-[1480px] px-4 sm:px-8 lg:grid lg:grid-cols-12">
         <div class="pane lg:col-span-10 lg:col-start-2">
-          <div class="flex items-baseline gap-6">
-            <span class="sec-no">04</span>
-            <h2 class="font-display text-[clamp(1.9rem,4vw,3.2rem)] font-semibold">One price. Everything in it.</h2>
+          <div class="home-head">
+            <span class="home-head-icon" aria-hidden="true"><Icon name="money" size={22} /></span>
+            <h2 id="pricing-title" class="home-title">One price. Everything in it.</h2>
           </div>
-          <div class="rule rule-draw mt-8"></div>
+          <div class="rule rule-draw mt-6"></div>
 
-          <div class="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-14">
-            <div class="lg:col-span-5">
-              <p class="font-display font-semibold leading-none tracking-[-0.04em]">
-                <span class="text-[clamp(4.5rem,11vw,8rem)] tabular-nums">{peso(PRICE_PER_BRANCH)}</span>
-              </p>
-              <p class="meta meta-ink mt-4">a month, per clinic</p>
-              <p class="mt-6 max-w-[34ch] text-[16px] text-ink-2">
+          <div class="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-10">
+            <div class="home-price-card lg:col-span-5">
+              <p class="home-price"><span class="home-price-num">{peso(PRICE_PER_BRANCH)}</span><span class="home-price-per">a month, per clinic</span></p>
+              {!BILLING_FINAL && (
+                <p class="home-price-note mt-3"><Icon name="info" size={16} /><span>Prices are not final yet. Nothing is charged until they are, and we tell you first.</span></p>
+              )}
+              <p class="mt-5 max-w-[34ch] text-[16px] leading-relaxed text-ink-2">
                 Every feature, the whole team, text reminders included. Your first 30 days are free, and you need no card to start.
               </p>
-              <div class="mt-8 flex flex-wrap gap-3">
-                <a href="/start/" class="btn btn-primary">Start your 30 free days</a>
-              </div>
-              <p class="mt-6 max-w-[40ch] text-[13.5px] text-muted">A clinic with more than one branch pays {peso(PRICE_PER_BRANCH)} for each branch. Prices in Philippine pesos.</p>
+              <a href="/start/" class="btn btn-primary btn-lg home-price-go mt-7"><span>Start your 30 free days</span><Icon name="arrow-right" /></a>
+              <p class="mt-5 max-w-[40ch] text-[14px] leading-relaxed text-ink-2">A clinic with more than one branch pays {peso(PRICE_PER_BRANCH)} for each branch. Prices in Philippine pesos.</p>
             </div>
 
             <div class="lg:col-span-7">
-              <p class="meta meta-ink">Included</p>
-              <ul class="mt-5 grid grid-cols-1 sm:grid-cols-2">
+              <h3 class="home-group">Included</h3>
+              <ul class="home-checks mt-4">
                 {included.map((s) => (
-                  <li class="flex items-baseline gap-3 border-t border-line py-4 pr-6 text-[15.5px]">
-                    <span class="text-accent" aria-hidden="true">✓</span><span>{s}</span>
-                  </li>
+                  <li><span class="home-check" aria-hidden="true"><Icon name="check" size={14} /></span><span>{s}</span></li>
                 ))}
               </ul>
-              <p class="mt-6 max-w-[56ch] text-[14px] text-ink-2">Want a full clinic website like our sample? <a href="/websites/" class="underline underline-offset-4 hover:text-accent">See clinic websites</a>.</p>
+              <p class="ws-callout home-callout mt-7">
+                <Icon name="clinic" />
+                <span>Want a full clinic website like our sample? <a href="/websites/" class="home-callout-link">See clinic websites</a>.</span>
+              </p>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- 05 — Partners -->
-    <section id="partners" data-sec="05 / Partners" class="page">
+    <!-- Partners -->
+    <section id="partners" data-sec="Partners" class="page" aria-labelledby="partners-title">
       <div class="mx-auto max-w-[1480px] px-4 sm:px-8">
         <div class="pane">
-          <div class="flex items-baseline gap-6">
-            <span class="sec-no">05</span>
-            <h2 class="font-display text-[clamp(1.9rem,4vw,3.2rem)] font-semibold">Our dental clinic partners.</h2>
+          <div class="home-head">
+            <span class="home-head-icon" aria-hidden="true"><Icon name="clinic" size={22} /></span>
+            <h2 id="partners-title" class="home-title">Our dental clinic partners.</h2>
           </div>
-          <div class="rule rule-draw mt-8"></div>
+          <div class="rule rule-draw mt-6"></div>
 
           {partners.length > 0 ? (
             <>
-              <ul class="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              <ul class="home-partners mt-8">
                 {partners.map((l) => (
-                  <li class="border-t border-line py-6 sm:pr-8">
-                    <a href={`/find/${l.slug}/`} class="group block">
-                      <h3 class="font-display text-[1.35rem] font-semibold tracking-[-0.02em] group-hover:text-accent">{l.name}</h3>
-                      <p class="meta mt-2">{l.area}</p>
-                      <p class="mt-3 flex flex-wrap gap-1">
-                        {l.philhealth && <span class="tag tag-accent">PhilHealth</span>}
-                        <span class="tag">{l.workspace ? 'Book online' : 'Request a time'}</span>
-                      </p>
+                  <li>
+                    <a href={`/find/${l.slug}/`} class="home-partner">
+                      <ClinicBadge name={l.name} />
+                      <span class="min-w-0 flex-1">
+                        <span class="home-partner-name">{l.name}</span>
+                        <span class="home-partner-area">{l.area}</span>
+                        <span class="mt-2.5 flex flex-wrap gap-1.5">
+                          {l.philhealth && <span class="ws-pill ws-tint-teal">PhilHealth</span>}
+                          <span class:list={['ws-pill', l.workspace ? 'ws-tint-green' : 'ws-tint-slate']}>{l.workspace ? 'Book online' : 'Request a time'}</span>
+                        </span>
+                      </span>
+                      <Icon name="chevron-right" class="home-partner-go" />
                     </a>
                   </li>
                 ))}
               </ul>
-              <a href="/find/" class="meta meta-accent mt-6 inline-block">See every clinic &rarr;</a>
+              <a href="/find/" class="home-link mt-4"><span>See every clinic</span><Icon name="arrow-right" size={16} /></a>
             </>
           ) : (
-            <div class="mt-8 max-w-[52ch]">
-              <p class="text-[17px] leading-relaxed text-ink-2">
+            <div class="home-empty mt-8">
+              <span class="home-empty-icon" aria-hidden="true"><Icon name="clinic" size={20} /></span>
+              <p class="max-w-[52ch] text-[16px] leading-relaxed text-ink-2">
                 Our first partner clinics are joining in Baguio City. Each one appears here, and on Find a clinic, as it opens.
               </p>
-              <a href="/start/" class="btn btn-primary mt-7">Become a partner clinic</a>
+              <a href="/start/" class="btn btn-primary"><span>Become a partner clinic</span><Icon name="arrow-right" /></a>
             </div>
           )}
         </div>
       </div>
     </section>
 
-    <!-- 06 — How to register, on film -->
-    <section id="register" data-sec="06 / How to register" class="page">
+    <!-- How to register -->
+    <section id="register" data-sec="How to register" class="page" aria-labelledby="register-title">
       <div class="mx-auto max-w-[1480px] px-4 sm:px-8">
         <div class="pane">
-          <div class="flex items-baseline gap-6">
-            <span class="sec-no">06</span>
-            <h2 class="font-display text-[clamp(1.9rem,4vw,3.2rem)] font-semibold">How to register.</h2>
+          <div class="home-head">
+            <span class="home-head-icon" aria-hidden="true"><Icon name="user" size={22} /></span>
+            <h2 id="register-title" class="home-title">How to register.</h2>
           </div>
-          <div class="rule rule-draw mt-8"></div>
+          <div class="rule rule-draw mt-6"></div>
 
-          <div role="tablist" aria-label="Walkthroughs" class="mt-8 flex border-b border-line">
-            {films.map((f, i) => (
-              <button type="button" role="tab" id={`reg-tab-${f.id}`} aria-controls={`reg-panel-${f.id}`} aria-selected={i === 0 ? 'true' : 'false'} tabindex={i === 0 ? 0 : -1} class="reg-tab" data-reg-tab={i}>
-                {f.tab}
-              </button>
+          <!-- Two soft cards side by side (stacked on a phone): the walkthrough, the steps, then the one
+               way to start. The clinic's button is the teal one; the patient's is quiet. -->
+          <div class="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {ways.map((w) => (
+              <div class="home-way reveal">
+                <h3 class="home-group"><Icon name={w.icon} />{w.who}</h3>
+                <figure class="home-way-film mt-4">
+                  <video data-reg-video src={`/video/${w.video}.mp4`} poster={`/video/${w.video}.webp`} width="1280" height="720" muted loop playsinline controls preload="none" aria-label={`Walkthrough: registering ${w.who.toLowerCase()}`}></video>
+                  <figcaption>Recorded on Flossify with a sample {w.id === 'clinic' ? 'clinic' : 'patient'}.</figcaption>
+                </figure>
+                <ol class="home-reg-steps mt-3">
+                  {w.steps.map((s, n) => (
+                    <li><span class="home-step-no" aria-hidden="true">{n + 1}</span><span><span class="sr-only">Step {n + 1}: </span>{s}</span></li>
+                  ))}
+                </ol>
+                <a href={w.href} class:list={['btn', w.main ? 'btn-primary' : 'btn-quiet', 'home-way-go']}><span>{w.cta}</span><Icon name="arrow-right" /></a>
+              </div>
             ))}
           </div>
-
-          {films.map((f, i) => (
-            <div role="tabpanel" id={`reg-panel-${f.id}`} aria-labelledby={`reg-tab-${f.id}`} hidden={i !== 0} class="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-12" data-reg-panel={i}>
-              <div class="lg:col-span-8">
-                <div class="frame">
-                  <div class="frame-bar"><span>flossify.ph &middot; {f.tab.toLowerCase()}</span></div>
-                  <video class="block aspect-video w-full bg-ink" data-reg-video src={f.src} poster={f.poster} muted loop playsinline controls preload="none" aria-label={`Walkthrough: registering ${f.tab.toLowerCase()}`}></video>
-                </div>
-                <p class="mt-3 text-[13px] text-muted">Recorded on Flossify with a sample clinic and patient.</p>
-              </div>
-              <ol class="lg:col-span-4">
-                {f.steps.map((s, n) => (
-                  <li class="flex items-baseline gap-4 border-t border-line py-4">
-                    <span class="sec-no">{no(n + 1)}</span><span class="text-[16px]">{s}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          ))}
-          {pages === 6 && <p class="meta mt-14">&copy; 2026 Flossify &middot; Baguio City, Philippines</p>}
+          {!lastIsTeam && <p class="meta mt-12 text-ink-2">&copy; 2026 Flossify &middot; Baguio City, Philippines</p>}
         </div>
       </div>
     </section>
 
-    {/* 07 — Know the team, once src/data/team.ts names real people */}
+    {/* Know the team, once src/data/team.ts names real people (never a placeholder person) */}
     {TEAM.length > 0 && (
-      <section id="team" data-sec="07 / The team" class="page">
+      <section id="team" data-sec="The team" class="page" aria-labelledby="team-title">
         <div class="mx-auto max-w-[1480px] px-4 sm:px-8">
           <div class="pane">
-            <div class="flex items-baseline gap-6">
-              <span class="sec-no">07</span>
-              <h2 class="font-display text-[clamp(1.9rem,4vw,3.2rem)] font-semibold">Know the team.</h2>
+            <div class="home-head">
+              <span class="home-head-icon" aria-hidden="true"><Icon name="patients" size={22} /></span>
+              <h2 id="team-title" class="home-title">Know the team.</h2>
             </div>
-            <div class="rule rule-draw mt-8"></div>
-            <ul class="mt-8 grid grid-cols-1 gap-x-10 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="rule rule-draw mt-6"></div>
+            <ul class="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {TEAM.map((m) => (
-                <li class="border-t border-line py-6">
-                  {m.photo && <img src={m.photo} alt={m.name} width="320" height="320" loading="lazy" class="aspect-square w-full object-cover" />}
-                  <h3 class="mt-4 font-display text-[1.3rem] font-semibold tracking-[-0.02em]">{m.name}</h3>
-                  <p class="meta mt-1">{m.role}</p>
-                  {m.about && <p class="mt-3 max-w-[34ch] text-[15px] text-ink-2">{m.about}</p>}
+                <li class="home-member">
+                  {m.photo
+                    ? <img src={m.photo} alt={m.name} width="320" height="320" loading="lazy" class="aspect-square w-full rounded-card object-cover" />
+                    : <Avatar name={m.name} size="lg" />}
+                  <h3 class="home-feat-title mt-4">{m.name}</h3>
+                  <p class="mt-1 text-[14px] text-ink-2">{m.role}</p>
+                  {m.about && <p class="home-feat-body mt-2">{m.about}</p>}
                 </li>
               ))}
             </ul>
-            <p class="meta mt-14">&copy; 2026 Flossify &middot; Baguio City, Philippines</p>
+            <p class="meta mt-12 text-ink-2">&copy; 2026 Flossify &middot; Baguio City, Philippines</p>
           </div>
         </div>
       </section>
@@ -367,28 +376,170 @@ const no = (n: number) => String(n).padStart(2, '0');
   </ol>
 
   <style>
-    .reg-tab {
-      min-height: 3rem; padding: 0 1.25rem; margin-bottom: -1px;
-      font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; letter-spacing: -0.01em;
-      color: var(--c-ink-2); border-bottom: 2px solid transparent;
-      transition: color 160ms ease, border-color 160ms ease;
+    /* The home page's own pieces, in the soft template (docs/workspace-redesign.md, "The whole site,
+       soft"): the workspace's tokens, radii and tints, drawn on the site's white cards on the film.
+       Unlayered (scoped): nothing here shares a property with a utility on the same element. */
+
+    /* --- where you are (the bar's aside) and how far along (its foot) -------------------------- */
+    .home-where {
+      display: inline-flex; align-items: center; gap: 0.5rem; min-height: 32px; padding: 0.25rem 0.75rem;
+      border: 1px solid var(--ws-hair); border-radius: var(--ws-r-pill); background: var(--ws-subtle);
+      font-size: 13px; font-weight: 500; line-height: 1.2; white-space: nowrap; color: var(--c-ink-2);
     }
-    .reg-tab:hover { color: var(--c-ink); }
-    .reg-tab[aria-selected='true'] { color: var(--c-ink); border-bottom-color: var(--c-accent); }
-    .reg-tab:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+    .home-where-room { color: var(--ws-teal-ink); }
+    .home-where-dot, .hero-dot { position: relative; width: 8px; height: 8px; flex: none; border-radius: var(--ws-r-pill); background: var(--ws-teal); }
+    .home-where-dot::after, .hero-dot::after {
+      content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit;
+      animation: home-ping 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+    }
+    @keyframes home-ping { 0% { transform: scale(1); opacity: 0.55; } 80%, 100% { transform: scale(2.6); opacity: 0; } }
+    .home-progress { position: absolute; inset: auto 0 0 0; height: 2px; pointer-events: none; }
+    .home-progress-bar { width: 0; height: 2px; border-radius: 0 var(--ws-r-pill) var(--ws-r-pill) 0; background: var(--ws-teal); }
+
+    /* --- the opening, on the film ----------------------------------------------------------- */
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 0.625rem; min-height: 32px; padding: 0.25rem 0.875rem 0.25rem 0.75rem;
+      border: 1px solid rgb(255 255 255 / 0.22); border-radius: var(--ws-r-pill); background: rgb(255 255 255 / 0.1);
+      -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+      font-size: 13.5px; font-weight: 500; line-height: 1.3; color: rgb(255 255 255 / 0.92);
+    }
+    .hero-dot { background: #5fd4c9; }
+    .hero-title { font-size: clamp(2.6rem, 6.2vw, 5.25rem); line-height: 1.05; letter-spacing: -0.035em; color: #fff; }
+    .hero-lede { max-width: 30ch; font-size: clamp(1.15rem, 1.8vw, 1.45rem); line-height: 1.35; color: rgb(255 255 255 / 0.9); }
+    .hero-hint {
+      display: inline-flex; align-items: center; gap: 0.375rem; min-height: 32px; padding: 0.25rem 0.75rem 0.25rem 0.875rem;
+      border: 1px solid rgb(255 255 255 / 0.18); border-radius: var(--ws-r-pill); background: rgb(7 16 15 / 0.5);
+      -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+      font-size: 13px; font-weight: 500; line-height: 1.2; color: rgb(255 255 255 / 0.92);
+    }
+    .hero-hint :global(.ws-icon) { animation: home-bob 1.6s ease-in-out infinite; }
+    @keyframes home-bob { 0%, 100% { transform: translateY(-1px); } 50% { transform: translateY(2px); } }
+
+    /* --- a card's head: a line icon in a pale teal square, and the title ---------------------- */
+    .home-head { display: flex; align-items: center; gap: 1rem; }
+    .home-head-icon {
+      display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; flex: none;
+      border-radius: var(--ws-r); background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+    }
+    .home-title { font-size: clamp(1.625rem, 1.1rem + 1.6vw, 2.375rem); line-height: 1.15; letter-spacing: -0.025em; color: var(--c-ink); }
+    /* A group inside a card ("For dental clinics"): 17px semibold, its icon in teal. */
+    .home-group { display: flex; align-items: center; gap: 0.5rem; font-size: 17px; line-height: 1.3; letter-spacing: -0.01em; color: var(--c-ink); }
+    .home-group :global(.ws-icon) { flex: none; color: var(--ws-teal-ink); }
+
+    /* --- services: each one a soft inset card with its icon -------------------------------------- */
+    .home-feat {
+      display: flex; align-items: flex-start; gap: 0.875rem; height: 100%; padding: 1rem 1.125rem 1.125rem;
+      border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle);
+    }
+    .home-feat-icon {
+      display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex: none;
+      border-radius: var(--ws-r-ctl); background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+    }
+    .home-feat-title { font-size: 16px; font-weight: 600; line-height: 1.35; letter-spacing: -0.005em; color: var(--c-ink); }
+    .home-feat-body { margin-top: 0.25rem; font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
+
+    /* A teal link with an arrow that steps forward on hover (44px tall). */
+    .home-link {
+      display: inline-flex; align-items: center; gap: 0.375rem; min-height: 44px; border-radius: var(--ws-r-ctl);
+      font-size: 15px; font-weight: 600; color: var(--ws-teal-ink);
+      text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px;
+      transition: text-decoration-color 160ms ease;
+    }
+    .home-link:hover { text-decoration-color: currentColor; }
+    .home-link :global(.ws-icon) { flex: none; transition: transform 180ms ease; }
+    .home-link:hover :global(.ws-icon) { transform: translateX(3px); }
+
+    /* --- how it works: numbered soft cards ------------------------------------------------------ */
+    .home-steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
+    @media (min-width: 640px) { .home-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (min-width: 1024px) { .home-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    .home-step { padding: 1.125rem 1.25rem 1.25rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
+    .home-step-no {
+      display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex: none;
+      border-radius: var(--ws-r-pill); background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+      font-size: 14px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums;
+    }
+
+    /* --- pricing: the price on a soft inset, teal checks beside it ------------------------------- */
+    .home-price-card { padding: clamp(1.25rem, 2.5vw, 2rem); border: 1px solid var(--ws-hair); border-radius: var(--ws-r-lg); background: var(--ws-subtle); }
+    .home-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; }
+    .home-price-num { font-size: clamp(3.5rem, 2.4rem + 4vw, 5.5rem); font-weight: 600; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; color: var(--c-ink); }
+    .home-price-per { font-size: 16px; font-weight: 500; color: var(--c-ink-2); }
+    /* While BILLING_FINAL is false: one quiet line under the price (ink-2, 7:1 on the subtle grey). */
+    .home-price-note { display: flex; align-items: flex-start; gap: 0.5rem; max-width: 40ch; font-size: 14px; line-height: 1.5; color: var(--c-ink-2); }
+    .home-price-note :global(.ws-icon) { flex: none; margin-top: 0.1875rem; color: var(--ws-blue-ink); }
+    @media (max-width: 639px) { .home-price-go { width: 100%; } }
+    .home-checks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.25rem 1.5rem; }
+    @media (min-width: 640px) { .home-checks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .home-checks li { display: flex; align-items: flex-start; gap: 0.75rem; padding-block: 0.5rem; font-size: 15.5px; line-height: 1.45; color: var(--c-ink); }
+    .home-check {
+      display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: none; margin-top: -1px;
+      border-radius: var(--ws-r-pill); background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+    }
+    .home-callout-link {
+      color: var(--ws-blue-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px;
+      /* A 44px target on a one-line link. */
+      display: inline-block; padding-block: 0.75rem; margin-block: -0.75rem;
+    }
+
+    /* --- partners: soft cards with the clinic's initials -------------------------------------- */
+    .home-partners { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
+    @media (min-width: 640px) { .home-partners { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (min-width: 1024px) { .home-partners { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    .home-partner {
+      display: flex; align-items: flex-start; gap: 0.875rem; height: 100%; padding: 1.125rem 1rem 1.125rem 1.125rem;
+      border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); color: var(--c-ink);
+      transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+    .home-partner:hover { background: var(--c-surface); border-color: var(--ws-field-line-hover); box-shadow: var(--ws-shadow-pop); }
+    .home-partner-name { display: block; font-size: 17px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; transition: color 160ms ease; }
+    .home-partner:hover .home-partner-name { color: var(--ws-teal-ink); }
+    /* The clinic's badge, as on Find a clinic and in the workspace's sidebar (first two words, a
+       rounded square), a little bigger on these cards. */
+    .home-partner :global(.ws-branch-badge) { width: 48px; height: 48px; border-radius: var(--ws-r); font-size: 16px; }
+    .home-partner-area { display: block; margin-top: 0.125rem; font-size: 14px; line-height: 1.4; color: var(--c-ink-2); }
+    .home-partner :global(.home-partner-go) { flex: none; align-self: center; color: var(--c-ink-2); transition: transform 180ms ease, color 180ms ease; }
+    .home-partner:hover :global(.home-partner-go) { transform: translateX(3px); color: var(--ws-teal-ink); }
+    .home-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.25rem; }
+    .home-empty-icon {
+      display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex: none;
+      border-radius: var(--ws-r-pill); background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+    }
+
+    /* --- how to register: two soft cards, the steps and the one way to start ---------------------- */
+    .home-way {
+      display: flex; flex-direction: column; height: 100%; padding: 1.25rem 1.25rem 1.375rem;
+      border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle);
+    }
+    @media (min-width: 640px) { .home-way { padding: 1.5rem 1.625rem 1.625rem; } }
+    .home-way-go { align-self: flex-start; margin-top: auto; }
+    .home-way-film video {
+      display: block; width: 100%; height: auto; aspect-ratio: 16 / 9;
+      border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: #fff; box-shadow: var(--ws-shadow);
+    }
+    .home-way-film figcaption { margin-top: 0.5rem; font-size: 13px; line-height: 1.4; color: var(--c-ink-2); }
+    .home-reg-steps { margin-bottom: 1.25rem; }
+    @media (max-width: 639px) { .home-way-go { align-self: stretch; } }
+    .home-reg-steps li {
+      display: flex; align-items: center; gap: 0.875rem; min-height: 56px; padding-block: 0.625rem;
+      border-top: 1px solid var(--ws-hair); font-size: 16px; line-height: 1.4; color: var(--c-ink);
+    }
+    .home-reg-steps li:first-child { border-top: 0; }
+
+    /* --- the team -------------------------------------------------------------------------------- */
+    .home-member { padding: 1.25rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
   </style>
 
   <script>
     /* Every motion on this page runs for everyone: the walk answers the wheel,
-       the rises and rules play on entry, the walkthroughs play when they come
-       into view. Nothing here reads prefers-reduced-motion, by the owner's
-       decision. */
+       the rises and rules play on entry. Nothing here reads
+       prefers-reduced-motion, by the owner's decision. */
 
     /* --- the walk ----------------------------------------------------------
        Scroll position over the whole document maps to the film's currentTime.
        The page scrolls normally throughout — the film just reads how far down
-       we are, which is why this never fights the wheel. The masthead hairline
-       reads the same number. */
+       we are, which is why this never fights the wheel. The progress line
+       along the bar's foot reads the same number. */
     const bar = document.querySelector<HTMLElement>('[data-progress]');
     const vid = document.querySelector<HTMLVideoElement>('[data-film-video]');
     const poster = document.querySelector<HTMLElement>('.film-poster');
@@ -464,7 +615,20 @@ const no = (n: number) => String(n).padStart(2, '0');
     }, { rootMargin: '0px 0px -12% 0px', threshold: 0.15 });
     targets.forEach((el) => io.observe(el));
 
-    /* --- masthead section readout ----------------------------------------- */
+    /* --- the walkthroughs: each plays, muted, while its card is on screen ---
+       preload="none" in the markup, so nothing downloads until a card is
+       reached; the controls stay for pausing or scrubbing. */
+    const films = document.querySelectorAll<HTMLVideoElement>('[data-reg-video]');
+    const onScreen = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const v = e.target as HTMLVideoElement;
+        if (e.isIntersecting) { v.preload = 'auto'; v.play().catch(() => { /* the poster stays; controls still work */ }); }
+        else v.pause();
+      }
+    }, { threshold: 0.4 });
+    films.forEach((v) => onScreen.observe(v));
+
+    /* --- where you are: the page in the bar's readout ------------------------ */
     const readout = document.querySelector<HTMLElement>('[data-readout]');
     const marked = document.querySelectorAll<HTMLElement>('[data-sec]');
     if (readout && marked.length) {
@@ -474,42 +638,6 @@ const no = (n: number) => String(n).padStart(2, '0');
         }
       }, { rootMargin: '-15% 0px -70% 0px' });
       marked.forEach((el) => seen.observe(el));
-    }
-
-    /* --- the walkthroughs ---------------------------------------------------
-       Two tabs, roving tabindex (arrows move between them). The shown video
-       plays, muted, whenever it is on screen and pauses when it leaves; its
-       controls are there for anyone who wants to scrub or pause. */
-    const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-reg-tab]'));
-    const regPanels = Array.from(document.querySelectorAll<HTMLElement>('[data-reg-panel]'));
-    const regVideos = regPanels.map((p) => p.querySelector<HTMLVideoElement>('[data-reg-video]'));
-    let current = 0, inView = false;
-    const play = () => {
-      regVideos.forEach((v, n) => {
-        if (!v) return;
-        if (n === current && inView) { v.preload = 'auto'; v.play().catch(() => { /* the poster stays; controls still work */ }); }
-        else v.pause();
-      });
-    };
-    const choose = (i: number, focus = false) => {
-      current = i;
-      tabs.forEach((t, n) => { t.setAttribute('aria-selected', n === i ? 'true' : 'false'); t.tabIndex = n === i ? 0 : -1; });
-      regPanels.forEach((p, n) => { p.hidden = n !== i; });
-      if (focus) tabs[i].focus();
-      play();
-    };
-    tabs.forEach((t, i) => {
-      t.addEventListener('click', () => choose(i));
-      t.addEventListener('keydown', (e) => {
-        const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-        if (!step) return;
-        e.preventDefault();
-        choose((i + step + tabs.length) % tabs.length, true);
-      });
-    });
-    const regSection = document.getElementById('register');
-    if (regSection) {
-      new IntersectionObserver(([e]) => { inView = e.isIntersecting; play(); }, { threshold: 0.35 }).observe(regSection);
     }
   </script>
 </Base>

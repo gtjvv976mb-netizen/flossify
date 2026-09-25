@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import PatientHeader from '../components/PatientHeader.astro';
+import Icon from '../components/ws/Icon.astro';
 
 // The privacy notice, in plain English, for the person who is about to tick
 // the box on a booking form. Static: the words are the record. The version id
@@ -8,6 +9,12 @@ import PatientHeader from '../components/PatientHeader.astro';
 // to these words is a new version there and a new id here, never an edit.
 // Bracketed lines are placeholders the owner fills in before this goes live,
 // and they are marked on the page so nobody ships them by accident.
+//
+// Drawn in the soft template (presentation only; every word below is the
+// version's): a readable article of white cards, one per section with its
+// number as a small teal pill, and an "On this page" card beside it that stays
+// in view from 1024px (a row of pills above it on a phone). The placeholders
+// are amber pills.
 const VERSION = 'privacy-2026-09';
 const EFFECTIVE = '23 September 2026';
 
@@ -19,105 +26,131 @@ const sections = [
   { no: '05', id: 'rights', title: 'Your rights' },
   { no: '06', id: 'versions', title: 'When this notice changes' },
 ];
-const h2 = 'font-display text-[24px] font-semibold tracking-tight';
-const body = 'mt-4 text-[15.5px] leading-relaxed text-ink-2';
-const list = 'mt-4 grid gap-2 text-[15.5px] leading-relaxed text-ink-2';
-const fill = 'bg-crown/15 px-1 text-ink';
+const h2 = 'text-[21px] sm:text-[23px]';
+const body = 'mt-4 max-w-[68ch] text-[16px] leading-relaxed text-ink-2';
+const list = 'pv-list mt-5 grid max-w-[68ch] gap-2.5 text-[16px] leading-relaxed text-ink-2';
+const fill = 'rounded-md bg-amber-tint px-1.5 py-0.5 font-medium text-amber-ink [box-decoration-break:clone]';
+const card = 'card scroll-mt-24 p-6 sm:p-8';
+const head = 'flex items-center gap-3 border-b border-hair pb-4';
 ---
 
 <Base title="Privacy notice — Flossify" description="What Flossify and your clinic keep about you when you book, why, for how long, who sees it, and your rights under the Data Privacy Act of 2012.">
   <PatientHeader />
 
-  <main id="main" class="mx-auto max-w-[760px] px-5 py-12 sm:px-8">
-    <p class="meta">Patients &middot; Privacy</p>
-    <h1 class="mt-5 font-display text-[clamp(2rem,5vw,3.2rem)] leading-[1.05] font-semibold tracking-[-0.025em]">Privacy notice</h1>
-    <p class="meta mt-4">Version {VERSION} &middot; in force from {EFFECTIVE}</p>
-    <p class="mt-5 max-w-[62ch] text-[17px] leading-relaxed text-ink-2">
-      When you book a dental visit through Flossify, a clinic and Flossify keep a few things about you. This page says what they are, why, for how long, who can see them, and what you can ask for. It is written to be read, not filed.
-    </p>
-
-    <nav class="mt-8 flex flex-wrap gap-x-5 gap-y-2" aria-label="On this page">
-      {sections.map((s) => <a href={`#${s.id}`} class="meta hover:text-ink">{s.no} {s.title}</a>)}
-    </nav>
-
-    <section id="keep" class="mt-14 scroll-mt-24" aria-labelledby="keep-title">
-      <div class="flex items-baseline gap-6"><span class="sec-no">01</span><h2 id="keep-title" class={h2}>What we keep</h2></div>
-      <div class="rule mt-5"></div>
-      <ul class={list}>
-        <li><strong class="font-semibold text-ink">Your name and mobile number</strong>, as you typed them on the booking form.</li>
-        <li><strong class="font-semibold text-ink">The visit</strong>: which clinic, which dentist, what for, when, and the texts sent about it.</li>
-        <li><strong class="font-semibold text-ink">What the clinic records about your teeth.</strong> This is the clinic’s record, held by the clinic; ask the clinic or its Data Protection Officer for a copy.</li>
-      </ul>
-    </section>
-
-    <section id="why" class="mt-14 scroll-mt-24" aria-labelledby="why-title">
-      <div class="flex items-baseline gap-6"><span class="sec-no">02</span><h2 id="why-title" class={h2}>Why we keep it</h2></div>
-      <div class="rule mt-5"></div>
-      <ul class={list}>
-        <li>To run the visit: hold the chair, know who is coming, and have the record ready.</li>
-        <li>To remind you the day before, and to let you confirm or cancel by text.</li>
-        <li>To bill you and, where you have one, to file with your HMO or PhilHealth.</li>
-        <li>To meet the clinic’s legal duties: dental records, receipts and the audit of who looked at what.</li>
-      </ul>
-      <p class={body}>Nothing else. No marketing, and no use for a new purpose without asking you first.</p>
-    </section>
-
-    <section id="who" class="mt-14 scroll-mt-24" aria-labelledby="who-title">
-      <div class="flex items-baseline gap-6"><span class="sec-no">03</span><h2 id="who-title" class={h2}>Who sees it</h2></div>
-      <div class="rule mt-5"></div>
-      <ul class={list}>
-        <li><strong class="font-semibold text-ink">Your clinic’s staff</strong>, at the branch you booked with. Each time someone opens your record, that is written down.</li>
-        <li><strong class="font-semibold text-ink">Flossify’s operations people</strong>, only to keep the service running, and never to read records for their own sake.</li>
-        <li><strong class="font-semibold text-ink">The text provider</strong> sees the number and the message it is asked to send, nothing more.</li>
-      </ul>
-      <p class={body}>Nobody else. Your details are never sold and never handed to advertisers.</p>
-    </section>
-
-    <section id="long" class="mt-14 scroll-mt-24" aria-labelledby="long-title">
-      <div class="flex items-baseline gap-6"><span class="sec-no">04</span><h2 id="long-title" class={h2}>How long we keep it</h2></div>
-      <div class="rule mt-5"></div>
-      <ul class={list}>
-        <li><strong class="font-semibold text-ink">Clinical records</strong> stay as long as the law requires the clinic to keep them.</li>
-        <li><strong class="font-semibold text-ink">Text logs</strong> are deleted two years after they were sent. The visit itself stays in the clinic’s record.</li>
-        <li>You may ask for the rest to be deleted at any time, and it will be, unless a law says the clinic must keep it.</li>
-      </ul>
-    </section>
-
-    <section id="rights" class="mt-14 scroll-mt-24" aria-labelledby="rights-title">
-      <div class="flex items-baseline gap-6"><span class="sec-no">05</span><h2 id="rights-title" class={h2}>Your rights</h2></div>
-      <div class="rule mt-5"></div>
-      <p class={body}>The Data Privacy Act of 2012 (Republic Act 10173) gives you the right:</p>
-      <ul class={list}>
-        <li>to be told what is kept about you and why;</li>
-        <li>to see it;</li>
-        <li>to have it corrected;</li>
-        <li>to object to a use you did not agree to;</li>
-        <li>to have it erased or blocked;</li>
-        <li>to be paid for harm caused by its misuse;</li>
-        <li>to take a copy with you, in a form you can use;</li>
-        <li>to complain to the National Privacy Commission.</li>
-      </ul>
-      <h3 class="meta meta-ink mt-8">How to ask</h3>
-      <p class={body}>
-        Write to your clinic’s Data Protection Officer, who is named on the clinic’s public page, or to Flossify’s: <span class={fill}>[YOUR DPO NAME]</span>, <span class={fill}>[YOUR DPO EMAIL]</span>. Say which of the rights above you are using; you do not need a reason. You will hear back within fifteen working days.
+  <main id="main" class="mx-auto max-w-[1120px] px-5 pt-8 pb-16 sm:px-8 sm:pt-12">
+    <header class="max-w-[760px]">
+      <p class="meta">Patients &middot; Privacy</p>
+      <h1 class="mt-1.5 text-[clamp(2rem,4.5vw,2.75rem)]">Privacy notice</h1>
+      <p class="mt-4"><span class="ws-pill ws-tint-teal min-h-7 px-3 py-1 text-[13px] whitespace-normal"><Icon name="file" size={14} class="flex-none" />Version {VERSION} &middot; in force from {EFFECTIVE}</span></p>
+      <p class="mt-5 max-w-[62ch] text-[17px] leading-relaxed text-ink-2">
+        When you book a dental visit through Flossify, a clinic and Flossify keep a few things about you. This page says what they are, why, for how long, who can see them, and what you can ask for. It is written to be read, not filed.
       </p>
-      <p class={body}>
-        If something ever went wrong with your data, you and the National Privacy Commission would hear from us within 72 hours.
-      </p>
-      <dl class="mt-6 grid gap-1 border border-line bg-bg-soft p-4 text-[14.5px] sm:grid-cols-[11rem_1fr]">
-        <dt class="meta">NPC registration</dt>
-        <dd class="text-ink-2"><span class={fill}>[YOUR NPC REGISTRATION NUMBER — do not claim registration before it is true]</span></dd>
-      </dl>
-      <p class="mt-3 text-[13.5px] text-muted">The bracketed lines are placeholders. They are filled in before this page goes live, and marked until then.</p>
-    </section>
+    </header>
 
-    <section id="versions" class="mt-14 scroll-mt-24" aria-labelledby="versions-title">
-      <div class="flex items-baseline gap-6"><span class="sec-no">06</span><h2 id="versions-title" class={h2}>When this notice changes</h2></div>
-      <div class="rule mt-5"></div>
-      <p class={body}>
-        When this notice changes, the version number changes, and you will be asked again before we rely on the new one. The version you agreed to is kept with your record, so the words you said yes to are always the words we can show you.
-      </p>
-      <p class="meta mt-6">{VERSION} &middot; {EFFECTIVE}</p>
-    </section>
+    <div class="mt-8 grid items-start gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-6">
+      <nav class="card p-3 lg:sticky lg:top-[5.5rem]" aria-label="On this page">
+        <p class="meta px-2 pt-1 pb-2 lg:px-3">On this page</p>
+        <ul class="flex flex-wrap gap-1.5 lg:grid lg:gap-0.5" role="list">
+          {sections.map((s) => <li><a href={`#${s.id}`} class="pv-toc"><span class="sec-no">{s.no}</span><span>{s.title}</span></a></li>)}
+        </ul>
+      </nav>
+
+      <article class="grid min-w-0 gap-5">
+        <section id="keep" class={card} aria-labelledby="keep-title">
+          <div class={head}><span class="sec-no">01</span><h2 id="keep-title" class={h2}>What we keep</h2></div>
+          <ul class={list}>
+            <li><strong class="font-semibold text-ink">Your name and mobile number</strong>, as you typed them on the booking form.</li>
+            <li><strong class="font-semibold text-ink">The visit</strong>: which clinic, which dentist, what for, when, and the texts sent about it.</li>
+            <li><strong class="font-semibold text-ink">What the clinic records about your teeth.</strong> This is the clinic’s record, held by the clinic; ask the clinic or its Data Protection Officer for a copy.</li>
+          </ul>
+        </section>
+
+        <section id="why" class={card} aria-labelledby="why-title">
+          <div class={head}><span class="sec-no">02</span><h2 id="why-title" class={h2}>Why we keep it</h2></div>
+          <ul class={list}>
+            <li>To run the visit: hold the chair, know who is coming, and have the record ready.</li>
+            <li>To remind you the day before, and to let you confirm or cancel by text.</li>
+            <li>To bill you and, where you have one, to file with your HMO or PhilHealth.</li>
+            <li>To meet the clinic’s legal duties: dental records, receipts and the audit of who looked at what.</li>
+          </ul>
+          <p class={body}>Nothing else. No marketing, and no use for a new purpose without asking you first.</p>
+        </section>
+
+        <section id="who" class={card} aria-labelledby="who-title">
+          <div class={head}><span class="sec-no">03</span><h2 id="who-title" class={h2}>Who sees it</h2></div>
+          <ul class={list}>
+            <li><strong class="font-semibold text-ink">Your clinic’s staff</strong>, at the branch you booked with. Each time someone opens your record, that is written down.</li>
+            <li><strong class="font-semibold text-ink">Flossify’s operations people</strong>, only to keep the service running, and never to read records for their own sake.</li>
+            <li><strong class="font-semibold text-ink">The text provider</strong> sees the number and the message it is asked to send, nothing more.</li>
+          </ul>
+          <p class={body}>Nobody else. Your details are never sold and never handed to advertisers.</p>
+        </section>
+
+        <section id="long" class={card} aria-labelledby="long-title">
+          <div class={head}><span class="sec-no">04</span><h2 id="long-title" class={h2}>How long we keep it</h2></div>
+          <ul class={list}>
+            <li><strong class="font-semibold text-ink">Clinical records</strong> stay as long as the law requires the clinic to keep them.</li>
+            <li><strong class="font-semibold text-ink">Text logs</strong> are deleted two years after they were sent. The visit itself stays in the clinic’s record.</li>
+            <li>You may ask for the rest to be deleted at any time, and it will be, unless a law says the clinic must keep it.</li>
+          </ul>
+        </section>
+
+        <section id="rights" class={card} aria-labelledby="rights-title">
+          <div class={head}><span class="sec-no">05</span><h2 id="rights-title" class={h2}>Your rights</h2></div>
+          <p class={body}>The Data Privacy Act of 2012 (Republic Act 10173) gives you the right:</p>
+          <ul class={list}>
+            <li>to be told what is kept about you and why;</li>
+            <li>to see it;</li>
+            <li>to have it corrected;</li>
+            <li>to object to a use you did not agree to;</li>
+            <li>to have it erased or blocked;</li>
+            <li>to be paid for harm caused by its misuse;</li>
+            <li>to take a copy with you, in a form you can use;</li>
+            <li>to complain to the National Privacy Commission.</li>
+          </ul>
+          <h3 class="mt-8 text-[17px] text-ink">How to ask</h3>
+          <p class={body}>
+            Write to your clinic’s Data Protection Officer, who is named on the clinic’s public page, or to Flossify’s: <span class={fill}>[YOUR DPO NAME]</span>, <span class={fill}>[YOUR DPO EMAIL]</span>. Say which of the rights above you are using; you do not need a reason. You will hear back within fifteen working days.
+          </p>
+          <p class={body}>
+            If something ever went wrong with your data, you and the National Privacy Commission would hear from us within 72 hours.
+          </p>
+          <dl class="mt-6 grid max-w-[68ch] gap-1 rounded-card border border-hair bg-subtle p-4 text-[14.5px] sm:grid-cols-[11rem_1fr]">
+            <dt class="text-[13.5px] font-medium text-ink-2">NPC registration</dt>
+            <dd class="text-ink-2"><span class={fill}>[YOUR NPC REGISTRATION NUMBER — do not claim registration before it is true]</span></dd>
+          </dl>
+          <p class="mt-3 flex items-start gap-2 text-[13.5px] leading-relaxed text-ink-2"><Icon name="info" size={16} class="mt-0.5 flex-none text-amber-ink" />The bracketed lines are placeholders. They are filled in before this page goes live, and marked until then.</p>
+        </section>
+
+        <section id="versions" class={card} aria-labelledby="versions-title">
+          <div class={head}><span class="sec-no">06</span><h2 id="versions-title" class={h2}>When this notice changes</h2></div>
+          <p class={body}>
+            When this notice changes, the version number changes, and you will be asked again before we rely on the new one. The version you agreed to is kept with your record, so the words you said yes to are always the words we can show you.
+          </p>
+          <p class="meta mt-6">{VERSION} &middot; {EFFECTIVE}</p>
+        </section>
+      </article>
+    </div>
   </main>
 </Base>
+
+<style>
+  @layer components {
+    /* The section list: soft pills on a phone (they wrap), rows beside the article from 1024px. */
+    .pv-toc {
+      display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 0.875rem 0 0.375rem;
+      border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-pill); background: var(--c-surface);
+      font-size: 14.5px; font-weight: 500; line-height: 1.25; color: var(--c-ink-2);
+      transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+    }
+    .pv-toc:hover { background: var(--ws-hover); border-color: var(--ws-field-line-hover); color: var(--c-ink); }
+    .pv-toc .sec-no { align-self: center; }
+    @media (min-width: 1024px) {
+      .pv-toc { display: flex; border-color: transparent; background: none; padding-inline: 0.375rem 0.75rem; }
+      .pv-toc:hover { border-color: transparent; }
+    }
+    /* Each point of a list after a small teal dot. */
+    .pv-list > li { position: relative; padding-left: 1.25rem; }
+    .pv-list > li::before { content: ""; position: absolute; left: 0.125rem; top: 0.66em; width: 6px; height: 6px; border-radius: 999px; background: var(--ws-teal); }
+  }
+</style>

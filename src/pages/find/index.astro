@@ -8,6 +8,11 @@ export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
 import PatientHeader from '../../components/PatientHeader.astro';
+import Pane from '../../components/ws/Pane.astro';
+import Icon from '../../components/ws/Icon.astro';
+import Empty from '../../components/ws/Empty.astro';
+import ClinicBadge from './_ui/ClinicBadge.astro';
+import './_ui/patient.css';
 import { services, symptoms, hmos, hmoById, priceText, CATEGORY_LABEL } from '../../data/directory';
 import { loadDirectory, openSlots, slotIso } from '../../lib/directory-db';
 
@@ -30,79 +35,86 @@ const cards = await Promise.all(listings.map(async (l) => ({
 >
   <PatientHeader current="find" />
 
-  <main id="main" class="mx-auto max-w-[1280px] px-5 py-12 sm:px-8">
+  <main id="main" class="pt-main mx-auto max-w-[1280px] px-5 pt-8 pb-16 sm:px-8 sm:pt-10">
     <p class="meta">Patients &middot; Baguio &middot; La Trinidad</p>
-    <h1 class="mt-5 max-w-[760px] font-display text-[clamp(2rem,5vw,3.2rem)] leading-[1.05] font-semibold tracking-[-0.025em]">
-      Find a dentist who can see you.
-    </h1>
-    <p class="mt-4 max-w-[600px] text-[17px] leading-relaxed text-ink-2">
-      Real open slots, the price before you book, and which cards the clinic takes. No account.
-    </p>
+    <h1 class="pt-title mt-2 max-w-[760px]">Find a dentist who can see you.</h1>
+    <p class="pt-lede">Real open slots, the price before you book, and which cards the clinic takes. No account.</p>
 
-    <!-- What's wrong -->
-    <section class="mt-10" aria-labelledby="sym-title">
-      <h2 id="sym-title" class="meta meta-ink">What’s wrong?</h2>
-      <div class="mt-3 flex flex-wrap gap-2" role="group" aria-label="Symptom" data-symptoms>
+    <!-- What's wrong, and the filters: one card, the way the workspace's Patients tab puts its search and pills on one. -->
+    <Pane class="pt-card mt-6" id="sym" icon="search" title="What’s wrong?">
+      <!-- On a phone the pills run as one row that scrolls sideways (patient.css, .pt-sym-row), so the first clinic is on the first screen;
+           this line says so there (sighted people only: a screen reader reads every pill anyway), as the workspace's wide tables do. -->
+      <span slot="actions" class="meta pt-sym-hint" aria-hidden="true">Scroll for all {symptoms.length}<Icon name="arrow-right" size={14} /></span>
+      <div class="pt-sym-row" role="group" aria-label="Symptom" data-symptoms>
         {symptoms.map((s) => (
           <button type="button" class:list={['chip', s.urgency === 'urgent' && 'chip-urgent']} aria-pressed="false" data-symptom={s.id} data-services={s.services.join(',')} data-urgency={s.urgency} data-tip={s.tip}>
             {s.label}
           </button>
         ))}
       </div>
-      <p class="mt-4 max-w-[70ch] border-l-2 border-accent pl-4 text-[15px] leading-relaxed text-ink-2" data-tip-box hidden></p>
-      <div class="mt-4 border border-caries/40 bg-caries/10 p-4 text-[15px] leading-relaxed" data-urgent hidden>
-        <strong class="font-semibold">This can’t wait for a booking.</strong> Call a clinic that is open now — each card has a Call button — or go to the nearest emergency room if there is trouble breathing or swallowing.
+      <p class="ws-callout mt-4 max-w-[76ch]" data-tip-box hidden><Icon name="info" /><span data-tip-text></span></p>
+      <div class="ws-callout mt-4 max-w-[76ch]" data-tone="alert" data-urgent hidden>
+        <Icon name="alert" />
+        <span><strong class="font-semibold">This can’t wait for a booking.</strong> Call a clinic that is open now — each card has a Call button — or go to the nearest emergency room if there is trouble breathing or swallowing.</span>
       </div>
-    </section>
 
-    <!-- Filters -->
-    <form class="mt-8 grid grid-cols-2 gap-3 border-y border-line py-5 md:grid-cols-6" data-filters aria-label="Filters" onsubmit="return false">
-      <label class="field md:col-span-2">
-        <span class="meta">Service</span>
-        <select name="service">
-          <option value="">Any service</option>
-          {Object.entries(CATEGORY_LABEL).map(([cat, label]) => (
-            <optgroup label={label}>
-              {services.filter((s) => s.cat === cat).map((s) => <option value={s.id}>{s.name}{s.local ? ` (${s.local})` : ''}</option>)}
-            </optgroup>
-          ))}
-        </select>
-      </label>
-      <label class="field">
-        <span class="meta">HMO</span>
-        <select name="hmo">
-          <option value="">Any / none</option>
-          {hmos.map((h) => <option value={h.id}>{h.name}</option>)}
-        </select>
-      </label>
-      <label class="field">
-        <span class="meta">Area</span>
-        <select name="area">
-          <option value="">Anywhere</option>
-          {areas.map((a) => <option value={a}>{a}</option>)}
-        </select>
-      </label>
-      <label class="field">
-        <span class="meta">Sort</span>
-        <select name="sort">
-          <option value="soonest">Soonest slot</option>
-          <option value="price">Lowest price</option>
-          <option value="name">Name</option>
-        </select>
-      </label>
-      <div class="flex flex-col justify-end gap-2">
-        <label class="check"><input type="checkbox" name="philhealth" /><span>PhilHealth dental</span></label>
-        <label class="check"><input type="checkbox" name="open" /><span>Open now</span></label>
-      </div>
-    </form>
+      <form class="pt-filter-form mt-5 border-t border-hair pt-4" data-filters aria-label="Filters" onsubmit="return false">
+        <!-- On a phone the four selects wait behind one line (open when one of them is set); from 768px they are always shown. -->
+        <details class="pt-filter-more" open data-filter-more>
+          <summary><span class="pt-filter-name">More filters</span><span class="pt-filter-count" data-filter-count hidden></span><span class="pt-filter-hint">Service, HMO, area, sort</span><Icon name="chevron" size={16} /></summary>
+          <div class="pt-filters">
+        <label class="field pt-filter-wide">
+          <span class="meta">Service</span>
+          <select name="service">
+            <option value="">Any service</option>
+            {Object.entries(CATEGORY_LABEL).map(([cat, label]) => (
+              <optgroup label={label}>
+                {services.filter((s) => s.cat === cat).map((s) => <option value={s.id}>{s.name}{s.local ? ` (${s.local})` : ''}</option>)}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+        <label class="field">
+          <span class="meta">HMO</span>
+          <select name="hmo">
+            <option value="">Any / none</option>
+            {hmos.map((h) => <option value={h.id}>{h.name}</option>)}
+          </select>
+        </label>
+        <label class="field">
+          <span class="meta">Area</span>
+          <select name="area">
+            <option value="">Anywhere</option>
+            {areas.map((a) => <option value={a}>{a}</option>)}
+          </select>
+        </label>
+        <label class="field">
+          <span class="meta">Sort</span>
+          <select name="sort">
+            <option value="soonest">Soonest slot</option>
+            <option value="price">Lowest price</option>
+            <option value="name">Name</option>
+          </select>
+        </label>
+          </div>
+        </details>
+        <div class="pt-switches" role="group" aria-label="Only clinics that are">
+          <label class="pt-toggle"><input type="checkbox" name="philhealth" /><span>PhilHealth dental</span></label>
+          <label class="pt-toggle"><input type="checkbox" name="open" /><span>Open now</span></label>
+        </div>
+      </form>
+    </Pane>
 
-    <p class="meta mt-6" data-count aria-live="polite">{listings.length === 1 ? '1 clinic' : `${listings.length} clinics`}</p>
+    <p class="mt-7 text-[14.5px] font-medium text-ink-2" data-count aria-live="polite">{listings.length === 1 ? '1 clinic' : `${listings.length} clinics`}</p>
 
     <!-- Results -->
     <ul class="mt-3 grid gap-4" data-results>
-      {cards.map(({ l, dentists, offered, minPrice, fees, slots }) => (
+      {cards.map(({ l, dentists, offered, minPrice, fees, slots }) => {
+        const checked = dentists.filter((d) => d.prcCheckedOn).length;
+        const specialties = dentists.filter((d) => d.specialty).map((d) => d.specialty).join(', ');
+        return (
         <li
-          class="result"
+          class="result pt-result"
           data-slug={l.slug}
           data-name={l.name}
           data-area={l.area}
@@ -114,66 +126,87 @@ const cards = await Promise.all(listings.map(async (l) => ({
           data-hours={JSON.stringify(l.hours)}
           data-first-slot={slots[0] ? slotIso(slots[0]) : ''}
         >
-          <div class="result-main">
-            <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <h2 class="font-display text-[22px] font-semibold tracking-tight"><a href={`/find/${l.slug}/`} class="hover:text-accent">{l.name}</a></h2>
-              <span class="meta">{l.area}</span>
-              <span class="status meta" data-status><span class="status-dot"></span><span data-status-text>{l.hours[1] ? 'Mon–Sat' : 'Hours vary'}</span></span>
+          <div class="result-main min-w-0">
+            <div class="pt-result-head">
+              <ClinicBadge name={l.name} />
+              <div class="min-w-0">
+                <h2 class="pt-result-name"><a href={`/find/${l.slug}/`}>{l.name}</a></h2>
+                <p class="pt-result-where">
+                  <span>{l.area}</span>
+                  <span class="status pt-status" data-status><span class="status-dot"></span><span data-status-text>{l.hours[1] ? 'Mon–Sat' : 'Hours vary'}</span></span>
+                </p>
+              </div>
             </div>
-            <p class="mt-2 text-[15px] leading-relaxed text-ink-2">{l.about}</p>
+            <p class="mt-3 text-[15px] leading-relaxed text-ink-2">{l.about}</p>
 
-            <dl class="mt-4 grid gap-x-8 gap-y-3 text-[14px] sm:grid-cols-3">
+            <dl class="pt-facts">
               <div>
-                <dt class="meta">Price</dt>
-                <dd class="mt-1 font-semibold tabular-nums" data-price>Consultation {priceText(fees.find((f) => f.id === 'consultation') ?? { min: null })}</dd>
+                <dt class="meta"><Icon name="money" size={16} />Price</dt>
+                <dd class="font-semibold tabular-nums" data-price>Consultation {priceText(fees.find((f) => f.id === 'consultation') ?? { min: null })}</dd>
               </div>
               <div>
-                <dt class="meta">Dentists</dt>
-                <dd class="mt-1">{dentists.length} &middot; {dentists.length > 0 && dentists.every((d) => d.prcCheckedOn) ? <span class="text-accent">PRC checked</span> : dentists.some((d) => d.prcCheckedOn) ? <span>{dentists.filter((d) => d.prcCheckedOn).length} PRC checked</span> : <span>PRC check pending</span>}{dentists.some((d) => d.specialty) && <span> &middot; {dentists.filter((d) => d.specialty).map((d) => d.specialty).join(', ')}</span>}</dd>
+                <dt class="meta"><Icon name="patients" size={16} />Dentists</dt>
+                <dd>
+                  <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span>{dentists.length} {dentists.length === 1 ? 'dentist' : 'dentists'}</span>
+                    {dentists.length > 0 && checked === dentists.length
+                      ? <span class="ws-pill ws-tint-teal"><Icon name="check" size={13} />PRC checked</span>
+                      : checked > 0
+                        ? <span class="ws-pill ws-tint-teal"><Icon name="check" size={13} />{checked} PRC checked</span>
+                        : <span class="ws-pill ws-tint-amber">PRC check pending</span>}
+                  </span>
+                  {specialties && <span class="mt-1 block text-[14px] text-ink-2">{specialties}</span>}
+                </dd>
               </div>
               <div>
-                <dt class="meta">Cards</dt>
-                <dd class="mt-1 flex flex-wrap gap-1">
+                <dt class="meta"><Icon name="file" size={16} />Cards</dt>
+                <dd class="pt-pills">
                   {l.philhealth && <span class="tag tag-accent">PhilHealth</span>}
                   {l.hmos.slice(0, 3).map((id) => <span class="tag">{hmoById(id)?.name}</span>)}
                   {l.hmos.length > 3 && <span class="tag">+{l.hmos.length - 3}</span>}
+                  {!l.philhealth && l.hmos.length === 0 && <span class="text-[14px] text-ink-2">None listed</span>}
                 </dd>
               </div>
             </dl>
           </div>
 
-          <div class="result-side">
-            <p class="meta" data-slots-label>{l.workspace ? 'Next open' : 'Request a time'}</p>
-            <div class="mt-2 flex flex-wrap gap-2" data-slots>
+          <div class="result-side pt-side">
+            <p class="meta pt-side-label" data-slots-label>{l.workspace ? 'Next open' : 'Request a time'}</p>
+            <div class="flex flex-wrap gap-2" data-slots>
               {l.workspace
                 ? (slots.length
-                    ? slots.map((sl) => <a class="slot" href={`/find/${l.slug}/book/?slot=${slotIso(sl)}`}><span class="meta">{sl.dayLabel}</span>{sl.label}</a>)
-                    : <span class="text-[14px] text-muted">Nothing open in the next two weeks — call the clinic.</span>)
-                : <span class="max-w-[26ch] text-[14px] leading-snug text-ink-2">Not on the live schedule yet. Send a request and the clinic confirms the time with you.</span>}
+                    ? slots.map((sl) => <a class="slot" href={`/find/${l.slug}/book/?slot=${encodeURIComponent(slotIso(sl))}`}><span class="meta">{sl.dayLabel}</span>{sl.label}</a>)
+                    : <span class="pt-side-note">Nothing open in the next two weeks — call the clinic.</span>)
+                : <span class="pt-side-note">Not on the live schedule yet. Send a request and the clinic confirms the time with you.</span>}
             </div>
-            <div class="mt-4 flex flex-wrap gap-2">
-              <a href={`/find/${l.slug}/book/`} class="btn btn-primary" data-book>{l.workspace ? 'Book' : 'Request'}</a>
+            <div class="pt-actions mt-1">
+              <a href={`/find/${l.slug}/book/`} class="btn btn-quiet pt-book" data-book><Icon name="calendar" />{l.workspace ? 'Book' : 'Request'}</a>
               <a href={`/find/${l.slug}/`} class="btn btn-quiet">Clinic page</a>
               <a href={`tel:${l.phone.replace(/\s/g, '')}`} class="btn btn-quiet" aria-label={`Call ${l.name}`}>Call</a>
             </div>
           </div>
         </li>
-      ))}
+        );
+      })}
     </ul>
 
     {listings.length === 0 ? (
-      <p class="mt-8 border border-line p-6 text-[15px] leading-relaxed text-ink-2">
-        No clinics are listed yet. Flossify opens with its first clinics in Baguio, and this page fills as they join.
-        Running a clinic? <a href="/start/" class="underline underline-offset-4 hover:text-accent">Set yours up</a>.
-      </p>
+      <div class="card mt-4 px-5 py-4">
+        <Empty icon="clinic" text="No clinics are listed yet. Flossify opens with its first clinics in Baguio, and this page fills as they join." action={{ label: 'Running a clinic? Set yours up', href: '/start/' }} />
+      </div>
     ) : (
-      <p class="mt-8 border border-line p-6 text-[15px] text-ink-2" data-empty hidden>
-        No clinic matches all of that. Try a wider area, or clear the HMO — every clinic here takes a booking or a request.
-      </p>
+      <div class="card mt-4 px-5 py-4" data-empty hidden>
+        <p class="ws-empty">
+          <Icon name="search" size={20} class="ws-empty-icon" />
+          <span class="ws-empty-text">No clinic matches all of that. Try a wider area, or clear the HMO — every clinic here takes a booking or a request.</span>
+          <a href="/find/" class="ws-empty-go">Clear the filters <Icon name="arrow-right" size={16} /></a>
+        </p>
+      </div>
     )}
 
-    <p class="mt-10 max-w-[70ch] text-[14px] leading-relaxed text-muted">
-      The symptom guide is general guidance, not a diagnosis. Prices are the clinic’s fee guide; the dentist confirms the fee at consultation. HMO acceptance is what the clinic reported — confirm with your HMO.
+    <p class="pt-fact mt-8 max-w-[72ch] text-[14px]">
+      <Icon name="info" size={16} />
+      <span>The symptom guide is general guidance, not a diagnosis. Prices are the clinic’s fee guide; the dentist confirms the fee at consultation. HMO acceptance is what the clinic reported — confirm with your HMO.</span>
     </p>
   </main>
 
@@ -186,7 +219,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
     const form = $('[data-filters]') as HTMLFormElement;
     const results = $$('[data-results] > li');
     const symButtons = $$('[data-symptoms] .chip') as HTMLButtonElement[];
-    const tip = $('[data-tip-box]')!, urgent = $('[data-urgent]')!, count = $('[data-count]')!;
+    const tip = $('[data-tip-box]')!, tipText = $('[data-tip-text]')!, urgent = $('[data-urgent]')!, count = $('[data-count]')!;
     // Absent when no clinic is listed at all: the page then says so in place of the filter message.
     const empty = $('[data-empty]');
     const peso = (n: number) => '₱' + n.toLocaleString('en-PH');
@@ -219,6 +252,12 @@ const cards = await Promise.all(listings.map(async (l) => ({
       (form.elements.namedItem('philhealth') as HTMLInputElement).checked = state.philhealth;
       (form.elements.namedItem('open') as HTMLInputElement).checked = state.open;
     }
+    // The selects behind "More filters" on a phone: shown whenever the screen is wider, or one of them is set;
+    // the line says how many are set when it is closed.
+    const moreFilters = $('[data-filter-more]') as HTMLDetailsElement, moreCount = $('[data-filter-count]')!;
+    const narrow = matchMedia('(max-width: 767px)');
+    const setCount = () => [state.service, state.hmo, state.area, state.sort !== 'soonest' ? state.sort : ''].filter(Boolean).length;
+    narrow.addEventListener('change', () => { if (!narrow.matches) moreFilters.open = true; });
     function writeUrl() {
       const q = new URLSearchParams();
       for (const [k, v] of Object.entries(state)) if (v && v !== 'soonest') q.set(k, v === true ? '1' : String(v));
@@ -229,7 +268,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
       const sym = symButtons.find((b) => b.dataset.symptom === state.symptom);
       symButtons.forEach((b) => b.setAttribute('aria-pressed', String(b === sym)));
       const wanted = state.service ? [state.service] : sym ? sym.dataset.services!.split(',') : [];
-      tip.hidden = !sym; if (sym) tip.textContent = sym.dataset.tip!;
+      tip.hidden = !sym; if (sym) tipText.textContent = sym.dataset.tip!;
       urgent.hidden = !(sym && sym.dataset.urgency === 'urgent');
 
       const shown: HTMLElement[] = [];
@@ -267,11 +306,28 @@ const cards = await Promise.all(listings.map(async (l) => ({
       shown.sort((a, b) => key(a).localeCompare(key(b))).forEach((li) => list.append(li));
 
       count.textContent = `${shown.length} clinic${shown.length === 1 ? '' : 's'}${state.open ? ' open now' : ''}`;
+      const n = setCount(); moreCount.hidden = n === 0; moreCount.textContent = `${n} set`;
       if (empty) empty.hidden = shown.length > 0;
       writeUrl();
     }
 
-    symButtons.forEach((b) => b.addEventListener('click', () => { state.symptom = state.symptom === b.dataset.symptom ? '' : b.dataset.symptom!; if (state.symptom) state.service = ''; (form.elements.namedItem('service') as HTMLSelectElement).value = ''; apply(); }));
+    // On a phone the pills are one row that scrolls sideways: a fade on the side where more wait, and
+    // the chosen pill brought fully into view (Tab does that by the row's scroll padding). Wider, the row wraps and none of this acts.
+    const symRow = $('[data-symptoms]')!;
+    const symEdges = () => {
+      const max = symRow.scrollWidth - symRow.clientWidth, x = symRow.scrollLeft;
+      if (max <= 1) delete symRow.dataset.symEdge;
+      else symRow.dataset.symEdge = x <= 1 ? 'right' : x >= max - 1 ? 'left' : 'both';
+    };
+    const revealChip = (b: HTMLElement, behavior: ScrollBehavior = 'smooth') => {
+      const row = symRow.getBoundingClientRect(), r = b.getBoundingClientRect(), pad = 56; // clear of the 3.5rem fade
+      if (r.left < row.left + pad) symRow.scrollBy({ left: r.left - row.left - pad, behavior });
+      else if (r.right > row.right - pad) symRow.scrollBy({ left: r.right - row.right + pad, behavior });
+    };
+    symRow.addEventListener('scroll', symEdges, { passive: true });
+    addEventListener('resize', symEdges);
+
+    symButtons.forEach((b) => b.addEventListener('click', () => { state.symptom = state.symptom === b.dataset.symptom ? '' : b.dataset.symptom!; if (state.symptom) state.service = ''; (form.elements.namedItem('service') as HTMLSelectElement).value = ''; apply(); revealChip(b); }));
     form.addEventListener('change', () => {
       const fd = new FormData(form);
       state.service = String(fd.get('service') ?? ''); if (state.service) state.symptom = '';
@@ -281,5 +337,9 @@ const cards = await Promise.all(listings.map(async (l) => ({
     });
 
     readUrl(); apply();
+    moreFilters.open = !narrow.matches || setCount() > 0;
+    symEdges();
+    const chosen = symButtons.find((b) => b.dataset.symptom === state.symptom);
+    if (chosen) revealChip(chosen, 'instant');
   </script>
 </Base>

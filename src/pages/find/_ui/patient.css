@@ -1,0 +1,352 @@
+/* The patient side — Find a clinic, a clinic's page, its five-step booking, a dentist's profile and
+   coverage — in the soft template (docs/workspace-redesign.md, "The whole site, soft"): the pages
+   stand on the slate ground in bright white rounded cards (the workspace's <Pane>), with line icons
+   beside the section titles, round initial avatars for dentists, the clinic's initials badge, soft
+   pills for filters, slots and facts, tinted callouts in plain words, and one teal action per
+   screen. Only what global.css does not already draw is here; cards, buttons, fields, chips, slots,
+   tags, callouts, pills and avatars are the site's (global.css) and are not restyled.
+
+   Imported by src/pages/find/index.astro, find/[clinic]/index.astro, find/[clinic]/book.astro,
+   dentists/[dentist].astro and coverage.astro. Some of its classes are written into markup by
+   those pages' scripts (slot days, the summary, the bookings on this device), so this is a plain
+   stylesheet, not an Astro scoped one.
+
+   The same layer order global.css declares, stated again so this file can never be the first to
+   name a layer; inside the components layer a utility in the markup still wins. Muted slate is
+   never set on a tint (4.48:1): ink-2 or the tint's own ink there. Motion always on. */
+@layer theme, base, components, utilities;
+
+@layer components {
+
+/* --- the page -------------------------------------------------------------------------------- */
+/* The sticky top bar is 68px (60px on a phone): a step of the booking scrolls its card to just under it. */
+.pt-main { scroll-margin-top: 4.5rem; }
+.pt-anchor { scroll-margin-top: 5.25rem; }
+.pt-title { color: var(--c-ink); font-size: clamp(1.75rem, 1.3rem + 1.8vw, 2.5rem); font-weight: 600; line-height: 1.15; letter-spacing: -0.022em; }
+.pt-lede { max-width: 62ch; margin-top: 0.5rem; font-size: 17px; line-height: 1.55; color: var(--c-ink-2); }
+/* The way back, above the first card: a quiet 44px link with a chevron (the workspace's "Back to patients"). */
+.pt-back {
+  display: inline-flex; align-items: center; gap: 0.25rem; min-height: 44px; margin-left: -0.5rem; padding: 0 0.625rem 0 0.375rem;
+  border-radius: var(--ws-r-ctl); font-size: 14.5px; font-weight: 500; color: var(--c-ink-2); text-decoration: none;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.pt-back:hover { background: var(--ws-hover); color: var(--c-ink); }
+.pt-back .ws-icon { flex: none; transition: transform 180ms ease; }
+.pt-back:hover .ws-icon { transform: translateX(-2px); }
+.pt-stack { display: grid; gap: 1rem; align-content: start; min-width: 0; }
+
+/* --- cards ------------------------------------------------------------------------------------ */
+/* A <Pane> on a public page: its white is drawn on ::before at z-index -1 (global.css, .ws-glass),
+   so the card is its own stacking context here and the white always sits right behind its words. */
+.pt-card { isolation: isolate; }
+@media (max-width: 639px) {
+  .pt-card.ws-pad-normal { padding: 1.125rem 1rem 1.25rem; }
+  .pt-card.ws-pad-none > .ws-pane-head { padding: 1rem 1rem 0.875rem; }
+}
+/* A card whose head holds a field (the fee guide's filter): on a narrow card the field takes the
+   whole row under the title instead of a cut-off third of it. */
+.pt-grow-actions > .ws-pane-head > .ws-pane-actions { flex: 1 1 14rem; justify-content: flex-end; }
+/* A small head inside a card (coverage's "What it covers"), and a card's own big title (a clinic's name). */
+.pt-sub { color: var(--c-ink); font-size: 15.5px; font-weight: 600; line-height: 1.35; letter-spacing: -0.01em; }
+.pt-name { color: var(--c-ink); font-size: clamp(1.625rem, 1.25rem + 1.5vw, 2.25rem); font-weight: 600; line-height: 1.15; letter-spacing: -0.022em; }
+/* Rows inside a card that runs edge to edge (pad="none"): hairlines between, the card's own padding. */
+.pt-rows { margin: 0; padding: 0; list-style: none; }
+.pt-rows > li { padding: 1rem 1.5rem; }
+.pt-rows > li + li { border-top: 1px solid var(--ws-hair); }
+@media (max-width: 639px) { .pt-rows > li { padding: 0.875rem 1rem; } }
+/* A quiet inset inside a card (the booking's summary, a result's slots). */
+.pt-inset { border-radius: var(--ws-r-ctl); background: var(--ws-subtle); }
+/* A line of small facts with a line icon first (an address, a DPO). */
+.pt-fact { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
+.pt-fact > .ws-icon { flex: none; margin-top: 2px; color: var(--c-ink-2); }
+.pt-link { color: var(--ws-teal-ink); font-weight: 600; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; transition: text-decoration-color 160ms ease; }
+.pt-link:hover { text-decoration-color: currentColor; }
+/* A link a thumb goes for in a line of words (the done screen's My visits): kept on one line, its target
+   reaching 14px above and below it, so it is 44px tall without the line growing. Not inside a <label>,
+   where the reach would take clicks meant for the checkbox. */
+.pt-link-reach { position: relative; white-space: nowrap; }
+.pt-link-reach::before { content: ""; position: absolute; inset: -0.875rem -0.25rem; }
+/* A link with a trailing arrow that steps forward on hover, 44px tall. */
+.pt-go { display: inline-flex; align-items: center; gap: 0.375rem; min-height: 44px; font-size: 15px; font-weight: 600; color: var(--ws-teal-ink); text-decoration: none; }
+.pt-go .ws-icon { flex: none; transition: transform 180ms ease; }
+.pt-go:hover .ws-icon { transform: translateX(3px); }
+
+/* --- the clinic: its initials badge and its live status -------------------------------------------- */
+/* The badge is the workspace sidebar's (.ws-branch-badge); on a page's own head it is bigger. */
+.pt-badge-lg { width: 56px; height: 56px; border-radius: var(--ws-r); font-size: 18px; }
+/* Open now / closing soon / closed: a pill whose dot and words change together (never colour alone). */
+.pt-status {
+  display: inline-flex; align-items: center; gap: 0.4rem; min-height: 26px; padding: 0.1rem 0.625rem; border-radius: var(--ws-r-pill);
+  background: var(--c-bg-soft); color: var(--c-ink-2); font-size: 13px; font-weight: 600; line-height: 1.3; white-space: nowrap;
+}
+.pt-status[data-state="open"] { background: var(--ws-green-tint); color: var(--ws-green-ink); }
+.pt-status[data-state="closing"] { background: var(--ws-amber-tint); color: var(--ws-amber-ink); }
+.pt-status[data-state="closed"], .pt-status[data-state="appt"] { color: var(--c-ink-2); }
+.pt-status .status-dot { width: 7px; height: 7px; }
+
+/* --- Find a clinic ------------------------------------------------------------------------------ */
+/* What's wrong: the symptom pills wrap. Below 768px the twelve would fill a phone's first screen (the
+   first clinic started ~1,070px down at 390), so they run as one row that scrolls sideways inside the
+   card, out to its edges (the card's padding there is 1rem), with a fade on the side where more wait —
+   the page's script sets data-sym-edge, as the workspace's wide tables do. A pill reached with Tab (by
+   the scroll padding) or chosen (by the script) comes into view clear of the fade; a thin scrollbar
+   stays for a mouse; the vertical padding keeps the focus ring whole. No snapping: it would pull a
+   chosen pill back under the fade. */
+.pt-sym-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.pt-sym-hint { display: none; }
+@media (max-width: 767px) {
+  .pt-sym-hint { display: inline-flex; align-items: center; gap: 0.25rem; white-space: nowrap; }
+  /* Once the row has been scrolled the line has done its job. */
+  #sym:has(.pt-sym-row:is([data-sym-edge="left"], [data-sym-edge="both"])) .pt-sym-hint { visibility: hidden; }
+  .pt-sym-row {
+    flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scroll-padding-inline: 3.5rem;
+    margin: -4px -1rem -6px; padding: 4px 1rem 6px; scrollbar-width: thin; scrollbar-color: var(--ws-field-line) transparent;
+  }
+  .pt-sym-row > .chip { flex: none; }
+  .pt-sym-row[data-sym-edge="right"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 3.5rem), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 3.5rem), transparent); }
+  .pt-sym-row[data-sym-edge="left"] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 3.5rem), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 3.5rem), transparent); }
+  .pt-sym-row[data-sym-edge="both"] {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 3.5rem, #000 calc(100% - 3.5rem), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 3.5rem, #000 calc(100% - 3.5rem), transparent);
+  }
+}
+
+/* A result's Book (or Request): a list of clinics is not one teal button per card, so at rest it is
+   the quiet button with teal words and icon (the workspace's + New); the card under the pointer, or
+   the one the keyboard is in, fills its Book teal — one teal action on the screen, where you are. */
+.btn.pt-book { color: var(--ws-teal-ink); }
+.btn.pt-book:hover { background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent); color: var(--ws-teal-ink); }
+@media (hover: hover) {
+  .pt-result:hover .btn.pt-book { background: var(--ws-teal-fill); border-color: transparent; color: #fff; }
+  .pt-result:hover .btn.pt-book:hover { background: var(--ws-teal-fill-hover); }
+}
+.pt-result:has(:focus-visible) .btn.pt-book { background: var(--ws-teal-fill); border-color: transparent; color: #fff; }
+/* Filters you switch on and off (PhilHealth dental, Open now): pills with a box that fills teal and
+   gets a white check, so the state is a shape as well as a colour. The input is visually hidden. */
+.pt-toggle { position: relative; display: inline-flex; cursor: pointer; }
+.pt-toggle input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.pt-toggle > span {
+  display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0.5rem 1rem 0.5rem 0.75rem;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-pill); background: var(--c-surface);
+  font-size: 14.5px; font-weight: 500; line-height: 1.2; color: var(--c-ink-2);
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.pt-toggle > span::before {
+  content: ""; width: 18px; height: 18px; flex: none; border: 1.5px solid var(--ws-field-line-hover); border-radius: 6px; background: var(--ws-field) center / 14px 14px no-repeat;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+.pt-toggle:hover > span { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); color: var(--c-ink); }
+.pt-toggle input:checked + span { background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent); color: var(--ws-teal-ink); font-weight: 600; }
+.pt-toggle input:checked + span::before {
+  border-color: var(--ws-teal-fill); background-color: var(--ws-teal-fill);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+}
+.pt-toggle input:focus-visible + span { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+@media (forced-colors: active) { .pt-toggle input { opacity: 1; position: static; width: auto; height: auto; } .pt-toggle > span::before { content: none; } }
+
+/* The filter form: the four selects (inside "More filters") and the two switches. On a phone the
+   selects wait behind one 44px line; from 768px the line is gone and they always show (the page's
+   script keeps the <details> open there); from 1200px the selects and the switches share one row. */
+.pt-filter-form { display: grid; gap: 0.75rem; }
+.pt-filter-more > summary {
+  display: flex; align-items: center; gap: 0.5rem; min-height: 44px; border-radius: var(--ws-r-ctl);
+  font-size: 15px; font-weight: 600; color: var(--c-ink); cursor: pointer; list-style: none;
+}
+.pt-filter-more > summary::-webkit-details-marker { display: none; }
+.pt-filter-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 400; color: var(--c-ink-2); }
+.pt-filter-name { flex: none; white-space: nowrap; }
+/* Once something is set, or the selects are showing, the hint has said its piece. */
+.pt-filter-more[open] .pt-filter-hint, .pt-filter-count:not([hidden]) + .pt-filter-hint { display: none; }
+.pt-filter-count { flex: none; padding: 0.05rem 0.5rem; border-radius: var(--ws-r-pill); background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-size: 12.5px; font-weight: 600; }
+.pt-filter-more > summary .ws-icon { flex: none; margin-left: auto; color: var(--c-ink-2); transition: transform 200ms ease; }
+.pt-filter-more[open] > summary .ws-icon { transform: rotate(180deg); }
+.pt-filter-more[open] > .pt-filters { margin-top: 0.5rem; }
+@media (min-width: 768px) {
+  .pt-filter-more > summary { display: none; }
+  .pt-filter-more[open] > .pt-filters { margin-top: 0; }
+}
+@media (min-width: 1200px) { .pt-filter-form { grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 0.75rem; } }
+/* The selects: two columns on a phone (Service across), two by two from 640px, four across from
+   900px (narrower, "Soonest slot" is cut). */
+.pt-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.875rem 0.75rem; }
+.pt-filters > .pt-filter-wide { grid-column: 1 / -1; }
+@media (min-width: 640px) { .pt-filters > .pt-filter-wide { grid-column: auto; } }
+@media (min-width: 900px) { .pt-filters { grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)); } }
+.pt-switches { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+@media (min-width: 1200px) { .pt-switches { flex-wrap: nowrap; } }
+
+/* A result: the clinic's head (badge, name, area, status), what it is, three facts, and on the right
+   (from 900px; under it before) the next open times and the actions on a quiet inset. */
+.pt-result { padding: 1.25rem; }
+@media (min-width: 640px) { .pt-result { padding: 1.5rem; } }
+@media (min-width: 900px) { .pt-result { grid-template-columns: minmax(0, 1fr) 20rem; gap: 2rem; } }
+.pt-result-head { display: flex; align-items: flex-start; gap: 0.875rem; }
+.pt-result-name { color: var(--c-ink); font-size: 20px; font-weight: 600; line-height: 1.25; letter-spacing: -0.015em; }
+.pt-result-name a { text-decoration: none; transition: color 160ms ease; }
+/* A name that links (a clinic, a dentist) is a line of words, 18–25px tall: its target reaches further
+   above and below it (14px), so a thumb has 44px and more without the layout growing. */
+:is(.pt-result-name, .pt-person-name) a, a.pt-person-name { position: relative; }
+:is(.pt-result-name, .pt-person-name) a::before, a.pt-person-name::before { content: ""; position: absolute; inset: -0.875rem -0.25rem; }
+.pt-result-name a:hover { color: var(--ws-teal-ink); }
+.pt-result-where { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.625rem; margin-top: 0.25rem; font-size: 14px; color: var(--c-ink-2); }
+/* The three facts follow the card's own width (a container query, not the screen's): one column on
+   a phone, Price and Dentists side by side with Cards under them when the column is middling (the
+   result beside its slots at 1024px), three across when there is room. */
+.pt-result .result-main { container: pt-result / inline-size; }
+.pt-facts { display: grid; gap: 0.875rem 1.5rem; margin-top: 1.125rem; }
+@container pt-result (min-width: 28rem) { .pt-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pt-facts > :last-child { grid-column: 1 / -1; } }
+@container pt-result (min-width: 44rem) { .pt-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); } .pt-facts > :last-child { grid-column: auto; } }
+.pt-facts dt { display: flex; align-items: center; gap: 0.375rem; }
+.pt-facts dt .ws-icon { flex: none; color: var(--c-muted); }
+.pt-facts dd { margin-top: 0.25rem; font-size: 14.5px; line-height: 1.45; color: var(--c-ink); }
+.pt-side { display: flex; flex-direction: column; gap: 0.625rem; padding: 1rem; border-radius: var(--ws-r-ctl); background: var(--ws-subtle); }
+.pt-side-label { color: var(--c-ink-2); }
+.pt-side-note { font-size: 14px; line-height: 1.45; color: var(--c-ink-2); }
+.pt-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+/* A result's three actions: Book across the inset (the card's one main action), the page and the call under it. */
+.pt-side .pt-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pt-side .pt-actions > :first-child { grid-column: 1 / -1; }
+
+/* --- a clinic's page ---------------------------------------------------------------------------- */
+.pt-photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.pt-photos .media { border-radius: var(--ws-r); border: 1px solid var(--ws-hair); }
+/* A dentist's own page: the avatar a size up. */
+.ws-avatar.pt-avatar-xl { width: 64px; height: 64px; font-size: 21px; }
+.pt-person { display: flex; align-items: flex-start; gap: 0.875rem; }
+.pt-person-name { font-size: 16px; font-weight: 600; line-height: 1.35; color: var(--c-ink); }
+.pt-person-name a { text-decoration: none; transition: color 160ms ease; }
+.pt-person-name a:hover { color: var(--ws-teal-ink); }
+.pt-pills { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+/* The fee guide and the hours: hairline rows inside the card. */
+.pt-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.pt-table tr + tr > * { border-top: 1px solid var(--ws-hair); }
+.pt-table :is(th, td) { padding: 0.75rem 0; vertical-align: baseline; }
+.pt-table :is(th, td):first-child { padding-right: 1rem; }
+.pt-table :is(th, td):last-child { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* --- the booking -------------------------------------------------------------------------------- */
+/* The stepper: five numbered circles joined by a line, the word under each. Ahead: an outlined
+   circle; now: teal with a white figure; done: a teal check on the pale tint (global.css draws the
+   circles, .wiz-step); the line up to where you are is teal. */
+.pt-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+.pt-steps .wiz-step { position: relative; align-items: center; gap: 0.5rem; margin: 0; padding: 0 0.125rem; border-bottom: 0; text-align: center; }
+.pt-steps .wiz-step .sec-no { align-self: center; font-size: 14px; }
+.pt-steps .wiz-step::before {
+  content: ""; position: absolute; top: 15px; left: calc(-50% + 1.5rem); right: calc(50% + 1.5rem); height: 2px; border-radius: var(--ws-r-pill);
+  background: var(--ws-field-line); transition: background-color 240ms ease;
+}
+.pt-steps .wiz-step:first-child::before { content: none; }
+.pt-steps .wiz-step:is([data-passed], [aria-current="step"])::before { background: var(--ws-teal); }
+.pt-steps .wiz-step > span:nth-child(2) { font-size: 13.5px; line-height: 1.3; }
+@media (max-width: 379px) { .pt-steps .wiz-step > span:nth-child(2) { font-size: 12.5px; } }
+
+.pt-legend, .pt-done-title { border-radius: 6px; }
+.pt-legend { color: var(--c-ink); font-size: 20px; font-weight: 600; line-height: 1.3; letter-spacing: -0.015em; }
+@media (min-width: 640px) { .pt-legend { font-size: 22px; } }
+.pt-help { margin-top: 0.375rem; font-size: 15px; line-height: 1.5; color: var(--c-ink-2); }
+/* A price inside a reason pill: ink-2, which stays readable on the teal tint when chosen. */
+.pt-price { margin-left: 0.5rem; font-weight: 500; color: var(--c-ink-2); }
+.chip-radio input:checked + span .pt-price { color: var(--ws-teal-ink); }
+/* "Or choose the service directly": a quiet 44px disclosure with a chevron that turns. */
+.pt-more > summary {
+  display: inline-flex; align-items: center; gap: 0.375rem; min-height: 44px; padding-right: 0.5rem; border-radius: var(--ws-r-ctl);
+  font-size: 15px; font-weight: 600; color: var(--ws-teal-ink); cursor: pointer; list-style: none;
+}
+.pt-more > summary::-webkit-details-marker { display: none; }
+.pt-more > summary .ws-icon { flex: none; transition: transform 200ms ease; }
+.pt-more[open] > summary .ws-icon { transform: rotate(180deg); }
+
+/* A dentist to choose: the avatar, the name and days, and a round tick at the right that fills teal. */
+.pt-pick > span { display: flex; align-items: center; gap: 0.875rem; }
+.pt-pick-words { flex: 1; min-width: 0; }
+.pt-pick-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; border-radius: var(--ws-r-pill); background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+.pt-tick { flex: none; width: 22px; height: 22px; border: 1.5px solid var(--ws-field-line-hover); border-radius: var(--ws-r-pill); background: var(--ws-field) center / 14px 14px no-repeat; transition: background-color 140ms ease, border-color 140ms ease; }
+.row-radio input:checked + span .pt-tick {
+  border-color: var(--ws-teal-fill); background-color: var(--ws-teal-fill);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+}
+
+/* The open slots, one group per day (written by the page's script). */
+.pt-days { display: grid; gap: 1.25rem; }
+.pt-day-label { font-size: 14.5px; font-weight: 600; color: var(--c-ink); }
+.pt-slots { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+.pt-wait { display: flex; align-items: center; gap: 0.625rem; min-height: 44px; font-size: 15px; color: var(--c-ink-2); }
+.pt-wait::before {
+  content: ""; width: 18px; height: 18px; flex: none; border-radius: var(--ws-r-pill);
+  border: 2px solid var(--ws-teal-tint); border-top-color: var(--ws-teal); animation: pt-spin 800ms linear infinite;
+}
+@keyframes pt-spin { to { transform: rotate(360deg); } }
+
+/* The consent line, on a quiet inset so it is read, not skipped. */
+.pt-consent { padding: 0.25rem 1rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r-ctl); background: var(--ws-subtle); }
+.pt-consent .check { padding-block: 0.5rem; font-size: 15px; line-height: 1.5; }
+
+/* The summary before confirming: label and value rows on a quiet inset. */
+.pt-summary { margin: 0; border: 1px solid var(--ws-hair); border-radius: var(--ws-r-ctl); background: var(--ws-subtle); overflow: hidden; }
+.pt-sum-row { display: grid; gap: 0.125rem; padding: 0.75rem 1rem; }
+.pt-sum-row + .pt-sum-row { border-top: 1px solid var(--ws-hair); }
+.pt-sum-row dt { font-size: 13.5px; font-weight: 500; color: var(--c-ink-2); }
+.pt-sum-row dd { margin: 0; font-size: 15.5px; color: var(--c-ink); overflow-wrap: anywhere; }
+@media (min-width: 640px) { .pt-sum-row { grid-template-columns: 9rem minmax(0, 1fr); gap: 1rem; align-items: baseline; } }
+
+/* A refusal, in the step's own words: nothing while empty (it stays in the page, so it is announced
+   when it fills), a soft red callout with its icon once it says something. */
+.pt-error { font-size: 15px; line-height: 1.5; color: var(--c-ink); }
+.pt-error:not(:empty) {
+  display: flex; align-items: flex-start; gap: 0.625rem; margin-top: 1.25rem; padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--ws-red) 25%, transparent); border-radius: var(--ws-r); background: var(--ws-red-tint);
+}
+.pt-error:not(:empty)::before {
+  content: ""; width: 18px; height: 18px; flex: none; margin-top: 2px; background: var(--ws-red-ink);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.3 4.2L2.9 17.3A2 2 0 0 0 4.6 20.3h14.8a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z'/%3E%3Cpath d='M12 9.5v4M12 17h.01'/%3E%3C/svg%3E") center / 18px 18px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.3 4.2L2.9 17.3A2 2 0 0 0 4.6 20.3h14.8a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z'/%3E%3Cpath d='M12 9.5v4M12 17h.01'/%3E%3C/svg%3E") center / 18px 18px no-repeat;
+}
+@media (forced-colors: active) { .pt-error:not(:empty)::before { content: none; } }
+
+/* Back · Continue under the step, on a hairline. */
+.pt-nav { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--ws-hair); }
+.pt-nav [data-next] { margin-left: auto; }
+/* Continue's check (the last step's icon) waits until the script shows it. */
+.pt-next-ok { display: none; }
+
+/* Done: a green check, the time in words, the reference, and the three things to do next. */
+.pt-done-mark { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: var(--ws-r-pill); background: var(--ws-green-tint); color: var(--ws-green-ink); }
+.pt-done-mark[data-tone="request"] { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
+.pt-done-title { color: var(--c-ink); font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2rem); font-weight: 600; line-height: 1.2; letter-spacing: -0.02em; }
+.pt-ref { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding: 0.625rem 1rem; border-radius: var(--ws-r-ctl); background: var(--ws-subtle); border: 1px solid var(--ws-hair); }
+.pt-ref-label { font-size: 14px; font-weight: 500; color: var(--c-ink-2); }
+.pt-ref-no { font-family: var(--font-mono); font-size: 16px; font-weight: 500; letter-spacing: 0.04em; color: var(--c-ink); }
+/* The countdown inside Undo: a small slate pill. */
+.pt-clock { padding: 0.05rem 0.5rem; border-radius: var(--ws-r-pill); background: var(--c-bg-soft); color: var(--c-ink-2); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pt-mine-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
+.pt-mine-ref { font-family: var(--font-mono); font-size: 13px; color: var(--c-ink-2); }
+
+/* --- coverage ------------------------------------------------------------------------------------ */
+/* What PhilHealth pays: the amount on the left, what it buys beside it. */
+.pt-amounts { margin: 0; border: 1px solid var(--ws-hair); border-radius: var(--ws-r-ctl); overflow: hidden; }
+.pt-amounts > div { display: grid; gap: 0.25rem; padding: 0.875rem 1rem; }
+.pt-amounts > div + div { border-top: 1px solid var(--ws-hair); }
+@media (min-width: 640px) { .pt-amounts > div { grid-template-columns: 9.5rem minmax(0, 1fr); gap: 1rem; align-items: baseline; } }
+.pt-amounts dt { font-size: 15px; font-weight: 600; color: var(--c-ink); font-variant-numeric: tabular-nums; }
+.pt-amounts dd { margin: 0; font-size: 15px; line-height: 1.5; color: var(--c-ink-2); }
+/* Numbered steps: a small teal circle with the figure, the words beside it. */
+.pt-numbered { display: grid; gap: 0.75rem; margin: 0; padding: 0; list-style: none; }
+.pt-numbered > li { display: flex; align-items: flex-start; gap: 0.75rem; font-size: 15px; line-height: 1.5; color: var(--c-ink-2); }
+.pt-num {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 26px; height: 26px; margin-top: -1px;
+  border-radius: var(--ws-r-pill); background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+/* A neutral callout (what an HMO usually does not cover): the quiet grey, slate icon. */
+.ws-callout.pt-callout-slate { border-color: var(--ws-hair); background: var(--ws-subtle); }
+.ws-callout.pt-callout-slate > .ws-icon { color: var(--c-ink-2); }
+/* A clinic in a list: the whole row is the link, its badge first and a chevron last. */
+.pt-clinic-link {
+  display: flex; align-items: center; gap: 0.75rem; min-height: 56px; padding: 0.5rem 0.75rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r-ctl);
+  background: var(--c-surface); text-decoration: none; transition: border-color 160ms ease, background-color 160ms ease;
+}
+.pt-clinic-link:hover { border-color: var(--ws-field-line-hover); background: var(--ws-subtle); }
+.pt-clinic-link > .ws-icon { flex: none; margin-left: auto; color: var(--c-ink-2); transition: transform 180ms ease, color 180ms ease; }
+.pt-clinic-link:hover > .ws-icon { transform: translateX(3px); color: var(--ws-teal-ink); }
+.pt-clinic-link .ws-branch-badge { width: 36px; height: 36px; font-size: 12.5px; }
+
+}  /* end @layer components */

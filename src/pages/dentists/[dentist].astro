@@ -3,6 +3,11 @@ export const prerender = false;
 
 import Base from '../../layouts/Base.astro';
 import PatientHeader from '../../components/PatientHeader.astro';
+import Pane from '../../components/ws/Pane.astro';
+import Icon from '../../components/ws/Icon.astro';
+import Avatar from '../../components/ws/Avatar.astro';
+import ClinicBadge from '../find/_ui/ClinicBadge.astro';
+import '../find/_ui/patient.css';
 import { loadDentist } from '../../lib/directory-db';
 
 // A profile is a set of claims, each with where it came from. "Verified" on
@@ -21,54 +26,75 @@ const practises = d.practices?.length ? (d.practices.slice(1).join(', ').toLower
 <Base title={`${d.name} — dentist in ${places[0]?.l.area ?? 'Benguet'} — Flossify`} description={`${d.name}: ${d.specialty ? 'specialist in ' + d.specialty.toLowerCase() : d.practices.join(', ').toLowerCase()}. ${d.prcCheckedOn ? 'PRC licence checked' : 'PRC check pending'}. Where to find them and when.`}>
   <PatientHeader current="find" />
 
-  <main id="main" class="mx-auto max-w-[1040px] px-5 py-10 sm:px-8">
-    <a href="/find/" class="meta hover:text-ink">&larr; All clinics</a>
+  <main id="main" class="pt-main mx-auto max-w-[1040px] px-5 pt-5 pb-16 sm:px-8 sm:pt-7">
+    <a href="/find/" class="pt-back"><Icon name="chevron-left" />All clinics</a>
 
-    <div class="mt-6 grid gap-10 md:grid-cols-12">
-      <div class="md:col-span-8">
-        <p class="meta">Dentist{d.since ? ` · practising since ${d.since}` : ''}</p>
-        <h1 class="mt-3 font-display text-[clamp(2rem,4.6vw,3rem)] leading-[1.05] font-semibold tracking-[-0.025em]">{d.name}</h1>
-        <p class="mt-3 text-[17px] text-ink-2">
-          {d.specialty
-            ? <span>Specialist · {d.specialty}</span>
-            : <span>General dentist · practises {practises}</span>}
-        </p>
-        {d.about && <p class="mt-5 max-w-[60ch] text-[16px] leading-relaxed text-ink-2">{d.about}</p>}
+    <!-- Who: the avatar, the name, what they practise, and the PRC check as a pill that says its date -->
+    <section class="ws-pane ws-glass ws-pad-normal pt-card mt-2" aria-labelledby="dentist-title">
+      <div class="flex items-center gap-4 sm:gap-5">
+        <Avatar name={d.name} size="lg" class="pt-avatar-xl" />
+        <div class="min-w-0">
+          <p class="meta">Dentist{d.since ? ` · practising since ${d.since}` : ''}</p>
+          <h1 id="dentist-title" class="pt-name mt-1">{d.name}</h1>
+          <p class="mt-1 text-[16.5px] text-ink-2">
+            {d.specialty
+              ? <span>Specialist · {d.specialty}</span>
+              : <span>General dentist · practises {practises}</span>}
+          </p>
+        </div>
+      </div>
+      <div class="pt-pills mt-4">
+        {checked
+          ? <span class="ws-pill ws-tint-teal" title="Checked by a person against verification.prc.gov.ph"><Icon name="check" size={13} />PRC licence · checked {checked}</span>
+          : <span class="ws-pill ws-tint-amber">PRC check pending</span>}
+        {d.pda && <span class="ws-pill ws-tint-slate">PDA member</span>}
+      </div>
+      {d.about && <p class="mt-4 max-w-[60ch] text-[16px] leading-relaxed text-ink-2">{d.about}</p>}
+    </section>
 
-        <h2 class="meta meta-ink mt-10">Credentials, and where each one comes from</h2>
-        <ul class="mt-3 divide-y divide-line border-y border-line text-[15px]">
-          <li class="flex flex-wrap items-baseline justify-between gap-2 py-3">
-            <span><span class="tag tag-accent">PRC licence</span><span class="ml-3">{d.prc ? `No. ${d.prc}` : 'No number given yet'}</span></span>
-            <span class="text-[14px] text-muted">{checked ? `Checked by a person at verification.prc.gov.ph on ${checked}.` : d.prc ? 'Not yet checked by a person at Flossify. Until it is, treat the number as the dentist’s own statement.' : 'The clinic has not given us a licence number yet, so there is nothing to check.'}</span>
+    <div class="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_20rem] md:items-start">
+      <Pane class="pt-card" pad="none" id="cred" icon="file" title="Credentials, and where each one comes from">
+        <ul class="pt-rows">
+          <li>
+            <p class="flex flex-wrap items-center gap-2">
+              <span class:list={['ws-pill', checked ? 'ws-tint-teal' : 'ws-tint-amber']}>{checked && <Icon name="check" size={13} />}PRC licence</span>
+              <span class="text-[15px] font-medium">{d.prc ? `No. ${d.prc}` : 'No number given yet'}</span>
+            </p>
+            <p class="mt-1.5 text-[14.5px] leading-relaxed text-ink-2">{checked ? `Checked by a person at verification.prc.gov.ph on ${checked}.` : d.prc ? 'Not yet checked by a person at Flossify. Until it is, treat the number as the dentist’s own statement.' : 'The clinic has not given us a licence number yet, so there is nothing to check.'}</p>
           </li>
-          <li class="flex flex-wrap items-baseline justify-between gap-2 py-3">
-            <span><span class:list={['tag', d.pda && 'tag-accent']}>{d.pda ? 'PDA member' : 'PDA membership not on file'}</span></span>
-            <span class="text-[14px] text-muted">{d.pda ? 'Philippine Dental Association, as the clinic declared it; not checked by us.' : 'Philippine Dental Association. Not declared here; ask the dentist.'}</span>
+          <li>
+            <p><span class:list={['ws-pill', d.pda ? 'ws-tint-teal' : 'ws-tint-slate']}>{d.pda ? 'PDA member' : 'PDA membership not on file'}</span></p>
+            <p class="mt-1.5 text-[14.5px] leading-relaxed text-ink-2">{d.pda ? 'Philippine Dental Association, as the clinic declared it; not checked by us.' : 'Philippine Dental Association. Not declared here; ask the dentist.'}</p>
           </li>
-          <li class="flex flex-wrap items-baseline justify-between gap-2 py-3">
-            <span><span class:list={['tag', d.specialty && 'tag-accent']}>{d.specialty ? `Recognised specialty · ${d.specialty}` : 'General dentist'}</span></span>
-            <span class="text-[14px] text-muted">{d.specialty ? 'One of the seven fields the Board of Dentistry recognises, as the clinic listed it.' : 'Practises the areas listed; “specialist” is used only for Board-recognised fields.'}</span>
+          <li>
+            <p><span class:list={['ws-pill', d.specialty ? 'ws-tint-teal' : 'ws-tint-slate']}>{d.specialty ? `Recognised specialty · ${d.specialty}` : 'General dentist'}</span></p>
+            <p class="mt-1.5 text-[14.5px] leading-relaxed text-ink-2">{d.specialty ? 'One of the seven fields the Board of Dentistry recognises, as the clinic listed it.' : 'Practises the areas listed; “specialist” is used only for Board-recognised fields.'}</p>
           </li>
         </ul>
-      </div>
+      </Pane>
 
-      <aside class="md:col-span-4">
-        <h2 class="meta meta-ink">Where and when</h2>
-        <ul class="mt-3 grid gap-3">
+      <Pane class="pt-card" id="where" icon="calendar" title="Where and when">
+        <ul class="grid gap-3">
           {places.map((p) => (
-            <li class="border border-line p-4">
-              <a href={`/find/${p.l.slug}/`} class="font-display text-[18px] font-semibold hover:text-accent">{p.l.name}</a>
-              <p class="mt-1 text-[14px] text-ink-2">{p.l.area} · {p.days.map((n) => DAYS[n]).join(' · ')}</p>
-              <a href={`/find/${p.l.slug}/book/`} class="btn btn-primary mt-4 w-full">{p.l.workspace ? 'Book here' : 'Request here'}</a>
+            <li class="pt-inset p-4">
+              <div class="flex items-center gap-3">
+                <ClinicBadge name={p.l.name} />
+                <div class="min-w-0">
+                  <a href={`/find/${p.l.slug}/`} class="pt-person-name block hover:text-teal-ink">{p.l.name}</a>
+                  <p class="text-[14px] text-ink-2">{p.l.area}</p>
+                </div>
+              </div>
+              <p class="pt-fact mt-3"><Icon name="clock" size={16} /><span>{p.days.map((n) => DAYS[n]).join(' · ') || 'Days not listed yet'}</span></p>
+              <a href={`/find/${p.l.slug}/book/`} class="btn btn-primary mt-3 w-full"><Icon name="calendar" />{p.l.workspace ? 'Book here' : 'Request here'}</a>
             </li>
           ))}
         </ul>
-      </aside>
+      </Pane>
     </div>
 
-    <section class="mt-16 border-t border-line pt-8">
-      <h2 class="meta meta-ink">Reviews</h2>
-      <p class="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-ink-2">None yet: reviews are not open. When they are: only from completed visits, read before publishing, never removable by the dentist or clinic.</p>
-    </section>
+    <Pane class="pt-card mt-4" id="rev" icon="message" title="Reviews">
+      <p class="ws-empty"><Icon name="info" size={20} class="ws-empty-icon" /><span class="ws-empty-text">None yet: reviews are not open.</span></p>
+      <p class="mt-1 max-w-[62ch] text-[14.5px] leading-relaxed text-ink-2">When they are: only from completed visits, read before publishing, never removable by the dentist or clinic.</p>
+    </Pane>
   </main>
 </Base>

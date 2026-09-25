@@ -12,11 +12,17 @@
 // keeps the chair. Every post carries the CSRF token; a miss comes back with
 // ?stale=1 and the sentence to try again. Moving a visit is a phone call:
 // the clinic's number is on the row.
+//
+// Drawn in the soft template, in the workspace's sidebar pattern (_Shell.astro): each visit a row
+// on a white card — a small calendar leaf, the clinic, what for and with whom, a status pill in
+// words, and its actions.
 export const prerender = false;
 
-import Base from '../../../layouts/Base.astro';
-import PatientHeader from '../../../components/PatientHeader.astro';
+import Shell from '../_Shell.astro';
 import Csrf from '../../../components/Csrf.astro';
+import Pane from '../../../components/ws/Pane.astro';
+import Icon from '../../../components/ws/Icon.astro';
+import Empty from '../../../components/ws/Empty.astro';
 import { readPatientSession } from '../../../lib/patient-auth';
 import { publicRead } from '../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../lib/csrf';
@@ -68,16 +74,21 @@ const when = (d: Date) => { const p = parts(d, { weekday: 'short', day: 'numeric
 const yearOf = (d: Date) => parts(d, { year: 'numeric' }).year;
 const thisYear = yearOf(new Date());
 
-// Status in plain words, never colour alone.
-function statusWords(v: Visit): string {
+// Status in plain words, never colour alone: a pill with the word on a pale tint of its colour
+// (the tint's own ink, 5.3:1 and more), and one line under it when the word needs one.
+type Tint = 'teal' | 'green' | 'amber' | 'blue' | 'red' | 'slate';
+function statusOf(v: Visit): { label: string; tint: Tint; hint?: string } {
+  const ahead = v.starts_at.getTime() > now;
   switch (v.status) {
-    case 'booked': return v.placed ? 'Booked — please confirm' : 'Requested — the clinic will confirm a time';
-    case 'confirmed': return 'Confirmed';
-    case 'arrived': case 'in_lobby': case 'in_chair': return 'At the clinic';
-    case 'completed': return 'Done';
-    case 'no_show': return 'Missed';
-    case 'cancelled': return 'Cancelled';
-    default: return v.status;
+    case 'booked':
+      if (!v.placed) return { label: 'Requested', tint: ahead ? 'blue' : 'slate', hint: ahead ? 'The clinic will confirm a time.' : undefined };
+      return ahead ? { label: 'Please confirm', tint: 'amber' } : { label: 'Booked', tint: 'slate' };
+    case 'confirmed': return { label: 'Confirmed', tint: 'green' };
+    case 'arrived': case 'in_lobby': case 'in_chair': return { label: 'At the clinic', tint: 'teal' };
+    case 'completed': return { label: 'Done', tint: 'slate' };
+    case 'no_show': return { label: 'Missed', tint: 'red' };
+    case 'cancelled': return { label: 'Cancelled', tint: 'slate' };
+    default: return { label: v.status, tint: 'slate' };
   }
 }
 const isAhead = (v: Visit) => v.starts_at.getTime() > now && (v.status === 'booked' || v.status === 'confirmed');
@@ -97,124 +108,177 @@ function ics(v: Visit): string {
   return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(lines.join('\r\n'));
 }
 const tel = (s: string) => `tel:${s.replace(/[^\d+]/g, '')}`;
+// The calendar leaf on each row: "Thu" · "24" · "Sep" (and the year when it is not this one).
+const leaf = (d: Date) => parts(d, { weekday: 'short', day: 'numeric', month: 'short' });
+const what = (v: Visit) => [v.reason, v.dentist ? `with ${v.dentist}` : ''].filter(Boolean).join(' ') || 'Visit';
+const forWhom = (v: Visit) => `For ${v.patient_name}${v.booked_by_name && v.booked_by_name !== v.patient_name ? ` · booked by ${v.booked_by_name}` : ''}`;
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const who = prettyPhone(phone);
 ---
 
-<Base title="My visits — Flossify" description="Your visits at every clinic on Flossify, under your mobile number. Confirm, cancel, or add one to your calendar.">
-  <PatientHeader current="me" />
+<Shell title="My visits" description="Your visits at every clinic on Flossify, under your mobile number. Confirm, cancel, or add one to your calendar." phone={phone}>
+  {notice && !error && (
+    <p role="status" class="ws-callout" data-tone="success"><Icon name="check" /><span>{notice}</span></p>
+  )}
+  {error && (
+    <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>
+  )}
 
-  <main id="main" class="mx-auto max-w-[880px] px-5 py-10 sm:px-8">
-    <div class="flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <p class="meta">Patients &middot; My visits</p>
-        <h1 class="mt-3 font-display text-[clamp(1.8rem,4vw,2.6rem)] leading-[1.05] font-semibold tracking-[-0.025em]">My visits</h1>
-        <p class="mt-3 text-[15px] text-ink-2">Under <span class="font-semibold tabular-nums text-ink">{prettyPhone(phone)}</span>, at every clinic on Flossify.</p>
-      </div>
-      <form method="post" action="/me/logout" class="flex items-baseline gap-3 text-[14px] text-ink-2">
-        <Csrf />
-        <span>Not you?</span>
-        <button type="submit" class="underline underline-offset-4 hover:text-ink">Sign out</button>
-      </form>
-    </div>
-
-    {notice && !error && <p role="status" class="mt-6 border border-accent/40 bg-accent/10 p-4 text-[14.5px]">{notice}</p>}
-    {error && <p role="alert" class="mt-6 border border-caries/40 bg-caries/10 p-4 text-[14.5px]">{error}</p>}
-
-    {visits.length === 0 ? (
-      <section class="mt-10 border border-line bg-surface p-6 sm:p-8">
-        <p class="text-[16px] leading-relaxed text-ink-2">No visits under this number yet. When you book on <a href="/find/" class="underline underline-offset-4 text-ink">Find a clinic</a> with it, they show here.</p>
-        <a href="/find/" class="btn btn-primary mt-6">Find a clinic</a>
-      </section>
-    ) : (
-      <>
-        <section class="mt-10" aria-labelledby="up-title">
-          <div class="flex items-baseline gap-6"><span class="sec-no">01</span><h2 id="up-title" class="font-display text-[22px] font-semibold tracking-tight">Coming up</h2></div>
-          <div class="rule mt-4"></div>
-          {upcoming.length === 0 ? (
-            <p class="mt-4 text-[15px] text-muted">Nothing booked ahead. <a href="/find/" class="underline underline-offset-4 text-ink-2">Find a clinic</a> when you need one.</p>
-          ) : (
-            <ul class="divide-y divide-line">
-              {upcoming.map((v) => (
-                <li class="grid gap-4 py-6 sm:grid-cols-[13rem_1fr]">
-                  <div>
-                    <p class="text-[17px] font-semibold tabular-nums">{when(v.starts_at)}</p>
-                    {yearOf(v.starts_at) !== thisYear && <p class="text-[13px] tabular-nums text-muted">{yearOf(v.starts_at)}</p>}
-                    <p class:list={['mt-1 text-[14.5px] font-semibold', v.status === 'cancelled' ? 'text-muted' : 'text-ink-2']}>{statusWords(v)}</p>
-                    {v.public_ref && <p class="meta mt-2">Ref {v.public_ref}</p>}
-                  </div>
-                  <div>
-                    <p class="text-[16px]"><a href={`/find/${v.clinic_slug}/`} class="font-semibold hover:text-accent">{v.clinic_name}</a>{v.clinic_area && <span class="text-ink-2"> &middot; {v.clinic_area}</span>}</p>
-                    <p class="mt-1 text-[15px] text-ink-2">{[v.reason, v.dentist ? `with ${v.dentist}` : ''].filter(Boolean).join(' ') || 'Visit'}</p>
-                    <p class="mt-1 text-[14px] text-muted">For {v.patient_name}{v.booked_by_name && v.booked_by_name !== v.patient_name ? ` · booked by ${v.booked_by_name}` : ''}</p>
+  {visits.length === 0 ? (
+    <Pane title="No visits yet" icon="calendar" meta={`Under ${who}`}>
+      <p class="ws-lede">No visits under this number yet. When you book on <a href="/find/" class="font-semibold text-teal-ink underline underline-offset-4">Find a clinic</a> with it, they show here.</p>
+      <a href="/find/" class="ws-btn ws-btn-primary mt-5"><Icon name="search" />Find a clinic</a>
+    </Pane>
+  ) : (
+    <>
+      <Pane id="coming-up" title="Coming up" icon="calendar" meta={`Under ${who}, at every clinic on Flossify`} pad="none">
+        <span slot="actions" class="ws-pill ws-tint-slate">{count(upcoming.length, 'visit', 'visits')}</span>
+        {upcoming.length === 0 ? (
+          <div class="px-6 py-3 max-md:px-4">
+            <Empty icon="calendar" text="Nothing booked ahead." action={{ label: 'Find a clinic', href: '/find/' }} />
+          </div>
+        ) : (
+          <ul class="me-visits" role="list">
+            {upcoming.map((v) => {
+              const s = statusOf(v);
+              const d = leaf(v.starts_at);
+              const quiet = v.status === 'cancelled';
+              return (
+                <li class="me-visit">
+                  <p class="me-leaf" data-quiet={quiet ? '' : undefined}>
+                    <span class="me-leaf-wd">{d.weekday}</span>
+                    <span class="me-leaf-day">{d.day}</span>
+                    <span class="me-leaf-mo">{d.month}{yearOf(v.starts_at) !== thisYear && <> {yearOf(v.starts_at)}</>}</span>
+                  </p>
+                  <div class="me-visit-body">
+                    <div class="me-visit-head">
+                      <div class="min-w-0">
+                        <p class="me-visit-when">{time(v.starts_at)} <span class="font-normal text-ink-2">&middot;</span> <a href={`/find/${v.clinic_slug}/`} class="me-clinic">{v.clinic_name}</a></p>
+                        <p class="me-visit-what">{what(v)}{v.clinic_area && <> &middot; {v.clinic_area}</>}</p>
+                      </div>
+                      <span class:list={['ws-pill', `ws-tint-${s.tint}`]}>{s.label}</span>
+                    </div>
+                    <p class="me-visit-who">{forWhom(v)}{v.public_ref && <> &middot; Ref <span class="font-mono text-[13px]">{v.public_ref}</span></>}</p>
+                    {s.hint && <p class="me-visit-hint"><Icon name="clock" size={16} />{s.hint}</p>}
 
                     {isAhead(v) && (asking === v.appointment_id ? (
-                      <div class="mt-4 flex flex-wrap items-center gap-3 border border-line bg-bg-soft p-4" role="group" aria-label="Cancel this visit?">
-                        <p class="text-[15px] font-semibold">Cancel this visit?</p>
-                        <form method="post">
-                          <Csrf />
-                          <input type="hidden" name="act" value="cancel" />
-                          <input type="hidden" name="id" value={v.appointment_id} />
-                          <button type="submit" class="btn btn-primary !px-4 !py-2 text-[14px]" autofocus>Yes, cancel</button>
-                        </form>
-                        <a href="/me/visits/" class="btn btn-quiet !px-4 !py-2 text-[14px]">Keep it</a>
+                      <div class="ws-callout me-ask" data-tone="warn" role="group" aria-label={`Cancel your visit on ${when(v.starts_at)}?`}>
+                        <Icon name="alert" />
+                        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                          <p class="font-semibold">Cancel this visit?</p>
+                          <form method="post">
+                            <Csrf />
+                            <input type="hidden" name="act" value="cancel" />
+                            <input type="hidden" name="id" value={v.appointment_id} />
+                            <button type="submit" class="ws-btn ws-btn-danger ws-btn-sm" autofocus>Yes, cancel</button>
+                          </form>
+                          <a href="/me/visits/" class="ws-btn ws-btn-quiet ws-btn-sm">Keep it</a>
+                        </div>
                       </div>
                     ) : (
-                      <div class="mt-4 flex flex-wrap items-center gap-2">
+                      <div class="me-actions">
                         {canConfirm(v) && (
                           <form method="post">
                             <Csrf />
                             <input type="hidden" name="act" value="confirm" />
                             <input type="hidden" name="id" value={v.appointment_id} />
-                            <button type="submit" class="btn btn-primary !px-4 !py-2 text-[14px]">Confirm</button>
+                            <button type="submit" class="ws-btn ws-btn-primary ws-btn-sm"><Icon name="check" />Confirm</button>
                           </form>
                         )}
                         <form method="post">
                           <Csrf />
                           <input type="hidden" name="act" value="ask-cancel" />
                           <input type="hidden" name="id" value={v.appointment_id} />
-                          <button type="submit" class="btn btn-quiet !px-4 !py-2 text-[14px]">Cancel</button>
+                          <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm">Cancel</button>
                         </form>
-                        <a href={ics(v)} download="flossify-visit.ics" class="btn btn-quiet !px-4 !py-2 text-[14px]">Add to calendar</a>
-                        {v.clinic_phone && <a href={tel(v.clinic_phone)} class="btn btn-quiet !px-4 !py-2 text-[14px]">Call to move it</a>}
+                        <a href={ics(v)} download="flossify-visit.ics" class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="calendar" />Add to calendar</a>
+                        {v.clinic_phone && <a href={tel(v.clinic_phone)} class="ws-btn ws-btn-quiet ws-btn-sm">Call to move it</a>}
                       </div>
                     ))}
                     {isAhead(v) && asking !== v.appointment_id && v.clinic_phone && (
-                      <p class="mt-2 text-[13px] text-muted">Cancel here up to two hours before. Closer than that, call {v.clinic_phone}.</p>
+                      <p class="me-visit-note">Cancel here up to two hours before. Closer than that, call {v.clinic_phone}.</p>
                     )}
                   </div>
                 </li>
-              ))}
-            </ul>
-          )}
-        </section>
+              );
+            })}
+          </ul>
+        )}
+      </Pane>
 
-        <section class="mt-12" aria-labelledby="past-title">
-          <div class="flex items-baseline gap-6"><span class="sec-no">02</span><h2 id="past-title" class="font-display text-[22px] font-semibold tracking-tight">Past</h2></div>
-          <div class="rule mt-4"></div>
-          {past.length === 0 ? (
-            <p class="mt-4 text-[15px] text-muted">No past visits under this number.</p>
-          ) : (
-            <ul class="divide-y divide-line">
-              {past.map((v) => (
-                <li class="grid gap-2 py-5 sm:grid-cols-[13rem_1fr]">
-                  <div>
-                    <p class="text-[15px] font-semibold tabular-nums text-ink-2">{when(v.starts_at)}</p>
-                    {yearOf(v.starts_at) !== thisYear && <p class="text-[13px] tabular-nums text-muted">{yearOf(v.starts_at)}</p>}
-                    <p class:list={['mt-1 text-[14px]', v.status === 'cancelled' || v.status === 'no_show' ? 'text-muted' : 'text-ink-2']}>{statusWords(v)}</p>
-                    {v.public_ref && <p class="meta mt-2">Ref {v.public_ref}</p>}
-                  </div>
-                  <div>
-                    <p class="text-[15px]"><a href={`/find/${v.clinic_slug}/`} class="font-semibold hover:text-accent">{v.clinic_name}</a>{v.clinic_area && <span class="text-ink-2"> &middot; {v.clinic_area}</span>}</p>
-                    <p class="mt-1 text-[14.5px] text-ink-2">{[v.reason, v.dentist ? `with ${v.dentist}` : ''].filter(Boolean).join(' ') || 'Visit'}</p>
-                    <p class="mt-1 text-[13.5px] text-muted">For {v.patient_name}{v.booked_by_name && v.booked_by_name !== v.patient_name ? ` · booked by ${v.booked_by_name}` : ''}</p>
+      <Pane id="past" title="Past" icon="clock" pad="none">
+        <span slot="actions" class="ws-pill ws-tint-slate">{count(past.length, 'visit', 'visits')}</span>
+        {past.length === 0 ? (
+          <div class="px-6 py-3 max-md:px-4">
+            <Empty icon="clock" text="No past visits under this number." />
+          </div>
+        ) : (
+          <ul class="me-visits" role="list">
+            {past.map((v) => {
+              const s = statusOf(v);
+              const d = leaf(v.starts_at);
+              return (
+                <li class="me-visit">
+                  <p class="me-leaf" data-quiet="">
+                    <span class="me-leaf-wd">{d.weekday}</span>
+                    <span class="me-leaf-day">{d.day}</span>
+                    <span class="me-leaf-mo">{d.month}{yearOf(v.starts_at) !== thisYear && <> {yearOf(v.starts_at)}</>}</span>
+                  </p>
+                  <div class="me-visit-body">
+                    <div class="me-visit-head">
+                      <div class="min-w-0">
+                        <p class="me-visit-when">{time(v.starts_at)} <span class="font-normal text-ink-2">&middot;</span> <a href={`/find/${v.clinic_slug}/`} class="me-clinic">{v.clinic_name}</a></p>
+                        <p class="me-visit-what">{what(v)}{v.clinic_area && <> &middot; {v.clinic_area}</>}</p>
+                      </div>
+                      <span class:list={['ws-pill', `ws-tint-${s.tint}`]}>{s.label}</span>
+                    </div>
+                    <p class="me-visit-who">{forWhom(v)}{v.public_ref && <> &middot; Ref <span class="font-mono text-[13px]">{v.public_ref}</span></>}</p>
                   </div>
                 </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </>
-    )}
+              );
+            })}
+          </ul>
+        )}
+      </Pane>
+    </>
+  )}
 
-    <p class="mt-14 border-t border-line pt-6 text-[14px] leading-relaxed text-muted">We keep this list for the mobile number only; the clinic’s records stay with the clinic.</p>
-  </main>
-</Base>
+  <p class="ws-callout" data-tone="info"><Icon name="info" /><span>We keep this list for the mobile number only; the clinic’s records stay with the clinic.</span></p>
+</Shell>
+
+<style>
+  @layer components {
+    /* One visit: a calendar leaf, then who, what and when, its status in words, and its actions. */
+    .me-visits > li + li { border-top: 1px solid var(--ws-hair); }
+    .me-visit { display: flex; align-items: flex-start; gap: 1rem; padding: 1.25rem 1.5rem; }
+    .me-leaf {
+      display: grid; justify-items: center; align-content: center; flex: none; width: 3.75rem; min-height: 4.5rem; padding: 0.375rem 0.25rem;
+      border-radius: var(--ws-r); background: var(--ws-teal-tint); color: var(--ws-teal-ink); text-align: center; line-height: 1.15;
+    }
+    .me-leaf[data-quiet] { background: var(--c-bg-soft); color: var(--c-ink-2); }
+    .me-leaf-wd, .me-leaf-mo { font-size: 12.5px; font-weight: 600; }
+    .me-leaf-day { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .me-visit-body { flex: 1 1 auto; min-width: 0; }
+    .me-visit-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.375rem 0.75rem; }
+    .me-visit-when { font-size: 16px; font-weight: 600; line-height: 1.35; color: var(--c-ink); font-variant-numeric: tabular-nums; }
+    .me-clinic { color: var(--c-ink); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; transition: color 160ms ease, text-decoration-color 160ms ease; }
+    .me-clinic:hover { color: var(--ws-teal-ink); text-decoration-color: currentColor; }
+    .me-visit-what { margin-top: 0.125rem; font-size: 15px; line-height: 1.45; color: var(--c-ink-2); }
+    .me-visit-who { margin-top: 0.25rem; font-size: 13.5px; line-height: 1.45; color: var(--c-muted); }
+    .me-visit-hint { display: flex; align-items: center; gap: 0.375rem; margin-top: 0.5rem; font-size: 14px; color: var(--ws-blue-ink); }
+    .me-visit-hint :global(.ws-icon) { flex: none; }
+    .me-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.875rem; }
+    .me-ask { margin-top: 0.875rem; }
+    .me-visit-note { margin-top: 0.5rem; font-size: 13.5px; line-height: 1.45; color: var(--c-muted); }
+    /* A phone: the leaf beside who and what, and the actions across the whole row under them, so
+       two buttons fit side by side. */
+    @media (max-width: 767px) {
+      .me-visit { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 0.75rem; padding: 1rem; }
+      .me-visit-body { display: contents; }
+      .me-leaf { grid-row: span 3; align-self: start; width: 3.25rem; min-height: 4rem; }
+      .me-leaf-day { font-size: 20px; }
+      .me-visit-head, .me-visit-who, .me-visit-hint { grid-column: 2; }
+      .me-actions, .me-ask, .me-visit-note { grid-column: 1 / -1; }
+    }
+  }
+</style>

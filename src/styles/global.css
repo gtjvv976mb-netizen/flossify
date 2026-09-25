@@ -1,24 +1,17 @@
 @import "tailwindcss";
 
 /* ===========================================================================
-   fonts — self-hosted
+   fonts — one self-hosted face, for reference numbers only
 
-   Served from this origin rather than fonts.googleapis.com: one less
-   third-party connection on a page about patients' medical records, no
-   render-blocking request to a domain we do not control, and the typography
-   is guaranteed to be the typography rather than whatever Helvetica the
-   fallback stack lands on.
-
-   Archivo is variable (wght 100-900), so the whole display range is one
-   35KB file. IBM Plex Mono is static, so it needs its two weights.
+   Every word on the site is in one friendly sans: Inter where the device has
+   it, otherwise the system's own UI face (San Francisco, Segoe UI, Roboto).
+   Nothing is fetched from a third party — no Google Fonts on a page about
+   patients' medical records (CLAUDE.md). IBM Plex Mono stays for the few
+   things that are read digit by digit: chart and statement numbers, booking
+   refs, a six-digit code (`font-mono`). It is only downloaded by a page that
+   uses it. (Archivo, the Swiss display face, is retired; its file stays in
+   public/fonts/ because the service worker precaches it.)
    =========================================================================== */
-@font-face {
-  font-family: "Archivo";
-  src: url("/fonts/Archivo.woff2") format("woff2-variations");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
 @font-face {
   font-family: "IBM Plex Mono";
   src: url("/fonts/IBMPlexMono-400.woff2") format("woff2");
@@ -35,17 +28,25 @@
 }
 
 /* ===========================================================================
-   Flossify — Swiss clinical.
+   Flossify — soft clinical, everywhere (the owner, 26 Sep 2026).
 
-   Three rules govern everything below, and breaking any one of them is what
-   makes a page like this collapse back into a generic SaaS template:
+   One design system for every page: the public site, the patient pages,
+   clinic sign-up, patient accounts, the staff entrance, the clinic workspace
+   and the operator's page. It is the workspace's soft template
+   (docs/workspace-redesign.md): bright white cards with gently rounded
+   corners (12px cards, 10px controls, 999px pills) and at most a whisper of
+   shadow; slate words, never black; one calm teal for the main action and the
+   chosen thing; pale tints with their own darker words for status; round
+   initial avatars; line icons; sentence case everywhere — no uppercase
+   typewriter labels, no black buttons, no black blocks. One teal button per
+   screen. Motion always on. Nothing fixed to the bottom of the screen.
+   Contrast is measured (≥4.5:1 against the worst pixel behind the words, in
+   both themes), never judged by eye.
 
-     1. No radii. Nothing is rounded, anywhere.
-     2. No shadows. Separation comes from 1px rules and whitespace only.
-     3. Uppercase lives in the mono face and nowhere else.
-
-   Semantic names map to CSS variables so dark mode is a variable swap, not a
-   second set of utility classes scattered through the markup.
+   The tokens live on :root, so every page — and every utility (text-ink,
+   bg-accent/10, border-line, text-crown …) — follows them with no change in
+   the markup. Dark mode is a token swap: soft charcoal, the same hues lighter,
+   never pure black.
    =========================================================================== */
 @theme inline {
   --color-bg: var(--c-bg);
@@ -66,100 +67,224 @@
   --color-invert-ink-2: var(--c-invert-ink-2);
   --color-invert-line: var(--c-invert-line);
 
-  --font-display: "Archivo", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-body: "Archivo", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* The soft template's own, as utilities: bg-card, bg-subtle, border-hair, border-field-line,
+     bg-teal-fill, bg-teal-tint, text-teal-ink, bg-green-tint, text-amber-ink, … (a mark, its words,
+     a fill under white words, a pale tint). */
+  --color-card: var(--ws-card);
+  --color-subtle: var(--ws-subtle);
+  --color-hair: var(--ws-hair);
+  --color-field: var(--ws-field);
+  --color-field-line: var(--ws-field-line);
+  --color-teal: var(--ws-teal);
+  --color-teal-ink: var(--ws-teal-ink);
+  --color-teal-fill: var(--ws-teal-fill);
+  --color-teal-tint: var(--ws-teal-tint);
+  --color-green: var(--ws-green);
+  --color-green-ink: var(--ws-green-ink);
+  --color-green-fill: var(--ws-green-fill);
+  --color-green-tint: var(--ws-green-tint);
+  --color-amber: var(--ws-amber);
+  --color-amber-ink: var(--ws-amber-ink);
+  --color-amber-tint: var(--ws-amber-tint);
+  --color-blue: var(--ws-blue);
+  --color-blue-ink: var(--ws-blue-ink);
+  --color-blue-tint: var(--ws-blue-tint);
+  --color-red: var(--ws-red);
+  --color-red-ink: var(--ws-red-ink);
+  --color-red-fill: var(--ws-red-fill);
+  --color-red-tint: var(--ws-red-tint);
+
+  /* rounded-card (12px), rounded-ctl (10px: fields, buttons), rounded-pane (16px: big cards,
+     sheets), rounded-full for pills and avatars. */
+  --radius-card: 12px;
+  --radius-ctl: 10px;
+  --radius-pane: 16px;
+
+  --font-display: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 :root {
-  --c-bg: #f2f2ef;
-  --c-bg-soft: #e9e9e4;
+  /* --- the site's names (the utilities above read these) --- */
+  --c-bg: #f3f5f8;
+  --c-bg-soft: #f2f4f7;
   --c-surface: #ffffff;
-  --c-ink: #0e0f0f;
-  --c-ink-2: #43474a;
-  --c-muted: #5c6062;
-  --c-faint: #6b6f70;
-  --c-line: #d3d3ce;
-  --c-line-2: #e3e3de;
-  --c-accent: #0b6557;
-  --c-accent-deep: #084b40;
-  --c-caries: #b03a08;
-  --c-crown: #8a5406;
+  --c-ink: #1f2937;
+  --c-ink-2: #475467;
+  --c-muted: #667085;
+  --c-faint: #667085;
+  --c-line: #e6e9ee;
+  --c-line-2: #eef1f4;
+  --c-accent: #0d706d;
+  --c-accent-deep: #0b5d5b;
+  --c-caries: #ac3232;
+  --c-crown: #8a4604;
 
-  /* The inverted block flips to the opposite ground in each theme, so the
-     contrast beat survives dark mode instead of disappearing into it. */
-  --c-invert-bg: #0e0f0f;
-  --c-invert-ink: #f2f2ef;
-  --c-invert-ink-2: #a3a8a7;
-  --c-invert-line: #34383a;
+  /* The old inverted (black) block is retired: anything still on it is a teal band with white
+     words (white on #0e7471 is 5.6:1; ink-2 #e3f3f2 on it 4.9:1). */
+  --c-invert-bg: #0e7471;
+  --c-invert-ink: #ffffff;
+  --c-invert-ink-2: #e3f3f2;
+  --c-invert-line: #3f8f8c;
 
+  /* The odontogram's paper (the patient record only) — unchanged. */
   --c-tooth-sound: #ffffff;
   --c-tooth-line: #c6c6c0;
   --c-tooth-missing: #e4e4de;
 
+  /* --- the soft template (docs/workspace-redesign.md, "CSS classes and tokens") --- */
+  --ws-font: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ws-r: 12px;
+  --ws-r-lg: 16px;
+  --ws-r-ctl: 10px;
+  --ws-r-pill: 999px;
+  --ws-shadow: 0 1px 2px rgb(16 24 40 / 0.05);
+  --ws-shadow-pop: 0 12px 32px -8px rgb(16 24 40 / 0.16), 0 2px 6px rgb(16 24 40 / 0.06);
+
+  /* the room, and what stands on it */
+  --ws-veil: rgb(243 245 248 / 0.62);
+  --ws-card: rgb(255 255 255 / 0.94);
+  --ws-side-bg: rgb(255 255 255 / 0.96);
+  --ws-side-solid: #ffffff;
+  --ws-bar-bg: rgb(251 252 253 / 0.95);
+  --ws-subtle: #f8fafc;
+  --ws-glass: var(--ws-card);
+  --ws-glass-strong: #ffffff;
+  --ws-hair: #e6e9ee;
+  --ws-hair-strong: #d9dee5;
+  --ws-hover: rgb(16 24 40 / 0.035);
+  --ws-field: #ffffff;
+  --ws-field-line: #d0d5dd;
+  --ws-field-line-hover: #aab2bf;
+  --ws-scrim: rgb(16 24 40 / 0.32);
+
+  /* colour: each one a mark (icons, rings), words (-ink), a fill under white words (-fill), a pale tint */
+  --ws-teal: #14908f; --ws-teal-ink: #0d706d; --ws-teal-fill: #0e7471; --ws-teal-fill-hover: #0b5f5d; --ws-teal-tint: #e8f6f5;
+  --ws-green: #1f9d63; --ws-green-ink: #16734a; --ws-green-fill: #16784d; --ws-green-fill-hover: #11613e; --ws-green-tint: #e9f7ef;
+  --ws-amber: #d97706; --ws-amber-ink: #8a4604; --ws-amber-tint: #fff5e6;
+  --ws-blue: #3b82f6; --ws-blue-ink: #2359c9; --ws-blue-tint: #eef4ff;
+  --ws-red: #dc4c4c; --ws-red-ink: #ac3232; --ws-red-fill: #c43c3c; --ws-red-tint: #fdeeee;
+  --ws-violet-ink: #5b3fc4; --ws-violet-tint: #f1eefd;
+  --ws-rose-ink: #a3294f; --ws-rose-tint: #fdeef4;
+
+  /* --- the public site's own surfaces --- */
+  /* The top bar and the home page's cards stand on the film with no veil, so they are near-opaque:
+     the muted slate is 4.5:1 and more on them even over a pure black pixel (measured). */
+  --site-bar-bg: rgb(255 255 255 / 0.96);
+  --site-pane: rgb(255 255 255 / 0.97);
+  --site-shadow-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 18px 44px -18px rgb(16 24 40 / 0.3);
+
   color-scheme: light;
 }
 
-/* Dark values, written once and applied by both the OS preference and the
-   explicit toggle. Kept as two selectors rather than one list because
-   `:root:not([data-theme="light"])` inside a media query cannot be merged
-   with a plain attribute selector without changing what wins. */
+/* Dark values, written once for the OS preference and once for the explicit toggle. Kept as two
+   selectors rather than one list because `:root:not([data-theme="light"])` inside a media query
+   cannot be merged with a plain attribute selector without changing what wins. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --c-bg: #0b0c0c;
-    --c-bg-soft: #121313;
-    --c-surface: #121313;
-    --c-ink: #ececeb;
-    --c-ink-2: #b2b6b6;
-    --c-muted: #8b9090;
-    --c-faint: #7e8383;
-    --c-line: #2b2d2d;
-    --c-line-2: #1d1f1f;
-    --c-accent: #5fd9a0;
-    --c-accent-deep: #9cecc2;
-    --c-caries: #f97316;
-    --c-crown: #fbbf24;
-
-    --c-invert-bg: #ececeb;
-    --c-invert-ink: #0b0c0c;
-    --c-invert-ink-2: #43474a;
-    --c-invert-line: #c2c4c2;
+    --c-bg: #15191e;
+    --c-bg-soft: #262d36;
+    --c-surface: #1d232a;
+    --c-ink: #e7ebf0;
+    --c-ink-2: #c3cad4;
+    --c-muted: #9ea8b6;
+    --c-faint: #9ea8b6;
+    --c-line: #2a323b;
+    --c-line-2: #232a32;
+    --c-accent: #5ccfc6;
+    --c-accent-deep: #98e3dc;
+    --c-caries: #f59b9b;
+    --c-crown: #f3bd6a;
 
     --c-tooth-sound: #191b1b;
     --c-tooth-line: #3a3d3d;
     --c-tooth-missing: #111212;
+
+    --ws-shadow: 0 1px 2px rgb(0 0 0 / 0.28);
+    --ws-shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.3);
+    --ws-veil: rgb(21 25 30 / 0.74);
+    --ws-card: rgb(29 35 42 / 0.94);
+    --ws-side-bg: rgb(26 31 37 / 0.96);
+    --ws-side-solid: #1a1f25;
+    --ws-bar-bg: rgb(23 27 32 / 0.9);
+    --ws-subtle: #20272f;
+    --ws-glass-strong: #1d232a;
+    --ws-hair: #2a323b;
+    --ws-hair-strong: #36404b;
+    --ws-hover: rgb(255 255 255 / 0.055);
+    --ws-field: #161b21;
+    --ws-field-line: #3a4450;
+    --ws-field-line-hover: #56626f;
+    --ws-scrim: rgb(0 0 0 / 0.5);
+    --ws-teal: #2bb3ad; --ws-teal-ink: #7fdcd4; --ws-teal-fill: #0e7471; --ws-teal-fill-hover: #11807d; --ws-teal-tint: #163a3b;
+    --ws-green: #34b97a; --ws-green-ink: #7fdcaa; --ws-green-fill: #16784d; --ws-green-fill-hover: #1a8a59; --ws-green-tint: #173a2b;
+    --ws-amber: #f0a33a; --ws-amber-ink: #f3c47a; --ws-amber-tint: #3b2f1a;
+    --ws-blue: #6fa3f8; --ws-blue-ink: #9fc0fb; --ws-blue-tint: #1d2c47;
+    --ws-red: #ec7070; --ws-red-ink: #f5a3a3; --ws-red-fill: #c43c3c; --ws-red-tint: #3f2327;
+    --ws-violet-ink: #c3b5fb; --ws-violet-tint: #2a2346;
+    --ws-rose-ink: #f5a8c6; --ws-rose-tint: #3d2130;
+
+    --site-bar-bg: rgb(29 35 42 / 0.94);
+    --site-pane: rgb(29 35 42 / 0.95);
+    --site-shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 18px 44px -18px rgb(0 0 0 / 0.6);
 
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --c-bg: #0b0c0c;
-  --c-bg-soft: #121313;
-  --c-surface: #121313;
-  --c-ink: #ececeb;
-  --c-ink-2: #b2b6b6;
-  --c-muted: #8b9090;
-  --c-faint: #7e8383;
-  --c-line: #2b2d2d;
-  --c-line-2: #1d1f1f;
-  --c-accent: #5fd9a0;
-  --c-accent-deep: #9cecc2;
-  --c-caries: #f97316;
-  --c-crown: #fbbf24;
-
-  --c-invert-bg: #ececeb;
-  --c-invert-ink: #0b0c0c;
-  --c-invert-ink-2: #43474a;
-  --c-invert-line: #c2c4c2;
+  --c-bg: #15191e;
+  --c-bg-soft: #262d36;
+  --c-surface: #1d232a;
+  --c-ink: #e7ebf0;
+  --c-ink-2: #c3cad4;
+  --c-muted: #9ea8b6;
+  --c-faint: #9ea8b6;
+  --c-line: #2a323b;
+  --c-line-2: #232a32;
+  --c-accent: #5ccfc6;
+  --c-accent-deep: #98e3dc;
+  --c-caries: #f59b9b;
+  --c-crown: #f3bd6a;
 
   --c-tooth-sound: #191b1b;
   --c-tooth-line: #3a3d3d;
   --c-tooth-missing: #111212;
 
+  --ws-shadow: 0 1px 2px rgb(0 0 0 / 0.28);
+  --ws-shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.3);
+  --ws-veil: rgb(21 25 30 / 0.74);
+  --ws-card: rgb(29 35 42 / 0.94);
+  --ws-side-bg: rgb(26 31 37 / 0.96);
+  --ws-side-solid: #1a1f25;
+  --ws-bar-bg: rgb(23 27 32 / 0.9);
+  --ws-subtle: #20272f;
+  --ws-glass-strong: #1d232a;
+  --ws-hair: #2a323b;
+  --ws-hair-strong: #36404b;
+  --ws-hover: rgb(255 255 255 / 0.055);
+  --ws-field: #161b21;
+  --ws-field-line: #3a4450;
+  --ws-field-line-hover: #56626f;
+  --ws-scrim: rgb(0 0 0 / 0.5);
+  --ws-teal: #2bb3ad; --ws-teal-ink: #7fdcd4; --ws-teal-fill: #0e7471; --ws-teal-fill-hover: #11807d; --ws-teal-tint: #163a3b;
+  --ws-green: #34b97a; --ws-green-ink: #7fdcaa; --ws-green-fill: #16784d; --ws-green-fill-hover: #1a8a59; --ws-green-tint: #173a2b;
+  --ws-amber: #f0a33a; --ws-amber-ink: #f3c47a; --ws-amber-tint: #3b2f1a;
+  --ws-blue: #6fa3f8; --ws-blue-ink: #9fc0fb; --ws-blue-tint: #1d2c47;
+  --ws-red: #ec7070; --ws-red-ink: #f5a3a3; --ws-red-fill: #c43c3c; --ws-red-tint: #3f2327;
+  --ws-violet-ink: #c3b5fb; --ws-violet-tint: #2a2346;
+  --ws-rose-ink: #f5a8c6; --ws-rose-tint: #3d2130;
+
+  --site-bar-bg: rgb(29 35 42 / 0.94);
+  --site-pane: rgb(29 35 42 / 0.95);
+  --site-shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 18px 44px -18px rgb(0 0 0 / 0.6);
+
   color-scheme: dark;
 }
 
+/* The page itself: the soft slate ground, slate words. 17px for unsized reading text on the
+   public pages (the workspace sets its own 15px on body.ws, below). Unlayered on purpose, as before. */
 body {
   background: var(--c-bg);
   color: var(--c-ink);
@@ -170,73 +295,100 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
-
-/* Grotesques need negative tracking at display sizes and roughly none at
-   reading sizes. Applying one value to both is the single most common way a
-   generated page announces itself. */
-h1, h2, h3, .font-display {
-  font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: -0.045em;
-  line-height: 0.92;
-  text-wrap: balance;
-}
 p { text-wrap: pretty; }
 
-/* Square, because everything here is square. */
+/* Headings: the friendly sans, semibold, a little tight at display sizes. In the base layer (it was
+   unlayered under the Swiss look), so a utility in the markup — leading-tight, tracking-[-0.03em],
+   font-bold — now wins on a heading, as it does everywhere else. The workspace and the staff
+   entrance keep their own unlayered heading rules (at the end of this file). */
+@layer base {
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+  /* A page title is set big: its lines sit closer. */
+  h1 { line-height: 1.1; }
+  /* Every placeholder in the muted slate (4.97:1 on a white field). Tailwind's default, the text
+     colour at 50%, is about 3:1 on slate. */
+  ::placeholder { color: var(--c-muted); opacity: 1; }
+}
+
+/* A teal ring that follows the control's own corners. Unlayered on purpose: it is the safety net
+   under every control, and an `outline-none` utility must not take it away. */
 :focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: 3px;
-  border-radius: 0;
+  outline: 2px solid var(--ws-teal);
+  outline-offset: 2px;
 }
 
 /* ===========================================================================
-   components
+   components — the site's own classes, soft
 
    These live in @layer components on purpose. Unlayered, they are emitted
    AFTER Tailwind's utilities and win on equal specificity — which is how
    `.media { position: relative }` silently beat an `absolute` utility in the
    markup and left the hero photograph sitting at intrinsic size in a corner.
    In the components layer, a utility in the markup always wins.
+
+   The class names are the ones the pages have always used (.btn, .meta,
+   .chip, .field, .pane, .q …), redrawn in the soft template, so every page
+   follows with no change in its markup. Inside the workspace the same classes
+   are the workspace's (its own block, further down, keeps its denser sizes).
    =========================================================================== */
 @layer components {
 
-/* --- metadata ------------------------------------------------------------
-   The mono face carries every label, number and timestamp on the site. It is
-   also the only place uppercase is allowed, which is what keeps the display
-   type from shouting. */
+/* --- labels ----------------------------------------------------------------
+   A small label: 13px, medium, slate, sentence case. No uppercase typewriter
+   labels anywhere: write the label as it should read ("Next open", not
+   "NEXT OPEN"). */
 .meta {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 400;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   line-height: 1.4;
   color: var(--c-muted);
 }
 .meta-ink { color: var(--c-ink); }
 .meta-accent { color: var(--c-accent); }
+/* On the home page's film (light words on the scrim): .meta-film, or any .meta inside
+   .page-hero / .page-cta / .on-film (see "The film"). */
+.meta-film { color: rgb(255 255 255 / 0.86); }
 
-/* The section number in the gutter. Tabular figures so 01 and 07 occupy the
-   same width and the left edge never shifts between sections. */
+/* A step or section number: a small pale teal pill ("01", "2"), quiet beside its heading.
+   Tabular figures, so 01 and 07 are the same width. A longer label ("01 — The clinic") is a pill too. */
 .sec-no {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  /* Beside a heading or a step's words in a flex row: on their first line, never stretched tall. */
+  align-self: baseline;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--ws-r-pill);
+  background: var(--ws-teal-tint);
+  color: var(--ws-teal-ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
-  color: var(--c-faint);
+  white-space: nowrap;
 }
 
-/* --- rules ---------------------------------------------------------------
-   A hairline is the only structural device on this site. Hard edge to edge —
-   the faded-gradient version this replaces read as decoration, which is the
-   opposite of what a rule is for here. */
+/* --- rules -----------------------------------------------------------------
+   A hairline between things; cards do most of the separating now. */
 .rule {
   height: 1px;
   border: 0;
   background: var(--c-line);
 }
-
 /* Draws left to right when its section enters. The observer adds .is-in. */
 .rule-draw {
   transform: scaleX(0);
@@ -245,182 +397,181 @@ p { text-wrap: pretty; }
 }
 .rule-draw.is-in { transform: scaleX(1); }
 
-/* --- the grid ------------------------------------------------------------
-   Visible column gutters, drawn as a background rather than as elements, so
-   no extra DOM is needed to show the grid the layout is actually built on.
-   This is the move that makes the page read as Swiss rather than as merely
-   minimal: the structure is declared, not implied. */
-.grid-frame {
-  position: relative;
-  background-image: repeating-linear-gradient(
-    to right,
-    var(--c-line-2) 0 1px,
-    transparent 1px calc(100% / 6)
-  );
-  background-position: left top;
-}
-@media (max-width: 900px) {
-  .grid-frame { background-image: none; }
-}
+/* The Swiss column grid drawn behind a section is retired; the class stays harmless. */
+.grid-frame { position: relative; }
 
-/* --- buttons -------------------------------------------------------------
-   Square, no shadow, no transform on press. The hover moves colour only,
-   which at this scale reads as more confident than a lift. */
+/* --- buttons ---------------------------------------------------------------
+   One main action per screen, in teal (green when it takes money in); white
+   with a hairline for the rest. 44px tall, 10px corners; put an <Icon> first
+   (or an arrow last). The same look as the workspace's .ws-btn. */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.6rem;
-  border-radius: 0;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  letter-spacing: -0.005em;
-  padding: 1rem 1.75rem;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.625rem 1.125rem;
   border: 1px solid transparent;
+  border-radius: var(--ws-r-ctl);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-decoration: none;
   cursor: pointer;
-  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
+.btn .ws-icon { flex: none; transition: transform 180ms ease; }
+/* A trailing arrow after the words (<span>Words</span><Icon name="arrow-right" />) steps forward on hover. */
+.btn:hover .ws-icon:last-child:not(:first-child) { transform: translateX(3px); }
+/* A bigger one, for the one action a whole page is about (the home page's opening). */
+.btn-lg { min-height: 52px; padding: 0.75rem 1.5rem; font-size: 16px; }
 
-.btn-primary { background: var(--c-ink); color: var(--c-bg); }
-.btn-primary:hover { background: var(--c-accent); color: #ffffff; }
+.btn-primary { background: var(--ws-teal-fill); color: #fff; box-shadow: var(--ws-shadow); }
+.btn-primary:hover { background: var(--ws-teal-fill-hover); color: #fff; }
+.btn-success { background: var(--ws-green-fill); color: #fff; box-shadow: var(--ws-shadow); }
+.btn-success:hover { background: var(--ws-green-fill-hover); color: #fff; }
+.btn-quiet { background: var(--c-surface); color: var(--c-ink); border-color: var(--ws-field-line); box-shadow: var(--ws-shadow); }
+.btn-quiet:hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); }
 
-.btn-quiet {
-  background: transparent;
-  color: var(--c-ink);
-  border-color: var(--c-line);
-}
-.btn-quiet:hover { border-color: var(--c-ink); }
+/* On a teal band (the old inverted block): a white button with teal words, and a white outline. */
+.on-invert .btn-primary { background: #fff; color: var(--ws-teal-fill); }
+.on-invert .btn-primary:hover { background: #e8f6f5; color: var(--ws-teal-fill-hover); }
+.on-invert .btn-quiet { background: transparent; color: #fff; border-color: rgb(255 255 255 / 0.6); box-shadow: none; }
+.on-invert .btn-quiet:hover { background: rgb(255 255 255 / 0.12); border-color: #fff; }
 
-/* On the inverted block the same two buttons have to flip with it. */
-.on-invert .btn-primary { background: var(--c-invert-ink); color: var(--c-invert-bg); }
-.on-invert .btn-primary:hover { background: var(--c-accent); color: #ffffff; }
-.on-invert .btn-quiet { color: var(--c-invert-ink); border-color: var(--c-invert-line); }
-.on-invert .btn-quiet:hover { border-color: var(--c-invert-ink); }
-
-/* --- surfaces ------------------------------------------------------------ */
+/* --- surfaces --------------------------------------------------------------
+   A white card: 12px corners, a hairline, a whisper of shadow. */
 .card {
   background: var(--c-surface);
-  border: 1px solid var(--c-line);
-  border-radius: 0;
-  transition: border-color 200ms ease, background-color 200ms ease;
+  border: 1px solid var(--ws-hair);
+  border-radius: var(--ws-r);
+  box-shadow: var(--ws-shadow);
+  transition: border-color 200ms ease, background-color 200ms ease, box-shadow 200ms ease;
 }
 
-/* A bordered screenshot window. Square, hairline, no chrome drawing — enough
-   to read as software without becoming a skeuomorphic browser. */
+/* A screenshot or a recording in a soft window: rounded, a hairline, a quiet bar on top. */
 .frame {
-  border-radius: 0;
+  border-radius: var(--ws-r);
   overflow: hidden;
-  border: 1px solid var(--c-line);
+  border: 1px solid var(--ws-hair);
   background: var(--c-surface);
+  box-shadow: var(--ws-shadow);
 }
 .frame-bar {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--c-line);
-  background: var(--c-bg-soft);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  min-height: 36px;
+  padding: 0.375rem 0.875rem;
+  border-bottom: 1px solid var(--ws-hair);
+  background: var(--ws-subtle);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--c-muted);
 }
 
-/* --- the two doors -------------------------------------------------------
-   Clinics on one side, patients on the other, split by a single hairline.
-   The whole half is the target, so the hover state belongs to the half. */
+/* --- the two doors ----------------------------------------------------------
+   Clinics on one side, patients on the other. The whole half is the target, so
+   the hover belongs to the half: a soft wash, and a teal line that draws in. */
 .door {
   position: relative;
+  border-radius: var(--ws-r);
   transition: background-color 260ms ease;
 }
-.door:hover, .door:focus-within { background: var(--c-bg-soft); }
+.door:hover, .door:focus-within { background: var(--ws-subtle); }
 .door .door-rule {
   display: block;
-  height: 1px;
-  background: var(--c-accent);
+  height: 2px;
+  border-radius: var(--ws-r-pill);
+  background: var(--ws-teal);
   width: 0;
   transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .door:hover .door-rule, .door:focus-within .door-rule { width: 100%; }
 
-/* --- the product rail ----------------------------------------------------
-   Numbered items with a hairline indicator that moves down the rail. Clicking
-   to change the screen rather than scroll-jacking to change it: the reader
-   stays in charge, which is the argument the page is making. */
+/* --- a list of choices that switch a view beside it -------------------------
+   Soft rows; the chosen one tinted teal. The reader clicks to change the
+   screen: nothing is scroll-jacked. */
 .rail-item {
   position: relative;
   display: block;
   width: 100%;
+  min-height: 44px;
   text-align: left;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--ws-r-ctl);
   background: transparent;
   cursor: pointer;
-  padding: 1.15rem 0 1.15rem 1.5rem;
-  color: var(--c-muted);
-  transition: color 200ms ease;
-}
-.rail-item:hover { color: var(--c-ink); }
-.rail-item[aria-selected="true"] { color: var(--c-ink); }
-.rail-item[aria-selected="true"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--c-accent);
-}
-
-/* Legacy pill tabs still used by the workspace pages and the odontogram,
-   squared off so the product matches the site it is screenshotted onto. */
-.tab {
-  border-radius: 0;
-  padding: 0.55rem 1.1rem;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  padding: 0.875rem 1rem;
   color: var(--c-ink-2);
-  border: 1px solid var(--c-line);
-  background: transparent;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+.rail-item:hover { background: var(--ws-hover); color: var(--c-ink); }
+.rail-item[aria-selected="true"] { background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+
+/* Tabs: soft pills, the chosen one tinted teal with teal words (the workspace's <Tabs>). */
+.tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid var(--ws-field-line);
+  border-radius: var(--ws-r-pill);
+  background: var(--c-surface);
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.15;
+  text-transform: none;
+  white-space: nowrap;
+  color: var(--c-ink-2);
   cursor: pointer;
   transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
 }
-.tab:hover { border-color: var(--c-ink); color: var(--c-ink); }
+.tab:hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); color: var(--c-ink); }
 .tab[aria-selected="true"] {
-  background: var(--c-ink);
-  border-color: var(--c-ink);
-  color: var(--c-bg);
+  background: var(--ws-teal-tint);
+  border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent);
+  color: var(--ws-teal-ink);
+  font-weight: 600;
 }
 
 .panel { opacity: 0; transition: opacity 380ms ease; }
 .panel[hidden] { display: none; }
 .panel.is-shown { opacity: 1; }
 
-/* --- the services index --------------------------------------------------
-   A numbered table, not a card grid. Hovering a row cross-fades its photo
-   into the sticky pane beside it. */
+/* --- an index of rows (services) --------------------------------------------
+   Hairline rows; hovering one washes it and cross-fades its photo into the
+   sticky pane beside it. */
 .idx-row {
   display: grid;
   grid-template-columns: 3.5rem 1fr auto;
   align-items: baseline;
   gap: 1rem;
   width: 100%;
+  min-height: 44px;
   text-align: left;
   border: 0;
   border-top: 1px solid var(--c-line);
+  border-radius: 0;
   background: transparent;
-  padding: 1.6rem 0;
+  padding: 1.25rem 0.75rem;
   cursor: pointer;
-  transition: color 200ms ease, padding-left 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: background-color 200ms ease, color 200ms ease, padding-left 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.idx-row:hover, .idx-row[data-active] { padding-left: 0.75rem; }
-.idx-row[data-active] .idx-title { color: var(--c-accent); }
+.idx-row:hover, .idx-row[data-active] { padding-left: 1.25rem; background: var(--ws-hover); }
+.idx-row[data-active] .idx-title { color: var(--ws-teal-ink); }
 .idx-title { transition: color 200ms ease; }
 
-.idx-pane { position: relative; overflow: hidden; }
+.idx-pane { position: relative; overflow: hidden; border-radius: var(--ws-r); }
 .idx-shot {
   position: absolute;
   inset: 0;
@@ -429,7 +580,7 @@ p { text-wrap: pretty; }
 }
 .idx-shot[data-active] { opacity: 1; }
 
-/* --- media: blur-up ------------------------------------------------------
+/* --- media: blur-up ----------------------------------------------------------
    Each figure carries a 20px blurred copy of itself as its background, so a
    photograph resolves out of its own colours instead of snapping in over an
    empty box. */
@@ -454,117 +605,172 @@ p { text-wrap: pretty; }
    height instead. */
 .media-auto > img { height: auto; }
 
-/* --- disclosure ----------------------------------------------------------
-   Native <details>, so the questions open with no JavaScript at all. */
+/* --- questions: native <details>, open with no JavaScript -------------------
+   Hairline rows; a chevron at the right turns when the answer opens. */
 .q { border-top: 1px solid var(--c-line); }
 .q > summary {
   list-style: none;
   cursor: pointer;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 2rem;
-  padding: 1.5rem 0;
+  gap: 1.5rem;
+  min-height: 44px;
+  padding: 1.125rem 0;
+  border-radius: var(--ws-r-ctl);
 }
 .q > summary::-webkit-details-marker { display: none; }
 .q > summary::after {
-  content: "+";
-  font-family: var(--font-mono);
-  font-size: 1.1rem;
-  color: var(--c-muted);
+  content: "";
   flex: none;
+  width: 20px;
+  height: 20px;
+  background: var(--c-ink-2);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 9.5L12 15l5.5-5.5'/%3E%3C/svg%3E") center / 20px 20px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 9.5L12 15l5.5-5.5'/%3E%3C/svg%3E") center / 20px 20px no-repeat;
+  transition: transform 200ms ease, background-color 160ms ease;
 }
-.q[open] > summary::after { content: "\2212"; }
+.q > summary:hover::after { background: var(--ws-teal-ink); }
+.q[open] > summary::after { transform: rotate(180deg); }
+@media (forced-colors: active) { .q > summary::after { background: CanvasText; forced-color-adjust: none; } }
 
 }  /* end @layer components */
 
 /* ===========================================================================
-   patient side — find, clinic page, booking
-   Same three rules. Chips are squares with a hairline; a pressed chip is ink.
-   Status is never colour alone: the dot changes and the words change with it.
+   patient side — find, clinic page, booking, dentist, coverage, sign-up, /me/
+   Filters and slots are soft pills, the chosen one tinted teal. Status is
+   never colour alone: the dot changes and the words change with it. Every
+   control is at least 44px tall; every field is 16px (phones do not zoom).
    =========================================================================== */
 @layer components {
 
+/* A filter you switch on and off (aria-pressed). */
 .chip {
-  display: inline-flex; align-items: center; gap: 0.5rem;
-  padding: 0.6rem 0.9rem; border: 1px solid var(--c-line); background: var(--c-surface);
-  font-size: 0.9rem; font-weight: 500; color: var(--c-ink-2); border-radius: 0;
+  display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0.5rem 1rem;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-pill); background: var(--c-surface);
+  font-size: 14.5px; font-weight: 500; line-height: 1.2; color: var(--c-ink-2); cursor: pointer;
   transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
 }
-.chip:hover { border-color: var(--c-ink); color: var(--c-ink); }
-.chip[aria-pressed="true"] { background: var(--c-ink); border-color: var(--c-ink); color: var(--c-bg); }
-.chip-urgent { border-color: color-mix(in srgb, var(--c-caries) 50%, transparent); }
-.chip-urgent::before { content: ""; width: 7px; height: 7px; background: var(--c-caries); }
-.chip-urgent[aria-pressed="true"] { background: var(--c-caries); border-color: var(--c-caries); color: #fff; }
+.chip:hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); color: var(--c-ink); }
+.chip[aria-pressed="true"] { background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent); color: var(--ws-teal-ink); font-weight: 600; }
+/* An urgent symptom: a soft red dot, and red when chosen. */
+.chip-urgent { border-color: color-mix(in srgb, var(--ws-red) 45%, transparent); }
+.chip-urgent::before { content: ""; width: 8px; height: 8px; flex: none; border-radius: var(--ws-r-pill); background: var(--ws-red); }
+.chip-urgent[aria-pressed="true"] { background: var(--ws-red-tint); border-color: color-mix(in srgb, var(--ws-red) 55%, transparent); color: var(--ws-red-ink); }
 
-/* Radio and slot chips: the input is visually hidden, the label is the control. */
+/* Radio and slot pills: the input is visually hidden, the label is the control. */
 .chip-radio, .slot-radio, .row-radio { position: relative; display: inline-flex; cursor: pointer; }
 .chip-radio input, .slot-radio input, .row-radio input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
 .chip-radio > span, .slot-radio > span {
-  display: inline-flex; align-items: center; padding: 0.6rem 0.9rem; border: 1px solid var(--c-line);
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0.6rem 0.9rem;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-pill);
   background: var(--c-surface); font-size: 0.9rem; font-weight: 500; color: var(--c-ink-2);
   transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
 }
 .slot-radio > span { min-width: 5.5rem; justify-content: center; font-variant-numeric: tabular-nums; }
-.chip-radio:hover > span, .slot-radio:hover > span { border-color: var(--c-ink); color: var(--c-ink); }
-.chip-radio input:checked + span, .slot-radio input:checked + span { background: var(--c-ink); border-color: var(--c-ink); color: var(--c-bg); }
-.chip-radio input:checked + span .text-muted { color: color-mix(in srgb, var(--c-bg) 70%, transparent); }
+.chip-radio:hover > span, .slot-radio:hover > span { border-color: var(--ws-field-line-hover); color: var(--c-ink); }
+.chip-radio input:checked + span, .slot-radio input:checked + span {
+  background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent); color: var(--ws-teal-ink);
+}
+.chip-radio input:checked + span .text-muted { color: var(--ws-teal-ink); }
 .chip-radio input:focus-visible + span, .slot-radio input:focus-visible + span, .row-radio input:focus-visible + span { outline: 2px solid var(--c-accent); outline-offset: 2px; }
 .row-radio { display: flex; }
-.row-radio > span { flex: 1; padding: 0.9rem 1rem; border: 1px solid var(--c-line); background: var(--c-surface); }
-.row-radio:hover > span { border-color: var(--c-ink); }
-.row-radio input:checked + span { border-color: var(--c-ink); box-shadow: inset 0 0 0 1px var(--c-ink); }
+.row-radio > span { flex: 1; padding: 0.9rem 1rem; border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-ctl); background: var(--c-surface); transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease; }
+.row-radio:hover > span { border-color: var(--ws-field-line-hover); }
+.row-radio input:checked + span { border-color: var(--ws-teal); box-shadow: inset 0 0 0 1px var(--ws-teal); background: var(--ws-teal-tint); }
 
-/* Next-slot links on a result card. */
+/* Next-open links on a result card: a small rounded time, teal on hover. */
 .slot {
-  display: inline-flex; flex-direction: column; gap: 0.15rem; padding: 0.55rem 0.8rem;
-  border: 1px solid var(--c-line); background: var(--c-surface); text-decoration: none;
-  font-size: 0.9rem; font-weight: 600; color: var(--c-ink); font-variant-numeric: tabular-nums;
-  transition: border-color 140ms ease, background-color 140ms ease;
+  display: inline-flex; flex-direction: column; justify-content: center; gap: 0.1rem; min-height: 44px; padding: 0.4375rem 0.875rem;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-ctl); background: var(--c-surface); text-decoration: none;
+  font-size: 0.9rem; font-weight: 600; line-height: 1.25; color: var(--c-ink); font-variant-numeric: tabular-nums;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
 }
-.slot:hover { border-color: var(--c-ink); background: var(--c-bg-soft); }
-.slot .meta { font-size: 0.65rem; }
+.slot:hover { border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent); background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+.slot .meta { font-size: 12px; }
+/* The muted label is 4.5:1 on white but not on the teal tint: it turns teal with the slot. */
+.slot:hover .meta { color: var(--ws-teal-ink); }
 
-/* Chips that state a fact: HMO names, PhilHealth, PRC. Square, quiet. */
-.tag { display: inline-block; padding: 0.2rem 0.55rem; border: 1px solid var(--c-line); font-size: 0.78rem; font-weight: 500; color: var(--c-ink-2); background: var(--c-surface); }
-.tag-accent { border-color: color-mix(in srgb, var(--c-accent) 50%, transparent); color: var(--c-accent-deep); background: color-mix(in srgb, var(--c-accent) 8%, transparent); }
+/* A fact: an HMO name, PhilHealth, PRC checked. A rounded pill on a pale neutral (teal for the accent). */
+.tag {
+  display: inline-flex; align-items: center; min-height: 24px; padding: 0.125rem 0.625rem;
+  border: 1px solid transparent; border-radius: var(--ws-r-pill); background: var(--c-bg-soft);
+  font-size: 13px; font-weight: 500; line-height: 1.3; color: var(--c-ink-2);
+}
+.tag-accent { background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
 
-/* Live status. The dot carries the state; the words carry it too. */
+/* Live status. A round dot carries the state; the words carry it too. Open is green, closing soon
+   amber, closed and by-appointment quiet slate. */
 .status { display: inline-flex; align-items: center; gap: 0.5rem; }
-.status-dot { width: 8px; height: 8px; background: var(--c-muted); }
-.status[data-state="open"] .status-dot { background: var(--c-accent); }
-.status[data-state="open"] { color: var(--c-accent); }
-.status[data-state="closing"] .status-dot { background: var(--c-crown); }
-.status[data-state="closing"] { color: var(--c-crown); }
+.status-dot { width: 8px; height: 8px; flex: none; border-radius: var(--ws-r-pill); background: var(--c-muted); }
+.status[data-state="open"] .status-dot { background: var(--ws-green); }
+.status[data-state="open"] { color: var(--ws-green-ink); }
+.status[data-state="closing"] .status-dot { background: var(--ws-amber); }
+.status[data-state="closing"] { color: var(--ws-amber-ink); }
 .status[data-state="closed"] .status-dot, .status[data-state="appt"] .status-dot { background: var(--c-muted); }
 
-/* A result card: two columns, one hairline, no shadow. */
-.result { display: grid; gap: 1.25rem; padding: 1.5rem; border: 1px solid var(--c-line); background: var(--c-surface); }
+/* A result card: white, rounded, a hairline and a whisper of shadow; two columns from 900px. */
+.result {
+  display: grid; gap: 1.25rem; padding: 1.5rem;
+  border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--c-surface); box-shadow: var(--ws-shadow);
+}
 @media (min-width: 900px) { .result { grid-template-columns: 1fr 19rem; gap: 2.5rem; } }
 .result[hidden] { display: none; }
 
-/* Form fields: square, hairline, the mono label above. */
-.field { display: flex; flex-direction: column; gap: 0.4rem; }
-.field input, .field select, .field textarea {
-  width: 100%; min-height: 2.9rem; padding: 0.6rem 0.8rem; border: 1px solid var(--c-line); background: var(--c-surface);
-  color: var(--c-ink); font-size: 0.95rem; border-radius: 0;
+/* Form fields: a sentence-case label above (the first .meta, 14px ink-2), a 16px field 46px tall
+   with 10px corners, a teal halo on focus. Checkboxes and radios keep their own look (.check). */
+.field { display: flex; flex-direction: column; gap: 0.375rem; }
+.field > .meta:first-child { font-size: 14px; color: var(--c-ink-2); }
+.field :is(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+  width: 100%; min-height: 46px; padding: 0.625rem 0.875rem;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-ctl);
+  background: var(--ws-field); color: var(--c-ink); font-size: 16px; box-shadow: var(--ws-shadow);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
-.field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--c-accent); outline-offset: 1px; border-color: var(--c-ink); }
-.field input:user-invalid { border-color: var(--c-caries); }
-.check { display: inline-flex; align-items: center; gap: 0.6rem; font-size: 0.92rem; color: var(--c-ink-2); cursor: pointer; }
-.check input { width: 1.05rem; height: 1.05rem; margin: 0; accent-color: var(--c-accent); flex: none; margin-top: 0.15rem; }
+.field :is(input:not([type="checkbox"], [type="radio"]), select, textarea):hover { border-color: var(--ws-field-line-hover); }
+.field :is(input:not([type="checkbox"], [type="radio"]), select, textarea):focus { outline: none; border-color: var(--ws-teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws-teal) 24%, transparent); }
+.field :is(input:not([type="checkbox"], [type="radio"]), select, textarea):user-invalid { border-color: var(--ws-red); }
 
-/* The booking steps. */
-.wiz-step { padding: 0.9rem 0.25rem 0.9rem 0; color: var(--c-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
-.wiz-step[aria-current="step"] { color: var(--c-ink); border-bottom-color: var(--c-ink); }
-.wiz-step[data-passed] { color: var(--c-accent); }
-.wiz-step[data-passed] .sec-no::after { content: " ✓"; }
+/* A checkbox with its words: the whole line is the target (44px). */
+.check { display: inline-flex; align-items: center; gap: 0.6rem; min-height: 44px; font-size: 0.92rem; color: var(--c-ink-2); cursor: pointer; }
+.check input { width: 1.05rem; height: 1.05rem; margin: 0; accent-color: var(--ws-teal-fill); flex: none; margin-top: 0.15rem; }
+
+/* The booking steps: a friendly numbered stepper. Each step's number (.sec-no) is a circle — pale
+   ahead, teal with white figures on the step you are on, a teal check on the steps done — with its
+   word under it and a teal line under the current step. */
+.wiz-step {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.375rem;
+  padding: 0.75rem 0.25rem 0.875rem 0; color: var(--c-muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color 200ms ease, border-color 200ms ease;
+}
+.wiz-step .sec-no {
+  position: relative; width: 2rem; min-width: 2rem; height: 2rem; min-height: 2rem; padding: 0;
+  background: var(--c-surface); color: var(--c-ink-2); box-shadow: inset 0 0 0 1px var(--ws-field-line);
+  transition: background-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
+}
+.wiz-step[aria-current="step"] { color: var(--c-ink); border-bottom-color: var(--ws-teal); }
+.wiz-step[aria-current="step"] > :not(.sec-no) { font-weight: 600; }
+.wiz-step[aria-current="step"] .sec-no { background: var(--ws-teal-fill); color: #fff; box-shadow: none; }
+.wiz-step[data-passed] { color: var(--ws-teal-ink); }
+.wiz-step[data-passed] .sec-no { background: var(--ws-teal-tint); color: transparent; box-shadow: none; }
+.wiz-step[data-passed] .sec-no::after {
+  content: ""; position: absolute; inset: 0; background: var(--ws-teal-ink);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+}
+@media (forced-colors: active) { .wiz-step[data-passed] .sec-no { color: CanvasText; } .wiz-step[data-passed] .sec-no::after { content: none; } }
 .wiz { border: 0; padding: 0; margin: 0; min-width: 0; }
 .wiz legend { padding: 0; }
 .wiz[hidden] { display: none; }
 
-table tr.is-today th, table tr.is-today td { color: var(--c-accent); font-weight: 600; }
-table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-accent); }
+/* Today's row in a table of hours: teal words and a small "Today" pill. */
+table tr.is-today th, table tr.is-today td { color: var(--ws-teal-ink); font-weight: 600; }
+table tr.is-today th::after {
+  content: "Today"; display: inline-block; margin-left: 0.5rem; padding: 0.05rem 0.5rem; border-radius: var(--ws-r-pill);
+  background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+  font-family: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0; line-height: 1.5; text-transform: none; vertical-align: 1px;
+}
 
 }  /* end @layer components */
 
@@ -670,24 +876,23 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
   .tooth { width: 34px; height: 46px; }
 }
 
+
 /* ===========================================================================
    The film
    ---------------------------------------------------------------------------
-   One continuous 30-second shot walking in from the pavement to the chair,
-   fixed behind the whole page. Scroll position over the *entire document*
+   One continuous shot walking in from the pavement to the chair, fixed
+   behind the whole home page. Scroll position over the *entire document*
    maps to the video's currentTime: the top of the page is the pavement, the
-   footer is the chair, and every section between is a page standing in
+   last page is the chair, and every section between is a page standing in
    whichever room the camera has reached. The visitor sets their own pace:
    stop, and they stop; scroll back, and they walk back out. The page never
-   takes the wheel.
-
-   The scrub is driven only by the visitor's own scrolling, so it is not
-   gated by Reduce Motion — nothing here moves on its own. The autonomous
-   motions (reveals, the ticker, transitions) stay gated above.
+   takes the wheel. Nothing on the site is gated by Reduce Motion (CLAUDE.md).
 
    The film is a real take rather than five stills cross-faded, which is why
    nothing here scales or cross-dissolves: the forward motion is in the
-   footage.
+   footage. Its pages are white rounded cards standing on it (.pane); the
+   opening and the closing lines sit straight on the footage in light words
+   over a scrim, with soft rounded buttons (.btn-film, .btn-film-quiet).
    =========================================================================== */
 @layer components {
 
@@ -712,21 +917,25 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
 .film-poster[data-hide] { opacity: 0; }
 
 /* A page: a section standing on the film. The block padding is the gap
-   between panes where the footage shows in full — it is how the visitor
+   between cards where the footage shows in full — it is how the visitor
    watches the rooms change between one page and the next. */
 .page { position: relative; padding-block: clamp(4rem, 14vh, 9rem); }
 
-/* Frosted paper on the footage: the room stays visible through every page,
-   blurred just enough that the type reads. No radius, no shadow: a hairline
-   and the ground. */
+/* A white rounded card on the footage (16px corners, a hairline, a soft lift). Almost opaque,
+   because nothing veils the film here: the muted slate is 4.6:1 on it even over a pure black
+   pixel (4.5:1 needs 96%), and in dark mode the charcoal card keeps 5.7:1 over pure white. The
+   room still shows around and between the cards. */
 .pane, .ground {
-  background: color-mix(in srgb, var(--c-bg) 58%, transparent);
-  -webkit-backdrop-filter: blur(8px) saturate(1.1);
-  backdrop-filter: blur(8px) saturate(1.1);
+  background: var(--site-pane);
+  -webkit-backdrop-filter: blur(14px) saturate(1.05);
+  backdrop-filter: blur(14px) saturate(1.05);
 }
 .pane {
-  border: 1px solid color-mix(in srgb, var(--c-line) 85%, transparent);
-  padding: clamp(1.5rem, 3.5vw, 3.25rem);
+  color: var(--c-ink); /* slate words, even inside the light-worded opening and close */
+  border: 1px solid var(--ws-hair);
+  border-radius: var(--ws-r-lg);
+  box-shadow: var(--site-shadow-card);
+  padding: clamp(1.5rem, 3.5vw, 3rem);
 }
 
 /* The opening and the close sit straight on the footage in light type, with
@@ -734,12 +943,12 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
    gradient left the caption at about 2:1 against the bright terrazzo floor;
    the second pass darkens the bottom so the scroll hint keeps its footing on
    a lit frame too. */
-.page-hero, .page-cta { color: #f2f2ef; }
+.page-hero, .page-cta { color: #f5f7fa; }
 .page-hero {
-  /* One screen under the sticky header (about 3.2rem), so the opening's last
+  /* One screen under the sticky header (about 4.25rem), so the opening's last
      line and buttons sit on the first screen, not just below it. */
-  min-height: calc(100vh - 3.25rem);
-  min-height: calc(100svh - 3.25rem);
+  min-height: calc(100vh - 4.25rem);
+  min-height: calc(100svh - 4.25rem);
   display: grid;
   align-items: center;
   padding-block: 5rem 3rem;
@@ -765,7 +974,7 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
       transparent 28%
     );
 }
-/* The film now opens on a white façade, far brighter than the interior the
+/* The film opens on a white façade, far brighter than the interior the
    scrim was first tuned for (measured: the laptop eyebrow fell to 4:1). On a
    phone the text runs the full width, so a left-to-right scrim leaves the end
    of every line over the bright glass; there it rises from the bottom
@@ -795,31 +1004,36 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
     );
   }
 }
-/* The light-mode accent is a deep teal — unreadable on footage. On the film
-   the accent has to be the bright one regardless of theme. */
-.page-hero .meta-accent, .page-cta .meta-accent { color: #7df0b4; }
+/* Captions on the footage stay light in both themes: any .meta on the scrim (or inside .on-film,
+   or with .meta-film) is white at 86% — 9:1 and more on the scrim's darkest-covered stretch — and
+   the accent is the light teal (the deep one is unreadable on footage). */
+/* (Not inside a card standing on the footage: a .meta on a white .pane or .card there stays slate.) */
+:is(.page-hero, .page-cta, .on-film) .meta:not(:is(.pane, .card, .ws-glass) .meta) { color: rgb(255 255 255 / 0.86); }
+:is(.page-hero, .page-cta, .on-film) .meta-accent:not(:is(.pane, .card, .ws-glass) .meta-accent), .meta-film.meta-accent { color: #7fdcd4; }
 
-/* The buttons on the footage take the light ground regardless of theme.
-   Still square, still flat. */
-.btn-film { background: #f2f2ef; color: #0e0f0f; border-color: #f2f2ef; }
-.btn-film:hover { background: #7df0b4; border-color: #7df0b4; color: #0e0f0f; }
-.btn-film-quiet { background: transparent; color: #f2f2ef; border-color: color-mix(in srgb, #f2f2ef 46%, transparent); }
-.btn-film-quiet:hover { border-color: #f2f2ef; }
+/* The buttons on the footage, the same in both themes: the one teal button (white words, 5.6:1),
+   with a soft lift so it stands off the footage, and a quiet white outline beside it. */
+.btn-film { background: var(--ws-teal-fill); color: #fff; border-color: transparent; box-shadow: 0 1px 2px rgb(0 0 0 / 0.2), 0 10px 28px -10px rgb(0 0 0 / 0.55); }
+.btn-film:hover { background: var(--ws-teal-fill-hover); color: #fff; }
+.btn-film-quiet {
+  background: rgb(255 255 255 / 0.1); color: #fff; border-color: rgb(255 255 255 / 0.62);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.btn-film-quiet:hover { background: rgb(255 255 255 / 0.2); border-color: #fff; color: #fff; }
 
 /* A hint that the film answers to scrolling, shown only until it does. */
 .film-hint {
   position: absolute;
   right: 1.5rem;
   bottom: 1.5rem;
-  color: color-mix(in srgb, #f2f2ef 72%, transparent);
+  color: rgb(255 255 255 / 0.8);
   transition: opacity 400ms ease;
 }
 .film-hint[data-hide] { opacity: 0; }
 
 /* The room the camera is in, beside the page label in the header. */
-.film-room { color: var(--c-muted); }
+.film-room { color: var(--c-ink-2); }
 @media (max-width: 639px) { .film-hint { right: 1rem; } }
-
 
 /* ===========================================================================
    The staff entrance — sign-in, forgot, I have a code (StaffEntrance.astro)
@@ -1169,12 +1383,132 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
 
 }  /* end @layer components */
 
+
+/* ===========================================================================
+   The public top bar — src/components/site/SiteHeader.astro
+   ---------------------------------------------------------------------------
+   Public pages keep a top bar, not a sidebar (the film home page needs the
+   full width): a soft white bar with the Flossify mark, a few plain links as
+   soft pills (the page you are on tinted teal), "Staff sign-in" and one teal
+   Open your clinic. Below 960px the links move into a drawer that a menu
+   button slides in from the left, like the workspace's sidebar on a phone:
+   a modal <dialog> (the rest of the page is inert), Tab stays inside, Escape,
+   the scrim and its × close it, and focus goes back to the menu button.
+   Sticky at the top; nothing is fixed to the bottom of the screen.
+
+   The bar is near-opaque white (96%, charcoal 94% in dark mode), because on
+   the home page it stands on the unveiled film: its words are ink and ink-2
+   (6.6:1 and more over a pure black pixel), never lighter.
+   =========================================================================== */
+@layer components {
+
+.site-top { position: relative; z-index: 40; color: var(--c-ink); }
+.site-sticky { position: sticky; top: 0; }
+/* The bar's white is drawn behind it, not on it: a backdrop-filter on the header itself would make
+   it the containing block of anything fixed a page puts inside it. */
+.site-top::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--site-bar-bg); border-bottom: 1px solid var(--ws-hair);
+  -webkit-backdrop-filter: blur(16px) saturate(1.05);
+  backdrop-filter: blur(16px) saturate(1.05);
+}
+/* The same width and side padding as the pages under it (max-w-[1280px] px-5 sm:px-8; wide: 1480px). */
+.site-bar {
+  position: relative; display: flex; align-items: center; gap: 0.75rem;
+  max-width: 1280px; min-height: 68px; margin-inline: auto; padding: 0.625rem 1.25rem;
+}
+.site-top[data-wide] .site-bar { max-width: 1480px; }
+@media (min-width: 640px) { .site-bar { padding-inline: 2rem; } }
+
+.site-mark { flex: none; margin-right: 0.5rem; border-radius: var(--ws-r-ctl); }
+.site-nav { display: flex; align-items: center; gap: 0.25rem; min-width: 0; }
+.site-link {
+  display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 0.875rem;
+  border-radius: var(--ws-r-pill); font-size: 15px; font-weight: 500; line-height: 1.2; white-space: nowrap;
+  color: var(--c-ink-2); text-decoration: none;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.site-link .ws-icon { flex: none; color: var(--c-ink-2); transition: color 160ms ease; }
+.site-link:hover { background: var(--ws-hover); color: var(--c-ink); }
+.site-link:hover .ws-icon { color: var(--c-ink); }
+.site-link[aria-current="page"] { background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-weight: 600; }
+.site-link[aria-current="page"] .ws-icon { color: var(--ws-teal-ink); }
+/* Whatever a page puts beside the links (the home page's "where you are" line), from 1180px: below
+   that the links and the two actions need the whole bar. */
+.site-aside { display: flex; align-items: center; min-width: 0; margin-left: 0.5rem; }
+@media (max-width: 1179px) { .site-aside { display: none; } }
+.site-actions { display: flex; align-items: center; gap: 0.5rem; flex: none; margin-left: auto; }
+.site-cta { white-space: nowrap; }
+
+/* The menu button (phones and small tablets) and the drawer's ×: 44px, white, a hairline. */
+.site-menu-btn {
+  display: none; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; padding: 0;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-ctl); background: var(--ws-field); color: var(--c-ink);
+  box-shadow: var(--ws-shadow); cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+.site-menu-btn:hover, .site-menu-btn[aria-expanded="true"] { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); }
+
+@media (max-width: 959px) {
+  .site-bar { gap: 0.5rem; min-height: 60px; padding-block: 0.5rem; }
+  .site-menu-btn { display: inline-flex; }
+  .site-mark { margin-right: 0; }
+  .site-nav, .site-signin, .site-aside { display: none; }
+  /* On a phone the bar keeps the teal Open your clinic; a quiet one (patient pages) waits in the drawer. */
+  .site-actions .site-cta.btn-quiet { display: none; }
+  .site-actions .site-cta .ws-icon { display: none; }
+}
+/* Narrow phones (360px): the mark alone, so the bar never runs off the side. */
+@media (max-width: 379px) {
+  .site-bar .ws-mark-word { display: none; }
+}
+
+/* --- the drawer ----------------------------------------------------------------------------- */
+.site-drawer {
+  position: fixed; inset: 0 auto 0 0; width: min(320px, 86vw); max-width: none; height: 100dvh; max-height: none;
+  margin: 0; padding: 0; overflow: hidden;
+  border: 0; border-right: 1px solid var(--ws-hair); border-radius: 0 var(--ws-r-lg) var(--ws-r-lg) 0;
+  background: var(--ws-side-solid); color: var(--c-ink); box-shadow: var(--ws-shadow-pop);
+}
+.site-drawer::backdrop { background: var(--ws-scrim, rgb(16 24 40 / 0.32)); }
+.site-drawer[open] { animation: site-drawer-in 320ms cubic-bezier(0.22, 1, 0.36, 1); }
+.site-drawer[open]::backdrop { animation: ws-fade 260ms ease; }
+.site-drawer[data-closing] { animation: site-drawer-out 200ms cubic-bezier(0.4, 0, 1, 1) forwards; }
+.site-drawer[data-closing]::backdrop { animation: ws-fade-out 200ms ease forwards; }
+@keyframes site-drawer-in { from { transform: translateX(-104%); } }
+@keyframes site-drawer-out { to { transform: translateX(-104%); } }
+html:has(.site-drawer[open]) { overflow: hidden; }
+
+.site-drawer-inner { display: flex; flex-direction: column; gap: 0.875rem; height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 0.75rem 0.875rem 1.5rem; }
+.site-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-height: 48px; padding-left: 0.375rem; }
+.site-drawer .site-menu-btn { display: inline-flex; }
+.site-drawer-nav { display: grid; gap: 0.25rem; }
+.site-drawer-link {
+  display: flex; align-items: center; gap: 0.75rem; min-height: 48px; padding: 0 0.875rem; border-radius: var(--ws-r-pill);
+  font-size: 15px; font-weight: 500; line-height: 1.25; color: var(--c-ink-2); text-decoration: none;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.site-drawer-link .ws-icon { flex: none; color: var(--c-muted); transition: color 160ms ease; }
+.site-drawer-link:hover { background: var(--ws-hover); color: var(--c-ink); }
+.site-drawer-link:hover .ws-icon { color: var(--c-ink-2); }
+.site-drawer-link[aria-current="page"] { background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-weight: 600; }
+.site-drawer-link[aria-current="page"] .ws-icon { color: var(--ws-teal-ink); }
+.site-drawer-foot { display: grid; gap: 0.5rem; padding-top: 0.875rem; border-top: 1px solid var(--ws-hair); }
+.site-drawer-cta { width: 100%; min-height: 48px; }
+
+}  /* end @layer components */
+
+/* Site fields ring their whole box with the soft teal halo (in the layer above), not the global
+   outline on top of it. Unlayered, as the ring it cancels is. */
+.field :is(input:not([type="checkbox"], [type="radio"]), select, textarea):focus-visible { outline: none; }
+
 /* The staff entrance, outside the layer on purpose (as the workspace's own block is): the site's
-   base rules for the headings and the focus ring are unlayered, so only an unlayered rule can
-   change them — here, on the entrance only. */
-.entrance :is(h1, h2, h3) { font-family: var(--en-font); letter-spacing: -0.012em; line-height: 1.25; }
+   base rule for the focus ring is unlayered, so only an unlayered rule can change it — here, on the
+   entrance only; and the entrance's headings keep the unlayered rule they have always had. */
+.entrance :is(h1, h2, h3) { font-family: var(--en-font); font-weight: 600; letter-spacing: -0.012em; line-height: 1.25; text-wrap: balance; }
 .entrance :focus-visible { outline: 2px solid var(--en-teal); outline-offset: 2px; border-radius: revert-layer; }
 .entrance .entry-field input:focus-visible, .entrance .entry-seg input:focus-visible { outline: none; }
+
 
 
 /* ===========================================================================
@@ -1184,12 +1518,13 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
    ---------------------------------------------------------------------------
    The owner compared the clinic workspace with a soft, friendly admin page
    and asked for the same: soft, friendly, accommodating, very simple, the
-   tabs on the left. So inside the workspace (and only there — every rule
-   below is under .ws) the Swiss rules give way: bright white cards with
-   gently rounded corners and a whisper of shadow, slate words instead of
-   black, one calm teal for the main action and the chosen tab, pale tints
-   for status, round avatars, sentence-case labels, a line icon beside every
-   nav item. The marketing site above is untouched.
+   tabs on the left — bright white cards with gently rounded corners and a
+   whisper of shadow, slate words instead of black, one calm teal for the
+   main action and the chosen tab, pale tints for status, round avatars,
+   sentence-case labels, a line icon beside every nav item. After seeing it
+   the owner asked for the same on the whole site, so its tokens are the
+   site's now (:root, at the top of this file) and the site's classes are
+   drawn the same way; this block is the workspace's frame and pieces.
 
    The room stays: each tab stands in its room of the clinic (reception,
    corridor, treatment room), softened and under a light veil (a soft
@@ -1206,147 +1541,19 @@ table tr.is-today th::after { content: "today"; margin-left: 0.6rem; font-family
    =========================================================================== */
 @layer components {
 
-/* --- tokens ------------------------------------------------------------------ */
+/* --- the frame's own sizes --------------------------------------------------------- */
+/* The soft template's tokens (--ws-*, and the site's --c-* drawn soft) used to be set here, on .ws
+   only; they are the whole site's now and live on :root at the top of this file, with the same
+   values in both themes, so the workspace reads exactly what it read before. What stays here is
+   the frame's own: its width and the sidebar's. */
 .ws {
   --ws-max: 1280px;
   --ws-side-w: 244px;
-  --ws-font: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --ws-r: 12px;
-  --ws-r-lg: 16px;
-  --ws-r-ctl: 10px;
-  --ws-r-pill: 999px;
-  --ws-shadow: 0 1px 2px rgb(16 24 40 / 0.05);
-  --ws-shadow-pop: 0 12px 32px -8px rgb(16 24 40 / 0.16), 0 2px 6px rgb(16 24 40 / 0.06);
-
-  /* the room, and what stands on it */
-  --ws-veil: rgb(243 245 248 / 0.62);
-  --ws-card: rgb(255 255 255 / 0.94);
-  --ws-side-bg: rgb(255 255 255 / 0.96);
-  --ws-side-solid: #ffffff;
-  --ws-bar-bg: rgb(251 252 253 / 0.95);
-  --ws-subtle: #f8fafc;
-  --ws-glass: var(--ws-card);
-  --ws-glass-strong: #ffffff;
-  --ws-hair: #e6e9ee;
-  --ws-hair-strong: #d9dee5;
-  --ws-hover: rgb(16 24 40 / 0.035);
-  --ws-field: #ffffff;
-  --ws-field-line: #d0d5dd;
-  --ws-field-line-hover: #aab2bf;
-  --ws-scrim: rgb(16 24 40 / 0.32);
-
-  /* colour: each one a mark (icons, rings), words (-ink), a fill under white words (-fill), a pale tint */
-  --ws-teal: #14908f; --ws-teal-ink: #0d706d; --ws-teal-fill: #0e7471; --ws-teal-fill-hover: #0b5f5d; --ws-teal-tint: #e8f6f5;
-  --ws-green: #1f9d63; --ws-green-ink: #16734a; --ws-green-fill: #16784d; --ws-green-fill-hover: #11613e; --ws-green-tint: #e9f7ef;
-  --ws-amber: #d97706; --ws-amber-ink: #8a4604; --ws-amber-tint: #fff5e6;
-  --ws-blue: #3b82f6; --ws-blue-ink: #2359c9; --ws-blue-tint: #eef4ff;
-  --ws-red: #dc4c4c; --ws-red-ink: #ac3232; --ws-red-fill: #c43c3c; --ws-red-tint: #fdeeee;
-  --ws-violet-ink: #5b3fc4; --ws-violet-tint: #f1eefd;
-  --ws-rose-ink: #a3294f; --ws-rose-tint: #fdeef4;
-
-  /* The site's tokens, redrawn soft inside the workspace, so every page and every utility
-     (text-ink, bg-accent/10, border-line, text-crown …) follows with no change in the markup:
-     slate words, a teal accent, amber and a soft red for the queue's warnings. */
-  --c-bg: #f3f5f8;
-  --c-bg-soft: #f2f4f7;
-  --c-surface: #ffffff;
-  --c-ink: #1f2937;
-  --c-ink-2: #475467;
-  --c-muted: #667085;
-  --c-faint: #667085;
-  --c-line: #e6e9ee;
-  --c-line-2: #eef1f4;
-  --c-accent: #0d706d;
-  --c-accent-deep: #0b5d5b;
-  --c-caries: #ac3232;
-  --c-crown: #8a4604;
-
   min-height: 100dvh;
   background: var(--c-bg);
   color: var(--c-ink);
 }
 .ws-wide { --ws-max: 1600px; }
-
-/* Dark: soft charcoal, the same tints dimmed; never pure black. Written twice (the OS preference
-   and the explicit toggle), as the site's own tokens are. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .ws {
-    --ws-shadow: 0 1px 2px rgb(0 0 0 / 0.28);
-    --ws-shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.3);
-    --ws-veil: rgb(21 25 30 / 0.74);
-    --ws-card: rgb(29 35 42 / 0.94);
-    --ws-side-bg: rgb(26 31 37 / 0.96);
-    --ws-side-solid: #1a1f25;
-    --ws-bar-bg: rgb(23 27 32 / 0.9);
-    --ws-subtle: #20272f;
-    --ws-glass-strong: #1d232a;
-    --ws-hair: #2a323b;
-    --ws-hair-strong: #36404b;
-    --ws-hover: rgb(255 255 255 / 0.055);
-    --ws-field: #161b21;
-    --ws-field-line: #3a4450;
-    --ws-field-line-hover: #56626f;
-    --ws-scrim: rgb(0 0 0 / 0.5);
-    --ws-teal: #2bb3ad; --ws-teal-ink: #7fdcd4; --ws-teal-fill: #0e7471; --ws-teal-fill-hover: #11807d; --ws-teal-tint: #163a3b;
-    --ws-green: #34b97a; --ws-green-ink: #7fdcaa; --ws-green-fill: #16784d; --ws-green-fill-hover: #1a8a59; --ws-green-tint: #173a2b;
-    --ws-amber: #f0a33a; --ws-amber-ink: #f3c47a; --ws-amber-tint: #3b2f1a;
-    --ws-blue: #6fa3f8; --ws-blue-ink: #9fc0fb; --ws-blue-tint: #1d2c47;
-    --ws-red: #ec7070; --ws-red-ink: #f5a3a3; --ws-red-fill: #c43c3c; --ws-red-tint: #3f2327;
-    --ws-violet-ink: #c3b5fb; --ws-violet-tint: #2a2346;
-    --ws-rose-ink: #f5a8c6; --ws-rose-tint: #3d2130;
-    --c-bg: #15191e;
-    --c-bg-soft: #262d36;
-    --c-surface: #1d232a;
-    --c-ink: #e7ebf0;
-    --c-ink-2: #c3cad4;
-    --c-muted: #9ea8b6;
-    --c-faint: #9ea8b6;
-    --c-line: #2a323b;
-    --c-line-2: #232a32;
-    --c-accent: #5ccfc6;
-    --c-accent-deep: #98e3dc;
-    --c-caries: #f59b9b;
-    --c-crown: #f3bd6a;
-  }
-}
-:root[data-theme="dark"] .ws {
-  --ws-shadow: 0 1px 2px rgb(0 0 0 / 0.28);
-  --ws-shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.3);
-  --ws-veil: rgb(21 25 30 / 0.74);
-  --ws-card: rgb(29 35 42 / 0.94);
-  --ws-side-bg: rgb(26 31 37 / 0.96);
-  --ws-side-solid: #1a1f25;
-  --ws-bar-bg: rgb(23 27 32 / 0.9);
-  --ws-subtle: #20272f;
-  --ws-glass-strong: #1d232a;
-  --ws-hair: #2a323b;
-  --ws-hair-strong: #36404b;
-  --ws-hover: rgb(255 255 255 / 0.055);
-  --ws-field: #161b21;
-  --ws-field-line: #3a4450;
-  --ws-field-line-hover: #56626f;
-  --ws-scrim: rgb(0 0 0 / 0.5);
-  --ws-teal: #2bb3ad; --ws-teal-ink: #7fdcd4; --ws-teal-fill: #0e7471; --ws-teal-fill-hover: #11807d; --ws-teal-tint: #163a3b;
-  --ws-green: #34b97a; --ws-green-ink: #7fdcaa; --ws-green-fill: #16784d; --ws-green-fill-hover: #1a8a59; --ws-green-tint: #173a2b;
-  --ws-amber: #f0a33a; --ws-amber-ink: #f3c47a; --ws-amber-tint: #3b2f1a;
-  --ws-blue: #6fa3f8; --ws-blue-ink: #9fc0fb; --ws-blue-tint: #1d2c47;
-  --ws-red: #ec7070; --ws-red-ink: #f5a3a3; --ws-red-fill: #c43c3c; --ws-red-tint: #3f2327;
-  --ws-violet-ink: #c3b5fb; --ws-violet-tint: #2a2346;
-  --ws-rose-ink: #f5a8c6; --ws-rose-tint: #3d2130;
-  --c-bg: #15191e;
-  --c-bg-soft: #262d36;
-  --c-surface: #1d232a;
-  --c-ink: #e7ebf0;
-  --c-ink-2: #c3cad4;
-  --c-muted: #9ea8b6;
-  --c-faint: #9ea8b6;
-  --c-line: #2a323b;
-  --c-line-2: #232a32;
-  --c-accent: #5ccfc6;
-  --c-accent-deep: #98e3dc;
-  --c-caries: #f59b9b;
-  --c-crown: #f3bd6a;
-}
 
 /* --- the room ------------------------------------------------------------------ */
 .ws-backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--c-bg); pointer-events: none; }
@@ -1857,8 +2064,11 @@ div.ws-plan { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.
 .ws-panel-body { padding: 1.25rem 1.5rem 2rem; }
 html:has(.ws-panel[open]) { overflow: hidden; }
 
-/* --- the site's own components, softened inside the workspace only ------------------------------ */
-/* Labels: sentence case, 13px, medium, slate — no uppercase typewriter labels in the workspace. */
+/* --- the site's own components, as the workspace draws them ------------------------------------ */
+/* These came first, when only the workspace was soft; the site's classes are soft everywhere now
+   (the top of this file) and these keep the workspace's own variants exactly as they were: a
+   .meta that stays muted beside .meta-ink, a quiet .sec-no (no pill), and so on. Labels: sentence
+   case, 13px, medium, slate. */
 .ws .meta { font-family: inherit; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; line-height: 1.4; color: var(--c-muted); }
 .ws .sec-no { font-family: inherit; font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--c-muted); }
 .ws .field { gap: 0.375rem; }
@@ -2092,13 +2302,17 @@ html:has(.ws-panel[open]) { overflow: hidden; }
 
 }  /* end @layer components */
 
-/* Outside the layer on purpose: the site's base rules for the body, the headings and the focus
-   ring are unlayered, so only an unlayered rule can change them — inside the workspace only. One
-   friendly sans (Inter where it is installed, the system's own UI face otherwise: no font is
-   fetched from a third party, CLAUDE.md), sentence case, rounded focus rings in teal. */
+/* Outside the layer on purpose: the site's base rules for the body and the focus ring are
+   unlayered, so only an unlayered rule can change them — inside the workspace only. One friendly
+   sans (Inter where it is installed, the system's own UI face otherwise: no font is fetched from a
+   third party, CLAUDE.md), sentence case, rounded focus rings in teal. The workspace's headings keep
+   the rule they have always had, unlayered (a heading utility does not change them): semibold,
+   balanced, -0.012em, 1.25. The site's own heading rule moved into the base layer; these lines keep
+   the workspace exactly as it was. */
 body.ws { font-family: var(--ws-font); font-size: 15px; line-height: 1.5; }
-.ws :is(h1, h2, h3) { font-family: var(--ws-font); letter-spacing: -0.012em; line-height: 1.25; }
+.ws :is(h1, h2, h3) { font-family: var(--ws-font); font-weight: 600; letter-spacing: -0.012em; line-height: 1.25; text-wrap: balance; }
 .ws .font-display { font-family: var(--ws-font); }
+.ws .font-display:not(h1, h2, h3) { font-weight: 600; letter-spacing: -0.045em; line-height: 0.92; text-wrap: balance; }
 .ws :focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; border-radius: revert-layer; }
 /* Fields ring their whole box (a soft teal halo, in the layer above); the search field rings its
    box, not the bare input; a side panel's title takes focus only so a screen reader starts there. */
