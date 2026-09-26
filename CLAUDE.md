@@ -42,6 +42,14 @@ in `docs/workspace-redesign.md` ("The soft template", "The whole site, soft",
 "Site API"). **The Swiss rules are retired** (no radius, no shadow, uppercase
 mono labels, Archivo): do not bring them back on any page.
 
+**Frosted glass where a clinic is the background** (the owner, 26 Sep 2026:
+"make the panels translucent … so more of the background can be seen"): the
+home page's cards on the film (`.pane.pane-glass`, see "The film") and the
+clinic sign-up `/start/`, whose compact glass cards stand on a fixed photo of
+the treatment room (`/img/ws/chair-*.webp`). Glass uses the `--glass-*`
+tokens in global.css; every line on it is measured against the pixels behind
+it (light and dark, 1440 and 390) — measure again before making it clearer.
+
 - **Surfaces:** white cards with gently rounded corners — 12px cards, 16px big
   cards and sheets, 10px fields and buttons, 999px pills and avatars — a
   hairline (`#e6e9ee`) and at most a whisper of shadow. No black buttons, no
@@ -122,8 +130,22 @@ which is the only place the film's times live. It is
 scrubbed by the document's own scroll (`scrollY / (scrollHeight − innerHeight)
 → video.currentTime`). The top of the page is the pavement, the last page is
 the chair, and every section between is a `.page` standing in whichever room the
-camera has reached, its content on a white rounded card (`.pane`) so the
-footage shows in the gaps. The owner asked for exactly this — "a video that
+camera has reached, its content on a compact **frosted glass** card
+(`.pane.pane-glass`; the owner, 26 Sep 2026: "make the pages in the home page
+more compact and make the panels translucent so more of the background can be
+seen"). The cards are centred at 1160px so the film shows on both sides, with
+compact padding and rows; the footage shows through them (60% white on a 24px
+blur; 74% charcoal in dark mode) and in full in the gaps between them. Cards
+on the glass are lighter glass with no blur of their own (on a phone the long
+lists and steps sit on the bare glass). Because the room shows through, every
+line is measured against the pixels actually behind it, over the frame the
+film is showing there (light and dark, 1440 and 390, every 110px of scroll,
+and over the poster alone): all AA, lowest 4.7:1. So on the glass: ink for
+words, ink-2 for small print (never the muted grey), links and the keyboard
+ring in the deepest teal (#06403e; the deep teal #0b5d5b fell to 3.5:1 over
+the blurred hedges; the pale #98e3dc in dark mode), numbers and checks white on the teal fill; do not make
+the glass more transparent without measuring again. Only the home page uses
+`.pane` (the other pages stand on `.card` or `.ws-pane`). The owner asked for exactly this — "a video that
 shoots all the page" — after a version that kept the film to the opening section. Do not go back to
 that. Nothing scales; the forward motion is in the footage. From 1180px the
 bar names the page and the room in a small pill beside its links —

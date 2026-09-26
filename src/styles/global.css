@@ -169,11 +169,24 @@
   --ws-rose-ink: #a3294f; --ws-rose-tint: #fdeef4;
 
   /* --- the public site's own surfaces --- */
-  /* The top bar and the home page's cards stand on the film with no veil, so they are near-opaque:
-     the muted slate is 4.5:1 and more on them even over a pure black pixel (measured). */
+  /* The top bar stands on the film with no veil, so it is near-opaque: the muted slate is 4.5:1 and
+     more on it even over a pure black pixel (measured). --site-pane is the plain .pane / .ground; the
+     home page's cards are frosted glass instead (.pane.pane-glass, --glass-*). */
   --site-bar-bg: rgb(255 255 255 / 0.96);
   --site-pane: rgb(255 255 255 / 0.97);
   --site-shadow-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 18px 44px -18px rgb(16 24 40 / 0.3);
+
+  /* Frosted glass: the home page's cards and the clinic sign-up's, so the clinic behind shows
+     through (the owner, 26 Sep: "translucent … so more of the background can be seen"). The blur
+     averages the room behind the card, so the words are measured against the blurred pixels
+     actually behind them, not a pure black one. --glass-inner is a card on the glass (no blur of
+     its own), --glass-field an input on it. */
+  --glass-pane: rgb(255 255 255 / 0.6);
+  --glass-inner: rgb(255 255 255 / 0.5);
+  --glass-field: rgb(255 255 255 / 0.88);
+  --glass-edge: rgb(255 255 255 / 0.65);
+  --glass-blur: blur(24px) saturate(1.6);
+  --glass-shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 16px 40px -20px rgb(16 24 40 / 0.35);
 
   color-scheme: light;
 }
@@ -228,6 +241,11 @@
     --site-bar-bg: rgb(29 35 42 / 0.94);
     --site-pane: rgb(29 35 42 / 0.95);
     --site-shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 18px 44px -18px rgb(0 0 0 / 0.6);
+    --glass-pane: rgb(22 27 33 / 0.7);
+    --glass-inner: rgb(255 255 255 / 0.06);
+    --glass-field: rgb(22 27 33 / 0.85);
+    --glass-edge: rgb(255 255 255 / 0.12);
+    --glass-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 16px 40px -20px rgb(0 0 0 / 0.6);
 
     color-scheme: dark;
   }
@@ -279,6 +297,11 @@
   --site-bar-bg: rgb(29 35 42 / 0.94);
   --site-pane: rgb(29 35 42 / 0.95);
   --site-shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 18px 44px -18px rgb(0 0 0 / 0.6);
+  --glass-pane: rgb(22 27 33 / 0.7);
+  --glass-inner: rgb(255 255 255 / 0.06);
+  --glass-field: rgb(22 27 33 / 0.85);
+  --glass-edge: rgb(255 255 255 / 0.12);
+  --glass-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 16px 40px -20px rgb(0 0 0 / 0.6);
 
   color-scheme: dark;
 }
@@ -890,8 +913,8 @@ table tr.is-today th::after {
 
    The film is a real take rather than five stills cross-faded, which is why
    nothing here scales or cross-dissolves: the forward motion is in the
-   footage. Its pages are white rounded cards standing on it (.pane); the
-   opening and the closing lines sit straight on the footage in light words
+   footage. Its pages are frosted glass cards standing on it (.pane.pane-glass);
+   the opening and the closing lines sit straight on the footage in light words
    over a scrim, with soft rounded buttons (.btn-film, .btn-film-quiet).
    =========================================================================== */
 @layer components {
@@ -921,10 +944,11 @@ table tr.is-today th::after {
    watches the rooms change between one page and the next. */
 .page { position: relative; padding-block: clamp(4rem, 14vh, 9rem); }
 
-/* A white rounded card on the footage (16px corners, a hairline, a soft lift). Almost opaque,
-   because nothing veils the film here: the muted slate is 4.6:1 on it even over a pure black
-   pixel (4.5:1 needs 96%), and in dark mode the charcoal card keeps 5.7:1 over pure white. The
-   room still shows around and between the cards. */
+/* A card on the footage (16px corners, a hairline, a soft lift). Today only the home page uses
+   .pane, always as .pane-glass below (the other pages stand on .card or .ws-pane). .pane without
+   .pane-glass is the near-opaque card, kept for any future page on the film: the muted slate is
+   4.6:1 on it even over a pure black pixel (4.5:1 needs 96%), and in dark mode the charcoal card
+   keeps 5.7:1 over pure white. */
 .pane, .ground {
   background: var(--site-pane);
   -webkit-backdrop-filter: blur(14px) saturate(1.05);
@@ -936,6 +960,63 @@ table tr.is-today th::after {
   border-radius: var(--ws-r-lg);
   box-shadow: var(--site-shadow-card);
   padding: clamp(1.5rem, 3.5vw, 3rem);
+}
+
+/* The home page's cards are frosted glass (.pane.pane-glass; the owner, 26 Sep 2026: "make the
+   panels translucent so more of the background can be seen"): 60% white (dark: 74% charcoal, see
+   below) on a 24px blur, a light edge and a faint outer hairline, compact padding. The film shows
+   through, so the words are chosen for the blurred room actually behind them, and measured there:
+   every line against the pixels under it, over the frame the film is really showing, light and
+   dark, 1440 and 390 wide, every 110px of scroll (and the links every 25px), and again over the
+   poster alone for when the film does not load: all AA, lowest 4.7:1 (dark, phone), 5.2:1 or more
+   everywhere else. Ink for words and ink-2 for small print, never the muted grey; links in the
+   deepest teal (--pane-link, #06403e: 5:1 over the greenest patch of blurred hedge ever measured
+   under one; the site's deep teal #0b5d5b fell to 3.5:1 there), and the keyboard ring in the same colour
+   (index.astro); numbers and checks white on the teal fill.
+   Cards on the glass (the home page's .home-feat, .home-step, ...) are lighter glass
+   (--pane-inner) with no blur of their own; on a phone the long lists and steps drop even that and
+   sit on the bare glass, their small print in ink. The --pane-* names are the home page's, set here.
+   Dark: the film stays bright (its blurred walls and windows reach pure white), so the charcoal is
+   74% here rather than the shared 70%, the inner glass lifts 3%, and small print is #d5dbe3: 4.9:1
+   on an inner card and 5.3:1 on the glass over a pure white pixel (the shared 70% would need words
+   as light as the ink itself). */
+.pane.pane-glass {
+  --pane-bg: var(--glass-pane);
+  --pane-inner: var(--glass-inner);
+  --pane-inner-hover: rgb(255 255 255 / 0.78);
+  --pane-edge: var(--glass-edge);
+  --pane-hair: rgb(16 24 40 / 0.07);
+  --pane-rule: rgb(16 24 40 / 0.1);
+  --pane-link: #06403e;
+  --pane-tint: rgb(20 144 143 / 0.12);
+  background: var(--pane-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-color: var(--glass-edge);
+  box-shadow: 0 0 0 1px var(--pane-hair), var(--glass-shadow);
+  padding: clamp(1.125rem, 2vw, 1.75rem);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pane.pane-glass {
+    --pane-bg: rgb(22 27 33 / 0.74);
+    --pane-inner: rgb(255 255 255 / 0.03);
+    --pane-inner-hover: rgb(255 255 255 / 0.08);
+    --pane-hair: rgb(0 0 0 / 0.35);
+    --pane-rule: rgb(255 255 255 / 0.12);
+    --pane-link: var(--c-accent-deep);
+    --pane-tint: rgb(43 179 173 / 0.18);
+    --c-ink-2: #d5dbe3;
+  }
+}
+:root[data-theme="dark"] .pane.pane-glass {
+  --pane-bg: rgb(22 27 33 / 0.74);
+  --pane-inner: rgb(255 255 255 / 0.03);
+  --pane-inner-hover: rgb(255 255 255 / 0.08);
+  --pane-hair: rgb(0 0 0 / 0.35);
+  --pane-rule: rgb(255 255 255 / 0.12);
+  --pane-link: var(--c-accent-deep);
+  --pane-tint: rgb(43 179 173 / 0.18);
+  --c-ink-2: #d5dbe3;
 }
 
 /* The opening and the close sit straight on the footage in light type, with
