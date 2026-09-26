@@ -488,6 +488,8 @@ export function initPanels(ctx: Ctx): Panels {
   }
 
   function openBook(o: { ymd?: string; min?: number; col?: string; by?: 'chair' | 'dentist'; patientId?: string }, opener: Element | null) {
+    // A role without scheduling looks at the calendar; the sentence says why nothing opens.
+    if (!boot.canSchedule) { ctx.fail('Your role cannot book visits here. Ask the owner.'); return; }
     B.form.reset();
     B.more.open = false;
     hide(B.err);

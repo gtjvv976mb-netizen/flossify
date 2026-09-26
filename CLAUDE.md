@@ -311,8 +311,8 @@ Built for a front desk between patients and a dentist with gloves just off:
 
 ## Clinic doors and usernames — `/<clinic>/sign-in/` (029)
 
-`docs/clinic-sites-design.md` is the plan (P1 usernames and doors, P2 roles
-— shipped; P3 People & Roles, P4 tasks, P5 the clinic's site at `/<clinic>/`).
+`docs/clinic-sites-design.md` is the plan (P1 usernames and doors, P2 roles,
+P3 People & Roles — shipped; P4 tasks, P5 the clinic's site at `/<clinic>/`).
 
 - **Every staff account has a username**, unique within its group
   (`staff.username`, `unique (group_id, username)`, `username_ok()` =
@@ -360,9 +360,15 @@ Built for a front desk between patients and a dentist with gloves just off:
   before and after (`snap.mjs`/`cmp.mjs` in the session scratchpad; the
   approach: sign in as each, fingerprint tabs, headings, buttons, form fields
   and links, mask ids). Do the same when a check moves.
-- The calendar does not yet go read-only for a role without `schedule.edit`
-  (the API refuses with a sentence); P3 hides it when the roles screen can
-  untick it.
+- **Roles screen** (Clinic settings → Roles, for `roles.manage`; by default
+  the owner): the ranked list, Add role (at the bottom), Edit (name and the
+  checklist in four groups; a key you do not hold is shown and cannot be
+  changed), move up/down among roles below yours (the list is renumbered in
+  one statement), Remove only when nobody holds it (disabled accounts count).
+  The Owner row is fixed. Rules and sentences: `settings/_lib/roles.ts`.
+- Without `schedule.edit` the calendar is to look at: nothing drags, New and
+  a lane click open nothing, and `call()` refuses with the server's sentence
+  (`boot.canSchedule`).
 
 ### Members the owner makes (031)
 

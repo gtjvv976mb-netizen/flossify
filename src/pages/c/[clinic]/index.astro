@@ -182,7 +182,7 @@ const whoItems = !isDentist && data.staff.length > 1
 const boot = {
   slug: clinic.slug, csrf, today, date, view, by, dentist: dentistParam,
   me: { id: session.staffId, name: session.name, dentist: isDentist },
-  finance, canEdit,
+  finance, canEdit, canSchedule: can(clinic, 'schedule.edit'),
   chairs: data.clinic.chairs, hours: data.hours, staff: data.staff, catalog: data.catalog,
   next: NEXT_STATUS,
   cards: data.range, todayCards: data.today, toPlace: data.toPlace, toConfirm: data.toConfirm,

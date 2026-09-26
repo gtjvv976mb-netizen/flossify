@@ -57,6 +57,8 @@ import { loadPrivacy, savePrivacy, savedPrivacy, type PrivacyRefused } from './_
 import { loadPlan } from './_lib/plan';
 import { can } from '../../../../lib/can';
 import { listRoles, giveable } from '../../../../lib/roles';
+import { rolesAction, roleNotice, type RolesRefused } from './_lib/roles';
+import RolesSection from './_ui/RolesSection.astro';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -65,7 +67,7 @@ const { clinic, session, branches } = ws;
 // may change at least one. By default that is the owner and the admin, who may change all of them.
 const may: Record<SectionId, boolean> = {
   profile: can(ws, 'settings.edit'), hours: can(ws, 'settings.edit'), fees: can(ws, 'settings.edit'),
-  people: can(ws, 'people.manage'), photos: can(ws, 'settings.edit'), privacy: can(ws, 'settings.edit'), plan: can(ws, 'plan.pay'),
+  people: can(ws, 'people.manage'), roles: can(ws, 'roles.manage'), photos: can(ws, 'settings.edit'), privacy: can(ws, 'settings.edit'), plan: can(ws, 'plan.pay'),
 };
 const canSetUp = Object.values(may).some(Boolean);
 const shown = SECTIONS.filter((s) => may[s.id]);
@@ -73,13 +75,14 @@ const base = `/c/${clinic.slug}/settings/`;
 const q = Astro.url.searchParams;
 
 // --- a post: which form, then its handler ---------------------------------------------
-type Which = 'profile' | 'hours' | 'legacy' | 'fees' | 'fee-add' | 'person-add' | 'photos' | 'privacy';
-const SECTION_OF: Record<Which, SectionId> = { profile: 'profile', hours: 'hours', legacy: 'profile', fees: 'fees', 'fee-add': 'fees', 'person-add': 'people', photos: 'photos', privacy: 'privacy' };
+type Which = 'profile' | 'hours' | 'legacy' | 'fees' | 'fee-add' | 'person-add' | 'role' | 'photos' | 'privacy';
+const SECTION_OF: Record<Which, SectionId> = { profile: 'profile', hours: 'hours', legacy: 'profile', fees: 'fees', 'fee-add': 'fees', 'person-add': 'people', role: 'roles', photos: 'photos', privacy: 'privacy' };
 let clinicRefused: ClinicRefused | null = null;
 let feesRefused: FeesRefused | null = null;
 let addRefused: AddRefused | null = null;
 let photosRefused: PhotosRefused | null = null;
 let privacyRefused: PrivacyRefused | null = null;
+let rolesRefused: RolesRefused | null = null;
 
 if (Astro.request.method === 'POST') {
   if (!canSetUp) return Astro.redirect(base, 303);
@@ -88,7 +91,7 @@ if (Astro.request.method === 'POST') {
   // old address (?from=); else the old one-page form, which posted profile and hours together.
   const from = q.get('from') ?? '';
   const named = String(form.get('form') ?? '');
-  const which: Which = (['profile', 'hours', 'fees', 'fee-add', 'person-add', 'photos', 'privacy'] as const).find((w) => w === named)
+  const which: Which = (['profile', 'hours', 'fees', 'fee-add', 'person-add', 'role', 'photos', 'privacy'] as const).find((w) => w === named)
     ?? (from === 'fees' ? (form.get('do') === 'add' ? 'fee-add' : 'fees')
       : from === 'team' ? 'person-add'
       : from === 'photos' ? 'photos'
@@ -111,6 +114,9 @@ if (Astro.request.method === 'POST') {
   } else if (which === 'person-add') {
     const r = await addPerson({ clinic, session, cookies: Astro.cookies, site: Astro.site, base }, form);
     out = r; if (!(r instanceof Response)) addRefused = r;
+  } else if (which === 'role') {
+    const r = await rolesAction({ clinic, staffId: session.staffId, base, form });
+    out = r; if (!(r instanceof Response)) rolesRefused = r;
   } else if (which === 'photos') {
     const r = await photoAction(who);
     out = r; if (!(r instanceof Response)) photosRefused = r;
@@ -133,7 +139,7 @@ const offered = roles ? giveable(clinic, roles) : [];
 const startRole = (offered.find((r) => r.base === 'dentist') ?? offered[offered.length - 1])?.id ?? '';
 
 type N = { tone: 'ok' | 'alert' | 'warn'; text: string };
-const notes: Record<SectionId, N[]> = { profile: [], hours: [], fees: [], people: [], photos: [], privacy: [], plan: [] };
+const notes: Record<SectionId, N[]> = { profile: [], hours: [], fees: [], people: [], roles: [], photos: [], privacy: [], plan: [] };
 const stale = q.get('stale');
 if (isSection(stale) && stale !== 'plan') notes[stale].push({ tone: 'alert', text: CSRF_MESSAGE });
 if (data && Astro.request.method === 'GET') {
@@ -148,6 +154,8 @@ if (data && Astro.request.method === 'GET') {
     const p = people?.find((x) => x.id === q.get('id'));
     notes.people.push({ tone: 'ok', text: addedText(p?.full_name ?? 'them', q.get('via') ?? 'sms', p ? { slug: clinic.slug, username: p.username } : undefined) });
   }
+  const rn = roles ? roleNotice(q, roles) : '';
+  if (rn) notes.roles.push({ tone: 'ok', text: rn });
   const ph = q.get('photos');
   const n = Number(q.get('n'));
   if (ph === 'added' && n > 0) notes.photos.push({ tone: 'ok', text: `Added ${n === 1 ? 'one photo' : `${n} photos`}. ${(keys?.length ?? 0) <= 2 ? 'It is on your public page now.' : 'Move it up to put it on your public page.'}` });
@@ -164,6 +172,7 @@ const STATUS: Record<SectionId, { text: string; tone?: 'warn' | 'alert' }> = !da
   hours: openDays.length ? { text: daysText(openDays) } : { text: 'No hours yet', tone: 'warn' },
   fees: { text: `${fees!.filter((r) => r.active).length} offered` },
   people: { text: `${active} ${active === 1 ? 'person' : 'people'}` },
+  roles: { text: `${roles!.length} roles` },
   photos: keys!.length ? { text: `${keys!.length} of ${MAX_PHOTOS}` } : { text: 'No photos yet', tone: 'warn' },
   privacy: privacy!.group.dpo_name ? { text: 'Officer named' } : { text: 'No officer named', tone: 'warn' },
   plan: plan ? { text: plan.short, tone: plan.short === 'Overdue' ? 'alert' : plan.short === 'Invoice due' ? 'warn' : undefined } : { text: 'Could not be read now' },
@@ -171,9 +180,9 @@ const STATUS: Record<SectionId, { text: string; tone?: 'warn' | 'alert' }> = !da
 // The one section on screen when the page opens: a refused form's, else the one a notice is about
 // (the address's #section says the same, and the page's first script follows it), else the profile.
 const fromSection = (q.get('stale') ?? q.get('saved') ?? '') as string;
-const noticeFor: SectionId | null = q.get('person') === 'added' ? 'people' : q.get('added') === 'fee' ? 'fees' : q.get('photos') ? 'photos'
+const noticeFor: SectionId | null = q.get('person') === 'added' ? 'people' : q.get('role') ? 'roles' : q.get('added') === 'fee' ? 'fees' : q.get('photos') ? 'photos'
   : (q.has('paid') || q.has('unpaid') || q.has('pay')) ? 'plan' : null;
-const wanted: SectionId = clinicRefused ? clinicRefused.part : feesRefused ? 'fees' : addRefused ? 'people' : photosRefused ? 'photos' : privacyRefused ? 'privacy'
+const wanted: SectionId = clinicRefused ? clinicRefused.part : feesRefused ? 'fees' : addRefused ? 'people' : rolesRefused ? 'roles' : photosRefused ? 'photos' : privacyRefused ? 'privacy'
   : isSection(fromSection) ? fromSection : noticeFor ?? 'profile';
 const firstOn: SectionId = may[wanted] ? wanted : (shown[0]?.id ?? 'profile');
 ---
@@ -249,6 +258,7 @@ const firstOn: SectionId = may[wanted] ? wanted : (shown[0]?.id ?? 'profile');
             add={addRefused?.add ?? { ...emptyPerson(startRole), treats: offered.find((r) => r.id === startRole)?.base === 'dentist' }} addError={addRefused?.error ?? ''}
             notes={notes.people} highlight={q.get('person') === 'added' ? (q.get('id') ?? '') : ''}
           />}
+          {may.roles && <RolesSection base={base} roles={roles!} me={clinic} refused={rolesRefused} notes={notes.roles} highlight={q.get('role') === 'added' ? (q.get('id') ?? '') : ''} on={firstOn === 'roles'} />}
           {may.photos && <PhotosSection base={base} clinicId={clinic.id} clinicName={clinic.name} keys={keys!} error={photosRefused?.error ?? ''} notes={notes.photos} on={firstOn === 'photos'} />}
           {may.privacy && <PrivacySection base={base} data={privacy!} v={privacyRefused?.posted ?? savedPrivacy(privacy!)} problems={privacyRefused?.problems ?? []} notes={notes.privacy} on={firstOn === 'privacy'} />}
           {may.plan && <PlanSection v={plan} slug={clinic.slug} on={firstOn === 'plan'} />}

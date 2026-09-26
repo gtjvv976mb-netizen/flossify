@@ -145,7 +145,7 @@ at `/auth/login/` as before.
 - Verified by comparing, for each seeded person, what every page shows before
   and after (no change is the test).
 
-### P3 — People and Roles screens (Clinic settings)
+### P3 — People and Roles screens (Clinic settings) (shipped)
 - **People**: Add member — name, username, first password (or "make one for
   me", shown once), role, "treats patients" (+ PRC licence), mobile and email
   optional. Reset password (owner sets a new one; the member chooses their own
