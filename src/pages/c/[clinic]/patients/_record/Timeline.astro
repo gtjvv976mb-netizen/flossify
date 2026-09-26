@@ -8,6 +8,7 @@ import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import Head from '../_ui/Head.astro';
 import Glyph from '../_ui/Glyph.astro';
+import Who from './Who.astro';
 import type { GlyphName } from '../_ui/glyphs';
 import { TIMELINE_FILTERS, type TimelineEvent, type TimelineKind } from '../../../../../lib/record';
 
@@ -66,9 +67,9 @@ const filters = TIMELINE_FILTERS.filter((f) => f.id === 'all' || count(f.id) > 0
                   <div class="min-w-0">
                     <p class="tl-title">{e.title}</p>
                     {e.detail && <p class="tl-detail">{e.detail}</p>}
-                    {e.by && <p class="tl-by">By {e.by}</p>}
+                    {e.by && <p class="tl-by"><Who name={e.by} /></p>}
                   </div>
-                  <span class="tl-time">{timeWords(new Date(e.at))}</span>
+                  <span class="tl-time rp">{timeWords(new Date(e.at))}</span>
                   {e.section && sections.includes(e.section) && (
                     <button type="button" class="tl-go" data-rec-go={e.section}>Open {OPEN[e.section] ?? e.section}</button>
                   )}

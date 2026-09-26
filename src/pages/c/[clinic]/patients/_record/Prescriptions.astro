@@ -51,7 +51,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
               <p class="nt-who">{r.prescriber}{r.prc ? ` · PRC ${r.prc}` : ''}</p>
             </header>
             <ol class="rx-items">
-              {r.items.map((it) => <li><strong>{it.drug}</strong>{it.strength && ` ${it.strength}`}{it.qty && <span> · #{it.qty}</span>}<br /><span>{it.sig}</span></li>)}
+              {r.items.map((it) => <li><p class="rp-row"><strong class="rx-drug-name">{it.drug}</strong>{it.strength && <span class="rp">{it.strength}</span>}{it.qty && <span class="rp">#{it.qty}</span>}</p><p class="rx-sig-line"><span class="rk">Take</span> {it.sig}</p></li>)}
             </ol>
             {r.notes && <p class="mt-2 text-[14px] text-ink-2">{r.notes}</p>}
             <footer class="nt-foot">
