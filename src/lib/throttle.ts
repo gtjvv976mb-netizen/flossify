@@ -45,6 +45,12 @@ export const LIMITS = {
   mecode: { phone: [10, 15 * 60], ip: [30, 15 * 60] },
   chart: { staff: [600, 60] },
   schedule: { staff: [600, 60] },
+  // The patient forms (src/lib/patient-forms.ts). Patients at one clinic often share its Wi-Fi, and
+  // many phones share one carrier address (CGNAT), so the address limit is loose and counted per poster
+  // (forms:ip:<key>:<address>); one mobile sends a family's forms at most. `key` caps a poster a day;
+  // `miss` is forms links that do not exist, per address: past it, links that do not exist wait
+  // (load, not secrecy — a key is ~49 bits), while a real poster's link still opens.
+  forms: { ip: [40, 60 * 60], phone: [8, 24 * 60 * 60], key: [300, 24 * 60 * 60], miss: [200, 60 * 60] },
 } as const satisfies Record<string, Record<string, readonly [number, number]>>;
 
 /** The caller's address. Behind a proxy that sets X-Forwarded-For, set TRUST_PROXY=1;
@@ -58,6 +64,23 @@ export function clientIp(ctx: { request: Request; clientAddress: string }): stri
     if (ip && isIP(ip)) return ip;
   }
   try { return ctx.clientAddress; } catch { return '0.0.0.0'; }
+}
+
+/**
+ * The address a limit counts against: an IPv4 address as it is, an IPv6 one by its /64 (one
+ * subscriber, one home or one phone is usually handed a whole /64, so counting single addresses
+ * inside it counts nothing).
+ */
+export function ipBucket(ip: string): string {
+  if (isIP(ip) !== 6) return ip;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return mapped[1];
+  // Expand "::" to the missing zero groups, then keep the first four.
+  const [head, tail = ''] = ip.toLowerCase().split('%')[0].split('::');
+  const a = head ? head.split(':') : [];
+  const b = ip.includes('::') ? (tail ? tail.split(':') : []) : [];
+  const groups = ip.includes('::') ? [...a, ...Array(8 - a.length - b.length).fill('0'), ...b] : a;
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':')}::/64`;
 }
 
 /** "Try again in 12 minutes." */

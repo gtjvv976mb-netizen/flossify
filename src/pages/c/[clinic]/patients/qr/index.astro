@@ -1,0 +1,264 @@
+---
+// "QR code for your desk" — the third way to add patients, beside typing them
+// in and importing a spreadsheet (Add patient links here). The owner's brief:
+// a QR code the clinic downloads or prints and posts at reception, "with your
+// design, with flossify.ph logo so that anyone who's using it will see it's
+// Flossify", so patients fill in their information and the patient forms on
+// their own phones (src/lib/patient-forms.ts; the public side is /f/<key>/).
+//
+// One screen, one teal button: the poster as it will print, and beside it
+// (on a phone, above it: the buttons come first)
+// Print poster (A4: this page prints the poster alone — the same sheet as
+// ./print.astro, which the button opens without the script — so one click
+// opens the browser's print box; "Save as PDF" there gives a PDF), Download
+// QR (PNG) — the same poster drawn on a canvas at 300 dpi (./_draw.ts, from
+// the steps in ./_poster.ts) — and Copy link. Under them, how many forms are
+// waiting (to the queue, ../forms/), and "Make a new QR code", which retires
+// the key after a confirmation (old posters then say "ask the desk").
+//
+// Who: people who can add patients here (canEditRecords — Add patient's own
+// rule). The key is made the first time one of them opens this page
+// (formsKey); it always points at flossify.ph, whichever server draws it.
+// The new key is a CSRF-checked post (a miss comes back with ?stale=1),
+// audited forms.key_new by newFormsKey. On a production server whose privacy
+// notice does not yet cover the forms (formsNoticeReady), the page says the
+// code will ask patients to see the desk until it does.
+export const prerender = false;
+
+import ClinicLayout from '../../../../../layouts/Clinic.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Pane from '../../../../../components/ws/Pane.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Glyph from '../_ui/Glyph.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import '../_ui/patients.css';
+import '../_forms/forms.css';
+import { requireWorkspace } from '../../../../../lib/workspace';
+import { withClinic } from '../../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
+import { canEditRecords, day } from '../../../../../lib/health';
+import { formsKey, newFormsKey, countNewForms, formsNoticeReady } from '../../../../../lib/patient-forms';
+import { qrSvg, qrMatrix, MARK } from '../../../../../lib/qr';
+import { posterLayout, posterSvg } from './_poster';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const base = `/c/${clinic.slug}/patients/`;
+const here = `${base}qr/`;
+const q = Astro.url.searchParams;
+let problem: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(`${here}?stale=1`, 303);
+  if (form.get('intent') === 'new-key') {
+    const made = await withClinic(clinic.id, (tx) => newFormsKey(tx, { clinicId: clinic.id, staffId: session.staffId }));
+    if (made) return Astro.redirect(`${here}?made=1`, 303);
+    problem = 'Your account cannot make a new QR code at this branch. Ask the owner.';
+  }
+}
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const canEdit = await canEditRecords(tx, session.staffId, clinic.id);
+  const area = (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null;
+  if (!canEdit) return { canEdit, area, key: null, waiting: 0, open: false };
+  const notice = (await tx.query<{ id: string | null }>('select id from current_consent_version()')).rows[0]?.id ?? null;
+  return { canEdit, area, key: await formsKey(tx, { clinicId: clinic.id, staffId: session.staffId }), waiting: await countNewForms(tx), open: formsNoticeReady(notice) };
+});
+
+const key = data.key;
+const poster = key
+  ? posterLayout({
+    clinicName: clinic.name, url: key.url, short: key.short, matrix: qrMatrix(key.url),
+    mark: { radius: MARK.radius, tooth: MARK.tooth, fill: MARK.fill, toothFill: MARK.toothFill },
+  })
+  : null;
+const svg = poster && key ? posterSvg(poster, qrSvg(key.url)) : '';
+// The same poster at its paper size, for printing this page (shown only on paper: forms.css, "Printing the poster").
+const paperSvg = poster && key ? posterSvg(poster, qrSvg(key.url), { size: { w: '210mm', h: '297mm' } }) : '';
+const boot = poster ? JSON.stringify({ poster, file: `flossify-qr-${clinic.slug}.png` }).replace(/</g, '\\u003c') : '';
+const confirming = q.get('confirm') === 'new';
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title="QR code for your desk" section="add-patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  <a href={base} class="rec-back ws-glass m-0! w-fit px-3!" data-pts-back><Icon name="chevron-left" />Back to patients</a>
+  <script>
+    import { restoreBackLinks } from '../_list/back';
+    restoreBackLinks();
+  </script>
+
+  {q.get('stale') === '1' && <Callout tone="alert" text={CSRF_MESSAGE} />}
+  {problem && <Callout tone="alert" text={problem} />}
+  {data.canEdit && !data.open && (
+    <Callout tone="info" title="Patients cannot send forms just yet.">
+      <p>Flossify is updating its privacy notice to cover what the forms ask. Until it is published, the code asks patients to see the desk. You can print the poster now: it will work as soon as the forms open.</p>
+    </Callout>
+  )}
+  {q.get('made') === '1' && (
+    <Callout tone="success" title="A new QR code is ready.">
+      <p>The old one no longer opens the forms. Print this one and put it where the old posters were.</p>
+    </Callout>
+  )}
+
+  {!data.canEdit || !key || !poster ? (
+    <Pane as="div" label="Not allowed">
+      <Callout tone="alert" role="note" text="Your account cannot add patients at this branch, so it cannot print the QR code either. Ask the owner." />
+    </Pane>
+  ) : (
+    <div class="fm-qr"><div class="fm-qr-in">
+      <Pane as="section" label="The poster, as it prints" class="fm-qr-poster" pad="tight">
+        <div class="fm-paper" set:html={svg} />
+        <p class="fm-paper-note"><Glyph name="print" size={16} />A4 poster. Put it at reception, where patients wait.</p>
+      </Pane>
+
+      <div class="fm-qr-side">
+        <Pane as="section" label="Print it for your desk" class="fm-qr-print">
+          <Head icon="qr" title="Print it for your desk" />
+          <p class="fm-lede">Patients scan it with their phone and fill in their forms. They wait for you in New patient forms.</p>
+          <div class="fm-actions fm-qr-actions mt-5">
+            <a href={`${here}print/`} class="ws-btn ws-btn-primary" data-qr-print><Glyph name="print" />Print poster</a>
+            <button type="button" class="ws-btn ws-btn-quiet" data-qr-png><Icon name="download" /><span data-qr-png-word>Download QR (PNG)</span></button>
+            <button type="button" class="ws-btn ws-btn-quiet" data-qr-copy data-url={key.url}><Glyph name="link" /><span data-qr-copy-word>Copy link</span></button>
+          </div>
+          <p class="sr-only" aria-live="polite" data-qr-said></p>
+          <p class="fm-help mt-3">Download gives the same A4 poster as a picture. For a PDF, choose Save as PDF when printing.</p>
+          <p role="alert" class="ws-callout mt-4" data-tone="alert" data-qr-error hidden></p>
+
+          <div class="fm-link mt-5">
+            <p class="meta">The link in the code</p>
+            <p class="fm-link-row">
+              <code class="fm-link-code" data-qr-link>{key.short}</code>
+              <a href={`/f/${key.key}/`} target="_blank" rel="noopener" class="ws-empty-go">See what patients see <Icon name="arrow-right" size={16} /></a>
+            </p>
+            <p class="fm-help">For anyone who cannot scan: it is printed under the code too. On a clinic tablet, open it in a private tab, so the tablet does not remember one patient’s details for the next.</p>
+          </div>
+        </Pane>
+
+        <Pane as="section" label="New patient forms" class="fm-qr-rest">
+          <Head icon="form" title="New patient forms" meta={data.waiting ? undefined : 'Nothing waiting'} />
+          {data.waiting > 0 ? (
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <p class="text-[15px] text-ink-2"><span class="font-semibold text-ink">{data.waiting === 1 ? 'One form is' : `${data.waiting} forms are`} waiting</span> for you to add or dismiss.</p>
+              <a href={`${base}forms/`} class="ws-btn ws-btn-quiet ws-btn-sm">Review {data.waiting === 1 ? 'it' : 'them'} <Icon name="arrow-right" size={16} /></a>
+            </div>
+          ) : (
+            <p class="text-[15px] text-ink-2">When a patient sends their forms, they wait here until you add them.</p>
+            <a href={`${base}forms/`} class="ws-empty-go">Open the list <Icon name="arrow-right" size={16} /></a>
+          )}
+        </Pane>
+
+        <Pane as="section" label="Make a new QR code" id="new-code" class="fm-qr-rest">
+          <Head icon="renew" title="Make a new QR code" meta={`This code since ${day(key.createdAt)}`} />
+          {confirming ? (
+            <form method="post" action={here} class="grid gap-4">
+              <Csrf />
+              <input type="hidden" name="intent" value="new-key" />
+              <Callout tone="warn" title="Every poster you printed will stop working.">
+                <p>Anyone who scans an old one is asked to see the desk. Forms already sent stay.</p>
+              </Callout>
+              <div class="fm-actions">
+                <button type="submit" class="ws-btn ws-btn-danger"><Glyph name="renew" />Make a new QR code</button>
+                <a href={here} class="ws-btn ws-btn-quiet">Keep this one</a>
+              </div>
+            </form>
+          ) : (
+            <>
+              <p class="fm-lede">If a poster was taken, or the link was shared where it should not be. The old code stops working at once.</p>
+              <a href={`${here}?confirm=new#new-code`} class="ws-btn ws-btn-quiet ws-btn-sm mt-4" data-ws-open="new-code-panel"><Glyph name="renew" />Make a new QR code…</a>
+            </>
+          )}
+        </Pane>
+      </div>
+    </div></div>
+
+    <SidePanel id="new-code-panel" title="Make a new QR code?">
+      <form method="post" action={here} class="grid gap-5">
+        <Csrf />
+        <input type="hidden" name="intent" value="new-key" />
+        <Callout tone="warn" title="Every poster you printed will stop working.">
+          <p>Anyone who scans an old one is asked to see the desk. Forms already sent stay. Print the new code and put it where the old posters were.</p>
+        </Callout>
+        <div class="fm-actions">
+          <button type="submit" class="ws-btn ws-btn-danger"><Glyph name="renew" />Make a new QR code</button>
+          <button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Keep this one</button>
+        </div>
+      </form>
+    </SidePanel>
+
+    <script is:inline type="application/json" data-qr-boot set:html={boot}></script>
+    <div class="fm-print-sheet" aria-hidden="true" set:html={paperSvg} />
+    <style is:global>@page { size: A4 portrait; margin: 0; }</style>
+  )}
+</ClinicLayout>
+
+<script>
+  // Print poster: the browser's print box with the poster alone. Download: the same poster drawn at
+  // 300 dpi on a canvas (./_draw.ts). Copy link: the exact link in the code.
+  import { downloadPoster } from './_draw';
+  import { fitSvgText } from '../_forms/fit';
+  import type { Poster } from './_poster';
+
+  fitSvgText(document.querySelector<SVGSVGElement>('.fm-paper svg'));
+
+  const bootEl = document.querySelector<HTMLScriptElement>('[data-qr-boot]');
+  const said = document.querySelector<HTMLElement>('[data-qr-said]');
+  const error = document.querySelector<HTMLElement>('[data-qr-error]');
+  const fail = (text: string) => { if (error) { error.textContent = text; error.hidden = false; } };
+  const tell = (text: string) => { if (said) said.textContent = text; };
+
+  if (bootEl) {
+    const boot = JSON.parse(bootEl.textContent || '{}') as { poster: Poster; file: string };
+
+    const png = document.querySelector<HTMLButtonElement>('[data-qr-png]');
+    const pngWord = document.querySelector<HTMLElement>('[data-qr-png-word]');
+    png?.addEventListener('click', async () => {
+      if (png.getAttribute('aria-disabled') === 'true') return;
+      png.setAttribute('aria-disabled', 'true');
+      if (pngWord) pngWord.textContent = 'Making the picture…';
+      try {
+        await downloadPoster(boot.poster, boot.file);
+        if (pngWord) pngWord.textContent = 'Downloaded';
+        tell(`The poster was saved as ${boot.file}.`);
+      } catch {
+        fail('The picture could not be made in this browser. Use Print poster, and choose Save as PDF.');
+        if (pngWord) pngWord.textContent = 'Download QR (PNG)';
+      } finally {
+        png.removeAttribute('aria-disabled');
+        setTimeout(() => { if (pngWord && pngWord.textContent === 'Downloaded') pngWord.textContent = 'Download QR (PNG)'; }, 4000);
+      }
+    });
+
+    const copy = document.querySelector<HTMLButtonElement>('[data-qr-copy]');
+    const copyWord = document.querySelector<HTMLElement>('[data-qr-copy-word]');
+    copy?.addEventListener('click', async () => {
+      const url = copy.dataset.url ?? '';
+      try {
+        await navigator.clipboard.writeText(url);
+        if (copyWord) copyWord.textContent = 'Copied';
+        tell('The link was copied.');
+        setTimeout(() => { if (copyWord) copyWord.textContent = 'Copy link'; }, 2500);
+      } catch {
+        // No clipboard here: select the link so Ctrl+C copies it.
+        const code = document.querySelector('[data-qr-link]');
+        if (code) { const r = document.createRange(); r.selectNodeContents(code); const s = getSelection(); s?.removeAllRanges(); s?.addRange(r); }
+        tell('Press Ctrl+C to copy the selected link.');
+      }
+    });
+
+    // Print poster: this page prints the poster alone (forms.css, "Printing the poster"): its paper copy
+    // moves to the end of <body>, where the print rules keep it and hide the rest. Without this script
+    // the button is a link to the print page.
+    const sheet = document.querySelector<HTMLElement>('.fm-print-sheet');
+    if (sheet) document.body.append(sheet);
+    const print = document.querySelector<HTMLAnchorElement>('[data-qr-print]');
+    print?.addEventListener('click', async (e) => {
+      if (!sheet || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      try { await document.fonts.ready; } catch { /* print with what is there */ }
+      window.print();
+    });
+  }
+</script>

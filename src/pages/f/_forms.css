@@ -1,0 +1,249 @@
+/* The patient forms (/f/<key>/): the page a patient opens by scanning the QR code on the clinic's
+   desk. It stands on the clinic's own photo like the booking (ClinicRoom + clinic-glass.css, the
+   .cl-glass column and its tokens) and adds only what a long form needs: sections inside a step, big
+   answer pills for a thumb, fields at 16px and 48px, errors beside their fields and summed up at the
+   top, the consent's words and ticks, and the done screen.
+
+   Every rule starts with .pf, a class only this page's <main> has, so the clinic's page and the
+   booking (which share clinic-glass.css and patient.css) are untouched. Unlayered, like
+   clinic-glass.css: it redraws patient.css and global.css (the components layer) without raising a
+   selector, and a [hidden] element still stays hidden (the base layer's !important).
+
+   Without JavaScript the page is one long form: every step and every follow-up question shows, the
+   server reads what applies. With it (the inline script puts .pf-js on <html>), one step shows at a
+   time and a question shows when its answer calls for it ([data-off]). If the page's script never
+   runs, the inline script takes .pf-js away again at load, so the whole form comes back.
+   Motion always on. */
+
+/* --- the page's own column: the booking's width, a little air at the foot ---------------------- */
+.pf { padding-bottom: 2.5rem; }
+/* An error's words on the glass: a deeper red than the site's (#ac3232 fell to 4.2:1 over a harsh
+   striped upload, measured), as clinic-glass.css deepens the teal. Dark mode keeps the site's pale red. */
+.pf { --pf-err: #8a2222; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pf { --pf-err: var(--ws-red-ink); }
+}
+:root[data-theme="dark"] .pf { --pf-err: var(--ws-red-ink); }
+
+/* --- steps and questions that are not shown ---------------------------------------------------- */
+:root.pf-js .pf :is([data-off], [data-away]) { display: none; }
+/* A page from the browser's memory, on its way to the empty forms: nothing of it is shown. */
+:root.pf-leaving main.pf { visibility: hidden; }
+:root:not(.pf-js) .pf :is(.pf-stepper, [data-pf-back], [data-pf-next]) { display: none; }
+:root.pf-js .pf .pf-nojs { display: none; }
+/* No script: no stepper, so no rule under it; the five steps one after another, each under a hairline. */
+:root:not(.pf-js) .pf .pf-form { margin-top: 0; padding-top: 0; border-top: 0; }
+:root:not(.pf-js) .pf .pf-step + .pf-step { margin-top: 1.75rem; padding-top: 1.5rem; border-top: 1px solid var(--ws-hair); }
+
+/* --- the heading card ------------------------------------------------------------------------- */
+.pf .pf-head .cl-id { align-items: flex-start; }
+.pf .pf-intro { display: flex; align-items: flex-start; gap: 0.5rem; margin-top: 0.625rem; font-size: 14.5px; line-height: 1.45; color: var(--c-ink-2); }
+.pf .pf-intro > .ws-icon { flex: none; margin-top: 2px; color: var(--cl-link); }
+
+/* --- the stepper: the booking's, with the steps' own words ------------------------------------- */
+/* Each step is a button (a step already done goes back to it; the rest are disabled), drawn as the
+   booking's circle and word: the button is the whole column, at least 44px tall. */
+.pf .pf-step-go {
+  display: flex; flex-direction: column; align-items: center; gap: 0.25rem; width: 100%; min-height: 44px; margin: 0; padding: 0;
+  border: 0; border-radius: var(--ws-r-ctl); background: none; color: inherit; font: inherit; text-align: center; cursor: default;
+}
+.pf .pf-step-word { font-size: 13px; line-height: 1.3; }
+.pf .wiz-step[aria-current="step"] .pf-step-word { font-weight: 600; }
+.pf .pf-step-go:not(:disabled) { cursor: pointer; }
+.pf .pf-step-go:not(:disabled):hover .sec-no { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ws-teal) 45%, transparent); }
+.pf .pf-step-go:not(:disabled):hover .pf-step-word { text-decoration: underline; text-underline-offset: 3px; }
+.pf .pf-step-go:focus-visible { outline: 2px solid var(--cl-link); outline-offset: 2px; }
+/* On a phone the five words are one each ("About you" → "You"), so none wraps under its circle. */
+.pf .pf-stepper .pf-word-phone { display: none; }
+@media (max-width: 479px) {
+  .pf .pf-stepper .pf-word-desk { display: none; }
+  .pf .pf-stepper .pf-word-phone { display: inline; }
+}
+@media (max-width: 379px) { .pf .pf-step-word { font-size: 12.5px; } }
+
+/* --- a step ------------------------------------------------------------------------------------- */
+.pf .pf-step > .pt-help { max-width: 62ch; }
+.pf .pf-child { margin-top: 0.75rem; }
+/* A section inside a step: its title, one line of help, its questions. A hairline between sections. */
+.pf .pf-sec { margin-top: 1.125rem; }
+.pf .pf-sec + .pf-sec { padding-top: 1.125rem; border-top: 1px solid var(--ws-hair); }
+.pf .pf-sec-title { font-size: 16.5px; font-weight: 600; line-height: 1.35; letter-spacing: -0.01em; color: var(--c-ink); }
+.pf .pf-sec-help { margin-top: 0.125rem; font-size: 14.5px; line-height: 1.45; color: var(--c-ink-2); }
+/* Said only when there is no script to hide the question: when it applies. */
+.pf .pf-nojs { display: block; margin-top: 0.125rem; font-size: 14px; line-height: 1.45; font-style: italic; color: var(--c-ink-2); }
+.pf .pf-grid { display: grid; gap: 1rem 0.75rem; margin-top: 0.75rem; }
+@media (min-width: 640px) {
+  .pf .pf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pf .pf-grid > .pf-wide { grid-column: 1 / -1; }
+}
+
+/* --- one question ------------------------------------------------------------------------------- */
+.pf .pf-field { display: flex; flex-direction: column; gap: 0.375rem; min-width: 0; }
+.pf .pf-label { display: block; font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--c-ink); }
+.pf .pf-optional { font-weight: 400; color: var(--c-ink-2); }
+.pf .pf-help { margin-top: -0.125rem; font-size: 14px; line-height: 1.45; color: var(--c-ink-2); }
+/* Fields: 16px words (a phone does not zoom), 48px tall, the glass field of the booking. */
+.pf .field :is(input:not([type="checkbox"], [type="radio"]), select, textarea) { min-height: 48px; padding: 0.625rem 0.875rem; font-size: 16px; }
+.pf .field textarea { min-height: 6.5rem; line-height: 1.5; resize: vertical; }
+.pf .field select option { background: var(--ws-glass-strong); color: var(--c-ink); }
+.pf .field textarea:focus {
+  border-color: var(--cl-link);
+  box-shadow: 0 0 0 1px var(--cl-link), 0 0 0 4px color-mix(in srgb, var(--ws-teal) 22%, transparent);
+}
+/* A date keeps its own picker; its box is as wide as a date needs on a wide card. */
+@media (min-width: 640px) { .pf .field input[type="date"] { max-width: 16rem; } }
+/* A wrong answer: a red edge on the field, the sentence under it (with its sign). */
+.pf .field :is(input, select, textarea)[aria-invalid="true"] { border-color: var(--ws-red); }
+.pf .pf-err { display: flex; align-items: flex-start; gap: 0.4375rem; font-size: 14.5px; font-weight: 500; line-height: 1.45; color: var(--pf-err); }
+.pf .pf-err:empty { display: none; }
+.pf .pf-err::before {
+  content: ""; width: 16px; height: 16px; flex: none; margin-top: 2px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.3 4.2L2.9 17.3A2 2 0 0 0 4.6 20.3h14.8a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z'/%3E%3Cpath d='M12 9.5v4M12 17h.01'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.3 4.2L2.9 17.3A2 2 0 0 0 4.6 20.3h14.8a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z'/%3E%3Cpath d='M12 9.5v4M12 17h.01'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+}
+@media (forced-colors: active) { .pf .pf-err::before { content: none; } }
+
+/* --- answers you tap: pills with a round dot (one answer) or a box (any number) ----------------
+   The input is the whole pill (invisible over it), so the pill is the target: 46px tall. Chosen, it
+   fills the pale teal and its dot or box fills teal with a white mark — a shape as well as a colour. */
+.pf .pf-opts { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.pf .pf-opt { position: relative; display: inline-flex; min-width: 0; cursor: pointer; }
+.pf .pf-opt input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.pf .pf-opt > span {
+  display: inline-flex; align-items: center; gap: 0.5rem; min-height: 46px; padding: 0.5rem 1rem 0.5rem 0.75rem;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-pill); background: var(--glass-field);
+  font-size: 15px; font-weight: 500; line-height: 1.3; color: var(--c-ink);
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.pf .pf-opt > span::before {
+  content: ""; flex: none; width: 20px; height: 20px; box-sizing: border-box;
+  border: 1.5px solid var(--c-ink-2); border-radius: 50%; background: var(--ws-field) center / 14px 14px no-repeat;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+.pf .pf-opt input[type="checkbox"] + span::before { border-radius: 6px; }
+.pf .pf-opt:hover > span { border-color: var(--ws-field-line-hover); }
+.pf .pf-opt input:checked + span {
+  border-color: color-mix(in srgb, var(--ws-teal) 55%, transparent); background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-weight: 600;
+}
+.pf .pf-opt input[type="radio"]:checked + span::before { border-color: var(--ws-teal-fill); background: #fff; box-shadow: inset 0 0 0 5px var(--ws-teal-fill); }
+.pf .pf-opt input[type="checkbox"]:checked + span::before {
+  border-color: var(--ws-teal-fill); background-color: var(--ws-teal-fill);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+}
+.pf .pf-opt input:focus-visible + span { outline: 2px solid var(--cl-link); outline-offset: 2px; }
+.pf [aria-invalid="true"] > .pf-opts .pf-opt > span { border-color: var(--ws-red); }
+@media (forced-colors: active) {
+  .pf .pf-opt input { position: static; width: auto; height: auto; opacity: 1; }
+  .pf .pf-opt > span::before { content: none; }
+}
+/* Three answers or more, or a long one ("When was your last dental visit?", "Who is signing?"): rows
+   the width of the card, one answer each. */
+.pf .pf-opts-rows { display: grid; gap: 0.5rem; }
+.pf .pf-opts-rows .pf-opt { display: flex; }
+.pf .pf-opts-rows .pf-opt > span { flex: 1; min-height: 50px; padding: 0.625rem 1rem 0.625rem 0.875rem; border-radius: var(--ws-r-ctl); }
+/* Four short answers (sex): two by two, every pill the same width. */
+.pf .pf-opts-pairs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+@media (min-width: 640px) { .pf .pf-opts-pairs { grid-template-columns: repeat(4, max-content); } }
+.pf .pf-opts-pairs .pf-opt { display: flex; }
+.pf .pf-opts-pairs .pf-opt > span { flex: 1; padding-right: 0.875rem; }
+/* A checklist (allergies, conditions, what is bothering you): boxes in columns, a label may take two
+   lines. "None" first, across the whole width, then a rule with a few words, then the rest under
+   their small headings. */
+.pf .pf-opts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+@media (min-width: 640px) { .pf .pf-opts-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.pf .pf-opts-grid .pf-opt { display: flex; }
+.pf .pf-opts-grid .pf-opt > span { flex: 1; min-height: 48px; padding: 0.5rem 0.75rem 0.5rem 0.625rem; border-radius: var(--ws-r-ctl); font-size: 14.5px; line-height: 1.3; }
+.pf .pf-opts-grid .pf-opt-none { grid-column: 1 / -1; }
+.pf .pf-opts-grid .pf-opt-none > span { font-size: 15px; font-weight: 600; }
+.pf .pf-opts-or {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 0.75rem; margin: 0.125rem 0;
+  font-size: 14px; line-height: 1.4; color: var(--c-ink-2);
+}
+.pf .pf-opts-or::before, .pf .pf-opts-or::after { content: ""; flex: 1; min-width: 1rem; height: 1px; background: var(--ws-hair); }
+.pf .pf-opts-or > span { flex: none; max-width: 80%; text-align: center; }
+.pf .pf-opts-group { grid-column: 1 / -1; margin: 0.5rem 0 -0.125rem; font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--c-ink-2); }
+.pf .pf-opts-or + .pf-opts-group { margin-top: 0; }
+/* "None" ticked: the rest of the list folds away (the page's script keeps data-none-on in step). */
+:root.pf-js .pf [data-none-on] > .pf-opts > :not(.pf-opt-none) { display: none; }
+/* A yes/no question: the question and its pills side by side where there is room, stacked on a phone. */
+@media (min-width: 560px) {
+  .pf .pf-inline { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.375rem 1rem; }
+  .pf .pf-inline > * { grid-column: 1 / -1; }
+  .pf .pf-inline > .pf-label { grid-column: 1; grid-row: 1; }
+  .pf .pf-inline > .pf-help { grid-column: 1; grid-row: 2; margin-top: -0.25rem; }
+  .pf .pf-inline > .pf-opts { grid-column: 2; grid-row: 1 / span 2; flex-wrap: nowrap; }
+}
+
+/* --- a section folded away: optional numbers most people do not know -------------------------------- */
+.pf .pf-fold > .pf-fold-sum {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 44px; cursor: pointer; list-style: none;
+}
+.pf .pf-fold > .pf-fold-sum::-webkit-details-marker { display: none; }
+.pf .pf-fold > .pf-fold-sum .pf-optional { font-size: 15px; }
+.pf .pf-fold-chev { flex: none; color: var(--c-ink-2); transition: transform 180ms ease; }
+.pf .pf-fold[open] .pf-fold-chev { transform: rotate(180deg); }
+.pf .pf-fold > .pf-fold-sum:focus-visible { outline: 2px solid var(--cl-link); outline-offset: 2px; border-radius: var(--ws-r-ctl); }
+.pf .pf-fold > .pf-fold-sum:hover .pf-sec-title { text-decoration: underline; text-underline-offset: 3px; }
+
+/* --- consent ------------------------------------------------------------------------------------ */
+/* The consent's points: what the patient agrees to, on a quiet inset, each point's word first. */
+.pf .pf-points { display: grid; gap: 0.625rem; margin: 0.75rem 0 0; padding: 0.875rem 1rem; list-style: none; border: 1px solid var(--ws-hair); border-radius: var(--ws-r-ctl); background: var(--ws-subtle); }
+.pf .pf-points li { font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
+.pf .pf-points strong { display: block; font-size: 15px; font-weight: 600; color: var(--c-ink); }
+.pf .pf-notice { margin-top: 0.75rem; padding: 0.875rem 1rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r-ctl); background: var(--ws-subtle); }
+.pf .pf-notice-title { font-size: 15px; font-weight: 600; color: var(--c-ink); }
+.pf .pf-notice-text { margin-top: 0.125rem; font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
+.pf .pf-notice-link { display: inline-flex; align-items: center; gap: 0.375rem; min-height: 44px; margin-bottom: -0.5rem; font-size: 15px; }
+.pf .pf-notice-link .ws-icon { flex: none; }
+/* The tick: the whole line is the target, the box 22px. */
+.pf .pf-agree {
+  display: flex; align-items: flex-start; gap: 0.75rem; min-height: 48px; padding: 0.75rem 1rem;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-ctl); background: var(--glass-field);
+  font-size: 15px; font-weight: 500; line-height: 1.45; color: var(--c-ink); cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+.pf .pf-agree:hover { border-color: var(--ws-field-line-hover); }
+.pf .pf-agree input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--ws-teal-fill); cursor: pointer; }
+.pf .pf-agree:has(input:checked) { border-color: color-mix(in srgb, var(--ws-teal) 55%, transparent); background: var(--ws-teal-tint); }
+.pf .pf-agree input:focus-visible { outline: 2px solid var(--cl-link); outline-offset: 2px; }
+.pf [aria-invalid="true"] .pf-agree, .pf .pf-agree:has([aria-invalid="true"]) { border-color: var(--ws-red); }
+.pf .pf-sign-note { font-size: 14px; line-height: 1.45; color: var(--c-ink-2); }
+
+/* --- the answers that need a look, at the top of the step ---------------------------------------- */
+.pf .pf-alert {
+  margin-bottom: 1rem; padding: 0.75rem 1rem 0.625rem; border: 1px solid color-mix(in srgb, var(--ws-red) 30%, transparent);
+  border-radius: var(--ws-r); background: var(--ws-red-tint); color: var(--c-ink);
+}
+/* A heading or the list is focused for a screen reader to start there, never by a person: no ring. */
+.pf :is(.pf-alert, .pt-legend, .pf-done-title)[tabindex="-1"]:focus { outline: none; }
+.pf .pf-alert-title { display: flex; align-items: flex-start; gap: 0.5rem; padding-bottom: 0.125rem; font-size: 15px; font-weight: 600; line-height: 1.45; }
+.pf .pf-alert-title > .ws-icon { flex: none; margin-top: 2px; color: var(--pf-err); }
+.pf .pf-alert ul { display: grid; margin: 0.25rem 0 0; padding: 0; list-style: none; }
+.pf .pf-alert a {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.375rem; min-height: 44px; padding: 0.25rem 0;
+  font-size: 14.5px; line-height: 1.4; color: var(--c-ink); text-decoration: none;
+}
+.pf .pf-alert a strong { font-weight: 600; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; }
+.pf .pf-alert a:hover strong { text-decoration-color: currentColor; }
+.pf .pf-alert-more { padding: 0.625rem 0 0.25rem; font-size: 14.5px; line-height: 1.4; color: var(--c-ink); }
+.pf .pf-alert li + li { border-top: 1px solid color-mix(in srgb, var(--ws-red) 18%, transparent); }
+
+/* --- Back · Continue · Send ---------------------------------------------------------------------- */
+.pf .pt-nav .btn { min-height: 48px; padding: 0.6875rem 1.25rem; font-size: 16px; }
+.pf .pt-nav :is([data-pf-next], [data-pf-send]) { margin-left: auto; }
+.pf .pf-send-note { margin-top: 0.625rem; font-size: 14px; line-height: 1.45; color: var(--c-ink-2); }
+
+/* --- the robots' field: off-screen, never seen, never reached with Tab --------------------------- */
+.pf .pf-hp { position: absolute; left: -10000px; top: 0; width: 1px; height: 1px; overflow: hidden; }
+
+/* --- done, replaced, not open, not found --------------------------------------------------------- */
+.pf .pf-done { padding: 1.25rem 1rem 1.25rem; }
+@media (min-width: 640px) { .pf .pf-done { padding: 1.5rem 1.5rem 1.5rem; } }
+.pf .pf-done-mark[data-tone="info"] { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
+.pf .pf-done-mark[data-tone="warn"] { background: var(--ws-amber-tint); color: var(--ws-amber-ink); }
+.pf .pf-done-title { margin-top: 0.75rem; font-size: clamp(1.5rem, 1.25rem + 1vw, 1.875rem); }
+.pf .pf-done-lead { margin-top: 0.375rem; font-size: 17px; line-height: 1.5; font-weight: 500; color: var(--c-ink); }
+.pf .pf-done-text { max-width: 60ch; margin-top: 0.5rem; font-size: 15px; line-height: 1.5; color: var(--c-ink-2); }
+.pf .pf-done .pt-ref { margin-top: 1rem; }
+.pf .pf-done .pt-ref-no { font-size: 20px; }
+.pf .pf-done-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }

@@ -1,0 +1,326 @@
+---
+// One patient form, for the desk to decide on (src/lib/patient-forms.ts):
+// who sent it, what the dentist should see first, every answer labelled from
+// the form's own definition (../../_forms/Answers.astro), and — while nobody
+// has added it — what to do with it:
+//
+//   Add to <a patient on file>   one per likely match (the same mobile, or
+//                                the same name and birth date), with what it
+//                                would fill, what the form says otherwise, and
+//                                a tick for a mobile or email the record has
+//                                none of (never copied unticked). When the
+//                                strongest match has the same name and birth
+//                                date, its Add to is the page's teal action
+//   Add as a new patient         otherwise the teal one; quiet beside a
+//                                same-name-and-birth-date match (families
+//                                share a mobile, so a mobile alone never
+//                                demotes it)
+//   Dismiss                      out of the queue; deleted 30 days after it
+//                                was sent, and until then it can be restored
+//
+// Each asks first, in a side panel (../../_forms/Confirm.astro), or in the
+// page with ?confirm=new|dismiss|to-<patient id> when the shell's script is
+// not there. Every post is CSRF-checked first (a miss comes back with
+// ?stale=1) and done inside withClinic() by the library, which re-checks the
+// person may add patients here (canEditRecords), takes the clinic's lock and
+// writes the audit rows. Adding goes on to the patient's record
+// (?saved=form&form=<id>); a match that appeared since the page was drawn
+// stops "Add as a new patient" and is shown instead.
+//
+// Who may open it: a form still waiting (new or dismissed) only people who
+// can add patients here; an added form is part of a patient's record, so
+// anyone who may open the branch's records may read it (the record's
+// "Patient forms" links here). Opening it writes forms.view to the audit log.
+// Nothing about the form goes into the address.
+export const prerender = false;
+
+import ClinicLayout from '../../../../../../layouts/Clinic.astro';
+import Csrf from '../../../../../../components/Csrf.astro';
+import Pane from '../../../../../../components/ws/Pane.astro';
+import Chip from '../../../../../../components/ws/Chip.astro';
+import Avatar from '../../../../../../components/ws/Avatar.astro';
+import SidePanel from '../../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../../components/ws/Icon.astro';
+import Glyph from '../../_ui/Glyph.astro';
+import Head from '../../_ui/Head.astro';
+import Callout from '../../_ui/Callout.astro';
+import Answers from '../../_forms/Answers.astro';
+import Confirm from '../../_forms/Confirm.astro';
+import '../../_ui/patients.css';
+import '../../_forms/forms.css';
+import { requireWorkspace } from '../../../../../../lib/workspace';
+import { withClinic } from '../../../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../../../lib/csrf';
+import { hit, waitText, LIMITS } from '../../../../../../lib/throttle';
+import { canEditRecords, ageText, dateText } from '../../../../../../lib/health';
+import { nextChartNos } from '../../../../../../lib/import';
+import {
+  getForm, likelyMatches, compareWithRecord, addAsNewPatient, addToPatient, dismissForm, restoreForm, healthLists, answerText,
+  FIELDS, FORM_STATUS_WORDS, type LikelyMatch,
+} from '../../../../../../lib/patient-forms';
+import { sentText, shortDay, signedText, WHY } from '../../_forms/words';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const formId = Astro.params.form ?? '';
+const notFound = () => new Response('No such form', { status: 404 });
+if (!UUID.test(formId)) return notFound();
+const base = `/c/${clinic.slug}/patients/`;
+const queue = `${base}forms/`;
+const here = `${queue}${formId}/`;
+const q = Astro.url.searchParams;
+
+// What a post left for the page to say.
+let notice: { tone: 'warn' | 'alert' | 'info'; title: string; text?: string } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(`${here}?stale=1`, 303);
+  const intent = String(form.get('intent') ?? '');
+  const rate = await hit('record:s:' + session.staffId, ...LIMITS.chart.staff);
+  if (!rate.allowed) {
+    notice = { tone: 'alert', title: 'Too many saves at once.', text: waitText(rate.retryAfter) };
+  } else {
+    const a = { clinicId: clinic.id, staffId: session.staffId, formId };
+    const done = await withClinic(clinic.id, async (tx) => {
+      if (intent === 'new') return { intent, r: await addAsNewPatient(tx, { ...a, seen: form.getAll('seen').map(String).filter((x) => UUID.test(x)) }) } as const;
+      if (intent === 'to') return { intent, r: await addToPatient(tx, { ...a, patientId: String(form.get('patient') ?? ''), use: form.getAll('use').map(String) }) } as const;
+      if (intent === 'dismiss') return { intent, r: await dismissForm(tx, a) } as const;
+      if (intent === 'restore') return { intent, r: await restoreForm(tx, a) } as const;
+      return null;
+    });
+    const NOT_ALLOWED = { tone: 'alert' as const, title: 'Your account cannot add patients at this branch.', text: 'Ask the owner.' };
+    const GONE = { tone: 'info' as const, title: 'Someone else already decided on this form.', text: 'Nothing was changed. What it is now is below.' };
+    if (done?.intent === 'new') {
+      const r = done.r;
+      if (r.kind === 'added') return Astro.redirect(`${base}${r.patientId}/?saved=form&form=${formId}`, 303);
+      if (r.kind === 'matches') notice = { tone: 'warn', title: 'Someone on file may be this person.', text: 'They were added to your patients after this page opened. Look at them below before adding the form. Nothing was saved.' };
+      if (r.kind === 'gone') notice = GONE;
+      if (r.kind === 'not-allowed') notice = NOT_ALLOWED;
+    } else if (done?.intent === 'to') {
+      const r = done.r;
+      if (r.kind === 'added') return Astro.redirect(`${base}${r.patientId}/?saved=form&form=${formId}`, 303);
+      if (r.kind === 'no-patient') notice = { tone: 'alert', title: 'That patient is not on file here any more.', text: 'Nothing was saved. Choose again below.' };
+      if (r.kind === 'gone') notice = GONE;
+      if (r.kind === 'not-allowed') notice = NOT_ALLOWED;
+    } else if (done?.intent === 'dismiss') {
+      if (done.r === 'dismissed') return Astro.redirect(`${queue}?done=dismissed`, 303);
+      notice = done.r === 'gone' ? GONE : NOT_ALLOWED;
+    } else if (done?.intent === 'restore') {
+      if (done.r === 'restored') return Astro.redirect(`${here}?done=restored`, 303);
+      notice = done.r === 'gone' ? GONE : NOT_ALLOWED;
+    }
+  }
+}
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const rec = await getForm(tx, formId);
+  if (!rec) return null;
+  const canEdit = await canEditRecords(tx, session.staffId, clinic.id);
+  const area = (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null;
+  // A form still waiting is for the people who add patients; an added one is part of a record.
+  if (rec.status !== 'added' && !canEdit) return { rec: null, canEdit, area };
+  await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'forms.view', 'patient_form', $3)`, [clinic.id, session.staffId, rec.id]);
+  const open = rec.status !== 'added' && canEdit;
+  const matches: LikelyMatch[] = open ? await likelyMatches(tx, rec.values) : [];
+  const compares = new Map<string, Awaited<ReturnType<typeof compareWithRecord>>>();
+  for (const m of matches) compares.set(m.id, await compareWithRecord(tx, rec.values, m.id));
+  const nextChart = open ? nextChartNos((await tx.query<{ chart_no: string }>('select chart_no from patient')).rows.map((r) => r.chart_no), 1)[0] : undefined;
+  return { rec, canEdit, area, matches, compares, nextChart };
+});
+if (!data) return notFound();
+
+const now = new Date();
+const rec = data.rec;
+const title = rec ? rec.name : 'Patient form';
+const v = rec?.values;
+const open = !!rec && rec.status !== 'added' && data.canEdit;
+const matches = rec ? data.matches ?? [] : [];
+
+// What the dentist should see first, as chips: allergies, conditions, medicines, and a few answers.
+const lists = v ? healthLists(v) : { allergies: [], conditions: [], medications: [] };
+const alsoFlags: string[] = [];
+if (v) {
+  if (v.pregnant === 'yes') alsoFlags.push('Pregnant');
+  else if (v.pregnant === 'unsure') alsoFlags.push('May be pregnant');
+  if (v.nursing === 'yes') alsoFlags.push('Breastfeeding');
+  if (v.under_treatment === 'yes') alsoFlags.push('Under a doctor’s care');
+  if (v.good_health === 'no') alsoFlags.push('Not in good health');
+  if (v.smoke === 'yes') alsoFlags.push('Smokes or vapes');
+  if (v.nervous === 'very') alsoFlags.push('Very nervous');
+}
+const conditions = lists.conditions.filter((c) => c !== 'Pregnancy');
+const facts = rec && v ? [
+  rec.age !== null ? ageText(rec.age) : null,
+  answerText(FIELDS.sex, v.sex),
+  rec.mobile,
+  `Sent ${sentText(rec.submittedAt, now)}`,
+].filter(Boolean) as string[] : [];
+const born = v ? dateText(v.birth_date) : null;
+
+// The same person on file, by name and birth date: adding to them is the likely right answer.
+const strong = matches[0]?.why.includes('name-birth') ? matches[0] : null;
+const confirm = q.get('confirm') ?? '';
+const confirmTo = confirm.startsWith('to-') ? matches.find((m) => m.id === confirm.slice(3)) ?? null : null;
+const inline = confirm === 'new' || confirm === 'dismiss' || !!confirmTo;
+const backHref = rec?.status === 'added' ? `${queue}?show=added` : rec?.status === 'dismissed' ? `${queue}?show=dismissed` : queue;
+const STATUS_TONE = { new: 'accent', added: 'neutral', dismissed: 'muted' } as const;
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title={title} section="patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  {!rec || !v ? (
+    <Pane as="div" label="Not allowed">
+      <Callout tone="alert" role="note" text="Your account cannot add patients at this branch, so the forms patients send are not shown to it. Ask the owner." />
+    </Pane>
+  ) : (
+    <>
+      <Pane as="div" label={`Patient form ${rec.ref}`}>
+        <a href={backHref} class="rec-back"><Icon name="chevron-left" />Back to new patient forms</a>
+        <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+          <div class="rec-who">
+            <Avatar name={rec.name} size="lg" />
+            <div class="min-w-0">
+              <p class="rec-facts min-w-0"><span class="rec-facts-in">
+                <span><span class="pt-ref" title="Form reference"><span class="sr-only">Reference </span>{rec.ref}</span></span>
+                {facts.map((f) => <span>{f}</span>)}
+              </span></p>
+              <p class="mt-1.5 flex flex-wrap items-center gap-2">
+                <Chip tone={STATUS_TONE[rec.status]} label={FORM_STATUS_WORDS[rec.status]} />
+                <span class="text-[14px] text-ink-2">{rec.signedAs === 'guardian' ? `Filled in by ${rec.signedByName}, parent or guardian` : 'Filled in by the patient'}, on a phone{born ? ` · born ${born}` : ''}</span>
+              </p>
+            </div>
+          </div>
+          <div class="rec-actions">
+            <a href={`${here}print/`} class="ws-btn ws-btn-quiet"><Glyph name="print" />Print</a>
+          </div>
+        </div>
+
+        {(lists.allergies.length > 0 || conditions.length > 0 || lists.medications.length > 0 || alsoFlags.length > 0 || rec.minor) && (
+          <div class="fm-flags mt-5" role="note" aria-label="For the dentist first">
+            {lists.allergies.map((a) => <Chip tone="alert" icon="alert">Allergy: {a}</Chip>)}
+            {conditions.map((c) => <Chip tone="warn">{c}</Chip>)}
+            {alsoFlags.map((c) => <Chip tone="warn">{c}</Chip>)}
+            {lists.medications.map((m) => <Chip tone="neutral">Takes {m}</Chip>)}
+            {rec.minor && <Chip tone="warn" icon="user">Under 18 · {signedText(rec.signedByName, rec.signedAs)}</Chip>}
+          </div>
+        )}
+        {q.get('stale') === '1' && <Callout tone="alert" class="mt-4" text={CSRF_MESSAGE} />}
+        {q.get('done') === 'restored' && <Callout tone="success" class="mt-4" text="The form is back in New patient forms." />}
+        {notice && <Callout tone={notice.tone} class="mt-4" title={notice.title} text={notice.text} focus data-fm-notice />}
+      </Pane>
+
+      <div class="fm-form"><div class="fm-form-in">
+        <aside class="fm-form-aside" aria-label="What to do with this form" id="decide">
+          <Pane as="section" label="What to do with this form">
+            <Head icon="form" title={rec.status === 'added' ? 'Added' : 'What to do with it'} />
+
+            {rec.status === 'added' && (
+              <>
+                <p class="text-[15px] leading-relaxed text-ink-2">
+                  {rec.addedAs === 'existing' ? 'Added to ' : 'Added as '}<span class="font-semibold text-ink">{rec.patientName}</span>{rec.chartNo ? ` (${rec.chartNo})` : ''}
+                  {rec.decidedAt ? `, ${sentText(rec.decidedAt, now).replace(/^[A-Z]/, (c) => c.toLowerCase())}` : ''}{rec.decidedByName ? ` by ${rec.decidedByName}` : ''}.
+                  Their details, health history and consents from the form are on the record.
+                </p>
+                {rec.patientId && <a href={`${base}${rec.patientId}/`} class="ws-btn ws-btn-quiet mt-4 w-full"><Icon name="user" />Open the record</a>}
+              </>
+            )}
+
+            {open && inline && (
+              <div class="grid gap-3">
+                <h3 class="text-[16px] font-semibold">{confirm === 'new' ? 'Add as a new patient?' : confirm === 'dismiss' ? 'Dismiss this form?' : `Add to ${confirmTo?.name}?`}</h3>
+                {confirm === 'new' && <Confirm kind="new" action={here} form={rec} nextChart={data.nextChart} matches={matches} cancel={here} />}
+                {confirm === 'dismiss' && <Confirm kind="dismiss" action={here} form={rec} cancel={here} />}
+                {confirmTo && <Confirm kind="to" action={here} form={rec} match={confirmTo} compare={data.compares?.get(confirmTo.id) ?? null} cancel={here} />}
+              </div>
+            )}
+
+            {open && !inline && (
+              <>
+                {rec.status === 'dismissed' && (
+                  <Callout tone="info" class="mb-4" title={`Dismissed${rec.decidedByName ? ` by ${rec.decidedByName}` : ''}${rec.decidedAt ? `, ${sentText(rec.decidedAt, now).replace(/^[A-Z]/, (c) => c.toLowerCase())}` : ''}.`}>
+                    <p>{rec.deleteOn ? `It is deleted on ${shortDay(rec.deleteOn, now)} unless you add it.` : ''}</p>
+                    <form method="post" action={here} class="mt-2">
+                      <Csrf />
+                      <input type="hidden" name="intent" value="restore" />
+                      <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm">Put it back in New</button>
+                    </form>
+                  </Callout>
+                )}
+
+                {matches.length > 0 && (
+                  <>
+                    <Callout tone="warn" role="note" title={matches.length === 1 ? 'This may be someone already on file.' : 'These on file may be this person.'}>
+                      <p>Families often share one mobile. Add the form to the right record, or as a new patient.</p>
+                    </Callout>
+                    <div class="mt-3">
+                      {matches.map((m) => {
+                        const h = m.health;
+                        const onFile = h?.allergies?.length ? `Allergies on file: ${h.allergies.join(', ')}` : null;
+                        return (
+                          <div class="fm-match">
+                            <div class="fm-match-who">
+                              <Avatar name={m.name} />
+                              <div class="min-w-0 text-[14.5px]">
+                                <p><span class="font-semibold">{m.name}</span> <span class="pt-ref ml-1">{m.chartNo}</span></p>
+                                <p class="text-ink-2">{[m.birth ? `Born ${dateText(m.birth)}` : 'No birth date on file', m.phone].filter(Boolean).join(' · ')}</p>
+                              </div>
+                            </div>
+                            <p class="fm-match-why">{m.why.map((w) => <Chip tone={w === 'name-birth' ? 'warn' : 'neutral'} label={WHY[w]} />)}</p>
+                            {onFile && <p class="text-[13.5px] text-ink-2">{onFile}</p>}
+                            <p class="fm-match-actions">
+                              <a href={`${here}?confirm=to-${m.id}#decide`} class:list={['ws-btn', m === strong ? 'ws-btn-primary fm-decide-main' : 'ws-btn-quiet ws-btn-sm']} data-ws-open={`fm-to-${m.id}`}><Icon name="check" />Add to {m.name.split(' ')[0]}</a>
+                              <a href={`${base}${m.id}/`} class="ws-empty-go">Open record <Icon name="arrow-right" size={16} /></a>
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p class="fm-or">or</p>
+                  </>
+                )}
+
+                {strong && <p class="fm-help mb-2">Not {strong.name.split(' ')[0]}? Then it is a new patient.</p>}
+                <a href={`${here}?confirm=new#decide`} class:list={['ws-btn fm-decide-main', strong ? 'ws-btn-quiet' : 'ws-btn-primary']} data-ws-open="fm-new"><Icon name="plus" />Add as a new patient</a>
+                {!strong && <p class="fm-help mt-2">{matches.length ? 'If it is none of them.' : 'Nobody on file has this mobile, or this name and birth date.'}</p>}
+
+                {rec.status === 'new' && (
+                  <div class="fm-decide-quiet">
+                    <p class="fm-help">Sent twice, or not a real patient?{rec.deleteOn ? ` Kept until ${shortDay(rec.deleteOn, now)}.` : ''}</p>
+                    <a href={`${here}?confirm=dismiss#decide`} class="ws-btn ws-btn-danger ws-btn-sm" data-ws-open="fm-dismiss">Dismiss</a>
+                  </div>
+                )}
+              </>
+            )}
+          </Pane>
+        </aside>
+
+        <div class="fm-form-main">
+          <Answers form={rec} />
+        </div>
+      </div></div>
+
+      {open && (
+        <>
+          <SidePanel id="fm-new" title="Add as a new patient?" meta={rec.ref}>
+            <Confirm kind="new" action={here} form={rec} nextChart={data.nextChart} matches={matches} />
+          </SidePanel>
+          <SidePanel id="fm-dismiss" title="Dismiss this form?" meta={rec.ref}>
+            <Confirm kind="dismiss" action={here} form={rec} />
+          </SidePanel>
+          {matches.map((m) => (
+            <SidePanel id={`fm-to-${m.id}`} title={`Add to ${m.name}?`} meta={`${rec.ref} · ${m.chartNo}`} wide>
+              <Confirm kind="to" action={here} form={rec} match={m} compare={data.compares?.get(m.id) ?? null} />
+            </SidePanel>
+          ))}
+        </>
+      )}
+    </>
+  )}
+</ClinicLayout>
+
+<script>
+  // A refused decision (someone else added it, a new look-alike appeared): bring the sentence into view.
+  document.querySelector<HTMLElement>('[data-fm-notice]')?.focus();
+</script>

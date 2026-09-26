@@ -3,6 +3,13 @@
 // Person, Health, Consent, Past visits, Opening balance — and one Save.
 // (docs/workspace-redesign.md, "Patients".)
 //
+// Three ways in, side by side at the top: type it in (this page), let
+// patients fill it in themselves — the QR code for the desk, marked Easiest
+// (./qr/, the patient forms: src/lib/patient-forms.ts) — or import a
+// spreadsheet (./import.astro).
+// When forms patients sent are waiting, a line says so before anyone types the
+// same person in again (./forms/).
+//
 // Soft and simple (docs/workspace-redesign.md, "Very simple"): the few fields
 // the desk always fills are in view (name, birth date, sex, mobile, email,
 // HMO); address, emergency contact, chart no. and notes fold under "Address,
@@ -46,9 +53,11 @@ import Icon from '../../../../components/ws/Icon.astro';
 import Avatar from '../../../../components/ws/Avatar.astro';
 import Head from './_ui/Head.astro';
 import Callout from './_ui/Callout.astro';
+import Glyph from './_ui/Glyph.astro';
 import HealthLists from './_ui/HealthLists.astro';
 import PastVisit from './_ui/PastVisit.astro';
 import './_ui/patients.css';
+import './_forms/forms.css';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
@@ -65,6 +74,7 @@ import {
 } from '../../../../lib/import';
 import { hmos } from '../../../../data/directory';
 import { prettyPhone } from '../../../../lib/messages';
+import { countNewForms } from '../../../../lib/patient-forms';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -91,6 +101,8 @@ const setup = await withClinic(clinic.id, async (tx) => ({
   notice: await noticeInForce(tx),
   dpo: ((await tx.query('select dpo_name from clinic_group where id = $1', [clinic.group_id])).rows[0]?.dpo_name ?? null) as string | null,
   nextChart: nextChartNos((await tx.query<{ chart_no: string }>('select chart_no from patient')).rows.map((r) => r.chart_no), 1)[0],
+  // Forms patients sent from the QR code and nobody has added yet: said before the desk types one of them in again.
+  formsWaiting: await countNewForms(tx),
 }));
 
 // ---------------------------------------------------------------------------
@@ -289,6 +301,8 @@ const dupFirst = dupes[0];
 const MORE_FIELDS = ['address', 'city', 'province', 'emergency_name', 'emergency_relation', 'emergency_phone', 'chart_no', 'notes'];
 const moreOpen = MORE_FIELDS.some((k) => val(k).trim() !== '');
 const importHref = `/c/${clinic.slug}/patients/import/`;
+const qrHref = `/c/${clinic.slug}/patients/qr/`;
+const formsHref = `/c/${clinic.slug}/patients/forms/`;
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: setup.area }} title="Add patient" section="add-patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
@@ -309,6 +323,41 @@ const importHref = `/c/${clinic.slug}/patients/import/`;
       <Callout tone="alert" role="note" text="Your account cannot add patients at this branch. Ask the owner." />
     </Pane>
   ) : (
+    <>
+    {/* Three ways to add patients. This page is the first; the QR code (the easiest: patients type their
+        own) is second, beside it; importing a spreadsheet third. */}
+    <Pane as="div" label="Ways to add patients" pad="tight" class="fm-ways-pane">
+      <ul class="fm-ways">
+        <li>
+          <span class="fm-way" aria-current="page">
+            <span class="fm-way-icon"><Glyph name="user" /></span>
+            <span class="fm-way-words"><span class="fm-way-title">Type it in</span><span class="fm-way-hint">One patient, everything on this page</span></span>
+            <Icon name="check" size={18} class="fm-way-mark" />
+          </span>
+        </li>
+        <li>
+          <a class="fm-way" href={qrHref}>
+            <span class="fm-way-icon"><Glyph name="qr" /></span>
+            <span class="fm-way-words"><span class="fm-way-title">Patients fill it in<span class="fm-way-pill">Easiest</span></span><span class="fm-way-hint">A QR code for your desk. Patients fill in their own forms.</span></span>
+            <Icon name="arrow-right" size={18} class="fm-way-mark" />
+          </a>
+        </li>
+        <li>
+          <a class="fm-way" href={importHref}>
+            <span class="fm-way-icon"><Glyph name="upload" /></span>
+            <span class="fm-way-words"><span class="fm-way-title">Import a spreadsheet</span><span class="fm-way-hint">Many patients or past visits, from Excel or CSV</span></span>
+            <Icon name="arrow-right" size={18} class="fm-way-mark" />
+          </a>
+        </li>
+      </ul>
+      {setup.formsWaiting > 0 && (
+        <p class="fm-ways-waiting">
+          <Glyph name="form" size={18} />
+          <span>{setup.formsWaiting === 1 ? 'One patient has' : `${setup.formsWaiting} patients have`} sent their forms from the QR code. Check they are not the one you are about to type in.</span>
+          <a href={formsHref} class="ws-empty-go">New patient forms <Icon name="arrow-right" size={16} /></a>
+        </p>
+      )}
+    </Pane>
     <form method="post" action={here} class="grid gap-4 max-md:gap-3" data-add-form>
       <Csrf />
 
@@ -341,7 +390,7 @@ const importHref = `/c/${clinic.slug}/patients/import/`;
       )}
 
       <Pane title="Person" icon="user" id="person">
-        <p slot="actions" class="text-[14px] text-ink-2">Only the name is needed. <a href={importHref} class="font-semibold whitespace-nowrap text-[var(--ws-teal-ink)] underline-offset-4 hover:underline">Import a spreadsheet instead</a></p>
+        <p slot="actions" class="text-[14px] text-ink-2">Only the name is needed.</p>
         <p class="sr-only" aria-live="polite" data-match-said></p>
         <div class="grid gap-x-5 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
           <label class="field">
@@ -492,6 +541,7 @@ const importHref = `/c/${clinic.slug}/patients/import/`;
 
       <template data-visit-tpl><PastVisit today={today} dentists={setup.dentists} money={money} methods={METHOD_OPTIONS} /></template>
     </form>
+    </>
   )}
 </ClinicLayout>
 

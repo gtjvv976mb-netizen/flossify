@@ -1,0 +1,82 @@
+---
+// Every answer on a patient form, labelled from the form's own definition
+// (answerSections in src/lib/patient-forms-def.ts), under the desk's headings
+// (./words.ts): one card per step — The patient, Health history, Dental
+// history, PhilHealth and HMO, Consent and signature — each section a
+// short title and label · answer pairs. What the dentist should see first (a
+// "yes" to a health question, an allergy, a condition) is amber with a mark,
+// never colour alone. Questions not shown to this patient, and answers left
+// blank, are left out. The consent step says what was agreed to in words, with
+// the treatment consent's own points behind "Read what they agreed to".
+import Pane from '../../../../../components/ws/Pane.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Head from '../_ui/Head.astro';
+import type { GlyphName } from '../_ui/glyphs';
+import { answerSections, TREATMENT_CONSENT, type FormRecord } from '../../../../../lib/patient-forms';
+import { when } from '../../../../../lib/health';
+import { DESK_STEP_TITLE, DESK_SECTION_TITLE } from './words';
+
+interface Props { form: FormRecord }
+const { form } = Astro.props;
+const steps = answerSections(form.values).map((st) => ({
+  ...st, title: DESK_STEP_TITLE[st.id] ?? st.title,
+  sections: st.sections.map((sec) => ({ ...sec, title: DESK_SECTION_TITLE[sec.id] ?? sec.title })),
+}));
+const ICON: Record<string, GlyphName> = { about: 'user', health: 'heart', teeth: 'tooth', cards: 'file', consent: 'shield' };
+const treatment = TREATMENT_CONSENT[form.treatmentVersion];
+// A few answers read better for the desk than as the patient saw them.
+const textFor = (name: string, text: string): string => {
+  if (name === 'signed_as') return form.signedAs === 'guardian' ? 'A parent or guardian, for the patient' : 'The patient';
+  if (name === 'signed_name') return `${text} (typed), ${when(form.submittedAt)}`;
+  return text;
+};
+---
+
+{steps.map((s) => (
+  <Pane as="section" label={s.title} class="fm-step">
+    <Head icon={ICON[s.id] ?? 'file'} title={s.title} />
+    {s.sections.length === 0 ? (
+      <p class="text-[15px] text-ink-2">Nothing filled in here.</p>
+    ) : s.sections.map((sec) => (
+      <div class="fm-sec">
+        {/* A section of one question named like the section ("Allergies") needs no title of its own. */}
+        {!(sec.rows.length === 1 && sec.rows[0].label === sec.title) && <h3 class="fm-sec-title">{sec.title}</h3>}
+        <dl class="fm-answers">
+          {sec.rows.map((r) => (
+            r.name === 'consent_treatment' ? (
+              <>
+                <dt>{r.label}</dt>
+                <dd>
+                  <span class="inline-flex items-center gap-1.5 font-semibold text-[var(--ws-green-ink)]"><Icon name="check" size={16} />Agreed</span>
+                  {treatment && (
+                    <details class="pt-more mt-1">
+                      <summary>Read what they agreed to <Icon name="chevron" size={16} class="pt-chev" /></summary>
+                      <div class="pt-inset mt-2 grid gap-2 px-4 py-3 text-[14px] leading-relaxed text-ink-2 whitespace-normal">
+                        <p class="font-semibold text-ink">{treatment.title}</p>
+                        {treatment.points.map((pt) => <p><span class="font-semibold text-ink">{pt.head}.</span> {pt.body}</p>)}
+                        <p class="text-ink">“{treatment.tick}”</p>
+                      </div>
+                    </details>
+                  )}
+                </dd>
+              </>
+            ) : r.name === 'consent_privacy' ? (
+              <>
+                <dt>{r.label}</dt>
+                <dd>
+                  <span class="inline-flex items-center gap-1.5 font-semibold text-[var(--ws-green-ink)]"><Icon name="check" size={16} />Agreed</span>
+                  <span class="block text-[13.5px] text-ink-2">The notice in force when it was sent (<a href="/privacy/" class="underline underline-offset-2">privacy notice</a>, version {form.privacyVersion}).</span>
+                </dd>
+              </>
+            ) : (
+              <>
+                <dt data-flag={r.flag ? '' : undefined}>{r.label}</dt>
+                <dd data-flag={r.flag ? '' : undefined}>{r.flag && <Icon name="alert" size={16} />}<span>{textFor(r.name, r.text)}</span></dd>
+              </>
+            )
+          ))}
+        </dl>
+      </div>
+    ))}
+  </Pane>
+))}

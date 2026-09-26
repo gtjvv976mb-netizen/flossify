@@ -19,6 +19,11 @@
 // it to this branch; money only for canBill() (the Finances tab's rule), via
 // patient_balance(); for anyone else it is never read.
 //
+// Patient forms sent from the QR code on the desk (src/lib/patient-forms.ts)
+// and not yet added: one line above the list says how many are waiting, with
+// the way to them (./forms/), for people who may add patients; More has the QR
+// code itself (./qr/).
+//
 // The state is in the address, so a reload, a link and the back button come
 // back to the same view: ?q= (name, mobile or chart no.; the old /patients/?q=
 // links land here too), ?f=all|today|new|balance|attention, ?sort=name|last|next,
@@ -33,11 +38,14 @@ import Pane from '../../../../components/ws/Pane.astro';
 import Icon from '../../../../components/ws/Icon.astro';
 import Menu from '../../../../components/ws/Menu.astro';
 import Region from './_list/Region.astro';
+import Glyph from './_ui/Glyph.astro';
 import './_list/list.css';
+import './_forms/forms.css';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { canBill } from '../../../../lib/invoices';
 import { DAY_MS, startMs, ymdOf } from '../../../../components/ws/cal/model';
 import { loadList, readState, listHref, SORTS, type Sort } from './_list/list';
+import { newFormsWaiting } from '../../../../lib/patient-forms';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -69,6 +77,8 @@ const SORT_LABEL: Record<Sort, { label: string; hint: string }> = {
   next: { label: 'Next visit', hint: 'Soonest first' },
 };
 const canEdit = data.canEdit;
+// Forms waiting in "New patient forms" (the full page only; a part never needs it).
+const formsWaiting = !part && canEdit ? (await newFormsWaiting(clinic.id)) ?? 0 : 0;
 const regionProps = {
   rows: data.rows, counts: data.counts, matched: data.matched, state, base, slug: clinic.slug, today, finance, canEdit, notice: data.notice,
 };
@@ -79,6 +89,13 @@ const boot = JSON.stringify({ base, q: state.q, f: state.f, sort: state.sort }).
   <Region mode={part} {...regionProps} />
 ) : (
   <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title="Patients" section="patients" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+    {formsWaiting > 0 && (
+      <div class="ws-glass fm-waiting" role="status">
+        <span class="fm-waiting-icon"><Glyph name="form" /></span>
+        <p class="fm-waiting-words"><span class="font-semibold text-ink">{formsWaiting === 1 ? 'One new patient form is' : `${formsWaiting} new patient forms are`} waiting.</span> Sent from the QR code on your desk; add {formsWaiting === 1 ? 'it' : 'them'} to your patients.</p>
+        <a href={`/c/${clinic.slug}/patients/forms/`} class="ws-btn ws-btn-quiet ws-btn-sm">Review <span class="fm-count" aria-hidden="true">{formsWaiting}</span></a>
+      </div>
+    )}
     <Pane pad="none" label="Every patient" class="pts-pane" id="patients-list">
       <div class="pts" data-pts>
         <div class="pts-head">
@@ -108,6 +125,10 @@ const boot = JSON.stringify({ base, q: state.q, f: state.f, sort: state.sort }).
                 <a class="ws-menu-item" href={`/c/${clinic.slug}/patients/import/`}>
                   <span class="ws-menu-icon" data-tint="teal"><Icon name="upload" /></span>
                   <span class="ws-menu-words">Import<span class="ws-menu-hint">Patients or past visits from a spreadsheet</span></span>
+                </a>
+                <a class="ws-menu-item" href={`/c/${clinic.slug}/patients/qr/`}>
+                  <span class="ws-menu-icon" data-tint="teal"><Glyph name="qr" /></span>
+                  <span class="ws-menu-words">QR code for your desk<span class="ws-menu-hint">Patients fill in their own forms on their phone</span></span>
                 </a>
               </Menu>
             )}

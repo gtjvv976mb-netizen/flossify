@@ -1,0 +1,153 @@
+---
+// One question of the patient forms, drawn from its definition (FieldDef in src/lib/patient-forms-def.ts)
+// with what was typed (a form sent back with errors) and its error. The input's name is the field's
+// name; its id is f-<name> (a group's first answer, f-<name>-0), which the error summary links to.
+//
+//   text, tel, email, date, textarea, select   a label, the help, the field, the error
+//   radio, checks                              a group of answer pills (role radiogroup / group); a
+//                                              checklist's "none" first, across the width, then a rule
+//                                              ("or tick the ones you have had"), then the rest under
+//                                              their small headings (Choice.group)
+//   agree                                      one tick on a line the width of the card
+//   hidden                                     the consent version shown (set by the page)
+//
+// `off` (the question does not apply to what was answered so far) draws data-off, which hides it only
+// when the page's script runs; without one every question shows and the server reads what applies.
+// Required questions carry aria-required, never `required`: a hidden question must not stop a post.
+import type { FieldDef, ShowIf } from '../../lib/patient-forms-def';
+
+interface Props {
+  f: FieldDef;
+  value?: string | string[];
+  error?: string;
+  off?: boolean;
+  /** Words for the label in place of the definition's (the consent ticks). */
+  label?: string;
+  /** A line under the label the definition does not have. */
+  help?: string;
+  /** For kind 'hidden': its value. */
+  hiddenValue?: string;
+  /** YYYY-MM-DD, Manila: the latest a date may be. */
+  today: string;
+  /** Under 18 by the birth date typed: "Myself" cannot sign. */
+  minor?: boolean;
+  /** When the question applies, said only when no script hides it until then. */
+  nojs?: string | null;
+}
+const { f, value, error = '', off = false, label, help, hiddenValue, today, minor = false, nojs } = Astro.props;
+
+const id = `f-${f.name}`;
+const errId = `e-${f.name}`;
+const helpText = help ?? f.help;
+const helpId = helpText ? `h-${f.name}` : undefined;
+const describedBy = [helpId, errId].filter(Boolean).join(' ');
+const words = label ?? f.label;
+const optional = !f.required && f.kind !== 'hidden' && f.kind !== 'agree';
+const str = typeof value === 'string' ? value : '';
+const list = Array.isArray(value) ? value : [];
+const invalid = error ? 'true' : undefined;
+const show = f.showIf ? JSON.stringify(f.showIf satisfies ShowIf) : undefined;
+
+// One answer: a yes / no / not sure question sits beside its pills; four short answers (Female · Male ·
+// Other · Prefer not to say) are two by two, all the same width; any other question with three answers
+// or more, or a long one ("A parent or guardian, for the patient"), is rows the width of the card, so a
+// phone never shows a ragged staircase of pills.
+const choices = f.choices ?? [];
+const yesNo = f.kind === 'radio' && choices.length <= 3 && choices.every((c) => c.label.length <= 8);
+const pairs = f.kind === 'radio' && !yesNo && choices.length === 4 && choices.every((c) => c.label.length <= 18);
+const rows = f.kind === 'radio' && !yesNo && !pairs && (choices.length >= 3 || choices.some((c) => c.label.length > 28));
+// Boxes to tick are a checklist in columns (two on a phone, three on a wide card); "none" comes first,
+// across the width, so the answer most people give is the first thing under the question. Ticked, the
+// rest of the list folds away (data-none-on; with the page's script only), so a patient with nothing
+// to tick never scrolls past 35 boxes.
+const grid = f.kind === 'checks';
+const noneChoice = f.none ? choices.find((c) => c.value === f.none) : undefined;
+const ordered = noneChoice ? [noneChoice, ...choices.filter((c) => c !== noneChoice)] : choices;
+// Whole-width questions: pills, boxes, ticks, long text. Short text fields pair up from 640px.
+const wide = ['radio', 'checks', 'textarea', 'agree'].includes(f.kind) || (f.max ?? 0) >= 150;
+// A select's empty first choice.
+const empty = f.name === 'hmo' ? 'No HMO card' : 'Choose';
+const dateLimits = f.kind === 'date' ? { max: today, min: '1900-01-01' } : {};
+---
+
+{f.kind === 'hidden' ? (
+  <input type="hidden" name={f.name} value={hiddenValue ?? str} />
+) : f.kind === 'radio' || f.kind === 'checks' ? (
+  <div
+    class:list={['pf-field', 'pf-wide', yesNo && 'pf-inline']}
+    id={id}
+    role={f.kind === 'radio' ? 'radiogroup' : 'group'}
+    aria-labelledby={`l-${f.name}`}
+    aria-describedby={describedBy}
+    aria-required={f.required && f.kind === 'radio' ? 'true' : undefined}
+    aria-invalid={invalid}
+    tabindex="-1"
+    data-pf-field={f.name}
+    data-show={show}
+    data-off={off ? '' : undefined}
+    data-none-on={noneChoice && list.includes(noneChoice.value) ? '' : undefined}
+  >
+    <p class="pf-label" id={`l-${f.name}`}>{words}{optional && <span class="pf-optional"> (optional)</span>}</p>
+    {helpText && <p class="pf-help" id={helpId}>{helpText}</p>}
+    {nojs && <p class="pf-nojs">{nojs}</p>}
+    <div class:list={['pf-opts', rows && 'pf-opts-rows', pairs && 'pf-opts-pairs', grid && 'pf-opts-grid']}>
+      {ordered.map((c, i) => (
+        <Fragment>
+          {c.group && c.group !== ordered[i - 1]?.group && <h3 class="pf-opts-group">{c.group}</h3>}
+          <label class:list={['pf-opt', f.none === c.value && 'pf-opt-none']} data-pf-self={f.name === 'signed_as' && c.value === 'patient' ? '' : undefined} data-off={f.name === 'signed_as' && c.value === 'patient' && minor ? '' : undefined}>
+            <input
+              type={f.kind === 'radio' ? 'radio' : 'checkbox'}
+              name={f.name}
+              value={c.value}
+              id={i === 0 ? `${id}-0` : undefined}
+              checked={f.kind === 'radio' ? str === c.value : list.includes(c.value)}
+            />
+            <span>{c.label}</span>
+          </label>
+          {c === noneChoice && f.orText && <p class="pf-opts-or"><span>{f.orText}</span></p>}
+        </Fragment>
+      ))}
+    </div>
+    <p class="pf-err" id={errId} data-err-for={f.name}>{error}</p>
+  </div>
+) : f.kind === 'agree' ? (
+  <div class="pf-field pf-wide" data-pf-field={f.name} data-show={show} data-off={off ? '' : undefined}>
+    <label class="pf-agree">
+      <input type="checkbox" name={f.name} value="1" id={id} checked={str === '1' || str === 'on' || str === 'yes'} aria-describedby={errId} aria-invalid={invalid} aria-required={f.required ? 'true' : undefined} />
+      <span>{words}</span>
+    </label>
+    <p class="pf-err" id={errId} data-err-for={f.name}>{error}</p>
+  </div>
+) : (
+  <div class:list={['field', 'pf-field', wide && 'pf-wide']} data-pf-field={f.name} data-show={show} data-off={off ? '' : undefined}>
+    <label class="pf-label" for={id}>{words}{optional && <span class="pf-optional"> (optional)</span>}</label>
+    {helpText && <p class="pf-help" id={helpId}>{helpText}</p>}
+    {nojs && <p class="pf-nojs">{nojs}</p>}
+    {f.kind === 'textarea' ? (
+      <textarea id={id} name={f.name} rows="3" maxlength={f.max} placeholder={f.placeholder} autocomplete={f.autocomplete ?? 'off'} aria-describedby={describedBy} aria-invalid={invalid} aria-required={f.required ? 'true' : undefined}>{str}</textarea>
+    ) : f.kind === 'select' ? (
+      <select id={id} name={f.name} aria-describedby={describedBy} aria-invalid={invalid} aria-required={f.required ? 'true' : undefined}>
+        <option value="">{empty}</option>
+        {choices.map((c) => <option value={c.value} selected={str === c.value}>{c.label}</option>)}
+      </select>
+    ) : (
+      <input
+        id={id}
+        name={f.name}
+        type={f.kind === 'tel' ? 'tel' : f.kind === 'email' ? 'email' : f.kind === 'date' ? 'date' : 'text'}
+        value={str}
+        maxlength={f.max}
+        placeholder={f.placeholder}
+        autocomplete={f.autocomplete ?? 'off'}
+        inputmode={f.inputmode}
+        spellcheck={f.kind === 'text' ? undefined : 'false'}
+        autocapitalize={f.kind === 'email' ? 'off' : undefined}
+        aria-describedby={describedBy}
+        aria-invalid={invalid}
+        aria-required={f.required ? 'true' : undefined}
+        {...dateLimits}
+      />
+    )}
+    <p class="pf-err" id={errId} data-err-for={f.name}>{error}</p>
+  </div>
+)}
