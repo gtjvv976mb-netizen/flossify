@@ -1,5 +1,8 @@
 # Flossify
 
+> **Continuing work?** Read `docs/HANDOFF.md` — where the last session stopped (QR patient forms on draft PR #23; the clinic sites / roles / tasks design not started).
+
+
 Marketing site + prototype clinic workspace for dental practice software aimed at
 Philippine clinics. Astro 7 (static), Tailwind v4 via `@tailwindcss/vite`.
 
