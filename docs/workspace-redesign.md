@@ -412,8 +412,12 @@ not sent again (sign-in codes left out: a code expires, so it is never sent
 again — Messages says where a new one comes from); **replies** since this browser last opened Messages
 (`fl_replies_seen`, set by Messages, path `/c/<slug>/`); **web requests to
 place** (`source = 'request' and moved_at is null`, not cancelled, no-show
-or completed, from yesterday on). If the counts cannot be read the inbox
-shows no number and the page still renders.
+or completed, from yesterday on); and, for people who can add patients here
+(`can_edit_records`), **new patient forms** sent from the QR code on the desk
+and not yet added (`patient_form.status = 'new'`; the same number sits on the
+Patients tab — a dot on a phone's tab row — and above the patients list). If
+the counts cannot be read the inbox shows no number and the page still
+renders.
 
 ### Contrast, measured
 

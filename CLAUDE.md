@@ -544,6 +544,156 @@ The rules that live in code:
   clinic cannot honour. The `QUEUE` colour classes on the Today page are the
   only status colours; the schedule reuses them exactly.
 
+## Patient forms — the QR code on the desk (028)
+
+The owner asked for a QR code a clinic prints and posts at reception, so a
+patient fills in their details and the standard patient forms on their own
+phone. Add patient offers it beside typing and importing, second of the three
+and marked *Easiest*.
+
+- **Closed in production until the privacy notice covers it.** Patients
+  agree to the notice in force, and privacy-2026-09 does not name what the
+  forms collect (health history, address, emergency contact and a parent's
+  details, Facebook, PhilHealth PIN, the 30-day deletion). Consent to
+  sensitive personal information must be informed (RA 10173 s.13(a)), so on a
+  production server `lookupForms` answers `unavailable` and `submitForms`
+  `closed` until the notice in force is listed in `FORMS_PRIVACY_VERSIONS`
+  (`src/lib/patient-forms.ts`; a development machine always opens them). The
+  QR page says so to the clinic. Opening them is one change: a new
+  `consent_version` (migration), `/privacy/`'s words and hard-coded version,
+  and the id in that list, after the owner's lawyer has read it.
+- **A clinic's forms link is `flossify.ph/f/<key>/`**: ten random characters
+  with no look-alikes (no i, l, o, 0, 1), one live key per clinic
+  (`clinic_forms_key`), made the first time it is asked for (`formsKey`). The
+  QR code holds that short link, so the code stays sparse enough to scan from
+  a desk. It works whether or not the clinic is listed. "Make a new QR code"
+  (`newFormsKey`) retires the key; a retired key is kept so an old poster says
+  it was replaced, and it accepts nothing. The app may insert a key and set
+  `retired_at`/`retired_by`, nothing else, and a trigger refuses changing a
+  key or bringing a retired one back.
+- **The public side has no tenant**: `patient_forms_clinic(key)` and
+  `patient_form_submit(key, nonce, answers)` (definer functions) are the only
+  ways in, and the clinic comes from the key, never from the page. The
+  function checks again what the page checked (names, birth date, mobile, both
+  ticks, a parent or guardian under 18, the consent wording in force) and
+  answers `invalid` rather than raising, so no answer reaches a log. The same
+  form sent twice (its nonce, the same answers) is one row and gets its
+  reference and stored first name again (`again`); the same nonce with other
+  answers saves nothing and is never told the first one's reference
+  (`resend`: the page draws the form again with a new nonce). CSRF (a miss
+  re-renders the form with the answers, never a redirect), a honeypot, a 64 KB
+  cap (`readCappedForm`) and `LIMITS.forms`: per address **and poster**, per
+  mobile, per poster, and missed links per address (IPv6 counted per /64,
+  `ipBucket`). **A real poster's link always opens**: only links that do not
+  exist wait (a clinic's Wi-Fi or a carrier's CGNAT address is many patients).
+  At 500 waiting forms through one poster the definer answers `full`; a new
+  QR code opens the forms again, and the queue's "Dismiss selected" clears a
+  flood.
+- **The page brings back nothing one person typed for the next** ("Fill in
+  forms for someone else", a clinic tablet): the form and every field
+  without a contact token (all the health and dental answers, the emergency
+  contact, the guardian, the PhilHealth PIN and HMO card number) are
+  `autocomplete="off"`; a page restored from the browser's memory or an old
+  post sent again is hidden and reloaded empty (the inline script at the top
+  of `/f/[key]`); a page a post drew is turned into a GET in the history
+  (`replaceState`); and "Fill in forms for someone else" replaces the
+  thank-you. Nothing is in the URL or storage. **The contact fields keep
+  their autofill tokens on purpose** (name, birth date, mobile, email,
+  address, occupation, the HMO card's company, the signature's name:
+  `autocomplete` in STEPS; a field's own token wins over the form's "off"),
+  so the patient's own phone — the main use — fills them in one tap. The
+  cost: a browser that saves addresses may offer them to the next person on
+  a shared device, so the QR page tells a clinic tablet to open the link in
+  a private tab. Owner's call: to trade that fill-in for a shared tablet,
+  drop the tokens from STEPS (`_Field` then renders "off").
+- **A form is not a patient.** It waits in "New patient forms" until someone
+  who can edit records adds it — as a new patient or to one on file — or
+  dismisses it. A form nobody added is deleted 30 days after it was sent, by
+  `retention_purge()`, which the worker already runs; an added form stays with
+  the record. The app can read forms and write the decision columns only:
+  nothing but the definer function inserts one, and nothing changes answers.
+- **Adding writes what the desk would**: the patient row (the next P- number,
+  under `lockClinic`), a `medical_history` version with `answered_by
+  'patient'`, `form_id`, and `answered_at` = **when it was added** (so it is
+  the current version even if the desk typed one after the form was sent; the
+  sending time is `answers.form.submitted_at` and the record prints "from the
+  patient forms (QR-7K2F, sent 26 Sep)"), `recorded_by` null (021's rule for a
+  patient's own answers), and `patient_consent` rows with channel `form` (the
+  form, who added it, the typed signature, as whom, when it was signed), one
+  per version per patient as at the desk. Added to a patient on file, it fills
+  only what is empty, never a name, and **never a mobile or an email unless
+  the desk ticks it** (checked at the desk: /me/ finds visits by mobile);
+  allergies, conditions, medicines and the note on the latest version on file
+  carry into the new one (what a patient did not tick is not evidence it is
+  gone). What the form says differently is listed on the record with "Use
+  <it>" per detail (`useFormDetail`, `TAKEABLE`: never a name or the birth
+  date). The record's words about consents come from the rows (`patientForms`
+  → `consentState`: from the form, already on file, or none — a record that
+  makes the patient a minor who signed for themself, which it says plainly).
+  PhilHealth PIN and the HMO's company stay in the answers; the row has
+  `hmo_name` and `hmo_member_no` only.
+- **The consent to examination and treatment is versioned like the notice**:
+  a `consent_version` of kind `treatment` (`treatment-2026-09`), its words in
+  `TREATMENT_CONSENT` (`src/lib/patient-forms-def.ts`). A change of words is a
+  new row and new words in one change; a version in force with no words here
+  closes the forms. `current_consent_version()` now means the privacy notice
+  only, and `readConsents()` lists privacy consents only. The app reads
+  `consent_version` and cannot write it (028).
+- **The questions are data** (`STEPS` in `patient-forms-def.ts`, versioned by
+  `FORM_VERSION`): the public page renders from them, `parsePatientForm` reads
+  every field on the server whatever the script did, and `answerSections`
+  labels a stored form for the queue, the record and the printout (the desk's
+  headings — "The patient", "Health history" — are `_forms/words.ts`).
+  `ShowIf` conditions (`minor`, `minAge`, `all`, `not`, a field's answer) are
+  evaluated the same on both sides: civil status and occupation from 18,
+  pregnancy from 12 and not male, the emergency contact skipped when a minor's
+  parent is ticked as it (the server copies the parent's details), a
+  follow-up after Yes. A checklist's "none" comes first and folds the rest of
+  it away; the 35 conditions sit under small headings (`Choice.group`); the
+  optional numbers are folded (`SectionDef.fold`). Every answer is read
+  without invisible characters (zero-width, direction overrides:
+  `visibleOnly`). `patient-forms-def.ts` has no Node or database imports, so
+  a page's script may import it; pages on the server import
+  `patient-forms.ts`.
+- **The QR code is drawn here** (`src/lib/qr.ts`: `qrcode-generator`, pinned,
+  no dependencies): SVG, error correction H, a four-module quiet zone, the
+  Flossify mark in a cleared middle (versions up to 6, where the middle is
+  data only). After any change to the drawing, decode it again (jsQR over a
+  rendered PNG, at several sizes, blurred and turned): a poster that looks
+  right and does not scan is the one failure it cannot have.
+- **The workspace side.** Add patient offers three ways at its top — type it
+  in, *Patients fill it in* (Easiest), import a spreadsheet — and says when
+  forms are waiting, so nobody types a patient in twice.
+  `/c/<slug>/patients/qr/` is the poster as it prints, one teal Print poster,
+  Download QR (PNG), Copy link and Make a new QR code (asks first); on a phone
+  the buttons come first, full width. The poster is one set of drawing steps
+  in millimetres (`patients/qr/_poster.ts`: headline 15 mm, brand 9.4 mm by a
+  14 mm mark, steps 5.5 mm) drawn three ways: SVG for the preview and the A4
+  print page (`qr/print/`; Save as PDF keeps it vector), and a 300 dpi canvas
+  for the PNG (`qr/_draw.ts`, with a pHYs chunk so it prints at A4). Print
+  poster prints the QR page itself, which then shows only its paper copy
+  (`.fm-print-sheet`): a hidden frame cannot work, because every page sends
+  `frame-ancestors 'none'`. Draw the poster's SVG in tenths of a millimetre
+  (`posterSvg` does): at 4–15 units a browser rounds each letter's advance
+  and the words come out letter-spaced. `patients/forms/` is the queue (New ·
+  Added · Dismissed; a search by name, mobile or reference; boxes and
+  "Dismiss selected" on New) and `patients/forms/<id>/` one form: the answers
+  labelled from the definition, what the dentist should see first as pills,
+  likely matches each with *Add to <name>* (teal when the strongest has the
+  same name and birth date; a mobile alone never is), *Add as a new patient*
+  and *Dismiss*, each confirmed in a side panel (or in the page with
+  `?confirm=…`); the decision card stays in view on a wide screen. Adding goes
+  on to the record (`?saved=form&form=<id>`). A waiting form is for people
+  who can add patients (`canEditRecords`); an added one is part of the
+  record, readable by anyone who may open records (the record's Consent
+  section lists its forms; the Overview shows the latest one's reason for
+  the visit). The count of waiting forms is on the Patients tab (a dot on a
+  phone's tab row), in the inbox and above the patients list — only for
+  people who can add patients (`inboxFor(…, staffId)`).
+- **Every /c/ response is `Cache-Control: no-store`** (`src/middleware.ts`):
+  the forms' answers and printouts, records and health histories must not
+  stay in a shared clinic computer's cache after sign-out.
+
 ## Open — read before shipping
 
 - The Semaphore provider is written to their v4 API but has not been run
@@ -578,6 +728,18 @@ The rules that live in code:
 - Desk consent is recorded on Add patient and on the record (agreed at the
   desk, or a signed paper copy — `recordDeskConsent` / `recordPaperConsent`
   in `src/lib/health.ts`); web bookings write their own `patient_consent`.
+- **The patient forms are closed on the live site until a new privacy
+  notice is published** (`FORMS_PRIVACY_VERSIONS` is empty; see "Patient
+  forms"). The notice must name every category the forms collect — health
+  and dental history, home address, emergency contact, a parent's or
+  guardian's details, Facebook, PhilHealth PIN and HMO card — why, who sees
+  it, and that a form nobody adds is deleted after 30 days; the owner's
+  lawyer reads it first. The consent to examination and treatment
+  (`treatment-2026-09`) is Flossify's plain summary of the usual Philippine
+  dental consent; a dentist and the lawyer read it too.
+- Patient forms throttles are estimates: 40 an hour per address and poster,
+  8 a day per mobile, 300 a day per poster, 200 missed links an hour per
+  address; 500 waiting forms per poster answers "full".
 
 ## Layout
 
@@ -640,6 +802,14 @@ src/pages/c/[clinic]/patients/ Patients tab (list + record check), record, new (
 src/pages/c/[clinic]/finances/ Finances tab: statements, payments, claims, new charge, print
 src/pages/c/[clinic]/account/  My page (details, password, my schedule)
 src/data/migrations/026, 027   patient import (past visits, paper consent), operator aggregates (counts only)
+src/data/migrations/028        patient forms: forms keys, submissions, the treatment consent version, consent channel 'form'
+src/pages/f/[key].astro        patients: the patient forms from the QR code on a clinic's desk (five steps, no account)
+src/lib/patient-forms.ts       forms key, public submit, the "New patient forms" queue, adding a form to the records
+src/lib/patient-forms-def.ts   the questions as data, reading a post, labelling the answers (no Node imports)
+src/lib/qr.ts                  QR codes as SVG: error correction H, the Flossify mark in the middle
+src/pages/c/[clinic]/patients/qr/     the QR poster: page, print/, _poster.ts (the drawing steps), _draw.ts (the PNG)
+src/pages/c/[clinic]/patients/forms/  "New patient forms": the queue, one form (<id>/) and its printout (<id>/print/)
+src/pages/c/[clinic]/patients/_forms/ the forms' shared pieces: Answers, Confirm, forms.css, words, fit
 scripts/sms/worker.ts          the sender: npm run sms:worker (loop) / sms:once
 public/samples/swiftcare/       sample clinic website (see "Sample client sites")
 docs/service-map.md            what to build for patients, dentists and clinics, and why (Sept 2026)

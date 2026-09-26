@@ -1,0 +1,122 @@
+---
+// What a decision on a patient form will do, said before it is done, with the
+// one button that does it: "Add as a new patient?", "Add to <patient>?",
+// "Dismiss this form?". Drawn in a <SidePanel> (a click on the review page),
+// or in the page itself when the address asks (?confirm=…, a browser without
+// the shell's script). Every post carries the CSRF token.
+//
+//   <Confirm kind="new" action={here} form={rec} nextChart="P-0043" matches={matches} />
+//   <Confirm kind="to" action={here} form={rec} match={m} compare={c} />
+//   <Confirm kind="dismiss" action={here} form={rec} />
+//
+// cancel: a link back to the page (inline), or a button that closes the panel.
+import Csrf from '../../../../../components/Csrf.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Glyph from '../_ui/Glyph.astro';
+import Callout from '../_ui/Callout.astro';
+import type { FormRecord, LikelyMatch, KeptDetail } from '../../../../../lib/patient-forms';
+import { signedText, shortDay } from './words';
+import { day } from '../../../../../lib/health';
+
+interface Props {
+  kind: 'new' | 'to' | 'dismiss';
+  action: string;
+  form: FormRecord;
+  nextChart?: string;
+  matches?: LikelyMatch[];
+  match?: LikelyMatch;
+  compare?: { fills: string[]; differs: KeptDetail[]; proposed: KeptDetail[] } | null;
+  /** A link back (inline), or null for a button that closes the side panel. */
+  cancel?: string | null;
+}
+const { kind, action, form, nextChart, matches = [], match, compare, cancel = null } = Astro.props;
+const first = form.values.first_name;
+const signed = `${signedText(form.signedByName, form.signedAs)}, on ${day(form.submittedAt)}`;
+const matchFirst = match ? match.name.split(' ')[0] : '';
+const list = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+/** A label inside a sentence: "Emergency contact" → "emergency contact"; "HMO card no." stays. */
+const inSentence = (l: string) => (/^[A-Z]{2}/.test(l) ? l : l.charAt(0).toLowerCase() + l.slice(1));
+/** The mobile or email offered with a tick ("email", "mobile and email"), or ''. */
+const asked = compare?.proposed.length ? list(compare.proposed.map((d) => inSentence(d.label))) : '';
+---
+
+<form method="post" action={action} class="grid gap-5">
+  <Csrf />
+  {kind === 'new' && (
+    <>
+      <input type="hidden" name="intent" value="new" />
+      {matches.map((m) => <input type="hidden" name="seen" value={m.id} />)}
+      <ul class="fm-will">
+        <li><Icon name="check" /><span><strong>{form.name}</strong> goes on file as a new patient{nextChart ? <>, chart no. <strong>{nextChart}</strong></> : ''}, with the details from the form.</span></li>
+        <li><Icon name="check" /><span>Their health history from the form, marked as their own answers.</span></li>
+        <li><Icon name="check" /><span>Consent to examination and treatment, and to the privacy notice: signed by {signed}.</span></li>
+      </ul>
+      {matches.length > 0 && (
+        <Callout tone="warn" title={`Not the same person as ${list(matches.map((m) => `${m.name} (${m.chartNo})`))}?`}>
+          <p>Families often share one mobile. If it is them, add the form to their record instead.</p>
+        </Callout>
+      )}
+      <div class="fm-actions">
+        <button type="submit" class="ws-btn ws-btn-primary"><Icon name="plus" />Add as a new patient</button>
+        {cancel ? <a href={cancel} class="ws-btn ws-btn-quiet">Cancel</a> : <button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Cancel</button>}
+      </div>
+    </>
+  )}
+
+  {kind === 'to' && match && (
+    <>
+      <input type="hidden" name="intent" value="to" />
+      <input type="hidden" name="patient" value={match.id} />
+      <ul class="fm-will">
+        <li><Icon name="check" /><span>{compare && compare.fills.length
+          ? <>Fills what is empty on {matchFirst}’s record: <strong>{list(compare.fills.map(inSentence))}</strong>.{asked ? ` The ${asked} below only if you tick it.` : ''}</>
+          : asked ? <>Fills nothing on {matchFirst}’s record by itself: the {asked} below only if you tick it.</>
+          : <>Nothing on {matchFirst}’s record is empty that the form could fill.</>}</span></li>
+        <li><Icon name="check" /><span>Names are never changed, and nothing already on file is written over.</span></li>
+        <li><Icon name="check" /><span>A new health history from the form, marked as their own answers. Allergies, conditions and medicines already on file stay.</span></li>
+        <li><Icon name="check" /><span>Consent to examination and treatment, and to the privacy notice: signed by {signed}.</span></li>
+      </ul>
+      {compare && compare.proposed.length > 0 && (
+        <fieldset class="fm-propose">
+          <legend class="text-[15px] font-semibold">{matchFirst}’s record has no {list(compare.proposed.map((d) => inSentence(d.label)))}. Add the form’s?</legend>
+          {compare.proposed.map((d) => (
+            <label class="fm-propose-tick">
+              <input type="checkbox" name="use" value={d.field} />
+              <span>{d.label}: <strong>{d.onForm}</strong></span>
+            </label>
+          ))}
+          <p class="fm-help">Tick only once you have checked at the desk that it is {matchFirst}: visits and reminders go by mobile. Unticked, it stays off the record.</p>
+        </fieldset>
+      )}
+      {compare && compare.differs.length > 0 && (
+        <div>
+          <p class="text-[15px] font-semibold">The form says something different. The record keeps what it has:</p>
+          <ul class="fm-diff">
+            {compare.differs.map((d) => (
+              <li><span class="fm-diff-k">{d.label}</span>On file: {d.onFile}<br />On the form: {d.onForm}</li>
+            ))}
+          </ul>
+          <p class="fm-help mt-2">After adding, the record offers each one with a Use button.</p>
+        </div>
+      )}
+      <div class="fm-actions">
+        <button type="submit" class="ws-btn ws-btn-primary"><Icon name="check" />Add to {match.name}</button>
+        {cancel ? <a href={cancel} class="ws-btn ws-btn-quiet">Cancel</a> : <button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Cancel</button>}
+      </div>
+    </>
+  )}
+
+  {kind === 'dismiss' && (
+    <>
+      <input type="hidden" name="intent" value="dismiss" />
+      <p class="text-[15px] leading-relaxed text-ink-2">
+        {first}’s form leaves New patient forms and nothing goes on your patients’ records.
+        {form.deleteOn ? ` It is deleted on ${shortDay(form.deleteOn)}; until then it is under Dismissed, where you can still add it.` : ''}
+      </p>
+      <div class="fm-actions">
+        <button type="submit" class="ws-btn ws-btn-danger"><Glyph name="close" />Dismiss the form</button>
+        {cancel ? <a href={cancel} class="ws-btn ws-btn-quiet">Keep it</a> : <button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Keep it</button>}
+      </div>
+    </>
+  )}
+</form>

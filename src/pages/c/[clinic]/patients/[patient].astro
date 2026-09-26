@@ -57,6 +57,23 @@
 // today; see canEditRecords()). On success the page redirects to itself
 // (?saved=…) so a reload does not post again; on a problem it renders again
 // with what was typed.
+//
+// Patient forms (the QR code on the desk, src/lib/patient-forms.ts): a form
+// added to this record comes here with ?saved=form&form=<id>, and the page
+// says what it wrote (the consents as the record now has them: from the form,
+// already on file, or none because the record makes the patient a minor who
+// signed for themself; the allergies, conditions and medicines kept from the
+// record), and lists each detail the form says differently, or a mobile or
+// email the desk did not tick, with "Use <it>" (a fifth post, intent
+// form-use: useFormDetail writes that one detail and comes back with
+// &used=<field>). Names and the birth date are never offered. The page
+// says what went on the record and, for a patient already on file, what the
+// form says differently (kept as on file; Edit details changes it). The
+// Overview shows what the latest form says about this visit (the reason, what
+// is bothering them); Consent lists every form added here — when it was sent,
+// who signed, the consents it wrote — with its answers and a printout
+// (../forms/<id>/). A health version from a form reads "from the patient
+// forms (QR-7K2F)".
 export const prerender = false;
 
 import ClinicLayout from '../../../../layouts/Clinic.astro';
@@ -75,7 +92,9 @@ import Menu from '../../../../components/ws/Menu.astro';
 import Head from './_ui/Head.astro';
 import Callout from './_ui/Callout.astro';
 import HealthLists from './_ui/HealthLists.astro';
+import Glyph from './_ui/Glyph.astro';
 import './_ui/patients.css';
+import './_forms/forms.css';
 import { shellLinks } from '../../../../components/ws/routes';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
@@ -92,6 +111,8 @@ import { canBill, pesos, statementNo, STATUS as BILL_STATUS, fromDb } from '../.
 import { prettyPhone } from '../../../../lib/messages';
 import { hmos } from '../../../../data/directory';
 import { CONDITION_LABEL, surfaceSummary, type ToothCondition, type ToothMark, type Surface, type Notation } from '../../../../data/demo';
+import { patientForms, getForm, compareWithRecord, useFormDetail, healthLists, answerText, FIELDS, TAKEABLE, type FormConsentState } from '../../../../lib/patient-forms';
+import { signedText } from './_forms/words';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -116,6 +137,7 @@ let agreedAs: AgreedAs | null = null;
 let paperState: { open: boolean; problem: string | null; values: Partial<PaperIn> } = { open: false, problem: null, values: {} };
 let detailsProblems: string[] = [];
 let detailsPosted: PersonIn | null = null;
+let formUseProblem: string | null = null;
 // The section a post came back to.
 let backTo: string | null = null;
 
@@ -209,6 +231,18 @@ if (Astro.request.method === 'POST') {
       problems.push(r === 'denied' ? 'Your account cannot change records at this branch. Ask the owner.' : r.taken);
     }
     detailsProblems = problems;
+  } else if (intent === 'form-use') {
+    // One detail from an added patient form onto the record ("Use 0917 555 0199").
+    backTo = 'overview';
+    const formId = String(form.get('form') ?? '');
+    const field = String(form.get('field') ?? '');
+    if (slow) formUseProblem = slow;
+    else if (!UUID.test(formId) || !TAKEABLE.has(field)) formUseProblem = 'That detail cannot be taken from the form. Nothing was changed.';
+    else {
+      const r = await withClinic(clinic.id, (tx) => useFormDetail(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, formId, field }));
+      if (r === 'saved' || r === 'same') return Astro.redirect(`${here}?form=${formId}&used=${encodeURIComponent(field)}#overview`, 303);
+      formUseProblem = r === 'not-allowed' ? 'Your account cannot change records at this branch. Ask the owner.' : 'That form is not on this record any more. Nothing was changed.';
+    }
   }
 }
 
@@ -255,7 +289,18 @@ const data = await withClinic(clinic.id, async (tx) => {
             case when m.kind in ('reset', 'invite') then null else m.body end as body
        from message_log m where m.patient_id = $1 and m.channel = 'sms' order by m.created_at desc limit 50`, [p.id])).rows;
   const hmoNames = canEdit ? await hmoSuggestions(tx, new Map(hmos.map((h) => [h.id, h.name]))) : [];
-  return { me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames };
+  // The patient forms added to this record, the newest one's answers (this visit's reason), and — just after
+  // "Add to <patient>" — what that form says differently from the record now.
+  const forms = await patientForms(tx, p.id);
+  const latestForm = forms[0] ? await getForm(tx, forms[0].id) : null;
+  // Just after a form was added (?saved=form), or one of its details used (?used=): that form.
+  const addedId = q.get('saved') === 'form' || q.has('used') || formUseProblem ? q.get('form') ?? '' : '';
+  const addedLine = addedId && UUID.test(addedId) ? forms.find((f) => f.id === addedId) ?? null : null;
+  const added = addedLine ? await getForm(tx, addedLine.id) : null;
+  // What the form says that the record does not: different, or a mobile or email the desk did not take.
+  const cmp = added && added.addedAs === 'existing' ? await compareWithRecord(tx, added.values, p.id) : null;
+  const addedDiffers = cmp ? [...cmp.differs, ...cmp.proposed] : [];
+  return { me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
 });
 if (!data) return notFound();
 const { me, p: patient, visits, health, canEdit } = data;
@@ -317,7 +362,10 @@ const chipsFor = (key: (typeof LISTS)[number]['key'], picks: readonly string[]) 
 const healthChips = Object.fromEntries(LISTS.map((l) => [l.key, chipsFor(l.key, l.picks)]));
 const healthNone = Object.fromEntries(LISTS.map((l) => [l.key, shown[l.key]?.length === 0]));
 
-const byLine = (v: HealthVersion) => `${when(new Date(v.at))}${v.by ? ` by ${v.by}` : ''}`;
+// A version from the patient forms is dated when it went on the record; the line says when it was sent.
+const byLine = (v: HealthVersion) =>
+  `${when(new Date(v.at))}${v.by ? ` by ${v.by}` : v.answeredBy === 'patient'
+    ? ` from the patient forms${v.formRef ? ` (${v.formRef}${v.formSentAt ? `, sent ${day(new Date(v.formSentAt))}` : ''})` : ''}` : ''}`;
 const stateLine = (v: HealthAnswers) =>
   [...LISTS.map((l) => `${l.label} ${listText(v[l.key], l.key === 'allergies' ? 'none known' : 'none')}`), v.note && `Note: ${v.note}`].filter(Boolean).join(' · ');
 const birthLine = (b: string | null) => `Birth date ${dateText(b) ?? 'not on file'}`;
@@ -363,7 +411,33 @@ const SECTIONS = [
   { id: 'consent', label: 'Consent' },
   { id: 'texts', label: 'Texts', count: data.texts.length || null },
 ];
-const savedTo: Record<string, string> = { health: 'health', birth: 'health', nothing: 'health', consent: 'consent', 'consent-already': 'consent', paper: 'consent', details: 'overview', new: 'overview' };
+const savedTo: Record<string, string> = { health: 'health', birth: 'health', nothing: 'health', consent: 'consent', 'consent-already': 'consent', paper: 'consent', details: 'overview', new: 'overview', form: 'overview' };
+
+// --- a patient form just added ------------------------------------------------
+// The consents as the record has them now, in words (never a claim the rows do not make).
+const CONSENT_KIND: Record<'privacy' | 'treatment', string> = { privacy: 'the privacy notice', treatment: 'the consent to examination and treatment' };
+const consentWords = (st: { privacy: FormConsentState; treatment: FormConsentState }) => {
+  const from = (['treatment', 'privacy'] as const).filter((k) => st[k] === 'form').map((k) => CONSENT_KIND[k]);
+  const onFile = (['treatment', 'privacy'] as const).filter((k) => st[k] === 'on-file').map((k) => CONSENT_KIND[k]);
+  const none = (['treatment', 'privacy'] as const).filter((k) => st[k] === 'none');
+  return { from, onFile, none };
+};
+const addedConsents = data.addedLine ? consentWords(data.addedLine.consentState) : null;
+const andList = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+// What the new health version kept from the record that the form did not say (Add to <patient>).
+const lowerEq = (a: string, b: string) => a.toLocaleLowerCase('en') === b.toLocaleLowerCase('en');
+const keptFromRecord = (() => {
+  if (!data.added || data.added.addedAs !== 'existing') return [] as string[];
+  const v = health.versions.find((x) => x.formRef === data.added!.ref);
+  if (!v) return [];
+  const fromForm = healthLists(data.added.values);
+  return (['allergies', 'conditions', 'medications'] as const).flatMap((k) => (v[k] ?? []).filter((x) => !fromForm[k].some((y) => lowerEq(x, y))));
+})();
+const used = q.get('used');
+const usedLabel = used ? ({ phone: 'mobile', email: 'email', address_line: 'address', city: 'city', province: 'province', sex: 'sex', occupation: 'occupation',
+  emergency_name: 'emergency contact', emergency_relation: 'emergency contact’s relation', emergency_phone: 'emergency contact’s number',
+  guardian_name: 'parent or guardian', guardian_relation: 'parent or guardian’s relation', guardian_phone: 'parent or guardian’s mobile',
+  hmo_name: 'HMO', hmo_member_no: 'HMO card number', middle_name: 'middle name', suffix: 'suffix' } as Record<string, string>)[used] ?? 'detail' : null;
 const current = backTo ?? savedTo[saved ?? ''] ?? 'overview';
 const tabItems = SECTIONS.map((s) => ({ id: `rec-${s.id}`, label: s.label, count: 'count' in s ? s.count : null }));
 
@@ -410,6 +484,15 @@ const detailRows: [string, string | null][] = [
 const present = detailRows.filter(([, v]) => v);
 const missing = detailRows.filter(([, v]) => !v).map(([k]) => (k === 'HMO' ? k : k.toLowerCase()));
 const help = 'text-[13px] leading-snug text-muted';
+// The latest patient form's words about this visit, for the Overview.
+const lf = data.latestForm?.values ?? null;
+const visitFromForm: [string, string][] = lf ? ([
+  ['Reason for the visit', lf.reason],
+  ['Bothering them', answerText(FIELDS.concerns, lf.concerns) ? [answerText(FIELDS.concerns, lf.concerns), lf.concern_other].filter(Boolean).join(', ') : null],
+  ['Last dental visit', answerText(FIELDS.last_visit, lf.last_visit)],
+  ['Nervous about visits', answerText(FIELDS.nervous, lf.nervous)],
+] as [string, string | null][]).filter((r): r is [string, string] => !!r[1]) : [];
+const formsBase = `/c/${clinic.slug}/patients/forms/`;
 const moreItems = (money ? 1 : 0) + (canEdit ? 1 : 0);
 ---
 
@@ -464,6 +547,44 @@ const moreItems = (money ? 1 : 0) + (canEdit ? 1 : 0);
     {stale && <Callout tone="alert" class="mt-4" text={CSRF_MESSAGE} />}
     {saved === 'new' && <Callout tone="success" class="mt-4" text={`Added. ${shortName} is on file as ${patient.chart_no}; everything from the form is below.`} />}
     {saved === 'details' && <Callout tone="success" class="mt-4" text="Details saved." />}
+    {saved === 'form' && data.added && addedConsents && (
+      <Callout tone="success" class="mt-4" title={data.added.addedAs === 'new' ? `Added from the patient forms (${data.added.ref}).` : `Added the patient forms (${data.added.ref}) to ${patient.first_name}’s record.`}>
+        <p>
+          {data.added.addedAs === 'new' ? `${shortName} is on file as ${patient.chart_no}, with the health history from the form` : 'Empty details were filled in, and the record has the health history from the form'}{addedConsents.from.length ? ` and ${andList(addedConsents.from)}` : ''}.
+          {addedConsents.onFile.length > 0 && ` ${capitalise(andList(addedConsents.onFile))} ${addedConsents.onFile.length === 1 ? 'was' : 'were'} already on file.`}
+          {keptFromRecord.length > 0 && ` Kept from the record as well: ${keptFromRecord.join(', ')}.`}
+          {' '}<a href={`${formsBase}${data.added.id}/`} class="font-semibold underline underline-offset-2">See the form’s answers</a>
+        </p>
+      </Callout>
+    )}
+    {saved === 'form' && addedConsents && addedConsents.none.length > 0 && (
+      <Callout tone="warn" role="alert" class="mt-3" title="No consent was recorded from this form.">
+        <p>The birth date on the record makes {patient.first_name} under 18 on the day the form was signed, and {patient.first_name} signed it themself. A parent or guardian needs to agree: record it in <a href="#consent" class="font-semibold underline underline-offset-2" data-rec-go="consent">Consent</a>.</p>
+      </Callout>
+    )}
+    {usedLabel && !formUseProblem && <Callout tone="success" class="mt-4" text={`The ${usedLabel} on the record is now the one from the form.`} />}
+    {formUseProblem && <Callout tone="alert" class="mt-4" text={formUseProblem} />}
+    {data.added && data.addedDiffers.length > 0 && (
+      <Callout tone="warn" role={saved === 'form' ? 'alert' : undefined} class="mt-3" title="The form says something the record does not. The record kept what it had:">
+        <ul class="fm-diff">
+          {data.addedDiffers.map((d) => (
+            <li class="fm-diff-use">
+              <span class="min-w-0"><span class="fm-diff-k">{d.label}</span>On file: {d.onFile || 'nothing'}<br />On the form: {d.onForm}</span>
+              {canEdit && TAKEABLE.has(d.field) && (
+                <form method="post" action={`${here}?form=${data.added!.id}#overview`}>
+                  <Csrf />
+                  <input type="hidden" name="intent" value="form-use" />
+                  <input type="hidden" name="form" value={data.added!.id} />
+                  <input type="hidden" name="field" value={d.field} />
+                  <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm">Use {d.onForm.length > 24 ? 'the form’s' : d.onForm}</button>
+                </form>
+              )}
+            </li>
+          ))}
+        </ul>
+        {canEdit && <p class="mt-2">{data.addedDiffers.some((d) => d.field === 'phone' || d.field === 'email') ? 'Check a mobile or email with the patient before you use it: visits and reminders go by mobile. ' : ''}A birth date changes in the Health section.</p>}
+      </Callout>
+    )}
 
     <div class="pt-tiles-wrap mt-5"><div class="ws-tiles pt-tiles">
       <Tile label={hereNow ? 'Today, now' : 'Next visit'} value={nextValue} tone={hereNow ? 'accent' : 'default'} note={nextNote} icon="calendar" />
@@ -501,6 +622,16 @@ const moreItems = (money ? 1 : 0) + (canEdit ? 1 : 0);
       </p>
     </Pane>
     <div class="grid content-start gap-4 max-md:gap-3">
+      {data.latestForm && (
+        <Pane as="section" label="From the patient forms">
+          <Head icon="form" title="From the patient forms" meta={`Sent ${day(data.latestForm.submittedAt)} · ${data.latestForm.ref}`}>
+            <a slot="actions" href={`${formsBase}${data.latestForm.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">All answers</a>
+          </Head>
+          {visitFromForm.length ? (
+            <dl class="pt-facts">{visitFromForm.map(([k, v]) => <><dt>{k}</dt><dd>{v}</dd></>)}</dl>
+          ) : <p class="text-[15px] text-ink-2">Nothing about this visit on the form.</p>}
+        </Pane>
+      )}
       <Pane as="section" label="Health, in short">
         <Head icon="heart" title="Health">
           <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="health">{canEdit ? 'Update' : 'Open'}</button>
@@ -748,6 +879,35 @@ const moreItems = (money ? 1 : 0) + (canEdit ? 1 : 0);
         problem={consentProblem} givenBy={givenBy} agreedAs={agreedAs} recorded={saved === 'consent' ? 'saved' : saved === 'consent-already' ? 'already' : null}
         paperForms={data.paperForms} paper={{ ...paperState, recorded: saved === 'paper' ? 'saved' : null }} />
     </Pane>
+    {data.forms.length > 0 && (
+      <Pane as="section" label="Patient forms" id="patient-forms" class="mt-4 max-md:mt-3">
+        <Head icon="form" title="Patient forms" meta={`${data.forms.length === 1 ? 'One form' : `${data.forms.length} forms`} from the QR code`} />
+        <p class="-mt-2 mb-3 text-[14px] text-ink-2">Filled in on the patient’s own phone: their details, health and dental history, the consent to examination and treatment, and the privacy notice.</p>
+        <ul class="pt-list fm-rec-list">
+          {data.forms.map((f) => (
+            <li>
+              <div class="min-w-0 text-[14.5px]">
+                <p><span class="font-semibold">Sent {when(f.submittedAt)}</span> <span class="pt-ref ml-1">{f.ref}</span></p>
+                <p class="text-ink-2">Signed by {signedText(f.signedByName, f.signedAs)}. Added {f.addedAs === 'new' ? 'as a new patient' : 'to this record'}{f.addedByName ? ` by ${f.addedByName}` : ''}, {day(f.addedAt)}.</p>
+                <p class="fm-rec-consents">
+                  {(['treatment', 'privacy'] as const).map((k) => {
+                    const what = k === 'treatment' ? 'Examination and treatment' : 'Privacy notice';
+                    const st = f.consentState[k];
+                    return st === 'form' ? <Chip tone="accent" icon="check">{what}</Chip>
+                      : st === 'on-file' ? <Chip tone="neutral" label={`${what}: already on file`} />
+                      : <Chip tone="warn" icon="alert">{`${what}: not recorded (a guardian must agree)`}</Chip>;
+                  })}
+                </p>
+              </div>
+              <span class="flex flex-wrap gap-2">
+                <a href={`${formsBase}${f.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">See answers</a>
+                <a href={`${formsBase}${f.id}/print/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" />Print</a>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Pane>
+    )}
   </div>
 
   <!-- Texts -->

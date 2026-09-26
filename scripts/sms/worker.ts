@@ -130,8 +130,9 @@ function intervalText(minutes: number): string {
 async function enqueueReminders() {
   const { rows } = await pool.query('select sms_enqueue_reminders() as n');
   log(`reminders queued: ${rows[0].n}`);
-  // Retention rides along too: text logs older than two years go, as the privacy notice says.
-  try { const r = await pool.query('select retention_purge() as n'); if (r.rows[0].n) log(`retention: ${r.rows[0].n} old text rows deleted`); } catch (e) { log(`retention pass failed: ${(e as Error).message}`); }
+  // Retention rides along too: text logs older than two years go, as the privacy notice says, and
+  // patient forms (028) nobody added go 30 days after they were sent.
+  try { const r = await pool.query('select retention_purge() as n'); if (r.rows[0].n) log(`retention: ${r.rows[0].n} old rows deleted (texts, patient forms)`); } catch (e) { log(`retention pass failed: ${(e as Error).message}`); }
   // Billing rides along: once a pass, issue the month's invoices and flip past-due states (idempotent).
   // Not while the prices are placeholders (BILLING_FINAL); main() says so once.
   if (BILLING_FINAL) {

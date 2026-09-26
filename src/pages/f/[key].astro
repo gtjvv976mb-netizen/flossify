@@ -1,0 +1,678 @@
+---
+export const prerender = false;
+
+// The patient forms: what a patient opens by scanning the QR code on a clinic's desk
+// (flossify.ph/f/<key>/). No account. Five steps — about you, your health, your teeth, cards,
+// consent and signature — drawn from the questions as data (STEPS in src/lib/patient-forms-def.ts),
+// on compact frosted glass over the clinic's own photo, like its booking.
+//
+// One <form method="post"> to this same address. The page's script shows one step at a time and
+// checks each step with the server's own reader (parsePatientForm) before moving on; without the
+// script it is one long form. Either way the server reads and checks every field on the post and,
+// when something needs a look, draws the form again with what was typed, the sentence beside each
+// field, a list at the top, and the first step with an error open. Nothing is redirected: a redirect
+// would lose a long form, and nothing a patient typed ever goes into an address.
+//
+// The clinic comes from the key (lookupForms → the definer function patient_forms_clinic), never from
+// the page; the post goes through submitForms (throttled, the definer patient_form_submit). A retired
+// key shows "replaced" and accepts nothing; an unknown one is a 404 (and counts against the address,
+// past a limit). Every response is no-store and noindex: it may hold health answers, and it is a
+// clinic's private link.
+//
+// A phone may be handed on ("Fill in forms for someone else", a clinic tablet), so the page itself
+// brings back nothing the last person typed: the form is autocomplete="off", and so is every field
+// without a contact token (all the health and dental answers, the emergency contact, the guardian,
+// the PhilHealth PIN and HMO card number): the browser keeps no history of them and does not
+// restore them on Back. A page shown again from the browser's memory is reloaded empty, a page
+// drawn by a post becomes a plain GET in the history (Back or reload never sends it again), and
+// "Fill in forms for someone else" replaces the thank-you in the history.
+// The contact fields keep their own autofill tokens on purpose (given-name, additional-name,
+// family-name, honorific-suffix, bday, tel, email, street-address, address-level1/2,
+// organization-title, the HMO company's organization, the signature's name; a field's own token
+// wins over the form's "off"): on the patient's own phone, the main use, they fill in from the
+// phone's own card in one tap. The cost: a browser that saves addresses may offer one person's
+// contact details to the next on a shared device, so a clinic tablet opens the link in a private
+// tab (the QR page says so under the link). Dropping the tokens from STEPS trades that away.
+import Base from '../../layouts/Base.astro';
+import PatientHeader from '../../components/PatientHeader.astro';
+import Icon from '../../components/ws/Icon.astro';
+import Csrf from '../../components/Csrf.astro';
+import ClinicBadge from '../find/_ui/ClinicBadge.astro';
+import ClinicRoom from '../find/_ui/ClinicRoom.astro';
+import Field from './_Field.astro';
+import '../find/_ui/patient.css';
+import '../find/_ui/clinic-glass.css';
+import './_forms.css';
+import { clientIp } from '../../lib/throttle';
+import { csrfOk, csrfToken, CSRF_MESSAGE } from '../../lib/csrf';
+import { manilaToday } from '../../lib/health';
+import {
+  lookupForms, readCappedForm, parsePatientForm, submitForms, newNonce, shown, isMinorOn, ageFrom, doneWords,
+  STEPS, FIELDS, NONCE_FIELD, HONEYPOT_FIELD, PRIVACY_TICK, SUBMIT_WORDS,
+  type FormsDoor, type FieldErrors, type RawValues, type ShowIf, type SignedAs,
+} from '../../lib/patient-forms';
+
+Astro.response.headers.set('Cache-Control', 'no-store');
+Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+// The double-submit token's cookie, set here in the frontmatter so it is on the response whatever
+// streams later (<Csrf /> below reads the same token).
+csrfToken(Astro.cookies);
+
+const ip = clientIp(Astro);
+let door: FormsDoor = await lookupForms(Astro.params.key, ip);
+
+type View = 'form' | 'done' | 'replaced' | 'unavailable' | 'unknown' | 'wait';
+const viewOf = (d: FormsDoor): View => (d.status === 'open' ? 'form' : d.status);
+let view: View = viewOf(door);
+let raw: RawValues = {};
+let errors: FieldErrors = {};
+let step = 0;
+let nonce = '';
+let done: { ref: string; firstName: string; signedAs: SignedAs } | null = null;
+/** A post that reached a replaced key: "your answers were not sent". */
+let notSent = false;
+
+if (door.status === 'open' && Astro.request.method === 'POST') {
+  const form = await readCappedForm(Astro.request);
+  if (!form) {
+    // Over 64 KB, or not a form at all: nothing can be read back, so the form starts again.
+    const isForm = /^(application\/x-www-form-urlencoded|multipart\/form-data)\b/i.test(Astro.request.headers.get('content-type') ?? '');
+    Astro.response.status = isForm ? 413 : 400;
+    errors = { _form: isForm
+      ? 'That was too much to send in one go, so nothing was sent. Shorten your longest answers and send the forms again, or ask the desk for a paper form.'
+      : SUBMIT_WORDS.invalid };
+    nonce = newNonce();
+  } else {
+    const versions = { privacy: door.consent.privacy.id, treatment: door.consent.treatment.id };
+    const parsed = parsePatientForm(form, { versions });
+    raw = parsed.raw;
+    if (!csrfOk(Astro.cookies, form)) {
+      // Drawn again with what was typed (never a redirect: it would lose the form). The cookie is set
+      // on this response, so the next send matches.
+      Astro.response.status = 403;
+      errors = { ...(parsed.ok ? {} : parsed.errors), _form: `${CSRF_MESSAGE} Your answers are still here: check them and send the forms again.` };
+      step = parsed.ok ? STEPS.length - 1 : parsed.step;
+      nonce = parsed.nonce ?? newNonce();
+    } else if (!parsed.ok) {
+      Astro.response.status = 422;
+      errors = parsed.errors;
+      step = parsed.step;
+      nonce = parsed.nonce ?? newNonce();
+    } else {
+      nonce = parsed.nonce;
+      const r = await submitForms({ key: door.key, nonce: parsed.nonce, value: parsed.value, ip });
+      switch (r.kind) {
+        case 'saved': case 'again':
+          view = 'done'; done = { ref: r.ref, firstName: r.firstName, signedAs: r.signedAs };
+          break;
+        case 'resend':
+          // This page's token went with other answers before: a new one, and one more tap on Send.
+          Astro.response.status = 409;
+          errors = { _form: SUBMIT_WORDS.resend }; step = STEPS.length - 1;
+          nonce = newNonce();
+          break;
+        case 'changed': {
+          // The consent in force changed while they filled in: the new words, both ticks to give again.
+          door = await lookupForms(door.key, ip);
+          view = viewOf(door);
+          if (door.status === 'open') {
+            Astro.response.status = 409;
+            step = STEPS.length - 1;
+            errors = { _form: SUBMIT_WORDS.changed };
+            if (raw.treatment_version !== door.consent.treatment.id) { raw.consent_treatment = ''; errors.consent_treatment = 'The wording changed. Read it again, and tick it again.'; }
+            if (raw.privacy_version !== door.consent.privacy.id) { raw.consent_privacy = ''; errors.consent_privacy = 'The notice changed. Read it again, and tick it again.'; }
+          }
+          break;
+        }
+        case 'replaced': view = 'replaced'; notSent = true; break;
+        case 'unknown': view = 'unknown'; break;
+        case 'full': case 'invalid': case 'closed':
+          Astro.response.status = r.kind === 'invalid' ? 422 : 503;
+          errors = { _form: SUBMIT_WORDS[r.kind] }; step = STEPS.length - 1;
+          break;
+        case 'wait':
+          Astro.response.status = 429;
+          errors = { _form: r.message }; step = STEPS.length - 1;
+          break;
+      }
+    }
+  }
+  // A consent version that is no longer the one in force: the tick is given again, on the new words.
+  if (view === 'form' && door.status === 'open') {
+    if (errors.consent_treatment && raw.treatment_version !== door.consent.treatment.id) raw.consent_treatment = '';
+    if (errors.consent_privacy && raw.privacy_version !== door.consent.privacy.id) raw.consent_privacy = '';
+  }
+} else if (door.status === 'open') {
+  nonce = newNonce();
+} else if (door.status === 'replaced' && Astro.request.method === 'POST') {
+  // An old page left open while the desk made a new code: nothing was sent, and it says so.
+  notSent = true;
+}
+
+if (view === 'unknown') Astro.response.status = 404;
+if (view === 'replaced') Astro.response.status = 410;
+if (view === 'unavailable') Astro.response.status = 503;
+if (view === 'wait' && door.status === 'wait') {
+  Astro.response.status = 429;
+  Astro.response.headers.set('Retry-After', String(door.retryAfter));
+}
+
+const open = door.status === 'open' ? door : null;
+const clinic = door.status === 'open' || door.status === 'replaced' || door.status === 'unavailable' ? door.clinic : null;
+const today = manilaToday();
+const val = (name: string) => raw[name];
+const get = (name: string) => raw[name] ?? null;
+const minor = isMinorOn(typeof raw.birth_date === 'string' ? raw.birth_date : null, today);
+const age = ageFrom(typeof raw.birth_date === 'string' ? raw.birth_date : null, today);
+const errOf = (name: string) => (errors as Record<string, string | undefined>)[name] ?? '';
+const fieldErrors = Object.entries(errors).filter(([k]) => k !== '_form' && FIELDS[k]) as [string, string][];
+const order = Object.keys(FIELDS);
+fieldErrors.sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
+const hasAlert = !!errors._form || fieldErrors.length > 0;
+const alertTitle = errors._form ?? (fieldErrors.length === 1 ? 'One answer needs a look.' : `${fieldErrors.length} answers need a look.`);
+// The list names the first few; a whole empty step would otherwise bury the form under it.
+const LIST_MAX = 4;
+const moreWords = (n: number) => `And ${n} more, marked in red below.`;
+const typed = Object.values(raw).some((v) => (Array.isArray(v) ? v.length > 0 : !!v));
+const last = STEPS.length - 1;
+
+// Said only when there is no script to hide a question until it applies: the definition's own words
+// (`when`), or words from its condition when it is a simple one.
+const nojsHint = (s: ShowIf | undefined, when?: string): string | null => {
+  if (when) return when;
+  if (!s) return null;
+  if ('minor' in s) return s.minor ? 'Only if the patient is under 18.' : 'Only if the patient is 18 or older.';
+  if (!('field' in s)) return null;
+  if (s.field === 'hmo') return s.in.length === 1 ? 'Only if you chose “Another HMO”.' : 'Only if you have an HMO card.';
+  if (s.in.length === 1 && s.in[0] === 'yes') return 'Only if you answered yes.';
+  if (s.in.length === 1 && s.in[0] === 'other') return 'Only if you ticked “Something else”.';
+  return null;
+};
+// A folded section (FieldDef.fold) opens by itself when something in it is typed or needs a look.
+const foldOpen = (fields: readonly { name: string }[]) => fields.some((f) => !!val(f.name) || !!errOf(f.name));
+// Lines a question gets on this page beyond its definition.
+const extraHelp: Record<string, string> = {
+  signed_name: 'Typing your name here is your signature.',
+};
+const stepWordPhone = (w: string) => { const x = w.split(' ').pop() ?? w; return x.charAt(0).toUpperCase() + x.slice(1); };
+const thanks = done ? doneWords(done.firstName, done.signedAs) : null;
+// Where "start again" goes: this link, empty (a GET).
+const fresh = door.status === 'open' ? `/f/${door.key}/` : '';
+const posted = Astro.request.method === 'POST';
+
+const title = clinic ? `New patient forms · ${clinic.name} — Flossify` : 'Patient forms — Flossify';
+const description = clinic ? `The new patient forms of ${clinic.name}: your details, health and dental history, and consent, in five steps on your phone.` : 'A clinic’s new patient forms, from the QR code on its desk.';
+const phoneHref = (p: string | null) => (p ? `tel:${p.replace(/[^\d+]/g, '')}` : null);
+---
+
+<Base title={title} description={description}>
+  <!-- One step at a time needs the page's script: say so before anything paints, and take it back at
+       load if that script never ran (a dropped connection), so the whole form shows instead. -->
+  <!-- And what the last person typed never comes back: a page brought back from the browser's memory
+       (Back, Forward), or an old post sent again by the browser, is hidden at once and loaded again,
+       empty, before it paints. -->
+  <script is:inline data-pf-fresh={fresh || undefined} data-pf-posted={posted ? '' : undefined}>
+    document.documentElement.classList.add('pf-js');
+    window.addEventListener('load', function () {
+      if (!document.documentElement.classList.contains('pf-ready')) document.documentElement.classList.remove('pf-js');
+    });
+    (function (me) {
+      var to = me && me.getAttribute('data-pf-fresh');
+      if (!to) return;
+      function leave() { document.documentElement.classList.add('pf-leaving'); location.replace(to); }
+      var nav = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+      if (nav && nav.type === 'back_forward' && me.hasAttribute('data-pf-posted')) leave();
+      window.addEventListener('pageshow', function (e) { if (e.persisted) leave(); });
+    })(document.currentScript);
+  </script>
+  <PatientHeader />
+
+  <!-- The room behind the page: this clinic's own cover photo, or a soft blur when it has none (or no clinic). Decorative. -->
+  <ClinicRoom keys={clinic?.photoKeys ?? []} clinicId={clinic?.id ?? ''} narrow />
+
+  <main id="main" class="pt-main cl-glass cl-book pf">
+    {view === 'form' && open && (
+      <Fragment>
+        <!-- The heading: whose forms these are, what they take -->
+        <header class="cl-pane cl-head pf-head">
+          <div class="cl-id">
+            <ClinicBadge name={open.clinic.name} size="lg" />
+            <div class="min-w-0">
+              <h1 class="pt-title">New patient forms</h1>
+              <p class="cl-sub">{open.clinic.name}{open.clinic.area ? ` · ${open.clinic.area}` : ''}</p>
+            </div>
+          </div>
+          <p class="pf-intro" data-pf-intro data-away={step !== 0 ? '' : undefined}><Icon name="clock" /><span>Five steps, about 10 minutes. Your answers go only to {open.clinic.name}.</span></p>
+        </header>
+
+        <div class="ws-pane ws-glass pt-card cl-pane cl-wizard pf-card">
+          <!-- Progress (with the script only). A step already done is a button back to it. -->
+          <ol class="pt-steps pf-stepper" aria-label="Steps" data-pf-marks>
+            {STEPS.map((s, i) => (
+              <li class="wiz-step" data-step-mark={i} aria-current={i === step ? 'step' : undefined} data-passed={i < step ? '' : undefined}>
+                <button type="button" class="pf-step-go" data-goto-step={i} disabled={i >= step}>
+                  <span class="sec-no">{i + 1}</span>
+                  <span class="pf-step-word"><span class="pf-word-desk">{s.short}</span><span class="pf-word-phone">{stepWordPhone(s.short)}</span></span>
+                  <span class="sr-only" data-step-sr>{i < step ? ', done: go back to it' : ''}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+
+          <form class="cl-form pf-form" method="post" novalidate autocomplete="off" data-pf-form data-at={step} data-typed={typed ? '' : undefined}>
+            <Csrf />
+            <input type="hidden" name={NONCE_FIELD} value={nonce} />
+            <!-- For robots only: people never see it, and Tab never reaches it -->
+            <div class="pf-hp" aria-hidden="true">
+              <label>Website <input type="text" name={HONEYPOT_FIELD} value="" tabindex="-1" autocomplete="off" /></label>
+            </div>
+
+            <!-- What needs a look: the whole form's sentence, and each answer, linked to its field -->
+            <div class="pf-alert" role="alert" tabindex="-1" data-pf-alert hidden={!hasAlert}>
+              <p class="pf-alert-title"><Icon name="alert" /><span data-pf-alert-title>{hasAlert ? alertTitle : ''}</span></p>
+              <ul data-pf-alert-list>
+                {errors._form && fieldErrors.length > 0 && <li class="sr-only">{fieldErrors.length === 1 ? 'One answer needs a look.' : `${fieldErrors.length} answers need a look.`}</li>}
+                {fieldErrors.slice(0, LIST_MAX).map(([name, text]) => (
+                  <li><a href={`#f-${name}`} data-goto={name}><strong>{FIELDS[name].short ?? FIELDS[name].label}</strong><span>{text}</span></a></li>
+                ))}
+                {fieldErrors.length > LIST_MAX && <li class="pf-alert-more">{moreWords(fieldErrors.length - LIST_MAX)}</li>}
+              </ul>
+            </div>
+
+            {STEPS.map((s, i) => (
+              <fieldset class="wiz pf-step" data-step={i} data-away={i !== step ? '' : undefined}>
+                <legend class="pt-legend" tabindex="-1">{s.title}</legend>
+                <p class="pt-help">{s.lede}</p>
+                {s.id === 'about' && (
+                  <p class="ws-callout cl-callout pf-child"><Icon name="info" /><span>Filling this in for a child? Answer for them. Once you give their date of birth, you add yourself as their parent or guardian further down.</span></p>
+                )}
+
+                {s.sections.map((sec) => {
+                  const Tag = sec.fold ? 'details' : 'section';
+                  return (
+                  <Tag class:list={['pf-sec', sec.fold && 'pf-fold']} aria-labelledby={sec.fold ? undefined : `s-${sec.id}`} open={sec.fold ? foldOpen(sec.fields) : undefined} data-show={sec.showIf ? JSON.stringify(sec.showIf) : undefined} data-off={sec.showIf && !shown(sec.showIf, get, minor, age) ? '' : undefined}>
+                    {sec.fold ? (
+                      <summary class="pf-fold-sum"><span class="pf-sec-title" id={`s-${sec.id}`}>{sec.fold}<span class="pf-optional"> (optional)</span></span><Icon name="chevron" class="pf-fold-chev" /></summary>
+                    ) : (
+                      <h2 class="pf-sec-title" id={`s-${sec.id}`}>{sec.title}</h2>
+                    )}
+                    {sec.help && <p class="pf-sec-help">{sec.help}</p>}
+                    {nojsHint(sec.showIf, sec.when) && <p class="pf-nojs">{nojsHint(sec.showIf, sec.when)}</p>}
+
+                    {/* The treatment consent's words, above its tick */}
+                    {sec.id === 'treatment' && open && (
+                      <Fragment>
+                        <p class="pf-sec-help">{open.consent.treatment.title}. Please read it before you tick.</p>
+                        <ol class="pf-points">
+                          {open.consent.treatment.points.map((p) => <li><strong>{p.head}</strong>{p.body}</li>)}
+                        </ol>
+                      </Fragment>
+                    )}
+                    {/* The privacy notice in force: its summary and the whole notice, in a new tab so the form stays */}
+                    {sec.id === 'privacy' && open && (
+                      <div class="pf-notice">
+                        <p class="pf-notice-title">{open.consent.privacy.title}</p>
+                        <p class="pf-notice-text">{open.consent.privacy.summary}{open.clinic.dpoName ? ` Questions about your data: ${open.clinic.dpoName}, the clinic’s Data Protection Officer.` : ''}</p>
+                        <a href="/privacy/" target="_blank" rel="noopener" class="pt-link pf-notice-link"><span>Read the privacy notice</span><Icon name="arrow-right" /><span class="sr-only"> (opens in a new tab)</span></a>
+                      </div>
+                    )}
+
+                    <div class="pf-grid">
+                      {sec.fields.map((f) => (
+                        <Fragment>
+                          <Field
+                            f={f}
+                            value={val(f.name)}
+                            error={errOf(f.name)}
+                            off={f.kind !== 'hidden' && !shown(f.showIf, get, minor, age)}
+                            label={f.name === 'consent_treatment' ? open.consent.treatment.tick : f.name === 'consent_privacy' ? PRIVACY_TICK : undefined}
+                            help={extraHelp[f.name]}
+                            hiddenValue={f.name === 'treatment_version' ? open.consent.treatment.id : f.name === 'privacy_version' ? open.consent.privacy.id : undefined}
+                            today={today}
+                            minor={minor}
+                            nojs={nojsHint(f.showIf, f.when)}
+                          />
+                          {f.name === 'signed_as' && (
+                            <p class="pf-sign-note pf-wide" data-show={JSON.stringify({ minor: true })} data-off={minor ? undefined : ''}>The patient is under 18, so a parent or guardian signs.</p>
+                          )}
+                        </Fragment>
+                      ))}
+                    </div>
+                  </Tag>
+                  );
+                })}
+              </fieldset>
+            ))}
+
+            <!-- Back · Continue, and on the last step Send (without the script, only Send, at the end) -->
+            <div class="pt-nav">
+              <button type="button" class="btn btn-quiet" data-pf-back data-away={step === 0 ? '' : undefined}><Icon name="chevron-left" />Back</button>
+              <button type="button" class="btn btn-primary" data-pf-next data-away={step === last ? '' : undefined}><span>Continue</span><Icon name="arrow-right" /></button>
+              <button type="submit" class="btn btn-primary" data-pf-send data-away={step !== last ? '' : undefined}><Icon name="check" /><span data-pf-send-words>Send my forms</span></button>
+            </div>
+            <p class="pf-send-note" data-pf-send-note data-away={step !== last ? '' : undefined}>Only {open.clinic.name} sees your answers. The desk goes over them with you.</p>
+          </form>
+        </div>
+      </Fragment>
+    )}
+
+    {view === 'done' && open && done && thanks && (
+      <section class="ws-pane ws-glass pt-card cl-pane pf-done" aria-labelledby="done-title" data-pf-done>
+        <span class="pt-done-mark"><Icon name="check" size={26} /></span>
+        <p class="cl-done-pill"><span class="ws-pill ws-tint-green">Forms sent</span></p>
+        <h1 class="pt-done-title pf-done-title" id="done-title" tabindex="-1">{thanks.title}</h1>
+        <p class="pf-done-lead">{thanks.lead}</p>
+        <p class="pt-ref"><span class="pt-ref-label">Reference</span><span class="pt-ref-no">{done.ref}</span></p>
+        <p class="pf-done-text">{open.clinic.name} has the answers now. The desk goes over them with you before the visit. You can close this page.</p>
+        <div class="pf-done-actions">
+          <a href={fresh} class="btn btn-quiet" data-pf-again><Icon name="plus" />Fill in forms for someone else</a>
+        </div>
+      </section>
+    )}
+
+    {view === 'replaced' && clinic && (
+      <section class="ws-pane ws-glass pt-card cl-pane pf-done" aria-labelledby="gone-title">
+        <div class="cl-id">
+          <ClinicBadge name={clinic.name} size="lg" />
+          <p class="cl-sub">{clinic.name}{clinic.area ? ` · ${clinic.area}` : ''}</p>
+        </div>
+        <h1 class="pt-done-title pf-done-title" id="gone-title">This QR code has been replaced</h1>
+        <p class="pf-done-lead">{notSent ? 'Your answers were not sent. ' : ''}Please ask the desk for the new code, or for a paper form.</p>
+        <p class="pf-done-text">{clinic.name} made a new QR code for its patient forms, so this one no longer opens them.</p>
+        {(clinic.listed || clinic.phone) && (
+          <div class="pf-done-actions">
+            {clinic.phone && <a href={phoneHref(clinic.phone)} class="btn btn-quiet"><Icon name="phone" />Call {clinic.phone}</a>}
+            {clinic.listed && <a href={`/find/${clinic.slug}/`} class="btn btn-quiet"><Icon name="clinic" />About the clinic</a>}
+          </div>
+        )}
+      </section>
+    )}
+
+    {view === 'unavailable' && clinic && (
+      <section class="ws-pane ws-glass pt-card cl-pane pf-done" aria-labelledby="closed-title">
+        <div class="cl-id">
+          <ClinicBadge name={clinic.name} size="lg" />
+          <p class="cl-sub">{clinic.name}{clinic.area ? ` · ${clinic.area}` : ''}</p>
+        </div>
+        <h1 class="pt-done-title pf-done-title" id="closed-title">The forms are not open just now</h1>
+        <p class="pf-done-lead">Please ask the desk for a paper form.</p>
+        {clinic.phone && <div class="pf-done-actions"><a href={phoneHref(clinic.phone)} class="btn btn-quiet"><Icon name="phone" />Call {clinic.phone}</a></div>}
+      </section>
+    )}
+
+    {view === 'unknown' && (
+      <section class="ws-pane ws-glass pt-card cl-pane pf-done" aria-labelledby="nf-title">
+        <span class="pt-done-mark pf-done-mark" data-tone="info"><Icon name="search" size={24} /></span>
+        <h1 class="pt-done-title pf-done-title" id="nf-title">This link doesn’t open any forms</h1>
+        <p class="pf-done-lead">Check the link, or scan the QR code on the clinic’s desk again.</p>
+        <p class="pf-done-text">If it still doesn’t open, ask the desk for a paper form.</p>
+        <div class="pf-done-actions"><a href="/find/" class="btn btn-quiet"><Icon name="search" />Find a clinic</a></div>
+      </section>
+    )}
+
+    {view === 'wait' && door.status === 'wait' && (
+      <section class="ws-pane ws-glass pt-card cl-pane pf-done" aria-labelledby="wait-title">
+        <span class="pt-done-mark pf-done-mark" data-tone="warn"><Icon name="clock" size={24} /></span>
+        <h1 class="pt-done-title pf-done-title" id="wait-title">Please wait a little</h1>
+        <p class="pf-done-lead">{door.message}</p>
+        <p class="pf-done-text">Or ask the desk for a paper form.</p>
+      </section>
+    )}
+  </main>
+
+  <script>
+    // One step at a time, checked with the server's own reader before moving on. Nothing here stores
+    // an answer (no localStorage, no URL): the answers live in the form until it is sent.
+    import { parsePatientForm, shown, isMinorOn, ageFrom, FIELDS, FIELD_STEP, type ShowIf } from '../../lib/patient-forms-def';
+
+    const root = document.documentElement;
+    const main = document.querySelector<HTMLElement>('main.pf');
+    const form = main?.querySelector<HTMLFormElement>('form[data-pf-form]');
+    root.classList.add('pf-ready');
+    // A page a post drew (answers sent back with a note, or the thank-you) becomes a plain GET in the
+    // history: Back to it, or a reload, opens the forms empty and never sends the answers again.
+    const byPost = document.querySelector('script[data-pf-posted]') !== null;
+    const navType = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type;
+
+    if (main && form) {
+      const steps = Array.from(form.querySelectorAll<HTMLFieldSetElement>('.pf-step'));
+      const marks = Array.from(main.querySelectorAll<HTMLElement>('[data-step-mark]'));
+      const last = steps.length - 1;
+      const back = form.querySelector<HTMLButtonElement>('[data-pf-back]')!;
+      const next = form.querySelector<HTMLButtonElement>('[data-pf-next]')!;
+      const send = form.querySelector<HTMLButtonElement>('[data-pf-send]')!;
+      const sendWords = form.querySelector<HTMLElement>('[data-pf-send-words]')!;
+      const sendNote = form.querySelector<HTMLElement>('[data-pf-send-note]');
+      const alertBox = form.querySelector<HTMLElement>('[data-pf-alert]')!;
+      const alertTitle = form.querySelector<HTMLElement>('[data-pf-alert-title]')!;
+      const alertList = form.querySelector<HTMLElement>('[data-pf-alert-list]')!;
+      const order = Object.keys(FIELDS);
+      const LIST_MAX = 4;
+      const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+      const input = (name: string) => form.elements.namedItem(name) as HTMLInputElement | null;
+      const versions = { privacy: input('privacy_version')?.value ?? null, treatment: input('treatment_version')?.value ?? null };
+      let at = Number(form.dataset.at) || 0;
+      // Came back with Back or Forward: nothing of anyone's answers stays in the fields. (An old post
+      // sent again is already on its way to the empty page: the inline script.)
+      if (navType === 'back_forward' && !byPost) {
+        form.reset();
+        form.querySelectorAll('[data-none-on]').forEach((el) => el.removeAttribute('data-none-on'));
+      }
+      let dirty = form.hasAttribute('data-typed');
+      const intro = main.querySelector<HTMLElement>('[data-pf-intro]');
+      const goers = Array.from(main.querySelectorAll<HTMLButtonElement>('[data-goto-step]'));
+
+      // --- what is shown: a follow-up after "Yes", the parent or guardian under 18, pregnancy unless male
+      //     or under 12, the emergency contact unless the parent or guardian is it
+      const get = (name: string): string | string[] | null => {
+        const f = FIELDS[name];
+        if (!f) return null;
+        if (f.kind === 'checks') return Array.from(form.querySelectorAll<HTMLInputElement>(`input[name="${name}"]:checked`)).map((i) => i.value);
+        if (f.kind === 'radio') return form.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? null;
+        if (f.kind === 'agree') return input(name)?.checked ? '1' : null;
+        return input(name)?.value ?? null;
+      };
+      const birthNow = () => (input('birth_date')?.value ?? '').trim();
+      const minorNow = () => isMinorOn(birthNow());
+      const conditional = Array.from(form.querySelectorAll<HTMLElement>('[data-show]')).map((el) => ({ el, s: JSON.parse(el.dataset.show!) as ShowIf }));
+      const self = form.querySelector<HTMLElement>('[data-pf-self]');
+      const selfInput = self?.querySelector<HTMLInputElement>('input');
+      const guardianInput = form.querySelector<HTMLInputElement>('input[name="signed_as"][value="guardian"]');
+      // Whether this script chose "A parent or guardian" itself (a birth date that was a child's, even for
+      // a moment): then it takes that choice back when the date turns out an adult's. A choice the person
+      // made is never undone.
+      let autoGuardian = false;
+      function refresh() {
+        const minor = minorNow();
+        const age = ageFrom(birthNow());
+        for (const { el, s } of conditional) el.toggleAttribute('data-off', !shown(s, get, minor, age));
+        // Under 18 a parent or guardian signs: "Myself" goes, and the guardian is chosen.
+        if (self && selfInput && guardianInput) {
+          self.toggleAttribute('data-off', minor);
+          if (minor && !guardianInput.checked) { selfInput.checked = false; guardianInput.checked = true; autoGuardian = true; }
+          else if (!minor && autoGuardian) { guardianInput.checked = false; autoGuardian = false; }
+        }
+      }
+
+      // --- errors: beside each field, and listed at the top with a link to each
+      const control = (name: string): HTMLElement | null => {
+        const f = FIELDS[name];
+        if (!f) return null;
+        if (f.kind === 'radio' || f.kind === 'checks') return form.querySelector<HTMLElement>(`[data-pf-field="${name}"]`);
+        return input(name);
+      };
+      function setError(name: string, text: string) {
+        const p = form!.querySelector<HTMLElement>(`[data-err-for="${name}"]`);
+        if (p) p.textContent = text;
+        // A question folded away (details) opens when it needs a look.
+        if (text) p?.closest('details')?.setAttribute('open', '');
+        const c = control(name);
+        if (c) { if (text) c.setAttribute('aria-invalid', 'true'); else c.removeAttribute('aria-invalid'); }
+      }
+      function paintAlert(errs: Record<string, string>, formWords = '') {
+        const names = Object.keys(errs).filter((k) => FIELDS[k]).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+        if (!names.length && !formWords) { alertBox.hidden = true; alertTitle.textContent = ''; alertList.innerHTML = ''; return; }
+        const count = names.length === 1 ? 'One answer needs a look.' : `${names.length} answers need a look.`;
+        alertTitle.textContent = formWords || count;
+        // The first few, linked; the rest are marked beside their fields (the server's list does the same).
+        const more = names.length - LIST_MAX;
+        alertList.innerHTML = (formWords && names.length ? `<li class="sr-only">${esc(count)}</li>` : '')
+          + names.slice(0, LIST_MAX).map((n) => `<li><a href="#f-${esc(n)}" data-goto="${esc(n)}"><strong>${esc(FIELDS[n].short ?? FIELDS[n].label)}</strong><span>${esc(errs[n])}</span></a></li>`).join('')
+          + (more > 0 ? `<li class="pf-alert-more">And ${more} more, marked in red below.</li>` : '');
+        alertBox.hidden = false;
+      }
+      /** The server's own reader over what is in the form now: the errors on one step, or on all. */
+      function check(only?: number): Record<string, string> {
+        const r = parsePatientForm(new FormData(form!), { versions });
+        if (r.ok) return {};
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(r.errors)) if (k !== '_form' && v && (only === undefined || FIELD_STEP[k] === only)) out[k] = v;
+        return out;
+      }
+      function showErrors(errs: Record<string, string>, onStep: number) {
+        for (const p of form!.querySelectorAll<HTMLElement>('[data-err-for]')) {
+          const n = p.dataset.errFor!;
+          if (FIELD_STEP[n] === onStep) setError(n, errs[n] ?? '');
+        }
+        paintAlert(errs);
+        alertBox.focus({ preventScroll: true });
+        alertBox.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+      // Fixing an answer takes its sentence away, and the list is drawn again from what is still marked.
+      // A sentence about the whole form (a stale page, a busy clinic) stays until the next send.
+      const COUNT = /^(One answer needs|\d+ answers need) a look\.$/;
+      function clearError(name: string) {
+        if (!name || !form!.querySelector(`[data-err-for="${CSS.escape(name)}"]:not(:empty)`)) return;
+        setError(name, '');
+        const left = Array.from(form!.querySelectorAll<HTMLElement>('[data-err-for]:not(:empty)')).filter((p) => !p.closest('[data-off], [data-away]'));
+        const formWords = COUNT.test(alertTitle.textContent ?? '') ? '' : alertTitle.textContent ?? '';
+        paintAlert(Object.fromEntries(left.map((p) => [p.dataset.errFor!, p.textContent ?? ''])), formWords);
+      }
+      // A link in the list opens the question's step and puts the cursor in it.
+      alertList.addEventListener('click', (e) => {
+        const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[data-goto]');
+        if (!a) return;
+        e.preventDefault();
+        const name = a.dataset.goto!;
+        const s = FIELD_STEP[name];
+        if (s !== undefined && s !== at) show(s, { focus: false });
+        const c = control(name);
+        c?.closest('details')?.setAttribute('open', '');
+        const target = c && (c.tagName === 'DIV' ? c.querySelector<HTMLInputElement>('input:not([disabled])') ?? c : c);
+        target?.focus({ preventScroll: true });
+        (c ?? target)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+
+      // --- the steps
+      function show(i: number, o: { focus?: boolean; push?: boolean; scroll?: boolean } = {}) {
+        const { focus = true, push = true, scroll = true } = o;
+        at = Math.max(0, Math.min(last, i));
+        form!.dataset.at = String(at);
+        steps.forEach((s, n) => s.toggleAttribute('data-away', n !== at));
+        marks.forEach((m, n) => {
+          m.toggleAttribute('data-passed', n < at);
+          if (n === at) m.setAttribute('aria-current', 'step'); else m.removeAttribute('aria-current');
+          m.querySelector('[data-step-sr]')!.textContent = n < at ? ', done: go back to it' : '';
+        });
+        goers.forEach((b, n) => { b.disabled = n >= at; });
+        intro?.toggleAttribute('data-away', at !== 0);
+        back.toggleAttribute('data-away', at === 0);
+        next.toggleAttribute('data-away', at === last);
+        send.toggleAttribute('data-away', at !== last);
+        sendNote?.toggleAttribute('data-away', at !== last);
+        if (push) history.pushState({ pfStep: at }, '');
+        if (focus) steps[at].querySelector<HTMLElement>('legend')?.focus({ preventScroll: true });
+        if (scroll) main!.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+      next.addEventListener('click', () => {
+        const errs = check(at);
+        if (Object.keys(errs).length) { showErrors(errs, at); return; }
+        paintAlert({});
+        show(at + 1);
+      });
+      back.addEventListener('click', () => { paintAlert({}); show(at - 1); });
+      // A step already done, from the stepper: straight back to it (ahead is Continue's job, which checks).
+      goers.forEach((b, n) => b.addEventListener('click', () => { if (n < at) { paintAlert({}); show(n); } }));
+      // The phone's own Back goes a step back rather than off the page.
+      addEventListener('popstate', (e) => {
+        const s = (e.state as { pfStep?: number } | null)?.pfStep;
+        if (typeof s === 'number') { paintAlert({}); show(s, { push: false }); }
+      });
+
+      // Enter moves on (never in a box of several lines); on the last step it sends.
+      form.addEventListener('keydown', (e) => {
+        const t = e.target as HTMLElement;
+        if (e.key !== 'Enter' || e.isComposing || ['TEXTAREA', 'BUTTON', 'A', 'SELECT'].includes(t.tagName)) return;
+        e.preventDefault();
+        if (at < last) next.click(); else form.requestSubmit(send);
+      });
+      form.addEventListener('submit', (e) => {
+        if (at < last) { e.preventDefault(); next.click(); return; }
+        const errs = check();
+        const names = Object.keys(errs);
+        if (names.length) {
+          e.preventDefault();
+          const first = Math.min(...names.map((n) => FIELD_STEP[n]));
+          if (first !== at) show(first, { focus: false });
+          const onStep = Object.fromEntries(Object.entries(errs).filter(([k]) => FIELD_STEP[k] === first));
+          showErrors(onStep, first);
+          return;
+        }
+        dirty = false;
+        sendWords.textContent = 'Sending…';
+        setTimeout(() => { send.disabled = true; }, 0);
+      });
+      // Back from somewhere else to this page: the button works again. (A page from the browser's memory
+      // is reloaded empty before this matters: the inline script at the top.)
+      addEventListener('pageshow', () => { send.disabled = false; sendWords.textContent = 'Send my forms'; });
+
+      // "None" ticked alone: ticking it clears the others, ticking another clears it.
+      form.addEventListener('change', (e) => {
+        const t = e.target as HTMLInputElement;
+        const f = FIELDS[t.name];
+        if (t.name === 'signed_as') autoGuardian = false;
+        if (f?.kind === 'checks' && f.none && t.checked) {
+          for (const o of form.querySelectorAll<HTMLInputElement>(`input[name="${t.name}"]`)) {
+            if (o !== t && (t.value === f.none || o.value === f.none)) o.checked = false;
+          }
+        }
+        // "None" ticked folds the rest of its list away; unticked, the list is back.
+        if (f?.kind === 'checks' && f.none) {
+          const none = form.querySelector<HTMLInputElement>(`input[name="${t.name}"][value="${f.none}"]`);
+          form.querySelector(`[data-pf-field="${t.name}"]`)?.toggleAttribute('data-none-on', !!none?.checked);
+        }
+        refresh();
+        clearError(t.name);
+        if (t.name === 'birth_date') clearError('signed_as');
+      });
+      form.addEventListener('input', (e) => {
+        dirty = true;
+        const t = e.target as HTMLInputElement;
+        refresh();
+        if (t.name && FIELDS[t.name]?.kind !== 'radio' && FIELDS[t.name]?.kind !== 'checks') clearError(t.name);
+      });
+      // A long form is not lost to a slip of the thumb.
+      addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+      refresh();
+      show(at, { focus: false, push: false, scroll: false });
+      history.replaceState({ pfStep: at }, '', location.href);
+      // Sent back with something to look at: the list first.
+      if (!alertBox.hidden) {
+        alertBox.focus({ preventScroll: true });
+        alertBox.scrollIntoView({ block: 'center' });
+      }
+    } else {
+      // Done: the thanks takes the focus, so a screen reader starts there.
+      document.querySelector<HTMLElement>('#done-title')?.focus({ preventScroll: true });
+      if (byPost) history.replaceState(null, '', location.href);
+      // "Fill in forms for someone else": the empty forms take the thank-you's place in the history, so
+      // Back from them does not show the last person's name.
+      document.querySelector<HTMLAnchorElement>('[data-pf-again]')?.addEventListener('click', (e) => {
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        location.replace((e.currentTarget as HTMLAnchorElement).href);
+      });
+    }
+  </script>
+</Base>

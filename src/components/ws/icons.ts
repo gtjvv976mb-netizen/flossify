@@ -5,7 +5,7 @@
 export type IconName =
   | 'dashboard' | 'wallet' | 'settings' | 'patients' | 'calendar' | 'plus' | 'search' | 'inbox'
   | 'user' | 'logout' | 'check' | 'alert' | 'info' | 'clock' | 'money' | 'file' | 'upload' | 'download'
-  | 'chevron' | 'chevron-right' | 'chevron-left' | 'menu' | 'close' | 'message' | 'clinic' | 'arrow-right';
+  | 'chevron' | 'chevron-right' | 'chevron-left' | 'menu' | 'close' | 'message' | 'clinic' | 'arrow-right' | 'phone';
 
 // Each entry is the inside of a 24×24 <svg>: paths, circles, rects.
 export const PATHS: Record<IconName, string> = {
@@ -44,6 +44,8 @@ export const PATHS: Record<IconName, string> = {
   // a clinic front: a roof, a door, a cross
   clinic: '<path d="M3.5 10.5L12 4l8.5 6.5"/><path d="M5.5 9v11.5h13V9"/><path d="M12 10.5v5M9.5 13h5"/>',
   'arrow-right': '<path d="M5 12h14M13.5 6.5L19 12l-5.5 5.5"/>',
+  // a handset: call
+  phone: '<path d="M7.2 3.5H5.5a2 2 0 0 0-2 2.1C4 13.4 10.6 20 18.4 20.5a2 2 0 0 0 2.1-2v-1.7a1.5 1.5 0 0 0-1.1-1.45l-3.1-.85a1.5 1.5 0 0 0-1.5.4l-1.3 1.3a13 13 0 0 1-6.2-6.2l1.3-1.3a1.5 1.5 0 0 0 .4-1.5l-.85-3.1A1.5 1.5 0 0 0 7.2 3.5z"/>',
 };
 
 /** The whole <svg> for a name, for markup built in the browser (decorative: aria-hidden). */
