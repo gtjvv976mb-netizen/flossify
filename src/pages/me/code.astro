@@ -61,23 +61,25 @@ if (Astro.request.method === 'POST') {
 ---
 
 <Door title="Enter your code — Flossify" description="Enter the six-digit code we texted to see your visits." step={2}>
-  <a href="/me/" class="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-ctl px-2 text-[14.5px] font-medium text-ink-2 transition-colors hover:bg-subtle hover:text-ink"><Icon name="chevron-left" size={16} />My visits</a>
-  <h1 class="mt-3 text-[clamp(1.75rem,3.5vw,2.25rem)]">Enter your code</h1>
-  <p class="mt-3 max-w-[46ch] text-[16px] leading-relaxed text-ink-2">Type the six digits from the text. It works for 15 minutes, and you stay signed in on this phone for a month.</p>
+  <Fragment slot="head">
+    <a href="/me/" class="me-door-back"><Icon name="chevron-left" size={16} />My visits</a>
+    <h1 class="me-door-title">Enter your code</h1>
+    <p class="me-door-lede">Type the six digits from the text. It works for 15 minutes, and you stay signed in on this phone for a month.</p>
+  </Fragment>
 
-  {sent && !error && <p role="status" class="ws-callout mt-6" data-tone="success"><Icon name="message" /><span>If that number has visits on Flossify, a code is on its way. It works for 15 minutes.</span></p>}
-  {error && <p role="alert" class="ws-callout mt-6" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>}
+  {sent && !error && <p role="status" class="ws-callout me-door-callout" data-tone="success"><Icon name="message" /><span>If that number has visits on Flossify, a code is on its way. It works for 15 minutes.</span></p>}
+  {error && <p role="alert" class="ws-callout me-door-callout" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>}
 
-  <form method="post" class="mt-7 grid max-w-[26rem] gap-5">
+  <form method="post" class="me-door-form me-door-form-code">
     <Csrf />
     <label class="field"><span class="meta">Mobile number</span><input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="0917 000 0000" value={typed} required autofocus={!typed} /></label>
     <label class="field"><span class="meta">Code</span><input type="text" name="code" inputmode="numeric" pattern="[0-9]*" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="6 digits" required autofocus={!!typed} class="font-mono text-[20px] tracking-[0.2em] tabular-nums placeholder:font-sans placeholder:text-[16px] placeholder:tracking-normal" /></label>
-    <button type="submit" class="btn btn-primary btn-lg w-full sm:w-auto sm:justify-self-start"><span>See my visits</span><Icon name="arrow-right" /></button>
+    <button type="submit" class="btn btn-primary me-door-go"><span>See my visits</span><Icon name="arrow-right" /></button>
   </form>
 
-  <div class="mt-7 border-t border-hair pt-5">
-    <a href="/me/" class="inline-flex min-h-11 items-center gap-2 text-[15px] font-semibold text-teal-ink underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current">Didn’t get a text? Ask again.<Icon name="chevron-right" size={16} /></a>
-    <p class="mt-1 text-[14px] leading-relaxed text-ink-2">Texts can take a minute to arrive. Asking again voids the earlier code.</p>
+  <div class="me-door-more">
+    <a href="/me/" class="me-door-link">Didn’t get a text? Ask again.<Icon name="chevron-right" size={16} /></a>
+    <p class="me-door-note">Texts can take a minute to arrive. Asking again voids the earlier code.</p>
   </div>
 </Door>
 
