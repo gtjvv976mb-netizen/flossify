@@ -1,13 +1,38 @@
 ---
-// flossify.ph/<clinic-slug>/ — the clinic's own address (docs/clinic-sites-design.md). Until its
-// generic site lands (P5), a listed clinic's address opens its page in Find a clinic, and one that
-// is not listed yet opens its staff sign-in: its team can always get in, and the public sees nothing
-// the clinic has not published. An address that is no clinic is the site's own 404.
+// flossify.ph/<clinic-slug>/ — the clinic's own site (docs/clinic-sites-design.md, P5): a generic page
+// every clinic on Flossify has, different from the custom websites service (/websites/). The clinic's own
+// bar — its initials and name, its sections, Staff sign-in to its door, and Book a visit — over the same
+// page Find a clinic shows (find/_ui/ClinicPage.astro): who it is and whether it is open now, dentists
+// and their PRC checks, the fee guide, hours, cards, on its own photo in frosted glass. The booking is the
+// clinic's booking at /find/<slug>/book/.
+//
+// A clinic that is not listed yet has nothing public to show: its address opens its staff sign-in, so the
+// team can always get in and the public sees nothing the clinic has not published. An address that is no
+// clinic is the site's own 404.
 export const prerender = false;
 
+import Base from '../../layouts/Base.astro';
+import SiteHeader from '../../components/site/SiteHeader.astro';
+import ClinicPage from '../find/_ui/ClinicPage.astro';
 import { clinicDoor } from '../../lib/auth';
+import { loadListing } from '../../lib/directory-db';
 
-const door = await clinicDoor(String(Astro.params.clinic ?? '').toLowerCase());
+const slug = String(Astro.params.clinic ?? '').toLowerCase();
+const door = await clinicDoor(slug);
 if (!door) return new Response(null, { status: 404 });
-return Astro.redirect(door.listed ? `/find/${door.slug}/` : `/${door.slug}/sign-in/`, 302);
+const l = door.listed ? await loadListing(door.slug) : null;
+if (!l) return Astro.redirect(`/${door.slug}/sign-in/`, 302);
+// The page's own teal button books; the bar's is the quiet twin (one teal button per screen), with the same words.
+const book = { href: `/find/${l.slug}/book/`, label: l.workspace ? 'Book a slot' : 'Request a time' };
+const sections = [
+  { id: 'dent', label: 'Dentists', href: '#dent', icon: 'patients' as const },
+  { id: 'fee', label: 'Prices', href: '#fee', icon: 'money' as const },
+  { id: 'hrs', label: 'Hours', href: '#hrs', icon: 'clock' as const },
+  { id: 'cov', label: 'HMO & PhilHealth', href: '#cov', icon: 'file' as const },
+];
 ---
+
+<Base title={`${l.name} — ${l.area}`} description={`${l.name}, ${l.area}. Dentists, prices, hours and the HMO cards it takes. ${l.workspace ? 'Book a visit' : 'Request a time'} online, no account needed.`}>
+  <SiteHeader clinic={{ name: l.name, slug: l.slug, book }} links={sections} cta="quiet" />
+  <ClinicPage l={l} site />
+</Base>

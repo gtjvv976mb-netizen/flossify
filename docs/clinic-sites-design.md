@@ -159,7 +159,7 @@ at `/auth/login/` as before.
   tick to finish, undo); "Assign a task" for `tasks.assign`; the assigner sees
   the ones they gave out. An assignee can only be someone at this branch.
 
-### P5 — the clinic's site at `/<slug>/`
+### P5 — the clinic's site at `/<slug>/` (shipped)
 - The clinic's page as a small site: its name and top bar (Services, Hours,
   Dentists, Find us, **Book a visit**, Sign in), over its own cover photo in
   frosted glass (`clinic-glass.css`), reusing the clinic page's data

@@ -81,8 +81,8 @@ const taxProblem = problems.some((p) => /TIN|BIR|branch code/i.test(p));
       <p class="flex items-start gap-3">
         <Icon name="user" size={18} class="mt-0.5 flex-none text-[var(--ws-teal-ink)]" />
         <span>
-          <span class="block text-[16px] font-semibold text-ink">Your team signs in at <a href={`/${data.c.slug}/sign-in/`} class="underline underline-offset-4 text-[var(--ws-teal-ink)]">flossify.ph/{data.c.slug}/sign-in</a></span>
-          <span class="mt-0.5 block text-[14.5px] text-ink-2">Each person with their own username, shown on their page under People. Bookmark it on the clinic’s computers.</span>
+          <span class="block text-[16px] font-semibold text-ink">Your clinic’s own page: <a href={`/${data.c.slug}/`} class="underline underline-offset-4 text-[var(--ws-teal-ink)]">flossify.ph/{data.c.slug}</a></span>
+          <span class="mt-0.5 block text-[14.5px] text-ink-2">{data.c.listed ? 'Patients see your dentists, prices and hours there, and book.' : 'It opens to patients once the clinic is listed; until then it opens your team’s sign-in.'} Your team signs in at <a href={`/${data.c.slug}/sign-in/`} class="font-semibold underline underline-offset-4 text-[var(--ws-teal-ink)]">flossify.ph/{data.c.slug}/sign-in</a>, each with their own username. Bookmark it on the clinic’s computers.</span>
         </span>
       </p>
     </div>

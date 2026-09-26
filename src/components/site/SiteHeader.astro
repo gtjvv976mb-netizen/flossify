@@ -13,10 +13,16 @@
 //     <span slot="aside">Pricing · Reception</span>           beside the links (shown from 1180px)
 //     <div class="absolute inset-x-0 bottom-0 h-px">…</div>  anything else inside the <header>
 //   </SiteHeader>
+//   <SiteHeader clinic={{ name, slug, book: { href, label } }} links={[…]} />
+//                                                             a clinic's own site (/<slug>/): its initials and
+//                                                             name instead of the Flossify mark, its sections as
+//                                                             the links, Staff sign-in to its door, and its
+//                                                             booking as the teal button
 //
 // The styles are "The public top bar" in src/styles/global.css. The icons are the workspace's
 // (ws/Icon.astro): one icon per idea, the same everywhere.
 import Icon from '../ws/Icon.astro';
+import ClinicBadge from '../../pages/find/_ui/ClinicBadge.astro';
 import type { IconName } from '../ws/icons';
 
 export type SiteLink = { id: string; label: string; href: string; icon: IconName };
@@ -48,15 +54,21 @@ interface Props {
   wide?: boolean;
   /** Sticky at the top of the screen (default). */
   sticky?: boolean;
+  /** A clinic's own site: the bar is that clinic's (see above). */
+  clinic?: { name: string; slug: string; book: { href: string; label: string } };
   class?: string;
 }
 
-const { current, links = 'site', cta = 'primary', wide = false, sticky = true, class: extra } = Astro.props;
+const { current, links = 'site', cta = 'primary', wide = false, sticky = true, clinic, class: extra } = Astro.props;
 const items = links === 'site' ? SITE : links === 'patients' ? PATIENTS : links;
 const navLabel = links === 'patients' ? 'Patients' : 'Site';
 const here = (id: string) => (id === current ? 'page' : undefined);
 const ctaClass = cta === 'quiet' ? 'btn-quiet' : 'btn-primary';
 const hasAside = Astro.slots.has('aside');
+// Home, sign-in and the teal action: Flossify's, or on a clinic's own site that clinic's.
+const home = clinic ? `/${clinic.slug}/` : '/';
+const signIn = clinic ? { href: `/${clinic.slug}/sign-in/`, label: 'Staff sign-in' } : { href: '/auth/login/', label: 'Clinic sign-in' };
+const action = clinic ? { href: clinic.book.href, label: clinic.book.label, icon: 'calendar' as IconName } : { href: '/start/', label: 'Open your clinic', icon: 'arrow-right' as IconName };
 ---
 
 <header class:list={['site-top', sticky && 'site-sticky', extra]} data-wide={wide ? '' : undefined} data-site-top>
@@ -64,17 +76,21 @@ const hasAside = Astro.slots.has('aside');
     <button type="button" class="site-menu-btn" aria-label="Menu" aria-haspopup="dialog" aria-controls="site-menu" aria-expanded="false" data-site-menu-open>
       <Icon name="menu" size={22} />
     </button>
-    <a href="/" class="ws-mark site-mark" aria-label="Flossify, home">
-      <svg class="ws-mark-sq" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" /><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z" /></svg>
-      <span class="ws-mark-word">Flossify</span>
-    </a>
+    {clinic ? (
+      <a href={home} class="ws-mark site-mark site-clinic-mark"><ClinicBadge name={clinic.name} /><span class="ws-mark-word">{clinic.name}</span></a>
+    ) : (
+      <a href="/" class="ws-mark site-mark" aria-label="Flossify, home">
+        <svg class="ws-mark-sq" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" /><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z" /></svg>
+        <span class="ws-mark-word">Flossify</span>
+      </a>
+    )}
     <nav class="site-nav" aria-label={navLabel}>
       {items.map((l) => <a href={l.href} class="site-link" aria-current={here(l.id)}>{l.label}</a>)}
     </nav>
     {hasAside && <div class="site-aside"><slot name="aside" /></div>}
     <div class="site-actions">
-      <a href="/auth/login/" class="site-link site-signin" aria-current={here('signin')}><Icon name="user" />Clinic sign-in</a>
-      <a href="/start/" class:list={['btn', ctaClass, 'site-cta']} aria-current={here('start')}><span>Open your clinic</span><Icon name="arrow-right" /></a>
+      <a href={signIn.href} class="site-link site-signin" aria-current={here('signin')}><Icon name="user" />{signIn.label}</a>
+      <a href={action.href} class:list={['btn', ctaClass, 'site-cta']} aria-current={here('start')}>{clinic && <Icon name={action.icon} />}<span>{action.label}</span>{!clinic && <Icon name={action.icon} />}</a>
     </div>
   </div>
   <slot />
@@ -83,10 +99,14 @@ const hasAside = Astro.slots.has('aside');
 <dialog id="site-menu" class="site-drawer" aria-label="Menu" data-site-menu>
   <div class="site-drawer-inner">
     <div class="site-drawer-head">
-      <a href="/" class="ws-mark" aria-label="Flossify, home">
-        <svg class="ws-mark-sq" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" /><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z" /></svg>
-        <span class="ws-mark-word">Flossify</span>
-      </a>
+      {clinic ? (
+        <a href={home} class="ws-mark site-clinic-mark"><ClinicBadge name={clinic.name} /><span class="ws-mark-word">{clinic.name}</span></a>
+      ) : (
+        <a href="/" class="ws-mark" aria-label="Flossify, home">
+          <svg class="ws-mark-sq" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" /><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z" /></svg>
+          <span class="ws-mark-word">Flossify</span>
+        </a>
+      )}
       <button type="button" class="site-menu-btn" aria-label="Close the menu" data-site-menu-close>
         <Icon name="close" size={20} />
       </button>
@@ -97,8 +117,8 @@ const hasAside = Astro.slots.has('aside');
       ))}
     </nav>
     <div class="site-drawer-foot">
-      <a href="/auth/login/" class="site-drawer-link" aria-current={here('signin')}><Icon name="user" size={20} /><span>Clinic sign-in</span></a>
-      <a href="/start/" class:list={['btn', ctaClass, 'site-drawer-cta']} aria-current={here('start')}><span>Open your clinic</span><Icon name="arrow-right" /></a>
+      <a href={signIn.href} class="site-drawer-link" aria-current={here('signin')}><Icon name="user" size={20} /><span>{signIn.label}</span></a>
+      <a href={action.href} class:list={['btn', ctaClass, 'site-drawer-cta']} aria-current={here('start')}>{clinic && <Icon name={action.icon} />}<span>{action.label}</span>{!clinic && <Icon name={action.icon} />}</a>
     </div>
   </div>
 </dialog>
