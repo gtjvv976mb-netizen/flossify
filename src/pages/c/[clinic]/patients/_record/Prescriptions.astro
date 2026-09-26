@@ -1,0 +1,109 @@
+---
+// Prescriptions: written here, printed on the clinic's paper (./rx/<id>/ beside this record) with the
+// prescriber's PRC licence and PTR number. Up to six medicines, each with how to take it. The medicine box
+// suggests names only — never a dose: the dentist writes the strength and the directions every time.
+// Generic names come first, as the Generics Act (RA 6675) asks.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import Glyph from '../_ui/Glyph.astro';
+import { RX_ROWS, type Clinical, type RecordProblem, type RxItem } from '../../../../../lib/record';
+import { when } from '../../../../../lib/health';
+
+interface Props { c: Clinical; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; firstName: string; printBase: string; allergies: string[]; typedRows?: RxItem[] }
+const { c, canEdit, action, meId, problem, saved, firstName, printBase, allergies, typedRows = [] } = Astro.props;
+
+// Names only, the ones a dental clinic writes most. No strengths or doses.
+const DRUGS = ['Amoxicillin', 'Co-amoxiclav (amoxicillin + clavulanic acid)', 'Clindamycin', 'Azithromycin', 'Metronidazole', 'Cefalexin',
+  'Mefenamic acid', 'Ibuprofen', 'Paracetamol', 'Celecoxib', 'Naproxen sodium', 'Etoricoxib', 'Tranexamic acid', 'Chlorhexidine gluconate mouthwash', 'Benzydamine mouthwash'];
+const meRx = c.clinicians.find((x) => x.id === meId);
+const v = problem?.intent === 'rx-add' ? problem.values : null;
+// What was typed comes back row by row (the page reads every "drug", "sig" … in order from the refused post).
+const rows = Array.from({ length: RX_ROWS }, (_, i) => ({ drug: '', strength: '', qty: '', sig: '', ...(v ? typedRows[i] : {}), i }));
+const lastTyped = v ? typedRows.reduce((n, r, i) => (r.drug || r.strength || r.qty || r.sig ? i + 1 : n), 0) : 0;
+const shownRows = Math.min(RX_ROWS, Math.max(2, lastTyped));
+const justSaved = saved?.startsWith('rx:') ? saved.slice(3) : null;
+const help = 'text-[13px] leading-snug text-ink-2';
+---
+
+<div class="grid gap-4 max-md:gap-3">
+  {justSaved && (
+    <Callout tone="success" title="Prescription saved.">
+      <p><a href={`${printBase}${justSaved}/`} class="font-semibold underline underline-offset-2" target="_blank" rel="noopener">Print it for {firstName}</a> on the clinic’s paper, with the prescriber’s licence numbers.</p>
+    </Callout>
+  )}
+  <Pane as="section" label="Prescriptions" id="rx">
+    <Head icon="pill" title="Prescriptions" meta={c.rx.length ? `${c.rx.length} written` : undefined} />
+    <div class="rec-lead -mt-2 mb-4">
+      <p>Medicines prescribed to {firstName}, ready to print with the dentist’s PRC licence and PTR numbers.</p>
+      {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-rx-add"><Icon name="plus" />New prescription</button>}
+    </div>
+    {c.rx.length === 0 ? <Empty icon="file" text="No prescriptions yet." /> : (
+      <div>
+        {c.rx.map((r) => (
+          <article class="rx-card" aria-label={`Prescription of ${when(new Date(r.at))}`}>
+            <header class="nt-head">
+              <p class="nt-day">{when(new Date(r.at))}</p>
+              <p class="nt-who">{r.prescriber}{r.prc ? ` · PRC ${r.prc}` : ''}</p>
+            </header>
+            <ol class="rx-items">
+              {r.items.map((it) => <li><strong>{it.drug}</strong>{it.strength && ` ${it.strength}`}{it.qty && <span> · #{it.qty}</span>}<br /><span>{it.sig}</span></li>)}
+            </ol>
+            {r.notes && <p class="mt-2 text-[14px] text-ink-2">{r.notes}</p>}
+            <footer class="nt-foot">
+              <span>{r.items.length === 1 ? 'One medicine' : `${r.items.length} medicines`}</span>
+              <a href={`${printBase}${r.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm" target="_blank" rel="noopener"><Glyph name="print" />Print</a>
+            </footer>
+          </article>
+        ))}
+      </div>
+    )}
+  </Pane>
+</div>
+
+{canEdit && (
+  <SidePanel id="rec-rx-add" title="New prescription" meta={firstName} wide open={!!v}>
+    {problem?.intent === 'rx-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
+    {allergies.length > 0 && <Callout tone="alert" role="none" class="mb-4" title={`Allergies on file: ${allergies.join(', ')}`} text="Check every medicine against them." />}
+    <form method="post" action={`${action}#rx`} class="grid gap-4" data-rx-form>
+      <Csrf /><input type="hidden" name="intent" value="rx-add" />
+      <label class="field"><span class="meta">Prescribed by</span>
+        <select name="prescriber" required>
+          <option value="">Choose the dentist…</option>
+          {c.clinicians.map((x) => <option value={x.id} selected={(v?.prescriber ?? (meRx ? meId : '')) === x.id} disabled={!x.prc}>{x.name}{x.prc ? ` · PRC ${x.prc}` : ' · no PRC licence on file'}</option>)}
+        </select>
+        <span class={help}>The printout carries their PRC licence and PTR numbers.</span>
+      </label>
+      <fieldset class="min-w-0">
+        <legend class="mb-2 text-[14px] font-medium text-ink-2">Medicines <span class="font-normal">· generic name first</span></legend>
+        {rows.map((r) => (
+          <div class="rx-line" hidden={r.i >= shownRows} data-rx-line>
+            <label class="field rx-drug"><span class="meta">Medicine {r.i + 1}</span><input name="drug" value={r.drug} list="rec-rx-drugs" maxlength="120" autocomplete="off" placeholder="e.g. Amoxicillin" /></label>
+            <label class="field"><span class="meta">Strength and form</span><input name="strength" value={r.strength} maxlength="60" autocomplete="off" placeholder="e.g. 500 mg capsule" /></label>
+            <label class="field"><span class="meta">How many</span><input name="qty" value={r.qty} maxlength="40" autocomplete="off" placeholder="e.g. 21" /></label>
+            <label class="field rx-sig"><span class="meta">How to take it</span><input name="sig" value={r.sig} maxlength="240" autocomplete="off" placeholder="e.g. 1 capsule every 8 hours for 7 days" /></label>
+          </div>
+        ))}
+        <button type="button" class="ws-btn ws-btn-quiet mt-2" data-rx-more hidden={shownRows >= RX_ROWS}><Icon name="plus" />Add another medicine</button>
+      </fieldset>
+      <datalist id="rec-rx-drugs">{DRUGS.map((d) => <option value={d} />)}</datalist>
+      <label class="field"><span class="meta">Note for the patient <span class="font-normal">(optional)</span></span><input name="notes" value={v?.notes ?? ''} maxlength="500" autocomplete="off" placeholder="e.g. Take after meals" /></label>
+      <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save prescription</button>
+    </form>
+  </SidePanel>
+)}
+
+<script>
+  const more = document.querySelector<HTMLButtonElement>('[data-rx-more]');
+  more?.addEventListener('click', () => {
+    const next = document.querySelector<HTMLElement>('[data-rx-line][hidden]');
+    if (!next) return;
+    next.hidden = false;
+    next.querySelector('input')?.focus();
+    if (!document.querySelector('[data-rx-line][hidden]')) more.hidden = true;
+  });
+</script>

@@ -1,0 +1,114 @@
+---
+// Clinical notes: one visit each, in the order a dentist thinks — why they came, what was found, the
+// diagnosis, what was done, what comes next — dated, with the dentist and the teeth. A signed note is
+// never edited (the database lets the app insert only): a correction is an addendum, shown under the
+// note it adds to, dated and signed in turn.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import type { Clinical, Note, RecordProblem } from '../../../../../lib/record';
+import { dateText, when } from '../../../../../lib/health';
+
+interface Props { c: Clinical; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string }
+const { c, canEdit, action, meId, problem, saved, today, firstName } = Astro.props;
+
+const PARTS: [keyof Note, string][] = [['complaint', 'Why they came'], ['findings', 'What was found'], ['diagnosis', 'Diagnosis'], ['treatment', 'What was done'], ['plan', 'Next steps']];
+const roots = c.notes.filter((n) => !n.amends);
+const addenda = (id: string) => c.notes.filter((n) => n.amends === id).sort((a, b) => +new Date(a.at) - +new Date(b.at));
+// An addendum whose note is older than the newest 300 still shows, on its own.
+const orphans = c.notes.filter((n) => n.amends && !c.notes.some((r) => r.id === n.amends));
+const meClinician = c.clinicians.some((x) => x.id === meId);
+const v = problem?.intent === 'note-add' ? problem.values : ({} as Record<string, string>);
+const help = 'text-[13px] leading-snug text-ink-2';
+---
+
+<div class="grid gap-4 max-md:gap-3">
+  {(saved === 'note' || saved === 'addendum') && <Callout tone="success" text={saved === 'note' ? 'Note saved under your name.' : 'Addendum saved under the note.'} />}
+  <Pane as="section" label="Clinical notes" id="notes">
+    <Head icon="pen" title="Clinical notes" meta={roots.length ? `${roots.length} ${roots.length === 1 ? 'note' : 'notes'}` : undefined} />
+    <div class="rec-lead -mt-2 mb-4">
+      <p>What the dentist saw and did at each visit. A saved note cannot be changed; to correct one, add an addendum.</p>
+      {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-note-add" data-amends=""><Icon name="plus" />New note</button>}
+    </div>
+    {c.notes.length === 0 ? <Empty icon="file" text="No clinical notes yet." /> : (
+      <div>
+        {[...roots, ...orphans].map((n) => (
+          <>
+            <article class="nt-card" data-addendum={n.amends ? '' : undefined} aria-label={`Note of ${dateText(n.visitOn)}`}>
+              <header class="nt-head">
+                <p class="nt-day">{n.amends ? 'Addendum · ' : ''}{dateText(n.visitOn)}</p>
+                <p class="nt-who">{[n.dentist, n.teeth.length ? `Teeth ${n.teeth.join(', ')}` : null].filter(Boolean).join(' · ')}</p>
+              </header>
+              <dl class="nt-parts">
+                {PARTS.filter(([k]) => n[k]).map(([k, label]) => <><dt>{label}</dt><dd>{n[k] as string}</dd></>)}
+              </dl>
+              <footer class="nt-foot">
+                <span>Written {when(new Date(n.at))}{n.by ? ` by ${n.by}` : ''}</span>
+                {canEdit && !n.amends && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-note-add" data-amends={n.id} data-amends-day={dateText(n.visitOn)}><Icon name="plus" />Add an addendum</button>}
+              </footer>
+            </article>
+            {!n.amends && addenda(n.id).map((a) => (
+              <article class="nt-card" data-addendum aria-label={`Addendum of ${when(new Date(a.at))}`}>
+                <header class="nt-head">
+                  <p class="nt-day">Addendum</p>
+                  <p class="nt-who">{[a.dentist, a.teeth.length ? `Teeth ${a.teeth.join(', ')}` : null].filter(Boolean).join(' · ')}</p>
+                </header>
+                <dl class="nt-parts">{PARTS.filter(([k]) => a[k]).map(([k, label]) => <><dt>{label}</dt><dd>{a[k] as string}</dd></>)}</dl>
+                <footer class="nt-foot"><span>Written {when(new Date(a.at))}{a.by ? ` by ${a.by}` : ''}</span></footer>
+              </article>
+            ))}
+          </>
+        ))}
+      </div>
+    )}
+  </Pane>
+</div>
+
+{canEdit && (
+  <SidePanel id="rec-note-add" title={v.amends ? 'Add an addendum' : 'New clinical note'} meta={firstName} wide open={problem?.intent === 'note-add'}>
+    {problem?.intent === 'note-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
+    <p class="mb-4 text-[14px] text-ink-2" data-note-lead>{v.amends ? 'An addendum is saved under the note it corrects. The note itself stays as it was written.' : 'Fill in what applies; every part is optional, but write at least one. It is saved under your name and cannot be changed afterwards.'}</p>
+    <form method="post" action={`${action}#notes`} class="grid gap-4">
+      <Csrf /><input type="hidden" name="intent" value="note-add" />
+      <input type="hidden" name="amends" value={v.amends ?? ''} data-note-amends />
+      <div class="grid gap-4 sm:grid-cols-3">
+        <label class="field"><span class="meta">Visit day</span><input type="date" name="visit_on" value={v.visit_on ?? today} max={today} required /></label>
+        <label class="field sm:col-span-2"><span class="meta">Dentist</span>
+          <select name="dentist">
+            <option value="">—</option>
+            {c.clinicians.map((x) => <option value={x.id} selected={(v.dentist ?? (meClinician ? meId : '')) === x.id}>{x.name}</option>)}
+          </select>
+        </label>
+      </div>
+      <label class="field"><span class="meta">Teeth <span class="font-normal">(optional)</span></span><input name="teeth" value={v.teeth ?? ''} autocomplete="off" inputmode="numeric" placeholder="e.g. 16 17" /><span class={help}>FDI numbers as on the chart, separated by spaces.</span></label>
+      <label class="field"><span class="meta">Why they came</span><textarea name="complaint" rows="2" maxlength="2000" placeholder="In the patient’s words, e.g. “pain on the lower left when drinking cold”">{v.complaint ?? ''}</textarea></label>
+      <label class="field"><span class="meta">What was found</span><textarea name="findings" rows="3" maxlength="4000" placeholder="Examination, tests, X-rays">{v.findings ?? ''}</textarea></label>
+      <label class="field"><span class="meta">Diagnosis</span><textarea name="diagnosis" rows="2" maxlength="2000">{v.diagnosis ?? ''}</textarea></label>
+      <label class="field"><span class="meta">What was done</span><textarea name="treatment" rows="3" maxlength="4000" placeholder="Anaesthetic, procedure, materials">{v.treatment ?? ''}</textarea></label>
+      <label class="field"><span class="meta">Next steps</span><textarea name="plan" rows="2" maxlength="2000" placeholder="Advice given, next visit">{v.plan ?? ''}</textarea></label>
+      <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save note</button>
+    </form>
+  </SidePanel>
+)}
+
+<script>
+  // One panel for a new note and an addendum: the button that opened it says which.
+  const panel = document.getElementById('rec-note-add');
+  panel?.addEventListener('ws:panel-open', (e) => {
+    const opener = (e as CustomEvent).detail?.opener as HTMLElement | null;
+    if (!opener || opener.dataset.amends === undefined) return;
+    const id = opener.dataset.amends ?? '';
+    const input = panel.querySelector<HTMLInputElement>('[data-note-amends]');
+    if (input) input.value = id;
+    const title = panel.querySelector('[data-ws-title]') ?? panel.querySelector('.ws-panel-title');
+    if (title) title.textContent = id ? 'Add an addendum' : 'New clinical note';
+    const lead = panel.querySelector('[data-note-lead]');
+    if (lead) lead.textContent = id
+      ? `This is saved under the note of ${opener.dataset.amendsDay}. That note stays as it was written.`
+      : 'Fill in what applies; every part is optional, but write at least one. It is saved under your name and cannot be changed afterwards.';
+  });
+</script>

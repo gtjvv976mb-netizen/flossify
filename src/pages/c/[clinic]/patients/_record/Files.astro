@@ -1,0 +1,145 @@
+---
+// Files: X-rays, photos and documents (a referral, a signed paper form, a lab slip). Drop them on the box or
+// choose them; say what they are with one tap; a tooth, the day taken and a caption are optional. Pictures
+// get a small preview; every file opens from ./files/<id>/ beside this record, which only a signed-in member
+// of this branch can reach (never the public /uploads/ route). Remove hides a file from the record and keeps
+// it for the audit.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import Glyph from '../_ui/Glyph.astro';
+import { FILE_KINDS, type Clinical, type RecordProblem } from '../../../../../lib/record';
+import { dateText } from '../../../../../lib/health';
+
+interface Props { c: Clinical; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; fileBase: string }
+const { c, canEdit, action, problem, saved, today, firstName, fileBase } = Astro.props;
+
+const GROUP: Record<string, 'xray' | 'photo' | 'doc'> = { xray_periapical: 'xray', xray_bitewing: 'xray', xray_panoramic: 'xray', cbct: 'xray', photo_intraoral: 'photo', photo_extraoral: 'photo', document: 'doc', other: 'doc' };
+const FILTERS = [{ id: 'all', label: 'All' }, { id: 'xray', label: 'X-rays' }, { id: 'photo', label: 'Photos' }, { id: 'doc', label: 'Documents' }]
+  .map((f) => ({ ...f, n: f.id === 'all' ? c.files.length : c.files.filter((x) => GROUP[x.kind] === f.id).length }))
+  .filter((f) => f.id === 'all' || f.n > 0);
+const size = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+const dayOf = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(d));
+const v = problem?.intent === 'file-add' ? problem.values : ({} as Record<string, string>);
+const inline = problem?.intent === 'file-remove' ? problem.text : null;
+const SAVED: Record<string, string> = { file: 'File added to the record.', 'file-removed': 'File taken off the record. It is kept for the audit.' };
+const savedText = saved?.startsWith('files:') ? `${saved.slice(6)} files added to the record.` : saved ? SAVED[saved] : null;
+const KIND_TILES: [string, string][] = [['xray_periapical', 'Periapical X-ray'], ['xray_bitewing', 'Bitewing X-ray'], ['xray_panoramic', 'Panoramic X-ray'], ['cbct', 'CBCT scan'], ['photo_intraoral', 'Photo, inside the mouth'], ['photo_extraoral', 'Photo, face and smile'], ['document', 'Document'], ['other', 'Other']];
+const help = 'text-[13px] leading-snug text-ink-2';
+---
+
+<div class="grid gap-4 max-md:gap-3">
+  {savedText && <Callout tone="success" text={savedText} />}
+  {inline && <Callout tone="alert" text={inline} />}
+  <Pane as="section" label="Files" id="files">
+    <Head icon="image" title="X-rays, photos and files" meta={c.files.length ? `${c.files.length} on record` : undefined} />
+    <div class="rec-lead -mt-2 mb-4">
+      <p>Only people who work at this branch can open them. Pictures and PDFs, up to 25 MB each.</p>
+      {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-file-add"><Icon name="upload" />Add files</button>}
+    </div>
+    {c.files.length === 0 ? <Empty icon="file" text="No X-rays, photos or files yet." /> : (
+      <>
+        {FILTERS.length > 2 && (
+          <div class="tl-filters mb-4" role="group" aria-label="Show files" data-fl-filters>
+            {FILTERS.map((f, i) => <button type="button" class="tl-filter" aria-pressed={i === 0 ? 'true' : 'false'} data-fl-kind={f.id}>{f.label} <span class="tl-n">{f.n}</span></button>)}
+          </div>
+        )}
+        <ul class="fl-grid">
+          {c.files.map((f) => {
+            const label = FILE_KINDS[f.kind] ?? 'File';
+            return (
+              <li class="fl-card" data-fl-group={GROUP[f.kind] ?? 'doc'}>
+                <div class="fl-thumb" data-doc={f.thumb ? undefined : ''}>
+                  {f.thumb ? <img src={`${fileBase}${f.id}/?thumb=1`} alt="" loading="lazy" decoding="async" /> : <Glyph name="file" size={36} />}
+                </div>
+                <a class="fl-open" href={`${fileBase}${f.id}/`} target="_blank" rel="noopener" aria-label={`Open ${label}${f.caption ? `: ${f.caption}` : ''}`}></a>
+                <div class="fl-body">
+                  <p class="fl-kind">{label}{f.fdi ? ` · tooth ${f.fdi}` : ''}</p>
+                  {f.caption && <p class="text-ink break-words">{f.caption}</p>}
+                  <p>{f.takenAt ? `Taken ${dateText(f.takenAt)}` : `Added ${dateText(dayOf(f.at))}`} · {size(f.bytes)}</p>
+                  {f.by && <p>By {f.by}</p>}
+                  <div class="fl-acts">
+                    <a href={`${fileBase}${f.id}/?download=1`} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="download" /><span class="sr-only">Download {label}</span><span aria-hidden="true">Save</span></a>
+                    {canEdit && (
+                      <form method="post" action={`${action}#files`} data-confirm={`Take this ${label.toLowerCase()} off ${firstName}’s record? It is kept for the audit, hidden from the record.`}>
+                        <Csrf /><input type="hidden" name="intent" value="file-remove" /><input type="hidden" name="file" value={f.id} />
+                        <button class="ws-btn ws-btn-danger ws-btn-sm">Remove</button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </>
+    )}
+  </Pane>
+</div>
+
+{canEdit && (
+  <SidePanel id="rec-file-add" title="Add files" meta={firstName} wide open={problem?.intent === 'file-add'}>
+    {problem?.intent === 'file-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was added; choose the files again.`} />}
+    <form method="post" action={`${action}#files`} enctype="multipart/form-data" class="grid gap-5" data-fl-form>
+      <Csrf /><input type="hidden" name="intent" value="file-add" />
+      <label class="fl-drop" data-fl-drop>
+        <Icon name="upload" size={28} />
+        <strong>Drop files here, or choose them</strong>
+        <span class="text-[13.5px]">JPEG, PNG, WebP or PDF · up to 10 at a time · 25 MB each</span>
+        <span class="fl-picked" data-fl-picked aria-live="polite"></span>
+        <input type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple required class="sr-only" data-fl-input />
+      </label>
+      <fieldset class="min-w-0">
+        <legend class="mb-2 text-[14px] font-medium text-ink-2">What is it?</legend>
+        <div class="fl-kinds">
+          {KIND_TILES.map(([k, label]) => <label><input type="radio" name="kind" value={k} class="sr-only" checked={(v.kind ?? 'xray_periapical') === k} />{label}</label>)}
+        </div>
+      </fieldset>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="field"><span class="meta">Tooth <span class="font-normal">(optional)</span></span><input name="fdi" value={v.fdi ?? ''} inputmode="numeric" maxlength="2" autocomplete="off" placeholder="e.g. 36" /></label>
+        <label class="field"><span class="meta">Day taken</span><input type="date" name="taken_on" value={v.taken_on ?? today} max={today} /></label>
+      </div>
+      <label class="field"><span class="meta">Caption <span class="font-normal">(optional)</span></span><input name="caption" value={v.caption ?? ''} maxlength="200" autocomplete="off" placeholder="e.g. Before root canal" /><span class={help}>With several files and no caption, each keeps its file name.</span></label>
+      <button type="submit" class="ws-btn ws-btn-primary w-full" data-fl-submit><Icon name="upload" />Add to the record</button>
+    </form>
+  </SidePanel>
+)}
+
+<script>
+  // Filter chips.
+  const bar = document.querySelector<HTMLElement>('[data-fl-filters]');
+  bar?.addEventListener('click', (e) => {
+    const b = (e.target as Element).closest<HTMLButtonElement>('[data-fl-kind]');
+    if (!b) return;
+    bar.querySelectorAll('[data-fl-kind]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    document.querySelectorAll<HTMLElement>('[data-fl-group]').forEach((c) => { c.hidden = b.dataset.flKind !== 'all' && c.dataset.flGroup !== b.dataset.flKind; });
+  });
+  // The drop box: files dropped on it go into the input; the box says what was picked.
+  const drop = document.querySelector<HTMLElement>('[data-fl-drop]');
+  const input = document.querySelector<HTMLInputElement>('[data-fl-input]');
+  const picked = document.querySelector<HTMLElement>('[data-fl-picked]');
+  const say = () => {
+    if (!input || !picked) return;
+    const fs = [...(input.files ?? [])];
+    const big = fs.filter((f) => f.size > 25 * 1024 * 1024);
+    picked.textContent = !fs.length ? '' : big.length ? `${big.map((f) => f.name).join(', ')}: larger than 25 MB.` : fs.length === 1 ? `Chosen: ${fs[0].name}` : `${fs.length} files chosen`;
+    // Guess the kind from the first file: a PDF is a document.
+    if (fs[0]?.type === 'application/pdf') { const doc = document.querySelector<HTMLInputElement>('input[name="kind"][value="document"]'); if (doc) doc.checked = true; }
+  };
+  input?.addEventListener('change', say);
+  drop?.addEventListener('dragover', (e) => { e.preventDefault(); drop.dataset.over = ''; });
+  drop?.addEventListener('dragleave', () => { delete drop.dataset.over; });
+  drop?.addEventListener('drop', (e) => {
+    e.preventDefault(); delete drop.dataset.over;
+    if (input && e.dataTransfer?.files.length) { input.files = e.dataTransfer.files; say(); }
+  });
+  // Uploading can take a moment on a clinic's line: say so, and do not send twice.
+  document.querySelector<HTMLFormElement>('[data-fl-form]')?.addEventListener('submit', (e) => {
+    const b = (e.target as HTMLFormElement).querySelector<HTMLButtonElement>('[data-fl-submit]');
+    if (b) { b.disabled = true; b.textContent = 'Uploading…'; }
+  });
+</script>

@@ -1,0 +1,299 @@
+---
+// Treatment: the plan (what the dentist proposes, in phases, with prices from the fee guide), what was done,
+// and lab cases. A plan item walks planned → accepted → done (or declined); Mark done writes the treatment
+// done under the dentist, so the plan and the list below never disagree. Every form is a side panel; every
+// button is one post (recordAction in src/lib/record.ts), and a refused post comes back with its sentence.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import { PLAN_STATUS, LAB_STATUS, LAB_NEXT, type Clinical, type RecordProblem } from '../../../../../lib/record';
+import { dateText } from '../../../../../lib/health';
+
+interface Props { c: Clinical; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string }
+const { c, canEdit, action, meId, problem, saved, today, firstName } = Astro.props;
+
+const peso = (n: number | string) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+const tooth = (fdi: number | null, surface: string | null) => (fdi ? `${fdi}${surface ? ` ${surface}` : ''}` : null);
+const dayOf = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(d));
+const meClinician = c.clinicians.some((x) => x.id === meId);
+
+const open = c.plan.filter((i) => i.status === 'planned' || i.status === 'accepted');
+const closed = c.plan.filter((i) => i.status === 'done' || i.status === 'declined');
+const phases = [...new Set(open.map((i) => i.phase))].sort((a, b) => a - b);
+const sum = (xs: { price: string }[]) => xs.reduce((n, i) => n + Number(i.price), 0);
+const toDo = sum(open), accepted = sum(open.filter((i) => i.status === 'accepted')), doneSum = sum(c.plan.filter((i) => i.status === 'done'));
+const labsOpen = c.labs.filter((l) => l.status !== 'fitted');
+
+const SAVED: Record<string, string> = {
+  plan: 'Added to the plan.', 'plan-accepted': 'Marked accepted. The patient agreed to it.', 'plan-declined': 'Marked declined. It stays on the plan, crossed out.',
+  'plan-planned': 'Back to planned.', 'plan-done': 'Marked done, and added to treatments done.', 'plan-removed': 'Taken off the plan.',
+  done: 'Treatment recorded.', lab: 'Lab case added.', 'lab-moved': 'Lab case moved on.',
+};
+const inline = problem && ['plan-status', 'plan-remove', 'lab-next'].includes(problem.intent) ? problem.text : null;
+const v = (intent: string) => (problem?.intent === intent ? problem.values : {} as Record<string, string>);
+const pv = v('plan-add'), dv = v('done-add'), lv = v('lab-add');
+const help = 'text-[13px] leading-snug text-ink-2';
+// The fee guide by category, for the pickers.
+const cats = [...new Set(c.catalog.map((x) => x.category ?? 'Other'))];
+---
+
+<div class="grid gap-4 max-md:gap-3">
+  {saved && SAVED[saved] && <Callout tone="success" text={SAVED[saved]} />}
+  {inline && <Callout tone="alert" text={inline} />}
+
+  <Pane as="section" label="Treatment plan" id="treatment">
+    <Head icon="plan" title="Treatment plan" meta={open.length ? `${open.length} to do` : 'Nothing to do'} />
+    <div class="rec-lead -mt-2 mb-4">
+      <p>What the dentist proposes for {firstName}, in the order to do it. Mark each one when the patient agrees, and when it is done.</p>
+      {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-plan-add"><Icon name="plus" />Add to plan</button>}
+    </div>
+    {open.length === 0 ? (
+      <Empty icon="file" text={closed.length ? 'Everything on the plan is done or declined.' : 'No treatment planned yet.'} />
+    ) : (
+      <>
+        {phases.map((ph) => {
+          const items = open.filter((i) => i.phase === ph);
+          return (
+            <div class="tx-phase">
+              <h3 class="tx-phase-head">{phases.length > 1 || ph !== 1 ? `Phase ${ph}` : 'To do'}<span>{peso(sum(items))}</span></h3>
+              <ul>
+                {items.map((i) => (
+                  <li class="tx-row" data-status={i.status}>
+                    <div class="min-w-0">
+                      <p class="tx-what">{i.name}</p>
+                      <p class="tx-sub">
+                        {tooth(i.fdi, i.surface) && <span class="tx-tooth"><span class="sr-only">Tooth </span>{tooth(i.fdi, i.surface)}</span>}
+                        <Chip tone={PLAN_STATUS[i.status].tone} label={PLAN_STATUS[i.status].label} />
+                        {i.note && <span>{i.note}</span>}
+                      </p>
+                    </div>
+                    <p class="tx-price">{peso(i.price)}</p>
+                    {canEdit && (
+                      <div class="tx-acts">
+                        {i.status === 'planned' && (
+                          <form method="post" action={`${action}#treatment`}><Csrf /><input type="hidden" name="intent" value="plan-status" /><input type="hidden" name="item" value={i.id} /><input type="hidden" name="to" value="accepted" />
+                            <button class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="check" />Patient agreed</button></form>
+                        )}
+                        <form method="post" action={`${action}#treatment`} class="tx-done-form"><Csrf /><input type="hidden" name="intent" value="plan-status" /><input type="hidden" name="item" value={i.id} /><input type="hidden" name="to" value="done" />
+                          {meClinician ? <input type="hidden" name="dentist" value={meId} /> : (
+                            <select name="dentist" class="tx-who" required aria-label={`Who did ${i.name}`}>
+                              <option value="">Done by…</option>
+                              {c.clinicians.map((x) => <option value={x.id}>{x.name}</option>)}
+                            </select>
+                          )}
+                          <button class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="check" />Mark done</button></form>
+                        {i.status === 'accepted' && (
+                          <form method="post" action={`${action}#treatment`}><Csrf /><input type="hidden" name="intent" value="plan-status" /><input type="hidden" name="item" value={i.id} /><input type="hidden" name="to" value="planned" />
+                            <button class="ws-btn ws-btn-quiet ws-btn-sm">Not agreed yet</button></form>
+                        )}
+                        <form method="post" action={`${action}#treatment`}><Csrf /><input type="hidden" name="intent" value="plan-status" /><input type="hidden" name="item" value={i.id} /><input type="hidden" name="to" value="declined" />
+                          <button class="ws-btn ws-btn-quiet ws-btn-sm">Declined</button></form>
+                        <form method="post" action={`${action}#treatment`} data-confirm={`Take “${i.name}” off the plan? Use Declined instead if the patient said no.`}><Csrf /><input type="hidden" name="intent" value="plan-remove" /><input type="hidden" name="item" value={i.id} />
+                          <button class="ws-btn ws-btn-danger ws-btn-sm">Remove</button></form>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+        <p class="tx-total">
+          <span>Still to do: <strong>{peso(toDo)}</strong></span>
+          <span>Agreed: <strong>{peso(accepted)}</strong></span>
+          {doneSum > 0 && <span>Done from this plan: <strong>{peso(doneSum)}</strong></span>}
+        </p>
+        <p class="mt-2 text-[13px] text-ink-2">Prices are estimates from your fee guide, for the patient to plan with. They are not a statement.</p>
+      </>
+    )}
+    {closed.length > 0 && (
+      <details class="mt-4">
+        <summary class="inline-flex min-h-11 cursor-pointer items-center text-[14.5px] font-semibold text-ink-2">Done and declined ({closed.length})</summary>
+        <ul class="mt-1">
+          {closed.map((i) => (
+            <li class="tx-row" data-status={i.status}>
+              <div class="min-w-0">
+                <p class="tx-what">{i.name}</p>
+                <p class="tx-sub">{tooth(i.fdi, i.surface) && <span class="tx-tooth">{tooth(i.fdi, i.surface)}</span>}<Chip tone={PLAN_STATUS[i.status].tone} label={PLAN_STATUS[i.status].label} />{i.decidedAt && <span>{dateText(dayOf(i.decidedAt))}</span>}</p>
+              </div>
+              <p class="tx-price">{peso(i.price)}</p>
+            </li>
+          ))}
+        </ul>
+      </details>
+    )}
+  </Pane>
+
+  <Pane as="section" label="Treatments done" id="treatment-done">
+    <Head icon="tooth" title="Treatments done" meta={c.done.length ? `${c.done.length} on record` : undefined} />
+    <div class="rec-lead -mt-2 mb-4">
+      <p>What was done, by whom, on which tooth. Items marked done on the plan land here too.</p>
+      {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-done-add"><Icon name="plus" />Record a treatment</button>}
+    </div>
+    {c.done.length === 0 ? <Empty icon="check" text="No treatment recorded yet." /> : (
+      <ul>
+        {c.done.map((d) => (
+          <li class="tx-row">
+            <div class="min-w-0">
+              <p class="tx-what">{d.name}</p>
+              <p class="tx-sub">
+                <span class="tabular-nums">{dateText(dayOf(d.at))}</span>
+                {tooth(d.fdi, d.surface) && <span class="tx-tooth"><span class="sr-only">Tooth </span>{tooth(d.fdi, d.surface)}</span>}
+                {d.dentist && <span>{d.dentist}</span>}
+                {d.fromPlan && <span>from the plan</span>}
+              </p>
+              {d.note && <p class="mt-1 text-[14px] leading-relaxed whitespace-pre-line text-ink-2">{d.note}</p>}
+            </div>
+            <p class="tx-price">{Number(d.price) > 0 ? peso(d.price) : ''}</p>
+          </li>
+        ))}
+      </ul>
+    )}
+  </Pane>
+
+  <Pane as="section" label="Lab cases" id="treatment-lab">
+    <Head icon="lab" title="Lab cases" meta={labsOpen.length ? `${labsOpen.length} open` : undefined} />
+    <div class="rec-lead -mt-2 mb-4">
+      <p>Crowns, dentures, retainers and other work made by a lab: where each one is, and when it is due back.</p>
+      {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-lab-add"><Icon name="plus" />New lab case</button>}
+    </div>
+    {c.labs.length === 0 ? <Empty icon="clock" text="No lab cases for this patient." /> : (
+      <ul>
+        {c.labs.map((l) => {
+          const next = LAB_NEXT[l.status];
+          const late = l.dueOn && !l.receivedOn && l.dueOn < today;
+          return (
+            <li class="tx-row">
+              <div class="min-w-0">
+                <p class="tx-what">{l.description}</p>
+                <p class="tx-sub">
+                  <span>{l.lab}</span>
+                  {l.shade && <span>Shade {l.shade}</span>}
+                  {l.sentOn && <span>Sent {dateText(l.sentOn)}</span>}
+                  {l.dueOn && !l.receivedOn && <span class={late ? 'font-semibold text-[var(--ws-red-ink)]' : undefined}>{late ? 'Late: was due' : 'Due'} {dateText(l.dueOn)}</span>}
+                  {l.receivedOn && <span>Back {dateText(l.receivedOn)}</span>}
+                </p>
+                <p class="tx-steps" aria-label={`Where it is: ${LAB_STATUS[l.status]}`}>
+                  {['ordered', 'sent', 'received', 'fitted'].map((s) => <span class="tx-step" data-on={s === l.status || (l.status === 'remake' && s === 'ordered') ? '' : undefined}>{LAB_STATUS[s]}</span>)}
+                  {l.status === 'remake' && <span class="tx-step" data-on>Remake</span>}
+                </p>
+                {l.note && <p class="mt-1 text-[14px] text-ink-2">{l.note}</p>}
+              </div>
+              <p class="tx-price">{Number(l.cost) > 0 ? peso(l.cost) : ''}</p>
+              {canEdit && (next || l.status === 'received' || l.status === 'fitted') && (
+                <div class="tx-acts">
+                  {next && (
+                    <form method="post" action={`${action}#treatment-lab`}><Csrf /><input type="hidden" name="intent" value="lab-next" /><input type="hidden" name="lab" value={l.id} /><input type="hidden" name="to" value={next} />
+                      <button class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="check" />{next === 'sent' ? 'Sent to the lab' : next === 'received' ? 'Back from the lab' : 'Fitted'}</button></form>
+                  )}
+                  {(l.status === 'received' || l.status === 'fitted') && (
+                    <form method="post" action={`${action}#treatment-lab`}><Csrf /><input type="hidden" name="intent" value="lab-next" /><input type="hidden" name="lab" value={l.id} /><input type="hidden" name="to" value="remake" />
+                      <button class="ws-btn ws-btn-quiet ws-btn-sm">Needs a remake</button></form>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    )}
+  </Pane>
+</div>
+
+{canEdit && (
+  <>
+    <SidePanel id="rec-plan-add" title="Add to plan" meta={firstName} open={problem?.intent === 'plan-add'}>
+      {problem?.intent === 'plan-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was added.`} />}
+      <form method="post" action={`${action}#treatment`} class="grid gap-4" data-fee-form>
+        <Csrf /><input type="hidden" name="intent" value="plan-add" />
+        <label class="field"><span class="meta">From your fee guide</span>
+          <select name="catalog_id" data-fee-pick>
+            <option value="">Choose a treatment…</option>
+            {cats.map((cat) => <optgroup label={cat}>{c.catalog.filter((x) => (x.category ?? 'Other') === cat).map((x) => <option value={x.id} data-price={x.price} selected={pv.catalog_id === x.id}>{x.name} · {peso(x.price)}{x.from ? '+' : ''}</option>)}</optgroup>)}
+          </select>
+        </label>
+        <label class="field"><span class="meta">Or type it</span><input name="name" value={pv.name ?? ''} maxlength="160" autocomplete="off" placeholder="e.g. Composite filling" /><span class={help}>Leave empty to use the fee guide’s name.</span></label>
+        <div class="grid grid-cols-2 gap-4">
+          <label class="field"><span class="meta">Tooth</span><input name="fdi" value={pv.fdi ?? ''} inputmode="numeric" maxlength="2" autocomplete="off" placeholder="e.g. 36" /><span class={help}>FDI, as on the chart. Empty for the whole mouth.</span></label>
+          <label class="field"><span class="meta">Surfaces</span><input name="surface" value={pv.surface ?? ''} maxlength="5" autocomplete="off" placeholder="e.g. MOD" /><span class={help}>M O D B L, if it matters.</span></label>
+          <label class="field"><span class="meta">Price (₱)</span><input name="price" value={pv.price ?? ''} inputmode="decimal" maxlength="14" autocomplete="off" data-fee-price /><span class={help}>Filled in from the fee guide; change it for this patient.</span></label>
+          <label class="field"><span class="meta">Phase</span>
+            <select name="phase">{[1, 2, 3, 4, 5].map((n) => <option value={n} selected={String(n) === (pv.phase ?? '1')}>{n === 1 ? '1 · first' : n}</option>)}</select>
+            <span class={help}>What comes first: pain and infection, then the rest.</span>
+          </label>
+        </div>
+        <label class="field"><span class="meta">Note <span class="font-normal">(optional)</span></span><input name="note" value={pv.note ?? ''} maxlength="500" autocomplete="off" placeholder="e.g. after the extraction heals" /></label>
+        <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="plus" />Add to plan</button>
+      </form>
+    </SidePanel>
+
+    <SidePanel id="rec-done-add" title="Record a treatment" meta={firstName} open={problem?.intent === 'done-add'}>
+      {problem?.intent === 'done-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was recorded.`} />}
+      <p class="mb-4 text-[14px] text-ink-2">For work that was not on the plan. Something on the plan? Use its Mark done instead.</p>
+      <form method="post" action={`${action}#treatment-done`} class="grid gap-4" data-fee-form>
+        <Csrf /><input type="hidden" name="intent" value="done-add" />
+        <label class="field"><span class="meta">From your fee guide</span>
+          <select name="catalog_id" data-fee-pick>
+            <option value="">Choose a treatment…</option>
+            {cats.map((cat) => <optgroup label={cat}>{c.catalog.filter((x) => (x.category ?? 'Other') === cat).map((x) => <option value={x.id} data-price={x.price} selected={dv.catalog_id === x.id}>{x.name}</option>)}</optgroup>)}
+          </select>
+        </label>
+        <label class="field"><span class="meta">Or type it</span><input name="name" value={dv.name ?? ''} maxlength="160" autocomplete="off" /></label>
+        <div class="grid grid-cols-2 gap-4">
+          <label class="field"><span class="meta">Tooth</span><input name="fdi" value={dv.fdi ?? ''} inputmode="numeric" maxlength="2" autocomplete="off" placeholder="e.g. 36" /></label>
+          <label class="field"><span class="meta">Surfaces</span><input name="surface" value={dv.surface ?? ''} maxlength="5" autocomplete="off" placeholder="e.g. MOD" /></label>
+          <label class="field"><span class="meta">Day</span><input type="date" name="on" value={dv.on ?? today} max={today} /></label>
+          <label class="field"><span class="meta">Price (₱)</span><input name="price" value={dv.price ?? ''} inputmode="decimal" maxlength="14" autocomplete="off" data-fee-price /></label>
+        </div>
+        <label class="field"><span class="meta">Done by</span>
+          <select name="dentist" required>
+            <option value="">Choose the dentist…</option>
+            {c.clinicians.map((x) => <option value={x.id} selected={(dv.dentist ?? (meClinician ? meId : '')) === x.id}>{x.name}</option>)}
+          </select>
+        </label>
+        <label class="field"><span class="meta">Note <span class="font-normal">(optional)</span></span><textarea name="note" rows="3" maxlength="2000">{dv.note ?? ''}</textarea></label>
+        <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Record it</button>
+      </form>
+    </SidePanel>
+
+    <SidePanel id="rec-lab-add" title="New lab case" meta={firstName} open={problem?.intent === 'lab-add'}>
+      {problem?.intent === 'lab-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was added.`} />}
+      <form method="post" action={`${action}#treatment-lab`} class="grid gap-4">
+        <Csrf /><input type="hidden" name="intent" value="lab-add" />
+        <label class="field"><span class="meta">What the lab is making</span><input name="description" value={lv.description ?? ''} required maxlength="200" autocomplete="off" placeholder="e.g. PFM crown, 21" /></label>
+        <label class="field"><span class="meta">Lab</span><input name="lab" value={lv.lab ?? ''} required maxlength="120" autocomplete="off" list="rec-lab-names" /></label>
+        <datalist id="rec-lab-names">{[...new Set(c.labs.map((l) => l.lab))].map((n) => <option value={n} />)}</datalist>
+        <div class="grid grid-cols-2 gap-4">
+          <label class="field"><span class="meta">Shade <span class="font-normal">(optional)</span></span><input name="shade" value={lv.shade ?? ''} maxlength="20" autocomplete="off" placeholder="e.g. A2" /></label>
+          <label class="field"><span class="meta">Lab’s cost (₱)</span><input name="cost" value={lv.cost ?? ''} inputmode="decimal" maxlength="14" autocomplete="off" /></label>
+          <label class="field"><span class="meta">Sent on</span><input type="date" name="sent_on" value={lv.sent_on ?? ''} /><span class={help}>Empty if not sent yet.</span></label>
+          <label class="field"><span class="meta">Due back</span><input type="date" name="due_on" value={lv.due_on ?? ''} /></label>
+        </div>
+        <label class="field"><span class="meta">Note <span class="font-normal">(optional)</span></span><input name="note" value={lv.note ?? ''} maxlength="300" autocomplete="off" /></label>
+        <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="plus" />Add lab case</button>
+      </form>
+    </SidePanel>
+  </>
+)}
+
+<script>
+  // The fee guide fills in the price (the person can still change it for this patient).
+  document.querySelectorAll<HTMLFormElement>('[data-fee-form]').forEach((f) => {
+    const pick = f.querySelector<HTMLSelectElement>('[data-fee-pick]');
+    const price = f.querySelector<HTMLInputElement>('[data-fee-price]');
+    pick?.addEventListener('change', () => {
+      const p = pick.selectedOptions[0]?.dataset.price;
+      if (price && p !== undefined) price.value = String(Number(p));
+    });
+  });
+  // A button that takes something away asks first.
+  document.addEventListener('submit', (e) => {
+    const f = e.target as HTMLFormElement;
+    if (f.dataset.confirm && !confirm(f.dataset.confirm)) e.preventDefault();
+  });
+</script>

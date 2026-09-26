@@ -1,0 +1,154 @@
+---
+// A prescription on paper: the clinic's name, address and number at the head; the patient's name, age, sex
+// and address; the day; ℞ and each medicine with how to take it; at the foot the prescriber's name, PRC
+// licence and PTR numbers and a line to sign on — what a Philippine pharmacy looks for. A5, black on
+// white; the bar at the top (the way back, one teal Print) does not print. Printing is written to the audit
+// log like a view. Behind requireWorkspace; the prescription is read inside withClinic, so row-level
+// security decides whether it is this clinic's.
+export const prerender = false;
+
+import '../../../../../../styles/global.css';
+import { requireWorkspace } from '../../../../../../lib/workspace';
+import { withClinic } from '../../../../../../lib/db';
+import { ageOn, ageText, dateText, manilaToday } from '../../../../../../lib/health';
+import { prettyPhone } from '../../../../../../lib/messages';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session } = ws;
+const patientId = Astro.params.patient ?? '', rxId = Astro.params.rx ?? '';
+if (!UUID.test(patientId) || !UUID.test(rxId)) return new Response(null, { status: 404 });
+const back = `/c/${clinic.slug}/patients/${patientId}/#rx`;
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const r = (await tx.query(
+    `select r.id, r.items, r.notes, to_char(r.issued_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as day,
+            s.full_name, s.prc_licence, s.ptr_number,
+            p.first_name, p.middle_name, p.last_name, p.suffix, p.sex, to_char(p.birth_date, 'YYYY-MM-DD') as birth, p.address_line, p.city, p.province
+       from prescription r join patient p on p.id = r.patient_id left join staff s on s.id = r.prescriber_id
+      where r.id = $1 and r.patient_id = $2`, [rxId, patientId])).rows[0];
+  if (!r) return null;
+  const c = (await tx.query('select name, address_line, barangay, city, province, phone from clinic where id = $1', [clinic.id])).rows[0];
+  await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'record.rx_print', 'prescription', $3)`, [clinic.id, session.staffId, rxId]);
+  return { r, c };
+});
+if (!data) return new Response(null, { status: 404 });
+const { r, c } = data;
+const name = [r.first_name, r.middle_name, r.last_name, r.suffix].filter(Boolean).join(' ');
+const age = r.birth ? ageOn(r.birth, manilaToday()) : null;
+const SEX: Record<string, string> = { female: 'Female', male: 'Male' };
+const items: { drug: string; strength: string; qty: string; sig: string }[] = Array.isArray(r.items) ? r.items : [];
+const clinicAddress = [c.address_line, c.barangay, c.city, c.province]
+  .filter((part, i, all) => part && !all.slice(0, i).some((prev) => prev && String(prev).toLowerCase().includes(String(part).toLowerCase())))
+  .join(', ');
+const patientAddress = [r.address_line, r.city, r.province].filter(Boolean).join(', ');
+const pageCss = `
+@page { size: A5 portrait; margin: 12mm; }
+@media print {
+  html:root:not([data-never]):not([data-never-2]) { --c-ink: #000; --c-ink-2: #1f1f1f; color-scheme: light; }
+  body { background: #fff !important; }
+  .rx-sheet { border: 0 !important; border-radius: 0 !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; max-width: none !important; min-height: 0 !important; }
+}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Prescription · {r.first_name} {r.last_name} — {clinic.name}</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script is:inline>
+      try { const t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }
+    </script>
+    <style is:inline set:html={pageCss}></style>
+    <style>
+      .px-body {
+        --px-bg: #f3f5f8; --px-bar: #ffffff; --px-hair: #e6e9ee; --px-ink: #1f2937; --px-teal-ink: #0d706d; --px-teal-fill: #0e7471; --px-teal-fill-hover: #0b5f5d; --px-hover: rgb(16 24 40 / 0.035);
+        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: var(--px-bg); min-height: 100vh;
+      }
+      @media screen and (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); }
+      }
+      @media screen {
+        :root[data-theme="dark"] .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); }
+      }
+      .px-body h1, .px-body h2 { font-family: inherit; }
+      .px-bar { background: var(--px-bar); border-bottom: 1px solid var(--px-hair); color: var(--px-ink); }
+      .px-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem 0.75rem; max-width: 1280px; margin-inline: auto; padding: 0.75rem 1.25rem; }
+      .px-back { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 44px; margin-right: auto; padding: 0 0.5rem; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--px-teal-ink); }
+      .px-back:hover { background: var(--px-hover); }
+      .px-print { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 1.125rem; border-radius: 10px; background: var(--px-teal-fill); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+      .px-print:hover { background: var(--px-teal-fill-hover); }
+      .px-body :focus-visible { outline: 2px solid #14908f; outline-offset: 2px; }
+      /* The paper: white with dark words in both themes, as it prints. */
+      .rx-sheet { max-width: 148mm; min-height: 200mm; margin: 2rem auto; padding: 12mm; display: flex; flex-direction: column; background: #fff; color: #1f2937; border: 1px solid #e6e9ee; border-radius: 12px; box-shadow: 0 1px 2px rgb(16 24 40 / 0.05); color-scheme: light; }
+      .rx-head { text-align: center; padding-bottom: 4mm; border-bottom: 1.5px solid #1f2937; }
+      .rx-clinic { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+      .rx-small { font-size: 12.5px; line-height: 1.5; color: #344054; }
+      .rx-pt { display: grid; grid-template-columns: 1fr auto; gap: 1.5mm 6mm; padding: 4mm 0; border-bottom: 1px solid #98a2b3; font-size: 13.5px; }
+      .rx-pt b { font-weight: 600; }
+      .rx-symbol { margin-top: 5mm; font-family: Georgia, "Times New Roman", serif; font-size: 34px; font-weight: 700; line-height: 1; }
+      .rx-list { margin: 3mm 0 0 6mm; display: grid; gap: 4.5mm; counter-reset: rx; }
+      .rx-list li { counter-increment: rx; position: relative; font-size: 14.5px; line-height: 1.45; }
+      .rx-list li::before { content: counter(rx) "."; position: absolute; left: -6mm; font-weight: 600; }
+      .rx-sig { display: block; margin-top: 0.5mm; padding-left: 4mm; font-size: 13.5px; }
+      .rx-foot { margin-top: auto; padding-top: 10mm; display: flex; justify-content: flex-end; }
+      .rx-sign { width: 62mm; text-align: center; font-size: 12.5px; line-height: 1.55; }
+      .rx-sign-line { border-top: 1px solid #1f2937; padding-top: 1.5mm; font-size: 14px; font-weight: 600; }
+      @media (max-width: 600px) { .rx-sheet { margin: 1rem; padding: 6mm; min-height: 0; } }
+    </style>
+  </head>
+  <body class="px-body">
+    <div class="px-bar print:hidden">
+      <div class="px-bar-row">
+        <a href={back} class="px-back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 6.5L9 12l5.5 5.5" /></svg>
+          Back to {r.first_name}’s record
+        </a>
+        <button type="button" class="px-print" data-print>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V4h10v5" /><rect x="3.5" y="9" width="17" height="7.5" rx="2" /><path d="M7 14h10v6H7z" /></svg>
+          Print
+        </button>
+      </div>
+    </div>
+    <main>
+      <article class="rx-sheet" aria-label="Prescription">
+        <header class="rx-head">
+          <h1 class="rx-clinic">{c.name}</h1>
+          {clinicAddress && <p class="rx-small">{clinicAddress}</p>}
+          {c.phone && <p class="rx-small">{prettyPhone(c.phone)}</p>}
+        </header>
+        <section class="rx-pt" aria-label="Patient">
+          <p><b>Name:</b> {name}</p>
+          <p><b>Date:</b> {dateText(r.day)}</p>
+          <p><b>Address:</b> {patientAddress || '________________'}</p>
+          <p><b>Age / sex:</b> {age !== null ? ageText(age) : '____'}{r.sex && SEX[r.sex] ? ` / ${SEX[r.sex]}` : ''}</p>
+        </section>
+        <p class="rx-symbol" aria-label="Prescription">℞</p>
+        <ol class="rx-list">
+          {items.map((it) => (
+            <li>
+              <b>{it.drug}</b>{it.strength && ` ${it.strength}`}{it.qty && <> &nbsp;#{it.qty}</>}
+              <span class="rx-sig">Sig: {it.sig}</span>
+            </li>
+          ))}
+        </ol>
+        {r.notes && <p class="mt-5 text-[13.5px]">{r.notes}</p>}
+        <footer class="rx-foot">
+          <div class="rx-sign">
+            <p class="rx-sign-line">{r.full_name ?? '____________________'}</p>
+            <p>PRC Lic. No. {r.prc_licence ?? '__________'}</p>
+            <p>PTR No. {r.ptr_number ?? '__________'}</p>
+          </div>
+        </footer>
+      </article>
+    </main>
+    <script>
+      document.querySelector('[data-print]')?.addEventListener('click', () => window.print());
+    </script>
+  </body>
+</html>

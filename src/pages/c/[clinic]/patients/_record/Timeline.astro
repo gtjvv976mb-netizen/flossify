@@ -1,0 +1,99 @@
+---
+// Everything that happened to this patient, newest first, one day at a time: visits, treatment, notes
+// and prescriptions, health answers, chart changes, files, money (only for people who may bill), consents
+// and texts (loadTimeline in src/lib/record.ts). Chips at the top narrow it to one kind, with a count on
+// each, and every line has "Open" to the section it came from. The chips work in the page (no reload);
+// with scripts off the whole list shows.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import Head from '../_ui/Head.astro';
+import Glyph from '../_ui/Glyph.astro';
+import type { GlyphName } from '../_ui/glyphs';
+import { TIMELINE_FILTERS, type TimelineEvent, type TimelineKind } from '../../../../../lib/record';
+
+interface Props { events: TimelineEvent[]; sections: string[] }
+const { events, sections } = Astro.props;
+
+const ICON: Record<TimelineKind, GlyphName> = {
+  visit: 'calendar', treatment: 'plan', note: 'pen', health: 'heart', chart: 'tooth', money: 'money', file: 'image', message: 'message', consent: 'shield', record: 'user',
+};
+const OPEN: Record<string, string> = { overview: 'Overview', visits: 'Visits', health: 'Health', chart: 'Chart', treatment: 'Treatment', notes: 'Notes', rx: 'Prescriptions', files: 'Files', money: 'Money', consent: 'Consent', texts: 'Texts' };
+const tz = 'Asia/Manila';
+const dayKey = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+const dayWords = (d: Date) => new Intl.DateTimeFormat('en-PH', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(d);
+const timeWords = (d: Date) => new Intl.DateTimeFormat('en-PH', { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(d).toLowerCase();
+const todayKey = dayKey(new Date());
+const yesterdayKey = dayKey(new Date(Date.now() - 864e5));
+
+const shown = events.slice(0, 500);
+const days: { key: string; label: string; items: TimelineEvent[] }[] = [];
+for (const e of shown) {
+  const at = new Date(e.at);
+  const key = dayKey(at);
+  let g = days[days.length - 1];
+  if (!g || g.key !== key) {
+    g = { key, label: key === todayKey ? `Today · ${dayWords(at)}` : key === yesterdayKey ? `Yesterday · ${dayWords(at)}` : key > todayKey ? `Coming up · ${dayWords(at)}` : dayWords(at), items: [] };
+    days.push(g);
+  }
+  g.items.push(e);
+}
+const count = (k: string) => (k === 'all' ? shown.length : shown.filter((e) => e.kind === k).length);
+// A filter with nothing under it is left out, so every chip leads somewhere.
+const filters = TIMELINE_FILTERS.filter((f) => f.id === 'all' || count(f.id) > 0);
+---
+
+<Pane as="section" label="Timeline" id="timeline">
+  <Head icon="history" title="Timeline" meta={shown.length === 1 ? 'One event' : `${shown.length} events`} />
+  <p class="-mt-2 mb-4 text-[14px] text-ink-2">Everything on this record, newest first. Choose a kind to see only that.</p>
+  {shown.length === 0 ? <Empty icon="clock" text="Nothing has happened on this record yet." /> : (
+    <>
+      <div class="tl-filters" role="group" aria-label="Show on the timeline" data-tl-filters>
+        {filters.map((f, i) => (
+          <button type="button" class="tl-filter" aria-pressed={i === 0 ? 'true' : 'false'} data-tl-kind={f.id}>
+            {f.label} <span class="tl-n">{count(f.id)}</span>
+          </button>
+        ))}
+      </div>
+      <p class="sr-only" aria-live="polite" data-tl-live></p>
+      <div class="mt-5">
+        {days.map((g) => (
+          <section class="tl-day" data-tl-day aria-label={g.label}>
+            <h3 class="tl-date">{g.label}</h3>
+            <ul class="tl-list">
+              {g.items.map((e) => (
+                <li class="tl-item" data-kind={e.kind} data-tone={e.tone ?? 'neutral'} data-tl-item>
+                  <span class="tl-icon" aria-hidden="true"><Glyph name={ICON[e.kind]} size={18} /></span>
+                  <div class="min-w-0">
+                    <p class="tl-title">{e.title}</p>
+                    {e.detail && <p class="tl-detail">{e.detail}</p>}
+                    {e.by && <p class="tl-by">By {e.by}</p>}
+                  </div>
+                  <span class="tl-time">{timeWords(new Date(e.at))}</span>
+                  {e.section && sections.includes(e.section) && (
+                    <button type="button" class="tl-go" data-rec-go={e.section}>Open {OPEN[e.section] ?? e.section}</button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+      {events.length > shown.length && <p class="mt-4 text-[13.5px] text-ink-2">The newest {shown.length} are shown.</p>}
+    </>
+  )}
+</Pane>
+
+<script>
+  const bar = document.querySelector<HTMLElement>('[data-tl-filters]');
+  const live = document.querySelector<HTMLElement>('[data-tl-live]');
+  bar?.addEventListener('click', (e) => {
+    const b = (e.target as Element).closest<HTMLButtonElement>('[data-tl-kind]');
+    if (!b) return;
+    const kind = b.dataset.tlKind!;
+    bar.querySelectorAll('[data-tl-kind]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    let n = 0;
+    document.querySelectorAll<HTMLElement>('[data-tl-item]').forEach((it) => { it.hidden = kind !== 'all' && it.dataset.kind !== kind; if (!it.hidden) n++; });
+    document.querySelectorAll<HTMLElement>('[data-tl-day]').forEach((d) => { d.hidden = !d.querySelector('[data-tl-item]:not([hidden])'); });
+    if (live) live.textContent = `${n} shown`;
+  });
+</script>
