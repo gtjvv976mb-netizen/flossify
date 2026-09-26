@@ -79,8 +79,8 @@ const statusOf = (p: Person) => {
   <p class="ws-callout mb-5" data-tone="info">
     <Icon name="message" />
     <span>{emailOn
-      ? 'We send them a six-digit code by text and email. They choose “I have a code” on the staff sign-in page and pick their own password.'
-      : 'We text them a six-digit code. They choose “I have a code” on the staff sign-in page and pick their own password.'}</span>
+      ? 'We send them a six-digit code by text and email. They choose “I have a code” on the clinic sign-in page and pick their own password.'
+      : 'We text them a six-digit code. They choose “I have a code” on the clinic sign-in page and pick their own password.'}</span>
   </p>
   {addError && <Note tone="alert" text={addError} class="mb-5" refused />}
   <form method="post" action={base} class="grid gap-4" data-team-form>

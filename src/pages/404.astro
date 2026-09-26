@@ -1,6 +1,6 @@
 ---
 // The page for an address that is not here: soft, friendly, and two ways on — the home page (the
-// one teal button) and Find a clinic — with the other doors (My visits, Staff sign-in) as quiet
+// one teal button) and Find a clinic — with the other doors (My visits, Clinic sign-in) as quiet
 // links. Prerendered (the site is static by default); the server sends it for any address it has no
 // page for, with the 404 status.
 import Base from '../layouts/Base.astro';
@@ -10,7 +10,7 @@ import type { IconName } from '../components/ws/icons';
 
 const doors: { href: string; label: string; hint: string; icon: IconName }[] = [
   { href: '/me/', label: 'My visits', hint: 'Your visits at every clinic, by your mobile number.', icon: 'calendar' },
-  { href: '/auth/login/', label: 'Staff sign-in', hint: 'For clinic owners, dentists and the front desk.', icon: 'user' },
+  { href: '/auth/login/', label: 'Clinic sign-in', hint: 'For clinic owners, dentists and the front desk.', icon: 'user' },
 ];
 ---
 

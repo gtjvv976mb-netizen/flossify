@@ -122,7 +122,7 @@ export const codePageFor = (site: URL | string | undefined) => new URL('/auth/co
 /** The texts a clinic sends read like a person wrote them: the clinic's name first, then the fact, then what to do. */
 export const texts = {
   reset: (code: string) => `Flossify: your password reset code is ${code}. It works for 15 minutes. If you did not ask for it, ignore this text.`,
-  invite: (by: string, clinic: string, code: string) => `Flossify: ${by} added you to ${clinic}. On the Flossify staff sign-in page choose "I have a code" and enter ${code}. It works for 24 hours.`,
+  invite: (by: string, clinic: string, code: string) => `Flossify: ${by} added you to ${clinic}. On the Flossify clinic sign-in page choose "I have a code" and enter ${code}. It works for 24 hours.`,
   patientCode: (code: string) => `Flossify: your sign-in code is ${code}. It works for 15 minutes. If you did not ask for it, ignore this text.`,
   /**
    * To the clinic's owner, after a person at Flossify found the licence did not match
