@@ -25,6 +25,12 @@
 //    error overlay). Astro still renders src/pages/500.astro for it if one is
 //    ever added; there is none now, so the 500 has no body.
 //
+//    Every clinic workspace response (/c/…) is also Cache-Control: no-store:
+//    records, health histories, the patient forms' answers and their
+//    printouts must not stay in a shared clinic computer's disk cache or its
+//    back-and-forward pages after someone signs out. (The service worker's one
+//    kept record page is its own copy, with its own rules: public/sw.js.)
+//
 // What does not get these headers, because it never reaches this file:
 //  - Astro's own Origin check (security.checkOrigin). It runs as Astro's
 //    internal middleware ahead of this one, and its 403 ("Cross-site POST
@@ -62,6 +68,7 @@ const HEADERS: Record<string, string> = {
 const HSTS = 'max-age=31536000';
 
 const HEALTHZ = /^\/healthz\/?$/;
+const WORKSPACE = /^\/c\//;
 
 function withHeaders(response: Response, headers: Record<string, string>): Response {
   try {
@@ -126,5 +133,5 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // No body: Astro renders src/pages/500.astro into it if one exists, keeping these headers.
     response = new Response(null, { status: 500 });
   }
-  return withHeaders(response, headers);
+  return withHeaders(response, WORKSPACE.test(context.url.pathname) ? { ...headers, 'Cache-Control': 'no-store' } : headers);
 });

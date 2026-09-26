@@ -132,6 +132,10 @@
 }
 .rec-alerts { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .rec-alerts .ws-chip { min-height: 30px; padding-inline: 0.75rem; font-size: 13.5px; }
+/* Medicines and allergies can be typed by the patient on the forms (up to 60 characters a line),
+   so a chip wraps inside its own tint rather than pushing the record sideways on a phone. */
+.rec-alerts .ws-chip { align-items: flex-start; max-width: 100%; padding-block: 0.43rem; border-radius: 15px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.rec-alerts .ws-chip > .ws-icon { flex: none; align-self: flex-start; margin-top: 1px; }
 
 /* Steps of the import: 1 Upload · 2 Check · 3 Done. */
 .imp-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.5rem; }

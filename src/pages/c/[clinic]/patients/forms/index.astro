@@ -1,0 +1,284 @@
+---
+// "New patient forms": what patients sent from the QR code on the desk
+// (src/lib/patient-forms.ts), waiting for the desk. A form is not a patient:
+// open one (./[form]/) to add it as a new patient, add it to a patient on
+// file, or dismiss it. Three soft pills switch the list — New (with its count)
+// · Added · Dismissed — and the address keeps the choice (?show=).
+//
+// A row: the name as the form has it (the link to the form; it stretches over
+// the row), age, mobile and the form's reference, and pills for what the desk
+// should know before opening it — someone on file who may be the same person,
+// who signed for a child, a form that came through a QR code since replaced.
+// On the right, when it was sent and, in the last week before a form nobody
+// added is deleted (30 days after it was sent: retention_purge()), when that
+// is. Nothing about the patient's health is on this list.
+//
+// Above the list: a search (name, mobile or reference, in the page: "the
+// patient at the desk says QR-7K2F"), and on New a box on every row with
+// "Dismiss selected" — after a flood of junk through a poster, the desk makes
+// a new QR code and clears the old code's forms in one go. It asks first (a
+// side panel, or in the page without the shell's script: intent ask), then
+// dismisses (intent dismiss-many, dismissForms: new forms only, audited one by
+// one); a dismissed form can still be added until it is deleted.
+//
+// Who: people who can add patients here (canEditRecords, Add patient's rule).
+// Everything is read inside withClinic(), so row-level security keeps it to
+// this branch. Every post carries the CSRF token (a miss comes back ?stale=1).
+export const prerender = false;
+
+import ClinicLayout from '../../../../../layouts/Clinic.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Pane from '../../../../../components/ws/Pane.astro';
+import Tabs from '../../../../../components/ws/Tabs.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Avatar from '../../../../../components/ws/Avatar.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Glyph from '../_ui/Glyph.astro';
+import Callout from '../_ui/Callout.astro';
+import '../_ui/patients.css';
+import '../_forms/forms.css';
+import { requireWorkspace } from '../../../../../lib/workspace';
+import { withClinic } from '../../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
+import { hit, waitText, LIMITS } from '../../../../../lib/throttle';
+import { canEditRecords, ageText } from '../../../../../lib/health';
+import { listForms, countNewForms, dismissForms, FORM_KEEP_DAYS, type FormStatus, type FormRow } from '../../../../../lib/patient-forms';
+import { sentText } from '../_forms/words';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const base = `/c/${clinic.slug}/patients/`;
+const here = `${base}forms/`;
+const q = Astro.url.searchParams;
+const asked = q.get('show');
+const show: FormStatus = asked === 'added' || asked === 'dismissed' ? asked : 'new';
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// What a post left for the page: a problem, or the forms picked, to ask about in the page.
+let problem: string | null = null;
+let askIds: string[] = [];
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(`${here}?stale=1`, 303);
+  const intent = String(form.get('intent') ?? '');
+  const ids = [...new Set(form.getAll('form').map(String).filter((x) => UUID.test(x)))].slice(0, 200);
+  const rate = await hit('record:s:' + session.staffId, ...LIMITS.chart.staff);
+  if (!rate.allowed) problem = `Too many saves at once. ${waitText(rate.retryAfter)}`;
+  else if (!ids.length) problem = 'Tick the forms to dismiss first. Nothing was changed.';
+  else if (intent === 'ask') askIds = ids;
+  else if (intent === 'dismiss-many') {
+    const r = await withClinic(clinic.id, (tx) => dismissForms(tx, { clinicId: clinic.id, staffId: session.staffId, formIds: ids }));
+    if (r === 'not-allowed') problem = 'Your account cannot add or dismiss patient forms at this branch. Ask the owner.';
+    else return Astro.redirect(`${here}?done=dismissed&n=${r}`, 303);
+  }
+}
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const canEdit = await canEditRecords(tx, session.staffId, clinic.id);
+  const area = (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null;
+  if (!canEdit) return { canEdit, area, rows: [] as FormRow[], waiting: 0 };
+  return { canEdit, area, rows: await listForms(tx, { status: show }), waiting: await countNewForms(tx) };
+});
+
+const now = new Date();
+const items = [
+  { id: 'new', label: 'New', href: here, count: data.waiting || null },
+  { id: 'added', label: 'Added', href: `${here}?show=added` },
+  { id: 'dismissed', label: 'Dismissed', href: `${here}?show=dismissed` },
+];
+const LEDE: Record<FormStatus, string> = {
+  new: `A form is not a patient yet. Open one to add it as a new patient or to a patient on file, or to dismiss it. Forms nobody adds are deleted ${FORM_KEEP_DAYS} days after they were sent.`,
+  added: 'Forms already added to your patients. Each stays with the record it was added to.',
+  dismissed: `Forms you dismissed. Each is deleted ${FORM_KEEP_DAYS} days after it was sent; until then you can open it and still add it.`,
+};
+const EMPTY: Record<FormStatus, string> = {
+  new: 'No forms waiting. When a patient scans your QR code and sends their forms, they wait here.',
+  added: 'No forms added yet.',
+  dismissed: 'No dismissed forms.',
+};
+/** "Deleted today" · "Deleted tomorrow" · "Deleted in 3 days", only in the last week; null before that. */
+const DAY = 86_400_000;
+const soonGone = (d: Date | null): string | null => {
+  if (!d) return null;
+  const days = Math.ceil((d.getTime() - now.getTime()) / DAY);
+  if (days > 7) return null;
+  return days <= 0 ? 'Deleted today' : days === 1 ? 'Deleted tomorrow' : `Deleted in ${days} days`;
+};
+const picking = show === 'new' && data.rows.length > 0;
+const asking = data.rows.filter((r) => askIds.includes(r.id) && r.status === 'new');
+const oldCode = show === 'new' ? data.rows.filter((r) => r.viaOldCode).length : 0;
+// What the search reads: the name, the mobile's digits, the reference.
+const findText = (r: FormRow) => `${r.name} ${r.mobile.replace(/\D/g, '')} ${r.ref}`.toLocaleLowerCase('en');
+const dismissedN = Number(q.get('n'));
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title="New patient forms" section="patients" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  <a href={base} class="rec-back ws-glass m-0! w-fit px-3!" data-pts-back><Icon name="chevron-left" />Back to patients</a>
+  <script>
+    import { restoreBackLinks } from '../_list/back';
+    restoreBackLinks();
+  </script>
+
+  {q.get('stale') === '1' && <Callout tone="alert" text={CSRF_MESSAGE} />}
+  {problem && <Callout tone="alert" focus text={problem} />}
+  {q.get('done') === 'dismissed' && (
+    <Callout tone="success" text={Number.isFinite(dismissedN) && dismissedN > 1
+      ? `${dismissedN} forms dismissed. They are under Dismissed until they are deleted, ${FORM_KEEP_DAYS} days after each was sent.`
+      : `Form dismissed. It is under Dismissed until it is deleted, ${FORM_KEEP_DAYS} days after it was sent.`} />
+  )}
+
+  {!data.canEdit ? (
+    <Pane as="div" label="Not allowed">
+      <Callout tone="alert" role="note" text="Your account cannot add patients at this branch, so the forms patients send are not shown to it. Ask the owner." />
+    </Pane>
+  ) : (
+    <>
+      {asking.length > 0 && (
+        <Pane as="section" label="Dismiss these forms?">
+          <form method="post" action={here} class="grid gap-4">
+            <Csrf />
+            <input type="hidden" name="intent" value="dismiss-many" />
+            {asking.map((r) => <input type="hidden" name="form" value={r.id} />)}
+            <Callout tone="warn" title={asking.length === 1 ? 'Dismiss this form?' : `Dismiss these ${asking.length} forms?`}>
+              <p>{asking.slice(0, 6).map((r) => r.name).join(', ')}{asking.length > 6 ? ` and ${asking.length - 6} more` : ''}. Nothing goes on your patients’ records; until each is deleted you can still add it from Dismissed.</p>
+            </Callout>
+            <div class="fm-actions">
+              <button type="submit" class="ws-btn ws-btn-danger"><Glyph name="close" />Dismiss {asking.length === 1 ? 'the form' : `${asking.length} forms`}</button>
+              <a href={here} class="ws-btn ws-btn-quiet">Keep them</a>
+            </div>
+          </form>
+        </Pane>
+      )}
+
+      <Pane pad="none" label="Patient forms" class="fm-queue">
+        <header class="ws-pane-head fm-queue-head">
+          <Tabs label="Show" current={show} items={items} />
+          <div class="ws-pane-actions">
+            <a href={`${base}qr/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="qr" />QR code for your desk</a>
+          </div>
+        </header>
+        <p class="fm-queue-lede">{LEDE[show]}{oldCode > 0 ? ` ${oldCode === 1 ? 'One of them came' : `Of these, ${oldCode} came`} through a QR code you have since replaced.` : ''}</p>
+        {data.rows.length === 0 ? (
+          <div class="px-6 pb-4 max-md:px-4">
+            <Empty icon="inbox" text={EMPTY[show]} action={show === 'new' ? { label: 'Print the QR code for your desk', href: `${base}qr/` } : undefined} />
+          </div>
+        ) : (
+          <>
+            <form method="post" action={here} id="fm-bulk" class="fm-queue-tools" data-fm-tools>
+              <Csrf />
+              <label class="fm-find" hidden data-fm-find-wrap>
+                <span class="sr-only">Find a form by name, mobile or reference</span>
+                <Icon name="search" size={18} />
+                <input type="search" placeholder="Name, mobile or reference (QR-…)" autocomplete="off" spellcheck="false" data-fm-find />
+              </label>
+              {picking && (
+                <>
+                  <label class="fm-pick-all" hidden data-fm-pick-all-wrap><input type="checkbox" data-fm-pick-all /><span>Pick all shown</span></label>
+                  <button type="submit" name="intent" value="ask" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="fm-bulk-panel" data-fm-dismiss>
+                    <Glyph name="close" />Dismiss selected<span data-fm-picked-n></span>
+                  </button>
+                </>
+              )}
+            </form>
+            <ul class="fm-list" aria-label={`${items.find((i) => i.id === show)?.label} forms`} data-fm-list>
+              {data.rows.map((r) => {
+                const gone = r.status !== 'added' ? soonGone(r.deleteOn) : null;
+                return (
+                  <li class="fm-row" data-find={findText(r)}>
+                    {picking && (
+                      <label class="fm-row-pick"><input type="checkbox" name="form" value={r.id} form="fm-bulk" data-fm-pick /><span class="sr-only">Pick {r.name}’s form, {r.ref}</span></label>
+                    )}
+                    <Avatar name={r.name} />
+                    <div class="min-w-0">
+                      <a href={`${here}${r.id}/`} class="fm-row-name">{r.name}</a>
+                      <p class="fm-row-facts">
+                        {[r.age !== null ? ageText(r.age) : null, r.mobile].filter(Boolean).join(' · ')}
+                        {' · '}<span class="pt-ref" title="Form reference"><span class="sr-only">Reference </span>{r.ref}</span>
+                      </p>
+                      <p class="fm-row-chips">
+                        {r.status !== 'added' && r.likely > 0 && <Chip tone="warn" icon="alert">{r.likely === 1 ? 'May already be on file' : `${r.likely} on file may be them`}</Chip>}
+                        {r.minor && <Chip tone="neutral" icon="user">Under 18 · signed by {r.signedByName}</Chip>}
+                        {r.status === 'new' && r.viaOldCode && <Chip tone="muted" label="Through an old QR code" />}
+                        {r.status === 'added' && r.chartNo && <Chip tone="accent" icon="check">On file as {r.patientName} · {r.chartNo}</Chip>}
+                      </p>
+                    </div>
+                    <p class="fm-row-when">
+                      <span>Sent {sentText(r.submittedAt, now)}</span>
+                      {r.status === 'new' && gone && <span class="text-[13px] text-ink-2">{gone}</span>}
+                      {r.status === 'added' && r.decidedAt && <span class="text-[13px] text-muted">Added {sentText(r.decidedAt, now)}{r.decidedByName ? ` by ${r.decidedByName}` : ''}</span>}
+                      {r.status === 'dismissed' && <span class="text-[13px] text-muted">Dismissed{r.decidedByName ? ` by ${r.decidedByName}` : ''}{gone ? ` · ${gone.toLowerCase()}` : ''}</span>}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+            <p class="fm-none-found" hidden role="status" data-fm-none>No form here matches that. Check the spelling, or look under Added and Dismissed.</p>
+          </>
+        )}
+        {data.rows.length >= 100 && <p class="fm-queue-lede border-t border-[var(--ws-hair)]">The newest 100 are shown. Add or dismiss some to see the rest.</p>}
+      </Pane>
+
+      {picking && (
+        <SidePanel id="fm-bulk-panel" title="Dismiss the picked forms?">
+          <div class="grid gap-5">
+            <p class="text-[15px] leading-relaxed text-ink-2">
+              <span class="font-semibold text-ink" data-fm-panel-n>These forms</span> leave New patient forms, and nothing goes on your patients’ records.
+              Each is deleted {FORM_KEEP_DAYS} days after it was sent; until then it is under Dismissed, where you can still add it.
+            </p>
+            <div class="fm-actions">
+              <button type="submit" form="fm-bulk" name="intent" value="dismiss-many" class="ws-btn ws-btn-danger"><Glyph name="close" />Dismiss them</button>
+              <button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Keep them</button>
+            </div>
+          </div>
+        </SidePanel>
+      )}
+    </>
+  )}
+</ClinicLayout>
+
+<script>
+  // In the page, over the rows already here (at most 100): find a form, pick forms, say how many.
+  const list = document.querySelector<HTMLElement>('[data-fm-list]');
+  if (list) {
+    const rows = Array.from(list.querySelectorAll<HTMLElement>('li[data-find]'));
+    const find = document.querySelector<HTMLInputElement>('[data-fm-find]');
+    const none = document.querySelector<HTMLElement>('[data-fm-none]');
+    const pickAll = document.querySelector<HTMLInputElement>('[data-fm-pick-all]');
+    const dismiss = document.querySelector<HTMLButtonElement>('[data-fm-dismiss]');
+    const pickedN = document.querySelector<HTMLElement>('[data-fm-picked-n]');
+    const panelN = document.querySelector<HTMLElement>('[data-fm-panel-n]');
+    const picks = () => rows.map((r) => r.querySelector<HTMLInputElement>('[data-fm-pick]')).filter((x): x is HTMLInputElement => !!x);
+    document.querySelector<HTMLElement>('[data-fm-find-wrap]')?.removeAttribute('hidden');
+    document.querySelector<HTMLElement>('[data-fm-pick-all-wrap]')?.removeAttribute('hidden');
+
+    const count = () => {
+      const n = picks().filter((i) => i.checked).length;
+      if (pickedN) pickedN.textContent = n ? ` (${n})` : '';
+      if (dismiss) dismiss.disabled = n === 0;
+      if (panelN) panelN.textContent = n === 1 ? 'The picked form' : `The ${n} picked forms`;
+      const shown = picks().filter((i) => !i.closest('li')!.hidden);
+      if (pickAll) { pickAll.checked = shown.length > 0 && shown.every((i) => i.checked); pickAll.indeterminate = !pickAll.checked && shown.some((i) => i.checked); }
+    };
+    find?.addEventListener('input', () => {
+      const words = find.value.toLocaleLowerCase('en').replace(/(\d)\s+(?=\d)/g, '$1').split(/\s+/).filter(Boolean);
+      let seen = 0;
+      for (const r of rows) {
+        const hit = words.every((w) => r.dataset.find!.includes(w));
+        r.hidden = !hit;
+        if (hit) seen++;
+      }
+      if (none) none.hidden = seen > 0;
+      count();
+    });
+    pickAll?.addEventListener('change', () => {
+      for (const i of picks()) if (!i.closest('li')!.hidden) i.checked = pickAll.checked;
+      count();
+    });
+    list.addEventListener('change', (e) => { if ((e.target as HTMLElement).matches('[data-fm-pick]')) count(); });
+    count();
+  }
+</script>

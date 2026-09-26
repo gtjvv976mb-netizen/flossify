@@ -124,11 +124,15 @@ const areaOf = async (): Promise<string | null> => {
 
 // The inbox's counts, the plan line and the area (read once). None of them ever breaks the page.
 const [inbox, plan, area] = await Promise.all([
-  access ? inboxFor(access.id, seenAt(Astro.cookies.get(SEEN_COOKIE)?.value)) : null,
+  access ? inboxFor(access.id, seenAt(Astro.cookies.get(SEEN_COOKIE)?.value), session?.staffId) : null,
   groupId && canSetUp ? planLine(groupId) : null,
   areaOf(),
 ]);
 const inboxCount = inbox?.total ?? 0;
+// New patient forms waiting (the QR code on the desk): a count on the Patients tab, for people who can add them.
+const formsWaiting = inbox?.forms ?? 0;
+const tabCount = (id: Tab) => (id === 'patients' && formsWaiting > 0 ? formsWaiting : 0);
+const countWords = (n: number) => `, ${n} new patient ${n === 1 ? 'form' : 'forms'} waiting`;
 const inboxLabel = inbox === null ? 'Inbox' : inboxCount ? `Inbox, ${inboxCount} waiting` : 'Inbox, nothing waiting';
 
 const ROLE: Record<string, string> = {
@@ -240,6 +244,7 @@ const BarTitle = heading ? 'h1' : 'p';
                   <Icon name={t.icon} size={20} />
                   <span class="ws-nav-word ws-nav-long">{t.label}</span>
                   <span class="ws-nav-word ws-nav-short" aria-hidden="true">{t.short}</span>
+                  {tabCount(t.id) > 0 && <span class="ws-nav-count" title="New patient forms waiting"><span aria-hidden="true">{tabCount(t.id) > 99 ? '99+' : tabCount(t.id)}</span><span class="sr-only">{countWords(tabCount(t.id))}</span></span>}
                 </a>
               ))}
             </nav>
@@ -328,6 +333,13 @@ const BarTitle = heading ? 'h1' : 'p';
                     <span class="ws-menu-words">Web requests to place<span class="ws-menu-hint">Patients waiting for the desk to give a time</span></span>
                     {inbox && <span class="ws-count" data-zero={inbox.requests ? undefined : ''}>{inbox.requests}</span>}
                   </a>
+                  {inbox && inbox.forms !== null && (
+                    <a class="ws-menu-item" href={`/c/${clinic.slug}/patients/forms/`}>
+                      <span class="ws-menu-icon" data-tint="teal"><Icon name="file" /></span>
+                      <span class="ws-menu-words">New patient forms<span class="ws-menu-hint">Sent from the QR code on your desk; add them to your patients</span></span>
+                      <span class="ws-count" data-zero={inbox.forms ? undefined : ''}>{inbox.forms}</span>
+                    </a>
+                  )}
                   <div class="ws-menu-sep"></div>
                   <a class="ws-menu-item" href={links.messages}><span class="ws-menu-words">All messages</span> <Icon name="arrow-right" size={16} /></a>
                 </Menu>
@@ -370,6 +382,7 @@ const BarTitle = heading ? 'h1' : 'p';
               <a href={t.href} class="ws-tabrow-item" aria-current={t.id === tab ? 'page' : undefined}>
                 {tabs.length < 4 && <Icon name={t.icon} />}
                 <span>{t.short}</span>
+                {tabCount(t.id) > 0 && <span class="ws-nav-count" title="New patient forms waiting"><span aria-hidden="true">{tabCount(t.id) > 99 ? '99+' : tabCount(t.id)}</span><span class="sr-only">{countWords(tabCount(t.id))}</span></span>}
               </a>
             ))}
           </nav>

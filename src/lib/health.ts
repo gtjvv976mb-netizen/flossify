@@ -77,8 +77,14 @@ export interface BirthChange { from: string | null; to: string | null }
 export interface HealthVersion extends HealthAnswers {
   id: string;
   at: Date;
-  /** The staff member's name, or null for a row nobody on the team typed (the development seed). */
+  /** The staff member's name, or null for a row nobody on the team typed (the development seed, the patient forms). */
   by: string | null;
+  /** 'patient': the patient answered it themselves, on the patient forms (028); 'staff': typed at the clinic. */
+  answeredBy: 'patient' | 'staff';
+  /** The patient forms it came from (QR-7K2F), or null. The form itself: src/lib/patient-forms.ts. */
+  formRef: string | null;
+  /** When those forms were sent (the version itself is dated when it was added to the record), or null. */
+  formSentAt: Date | null;
   /** Set when this version changed the birth date on file. */
   birthChange: BirthChange | null;
 }
@@ -252,7 +258,7 @@ export const versionChanges = (prev: HealthAnswers | null, v: HealthVersion): st
 // ---------------------------------------------------------------------------
 type Row = {
   id: string; at: Date; by: string | null; allergies: string[] | null; conditions: string[] | null; medications: string[] | null; note: string | null;
-  birth_change: { from?: unknown; to?: unknown } | null; total: number;
+  birth_change: { from?: unknown; to?: unknown } | null; total: number; answered_by: string; form_ref: string | null; form_sent_at: Date | null;
 };
 const ymdOrNull = (v: unknown): string | null => (typeof v === 'string' && YMD.test(v) ? v : null);
 
@@ -261,14 +267,17 @@ export async function readHealth(tx: Tx, patientId: string, limit = 12): Promise
   // One extra row, so the oldest one shown can still say what it changed.
   const { rows } = await tx.query<Row>(
     `select h.id, h.answered_at as at, s.full_name as by, h.allergies, h.conditions, h.medications, h.note,
-            h.answers -> 'birth_date' as birth_change, (count(*) over ())::int as total
-       from medical_history h left join staff s on s.id = h.recorded_by
+            h.answers -> 'birth_date' as birth_change, (count(*) over ())::int as total, h.answered_by, f.ref as form_ref, f.submitted_at as form_sent_at
+       from medical_history h left join staff s on s.id = h.recorded_by left join patient_form f on f.id = h.form_id
       where h.patient_id = $1
       order by h.answered_at desc, h.id desc
       limit $2`, [patientId, limit + 1]);
-  const versions: HealthVersion[] = rows.map(({ total: _t, birth_change: b, ...v }) => ({
+  const versions: HealthVersion[] = rows.map(({ total: _t, birth_change: b, answered_by: ab, form_ref: fr, form_sent_at: fs, ...v }) => ({
     ...v,
     birthChange: b && typeof b === 'object' ? { from: ymdOrNull(b.from), to: ymdOrNull(b.to) } : null,
+    answeredBy: ab === 'patient' ? 'patient' : 'staff',
+    formRef: fr ?? null,
+    formSentAt: fs ?? null,
   }));
   return { versions: versions.slice(0, limit), total: rows[0]?.total ?? 0, older: versions[limit] ?? null };
 }
@@ -362,10 +371,17 @@ export interface ConsentRow {
   signed_on: string | null;
 }
 
+/**
+ * Consents to the privacy notice, newest first. A consent to examination and
+ * treatment (consent_version.kind 'treatment', given on the patient forms,
+ * 028) is not one of them: the patient forms list those (patientForms() in
+ * src/lib/patient-forms.ts).
+ */
 export async function readConsents(tx: Tx, patientId: string): Promise<ConsentRow[]> {
   const { rows } = await tx.query(
     `select c.*, to_char(c.signed_on, 'YYYY-MM-DD') as signed_day, s.full_name as recorded_by_name
-       from patient_consent c left join staff s on s.id = c.recorded_by
+       from patient_consent c join consent_version v on v.id = c.version_id and v.kind = 'privacy'
+       left join staff s on s.id = c.recorded_by
       where c.patient_id = $1 order by c.given_at desc`, [patientId]);
   return rows.map((r) => ({
     id: r.id, version_id: r.version_id, given_at: r.given_at, channel: r.channel, given_by_name: r.given_by_name,
@@ -392,7 +408,7 @@ export const guardianStillNeeded = (minor: boolean, inForce: ConsentRow | null):
   minor && !!inForce && inForce.agreed_as !== 'guardian';
 
 /** How an agreement was taken, in the words the desk uses. */
-export const CONSENT_HOW: Record<string, string> = { web: 'online', desk: 'at the desk', sms: 'by text', paper: 'on paper' };
+export const CONSENT_HOW: Record<string, string> = { web: 'online', desk: 'at the desk', sms: 'by text', paper: 'on paper', form: 'on the patient forms' };
 
 export type ConsentResult =
   | 'none' | 'no-notice' | 'changed' | 'already' | 'saved'
