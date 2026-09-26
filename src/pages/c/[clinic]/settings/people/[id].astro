@@ -31,6 +31,7 @@ import Email from '../_ui/Email.astro';
 import '../_ui/settings.css';
 import { requireWorkspace } from '../../../../../lib/workspace';
 import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
+import { USERNAME_MAX } from '../../../../../lib/username';
 import { ROLES, ROLE_LABEL, DAYS, ago, clinician, dateText, daysText, prcState, treats } from '../_lib/common';
 import {
   member, daysOf, upcomingFor, personAction, personNotice, accountState, reachable, emailOn, prettyPhone,
@@ -75,7 +76,7 @@ const doneTo = q.get('done') === 'schedule' ? 'days' : q.get('done') === 'financ
 const errorIn = refused?.edit ? 'edit' : refused?.action === 'finance' ? 'finance' : refused?.action === 'schedule' ? 'days' : ['invite', 'reset', 'disable', 'enable'].includes(refused?.action ?? '') ? 'signin' : 'head';
 
 // What the edit form shows: what was typed when it came back with an error, else what is on file.
-const v: EditValues | null = t ? (refused?.edit ?? { name: t.full_name, role: t.role, phone: t.phone ? prettyPhone(t.phone) : '', email: t.email, prc: t.prc_licence ?? '', specialty: t.specialty ?? '' }) : null;
+const v: EditValues | null = t ? (refused?.edit ?? { name: t.full_name, username: t.username, role: t.role, phone: t.phone ? prettyPhone(t.phone) : '', email: t.email, prc: t.prc_licence ?? '', specialty: t.specialty ?? '' }) : null;
 const roleLocked = !!t && (t.role === 'owner' || self);
 const showPrc = !!t && !!v && (roleLocked ? !!t.slug : clinician(v.role));
 const mayEdit = !!t && canSetUp && (isOwner || t.role !== 'owner');
@@ -120,6 +121,7 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
                 {self && <span class="ws-pill ws-tint-blue">You</span>}
               </div>
               <p class="set-person-facts">
+                <span><Icon name="user" size={16} /><span>Signs in as <strong class="font-semibold">{t.username}</strong></span></span>
                 <span><Icon name="message" size={16} /><span class="tabular-nums">{t.phone ? prettyPhone(t.phone) : 'No mobile on file'}</span></span>
                 <span class="min-w-0"><Icon name="inbox" size={16} /><Email address={t.email} /></span>
                 <span><Icon name="clock" size={16} />{t.disabled_at ? `Disabled ${dateText(t.disabled_at)}` : t.has_password && t.last_seen_at ? `Last seen ${ago(t.last_seen_at)}` : 'Has not signed in yet'}</span>
@@ -266,6 +268,11 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
               <span class="meta">Full name</span>
               <input name="name" value={v.name} required minlength="2" maxlength="80" autocomplete="off" />
               {t.slug && t.prc_licence && <span class="set-help">As on their PRC ID. A new name goes back for a PRC check.</span>}
+            </label>
+            <label class="field">
+              <span class="meta">Username</span>
+              <input name="username" value={v.username} required minlength="3" maxlength={USERNAME_MAX} autocomplete="off" autocapitalize="none" spellcheck="false" />
+              <span class="set-help">{self ? 'You sign' : 'They sign'} in with it at flossify.ph/{clinic.slug}. Letters, numbers, dots and dashes.</span>
             </label>
             {roleLocked ? (
               <div class="field">

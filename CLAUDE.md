@@ -309,6 +309,37 @@ Built for a front desk between patients and a dentist with gloves just off:
   without scrolling at all.
 - `entrance-check.mjs` in the session scratchpad measures all of it.
 
+## Clinic doors and usernames — `/<clinic>/sign-in/` (029)
+
+`docs/clinic-sites-design.md` is the plan (P1 usernames and doors — shipped;
+P2 roles, P3 People & Roles, P4 tasks, P5 the clinic's site at `/<clinic>/`).
+
+- **Every staff account has a username**, unique within its group
+  (`staff.username`, `unique (group_id, username)`, `username_ok()` =
+  `src/lib/username.ts`). A trigger fills one from the email (then the name)
+  when an insert does not say one, so `signup_clinic()`, invitations,
+  `admin:create` and the seed need no change. Owners and admins change it on a
+  person's page; My page shows it.
+- **A clinic's door** is `/<slug>/sign-in/` (`src/pages/[clinic]/`): the staff
+  entrance's card (`StaffEntrance` with `door`, the form is
+  `components/entry/SignInForm.astro`, shared with `/auth/login/`), the clinic's
+  own cover photo behind or the soft blur, never the film. `clinic_door(slug)`
+  (definer) is the only read before a tenant; `authenticateAt()` looks the
+  username (or email) up in that clinic's group and lets in only someone with
+  `staff_access` to THAT clinic. Rate limit `login:u:<slug>:<username>`.
+- **The device remembers the last clinic** (`fl_clinic`, a year, public slug
+  only): `/auth/login/` — the top bar's "Clinic sign-in" — redirects there,
+  carrying `next` and `done`; `?any=1` ("Sign in another way") stays on the email
+  door. `/auth/clinic/` is "Find your clinic": a typed address opens any door,
+  words search listed clinics only.
+- **`/<slug>/`** redirects to `/find/<slug>/` (listed) or the door (not listed)
+  until P5. An address that is no clinic answers `new Response(null, {status:
+  404})`, which renders the site's 404 page — `Astro.rewrite('/404/')` is refused
+  (the 404 page is prerendered).
+- **`RESERVED` in `src/lib/slug.ts`** lists first path segments no clinic slug
+  may take (`uniqueClinicSlug` skips them: "Find" → `find-2`). A page at a new
+  first segment goes on that list.
+
 ## The patient side — `/find/`
 
 Built from `docs/service-map.md`. Rules that shaped it, and that hold:
@@ -780,6 +811,8 @@ src/lib/availability.ts        Manila-time status and slot arithmetic
 src/pages/api/                 availability, bookings (create / undo-or-cancel), chart (tooth_state), sms/inbound
 src/pages/auth/                sign-in, sign-out, forgot (text a code), code (set a password)
 src/pages/start/               a clinic sets itself up
+src/pages/[clinic]/            a clinic's own address: sign-in (its door), index (redirect until P5)
+src/lib/clinic-door.ts, username.ts  the remembered clinic, Find your clinic; username rules
 src/pages/c/[clinic]/settings/ profile + hours + HMOs + listing, fees, team (invites), photos, privacy (DPO), billing
 src/pages/c/[clinic]/claims/   HMO and PhilHealth claims: file, approve, deny, pay, notes, aging, CSV
 src/pages/me/                  patients: my visits by mobile (code → list; confirm / cancel / calendar)

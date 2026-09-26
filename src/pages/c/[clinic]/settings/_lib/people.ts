@@ -48,6 +48,7 @@ import { issueCode } from '../../../../../lib/codes';
 import { queueText, queueEmail, texts, emails, codePageFor, normalizePhone, prettyPhone, PH_MOBILE } from '../../../../../lib/messages';
 import { emailEnabled, normalizeEmail, EMAIL_ADDRESS, EMAIL_MAX } from '../../../../../lib/email';
 import { ROLES, ROLE_LABEL, UUID, clinician } from './common';
+import { normalizeUsername, usernameProblem } from '../../../../../lib/username';
 
 // The seven Board-recognised fields, exactly as staff.specialty's check constraint spells them (migration 002).
 export const SPECIALTIES = ['Endodontics', 'Oral & maxillofacial surgery', 'Orthodontics', 'Pediatric dentistry', 'Periodontics', 'Prosthodontics', 'Dental public health'];
@@ -59,16 +60,18 @@ export const emailOn = () => emailEnabled();
 /** The same sentence wherever a mobile is checked across the service. */
 const phoneTaken = (phone: string, notId: string | null) => pool.query(
   `select 1 from staff where ($2::uuid is null or id <> $2) and right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $1`, [phone.slice(-10), notId]);
+const usernameTaken = (groupId: string, username: string, notId: string) => pool.query(
+  'select 1 from staff where group_id = $1 and username = $2 and id <> $3', [groupId, username, notId]);
 const emailTaken = (email: string, notId: string | null) => pool.query(
   'select 1 from staff where email = $1 and ($2::uuid is null or id <> $2)', [email, notId]);
 
 export interface Person {
-  id: string; full_name: string; role: string; phone: string | null; email: string; prc_licence: string | null; specialty: string | null;
+  id: string; full_name: string; role: string; username: string; phone: string | null; email: string; prc_licence: string | null; specialty: string | null;
   slug: string | null; practices: string[] | null; has_password: boolean; disabled_at: Date | null; can_view_finance: boolean;
   prc_status: 'pending' | 'checked' | 'mismatch'; prc_checked_on: Date | null; prc_note: string | null;
   last_seen_at: Date | null; invited_at: Date | null; password_set_at: Date | null; created_at: Date;
 }
-const PERSON = `select s.id, s.full_name, s.role, s.phone, s.email::text as email, s.prc_licence, s.specialty, s.slug, s.practices,
+const PERSON = `select s.id, s.full_name, s.role, s.username::text as username, s.phone, s.email::text as email, s.prc_licence, s.specialty, s.slug, s.practices,
                        s.password_hash is not null as has_password, s.disabled_at, a.can_view_finance, s.prc_status, s.prc_checked_on, s.prc_note,
                        s.last_seen_at, s.invited_at, s.password_set_at, s.created_at
                   from staff_access a join staff s on s.id = a.staff_id`;
@@ -225,7 +228,7 @@ export function addedText(name: string, via: string): string {
 
 // --- one person (their page) -----------------------------------------------------------------
 
-export interface EditValues { name: string; role: string; phone: string; email: string; prc: string; specialty: string }
+export interface EditValues { name: string; username: string; role: string; phone: string; email: string; prc: string; specialty: string }
 export interface ActionRefused { error: string; action: string; edit?: EditValues }
 
 /** Everything the person page's forms do. `here` is the person's page. */
@@ -266,6 +269,7 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
     const me = t.id === session.staffId;
     const edit: EditValues = {
       name: String(form.get('name') ?? '').trim().replace(/\s+/g, ' '),
+      username: form.has('username') ? normalizeUsername(String(form.get('username'))) : t.username,
       // An owner stays an owner, and nobody changes their own role: the posted value is ignored for both.
       role: t.role === 'owner' || me ? t.role : String(form.get('role') ?? ''),
       phone: String(form.get('phone') ?? '').trim(),
@@ -278,6 +282,8 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
     const profile = edit.role === 'owner' ? !!t.slug : clinician(edit.role);
     let error = '';
     if (edit.name.length < 2 || edit.name.length > 80) error = 'Give their full name, as patients should see it.';
+    else if (edit.username !== t.username && usernameProblem(edit.username)) error = usernameProblem(edit.username)!;
+    else if (edit.username !== t.username && (await usernameTaken(clinic.group_id, edit.username, t.id)).rowCount) error = `Someone at ${clinic.name} already signs in as “${edit.username}”. Choose another username.`;
     // Only an owner's own row may say 'owner' (it was never taken from the form). Anyone else's role
     // must be one an owner hands out, so a posted role=owner is refused, never saved.
     else if (t.role !== 'owner' && !Object.hasOwn(ROLES, edit.role)) error = 'Choose a role.';
@@ -294,6 +300,7 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
     // What the row becomes. Someone who is no longer a dentist keeps no licence, specialty or profile.
     const next = {
       name: edit.name,
+      username: edit.username,
       role: edit.role,
       phone: phone || null,
       email: edit.email,
@@ -304,6 +311,7 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
     const practices = profile && !next.specialty && !(t.practices?.length) ? ['General dentistry'] : (t.practices ?? []);
     const changed = {
       name: next.name !== t.full_name,
+      username: next.username !== t.username,
       email: next.email !== normalizeEmail(t.email),
       phone: (next.phone ?? '') !== normalizePhone(t.phone ?? ''),
       role: next.role !== t.role,
@@ -335,11 +343,12 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
                 prc_status     = case when $11::boolean then 'pending' else prc_status end,
                 prc_checked_on = case when $11::boolean then null else prc_checked_on end,
                 prc_checked_by = case when $11::boolean then null else prc_checked_by end,
-                prc_note       = case when $11::boolean then $12 else prc_note end
+                prc_note       = case when $11::boolean then $12 else prc_note end,
+                username = $13
           where id = $1
           returning token_version`,
         // The mobile is written only when it changed, so a number on file as '0917 555 2003' is left as it was.
-        [t.id, next.name, next.email, changed.phone ? next.phone : t.phone, next.role, next.prc, next.specialty, next.slug, practices, signOut, prcReset, prcNote]);
+        [t.id, next.name, next.email, changed.phone ? next.phone : t.phone, next.role, next.prc, next.specialty, next.slug, practices, signOut, prcReset, prcNote, next.username]);
       tv = rows[0].token_version;
     } catch (e) {
       // Two edits at once can both pass the checks above; the database's own unique keys have the last word.
@@ -347,6 +356,8 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
       if (code !== '23505') throw e;
       return fail(/email/.test(constraint ?? '')
         ? 'That email is already on another Flossify staff account. Use another one for them.'
+        : /username/.test(constraint ?? '')
+        ? `Someone at ${clinic.name} already signs in as “${next.username}”. Choose another username.`
         : 'Someone saved a change to the team at the same moment. Check the details and save again.', edit);
     }
     if (changed.role) await pool.query('update staff_access set can_manage_staff = $3 where staff_id = $1 and clinic_id = $2', [t.id, clinic.id, next.role === 'admin' || next.role === 'owner']);

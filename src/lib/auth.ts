@@ -88,6 +88,28 @@ export async function authenticate(email: string, password: string): Promise<Who
   return whoFor(s);
 }
 
+/** The clinic behind a sign-in address (clinic_door, 029): enough to draw its door, nothing more. */
+export interface Door { id: string; group_id: string; name: string; slug: string; listed: boolean; photo_key: string | null; phone: string | null }
+export async function clinicDoor(slug: string): Promise<Door | undefined> {
+  if (!/^[a-z0-9-]{1,64}$/i.test(slug)) return undefined;
+  return (await pool.query('select * from clinic_door($1)', [slug])).rows[0];
+}
+
+/** Username (or email) + password at one clinic's door → the person, if they may open that clinic.
+ *  The door says which group, so a username is looked up in that group only. */
+export async function authenticateAt(door: Door, login: string, password: string): Promise<Who | null> {
+  const key = login.trim().toLowerCase();
+  const { rows } = await pool.query(
+    `select s.id, s.group_id, s.full_name, s.role, s.password_hash, s.token_version, s.home_clinic_id
+       from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $1
+      where s.group_id = $2 and s.disabled_at is null and (s.username = $3 or s.email = $3)
+      order by (s.username = $3) desc, s.created_at limit 1`, [door.id, door.group_id, key]);
+  const s = rows[0];
+  const ok = verifyPassword(password, s?.password_hash ?? DUMMY_HASH);
+  if (!s || !ok) return null;
+  return whoFor(s);
+}
+
 /** The session-worthy shape of a staff row, with their branches read through the definer function (no tenant yet). */
 export async function whoFor(s: { id: string; group_id: string; full_name: string; role: string; token_version: number; home_clinic_id: string | null }): Promise<Who> {
   const access = await pool.query('select id, slug, name from staff_branches($1)', [s.id]);

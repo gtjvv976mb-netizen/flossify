@@ -1,0 +1,13 @@
+---
+// flossify.ph/<clinic-slug>/ — the clinic's own address (docs/clinic-sites-design.md). Until its
+// generic site lands (P5), a listed clinic's address opens its page in Find a clinic, and one that
+// is not listed yet opens its staff sign-in: its team can always get in, and the public sees nothing
+// the clinic has not published. An address that is no clinic is the site's own 404.
+export const prerender = false;
+
+import { clinicDoor } from '../../lib/auth';
+
+const door = await clinicDoor(String(Astro.params.clinic ?? '').toLowerCase());
+if (!door) return new Response(null, { status: 404 });
+return Astro.redirect(door.listed ? `/find/${door.slug}/` : `/${door.slug}/sign-in/`, 302);
+---
