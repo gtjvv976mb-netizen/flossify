@@ -44,9 +44,12 @@ mono labels, Archivo): do not bring them back on any page.
 
 **Frosted glass where a clinic is the background** (the owner, 26 Sep 2026:
 "make the panels translucent … so more of the background can be seen"): the
-home page's cards on the film (`.pane.pane-glass`, see "The film") and the
+home page's cards on the film (`.pane.pane-glass`, see "The film"), the
 clinic sign-up `/start/`, whose compact glass cards stand on a fixed photo of
-the treatment room (`/img/ws/chair-*.webp`). Glass uses the `--glass-*`
+the treatment room (`/img/ws/chair-*.webp`), and Find a clinic `/find/` (the
+"I'm a Patient" page; its glass is scoped to `.pt-glass` in the page, over the
+waiting area `/img/ws/waiting-*.webp`; the rest of the patient side still
+stands on opaque cards). Glass uses the `--glass-*`
 tokens in global.css; every line on it is measured against the pixels behind
 it (light and dark, 1440 and 390) — measure again before making it clearer.
 
