@@ -95,6 +95,13 @@ import HealthLists from './_ui/HealthLists.astro';
 import Glyph from './_ui/Glyph.astro';
 import './_ui/patients.css';
 import './_forms/forms.css';
+import './_record/record.css';
+import Timeline from './_record/Timeline.astro';
+import Treatment from './_record/Treatment.astro';
+import Notes from './_record/Notes.astro';
+import Prescriptions from './_record/Prescriptions.astro';
+import Files from './_record/Files.astro';
+import RecallCard from './_record/RecallCard.astro';
 import { shellLinks } from '../../../../components/ws/routes';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
@@ -114,6 +121,7 @@ import { CONDITION_LABEL, surfaceSummary, type ToothCondition, type ToothMark, t
 import { patientForms, getForm, compareWithRecord, useFormDetail, healthLists, answerText, FIELDS, TAKEABLE, type FormConsentState } from '../../../../lib/patient-forms';
 import { signedText } from './_forms/words';
 import { can } from '../../../../lib/can';
+import { loadClinical, loadTimeline, recordAction, RECORD_INTENTS, RX_ROWS, type Outcome, type RecordProblem, type RxItem } from '../../../../lib/record';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -139,8 +147,15 @@ let paperState: { open: boolean; problem: string | null; values: Partial<PaperIn
 let detailsProblems: string[] = [];
 let detailsPosted: PersonIn | null = null;
 let formUseProblem: string | null = null;
+// A clinical-record post (Treatment, Notes, Prescriptions, Files, the next check-up) that was refused.
+let recordProblem: RecordProblem | null = null;
+let rxTyped: RxItem[] = [];
 // The section a post came back to.
 let backTo: string | null = null;
+// Where on the page a clinical-record post lands again.
+const ANCHOR: Record<string, string> = { 'done-add': 'treatment-done', 'lab-add': 'treatment-lab', 'lab-next': 'treatment-lab', 'recall-set': 'recall', 'recall-done': 'recall', 'recall-clear': 'recall' };
+/** A refused clinical-record post: thrown out of the transaction so nothing half-done is kept. */
+class Refused extends Error { constructor(public outcome: Extract<Outcome, { ok: false }>) { super('refused'); } }
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -232,6 +247,24 @@ if (Astro.request.method === 'POST') {
       problems.push(r === 'denied' ? 'Your account cannot change records at this branch. Ask the owner.' : r.taken);
     }
     detailsProblems = problems;
+  } else if (RECORD_INTENTS.has(intent)) {
+    // The clinical record (src/lib/record.ts): every intent checks canEditRecords in its own transaction.
+    const outcome = slow
+      ? ({ ok: false, section: 'overview', problem: slow, values: {} } as Extract<Outcome, { ok: false }>)
+      : await withClinic(clinic.id, async (tx) => {
+          const o = await recordAction(tx, { clinicId: clinic.id, staffId: session.staffId, patientId }, intent, form);
+          if (o !== 'none' && !o.ok) throw new Refused(o);
+          return o;
+        }).catch((e) => { if (e instanceof Refused) return e.outcome; throw e; });
+    if (outcome === 'none') return notFound();
+    if (outcome.ok) return Astro.redirect(`${here}?saved=${encodeURIComponent(outcome.saved)}#${ANCHOR[intent] ?? outcome.section}`, 303);
+    backTo = slow ? null : outcome.section;
+    recordProblem = { intent, text: outcome.problem, values: outcome.values };
+    if (intent === 'rx-add') {
+      const col = (k: string) => form.getAll(k).map((x) => String(x));
+      const [dr, st, qt, sg] = [col('drug'), col('strength'), col('qty'), col('sig')];
+      rxTyped = Array.from({ length: RX_ROWS }, (_, i) => ({ drug: dr[i] ?? '', strength: st[i] ?? '', qty: qt[i] ?? '', sig: sg[i] ?? '' }));
+    }
   } else if (intent === 'form-use') {
     // One detail from an added patient form onto the record ("Use 0917 555 0199").
     backTo = 'overview';
@@ -301,7 +334,10 @@ const data = await withClinic(clinic.id, async (tx) => {
   // What the form says that the record does not: different, or a mobile or email the desk did not take.
   const cmp = added && added.addedAs === 'existing' ? await compareWithRecord(tx, added.values, p.id) : null;
   const addedDiffers = cmp ? [...cmp.differs, ...cmp.proposed] : [];
-  return { me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
+  // The clinical record (033) and the Timeline, which reads everything above once more in one list.
+  const clinical = await loadClinical(tx, clinic.id, p.id);
+  const timeline = await loadTimeline(tx, p.id, clinical, money);
+  return { clinical, timeline, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
 });
 if (!data) return notFound();
 const { me, p: patient, visits, health, canEdit } = data;
@@ -403,10 +439,17 @@ const chargeHref = `${links.newCharge}?patient=${patient.id}`;
 const importHref = `/c/${clinic.slug}/patients/import/`;
 
 // --- sections ---------------------------------------------------------------
+const clin = data.clinical;
+const planOpen = clin.plan.filter((i) => i.status === 'planned' || i.status === 'accepted');
 const SECTIONS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'timeline', label: 'Timeline' },
   { id: 'health', label: 'Health' },
   { id: 'chart', label: 'Chart' },
+  { id: 'treatment', label: 'Treatment', count: planOpen.length || null },
+  { id: 'notes', label: 'Notes', count: clin.notes.filter((n) => !n.amends).length || null },
+  { id: 'rx', label: 'Prescriptions', count: clin.rx.length || null },
+  { id: 'files', label: 'Files', count: clin.files.length || null },
   { id: 'visits', label: 'Visits', count: visits.length || null },
   ...(money ? [{ id: 'money', label: 'Money', count: data.statements.filter((s) => s.status === 'issued' || s.status === 'partly_paid').length || null }] : []),
   { id: 'consent', label: 'Consent' },
@@ -439,7 +482,12 @@ const usedLabel = used ? ({ phone: 'mobile', email: 'email', address_line: 'addr
   emergency_name: 'emergency contact', emergency_relation: 'emergency contact’s relation', emergency_phone: 'emergency contact’s number',
   guardian_name: 'parent or guardian', guardian_relation: 'parent or guardian’s relation', guardian_phone: 'parent or guardian’s mobile',
   hmo_name: 'HMO', hmo_member_no: 'HMO card number', middle_name: 'middle name', suffix: 'suffix' } as Record<string, string>)[used] ?? 'detail' : null;
-const current = backTo ?? savedTo[saved ?? ''] ?? 'overview';
+// A clinical-record save names its section by its first word (plan-done, rx:<id>, files:3, recall-cleared …).
+const recordSaved = (s: string | null) => {
+  const w = (s ?? '').split(/[-:]/)[0];
+  return ({ plan: 'treatment', done: 'treatment', lab: 'treatment', note: 'notes', addendum: 'notes', rx: 'rx', file: 'files', files: 'files', recall: 'overview' } as Record<string, string>)[w] ?? null;
+};
+const current = backTo ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? 'overview';
 const tabItems = SECTIONS.map((s) => ({ id: `rec-${s.id}`, label: s.label, count: 'count' in s ? s.count : null }));
 
 // --- money --------------------------------------------------------------------
@@ -494,7 +542,8 @@ const visitFromForm: [string, string][] = lf ? ([
   ['Nervous about visits', answerText(FIELDS.nervous, lf.nervous)],
 ] as [string, string | null][]).filter((r): r is [string, string] => !!r[1]) : [];
 const formsBase = `/c/${clinic.slug}/patients/forms/`;
-const moreItems = (money ? 1 : 0) + (canEdit ? 1 : 0);
+const moreItems = (money ? 1 : 0) + (canEdit ? 5 : 0);
+const recHere = here;
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: me.area }} title={titleName} section="patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
@@ -519,6 +568,26 @@ const moreItems = (money ? 1 : 0) + (canEdit ? 1 : 0);
         {moreItems > 0 && (
           <Menu id="rec-more" label={`More for ${shortName}`} buttonClass="ws-btn ws-btn-quiet" align="right">
             <Fragment slot="button">More <Icon name="chevron" size={16} /></Fragment>
+            {canEdit && (
+              <>
+                <button type="button" class="ws-menu-item" data-ws-open="rec-note-add" data-amends="" data-rec-show="notes">
+                  <span class="ws-menu-icon" data-tint="blue"><Glyph name="pen" /></span>
+                  <span class="ws-menu-words">Clinical note<span class="ws-menu-hint">What was found and done today</span></span>
+                </button>
+                <button type="button" class="ws-menu-item" data-ws-open="rec-plan-add" data-rec-show="treatment">
+                  <span class="ws-menu-icon" data-tint="green"><Glyph name="plan" /></span>
+                  <span class="ws-menu-words">Add to treatment plan<span class="ws-menu-hint">With the price from your fee guide</span></span>
+                </button>
+                <button type="button" class="ws-menu-item" data-ws-open="rec-rx-add" data-rec-show="rx">
+                  <span class="ws-menu-icon" data-tint="blue"><Glyph name="pill" /></span>
+                  <span class="ws-menu-words">Prescription<span class="ws-menu-hint">Ready to print, with PRC and PTR</span></span>
+                </button>
+                <button type="button" class="ws-menu-item" data-ws-open="rec-file-add" data-rec-show="files">
+                  <span class="ws-menu-icon" data-tint="blue"><Glyph name="image" /></span>
+                  <span class="ws-menu-words">Add X-ray or photo<span class="ws-menu-hint">Or a document, as a PDF</span></span>
+                </button>
+              </>
+            )}
             {money && (
               <a class="ws-menu-item" href={chargeHref}>
                 <span class="ws-menu-icon" data-tint="green"><Icon name="money" /></span>
@@ -546,6 +615,7 @@ const moreItems = (money ? 1 : 0) + (canEdit ? 1 : 0);
     )}
     {latest?.note && <Callout tone="alert" role="none" class="mt-3" title="Note for the dentist" text={latest.note} />}
     {stale && <Callout tone="alert" class="mt-4" text={CSRF_MESSAGE} />}
+    {recordProblem && !canEdit && <Callout tone="alert" class="mt-4" text={`${recordProblem.text} Nothing was saved.`} />}
     {saved === 'new' && <Callout tone="success" class="mt-4" text={`Added. ${shortName} is on file as ${patient.chart_no}; everything from the form is below.`} />}
     {saved === 'details' && <Callout tone="success" class="mt-4" text="Details saved." />}
     {saved === 'form' && data.added && addedConsents && (
@@ -619,10 +689,30 @@ const moreItems = (money ? 1 : 0) + (canEdit ? 1 : 0);
       )}
       <p class="mt-5 flex items-start gap-2 border-t border-[var(--ws-hair)] pt-4 text-[13.5px] leading-relaxed text-muted">
         <Icon name="info" size={16} class="mt-0.5 shrink-0" />
-        <span>X-rays, treatment plans, prescriptions and signed treatment forms are not kept here yet. Every look at this record, and every change to it, is logged.</span>
+        <span>Every look at this record, and every change to it, is logged under the person’s name.</span>
       </p>
     </Pane>
     <div class="grid content-start gap-4 max-md:gap-3">
+      <RecallCard recall={clin.recall} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} bookHref={bookHref} />
+      {(planOpen.length > 0 || clin.labs.some((l) => l.status !== 'fitted')) && (
+        <Pane as="section" label="Treatment, in short">
+          <Head icon="plan" title="Treatment plan">
+            <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="treatment">Open</button>
+          </Head>
+          {planOpen.length > 0 ? (
+            <ul class="pt-list">
+              {planOpen.slice(0, 4).map((i) => (
+                <li>
+                  <span class="min-w-0 text-[14.5px]"><span class="font-semibold">{i.name}</span><span class="block text-ink-2">{[i.fdi ? `Tooth ${i.fdi}${i.surface ? ` ${i.surface}` : ''}` : null, `Phase ${i.phase}`].filter(Boolean).join(' · ')}</span></span>
+                  <Chip tone={i.status === 'accepted' ? 'warn' : 'neutral'} label={i.status === 'accepted' ? 'Agreed' : 'Planned'} />
+                </li>
+              ))}
+            </ul>
+          ) : <p class="text-[15px] text-ink-2">Nothing left on the plan.</p>}
+          {planOpen.length > 4 && <p class="mt-2 text-[13.5px] text-ink-2">And {planOpen.length - 4} more.</p>}
+          {clin.labs.filter((l) => l.status !== 'fitted').map((l) => <p class="mt-3 flex items-start gap-2 text-[14px] text-ink-2"><Glyph name="lab" size={16} class="mt-0.5 shrink-0" /><span>Lab: {l.description} · {l.lab}{l.dueOn && !l.receivedOn ? ` · due ${dateText(l.dueOn)}` : ''}</span></p>)}
+        </Pane>
+      )}
       {data.latestForm && (
         <Pane as="section" label="From the patient forms">
           <Head icon="form" title="From the patient forms" meta={`Sent ${day(data.latestForm.submittedAt)} · ${data.latestForm.ref}`}>
@@ -662,6 +752,11 @@ const moreItems = (money ? 1 : 0) + (canEdit ? 1 : 0);
         )}
       </Pane>
     </div>
+  </div>
+
+  <!-- Timeline -->
+  <div id="rec-timeline" role="tabpanel" aria-labelledby="rec-rec-timeline-tab" hidden={current !== 'timeline'} class="min-w-0" data-rec-panel="timeline">
+    <Timeline events={data.timeline} sections={SECTIONS.map((x) => x.id)} />
   </div>
 
   <!-- Health -->
@@ -781,6 +876,26 @@ const moreItems = (money ? 1 : 0) + (canEdit ? 1 : 0);
         </>
       )}
     </Pane>
+  </div>
+
+  <!-- Treatment -->
+  <div id="rec-treatment" role="tabpanel" aria-labelledby="rec-rec-treatment-tab" hidden={current !== 'treatment'} class="min-w-0" data-rec-panel="treatment">
+    <Treatment c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} />
+  </div>
+
+  <!-- Notes -->
+  <div id="rec-notes" role="tabpanel" aria-labelledby="rec-rec-notes-tab" hidden={current !== 'notes'} class="min-w-0" data-rec-panel="notes">
+    <Notes c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} />
+  </div>
+
+  <!-- Prescriptions -->
+  <div id="rec-rx" role="tabpanel" aria-labelledby="rec-rec-rx-tab" hidden={current !== 'rx'} class="min-w-0" data-rec-panel="rx">
+    <Prescriptions c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} firstName={patient.first_name} printBase={`${here}rx/`} allergies={allergies} typedRows={rxTyped} />
+  </div>
+
+  <!-- Files -->
+  <div id="rec-files" role="tabpanel" aria-labelledby="rec-rec-files-tab" hidden={current !== 'files'} class="min-w-0" data-rec-panel="files">
+    <Files c={clin} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} fileBase={`${here}files/`} />
   </div>
 
   <!-- Visits -->
@@ -1010,6 +1125,8 @@ const moreItems = (money ? 1 : 0) + (canEdit ? 1 : 0);
   window.addEventListener('hashchange', fromHash);
   fromHash();
   document.querySelectorAll<HTMLElement>('[data-rec-go]').forEach((b) => b.addEventListener('click', () => { show(b.dataset.recGo!, true); }));
+  // A quick action in More (a note, a plan item, a prescription, a file) brings its section forward behind its panel.
+  document.querySelectorAll<HTMLElement>('[data-rec-show]').forEach((b) => b.addEventListener('click', () => { show(b.dataset.recShow!); }));
 
   // The chart speaks up: a copy of this page kept for a brownout opens on the Chart, and a
   // notice the chart raises (a colleague's newer finding, changes waiting on this device)

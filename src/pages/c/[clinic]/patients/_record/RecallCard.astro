@@ -1,0 +1,77 @@
+---
+// The next check-up, on the Overview: when this patient should come back and why. One tap sets it in 3, 6 or
+// 12 months; "Pick a day" for anything else. When it is due the card says so in amber, and overdue in red,
+// with words as well as colour. "Came in" closes it (then set the next); "Clear" takes it away.
+import Pane from '../../../../../components/ws/Pane.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import { RECALL_REASONS, type Recall, type RecordProblem } from '../../../../../lib/record';
+import { dateText } from '../../../../../lib/health';
+
+interface Props { recall: Recall | null; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; bookHref: string }
+const { recall, canEdit, action, problem, saved, today, firstName, bookHref } = Astro.props;
+
+const days = recall ? Math.round((Date.parse(`${recall.dueOn}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 864e5) : 0;
+const state = !recall ? null : days < 0 ? 'overdue' : days <= 14 ? 'due' : 'later';
+const inWords = !recall ? '' : days < 0 ? `${-days === 1 ? 'a day' : -days < 14 ? `${-days} days` : -days < 60 ? `${Math.round(-days / 7)} weeks` : `${Math.round(-days / 30)} months`} overdue`
+  : days === 0 ? 'today' : days === 1 ? 'tomorrow' : days < 14 ? `in ${days} days` : days < 60 ? `in ${Math.round(days / 7)} weeks` : `in ${Math.round(days / 30)} months`;
+const SAVED: Record<string, string> = { recall: 'Next check-up set.', 'recall-done': 'Marked as came in. Set the next one when you are ready.', 'recall-cleared': 'Next check-up cleared.' };
+const v = problem?.intent === 'recall-set' ? problem.values : ({} as Record<string, string>);
+const inline = problem && ['recall-done', 'recall-clear'].includes(problem.intent) ? problem.text : null;
+const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 864e5).toISOString().slice(0, 10);
+const quick = (months: number, label: string) => ({ months, label });
+---
+
+<Pane as="section" label="Next check-up" id="recall">
+  <Head icon="recall" title="Next check-up" />
+  {saved && SAVED[saved] && <Callout tone="success" class="mb-3" text={SAVED[saved]} />}
+  {inline && <Callout tone="alert" class="mb-3" text={inline} />}
+  {recall ? (
+    <>
+      <p class="rc-due">{dateText(recall.dueOn)}</p>
+      <p class="mt-1 flex flex-wrap items-center gap-2 text-[14.5px] text-ink-2">
+        <Chip tone={state === 'overdue' ? 'alert' : state === 'due' ? 'warn' : 'neutral'} icon={state === 'later' ? undefined : 'alert'} label={inWords.charAt(0).toUpperCase() + inWords.slice(1)} />
+        <span>{recall.reason}</span>
+      </p>
+      {canEdit && (
+        <div class="rc-when">
+          {state !== 'later' && <a href={bookHref} class="ws-btn ws-btn-quiet"><Icon name="calendar" />Book it</a>}
+          <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-done" /><button class="ws-btn ws-btn-quiet"><Icon name="check" />Came in</button></form>
+          <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-recall-set">Change</button>
+          <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-clear" /><button class="ws-btn ws-btn-quiet">Clear</button></form>
+        </div>
+      )}
+    </>
+  ) : (
+    <>
+      <p class="text-[15px] text-ink-2">{canEdit ? `When should ${firstName} come back?` : 'No check-up set.'}</p>
+      {canEdit && (
+        <div class="rc-when">
+          {[quick(3, 'In 3 months'), quick(6, 'In 6 months'), quick(12, 'In a year')].map((q) => (
+            <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-set" /><input type="hidden" name="months" value={q.months} /><button class="ws-btn ws-btn-quiet">{q.label}</button></form>
+          ))}
+          <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-recall-set"><Icon name="calendar" />Pick a day</button>
+        </div>
+      )}
+    </>
+  )}
+</Pane>
+
+{canEdit && (
+  <SidePanel id="rec-recall-set" title="Next check-up" meta={firstName} open={problem?.intent === 'recall-set'}>
+    {problem?.intent === 'recall-set' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was set.`} />}
+    <form method="post" action={`${action}#recall`} class="grid gap-4">
+      <Csrf /><input type="hidden" name="intent" value="recall-set" />
+      <label class="field"><span class="meta">Day</span><input type="date" name="due_on" value={v.due_on ?? recall?.dueOn ?? ''} min={tomorrow} required /></label>
+      <label class="field"><span class="meta">For</span>
+        <input name="reason" value={v.reason ?? recall?.reason ?? RECALL_REASONS[0]} list="rec-recall-reasons" maxlength="120" autocomplete="off" />
+      </label>
+      <datalist id="rec-recall-reasons">{RECALL_REASONS.map((r) => <option value={r} />)}</datalist>
+      <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Set the check-up</button>
+    </form>
+  </SidePanel>
+)}

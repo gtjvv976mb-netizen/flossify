@@ -818,6 +818,33 @@ and marked *Easiest*.
   the forms' answers and printouts, records and health histories must not
   stay in a shared clinic computer's cache after sign-out.
 
+## The clinical record (033) — Timeline, Treatment, Notes, Prescriptions, Files, next check-up
+
+The patient record (`patients/[patient].astro`) has twelve sections: Overview · Timeline · Health · Chart ·
+Treatment · Notes · Prescriptions · Files · Visits · Money · Consent · Texts. Built from standard dental
+practice — the real SwiftCare admin record the owner linked was **not** opened (another clinic's patient
+data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical`, `loadTimeline`,
+`recordAction`, `readRecordFile`); the sections are `patients/_record/*.astro` + `record.css`.
+
+- **Every write is one post** with an `intent` in `RECORD_INTENTS`, checked by `canEditRecords` in the same
+  transaction, audited `record.*`. A refused post is thrown out of the transaction (`Refused` in the page),
+  so nothing half-done stays, and comes back in its side panel with what was typed (`PANEL_OF`).
+- **Treatment plan items** walk planned → accepted → done (or declined); Mark done writes the
+  `procedure_done` row. Prices are fee-guide estimates, not statements. Lab cases: ordered → sent →
+  back → fitted, or remake.
+- **A signed clinical note is never changed**: the app has select/insert only on `clinical_note` (033
+  revokes the rest; the database's default privileges would otherwise grant them). A correction is an
+  addendum (`amends_id`). Prescriptions and treatments done cannot be deleted by the app either.
+- **Prescriptions** print at `patients/<id>/rx/<rx>/` (A5, the clinic's head, the patient, ℞, the
+  prescriber's PRC and PTR). The medicine box suggests generic names only, never a dose. A prescriber needs
+  a PRC licence on file.
+- **Patient files** (JPEG/PNG/WebP/PDF, 25 MB, 10 at a time) are stored under
+  `UPLOAD_DIR/records/<clinic id>/`, checked by their first bytes, and served **only** by
+  `patients/<id>/files/<file>/` behind `requireWorkspace` + RLS (no-store; views and downloads audited).
+  The public `/uploads/` route cannot reach them. Remove hides a file (`removed_at`), never deletes it.
+- **Next check-up** (recall) sits on the Overview: 3/6/12 months in one tap, or a day.
+- The Timeline merges every table (money only for people who may bill) with filter chips.
+
 ## Open — read before shipping
 
 - The Semaphore provider is written to their v4 API but has not been run
