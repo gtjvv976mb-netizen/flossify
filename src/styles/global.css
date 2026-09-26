@@ -1258,6 +1258,34 @@ table tr.is-today th::after {
 .entrance-mark-sq rect { fill: var(--en-teal-fill); }
 .entrance-mark-sq path { fill: #fff; }
 .entrance-where { padding: 0.25rem 0.625rem; border-radius: var(--en-r-pill); background: var(--en-subtle); color: var(--en-ink-2); font-size: 13px; font-weight: 600; line-height: 1.4; white-space: nowrap; }
+/* A clinic's own door (/<clinic>/sign-in/): its initials and its name at the head of the card, which may
+   run to two lines; behind the card its own cover photo, or a soft blur when it has none. */
+.entrance-clinic { min-width: 0; gap: 0.625rem; font-size: 16px; line-height: 1.25; letter-spacing: -0.01em; }
+.entrance-clinic > span:last-child { overflow-wrap: anywhere; }
+.entrance-clinic .ws-branch-badge { width: 34px; height: 34px; border-radius: var(--en-r-ctl); background: var(--en-teal-tint); color: var(--en-teal-ink); font-size: 13px; }
+.entrance-own { object-position: 50% 50%; }
+.entrance-soft {
+  background:
+    radial-gradient(ellipse 55% 45% at 6% 10%, rgb(20 144 143 / 0.26), transparent 72%),
+    radial-gradient(ellipse 50% 50% at 96% 18%, rgb(226 190 138 / 0.48), transparent 72%),
+    radial-gradient(ellipse 60% 42% at 28% 96%, rgb(255 255 255 / 0.95), transparent 72%),
+    radial-gradient(ellipse 50% 50% at 90% 92%, rgb(20 144 143 / 0.2), transparent 72%),
+    #eef1f4;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .entrance-soft {
+    background:
+      radial-gradient(ellipse 55% 45% at 6% 10%, rgb(20 144 143 / 0.22), transparent 72%),
+      radial-gradient(ellipse 50% 50% at 96% 18%, rgb(120 96 64 / 0.3), transparent 72%),
+      #15191e;
+  }
+}
+:root[data-theme="dark"] .entrance-soft {
+  background:
+    radial-gradient(ellipse 55% 45% at 6% 10%, rgb(20 144 143 / 0.22), transparent 72%),
+    radial-gradient(ellipse 50% 50% at 96% 18%, rgb(120 96 64 / 0.3), transparent 72%),
+    #15191e;
+}
 
 /* --- words -------------------------------------------------------------------------- */
 .entry-title { color: var(--en-ink); font-size: 24px; font-weight: 600; }
@@ -1436,6 +1464,7 @@ table tr.is-today th::after {
 }
 .entry-way:hover { background: var(--en-hover); }
 .entry-way-icon { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 9px; background: var(--en-teal-tint); color: var(--en-teal-ink); }
+.entry-way .ws-branch-badge { width: 34px; height: 34px; border-radius: 9px; background: var(--en-teal-tint); color: var(--en-teal-ink); font-size: 12.5px; }
 .entry-way-words { display: grid; flex: 1 1 auto; min-width: 0; line-height: 1.35; }
 .entry-way-title { font-size: 15px; font-weight: 600; }
 .entry-way-hint { color: var(--en-ink-2); font-size: 13.5px; }

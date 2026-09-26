@@ -1,0 +1,118 @@
+---
+// A clinic's own sign-in: flossify.ph/<clinic-slug>/sign-in/ (docs/clinic-sites-design.md, P1).
+//
+// Every member signs in with the username the clinic gave them (their email
+// works too). The address says which clinic, so the username is looked up in
+// that clinic's group only, and only someone with access to THIS clinic gets
+// in (authenticateAt). The card is the staff entrance's — same form, same
+// rules, same rate limits and auth_event — with the clinic's name at its head
+// and its own photo behind. A clinic that is not listed yet still has a door
+// for its staff; the page shows nothing about it the clinic has not published.
+//
+// The device remembers this clinic (fl_clinic), so the top bar's "Clinic
+// sign-in" comes straight back here next time. "Sign in another way" is the
+// email door, which then stays put (?any=1).
+export const prerender = false;
+
+import StaffEntrance from '../../components/StaffEntrance.astro';
+import SignInForm from '../../components/entry/SignInForm.astro';
+import Icon from '../../components/ws/Icon.astro';
+import { clinicDoor, authenticateAt, setSession, readSession, canOpen, authEvent, SESSION_HOURS, type Device } from '../../lib/auth';
+import { rememberClinic, forgetClinic, rememberedClinic } from '../../lib/clinic-door';
+import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
+import { hit, refund, clientIp, waitText, LIMITS } from '../../lib/throttle';
+
+const slug = String(Astro.params.clinic ?? '').toLowerCase();
+const door = await clinicDoor(slug);
+if (!door) {
+  // A remembered clinic that has no door any more: forget it, and send the person to the email door.
+  if (rememberedClinic(Astro.cookies) === slug) { forgetClinic(Astro.cookies); return Astro.redirect('/auth/login/?any=1'); }
+  return new Response(null, { status: 404 });
+}
+const home = `/c/${door.slug}/`;
+// Only a page of this clinic's workspace may be a destination.
+const nextRaw = Astro.url.searchParams.get('next') || '';
+const next = nextRaw.startsWith(home) && /^[^\s]*$/.test(nextRaw) ? nextRaw : '';
+const done = Astro.url.searchParams.get('done') || '';
+
+let error = '';
+let errorOn: 'password' | 'login' | null = null;
+let login = '';
+let device: Device = 'shared';
+
+// Already signed in here and still allowed? Straight in.
+const existing = readSession(Astro.cookies);
+if (existing && Astro.request.method === 'GET' && !done && (await canOpen(existing, door.slug))) return Astro.redirect(next || home);
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  login = String(form.get('login') ?? '').trim().toLowerCase().slice(0, 120);
+  const password = String(form.get('password') ?? '');
+  device = form.get('device') === 'own' ? 'own' : 'shared';
+  const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
+  const key = `login:u:${door.slug}:${login}`;
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+  else if (!login) { error = 'Write your username.'; errorOn = 'login'; }
+  else {
+    // Counted first, atomically, and given back on success — the email door's rule.
+    const [byName, byIp] = await Promise.all([hit(key, ...LIMITS.login.email), hit(`login:ip:${ip}`, ...LIMITS.login.ip)]);
+    if (!byName.allowed || !byIp.allowed) {
+      error = `Too many sign-in attempts. ${waitText(Math.max(byName.retryAfter, byIp.retryAfter))} Or ask your clinic owner to reset your password.`;
+      await authEvent('login.locked', { email: `${login}@${door.slug}`, ip, ua });
+    } else {
+      const who = await authenticateAt(door, login, password);
+      if (!who) {
+        error = `That username and password don’t match anyone at ${door.name}. Check the password, or ask your clinic owner to reset it.`;
+        errorOn = 'password';
+        await authEvent('login.fail', { email: `${login}@${door.slug}`, ip, ua });
+      } else {
+        setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: door.id, name: who.name, role: who.role, tv: who.tv }, SESSION_HOURS[device]);
+        await refund(key);
+        await authEvent('login.ok', { email: `${login}@${door.slug}`, staffId: who.staffId, ip, ua });
+        rememberClinic(Astro.cookies, door.slug);
+        return Astro.redirect(next || home, 303);
+      }
+    }
+  }
+}
+
+const notice = done === 'password' ? 'Your password is set. Sign in with it now.' : done === 'out' ? 'You are signed out. See you next shift.' : '';
+const hour = +new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false }).format(new Date());
+const hello = hour >= 5 && hour < 12 ? 'Good morning.' : hour >= 12 && hour < 18 ? 'Good afternoon.' : hour >= 18 && hour < 22 ? 'Good evening.' : 'Working late.';
+const demoLogins = process.env.SHOW_DEMO_LOGINS === '1' || (import.meta.env.DEV && import.meta.env.SHOW_DEMO_LOGINS === '1');
+---
+
+<StaffEntrance title={`Sign in — ${door.name}`} description={`Staff sign-in for ${door.name}.`} door={{ id: door.id, name: door.name, slug: door.slug, cover: door.photo_key, listed: door.listed }}>
+  <h1 class="entry-title">
+    <span class="block">{hello}</span>
+    <span class="entry-sub">Sign in to {door.name}.</span>
+  </h1>
+
+  {notice && !error && <p role="status" class="entry-note entry-note-ok mt-5"><Icon name="check" /><span>{notice}</span></p>}
+
+  <SignInForm who="username" value={login} error={error} errorOn={errorOn} device={device} remember={`flossify:staff-login:${door.slug}`} />
+
+  <ul class="entry-ways" aria-label="Other ways in">
+    <li>
+      <a href="/auth/forgot/" class="entry-way">
+        <span class="entry-way-icon"><Icon name="message" /></span>
+        <span class="entry-way-words"><span class="entry-way-title">Forgot your password?</span> <span class="entry-way-hint">Your owner can reset it, or we text you a code.</span></span>
+        <Icon name="chevron-right" class="entry-way-go" />
+      </a>
+    </li>
+    <li>
+      <a href="/auth/login/?any=1" class="entry-way">
+        <span class="entry-way-icon"><Icon name="clinic" /></span>
+        <span class="entry-way-words"><span class="entry-way-title">Not at {door.name}?</span> <span class="entry-way-hint">Sign in another way.</span></span>
+        <Icon name="chevron-right" class="entry-way-go" />
+      </a>
+    </li>
+  </ul>
+
+  {demoLogins && (
+    <details class="entry-dev">
+      <summary><Icon name="info" /><span>Development database</span><Icon name="chevron" class="entry-dev-chev" /></summary>
+      <p>Every seeded account has a username made from its email — for example <code>liwayway.domingo</code> at Session Road — and group owners the password <code>flossify</code>. Shown because this server has <code>SHOW_DEMO_LOGINS=1</code>.</p>
+    </details>
+  )}
+</StaffEntrance>

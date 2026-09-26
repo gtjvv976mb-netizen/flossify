@@ -26,11 +26,22 @@ export function slugify(name: string): string {
     .replace(/-+$/, '');
 }
 
+/** First path segments the site already uses, so no clinic's own address (flossify.ph/<slug>/) can be
+ *  one of them: a clinic called "Find" becomes find-2. docs/clinic-sites-design.md, "Reserved addresses".
+ *  A page added at a new first segment belongs on this list. */
+export const RESERVED: ReadonlySet<string> = new Set([
+  'find', 'start', 'me', 'c', 'f', 'auth', 'admin', 'api', 'coverage', 'websites', 'privacy', 'offline', 'uploads',
+  'samples', 'video', 'img', 'icons', 'fonts', 'shots', 'healthz', 'clinics', 'today', 'dentists', 'sign-in', 'login',
+  'logout', 'account', 'settings', 'help', 'about', 'contact', 'terms', 'pricing', 'blog', 'www', 'mail', 'app',
+  'sitemap', '404', '500',
+]);
+
 async function unique(base: string, fallback: string, fn: 'clinic_slug_taken' | 'staff_slug_taken'): Promise<string> {
   const root = base || fallback;
   for (let n = 1; n < 1000; n++) {
     const suffix = n === 1 ? '' : `-${n}`;
     const candidate = root.slice(0, MAX - suffix.length).replace(/-+$/, '') + suffix;
+    if (fn === 'clinic_slug_taken' && RESERVED.has(candidate)) continue;
     const { rows } = await pool.query(`select ${fn}($1) as taken`, [candidate]);
     if (!rows[0]?.taken) return candidate;
   }

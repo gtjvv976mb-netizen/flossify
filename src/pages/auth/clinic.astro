@@ -1,0 +1,79 @@
+---
+// "Find your clinic": the way to a clinic's own sign-in (/<clinic>/sign-in/) from the email door, for
+// a device that has not signed in at that clinic before (docs/clinic-sites-design.md, P1).
+//
+// Typing the clinic's address (flossify.ph/session-road, or session-road) opens that clinic's door
+// whether or not it is listed — its staff were given the address. Words search the listed clinics
+// only (findClinics), so a clinic that is not public yet is never shown to a stranger. A plain GET
+// form: it works with scripts off, and the query is a clinic's name, never a person's.
+export const prerender = false;
+
+import StaffEntrance from '../../components/StaffEntrance.astro';
+import Icon from '../../components/ws/Icon.astro';
+import ClinicBadge from '../find/_ui/ClinicBadge.astro';
+import { findClinics, doorPath } from '../../lib/clinic-door';
+import { hit, clientIp, waitText } from '../../lib/throttle';
+
+const q = (Astro.url.searchParams.get('q') ?? '').slice(0, 120);
+let found: Awaited<ReturnType<typeof findClinics>> | null = null;
+let wait = '';
+if (q.trim()) {
+  // Typed addresses are guesses at clinics that may not be listed: counted per address like any lookup.
+  const r = await hit(`door:find:${clientIp(Astro)}`, 60, 15 * 60);
+  if (!r.allowed) wait = waitText(r.retryAfter);
+  else {
+    found = await findClinics(q);
+    // One clear answer: go straight to its door.
+    if (found.exact && !found.matches.length) return Astro.redirect(doorPath(found.exact.slug), 302);
+  }
+}
+const list = found ? [...(found.exact ? [{ slug: found.exact.slug, name: found.exact.name, area: '' }] : []), ...found.matches] : [];
+---
+
+<StaffEntrance title="Find your clinic — Flossify" description="Open your clinic's own sign-in page.">
+  <a slot="head" href="/auth/login/?any=1" class="entry-back"><Icon name="chevron-left" /><span>Back to sign-in</span></a>
+  <h1 class="entry-title">
+    <span class="block">Find your clinic.</span>
+    <span class="entry-sub">Its page is where your team signs in.</span>
+  </h1>
+
+  <form method="get" class="entry-form" role="search">
+    <div class="entry-field">
+      <label for="q" class="entry-label">Your clinic’s name or address</label>
+      <input id="q" type="search" name="q" value={q} autocomplete="off" spellcheck="false" required maxlength="120"
+        placeholder="flossify.ph/your-clinic" autofocus={!q} aria-describedby="q-hint" />
+      <p id="q-hint" class="entry-hint">The address is on the owner’s Clinic settings, under Clinic profile.</p>
+    </div>
+    {wait && <p role="alert" class="entry-note entry-note-bad"><Icon name="alert" /><span>Too many searches from here. {wait}</span></p>}
+    <button type="submit" class="entry-go"><span>Find</span><Icon name="search" /></button>
+  </form>
+
+  {found && (
+    list.length ? (
+      <ul class="entry-ways" aria-label="Clinics">
+        {list.map((c) => (
+          <li>
+            <a href={doorPath(c.slug)} class="entry-way">
+              <ClinicBadge name={c.name} />
+              <span class="entry-way-words"><span class="entry-way-title">{c.name}</span> <span class="entry-way-hint">{c.area ? `${c.area} · ` : ''}flossify.ph/{c.slug}</span></span>
+              <Icon name="chevron-right" class="entry-way-go" />
+            </a>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <>
+        <p role="status" class="entry-note entry-note-warn mt-5"><Icon name="info" /><span>No listed clinic matches that. Try its address, as the owner sees it in Clinic settings.</span></p>
+        <ul class="entry-ways" aria-label="Other ways in">
+          <li>
+            <a href="/auth/login/?any=1" class="entry-way">
+              <span class="entry-way-icon"><Icon name="message" /></span>
+              <span class="entry-way-words"><span class="entry-way-title">Sign in with your email</span> <span class="entry-way-hint">Works for every clinic.</span></span>
+              <Icon name="chevron-right" class="entry-way-go" />
+            </a>
+          </li>
+        </ul>
+      </>
+    )
+  )}
+</StaffEntrance>

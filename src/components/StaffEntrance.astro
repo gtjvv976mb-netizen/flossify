@@ -17,49 +17,81 @@
 // (.entrance-* for this frame, .entry-* for what the pages put on the card).
 import Base from '../layouts/Base.astro';
 import Icon from './ws/Icon.astro';
+import ClinicBadge from '../pages/find/_ui/ClinicBadge.astro';
 import { SIGNIN_WALK } from '../data/film';
+import { isUploadKey, photoUrl } from '../lib/uploads';
 
 interface Props {
   title: string;
   description: string;
   /** Walk from the door to the desk (sign-in). Otherwise open at the desk. */
   walk?: boolean;
+  /**
+   * A clinic's own door (/<clinic>/sign-in/): that clinic's name at the head of the card, and behind
+   * it that clinic's own cover photo (its first upload) — or, with none, a soft blur of the site's
+   * colours, never the film, which behind a real clinic's door would read as its interior (the rule
+   * for a clinic's page, CLAUDE.md "Frosted glass"). The card is the same near-opaque card either way.
+   */
+  door?: { id: string; name: string; slug: string; cover: string | null; listed: boolean };
 }
 
-const { title, description, walk = false } = Astro.props;
+const { title, description, walk = false, door } = Astro.props;
+const cover = door?.cover && isUploadKey(door.cover) ? door.cover : null;
 ---
 
 <Base title={title} description={description}>
-  <div class="entrance" data-entrance data-walk={walk ? '' : undefined} data-walk-from={SIGNIN_WALK.from} data-walk-to={SIGNIN_WALK.to} data-walk-rate={SIGNIN_WALK.rate}>
+  <div class="entrance" data-entrance data-walk={walk && !door ? '' : undefined} data-walk-from={SIGNIN_WALK.from} data-walk-to={SIGNIN_WALK.to} data-walk-rate={SIGNIN_WALK.rate}>
     <!-- The clinic. Decorative: everything it says is said in words on the card. -->
-    <div class="entrance-film" aria-hidden="true">
-      <img
-        class="entrance-still"
-        src={walk ? '/img/signin-door-1440.webp' : '/img/signin-desk-1440.webp'}
-        srcset={walk ? undefined : '/img/signin-desk-960.webp 960w, /img/signin-desk-1440.webp 1440w'}
-        sizes="100vw"
-        alt=""
-        width="1440"
-        height="810"
-        fetchpriority="high"
-      />
-      {walk && <video class="entrance-video" data-walk-video muted playsinline preload="auto" disablepictureinpicture></video>}
-    </div>
+    {door ? (
+      <div class:list={['entrance-film', !cover && 'entrance-soft']} aria-hidden="true">
+        {cover && (
+          <picture>
+            <source media="(max-width: 639px)" srcset={photoUrl(cover, door.id, 640)} />
+            <img class="entrance-still entrance-own" src={photoUrl(cover, door.id, 1600)} alt="" width="1600" height="1200" fetchpriority="high" />
+          </picture>
+        )}
+      </div>
+    ) : (
+      <div class="entrance-film" aria-hidden="true">
+        <img
+          class="entrance-still"
+          src={walk ? '/img/signin-door-1440.webp' : '/img/signin-desk-1440.webp'}
+          srcset={walk ? undefined : '/img/signin-desk-960.webp 960w, /img/signin-desk-1440.webp 1440w'}
+          sizes="100vw"
+          alt=""
+          width="1440"
+          height="810"
+          fetchpriority="high"
+        />
+        {walk && <video class="entrance-video" data-walk-video muted playsinline preload="auto" disablepictureinpicture></video>}
+      </div>
+    )}
 
     <header class="entrance-top">
-      <a href="/find/" class="entrance-out">
-        <span>Patients: find a clinic</span>
-        <Icon name="arrow-right" size={16} />
-      </a>
+      {door?.listed ? (
+        <a href={`/find/${door.slug}/`} class="entrance-out">
+          <span>Patients: book a visit</span>
+          <Icon name="arrow-right" size={16} />
+        </a>
+      ) : (
+        <a href="/find/" class="entrance-out">
+          <span>Patients: find a clinic</span>
+          <Icon name="arrow-right" size={16} />
+        </a>
+      )}
     </header>
 
     <main id="main" class="entrance-main">
       <div class="entrance-card">
         <div class="entrance-head">
-          <a href="/" class="entrance-mark" aria-label="Flossify home">
-            <svg class="entrance-mark-sq" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="9" /><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z" /></svg>
-            <span>Flossify</span>
-          </a>
+          {door ? (
+            <span class="entrance-mark entrance-clinic"><ClinicBadge name={door.name} /><span>{door.name}</span></span>
+          ) : (
+            <a href="/" class="entrance-mark" aria-label="Flossify home">
+              <svg class="entrance-mark-sq" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="9" /><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z" /></svg>
+              <span>Flossify</span>
+            </a>
+          )}
           {/* The head's right: "Clinic sign-in", or a page's own way back (slot="head"). */}
           <slot name="head"><span class="entrance-where">Clinic sign-in</span></slot>
         </div>

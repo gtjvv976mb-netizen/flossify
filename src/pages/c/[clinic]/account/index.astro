@@ -53,12 +53,12 @@ const here = `/c/${clinic.slug}/account/`;
 const canSetUp = session.role === 'owner' || session.role === 'admin';
 
 interface Me {
-  full_name: string; role: string; email: string; phone: string | null; prc_licence: string | null; prc_status: string | null; prc_checked_on: Date | null;
+  full_name: string; role: string; username: string; email: string; phone: string | null; prc_licence: string | null; prc_status: string | null; prc_checked_on: Date | null;
   prc_note: string | null; specialty: string | null; slug: string | null; practices: string[] | null; created_at: Date; password_set_at: Date | null; last_seen_at: Date | null;
 }
 // staff is group data outside row-level security; this is the signed-in person's own row.
 const readMe = async () => (await pool.query(
-  `select full_name, role, email::text as email, phone, prc_licence, prc_status, prc_checked_on, prc_note, specialty, slug, practices,
+  `select full_name, role, username::text as username, email::text as email, phone, prc_licence, prc_status, prc_checked_on, prc_note, specialty, slug, practices,
           created_at, password_set_at, last_seen_at
      from staff where id = $1`, [session.staffId])).rows[0] as Me;
 
@@ -186,7 +186,8 @@ const roleLabel = ROLE_LABEL[me.role] ?? me.role;
       <div class="set-col">
         <Pane id="details" icon="user" title="My details" class="set-sec">
           <dl class="set-facts">
-            <div><dt class="meta">Email</dt><dd><Email address={me.email} /><span class="block set-help">You sign in with it.</span></dd></div>
+            <div><dt class="meta">Username</dt><dd><span class="font-semibold">{me.username}</span><span class="block set-help">You sign in with it at <a href={`/${clinic.slug}/sign-in/`} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">flossify.ph/{clinic.slug}</a>.</span></dd></div>
+            <div><dt class="meta">Email</dt><dd><Email address={me.email} /><span class="block set-help">It works for signing in too.</span></dd></div>
             <div><dt class="meta">Mobile</dt><dd class="tabular-nums">{me.phone ? prettyPhone(me.phone) : 'None on file'}<span class="block set-help">Reset codes come here by text.</span></dd></div>
             <div><dt class="meta">Branches</dt><dd>{branches.map((b) => b.name).join(', ')}</dd></div>
             <div><dt class="meta">Finances here</dt><dd>{financeWords}</dd></div>
@@ -194,8 +195,8 @@ const roleLabel = ROLE_LABEL[me.role] ?? me.role;
           </dl>
           <p class="set-help mt-4">
             {canSetUp
-              ? <>Change your name, email or mobile on <a href={`/c/${clinic.slug}/settings/people/${session.staffId}/`} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">your page in Clinic settings</a>.</>
-              : 'To change your name, email or mobile, ask the owner or an admin: sign-in and reset codes depend on them.'}
+              ? <>Change your name, username, email or mobile on <a href={`/c/${clinic.slug}/settings/people/${session.staffId}/`} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">your page in Clinic settings</a>.</>
+              : 'To change your name, username, email or mobile, ask the owner or an admin: sign-in and reset codes depend on them.'}
           </p>
         </Pane>
 
