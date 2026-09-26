@@ -137,3 +137,40 @@
 .tx-done-form { display: contents; }
 .tx-who { min-height: 44px; padding: 0 0.75rem; border: 1px solid var(--ws-field-line); border-radius: 10px; background: var(--ws-field); font-size: 16px; color: var(--c-ink); }
 .tl-day[hidden] { display: none; }
+
+/* --- blood pressure and pulse (034) ---------------------------------------------------------------- */
+.vt-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1.5rem; }
+.vt-big { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; color: var(--c-ink); }
+.vt-pulse { font-size: 18px; font-weight: 600; color: var(--c-ink); }
+.vt-unit { font-size: 14px; font-weight: 500; color: var(--c-ink-2); }
+.vt-list { display: grid; margin-top: 0.875rem; border-top: 1px solid var(--ws-hair); }
+.vt-list li { display: grid; grid-template-columns: 5rem 5.5rem minmax(0, 1fr) auto; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid var(--ws-hair); font-size: 14px; color: var(--c-ink-2); }
+.vt-list li span:first-child { color: var(--c-ink); }
+.vt-when { text-align: right; }
+@media (max-width: 639px) { .vt-list li { grid-template-columns: auto auto minmax(0, 1fr); } .vt-when { grid-column: 1 / -1; text-align: left; } }
+.vt-bp { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; gap: 0.5rem; }
+.vt-slash { padding-bottom: 0.75rem; font-size: 22px; color: var(--c-ink-2); }
+
+/* --- certificates and letters (034) ---------------------------------------------------------------- */
+.lt-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.5rem; }
+.lt-kind {
+  display: flex; align-items: center; gap: 0.75rem; min-height: 60px; padding: 0.625rem 0.875rem; border: 1px solid var(--ws-field-line);
+  border-radius: 12px; background: var(--c-surface); text-align: left; color: var(--ws-teal-ink); cursor: pointer; transition: background-color 160ms ease, border-color 160ms ease;
+}
+.lt-kind:hover { border-color: var(--ws-teal); background: var(--ws-teal-tint); }
+.lt-kind:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+.lt-kind > span { display: grid; gap: 0.0625rem; }
+.lt-kind strong { font-size: 15px; color: var(--c-ink); }
+.lt-kind span span { font-size: 13px; color: var(--c-ink-2); }
+
+/* --- HMO approvals (034) --------------------------------------------------------------------------- */
+.lo-item { min-height: 44px; }
+
+/* --- payment plans (034) --------------------------------------------------------------------------- */
+.pp-bar { height: 8px; margin-top: 0.75rem; border-radius: 999px; background: var(--ws-subtle); overflow: hidden; }
+.pp-bar span { display: block; height: 100%; border-radius: 999px; background: var(--ws-teal-fill); }
+.pp-nums { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.5rem 1rem; margin-top: 0.75rem; font-size: 14px; }
+.pp-nums dt { color: var(--c-ink-2); }
+.pp-nums dd { font-weight: 600; color: var(--c-ink); font-variant-numeric: tabular-nums; }
+.rec-chip-go { display: inline-flex; align-items: center; min-height: 44px; border-radius: 999px; cursor: pointer; }
+.rec-chip-go:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }

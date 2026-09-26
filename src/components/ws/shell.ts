@@ -353,13 +353,13 @@ if (input && box && pop) {
 // --- side panels --------------------------------------------------------------
 
 const openers = new WeakMap<HTMLDialogElement, Element | null>();
-function openPanel(id: string, opener: Element | null = document.activeElement) {
+function openPanel(id: string, opener: Element | null = document.activeElement, auto = false) {
   const d = document.getElementById(id);
   if (!(d instanceof HTMLDialogElement) || d.open) return;
   menus.forEach((m) => closeMenu(m));
   closeResults();
   openers.set(d, opener);
-  d.dispatchEvent(new CustomEvent('ws:panel-open', { detail: { opener } }));
+  d.dispatchEvent(new CustomEvent('ws:panel-open', { detail: { opener, auto } }));
   delete d.dataset.closing;
   d.showModal();
   d.querySelector<HTMLElement>('[data-ws-title]')?.focus();
@@ -408,8 +408,9 @@ document.addEventListener('click', (e) => {
   if (close && d instanceof HTMLDialogElement) closePanel(d);
 });
 window.ws = { openPanel, closePanel };
-// <SidePanel open>: a panel the server drew open (a refused form comes back inside it).
-for (const d of $$<HTMLDialogElement>('dialog[data-ws-panel][data-ws-open-now]')) openPanel(d.id, document.querySelector(`[data-ws-open="${d.id}"]`));
+// <SidePanel open>: a panel the server drew open (a refused form comes back inside it). `auto` in the
+// event says so: its form already holds what was posted, so a page does not fill it from the opener.
+for (const d of $$<HTMLDialogElement>('dialog[data-ws-panel][data-ws-open-now]')) openPanel(d.id, document.querySelector(`[data-ws-open="${d.id}"]`), true);
 
 // --- in-place tabs --------------------------------------------------------------
 

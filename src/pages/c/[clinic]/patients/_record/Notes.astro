@@ -99,6 +99,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
   // One panel for a new note and an addendum: the button that opened it says which.
   const panel = document.getElementById('rec-note-add');
   panel?.addEventListener('ws:panel-open', (e) => {
+    if ((e as CustomEvent).detail?.auto) return;
     const opener = (e as CustomEvent).detail?.opener as HTMLElement | null;
     if (!opener || opener.dataset.amends === undefined) return;
     const id = opener.dataset.amends ?? '';

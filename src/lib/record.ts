@@ -70,7 +70,7 @@ export const FILE_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/
 export const RX_ROWS = 6;
 
 // --- shapes ------------------------------------------------------------------------------------
-export interface PlanItem { id: string; name: string; fdi: number | null; surface: string | null; price: string; phase: number; status: string; note: string | null; createdAt: Date; decidedAt: Date | null; by: string | null }
+export interface PlanItem { id: string; loaId: string | null; name: string; fdi: number | null; surface: string | null; price: string; phase: number; status: string; note: string | null; createdAt: Date; decidedAt: Date | null; by: string | null }
 export interface Done { id: string; name: string; fdi: number | null; surface: string | null; price: string; at: Date; dentist: string | null; note: string | null; fromPlan: boolean }
 export interface Note { id: string; visitOn: string; dentist: string | null; complaint: string | null; findings: string | null; diagnosis: string | null; treatment: string | null; plan: string | null; teeth: number[]; amends: string | null; by: string | null; at: Date }
 export interface RxItem { drug: string; strength: string; qty: string; sig: string }
@@ -106,7 +106,7 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
     tx.query(`select id, name, default_price, price_max, price_from, tooth_scoped, category from procedure_catalog where active order by category nulls last, name`),
   ]);
   return {
-    plan: plan.rows.map((r) => ({ id: r.id, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, phase: r.phase, status: r.status, note: r.note, createdAt: r.created_at, decidedAt: r.decided_at, by: r.by_name })),
+    plan: plan.rows.map((r) => ({ id: r.id, loaId: r.loa_id ?? null, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, phase: r.phase, status: r.status, note: r.note, createdAt: r.created_at, decidedAt: r.decided_at, by: r.by_name })),
     done: done.rows.map((r) => ({ id: r.id, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, at: r.performed_at, dentist: r.dentist, note: r.clinical_note, fromPlan: r.from_plan })),
     notes: notes.rows.map((r) => ({ id: r.id, visitOn: r.day, dentist: r.dentist, complaint: r.complaint, findings: r.findings, diagnosis: r.diagnosis, treatment: r.treatment, plan: r.plan, teeth: r.teeth ?? [], amends: r.amends_id, by: r.by_name, at: r.created_at })),
     rx: rx.rows.map((r) => ({ id: r.id, at: r.issued_at, prescriber: r.full_name, prescriberId: r.prescriber_id, prc: r.prc_licence, ptr: r.ptr_number, items: Array.isArray(r.items) ? r.items : [], notes: r.notes })),
@@ -257,6 +257,11 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
         doneId = d.id;
       }
       await tx.query('update treatment_plan_item set status = $2, decided_at = now(), done_id = coalesce($3, done_id) where id = $1', [id, to, doneId]);
+      // The HMO's LOA for it is used once every item it covers is done (034).
+      if (to === 'done' && it.loa_id) {
+        await tx.query(`update hmo_loa set status = 'used' where id = $1 and status = 'approved'
+                          and not exists (select 1 from treatment_plan_item where loa_id = $1 and status in ('planned', 'accepted'))`, [it.loa_id]);
+      }
       await audit(tx, c, `record.plan_${to}`, 'treatment_plan_item', id);
       return done(`plan-${to}`);
     }

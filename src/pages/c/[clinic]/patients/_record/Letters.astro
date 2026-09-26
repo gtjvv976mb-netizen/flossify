@@ -1,0 +1,177 @@
+---
+// Letters the dentist signs: a dental certificate (school, work, an excused absence), a referral to a
+// specialist, and a request for medical clearance to the patient's physician. Each prints on the clinic's
+// paper with the dentist's PRC licence (./letters/<id>/ beside this record) and is never rewritten; a
+// clearance request waits for the physician's reply, which the desk writes in ("Physician replied").
+// Shown in the Prescriptions section ("Rx & letters").
+import Pane from '../../../../../components/ws/Pane.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import Glyph from '../_ui/Glyph.astro';
+import { LETTER_KIND, ANSWER, type Letter } from '../../../../../lib/record-extra';
+import type { Clinician, RecordProblem } from '../../../../../lib/record';
+import { dateText } from '../../../../../lib/health';
+
+interface Props {
+  letters: Letter[]; clinicians: Clinician[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null;
+  today: string; firstName: string; printBase: string; lastVisit: string | null; conditions: string[];
+}
+const { letters, clinicians, canEdit, action, meId, problem, saved, today, firstName, printBase, lastVisit, conditions } = Astro.props;
+const v = problem?.intent === 'letter-add' ? problem.values : ({} as Record<string, string>);
+const kind = (v.kind as Letter['kind']) || 'certificate';
+const av = problem?.intent === 'letter-answer' ? problem.values : ({} as Record<string, string>);
+const justMade = saved?.startsWith('letter:') ? saved.slice(7) : null;
+const made = justMade ? letters.find((l) => l.id === justMade) : null;
+const meSigns = clinicians.some((x) => x.id === meId && x.prc);
+const waiting = letters.filter((l) => l.kind === 'clearance' && !l.answer);
+const help = 'text-[13px] leading-snug text-ink-2';
+const summary = (l: Letter) =>
+  l.kind === 'certificate' ? [l.seenOn && `Seen ${dateText(l.seenOn)}`, l.purpose, l.restDays ? `${l.restDays} ${l.restDays === 1 ? 'day' : 'days'} of rest` : null].filter(Boolean).join(' · ')
+  : [l.toRole, l.toName, l.kind === 'clearance' ? l.treatment : l.diagnosis].filter(Boolean).join(' · ');
+---
+
+<div class="grid gap-4 max-md:gap-3">
+  {made && (
+    <Callout tone="success" title={`${LETTER_KIND[made.kind]} saved.`}>
+      <p><a href={`${printBase}${made.id}/`} class="font-semibold underline underline-offset-2" target="_blank" rel="noopener">Print it</a> on the clinic’s paper, signed by {made.dentist}.</p>
+    </Callout>
+  )}
+  {saved === 'answered' && <Callout tone="success" text="The physician’s reply is on the record." />}
+  <Pane as="section" label="Certificates and letters" id="letters">
+    <Head icon="form" title="Certificates and letters" meta={letters.length ? `${letters.length} written` : undefined} />
+    <p class="-mt-2 mb-4 text-[14px] text-ink-2">Printed on the clinic’s paper with the dentist’s PRC licence. A letter is never changed once saved.</p>
+    {canEdit && (
+      <div class="lt-kinds">
+        <button type="button" class="lt-kind" data-ws-open="rec-letter-add" data-letter-kind="certificate"><Glyph name="form" size={20} /><span><strong>Dental certificate</strong><span>For school or work</span></span></button>
+        <button type="button" class="lt-kind" data-ws-open="rec-letter-add" data-letter-kind="referral"><Glyph name="arrow-right" size={20} /><span><strong>Referral</strong><span>To a specialist</span></span></button>
+        <button type="button" class="lt-kind" data-ws-open="rec-letter-add" data-letter-kind="clearance"><Glyph name="shield" size={20} /><span><strong>Medical clearance</strong><span>Ask the patient’s physician</span></span></button>
+      </div>
+    )}
+    {waiting.length > 0 && <Callout tone="warn" class="mt-4" title={waiting.length === 1 ? 'Waiting for the physician’s clearance' : `${waiting.length} clearance requests waiting`} text="Write the reply in when it comes back, before the treatment." />}
+    {letters.length === 0 ? <Empty class="mt-3" icon="file" text="No certificates or letters yet." /> : (
+      <ul class="mt-4 grid gap-3">
+        {letters.map((l) => (
+          <li class="rx-card">
+            <div class="nt-head">
+              <p class="nt-day">{LETTER_KIND[l.kind]}</p>
+              <p class="nt-who">{dateText(l.issuedOn)} · {l.dentist}</p>
+            </div>
+            <p class="mt-1 text-[14.5px] text-ink-2">{summary(l)}</p>
+            {l.kind === 'clearance' && (
+              <p class="mt-2">
+                {l.answer
+                  ? <Chip tone={l.answer === 'not_cleared' ? 'alert' : 'accent'} icon={l.answer === 'not_cleared' ? 'alert' : 'check'} label={`${ANSWER[l.answer]} · ${dateText(l.answeredOn)}`} />
+                  : <Chip tone="warn" icon="clock" label="Waiting for the physician" />}
+              </p>
+            )}
+            {l.answerNote && <p class="mt-1.5 text-[14px] text-ink-2">{l.answerNote}</p>}
+            <div class="nt-foot">
+              <span>Written by {l.by ?? l.dentist}</span>
+              <span class="flex flex-wrap gap-2">
+                {canEdit && l.kind === 'clearance' && !l.answer && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-letter-answer" data-letter={l.id}><Icon name="check" />Physician replied</button>}
+                <a href={`${printBase}${l.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm" target="_blank" rel="noopener"><Glyph name="print" />Print</a>
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    )}
+  </Pane>
+</div>
+
+{canEdit && (
+  <>
+    <SidePanel id="rec-letter-add" title={LETTER_KIND[kind]} meta={firstName} wide open={problem?.intent === 'letter-add'}>
+      {problem?.intent === 'letter-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
+      <form method="post" action={`${action}#letters`} class="grid gap-4" data-letter-form data-kind={kind}>
+        <Csrf /><input type="hidden" name="intent" value="letter-add" />
+        <input type="hidden" name="kind" value={kind} data-letter-kind-input />
+        <label class="field"><span class="meta">Signed by</span>
+          <select name="dentist" required>
+            <option value="">Choose the dentist…</option>
+            {clinicians.map((x) => <option value={x.id} disabled={!x.prc} selected={(v.dentist ?? (meSigns ? meId : '')) === x.id}>{x.name}{x.prc ? ` · PRC ${x.prc}` : ' · no PRC licence on file'}</option>)}
+          </select>
+        </label>
+        <div class="grid gap-4 sm:grid-cols-2" data-for="referral clearance">
+          <label class="field"><span class="meta" data-label-referral="Specialist" data-label-clearance="Physician">To</span><input name="to_role" value={v.to_role ?? ''} maxlength="120" autocomplete="off" list="lt-roles" placeholder="e.g. Oral surgeon" data-placeholder-clearance="Attending physician" /></label>
+          <label class="field"><span class="meta">Their name <span class="font-normal">(optional)</span></span><input name="to_name" value={v.to_name ?? ''} maxlength="120" autocomplete="off" placeholder="e.g. Dr. Ramon Santos" /></label>
+        </div>
+        <datalist id="lt-roles">{['Oral surgeon', 'Orthodontist', 'Endodontist', 'Periodontist', 'Prosthodontist', 'Pediatric dentist', 'Attending physician', 'Cardiologist', 'Internist', 'ENT specialist'].map((r) => <option value={r} />)}</datalist>
+        <div class="grid gap-4 sm:grid-cols-2" data-for="certificate">
+          <label class="field"><span class="meta">Day seen</span><input type="date" name="seen_on" value={v.seen_on ?? lastVisit ?? today} max={today} /></label>
+          <label class="field"><span class="meta">Days of rest</span><input name="rest_days" value={v.rest_days ?? '0'} inputmode="numeric" maxlength="2" autocomplete="off" /><span class={help}>0 when none is needed.</span></label>
+          <label class="field sm:col-span-2"><span class="meta">For <span class="font-normal">(optional)</span></span><input name="purpose" value={v.purpose ?? ''} maxlength="200" autocomplete="off" list="lt-purposes" placeholder="e.g. School excuse" /></label>
+          <datalist id="lt-purposes">{['School excuse', 'Work excuse', 'Employment requirement', 'Fit to work', 'Travel requirement'].map((r) => <option value={r} />)}</datalist>
+        </div>
+        <label class="field"><span class="meta" data-label-certificate="What was found" data-label-referral="Reason for referral" data-label-clearance="Condition to clear">What was found</span>
+          <textarea name="diagnosis" rows="2" maxlength="1000" data-placeholder-clearance={conditions.length ? conditions.join(', ') : 'e.g. Hypertension, on maintenance'} placeholder="e.g. Impacted 38">{v.diagnosis ?? (kind === 'clearance' && conditions.length ? conditions.join(', ') : '')}</textarea>
+        </label>
+        <label class="field"><span class="meta" data-label-certificate="What was done" data-label-referral="Done so far (optional)" data-label-clearance="Planned treatment">What was done</span>
+          <textarea name="treatment" rows="2" maxlength="1000" placeholder="e.g. Extraction of 36 under local anaesthesia">{v.treatment ?? ''}</textarea>
+        </label>
+        <label class="field"><span class="meta" data-label-clearance="Questions for the physician (optional)">Anything else <span class="font-normal">(optional)</span></span>
+          <textarea name="body" rows="3" maxlength="2000" data-placeholder-clearance="e.g. Is the blood pressure controlled enough for extraction? Should any medicine be held?">{v.body ?? ''}</textarea>
+        </label>
+        <p class="text-[13px] text-ink-2" data-for="clearance">The latest blood pressure on the record prints on the letter.</p>
+        <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save and print</button>
+      </form>
+    </SidePanel>
+
+    <SidePanel id="rec-letter-answer" title="Physician replied" meta={firstName} open={problem?.intent === 'letter-answer'}>
+      {problem?.intent === 'letter-answer' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
+      <form method="post" action={`${action}#letters`} class="grid gap-4">
+        <Csrf /><input type="hidden" name="intent" value="letter-answer" />
+        <input type="hidden" name="letter" value={av.letter ?? ''} data-letter-answer-id />
+        <fieldset class="min-w-0">
+          <legend class="mb-2 text-[14px] font-medium text-ink-2">What did the physician say?</legend>
+          <div class="fl-kinds">
+            {Object.entries(ANSWER).map(([k, label]) => <label><input type="radio" name="answer" value={k} class="sr-only" checked={(av.answer ?? 'cleared') === k} />{label}</label>)}
+          </div>
+        </fieldset>
+        <label class="field"><span class="meta">Day of the reply</span><input type="date" name="answered_on" value={av.answered_on ?? today} max={today} /></label>
+        <label class="field"><span class="meta">Their words <span class="font-normal">(needed unless cleared)</span></span><textarea name="answer_note" rows="3" maxlength="1000" placeholder="e.g. Cleared; take BP before, avoid epinephrine">{av.answer_note ?? ''}</textarea></label>
+        <p class={help}>Keep the physician’s signed reply: add a photo or scan of it in Files.</p>
+        <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save the reply</button>
+      </form>
+    </SidePanel>
+  </>
+)}
+
+<script>
+  // One panel for the three letters: the button that opened it says which, and the fields follow.
+  const panel = document.getElementById('rec-letter-add');
+  const TITLE: Record<string, string> = { certificate: 'Dental certificate', referral: 'Referral letter', clearance: 'Request for medical clearance' };
+  const setKind = (kind: string) => {
+    const form = panel?.querySelector<HTMLFormElement>('[data-letter-form]');
+    if (!panel || !form) return;
+    form.dataset.kind = kind;
+    form.querySelector<HTMLInputElement>('[data-letter-kind-input]')!.value = kind;
+    panel.querySelector('[data-ws-title]')!.textContent = TITLE[kind];
+    form.querySelectorAll<HTMLElement>('[data-for]').forEach((el) => { el.hidden = !el.dataset.for!.split(' ').includes(kind); });
+    form.querySelectorAll<HTMLElement>('[data-label-certificate], [data-label-referral], [data-label-clearance]').forEach((el) => {
+      const t = el.dataset[`label${kind[0].toUpperCase()}${kind.slice(1)}`];
+      if (t) el.textContent = t;
+    });
+    form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-placeholder-clearance]').forEach((el) => {
+      el.dataset.placeholderOwn ??= el.placeholder;
+      el.placeholder = kind === 'clearance' ? el.dataset.placeholderClearance! : el.dataset.placeholderOwn;
+    });
+  };
+  setKind(panel?.querySelector<HTMLFormElement>('[data-letter-form]')?.dataset.kind ?? 'certificate');
+  panel?.addEventListener('ws:panel-open', (e) => {
+    if ((e as CustomEvent).detail?.auto) return;
+    const k = ((e as CustomEvent).detail?.opener as HTMLElement | null)?.dataset.letterKind;
+    if (k) setKind(k);
+  });
+  const answer = document.getElementById('rec-letter-answer');
+  answer?.addEventListener('ws:panel-open', (e) => {
+    if ((e as CustomEvent).detail?.auto) return;
+    const id = ((e as CustomEvent).detail?.opener as HTMLElement | null)?.dataset.letter;
+    if (id) answer.querySelector<HTMLInputElement>('[data-letter-answer-id]')!.value = id;
+  });
+</script>
