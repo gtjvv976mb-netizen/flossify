@@ -1,0 +1,147 @@
+---
+// Roles: the clinic's own names for what people do here, top to bottom, and what each may see and do
+// (src/pages/c/[clinic]/settings/_lib/roles.ts has the rules). Each row: the name, how many people
+// hold it, what it may do in a few words, and — for roles below your own — move up or down, Edit and
+// Remove. The Owner row is fixed. Add role and Edit open a side panel with the name and a checklist in
+// four groups; a key you do not hold yourself is shown, unticked or as it is, and cannot be changed.
+import Pane from '../../../../../components/ws/Pane.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Note from './Note.astro';
+import { PERMS, PERM_KEYS, type Perm } from '../../../../../lib/can';
+import type { Role, Manager } from '../../../../../lib/roles';
+import { mayEditRole, ROLE_NAME_MAX, type RolesRefused } from '../_lib/roles';
+
+interface Props {
+  base: string;
+  roles: Role[];
+  me: Manager;
+  refused: RolesRefused | null;
+  notes: { tone: 'ok' | 'alert' | 'warn'; text: string }[];
+  highlight: string;
+  on: boolean;
+}
+const { base, roles, me, refused, notes, highlight, on } = Astro.props;
+const held = (p: Perm) => me.role_owner || me.perms.has(p);
+const GROUPS = [...new Set(PERM_KEYS.map((k) => PERMS[k].group))];
+const editable = roles.filter((r) => mayEditRole(me, r));
+const idx = (r: Role) => roles.findIndex((x) => x.id === r.id);
+const canUp = (r: Role) => { const o = roles[idx(r) - 1]; return !!o && mayEditRole(me, o); };
+const canDown = (r: Role) => !!roles[idx(r) + 1];
+
+/** "Patients · Finances and amounts · Clinic settings": what a role may do, in a few words. */
+function summary(r: Role): string {
+  if (r.is_owner) return 'Everything, always';
+  const has = (k: Perm) => r.perms.includes(k);
+  const bits = [
+    has('records.edit') || has('schedule.edit') ? (has('records.edit') && has('schedule.edit') ? 'Patients and schedule' : has('records.edit') ? 'Patients' : 'Schedule') : '',
+    has('messages.send') ? 'Messages' : '',
+    has('finance.bill') ? (has('finance.money') ? 'Finances and amounts' : 'Finances') : has('finance.money') ? 'Amounts' : '',
+    has('finance.void') ? 'Voids' : '',
+    has('settings.edit') ? 'Clinic settings' : '',
+    has('plan.pay') ? 'Flossify plan' : '',
+    has('people.manage') ? 'People' : '',
+    has('roles.manage') ? 'Roles' : '',
+    has('tasks.assign') ? 'Assigns tasks' : '',
+  ].filter(Boolean);
+  return bits.length ? bits.join(' · ') : 'Signs in and sees the day; changes nothing';
+}
+// Where a refused post's sentence goes: back in the panel it came from (the role's own, or Add role's);
+// a move, a remove without a panel, or a role you cannot open (the Owner, one above yours) — at the top.
+const panelIds = new Set(['new', ...editable.map((r) => r.id)]);
+const asked = refused ? (refused.values.id || 'new') : '';
+const refusedFor = asked && panelIds.has(asked) && refused!.values.name ? asked : '';
+---
+
+<div class="set-panel" data-set-panel="roles" data-on={on ? '' : undefined}>
+<Pane id="roles" icon="shield" title="Roles" pad="none" class="set-sec">
+  <Fragment slot="actions">
+    <button type="button" class="ws-btn ws-btn-primary" data-ws-open="role-new"><Icon name="plus" />Add role</button>
+  </Fragment>
+  <div class="px-6 pt-4 max-md:px-4">
+    <p class="set-intro mt-0">Name the roles at your clinic, tick what each may see and do, and put them in order: someone who manages people can only give roles below their own. A change counts for everyone who holds the role on their next click.</p>
+    {notes.length > 0 && <div class="set-notes mt-4">{notes.map((n) => <Note tone={n.tone} text={n.text} />)}</div>}
+    {refused && !refusedFor && <Note tone="alert" text={refused.error} class="mt-4" refused />}
+  </div>
+  <ol class="set-list mt-3 border-t border-[var(--ws-hair)]" aria-label="Roles, from the top">
+    {roles.map((r) => {
+      const mine = mayEditRole(me, r);
+      return (
+        <li>
+          <div class="set-row set-role-row" data-new={highlight === r.id ? '' : undefined}>
+            <span class="set-role-mark" aria-hidden="true"><Icon name={r.is_owner ? 'shield' : 'user'} /></span>
+            <span class="min-w-0">
+              <span class="set-row-name">{r.name}</span>
+              <span class="set-row-sub">{r.holders === 1 ? '1 person' : `${r.holders} people`} · {summary(r)}</span>
+            </span>
+            <span class="set-row-end set-role-tools">
+              {mine ? (
+                <>
+                  <form method="post" action={base}>
+                    <Csrf /><input type="hidden" name="form" value="role" /><input type="hidden" name="do" value="up" /><input type="hidden" name="role" value={r.id} />
+                    <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm set-role-move" disabled={!canUp(r)} aria-label={`Move ${r.name} up`}><Icon name="chevron" class="rotate-180" /></button>
+                  </form>
+                  <form method="post" action={base}>
+                    <Csrf /><input type="hidden" name="form" value="role" /><input type="hidden" name="do" value="down" /><input type="hidden" name="role" value={r.id} />
+                    <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm set-role-move" disabled={!canDown(r)} aria-label={`Move ${r.name} down`}><Icon name="chevron" /></button>
+                  </form>
+                  <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open={`role-${r.id}`}>Edit<span class="sr-only"> {r.name}</span></button>
+                </>
+              ) : (
+                <span class="set-help">{r.is_owner ? 'Fixed' : 'Above you'}</span>
+              )}
+            </span>
+          </div>
+        </li>
+      );
+    })}
+  </ol>
+</Pane>
+</div>
+
+{[{ id: 'new', role: null as Role | null }, ...editable.map((r) => ({ id: r.id, role: r }))].map(({ id, role }) => {
+  const again = refusedFor === id ? refused : null;
+  const name = again ? again.values.name : role?.name ?? '';
+  const ticked = (k: Perm) => (again ? again.values.perms.includes(k) || (!held(k) && !!role?.perms.includes(k)) : !!role?.perms.includes(k));
+  return (
+    <SidePanel id={`role-${id}`} title={role ? `Edit “${role.name}”` : 'Add a role'} meta="Roles" open={!!again}>
+      {again && <Note tone="alert" text={again.error} class="mb-5" refused />}
+      <form method="post" action={base} class="grid gap-5">
+        <Csrf />
+        <input type="hidden" name="form" value="role" />
+        <input type="hidden" name="do" value={role ? 'edit' : 'add'} />
+        {role && <input type="hidden" name="role" value={role.id} />}
+        <label class="field">
+          <span class="meta">Name</span>
+          <input name="name" value={name} required maxlength={ROLE_NAME_MAX} autocomplete="off" placeholder="Front desk" />
+        </label>
+        {GROUPS.map((g) => (
+          <fieldset class="set-perms">
+            <legend class="meta">{g}</legend>
+            {PERM_KEYS.filter((k) => PERMS[k].group === g).map((k) => (
+              <label class="check set-check items-start" data-off={held(k) ? undefined : ''}>
+                <input type="checkbox" name="perm" value={k} checked={ticked(k)} disabled={!held(k)} />
+                <span>
+                  <span class="block">{PERMS[k].label}</span>
+                  {!held(k) && <span class="set-help block">You can’t give or take this: you don’t have it yourself.</span>}
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        ))}
+        <div class="grid gap-3">
+          <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />{role ? 'Save role' : 'Add role'}</button>
+        </div>
+      </form>
+      {role && (
+        <form method="post" action={base} class="mt-6 border-t border-[var(--ws-hair)] pt-5">
+          <Csrf /><input type="hidden" name="form" value="role" /><input type="hidden" name="do" value="remove" /><input type="hidden" name="role" value={role.id} />
+          {role.holders > 0
+            ? <p class="set-help">{role.holders === 1 ? 'One person holds' : `${role.holders} people hold`} this role. To remove it, give them another role first.</p>
+            : <button type="submit" class="ws-btn ws-btn-danger"><Icon name="close" />Remove this role</button>}
+        </form>
+      )}
+    </SidePanel>
+  );
+})}

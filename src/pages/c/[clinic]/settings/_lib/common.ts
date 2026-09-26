@@ -15,6 +15,7 @@ export const SECTIONS = [
   { id: 'hours', label: 'Opening hours', icon: 'clock' },
   { id: 'fees', label: 'Services & prices', icon: 'money' },
   { id: 'people', label: 'People', icon: 'patients' },
+  { id: 'roles', label: 'Roles', icon: 'shield' },
   { id: 'photos', label: 'Photos', icon: 'upload' },
   { id: 'privacy', label: 'Privacy', icon: 'check' },
   { id: 'plan', label: 'Your Flossify plan', icon: 'file' },

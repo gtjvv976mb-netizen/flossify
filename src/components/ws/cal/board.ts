@@ -24,6 +24,9 @@ export interface Boot {
   finance: boolean;
   /** May add and import patients here (can_edit_records); the links to those pages show only then. */
   canEdit: boolean;
+  /** May book, move and check in visits (can(ws, 'schedule.edit')). Without it the calendar is to look at:
+   *  nothing drags, New opens nothing, and a change is refused here with the server's own sentence. */
+  canSchedule: boolean;
   chairs: number; hours: Record<number, [number, number] | null>; staff: StaffDay[]; catalog: Service[];
   next: Record<string, string[]>;
   cards: Card[]; todayCards: Card[]; toPlace: Card[]; toConfirm: Card[];
@@ -135,6 +138,7 @@ function start(boot: Boot) {
 
   // --- talking to the server --------------------------------------------------------------------
   async function call(method: 'POST' | 'PATCH', body: Record<string, unknown>): Promise<Reply> {
+    if (!boot.canSchedule) return { ok: false, error: 'Your role cannot change the schedule here. Ask the owner.', status: 403 };
     try {
       const res = await fetch('/api/schedule', {
         method, credentials: 'same-origin',
@@ -887,7 +891,7 @@ function start(boot: Boot) {
   let drag: Drag | null = null;
   let autoscroll = 0;
   function onDown(e: PointerEvent) {
-    if (e.button !== 0 || drag || S.phone) return;
+    if (e.button !== 0 || drag || S.phone || !boot.canSchedule) return;
     const b = (e.target as Element).closest<HTMLButtonElement>('.cal-card[data-id]');
     if (!b) return;
     const c = S.cards.get(b.dataset.id!) ?? S.lane.get(b.dataset.id!);
