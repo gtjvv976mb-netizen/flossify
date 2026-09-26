@@ -144,23 +144,26 @@ const lastIsTeam = TEAM.length > 0;
       <p class="film-hint hero-hint" data-film-hint><span>Scroll to walk in</span><Icon name="chevron" size={16} /></p>
     </section>
 
-    <!-- Services -->
+    <!-- Services: for clinics (two columns) and for patients (one), side by side on a desktop -->
     <section id="services" data-sec="Services" class="page" aria-labelledby="services-title">
-      <div class="mx-auto max-w-[1480px] px-4 sm:px-8">
-        <div class="pane">
+      <div class="home-wrap">
+        <div class="pane pane-glass">
           <div class="home-head">
-            <span class="home-head-icon" aria-hidden="true"><Icon name="dashboard" size={22} /></span>
+            <span class="home-head-icon" aria-hidden="true"><Icon name="dashboard" size={20} /></span>
             <h2 id="services-title" class="home-title">What Flossify does.</h2>
           </div>
-          <div class="rule rule-draw mt-6"></div>
+          <div class="rule rule-draw home-rule"></div>
 
-          <div class="mt-8 grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-8">
-            <div class="lg:col-span-8">
-              <h3 class="home-group"><Icon name="clinic" />For dental clinics</h3>
-              <ul class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div class="home-svc home-body">
+            <div>
+              <div class="home-group-row">
+                <h3 class="home-group"><Icon name="clinic" size={16} />For dental clinics</h3>
+                <a href="/start/" class="home-link"><span>Open your clinic in the web</span><Icon name="arrow-right" size={16} /></a>
+              </div>
+              <ul class="home-feats home-feats-clinics">
                 {forClinics.map((s, i) => (
                   <li class:list={['home-feat reveal', `reveal-d${i % 3}`]}>
-                    <span class="home-feat-icon" aria-hidden="true"><Icon name={s.icon} /></span>
+                    <span class="home-feat-icon" aria-hidden="true"><Icon name={s.icon} size={16} /></span>
                     <div class="min-w-0">
                       <h4 class="home-feat-title">{s.title}</h4>
                       <p class="home-feat-body">{s.body}</p>
@@ -168,15 +171,17 @@ const lastIsTeam = TEAM.length > 0;
                   </li>
                 ))}
               </ul>
-              <a href="/start/" class="home-link mt-3"><span>Open your clinic in the web</span><Icon name="arrow-right" size={16} /></a>
             </div>
 
-            <div class="lg:col-span-4">
-              <h3 class="home-group"><Icon name="user" />For patients</h3>
-              <ul class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <div>
+              <div class="home-group-row">
+                <h3 class="home-group"><Icon name="user" size={16} />For patients</h3>
+                <a href="/find/" class="home-link"><span>Find a clinic</span><Icon name="arrow-right" size={16} /></a>
+              </div>
+              <ul class="home-feats home-feats-patients">
                 {forPatients.map((s, i) => (
                   <li class:list={['home-feat reveal', `reveal-d${i % 3}`]}>
-                    <span class="home-feat-icon" aria-hidden="true"><Icon name={s.icon} /></span>
+                    <span class="home-feat-icon" aria-hidden="true"><Icon name={s.icon} size={16} /></span>
                     <div class="min-w-0">
                       <h4 class="home-feat-title">{s.title}</h4>
                       <p class="home-feat-body">{s.body}</p>
@@ -184,76 +189,79 @@ const lastIsTeam = TEAM.length > 0;
                   </li>
                 ))}
               </ul>
-              <a href="/find/" class="home-link mt-3"><span>Find a clinic</span><Icon name="arrow-right" size={16} /></a>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- How it works -->
+    <!-- How it works: on a desktop each way in is one row, its name on the left and its four steps beside it -->
     <section id="process" data-sec="How it works" class="page" aria-labelledby="process-title">
-      <div class="mx-auto max-w-[1480px] px-4 sm:px-8">
-        <div class="pane">
+      <div class="home-wrap">
+        <div class="pane pane-glass">
           <div class="home-head">
-            <span class="home-head-icon" aria-hidden="true"><Icon name="clock" size={22} /></span>
+            <span class="home-head-icon" aria-hidden="true"><Icon name="clock" size={20} /></span>
             <h2 id="process-title" class="home-title">How it works.</h2>
           </div>
-          <div class="rule rule-draw mt-6"></div>
+          <div class="rule rule-draw home-rule"></div>
 
-          {tracks.map((track) => (
-            <div class="mt-8">
-              <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                <h3 class="home-group"><Icon name={track.icon} />{track.who}</h3>
-                <a href={track.href} class="home-link"><span>{track.cta}</span><Icon name="arrow-right" size={16} /></a>
+          <div class="home-tracks home-body">
+            {tracks.map((track) => (
+              <div class="home-track">
+                <div class="home-track-head">
+                  <h3 class="home-group"><Icon name={track.icon} size={16} />{track.who}</h3>
+                  <a href={track.href} class="home-link"><span>{track.cta}</span><Icon name="arrow-right" size={16} /></a>
+                </div>
+                <ol class="home-steps">
+                  {track.steps.map((s, i) => (
+                    <li class:list={['home-step reveal', `reveal-d${i % 3}`]}>
+                      <div class="home-step-top">
+                        <span class="home-step-no" aria-hidden="true">{i + 1}</span>
+                        <h4 class="home-feat-title"><span class="sr-only">Step {i + 1}: </span>{s.title}</h4>
+                      </div>
+                      <p class="home-feat-body">{s.body}</p>
+                    </li>
+                  ))}
+                </ol>
               </div>
-              <ol class="home-steps mt-3">
-                {track.steps.map((s, i) => (
-                  <li class:list={['home-step reveal', `reveal-d${i % 3}`]}>
-                    <span class="home-step-no" aria-hidden="true">{i + 1}</span>
-                    <h4 class="home-feat-title mt-3"><span class="sr-only">Step {i + 1}: </span>{s.title}</h4>
-                    <p class="home-feat-body">{s.body}</p>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </section>
 
     <!-- Pricing -->
     <section id="pricing" data-sec="Pricing" class="page" aria-labelledby="pricing-title">
-      <div class="mx-auto max-w-[1480px] px-4 sm:px-8 lg:grid lg:grid-cols-12">
-        <div class="pane lg:col-span-10 lg:col-start-2">
+      <div class="home-wrap">
+        <div class="pane pane-glass">
           <div class="home-head">
-            <span class="home-head-icon" aria-hidden="true"><Icon name="money" size={22} /></span>
+            <span class="home-head-icon" aria-hidden="true"><Icon name="money" size={20} /></span>
             <h2 id="pricing-title" class="home-title">One price. Everything in it.</h2>
           </div>
-          <div class="rule rule-draw mt-6"></div>
+          <div class="rule rule-draw home-rule"></div>
 
-          <div class="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-10">
-            <div class="home-price-card lg:col-span-5">
+          <div class="home-pricing home-body">
+            <div class="home-price-card">
               <p class="home-price"><span class="home-price-num">{peso(PRICE_PER_BRANCH)}</span><span class="home-price-per">a month, per clinic</span></p>
               {!BILLING_FINAL && (
-                <p class="home-price-note mt-3"><Icon name="info" size={16} /><span>Prices are not final yet. Nothing is charged until they are, and we tell you first.</span></p>
+                <p class="home-price-note"><Icon name="info" size={16} /><span>Prices are not final yet. Nothing is charged until they are, and we tell you first.</span></p>
               )}
-              <p class="mt-5 max-w-[34ch] text-[16px] leading-relaxed text-ink-2">
+              <p class="home-price-lede">
                 Every feature, the whole team, text reminders included. Your first 30 days are free, and you need no card to start.
               </p>
-              <a href="/start/" class="btn btn-primary btn-lg home-price-go mt-7"><span>Start your 30 free days</span><Icon name="arrow-right" /></a>
-              <p class="mt-5 max-w-[40ch] text-[14px] leading-relaxed text-ink-2">A clinic with more than one branch pays {peso(PRICE_PER_BRANCH)} for each branch. Prices in Philippine pesos.</p>
+              <a href="/start/" class="btn btn-primary home-price-go"><span>Start your 30 free days</span><Icon name="arrow-right" /></a>
+              <p class="home-price-small">A clinic with more than one branch pays {peso(PRICE_PER_BRANCH)} for each branch. Prices in Philippine pesos.</p>
             </div>
 
-            <div class="lg:col-span-7">
+            <div class="home-included">
               <h3 class="home-group">Included</h3>
-              <ul class="home-checks mt-4">
+              <ul class="home-checks">
                 {included.map((s) => (
-                  <li><span class="home-check" aria-hidden="true"><Icon name="check" size={14} /></span><span>{s}</span></li>
+                  <li><span class="home-check" aria-hidden="true"><Icon name="check" size={12} /></span><span>{s}</span></li>
                 ))}
               </ul>
-              <p class="ws-callout home-callout mt-7">
-                <Icon name="clinic" />
+              <p class="ws-callout home-callout">
+                <Icon name="clinic" size={16} />
                 <span>Want a full clinic website like our sample? <a href="/websites/" class="home-callout-link">See clinic websites</a>.</span>
               </p>
             </div>
@@ -264,40 +272,38 @@ const lastIsTeam = TEAM.length > 0;
 
     <!-- Partners -->
     <section id="partners" data-sec="Partners" class="page" aria-labelledby="partners-title">
-      <div class="mx-auto max-w-[1480px] px-4 sm:px-8">
-        <div class="pane">
+      <div class="home-wrap">
+        <div class="pane pane-glass">
           <div class="home-head">
-            <span class="home-head-icon" aria-hidden="true"><Icon name="clinic" size={22} /></span>
+            <span class="home-head-icon" aria-hidden="true"><Icon name="clinic" size={20} /></span>
             <h2 id="partners-title" class="home-title">Our dental clinic partners.</h2>
+            {partners.length > 0 && <a href="/find/" class="home-link home-head-link"><span>See every clinic</span><Icon name="arrow-right" size={16} /></a>}
           </div>
-          <div class="rule rule-draw mt-6"></div>
+          <div class="rule rule-draw home-rule"></div>
 
           {partners.length > 0 ? (
-            <>
-              <ul class="home-partners mt-8">
-                {partners.map((l) => (
-                  <li>
-                    <a href={`/find/${l.slug}/`} class="home-partner">
-                      <ClinicBadge name={l.name} />
-                      <span class="min-w-0 flex-1">
-                        <span class="home-partner-name">{l.name}</span>
-                        <span class="home-partner-area">{l.area}</span>
-                        <span class="mt-2.5 flex flex-wrap gap-1.5">
-                          {l.philhealth && <span class="ws-pill ws-tint-teal">PhilHealth</span>}
-                          <span class:list={['ws-pill', l.workspace ? 'ws-tint-green' : 'ws-tint-slate']}>{l.workspace ? 'Book online' : 'Request a time'}</span>
-                        </span>
+            <ul class="home-partners home-body">
+              {partners.map((l) => (
+                <li>
+                  <a href={`/find/${l.slug}/`} class="home-partner">
+                    <ClinicBadge name={l.name} />
+                    <span class="min-w-0 flex-1">
+                      <span class="home-partner-name">{l.name}</span>
+                      <span class="home-partner-area">{l.area}</span>
+                      <span class="home-partner-meta">
+                        {l.philhealth && <span class="ws-pill ws-tint-teal">PhilHealth</span>}
+                        <span class:list={['ws-pill', l.workspace ? 'ws-tint-green' : 'ws-tint-slate']}>{l.workspace ? 'Book online' : 'Request a time'}</span>
                       </span>
-                      <Icon name="chevron-right" class="home-partner-go" />
-                    </a>
-                  </li>
-                ))}
-              </ul>
-              <a href="/find/" class="home-link mt-4"><span>See every clinic</span><Icon name="arrow-right" size={16} /></a>
-            </>
+                    </span>
+                    <Icon name="chevron-right" class="home-partner-go" />
+                  </a>
+                </li>
+              ))}
+            </ul>
           ) : (
-            <div class="home-empty mt-8">
+            <div class="home-empty home-body">
               <span class="home-empty-icon" aria-hidden="true"><Icon name="clinic" size={20} /></span>
-              <p class="max-w-[52ch] text-[16px] leading-relaxed text-ink-2">
+              <p class="home-empty-text">
                 Our first partner clinics are joining in Baguio City. Each one appears here, and on Find a clinic, as it opens.
               </p>
               <a href="/start/" class="btn btn-primary"><span>Become a partner clinic</span><Icon name="arrow-right" /></a>
@@ -309,34 +315,36 @@ const lastIsTeam = TEAM.length > 0;
 
     <!-- How to register -->
     <section id="register" data-sec="How to register" class="page" aria-labelledby="register-title">
-      <div class="mx-auto max-w-[1480px] px-4 sm:px-8">
-        <div class="pane">
+      <div class="home-wrap">
+        <div class="pane pane-glass">
           <div class="home-head">
-            <span class="home-head-icon" aria-hidden="true"><Icon name="user" size={22} /></span>
+            <span class="home-head-icon" aria-hidden="true"><Icon name="user" size={20} /></span>
             <h2 id="register-title" class="home-title">How to register.</h2>
           </div>
-          <div class="rule rule-draw mt-6"></div>
+          <div class="rule rule-draw home-rule"></div>
 
-          <!-- Two soft cards side by side (stacked on a phone): the walkthrough, the steps, then the one
-               way to start. The clinic's button is the teal one; the patient's is quiet. -->
-          <div class="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <!-- Two soft cards side by side (stacked on a phone): the way in and its one way to start,
+               the walkthrough, then the steps. The clinic's button is the teal one; the patient's is quiet. -->
+          <div class="home-ways home-body">
             {ways.map((w) => (
               <div class="home-way reveal">
-                <h3 class="home-group"><Icon name={w.icon} />{w.who}</h3>
-                <figure class="home-way-film mt-4">
+                <div class="home-way-head">
+                  <h3 class="home-group"><Icon name={w.icon} size={16} />{w.who}</h3>
+                  <a href={w.href} class:list={['btn', w.main ? 'btn-primary' : 'btn-quiet', 'home-way-go']}><span>{w.cta}</span><Icon name="arrow-right" /></a>
+                </div>
+                <figure class="home-way-film">
                   <video data-reg-video src={`/video/${w.video}.mp4`} poster={`/video/${w.video}.webp`} width="1280" height="720" muted loop playsinline controls preload="none" aria-label={`Walkthrough: registering ${w.who.toLowerCase()}`}></video>
                   <figcaption>Recorded on Flossify with a sample {w.id === 'clinic' ? 'clinic' : 'patient'}.</figcaption>
                 </figure>
-                <ol class="home-reg-steps mt-3">
+                <ol class="home-reg-steps">
                   {w.steps.map((s, n) => (
                     <li><span class="home-step-no" aria-hidden="true">{n + 1}</span><span><span class="sr-only">Step {n + 1}: </span>{s}</span></li>
                   ))}
                 </ol>
-                <a href={w.href} class:list={['btn', w.main ? 'btn-primary' : 'btn-quiet', 'home-way-go']}><span>{w.cta}</span><Icon name="arrow-right" /></a>
               </div>
             ))}
           </div>
-          {!lastIsTeam && <p class="meta mt-12 text-ink-2">&copy; 2026 Flossify &middot; Baguio City, Philippines</p>}
+          {!lastIsTeam && <p class="meta home-copy">&copy; 2026 Flossify &middot; Baguio City, Philippines</p>}
         </div>
       </div>
     </section>
@@ -344,26 +352,26 @@ const lastIsTeam = TEAM.length > 0;
     {/* Know the team, once src/data/team.ts names real people (never a placeholder person) */}
     {TEAM.length > 0 && (
       <section id="team" data-sec="The team" class="page" aria-labelledby="team-title">
-        <div class="mx-auto max-w-[1480px] px-4 sm:px-8">
-          <div class="pane">
+        <div class="home-wrap">
+          <div class="pane pane-glass">
             <div class="home-head">
-              <span class="home-head-icon" aria-hidden="true"><Icon name="patients" size={22} /></span>
+              <span class="home-head-icon" aria-hidden="true"><Icon name="patients" size={20} /></span>
               <h2 id="team-title" class="home-title">Know the team.</h2>
             </div>
-            <div class="rule rule-draw mt-6"></div>
-            <ul class="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="rule rule-draw home-rule"></div>
+            <ul class="home-team home-body">
               {TEAM.map((m) => (
                 <li class="home-member">
                   {m.photo
                     ? <img src={m.photo} alt={m.name} width="320" height="320" loading="lazy" class="aspect-square w-full rounded-card object-cover" />
                     : <Avatar name={m.name} size="lg" />}
-                  <h3 class="home-feat-title mt-4">{m.name}</h3>
-                  <p class="mt-1 text-[14px] text-ink-2">{m.role}</p>
-                  {m.about && <p class="home-feat-body mt-2">{m.about}</p>}
+                  <h3 class="home-feat-title mt-3">{m.name}</h3>
+                  <p class="home-member-role">{m.role}</p>
+                  {m.about && <p class="home-feat-body">{m.about}</p>}
                 </li>
               ))}
             </ul>
-            <p class="meta mt-12 text-ink-2">&copy; 2026 Flossify &middot; Baguio City, Philippines</p>
+            <p class="meta home-copy">&copy; 2026 Flossify &middot; Baguio City, Philippines</p>
           </div>
         </div>
       </section>
@@ -377,7 +385,8 @@ const lastIsTeam = TEAM.length > 0;
 
   <style>
     /* The home page's own pieces, in the soft template (docs/workspace-redesign.md, "The whole site,
-       soft"): the workspace's tokens, radii and tints, drawn on the site's white cards on the film.
+       soft"): the workspace's tokens, radii and tints, drawn on the frosted glass cards on the film
+       (.pane-glass in global.css, which also sets the --pane-* colours used here, light and dark).
        Unlayered (scoped): nothing here shares a property with a utility on the same element. */
 
     /* --- where you are (the bar's aside) and how far along (its foot) -------------------------- */
@@ -415,33 +424,32 @@ const lastIsTeam = TEAM.length > 0;
     .hero-hint :global(.ws-icon) { animation: home-bob 1.6s ease-in-out infinite; }
     @keyframes home-bob { 0%, 100% { transform: translateY(-1px); } 50% { transform: translateY(2px); } }
 
+    /* --- a card's frame: centred at 1160px so the film shows on both sides, 16px gutters on a phone --- */
+    .home-wrap { max-width: calc(1160px + 3rem); margin-inline: auto; padding-inline: 1rem; }
+    @media (min-width: 640px) { .home-wrap { padding-inline: 1.5rem; } }
+
     /* --- a card's head: a line icon in a pale teal square, and the title ---------------------- */
-    .home-head { display: flex; align-items: center; gap: 1rem; }
+    .home-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; }
     .home-head-icon {
-      display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; flex: none;
-      border-radius: var(--ws-r); background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+      display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex: none;
+      border-radius: var(--ws-r-ctl); background: var(--pane-tint); color: var(--ws-teal-ink);
     }
-    .home-title { font-size: clamp(1.625rem, 1.1rem + 1.6vw, 2.375rem); line-height: 1.15; letter-spacing: -0.025em; color: var(--c-ink); }
-    /* A group inside a card ("For dental clinics"): 17px semibold, its icon in teal. */
-    .home-group { display: flex; align-items: center; gap: 0.5rem; font-size: 17px; line-height: 1.3; letter-spacing: -0.01em; color: var(--c-ink); }
+    .home-title { font-size: clamp(1.375rem, 1rem + 1.1vw, 1.875rem); line-height: 1.15; letter-spacing: -0.025em; color: var(--c-ink); }
+    /* A link that belongs to the whole card sits at the end of its head (Partners' "See every clinic"). */
+    .home-head-link { margin-left: auto; }
+    .home-rule { margin-top: 0.75rem; background: var(--pane-rule); }
+    .home-body { margin-top: 0.875rem; }
+    /* A group inside a card ("For dental clinics"): 16px semibold, its icon in teal, its link beside it. */
+    .home-group { display: flex; align-items: center; gap: 0.4375rem; font-size: 16px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; color: var(--c-ink); }
     .home-group :global(.ws-icon) { flex: none; color: var(--ws-teal-ink); }
+    .home-group-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 0.75rem; margin-bottom: 0.25rem; }
 
-    /* --- services: each one a soft inset card with its icon -------------------------------------- */
-    .home-feat {
-      display: flex; align-items: flex-start; gap: 0.875rem; height: 100%; padding: 1rem 1.125rem 1.125rem;
-      border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle);
-    }
-    .home-feat-icon {
-      display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex: none;
-      border-radius: var(--ws-r-ctl); background: var(--ws-teal-tint); color: var(--ws-teal-ink);
-    }
-    .home-feat-title { font-size: 16px; font-weight: 600; line-height: 1.35; letter-spacing: -0.005em; color: var(--c-ink); }
-    .home-feat-body { margin-top: 0.25rem; font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
-
-    /* A teal link with an arrow that steps forward on hover (44px tall). */
+    /* A teal link with an arrow that steps forward on hover (44px tall). The deepest teal (--pane-link,
+       #06403e): it stands on the glass itself, and swept every 25px of scroll the film's greenest patch
+       behind a link (the blurred hedges) is rgb(166 176 157), where it still keeps 5:1. */
     .home-link {
       display: inline-flex; align-items: center; gap: 0.375rem; min-height: 44px; border-radius: var(--ws-r-ctl);
-      font-size: 15px; font-weight: 600; color: var(--ws-teal-ink);
+      font-size: 14.5px; font-weight: 600; color: var(--pane-link);
       text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px;
       transition: text-decoration-color 160ms ease;
     }
@@ -449,85 +457,155 @@ const lastIsTeam = TEAM.length > 0;
     .home-link :global(.ws-icon) { flex: none; transition: transform 180ms ease; }
     .home-link:hover :global(.ws-icon) { transform: translateX(3px); }
 
-    /* --- how it works: numbered soft cards ------------------------------------------------------ */
-    .home-steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
-    @media (min-width: 640px) { .home-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media (min-width: 1024px) { .home-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-    .home-step { padding: 1.125rem 1.25rem 1.25rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
-    .home-step-no {
-      display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex: none;
-      border-radius: var(--ws-r-pill); background: var(--ws-teal-tint); color: var(--ws-teal-ink);
-      font-size: 14px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums;
+    /* The keyboard ring on the glass: the link teal, not the bright teal. The site's ring (#14908f)
+       was 3.9:1 on the old white card but under 3:1 on the translucent glass over the film's darker
+       rooms; the deep link teal (light) and the pale one (dark) keep it well clear of 3:1. Unlayered
+       like the site's own ring, so this wins by specificity. */
+    .pane-glass :global(:focus-visible) { outline-color: var(--pane-link); }
+
+    /* --- a card on the glass: lighter glass, a light edge, no blur of its own ------------------- */
+    .home-feats, .home-step, .home-price-card, .home-partner, .home-way, .home-member {
+      border: 1px solid var(--pane-edge); border-radius: var(--ws-r); background: var(--pane-inner);
     }
 
-    /* --- pricing: the price on a soft inset, teal checks beside it ------------------------------- */
-    .home-price-card { padding: clamp(1.25rem, 2.5vw, 2rem); border: 1px solid var(--ws-hair); border-radius: var(--ws-r-lg); background: var(--ws-subtle); }
-    .home-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; }
-    .home-price-num { font-size: clamp(3.5rem, 2.4rem + 4vw, 5.5rem); font-weight: 600; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; color: var(--c-ink); }
-    .home-price-per { font-size: 16px; font-weight: 500; color: var(--c-ink-2); }
-    /* While BILLING_FINAL is false: one quiet line under the price (ink-2, 7:1 on the subtle grey). */
-    .home-price-note { display: flex; align-items: flex-start; gap: 0.5rem; max-width: 40ch; font-size: 14px; line-height: 1.5; color: var(--c-ink-2); }
-    .home-price-note :global(.ws-icon) { flex: none; margin-top: 0.1875rem; color: var(--ws-blue-ink); }
-    @media (max-width: 639px) { .home-price-go { width: 100%; } }
-    .home-checks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.25rem 1.5rem; }
-    @media (min-width: 640px) { .home-checks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    .home-checks li { display: flex; align-items: flex-start; gap: 0.75rem; padding-block: 0.5rem; font-size: 15.5px; line-height: 1.45; color: var(--c-ink); }
-    .home-check {
-      display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: none; margin-top: -1px;
-      border-radius: var(--ws-r-pill); background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+    /* --- services: compact rows, each side of the chair one lighter glass list -------------------
+       For clinics the list runs in two balanced columns (newspaper order, so no row waits on its
+       neighbour's longer text); for patients, one. A hairline over every row, clipped away at the
+       top of each column by the list's own edge. */
+    .home-svc { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.875rem; }
+    @media (min-width: 1024px) { .home-svc { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); column-gap: 1rem; } }
+    .home-svc > div { display: flex; flex-direction: column; }
+    .home-feats { flex: 1; overflow: hidden; column-gap: 0; column-rule: 1px solid var(--pane-rule); }
+    /* On a phone the lists and steps are long, so they sit on the bare glass (their edge and the
+       hairlines between rows stay) and the room shows through them as it does beside them. Without
+       the lighter fill their small print goes to ink: ink-2 fell to 3.8:1 over the film's beige walls. */
+    @media (max-width: 639px) {
+      .home-feats, .home-step { background: transparent; }
+      .home-feats .home-feat-body, .home-step .home-feat-body { color: var(--c-ink); }
     }
+    @media (min-width: 640px) { .home-feats { columns: 2; } }
+    @media (min-width: 1024px) { .home-feats-patients { columns: 1; } }
+    .home-feat {
+      display: flex; align-items: flex-start; gap: 0.625rem; padding: 0.5rem 0.75rem 0.5625rem;
+      break-inside: avoid; box-shadow: 0 -1px 0 var(--pane-rule);
+    }
+    .home-feat-icon {
+      display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: none; margin-top: 1px;
+      border-radius: 8px; background: var(--pane-tint); color: var(--ws-teal-ink);
+    }
+    .home-feat-title { font-size: 15px; font-weight: 600; line-height: 1.3; letter-spacing: -0.005em; color: var(--c-ink); }
+    .home-feat-body { margin-top: 0.125rem; font-size: 14px; line-height: 1.42; color: var(--c-ink-2); }
+
+    /* --- how it works: each way in a row of four numbered steps ------------------------------- */
+    .home-tracks { display: grid; gap: 0.875rem; }
+    .home-track { display: grid; gap: 0.25rem; }
+    .home-track-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 0.75rem; }
+    @media (min-width: 1024px) {
+      .home-track { grid-template-columns: 10.5rem minmax(0, 1fr); gap: 1rem; align-items: start; }
+      .home-track-head { flex-direction: column; align-items: flex-start; justify-content: flex-start; padding-top: 0.5rem; }
+    }
+    .home-steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.375rem; }
+    @media (min-width: 560px) { .home-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (min-width: 1024px) { .home-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    .home-step { padding: 0.625rem 0.75rem 0.6875rem; }
+    .home-step-top { display: flex; align-items: center; gap: 0.5rem; }
+    .home-step .home-feat-body { margin-top: 0.25rem; }
+    /* The step's number: white on the teal fill (5.6:1 whatever the film behind is doing). */
+    .home-step-no {
+      display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: none;
+      border-radius: var(--ws-r-pill); background: var(--ws-teal-fill); color: #fff;
+      font-size: 12.5px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums;
+    }
+
+    /* --- pricing: the price on a lighter glass card, teal checks beside it ------------------------ */
+    .home-pricing { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+    @media (min-width: 1024px) { .home-pricing { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 1.5rem; align-items: stretch; } }
+    /* The Included side: its callout sits level with the foot of the price card beside it. */
+    .home-included { display: flex; flex-direction: column; }
+    .home-price-card { padding: 0.875rem 0.875rem 0.9375rem; }
+    @media (min-width: 640px) { .home-price-card { padding: 1rem 1.125rem 1.0625rem; } }
+    .home-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.125rem 0.625rem; }
+    .home-price-num { font-size: clamp(2.5rem, 1.9rem + 1.6vw, 3.25rem); font-weight: 600; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; color: var(--c-ink); }
+    .home-price-per { font-size: 15px; font-weight: 500; color: var(--c-ink-2); }
+    /* While BILLING_FINAL is false: one quiet line under the price. */
+    .home-price-note { display: flex; align-items: flex-start; gap: 0.4375rem; margin-top: 0.5rem; font-size: 13.5px; line-height: 1.45; color: var(--c-ink-2); }
+    .home-price-note :global(.ws-icon) { flex: none; margin-top: 0.125rem; color: var(--ws-blue-ink); }
+    .home-price-lede { margin-top: 0.625rem; font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
+    .home-price-go { margin-top: 0.75rem; }
+    @media (max-width: 639px) { .home-price-go { width: 100%; } }
+    .home-price-small { margin-top: 0.625rem; font-size: 13.5px; line-height: 1.45; color: var(--c-ink-2); }
+    .home-checks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 1.25rem; margin-top: 0.375rem; }
+    @media (min-width: 640px) { .home-checks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .home-checks li { display: flex; align-items: flex-start; gap: 0.5625rem; padding-block: 0.3125rem; font-size: 14.5px; line-height: 1.4; color: var(--c-ink); }
+    /* The check: white on the teal fill, like the step numbers (5.6:1 whatever the film is showing). */
+    .home-check {
+      display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex: none; margin-top: 0;
+      border-radius: var(--ws-r-pill); background: var(--ws-teal-fill); color: #fff;
+    }
+    .home-check :global(.ws-icon) { stroke-width: 2.5; }
+    .home-callout { margin-top: 0.75rem; padding: 0.625rem 0.875rem; border-color: var(--pane-edge); background: var(--pane-inner); font-size: 14.5px; }
+    @media (min-width: 1024px) { .home-callout { margin-top: auto; } .home-checks { margin-bottom: 0.75rem; } }
+    .home-callout :global(.ws-icon) { margin-top: 3px; color: var(--ws-teal-ink); }
     .home-callout-link {
-      color: var(--ws-blue-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px;
+      color: var(--pane-link); font-weight: 600; text-decoration: underline; text-underline-offset: 3px;
       /* A 44px target on a one-line link. */
       display: inline-block; padding-block: 0.75rem; margin-block: -0.75rem;
     }
 
-    /* --- partners: soft cards with the clinic's initials -------------------------------------- */
-    .home-partners { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
+    /* --- partners: lighter glass cards with the clinic's initials ------------------------------- */
+    .home-partners { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.375rem; }
     @media (min-width: 640px) { .home-partners { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (min-width: 1024px) { .home-partners { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
     .home-partner {
-      display: flex; align-items: flex-start; gap: 0.875rem; height: 100%; padding: 1.125rem 1rem 1.125rem 1.125rem;
-      border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); color: var(--c-ink);
-      transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+      display: flex; align-items: center; gap: 0.625rem; height: 100%; min-height: 44px; padding: 0.5625rem 0.625rem 0.5625rem 0.625rem;
+      color: var(--c-ink); transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
     }
-    .home-partner:hover { background: var(--c-surface); border-color: var(--ws-field-line-hover); box-shadow: var(--ws-shadow-pop); }
-    .home-partner-name { display: block; font-size: 17px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; transition: color 160ms ease; }
-    .home-partner:hover .home-partner-name { color: var(--ws-teal-ink); }
+    .home-partner:hover { background: var(--pane-inner-hover); box-shadow: var(--ws-shadow-pop); }
+    .home-partner-name { display: block; font-size: 15px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; transition: color 160ms ease; }
+    .home-partner:hover .home-partner-name { color: var(--pane-link); }
     /* The clinic's badge, as on Find a clinic and in the workspace's sidebar (first two words, a
-       rounded square), a little bigger on these cards. */
-    .home-partner :global(.ws-branch-badge) { width: 48px; height: 48px; border-radius: var(--ws-r); font-size: 16px; }
-    .home-partner-area { display: block; margin-top: 0.125rem; font-size: 14px; line-height: 1.4; color: var(--c-ink-2); }
-    .home-partner :global(.home-partner-go) { flex: none; align-self: center; color: var(--c-ink-2); transition: transform 180ms ease, color 180ms ease; }
-    .home-partner:hover :global(.home-partner-go) { transform: translateX(3px); color: var(--ws-teal-ink); }
-    .home-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.25rem; }
+       rounded square), on the glass's pale teal. */
+    .home-partner :global(.ws-branch-badge) { width: 40px; height: 40px; border-radius: var(--ws-r-ctl); font-size: 14px; }
+    /* Every clinic reads the same three lines: its name, its area, then its pills together in one row
+       (solid tints, so the film never thins their words). The pills wrap only where a card is too
+       narrow for both (a 320px phone, a two-column card at 640px), rather than run past its edge. */
+    .home-partner-area { display: block; margin-top: 0.0625rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; line-height: 1.4; color: var(--c-ink-2); }
+    .home-partner-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.375rem; margin-top: 0.25rem; }
+    .home-partner :global(.home-partner-go) { flex: none; color: var(--c-ink-2); transition: transform 180ms ease, color 180ms ease; }
+    .home-partner:hover :global(.home-partner-go) { transform: translateX(3px); color: var(--pane-link); }
+    .home-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; }
     .home-empty-icon {
-      display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex: none;
-      border-radius: var(--ws-r-pill); background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+      display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex: none;
+      border-radius: var(--ws-r-pill); background: var(--pane-tint); color: var(--ws-teal-ink);
     }
+    .home-empty-text { max-width: 52ch; font-size: 15px; line-height: 1.5; color: var(--c-ink); }
 
-    /* --- how to register: two soft cards, the steps and the one way to start ---------------------- */
-    .home-way {
-      display: flex; flex-direction: column; height: 100%; padding: 1.25rem 1.25rem 1.375rem;
-      border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle);
-    }
-    @media (min-width: 640px) { .home-way { padding: 1.5rem 1.625rem 1.625rem; } }
-    .home-way-go { align-self: flex-start; margin-top: auto; }
+    /* --- how to register: two lighter glass cards, the way in and its button, the film, the steps --- */
+    .home-ways { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.625rem; }
+    @media (min-width: 1024px) { .home-ways { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; } }
+    .home-way { display: flex; flex-direction: column; padding: 0.625rem 0.625rem 0.75rem; }
+    @media (min-width: 640px) { .home-way { padding: 0.75rem 0.875rem 0.875rem; } }
+    .home-way-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; }
+    @media (max-width: 639px) { .home-way-go { width: 100%; } }
+    .home-way-film { margin-top: 0.625rem; }
     .home-way-film video {
       display: block; width: 100%; height: auto; aspect-ratio: 16 / 9;
-      border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: #fff; box-shadow: var(--ws-shadow);
+      border: 1px solid var(--ws-hair); border-radius: var(--ws-r-ctl); background: #fff; box-shadow: var(--ws-shadow);
     }
-    .home-way-film figcaption { margin-top: 0.5rem; font-size: 13px; line-height: 1.4; color: var(--c-ink-2); }
-    .home-reg-steps { margin-bottom: 1.25rem; }
-    @media (max-width: 639px) { .home-way-go { align-self: stretch; } }
-    .home-reg-steps li {
-      display: flex; align-items: center; gap: 0.875rem; min-height: 56px; padding-block: 0.625rem;
-      border-top: 1px solid var(--ws-hair); font-size: 16px; line-height: 1.4; color: var(--c-ink);
-    }
-    .home-reg-steps li:first-child { border-top: 0; }
+    .home-way-film figcaption { margin-top: 0.375rem; font-size: 13px; line-height: 1.4; color: var(--c-ink-2); }
+    .home-reg-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.25rem 0.75rem; margin-top: 0.5rem; }
+    @media (max-width: 359px) { .home-reg-steps { grid-template-columns: minmax(0, 1fr); } }
+    .home-reg-steps li { display: flex; align-items: center; gap: 0.5rem; min-height: 32px; font-size: 14px; line-height: 1.35; color: var(--c-ink); }
+    .home-reg-steps .home-step-no { width: 22px; height: 22px; font-size: 12px; }
+    .home-copy { margin-top: 0.875rem; color: var(--c-ink); }
 
     /* --- the team -------------------------------------------------------------------------------- */
-    .home-member { padding: 1.25rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
+    .home-team { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
+    @media (min-width: 640px) { .home-team { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (min-width: 1024px) { .home-team { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    .home-member { padding: 0.875rem; }
+    .home-member-role { margin-top: 0.125rem; font-size: 14px; color: var(--c-ink-2); }
+    .home-member .home-feat-body { margin-top: 0.375rem; }
   </style>
 
   <script>
