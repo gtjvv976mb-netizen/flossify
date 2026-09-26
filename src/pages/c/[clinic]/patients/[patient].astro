@@ -107,6 +107,7 @@ import Loas from './_record/Loas.astro';
 import PayPlans from './_record/PayPlans.astro';
 import RecordNav from './_record/RecordNav.astro';
 import Banner from './_record/Banner.astro';
+import Who from './_record/Who.astro';
 import { shellLinks } from '../../../../components/ws/routes';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
@@ -717,46 +718,93 @@ const recHere = here;
   <!-- Overview -->
   <div id="rec-overview" role="tabpanel" aria-labelledby="rec-rec-overview-tab" hidden={current !== 'overview'} class="min-w-0 grid items-start gap-4 max-md:gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] content-start hue-teal" data-rec-panel="overview">
     <Banner id="overview" label={SECTION_LABEL.overview} class="lg:col-span-2" />
+    <div class="grid content-start gap-4 max-md:gap-3">
     <Pane title="Details" icon="user" id="overview">
-      <dl class="pt-facts">
-        {present.map(([k, v]) => <><dt>{k}</dt><dd>{v}</dd></>)}
+      <dl class="rf-grid">
+        {present.map(([k, v]) => <div class:list={['rf', (k === 'Address' || k === 'Emergency contact' || k === 'HMO') && 'rf-wide']}><dt>{k}</dt><dd>{v}</dd></div>)}
+        {!canEdit && missing.map((k) => <div class="rf rf-missing"><dt>{capitalise(k)}</dt><dd>Not on file</dd></div>)}
       </dl>
-      {missing.length > 0 && (
-        <p class="mt-4 flex flex-wrap items-center gap-x-3 text-[14px] text-ink-2">
-          <span>Not on file yet: {missing.join(', ')}.</span>
-          {canEdit && <button type="button" class="ws-empty-go" data-ws-open="details">Add them <Icon name="arrow-right" size={16} /></button>}
-        </p>
-      )}
-      {patient.notes && (
-        <div class="mt-5 border-t border-[var(--ws-hair)] pt-4">
-          <p class="meta">Notes</p>
-          <p class="mt-1.5 max-w-[70ch] text-[15px] leading-relaxed whitespace-pre-line text-ink-2">{patient.notes}</p>
+      {canEdit && missing.length > 0 && (
+        <div class="rf-grid mt-2" aria-label="Not on file yet">
+          {missing.map((k) => <button type="button" class="rf rf-missing" data-ws-open="details"><span class="rf-k">{capitalise(k)}</span><span class="rf-v">+ Add</span></button>)}
         </div>
       )}
-      <p class="mt-5 flex items-start gap-2 border-t border-[var(--ws-hair)] pt-4 text-[13.5px] leading-relaxed text-muted">
+      {patient.notes && <p class="rf-note mt-3"><strong>Notes</strong>{patient.notes}</p>}
+      <p class="mt-4 flex items-start gap-2 border-t border-[var(--ws-hair)] pt-3 text-[13px] leading-relaxed text-ink-2">
         <Icon name="info" size={16} class="mt-0.5 shrink-0" />
         <span>Every look at this record, and every change to it, is logged under the person’s name.</span>
       </p>
     </Pane>
+    <Pane title="Recent visits" icon="calendar">
+      {visits.length > 4 && <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="visits">See all {visits.length}</button>}
+      {visits.length === 0 ? <Empty icon="calendar" text="No visits yet." action={{ label: 'Book the first one', href: bookHref }} /> : (
+        <ul class="rs-list">
+          {visits.slice(0, 4).map((v) => (
+            <li class="rs-item">
+              <p class="rs-what">{v.reason ?? 'Visit'}</p>
+              <p class="rp-row">
+                <span class="rp"><Icon name="calendar" size={14} />{visitText(v)}</span>
+                <Chip status={v.status} />
+                {v.source === 'import' && <Chip tone="neutral" label="Imported" />}
+                <Who name={v.dentist} />
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Pane>
+    </div>
     <div class="grid content-start gap-4 max-md:gap-3">
       <RecallCard recall={clin.recall} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} bookHref={bookHref} />
+      <Pane as="section" label="Health, in short" class="hue-rose">
+        <Head icon="heart" title="Health">
+          <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="health">{canEdit ? 'Update' : 'Open'}</button>
+        </Head>
+        {latest && answered(latest) ? (
+          <>
+            <div>
+              <div class="rs-line"><span class="rk">Allergies</span>
+                <p class="rp-row">{latest.allergies === null ? <span class="rp">Not asked yet</span> : latest.allergies.length ? latest.allergies.map((a) => <span class="rp rp-alert"><Icon name="alert" size={14} />{a}</span>) : <span class="rp rp-ok"><Icon name="check" size={14} />None known</span>}</p></div>
+              <div class="rs-line"><span class="rk">Conditions</span>
+                <p class="rp-row">{latest.conditions === null ? <span class="rp">Not asked yet</span> : latest.conditions.length ? latest.conditions.map((c) => <span class="rp rp-warn">{c}</span>) : <span class="rp rp-ok"><Icon name="check" size={14} />None</span>}</p></div>
+              <div class="rs-line"><span class="rk">Medicines</span>
+                <p class="rp-row">{latest.medications === null ? <span class="rp">Not asked yet</span> : latest.medications.length ? latest.medications.map((m) => <span class="rp">{m}</span>) : <span class="rp rp-ok"><Icon name="check" size={14} />None</span>}</p></div>
+              {latestBp && bpNow && <div class="rs-line"><span class="rk">Blood pressure</span>
+                <p class="rp-row"><span class:list={['rp', bpNow.tone === 'alert' ? 'rp-alert' : bpNow.tone === 'warn' ? 'rp-warn' : 'rp-ok']}>{latestBp.sys}/{latestBp.dia} · {bpNow.label.toLowerCase()}</span><span class="rp">{dateText(bpDay)}</span></p></div>}
+            </div>
+            <p class="mt-2 text-[13px] text-ink-2">Updated {byLine(latest)}.</p>
+          </>
+        ) : (
+          <Empty icon="info" text="No health answers yet. Ask the patient before treatment." />
+        )}
+      </Pane>
       {(planOpen.length > 0 || clin.labs.some((l) => l.status !== 'fitted')) && (
         <Pane as="section" label="Treatment, in short" class="hue-blue">
-          <Head icon="plan" title="Treatment plan">
+          <Head icon="plan" title="Treatment plan" meta={planOpen.length ? `${planOpen.length} to do` : undefined}>
             <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="treatment">Open</button>
           </Head>
           {planOpen.length > 0 ? (
-            <ul class="pt-list">
+            <ul class="rs-list">
               {planOpen.slice(0, 4).map((i) => (
-                <li>
-                  <span class="min-w-0 text-[14.5px]"><span class="font-semibold">{i.name}</span><span class="block text-ink-2">{[i.fdi ? `Tooth ${i.fdi}${i.surface ? ` ${i.surface}` : ''}` : null, `Phase ${i.phase}`].filter(Boolean).join(' · ')}</span></span>
-                  <Chip tone={i.status === 'accepted' ? 'warn' : 'neutral'} label={i.status === 'accepted' ? 'Agreed' : 'Planned'} />
+                <li class="rs-item">
+                  <p class="rs-what">{i.name}</p>
+                  <p class="rp-row">
+                    {i.fdi && <span class="rp rp-tooth"><Glyph name="tooth" size={14} />{i.fdi}{i.surface ? ` ${i.surface}` : ''}</span>}
+                    <Chip tone={i.status === 'accepted' ? 'warn' : 'neutral'} label={i.status === 'accepted' ? 'Agreed' : 'Planned'} />
+                    <span class="rp">Phase {i.phase}</span>
+                  </p>
                 </li>
               ))}
             </ul>
           ) : <p class="text-[15px] text-ink-2">Nothing left on the plan.</p>}
           {planOpen.length > 4 && <p class="mt-2 text-[13.5px] text-ink-2">And {planOpen.length - 4} more.</p>}
-          {clin.labs.filter((l) => l.status !== 'fitted').map((l) => <p class="mt-3 flex items-start gap-2 text-[14px] text-ink-2"><Glyph name="lab" size={16} class="mt-0.5 shrink-0" /><span>Lab: {l.description} · {l.lab}{l.dueOn && !l.receivedOn ? ` · due ${dateText(l.dueOn)}` : ''}</span></p>)}
+          {(() => { const open = clin.labs.filter((l) => l.status !== 'fitted'); return open.length > 0 && (
+            <div class="mt-3 grid gap-1.5">
+              <span class="rk">Lab cases</span>
+              {open.slice(0, 3).map((l) => <p class="rp-row text-[14px]"><span class="font-semibold">{l.description}</span><span class="rp">{l.lab}</span>{l.dueOn && !l.receivedOn && <span class:list={['rp', l.dueOn < today ? 'rp-alert' : '']}>{l.dueOn < today ? 'Late · ' : 'Due '}{dateText(l.dueOn)}</span>}</p>)}
+              {open.length > 3 && <p class="text-[13.5px] text-ink-2">And {open.length - 3} more.</p>}
+            </div>
+          ); })()}
         </Pane>
       )}
       {data.latestForm && (
@@ -765,38 +813,10 @@ const recHere = here;
             <a slot="actions" href={`${formsBase}${data.latestForm.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">All answers</a>
           </Head>
           {visitFromForm.length ? (
-            <dl class="pt-facts">{visitFromForm.map(([k, v]) => <><dt>{k}</dt><dd>{v}</dd></>)}</dl>
+            <div>{visitFromForm.map(([k, v]) => <div class="rs-line"><span class="rk">{k}</span><p class="text-[15px] text-ink">{v}</p></div>)}</div>
           ) : <p class="text-[15px] text-ink-2">Nothing about this visit on the form.</p>}
         </Pane>
       )}
-      <Pane as="section" label="Health, in short" class="hue-rose">
-        <Head icon="heart" title="Health">
-          <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="health">{canEdit ? 'Update' : 'Open'}</button>
-        </Head>
-        {latest && answered(latest) ? (
-          <>
-            <dl class="pt-facts">
-              {LISTS.map((l) => <><dt>{l.key === 'medications' ? 'Medicines' : l.label}</dt><dd>{listLine(latest[l.key], l.none)}</dd></>)}
-            </dl>
-            <p class="mt-3 text-[13.5px] text-muted">Updated {byLine(latest)}.</p>
-          </>
-        ) : (
-          <Empty icon="info" text="No health answers yet. Ask the patient before treatment." />
-        )}
-      </Pane>
-      <Pane title="Recent visits" icon="calendar">
-        {visits.length > 4 && <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="visits">See all {visits.length}</button>}
-        {visits.length === 0 ? <Empty icon="calendar" text="No visits yet." action={{ label: 'Book the first one', href: bookHref }} /> : (
-          <ul class="pt-list">
-            {visits.slice(0, 4).map((v) => (
-              <li>
-                <span class="min-w-0 text-[14.5px]"><span class="font-semibold tabular-nums">{visitText(v)}</span><span class="block text-ink-2">{[v.reason, v.dentist].filter(Boolean).join(' · ') || '—'}</span></span>
-                <span class="flex gap-1.5">{v.source === 'import' && <Chip tone="neutral" label="Imported" />}<Chip status={v.status} /></span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Pane>
     </div>
   </div>
 
@@ -986,8 +1006,8 @@ const recHere = here;
                   <span class="block text-[13px] text-muted">{SOURCE[v.source] ?? v.source}{v.chair ? ` · chair ${v.chair}` : ''}</span>
                 </td>
                 <td class="text-[15px]"><span class="meta ws-cell-label">Service</span>{v.reason ?? '—'}{v.notes && <span class="block max-w-[40ch] text-[13.5px] text-ink-2 max-lg:max-w-none">{v.notes}</span>}</td>
-                <td class="text-[15px]"><span class="meta ws-cell-label">Dentist</span>{v.dentist ?? <span class="text-muted">—</span>}{v.dentist_free && <span class="block text-[13px] text-muted">As the old record has it</span>}</td>
-                <td class="text-[15px] tabular-nums"><span class="meta ws-cell-label">Teeth</span>{v.teeth?.length ? v.teeth.join(', ') : <span class="text-muted">—</span>}</td>
+                <td class="text-[15px]"><span class="meta ws-cell-label">Dentist</span>{v.dentist ? <Who name={v.dentist} /> : <span class="text-ink-2">—</span>}{v.dentist_free && <span class="block text-[13px] text-muted">As the old record has it</span>}</td>
+                <td class="text-[15px] tabular-nums"><span class="meta ws-cell-label">Teeth</span>{v.teeth?.length ? <span class="rp-row">{v.teeth.map((t: number) => <span class="rp rp-tooth">{t}</span>)}</span> : <span class="text-ink-2">—</span>}</td>
                 <td><span class="meta ws-cell-label">Status</span><Chip status={v.status} /></td>
                 {money && <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Charged</span>{v.charged ? pesos(v.charged) : <span class="text-muted">—</span>}</td>}
               </tr>

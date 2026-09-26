@@ -10,6 +10,8 @@ import Icon from '../../../../../components/ws/Icon.astro';
 import Csrf from '../../../../../components/Csrf.astro';
 import Head from '../_ui/Head.astro';
 import Callout from '../_ui/Callout.astro';
+import Glyph from '../_ui/Glyph.astro';
+import Who from './Who.astro';
 import type { Clinical, Note, RecordProblem } from '../../../../../lib/record';
 import { dateText, when } from '../../../../../lib/health';
 
@@ -39,13 +41,17 @@ const help = 'text-[13px] leading-snug text-ink-2';
         {[...roots, ...orphans].map((n) => (
           <>
             <article class="nt-card" data-addendum={n.amends ? '' : undefined} aria-label={`Note of ${dateText(n.visitOn)}`}>
-              <header class="nt-head">
-                <p class="nt-day">{n.amends ? 'Addendum · ' : ''}{dateText(n.visitOn)}</p>
-                <p class="nt-who">{[n.dentist, n.teeth.length ? `Teeth ${n.teeth.join(', ')}` : null].filter(Boolean).join(' · ')}</p>
+              <header class="nt-head2">
+                <p class="rp-row">
+                  {n.amends && <span class="rp rp-warn">Addendum</span>}
+                  <span class="nt-date"><Icon name="calendar" size={16} />{dateText(n.visitOn)}</span>
+                  <Who name={n.dentist} />
+                  {n.teeth.map((t) => <span class="rp rp-tooth"><Glyph name="tooth" size={14} /><span class="sr-only">Tooth </span>{t}</span>)}
+                </p>
               </header>
-              <dl class="nt-parts">
-                {PARTS.filter(([k]) => n[k]).map(([k, label]) => <><dt>{label}</dt><dd>{n[k] as string}</dd></>)}
-              </dl>
+              <div class="nt-parts2">
+                {PARTS.filter(([k]) => n[k]).map(([k, label]) => <div class="rs-line"><span class="rk">{label}</span><p class:list={['nt-text', k === 'diagnosis' && 'nt-dx']}>{n[k] as string}</p></div>)}
+              </div>
               <footer class="nt-foot">
                 <span>Written {when(new Date(n.at))}{n.by ? ` by ${n.by}` : ''}</span>
                 {canEdit && !n.amends && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-note-add" data-amends={n.id} data-amends-day={dateText(n.visitOn)}><Icon name="plus" />Add an addendum</button>}
@@ -53,11 +59,14 @@ const help = 'text-[13px] leading-snug text-ink-2';
             </article>
             {!n.amends && addenda(n.id).map((a) => (
               <article class="nt-card" data-addendum aria-label={`Addendum of ${when(new Date(a.at))}`}>
-                <header class="nt-head">
-                  <p class="nt-day">Addendum</p>
-                  <p class="nt-who">{[a.dentist, a.teeth.length ? `Teeth ${a.teeth.join(', ')}` : null].filter(Boolean).join(' · ')}</p>
+                <header class="nt-head2">
+                  <p class="rp-row">
+                    <span class="rp rp-warn">Addendum</span>
+                    <Who name={a.dentist} />
+                    {a.teeth.map((t) => <span class="rp rp-tooth"><Glyph name="tooth" size={14} /><span class="sr-only">Tooth </span>{t}</span>)}
+                  </p>
                 </header>
-                <dl class="nt-parts">{PARTS.filter(([k]) => a[k]).map(([k, label]) => <><dt>{label}</dt><dd>{a[k] as string}</dd></>)}</dl>
+                <div class="nt-parts2">{PARTS.filter(([k]) => a[k]).map(([k, label]) => <div class="rs-line"><span class="rk">{label}</span><p class:list={['nt-text', k === 'diagnosis' && 'nt-dx']}>{a[k] as string}</p></div>)}</div>
                 <footer class="nt-foot"><span>Written {when(new Date(a.at))}{a.by ? ` by ${a.by}` : ''}</span></footer>
               </article>
             ))}

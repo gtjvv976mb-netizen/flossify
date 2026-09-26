@@ -141,7 +141,7 @@ const cats = [...new Set(c.catalog.map((x) => x.category ?? 'Other'))];
       {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-done-add"><Icon name="plus" />Record a treatment</button>}
     </div>
     {c.done.length === 0 ? <Empty icon="check" text="No treatment recorded yet." /> : (
-      <ul>
+      <ul data-fold-list data-fold-at="5" data-fold-word="treatments">
         {c.done.map((d) => (
           <li class="tx-row">
             <div class="min-w-0">
@@ -168,7 +168,7 @@ const cats = [...new Set(c.catalog.map((x) => x.category ?? 'Other'))];
       {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-lab-add"><Icon name="plus" />New lab case</button>}
     </div>
     {c.labs.length === 0 ? <Empty icon="clock" text="No lab cases for this patient." /> : (
-      <ul>
+      <ul data-fold-list data-fold-at="4" data-fold-word="lab cases">
         {c.labs.map((l) => {
           const next = LAB_NEXT[l.status];
           const late = l.dueOn && !l.receivedOn && l.dueOn < today;
@@ -295,6 +295,17 @@ const cats = [...new Set(c.catalog.map((x) => x.category ?? 'Other'))];
       const p = pick.selectedOptions[0]?.dataset.price;
       if (price && p !== undefined) price.value = String(Number(p));
     });
+  });
+  // A long list shows its newest five; one button shows the rest (with scripts off, every row shows).
+  document.querySelectorAll<HTMLElement>('[data-fold-list]').forEach((ul) => {
+    const at = Number(ul.dataset.foldAt || 5), rows = [...ul.children] as HTMLElement[];
+    if (rows.length <= at + 1) return;
+    rows.slice(at).forEach((r) => { r.hidden = true; });
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'ws-btn ws-btn-quiet ws-btn-sm mt-3';
+    b.textContent = `Show ${rows.length - at} more ${ul.dataset.foldWord ?? ''}`.trim();
+    b.addEventListener('click', () => { rows.forEach((r) => { r.hidden = false; }); b.remove(); });
+    ul.after(b);
   });
   // A button that takes something away asks first.
   document.addEventListener('submit', (e) => {

@@ -12,6 +12,7 @@ import Csrf from '../../../../../components/Csrf.astro';
 import Head from '../_ui/Head.astro';
 import Callout from '../_ui/Callout.astro';
 import Glyph from '../_ui/Glyph.astro';
+import Who from './Who.astro';
 import { FILE_KINDS, type Clinical, type RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
 
@@ -58,10 +59,14 @@ const help = 'text-[13px] leading-snug text-ink-2';
                 </div>
                 <a class="fl-open" href={`${fileBase}${f.id}/`} target="_blank" rel="noopener" aria-label={`Open ${label}${f.caption ? `: ${f.caption}` : ''}`}></a>
                 <div class="fl-body">
-                  <p class="fl-kind">{label}{f.fdi ? ` · tooth ${f.fdi}` : ''}</p>
-                  {f.caption && <p class="text-ink break-words">{f.caption}</p>}
-                  <p>{f.takenAt ? `Taken ${dateText(f.takenAt)}` : `Added ${dateText(dayOf(f.at))}`} · {size(f.bytes)}</p>
-                  {f.by && <p>By {f.by}</p>}
+                  <p class="fl-kind"><span class="rk">{label}</span></p>
+                  {f.caption && <p class="text-[14.5px] font-semibold text-ink break-words">{f.caption}</p>}
+                  <p class="rp-row">
+                    {f.fdi && <span class="rp rp-tooth"><Glyph name="tooth" size={14} /><span class="sr-only">Tooth </span>{f.fdi}</span>}
+                    <span class="rp"><Icon name="calendar" size={14} />{dateText(f.takenAt ?? dayOf(f.at))}</span>
+                    <span class="rp">{size(f.bytes)}</span>
+                  </p>
+                  {f.by && <p><Who name={f.by} /></p>}
                   <div class="fl-acts">
                     <a href={`${fileBase}${f.id}/?download=1`} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="download" /><span class="sr-only">Download {label}</span><span aria-hidden="true">Save</span></a>
                     {canEdit && (

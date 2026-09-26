@@ -1,0 +1,7 @@
+---
+// A person as a pill: their initials in a small round mark, then the name (a dentist, who wrote, who took it).
+interface Props { name: string | null | undefined; class?: string }
+const { name, class: extra } = Astro.props;
+const initials = (name ?? '').replace(/^(Dr\.?|Dra\.?)\s+/i, '').split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+---
+{name && <span class:list={['rp rp-who', extra]}><span class="rp-av" aria-hidden="true">{initials}</span>{name}</span>}

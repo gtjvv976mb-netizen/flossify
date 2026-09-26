@@ -853,6 +853,15 @@ data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical
   vertical), its banner (`Banner.astro`: group, name, one line), its cards' top edge and icons (`.hue-*`
   classes in record.css) and its lines on the Timeline. Colour is never alone: the words say the group
   too. Measured: no line under 4.5:1 in the index or banners, light and dark.
+- **Every detail is its own pill or tile** (the owner: "make each specific detail more visible … their
+  own pill"): `.rp` pills (a tooth `rp-tooth` blue, a person `Who.astro` with initials, a day, an amount
+  `rp-money`, an allergy `rp-alert`, a condition `rp-warn`, "none" `rp-ok`), `.rk` label tags in the
+  section's colour for the parts of a note, the health lines and the forms' answers, and `.rf-grid` tiles
+  for the patient's details (missing ones are dashed "+ Add" tiles that open Edit details). Facts under a
+  Treatment, lab, LOA or plan line become pills by CSS (`.tx-sub > span`). Long lists (treatments done,
+  lab cases) show the newest few and a "Show N more" button (`data-fold-list`; every row shows with
+  scripts off). Measured on 9 sections × light/dark × 1440/390: no pill or tag under 4.5:1, no target
+  under 44px, no sideways scroll.
 
 ## The record's paperwork (034) — blood pressure, letters, HMO LOA, payment plans
 
