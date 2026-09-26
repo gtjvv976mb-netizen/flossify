@@ -138,7 +138,8 @@ const inboxLabel = inbox === null ? 'Inbox' : inboxCount ? `Inbox, ${inboxCount}
 const ROLE: Record<string, string> = {
   owner: 'Owner', dentist: 'Dentist', associate: 'Associate dentist', secretary: 'Secretary', assistant: 'Dental assistant', admin: 'Admin',
 };
-const roleLabel = ROLE[staff.role] ?? staff.role;
+// The role's own name (a clinic can name its roles, 030); the old words only if the branch could not be read.
+const roleLabel = access?.role_name ?? ROLE[staff.role] ?? staff.role;
 const others = branches.filter((b) => b.slug !== clinic.slug);
 // The clinic's badge in the sidebar: the first letters of its first two words ("Session Road Dental" → SR).
 const clinicWords = clinic.name.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);

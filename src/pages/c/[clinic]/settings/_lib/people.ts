@@ -13,8 +13,12 @@
 // for this clinic before touching the row, so an id lifted from another
 // branch's page changes nothing here.
 //
-// Adding a person: we text them a code (and email it too when email is on)
-// and they choose their own password; no password passes through the owner.
+// Adding a member (031): a name, a username and a role; a first password the
+// owner sets — the member chooses their own the first time they sign in
+// (must_change_password) — or, with no password, a code texted to their
+// mobile as before. Email and mobile are optional. Who may add, change, reset
+// or switch off whom, and which roles they may hand out, is src/lib/roles.ts:
+// only people and roles below your own, and only what you hold yourself.
 //
 // Editing a person: name, role, mobile, email, PRC licence and specialty, by
 // the owner or an admin; an owner's row by an owner only. The rules that make
@@ -34,20 +38,22 @@
 //     and the dentist goes back to the top of Flossify's queue (/admin/prc/,
 //     009). A number PRC's records did not match goes back too when the form is
 //     saved, corrected or not: that is the owner's way to say "it is right".
-//   - Nobody changes their own role, and an owner stays an owner: only an
-//     owner's own row can say 'owner', and a posted role must be one of ROLES,
-//     so nobody is made an owner from here. A dentist moved to a role without
+//   - Nobody changes their own role, and an owner stays an owner: the Owner
+//     role is never handed out here, and a posted role must be one the person
+//     acting may give (src/lib/roles.ts), so nobody is made an owner from here. A dentist moved to a role without
 //     patients loses the public profile (slug null); someone moved to dentist
 //     gets one, with the check pending.
 //   - Every changed field is one audit_log row (staff.name, staff.email,
 //     staff.phone, staff.role, staff.prc, staff.specialty).
 import type { AstroCookies } from 'astro';
-import { setSession, type Session } from '../../../../../lib/auth';
+import { setSession, hashPassword, passwordProblem, type Session } from '../../../../../lib/auth';
+import { mayManage, mayGive, staffRoleFor, type Manager, type Role } from '../../../../../lib/roles';
+import type { Perm } from '../../../../../lib/can';
 import { pool, withClinic, type Tx } from '../../../../../lib/db';
 import { issueCode } from '../../../../../lib/codes';
 import { queueText, queueEmail, texts, emails, codePageFor, normalizePhone, prettyPhone, PH_MOBILE } from '../../../../../lib/messages';
 import { emailEnabled, normalizeEmail, EMAIL_ADDRESS, EMAIL_MAX } from '../../../../../lib/email';
-import { ROLES, ROLE_LABEL, UUID, clinician } from './common';
+import { UUID, clinician } from './common';
 import { normalizeUsername, usernameProblem } from '../../../../../lib/username';
 
 // The seven Board-recognised fields, exactly as staff.specialty's check constraint spells them (migration 002).
@@ -60,26 +66,28 @@ export const emailOn = () => emailEnabled();
 /** The same sentence wherever a mobile is checked across the service. */
 const phoneTaken = (phone: string, notId: string | null) => pool.query(
   `select 1 from staff where ($2::uuid is null or id <> $2) and right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $1`, [phone.slice(-10), notId]);
-const usernameTaken = (groupId: string, username: string, notId: string) => pool.query(
-  'select 1 from staff where group_id = $1 and username = $2 and id <> $3', [groupId, username, notId]);
+const usernameTaken = (groupId: string, username: string, notId: string | null) => pool.query(
+  'select 1 from staff where group_id = $1 and username = $2 and ($3::uuid is null or id <> $3)', [groupId, username, notId]);
 const emailTaken = (email: string, notId: string | null) => pool.query(
   'select 1 from staff where email = $1 and ($2::uuid is null or id <> $2)', [email, notId]);
 
 export interface Person {
-  id: string; full_name: string; role: string; username: string; phone: string | null; email: string; prc_licence: string | null; specialty: string | null;
+  id: string; full_name: string; role: string; username: string; phone: string | null; email: string | null;
+  role_id: string; role_name: string; role_rank: number; role_owner: boolean; role_perms: string[]; must_change_password: boolean; prc_licence: string | null; specialty: string | null;
   slug: string | null; practices: string[] | null; has_password: boolean; disabled_at: Date | null; can_view_finance: boolean;
   prc_status: 'pending' | 'checked' | 'mismatch'; prc_checked_on: Date | null; prc_note: string | null;
   last_seen_at: Date | null; invited_at: Date | null; password_set_at: Date | null; created_at: Date;
 }
-const PERSON = `select s.id, s.full_name, s.role, s.username::text as username, s.phone, s.email::text as email, s.prc_licence, s.specialty, s.slug, s.practices,
+const PERSON = `select s.id, s.full_name, s.role, s.username::text as username, s.phone, s.email::text as email,
+                       s.role_id, r.name as role_name, r.rank as role_rank, r.is_owner as role_owner, r.perms as role_perms, s.must_change_password, s.prc_licence, s.specialty, s.slug, s.practices,
                        s.password_hash is not null as has_password, s.disabled_at, a.can_view_finance, s.prc_status, s.prc_checked_on, s.prc_note,
                        s.last_seen_at, s.invited_at, s.password_set_at, s.created_at
-                  from staff_access a join staff s on s.id = a.staff_id`;
+                  from staff_access a join staff s on s.id = a.staff_id join clinic_role r on r.id = s.role_id`;
 
 /** Everyone who can open this branch: the owner first, then by name, the disabled last. */
 export async function listPeople(clinicId: string): Promise<(Person & { days: number[] })[]> {
-  const people = (await pool.query(`${PERSON} where a.clinic_id = $1 order by s.role = 'owner' desc, s.disabled_at is not null,
-    case when s.role in ('dentist', 'associate') then 0 else 1 end, s.full_name`, [clinicId])).rows as Person[];
+  const people = (await pool.query(`${PERSON} where a.clinic_id = $1 order by s.disabled_at is not null, r.rank,
+    case when s.role in ('owner', 'dentist', 'associate') then 0 else 1 end, s.full_name`, [clinicId])).rows as Person[];
   const schedule = await withClinic(clinicId, async (tx) => (await tx.query('select staff_id, dow from staff_schedule where clinic_id = $1', [clinicId])).rows as { staff_id: string; dow: number }[]);
   return people.map((p) => ({ ...p, days: schedule.filter((r) => r.staff_id === p.id).map((r) => r.dow) }));
 }
@@ -126,29 +134,39 @@ export async function upcomingFor(clinicId: string, staffId: string, limit = 30)
 
 // --- codes -----------------------------------------------------------------------------
 
-interface Ctx { clinic: { id: string; name: string; group_id: string; slug: string }; session: Session; cookies: AstroCookies; site: URL | undefined }
+/** The branch as the acting person has it open (canOpen): which clinic, and their role there. */
+type Acting = { id: string; name: string; group_id: string; slug: string } & Manager;
+interface Ctx { clinic: Acting; session: Session; cookies: AstroCookies; site: URL | undefined }
+
+/** One live role of this group by id, for handing out. */
+async function roleById(groupId: string, id: string): Promise<Role | undefined> {
+  if (!UUID.test(id)) return undefined;
+  const { rows } = await pool.query(
+    'select id, name, rank, perms, is_owner, base, 0 as holders from clinic_role where id = $1 and group_id = $2 and archived_at is null', [id, groupId]);
+  return rows[0] as Role | undefined;
+}
 
 const audit = (ctx: Ctx, tx: Tx, action: string, staffId: string) =>
   tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'staff', $4)`, [ctx.clinic.id, ctx.session.staffId, action, staffId]);
 
 /** Queue a code by every channel this person can take: text when they have a mobile, email when email is on. Returns what was used. */
-async function sendCode(ctx: Ctx, tx: Tx, t: { id: string; phone: string | null; email: string }, kind: 'invite' | 'reset', code: string): Promise<'both' | 'sms' | 'email'> {
+async function sendCode(ctx: Ctx, tx: Tx, t: { id: string; phone: string | null; email: string | null }, kind: 'invite' | 'reset', code: string): Promise<'both' | 'sms' | 'email'> {
   const texted = !!t.phone && PH_MOBILE.test(normalizePhone(t.phone));
   if (texted) {
     await queueText(tx, { clinicId: ctx.clinic.id, to: t.phone!, body: kind === 'invite' ? texts.invite(ctx.session.name, ctx.clinic.name, code) : texts.reset(code), kind, staffId: t.id });
   }
   let emailed = false;
-  if (emailOn() && EMAIL_ADDRESS.test(normalizeEmail(t.email))) {
+  if (emailOn() && t.email && EMAIL_ADDRESS.test(normalizeEmail(t.email))) {
     const page = codePageFor(ctx.site);
     const mail = kind === 'invite' ? emails.invite(ctx.session.name, ctx.clinic.name, code, page, texted) : emails.reset(code, page);
-    await queueEmail(tx, { clinicId: ctx.clinic.id, to: t.email, subject: mail.subject, body: mail.body, kind, staffId: t.id });
+    await queueEmail(tx, { clinicId: ctx.clinic.id, to: t.email!, subject: mail.subject, body: mail.body, kind, staffId: t.id });
     emailed = true;
   }
   return texted && emailed ? 'both' : emailed ? 'email' : 'sms';
 }
 /** Can a code reach them at all? sendCode() then queues at least one. */
-export const reachable = (t: { phone: string | null; email: string }) =>
-  PH_MOBILE.test(normalizePhone(t.phone ?? '')) || (emailOn() && EMAIL_ADDRESS.test(normalizeEmail(t.email)));
+export const reachable = (t: { phone: string | null; email: string | null }) =>
+  PH_MOBILE.test(normalizePhone(t.phone ?? '')) || (emailOn() && EMAIL_ADDRESS.test(normalizeEmail(t.email ?? '')));
 
 /** 'Dr. Ana Reyes-Cariño' → 'ana-reyes-carino', then -2, -3… until no staff row has it. */
 function slugify(name: string) {
@@ -167,53 +185,79 @@ const see = (location: string) => new Response(null, { status: 303, headers: { l
 
 // --- + Add person (Clinic settings → People) -------------------------------------------------
 
-export interface AddValues { name: string; role: string; phone: string; email: string; prc: string; specialty: string; days: number[]; finance: boolean }
-export const emptyPerson = (): AddValues => ({ name: '', role: 'dentist', phone: '', email: '', prc: '', specialty: '', days: [1, 2, 3, 4, 5, 6], finance: false });
+export interface AddValues {
+  name: string; username: string; roleId: string; treats: boolean; phone: string; email: string; prc: string; specialty: string; days: number[]; finance: boolean;
+}
+export const emptyPerson = (roleId = ''): AddValues => ({ name: '', username: '', roleId, treats: false, phone: '', email: '', prc: '', specialty: '', days: [1, 2, 3, 4, 5, 6], finance: false });
 export interface AddRefused { error: string; add: AddValues }
 
 export async function addPerson(ctx: Ctx & { base: string }, form: FormData): Promise<Response | AddRefused> {
-  const isOwner = ctx.session.role === 'owner';
+  const isOwner = ctx.clinic.role_owner;
   const add = emptyPerson();
   add.name = String(form.get('name') ?? '').trim().replace(/\s+/g, ' ');
-  add.role = String(form.get('role') ?? '');
+  add.username = normalizeUsername(String(form.get('username') ?? ''));
+  add.roleId = String(form.get('role_id') ?? '');
+  add.treats = form.get('treats') === 'on';
   add.phone = String(form.get('phone') ?? '').trim();
   add.email = normalizeEmail(String(form.get('email') ?? ''));
   add.prc = String(form.get('prc') ?? '').trim();
   add.specialty = String(form.get('specialty') ?? '');
   add.days = dows(form);
   add.finance = isOwner && form.get('finance') === 'on';
-  const phone = normalizePhone(add.phone);
-  const dentist = clinician(add.role);
+  // Never echoed back: a refused form asks for the password again.
+  const password = String(form.get('password') ?? '');
+  const phone = add.phone ? normalizePhone(add.phone) : '';
+  const { clinic } = ctx;
+  const role = await roleById(clinic.group_id, add.roleId);
+  const dentist = add.treats;
   let error = '';
   if (add.name.length < 2 || add.name.length > 80) error = 'Give us their full name, as patients should see it.';
-  else if (!Object.hasOwn(ROLES, add.role)) error = 'Choose a role.';
-  else if (!PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000. The code goes there by text.';
-  else if (!EMAIL_ADDRESS.test(add.email) || add.email.length > EMAIL_MAX) error = 'That email doesn’t look complete.';
-  else if (dentist && !PRC.test(add.prc)) error = 'A dentist needs their PRC licence number: digits only, usually seven.';
+  else if (usernameProblem(add.username)) error = usernameProblem(add.username)!;
+  else if ((await usernameTaken(clinic.group_id, add.username, null)).rowCount) error = `Someone at ${clinic.name} already signs in as “${add.username}”. Choose another username.`;
+  else if (!role) error = 'Choose a role.';
+  else if (!mayGive(clinic, role)) error = `You can’t give the role “${role.name}”: only roles below yours, with nothing you don’t have yourself.`;
+  else if (password && passwordProblem(password)) error = passwordProblem(password)!;
+  else if (!password && !phone) error = 'Set a first password for them, or give their mobile so we can text them an invitation code.';
+  else if (phone && !PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
+  else if (add.email && (!EMAIL_ADDRESS.test(add.email) || add.email.length > EMAIL_MAX)) error = 'That email doesn’t look complete. Leave it empty if they have none.';
+  else if (dentist && !PRC.test(add.prc)) error = 'Someone who treats patients needs their PRC licence number: digits only, usually seven.';
   else if (dentist && add.specialty && !SPECIALTIES.includes(add.specialty)) error = 'Pick a specialty from the list, or leave it blank for a general dentist.';
   // Across the whole service, not just this group: sign-in finds a person by email and a reset
   // finds them by mobile, so each may belong to one staff account only (as /start/ checks).
-  else if ((await emailTaken(add.email, null)).rowCount) error = 'That email is already on a Flossify staff account. Use another one for them.';
-  else if ((await phoneTaken(phone, null)).rowCount) error = 'That mobile number is already on a Flossify staff account. Use another one for them.';
-  if (error) return { error, add };
+  else if (add.email && (await emailTaken(add.email, null)).rowCount) error = 'That email is already on a Flossify staff account. Use another one for them, or leave it empty.';
+  else if (phone && (await phoneTaken(phone, null)).rowCount) error = 'That mobile number is already on a Flossify staff account. Use another one for them.';
+  if (error || !role) return { error: error || 'Choose a role.', add };
 
-  // The staff row and its access are group data and commit first; the code references the row,
-  // so it is minted after. Days, the text, the email and the audit line are clinic data and go in
-  // one clinic transaction.
-  const { clinic } = ctx;
+  // The staff row and its access are group data and commit first; a code references the row, so it
+  // is minted after. Days, the text, the email and the audit line are clinic data and go in one
+  // clinic transaction.
   const slug = dentist ? await uniqueSlug(add.name) : null;
   const specialty = dentist && add.specialty ? add.specialty : null;
-  const { rows: [created] } = await pool.query(
-    `insert into staff (group_id, full_name, email, phone, prc_licence, role, specialty, slug, practices, home_clinic_id, invited_at, invited_by)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), $11) returning id`,
-    [clinic.group_id, add.name, add.email, phone, dentist ? add.prc : null, add.role, specialty, slug, dentist && !specialty ? ['General dentistry'] : [], clinic.id, ctx.session.staffId]);
+  const staffRole = staffRoleFor(role, dentist);
+  let created: { id: string };
+  try {
+    ({ rows: [created] } = await pool.query(
+      `insert into staff (group_id, full_name, username, email, phone, prc_licence, role, role_id, specialty, slug, practices, home_clinic_id,
+                          password_hash, password_set_at, must_change_password, invited_at, invited_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, case when $13::text is null then null else now() end, $13::text is not null,
+               case when $13::text is null then now() end, $14) returning id`,
+      [clinic.group_id, add.name, add.username, add.email || null, phone || null, dentist ? add.prc : null, staffRole, role.id, specialty, slug,
+       dentist && !specialty ? ['General dentistry'] : [], clinic.id, password ? hashPassword(password) : null, ctx.session.staffId]));
+  } catch (e) {
+    const { code, constraint } = e as { code?: string; constraint?: string };
+    if (code !== '23505') throw e;
+    return { error: /username/.test(constraint ?? '') ? `Someone at ${clinic.name} already signs in as “${add.username}”. Choose another username.`
+      : /email/.test(constraint ?? '') ? 'That email is already on a Flossify staff account. Use another one for them, or leave it empty.'
+      : 'Someone saved a change to the team at the same moment. Check the details and add again.', add };
+  }
   await pool.query(
     'insert into staff_access (staff_id, clinic_id, can_view_finance, can_edit_records, can_manage_staff) values ($1, $2, $3, true, $4)',
-    [created.id, clinic.id, add.finance, add.role === 'admin']);
-  const code = await issueCode(created.id, 'invite');
+    [created.id, clinic.id, add.finance, role.perms.includes('people.manage' as Perm)]);
+  const code = password ? null : await issueCode(created.id, 'invite');
   const via = await withClinic(clinic.id, async (tx) => {
     for (const d of add.days) await tx.query('insert into staff_schedule (staff_id, clinic_id, dow) values ($1, $2, $3)', [created.id, clinic.id, d]);
-    const used = await sendCode(ctx, tx, { id: created.id, phone, email: add.email }, 'invite', code);
+    if (!code) { await audit(ctx, tx, 'staff.add', created.id); return 'password'; }
+    const used = await sendCode(ctx, tx, { id: created.id, phone: phone || null, email: add.email || null }, 'invite', code);
     await audit(ctx, tx, 'staff.invite', created.id);
     return used;
   });
@@ -221,23 +265,45 @@ export async function addPerson(ctx: Ctx & { base: string }, form: FormData): Pr
 }
 
 /** The sentence after + Add person. */
-export function addedText(name: string, via: string): string {
+export function addedText(name: string, via: string, signIn?: { slug: string; username: string }): string {
+  if (via === 'password') return `Added. ${name} signs in at flossify.ph/${signIn?.slug ?? ''}/sign-in as “${signIn?.username ?? ''}” with the password you set, and chooses their own the first time.`;
   const how = via === 'both' ? 'by text and email' : via === 'email' ? 'by email' : '';
   return how ? `Added. We sent ${name} a code ${how}. It works for 24 hours.` : `Added. We texted ${name} a code that works for 24 hours.`;
 }
 
 // --- one person (their page) -----------------------------------------------------------------
 
-export interface EditValues { name: string; username: string; role: string; phone: string; email: string; prc: string; specialty: string }
+export interface EditValues { name: string; username: string; role: string; roleId: string; treats: boolean; phone: string; email: string; prc: string; specialty: string }
 export interface ActionRefused { error: string; action: string; edit?: EditValues }
 
 /** Everything the person page's forms do. `here` is the person's page. */
 export async function personAction(ctx: Ctx & { here: string }, t: Person, form: FormData): Promise<Response | ActionRefused> {
   const { session, clinic } = ctx;
-  const isOwner = session.role === 'owner';
+  const isOwner = clinic.role_owner;
   const action = String(form.get('action') ?? '');
   const here = ctx.here;
   const fail = (error: string, edit?: EditValues): ActionRefused => ({ error, action, edit });
+  const self = t.id === session.staffId;
+  // Only people whose role is below yours (an owner: anyone but another owner's role). src/lib/roles.ts.
+  const manages = mayManage(clinic, t, self);
+  const BELOW = t.role_owner ? 'Only an owner can do that for an owner.' : `Only someone whose role is above ${t.role_name} can do that.`;
+  if (['invite', 'reset', 'password', 'disable', 'enable', 'finance'].includes(action) && !manages && !(self && action === 'finance')) {
+    return fail(self && action === 'disable' ? 'You can’t disable your own account. Ask another owner.' : self ? 'Ask the owner to do that for you.' : BELOW);
+  }
+  if (action === 'password') {
+    if (t.disabled_at) return fail(`${t.full_name} is disabled. Enable them first.`);
+    const pw = String(form.get('password') ?? '');
+    const problem = passwordProblem(pw);
+    if (problem) return fail(problem);
+    // Everything they are signed in on ends (the version), any code sent to them stops working, and
+    // they choose their own password the next time they sign in.
+    await pool.query(
+      `update staff set password_hash = $2, token_version = token_version + 1, password_set_at = now(), must_change_password = true where id = $1`,
+      [t.id, hashPassword(pw)]);
+    await pool.query('update one_time_code set used_at = now() where staff_id = $1 and used_at is null', [t.id]);
+    await withClinic(clinic.id, (tx) => audit(ctx, tx, 'staff.password', t.id));
+    return see(`${here}?done=password`);
+  }
 
   if (action === 'invite') {
     if (t.disabled_at) return fail(`${t.full_name} is disabled. Enable them first.`);
@@ -265,13 +331,21 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
     return see(`${here}?done=reset&via=${via}`);
   }
   if (action === 'edit') {
-    if (t.role === 'owner' && !isOwner) return fail('Only an owner can change an owner’s details.');
-    const me = t.id === session.staffId;
+    if (t.role_owner && !isOwner) return fail('Only an owner can change an owner’s details.');
+    const me = self;
+    if (!me && !manages) return fail(BELOW);
+    // An owner stays an owner, and nobody changes their own role: the posted role is ignored for both,
+    // and so is "treats patients" (the professional side goes with the role).
+    const roleLocked = t.role_owner || me;
+    const roleId = roleLocked ? t.role_id : String(form.get('role_id') ?? '');
+    const role = roleLocked ? null : await roleById(clinic.group_id, roleId);
+    const treatsNow = roleLocked ? clinician(t.role) : form.get('treats') === 'on';
     const edit: EditValues = {
       name: String(form.get('name') ?? '').trim().replace(/\s+/g, ' '),
       username: form.has('username') ? normalizeUsername(String(form.get('username'))) : t.username,
-      // An owner stays an owner, and nobody changes their own role: the posted value is ignored for both.
-      role: t.role === 'owner' || me ? t.role : String(form.get('role') ?? ''),
+      roleId,
+      treats: treatsNow,
+      role: t.role_owner ? 'owner' : roleLocked ? t.role : role ? staffRoleFor(role, treatsNow) : t.role,
       phone: String(form.get('phone') ?? '').trim(),
       email: normalizeEmail(String(form.get('email') ?? '')),
       prc: String(form.get('prc') ?? '').replace(/\s+/g, ''),
@@ -284,16 +358,17 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
     if (edit.name.length < 2 || edit.name.length > 80) error = 'Give their full name, as patients should see it.';
     else if (edit.username !== t.username && usernameProblem(edit.username)) error = usernameProblem(edit.username)!;
     else if (edit.username !== t.username && (await usernameTaken(clinic.group_id, edit.username, t.id)).rowCount) error = `Someone at ${clinic.name} already signs in as “${edit.username}”. Choose another username.`;
-    // Only an owner's own row may say 'owner' (it was never taken from the form). Anyone else's role
-    // must be one an owner hands out, so a posted role=owner is refused, never saved.
-    else if (t.role !== 'owner' && !Object.hasOwn(ROLES, edit.role)) error = 'Choose a role.';
+    // The Owner role is never handed out here, and a role must be one this person may give (below their
+    // own, nothing they do not hold) — unless it is the one they already have.
+    else if (!roleLocked && !role) error = 'Choose a role.';
+    else if (!roleLocked && role && role.id !== t.role_id && !mayGive(clinic, role)) error = `You can’t give the role “${role.name}”: only roles below yours, with nothing you don’t have yourself.`;
     else if (!phone && t.phone) error = 'Keep a mobile number on file: invitation and reset codes go there by text.';
     else if (phone && !PH_MOBILE.test(phone)) error = 'Use a Philippine mobile number, like 0917 000 0000.';
-    else if (!EMAIL_ADDRESS.test(edit.email) || edit.email.length > EMAIL_MAX) error = 'That email doesn’t look complete.';
-    else if (clinician(edit.role) && !PRC.test(edit.prc)) error = 'A dentist needs their PRC licence number: digits only, usually seven.';
+    else if (edit.email && (!EMAIL_ADDRESS.test(edit.email) || edit.email.length > EMAIL_MAX)) error = 'That email doesn’t look complete. Leave it empty if they have none.';
+    else if (clinician(edit.role) && !PRC.test(edit.prc)) error = 'Someone who treats patients needs their PRC licence number: digits only, usually seven.';
     else if (profile && edit.prc && !PRC.test(edit.prc)) error = 'A PRC licence number is digits only, usually seven.';
     else if (profile && edit.specialty && !SPECIALTIES.includes(edit.specialty)) error = 'Pick a specialty from the list, or leave it blank for a general dentist.';
-    else if (edit.email !== normalizeEmail(t.email) && (await emailTaken(edit.email, t.id)).rowCount) error = 'That email is already on another Flossify staff account. Use another one for them.';
+    else if (edit.email && edit.email !== normalizeEmail(t.email ?? '') && (await emailTaken(edit.email, t.id)).rowCount) error = 'That email is already on another Flossify staff account. Use another one for them.';
     else if (phone && normalizePhone(t.phone ?? '') !== phone && (await phoneTaken(phone, t.id)).rowCount) error = 'That mobile number is already on another Flossify staff account. Codes go to one person only.';
     if (error) return fail(error, edit);
 
@@ -302,8 +377,9 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
       name: edit.name,
       username: edit.username,
       role: edit.role,
+      roleId: edit.roleId,
       phone: phone || null,
-      email: edit.email,
+      email: edit.email || null,
       prc: profile ? (edit.prc || null) : edit.role === 'owner' ? t.prc_licence : null,
       specialty: profile ? (edit.specialty || null) : edit.role === 'owner' ? t.specialty : null,
       slug: profile ? (t.slug ?? await uniqueSlug(edit.name)) : edit.role === 'owner' ? t.slug : null,
@@ -312,9 +388,9 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
     const changed = {
       name: next.name !== t.full_name,
       username: next.username !== t.username,
-      email: next.email !== normalizeEmail(t.email),
+      email: (next.email ?? '') !== normalizeEmail(t.email ?? ''),
       phone: (next.phone ?? '') !== normalizePhone(t.phone ?? ''),
-      role: next.role !== t.role,
+      role: next.role !== t.role || next.roleId !== t.role_id,
       prc: (next.prc ?? '') !== (t.prc_licence ?? ''),
       specialty: (next.specialty ?? '') !== (t.specialty ?? ''),
     };
@@ -332,9 +408,9 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
       changed.name && `The clinic changed the name (was ${t.full_name}).`,
       mismatchKept && 'The clinic says the number on file is right. Check it again.',
     ].filter(Boolean).join(' ') || null;
-    // A new email, or a new role, ends every session they have: the cookie carries the role, and
-    // pages read their rights from it, so a demoted admin must not keep an admin's cookie.
-    const signOut = changed.email || changed.role;
+    // A new email, or a new professional side (staff.role, which the cookie carries), ends every session
+    // they have. A new role alone does not: what they may do is read from it on every request (canOpen).
+    const signOut = changed.email || next.role !== t.role;
     let tv: number;
     try {
       const { rows } = await pool.query(
@@ -344,11 +420,11 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
                 prc_checked_on = case when $11::boolean then null else prc_checked_on end,
                 prc_checked_by = case when $11::boolean then null else prc_checked_by end,
                 prc_note       = case when $11::boolean then $12 else prc_note end,
-                username = $13
+                username = $13, role_id = $14
           where id = $1
           returning token_version`,
         // The mobile is written only when it changed, so a number on file as '0917 555 2003' is left as it was.
-        [t.id, next.name, next.email, changed.phone ? next.phone : t.phone, next.role, next.prc, next.specialty, next.slug, practices, signOut, prcReset, prcNote, next.username]);
+        [t.id, next.name, next.email, changed.phone ? next.phone : t.phone, next.role, next.prc, next.specialty, next.slug, practices, signOut, prcReset, prcNote, next.username, next.roleId]);
       tv = rows[0].token_version;
     } catch (e) {
       // Two edits at once can both pass the checks above; the database's own unique keys have the last word.
@@ -360,7 +436,7 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
         ? `Someone at ${clinic.name} already signs in as “${next.username}”. Choose another username.`
         : 'Someone saved a change to the team at the same moment. Check the details and save again.', edit);
     }
-    if (changed.role) await pool.query('update staff_access set can_manage_staff = $3 where staff_id = $1 and clinic_id = $2', [t.id, clinic.id, next.role === 'admin' || next.role === 'owner']);
+    if (changed.role) await pool.query('update staff_access set can_manage_staff = $3 where staff_id = $1 and clinic_id = $2', [t.id, clinic.id, t.role_owner || !!role?.perms.includes('people.manage' as Perm)]);
     // A code already sent to the old mobile or email stops working: it went somewhere that is no longer theirs.
     if (changed.email || changed.phone) await pool.query('update one_time_code set used_at = now() where staff_id = $1 and used_at is null', [t.id]);
     await withClinic(clinic.id, async (tx) => {
@@ -381,7 +457,7 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
     const flags = [
       changed.email && 'email=1',
       // Signed out for the new role; only worth saying to someone who has a password to sign in with.
-      changed.role && !changed.email && t.has_password && !t.disabled_at && 'role=1',
+      next.role !== t.role && !changed.email && t.has_password && !t.disabled_at && 'role=1',
       prcReset && checkable && `prc=${changed.prc ? 'number' : changed.name ? 'name' : 'again'}`,
       !t.slug && next.slug && 'profile=on',
       t.slug && !next.slug && 'profile=off',
@@ -390,20 +466,18 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
     return see(`${here}?done=edit${flags ? `&${flags}` : ''}`);
   }
   if (action === 'disable') {
-    if (t.id === session.staffId) return fail('You can’t disable your own account. Ask another owner.');
-    if (t.role === 'owner' && !isOwner) return fail('Only an owner can disable an owner.');
     // disabled_at is checked on every workspace request, so they are out at once, at every branch.
     await pool.query('update staff set disabled_at = coalesce(disabled_at, now()) where id = $1', [t.id]);
     await withClinic(clinic.id, (tx) => audit(ctx, tx, 'staff.disable', t.id));
     return see(`${here}?done=disable`);
   }
   if (action === 'enable') {
-    if (t.role === 'owner' && !isOwner) return fail('Only an owner can enable an owner.');
     await pool.query('update staff set disabled_at = null where id = $1', [t.id]);
     await withClinic(clinic.id, (tx) => audit(ctx, tx, 'staff.enable', t.id));
     return see(`${here}?done=enable`);
   }
   if (action === 'schedule') {
+    if (!self && !manages) return fail(BELOW);
     const days = dows(form);
     await withClinic(clinic.id, async (tx) => {
       await tx.query('delete from staff_schedule where staff_id = $1 and clinic_id = $2', [t.id, clinic.id]);
@@ -431,7 +505,7 @@ export function personNotice(q: URLSearchParams, p: Person, myId: string): strin
     `Saved ${who}’s details.`,
     q.get('email') === '1' && q.get('resend') !== '1' && (p.id === myId ? 'Your other devices are signed out; sign in there with the new email.' : `${who} is signed out everywhere and signs in with the new email.`),
     q.get('profile') === 'off' && 'Their public profile is down: only dentists have one.',
-    q.get('role') === '1' && `${who} is signed out everywhere and signs in again as ${ROLE_LABEL[p.role] ?? 'their new role'}.`,
+    q.get('role') === '1' && `${who} is signed out everywhere and signs in again as ${p.role_name}.`,
     q.get('profile') === 'on' && 'They have a public profile now, marked “PRC check pending” until Flossify checks the number.',
     q.get('profile') !== 'on' && ({
       number: 'The new PRC number goes back for a check; their profile says “PRC check pending” until then.',
@@ -448,6 +522,7 @@ export function personNotice(q: URLSearchParams, p: Person, myId: string): strin
     disable: `${who} can no longer sign in.`,
     enable: `${who} can sign in again.`,
     schedule: `Saved ${who}’s days.`,
+    password: `Saved. Tell ${who} the new password: they choose their own when they next sign in, and every device they were signed in on is signed out.`,
     finance: `Saved what ${who} can see.`,
   };
   return NOTICES[q.get('done') ?? ''] ?? '';

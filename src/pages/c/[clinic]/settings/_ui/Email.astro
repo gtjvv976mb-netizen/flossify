@@ -4,8 +4,9 @@
 // A part longer than its line still breaks (overflow-wrap: anywhere).
 //
 //   <Email address={t.email} />
-interface Props { address: string; class?: string }
-const { address, class: extra } = Astro.props;
+interface Props { address: string | null; class?: string }
+const { address: given, class: extra } = Astro.props;
+const address = given ?? '';
 const at = address.lastIndexOf('@');
 ---
 <span class:list={['set-email', extra]}>{at > 0 ? <>{address.slice(0, at)}<wbr />{address.slice(at)}</> : address}</span>
