@@ -1,6 +1,6 @@
 # Flossify
 
-> **Continuing work?** Read `docs/HANDOFF.md` — where the last session stopped (QR patient forms on draft PR #23; the clinic sites / roles / tasks design not started).
+> **Continuing work?** `docs/HANDOFF.md` is the older hand-over (26 Sep): the QR forms and all five clinic-sites phases it lists are now shipped (PRs #23, #25–#30).
 
 
 Marketing site + prototype clinic workspace for dental practice software aimed at
@@ -100,6 +100,17 @@ it (light and dark, 1440 and 390) — measure again before making it clearer.
   sidebar pattern (`src/pages/me/_Shell.astro`), and the way in to it (/me/,
   /me/code/) the patients' bar over one card (`_Door.astro`); the staff
   entrance one white card on the film (`StaffEntrance.astro`).
+- **Light or dark is the person's choice** (`src/components/ThemeSwitch.astro`):
+  the site follows the device until someone chooses; the choice is
+  `localStorage.theme` (`light` | `dark`, none = match the device), applied
+  before first paint by the inline script in Base, Clinic and Admin, and it only
+  sets `<html data-theme>`. The switch is in the public bar (a round 44px button;
+  in the drawer on phones), on the staff entrance, in the workspace, operations
+  and My visits sidebars, and My page has Match my device · Light · Dark. So
+  **every dark rule needs both twins** — `@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) … }` and `:root[data-theme="dark"] …` — or a
+  chosen theme misses it. Measured: on 12 kinds of page, chosen dark = device
+  dark and chosen light = device light.
 - **Still true everywhere:** motion always on, nothing fixed to the bottom of
   the screen, targets ≥44px, fields ≥16px, and contrast **measured** (≥4.5:1
   against the worst pixel behind the words, light and dark; muted slate on a

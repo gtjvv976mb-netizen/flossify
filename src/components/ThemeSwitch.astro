@@ -1,0 +1,83 @@
+---
+// Light or dark, the person's choice. The site follows the device until someone chooses; the choice is
+// kept on this device (localStorage 'theme': 'light' | 'dark'; no entry = match the device) and applied
+// before the first paint by the inline script in each layout (Base, Clinic, Admin), so a page never
+// flashes the wrong one. Every colour already has both themes (global.css and each page's own dark
+// block, guarded by :root[data-theme] both ways), so choosing only sets <html data-theme>.
+//
+//   <ThemeSwitch />                   the public bar: a round 44px button, the icon of the other theme
+//   <ThemeSwitch variant="drawer" />  the public bar's phone drawer: icon and words
+//   <ThemeSwitch variant="side" />    the workspace's and operations' sidebar: a sidebar row
+//   <ThemeSwitch variant="float" />   the staff entrance: a quiet pill beside "Patients: …"
+//   <ThemeSwitch variant="choice" />  My page: Match my device · Light · Dark
+//
+// A button shows what pressing it does ("Dark mode" with a moon on a light page), drawn by CSS from
+// the page's own state (.theme-to-dark / .theme-to-light, global.css), so it is right before any script
+// runs. Every switch on the page, and every tab of the site, follows a change at once.
+import Icon from './ws/Icon.astro';
+
+interface Props { variant?: 'bar' | 'drawer' | 'side' | 'float' | 'choice'; class?: string }
+const { variant = 'bar', class: extra } = Astro.props;
+const WORD = { dark: 'Dark mode', light: 'Light mode' };
+---
+
+{variant === 'choice' ? (
+  <fieldset class:list={['theme-choice', extra]} data-theme-choice>
+    <legend class="sr-only">Appearance on this device</legend>
+    <div class="theme-seg">
+      <label><input type="radio" name="theme-pref" value="" class="sr-only" /><Icon name="settings" size={18} /><span>Match my device</span></label>
+      <label><input type="radio" name="theme-pref" value="light" class="sr-only" /><Icon name="sun" size={18} /><span>Light</span></label>
+      <label><input type="radio" name="theme-pref" value="dark" class="sr-only" /><Icon name="moon" size={18} /><span>Dark</span></label>
+    </div>
+    <p class="theme-choice-note">Kept on this device only. Every page follows it.</p>
+  </fieldset>
+) : (
+  <button type="button" class:list={['theme-switch', `theme-switch-${variant}`, variant === 'side' && 'ws-side-link', variant === 'drawer' && 'site-drawer-link', variant === 'float' && 'entrance-out', extra]} data-theme-toggle>
+    <span class="theme-face theme-to-dark">
+      <Icon name="moon" size={variant === 'drawer' ? 20 : 18} />
+      {variant === 'bar' ? <span class="sr-only">{WORD.dark}</span> : <span class={variant === 'side' ? 'ws-side-word' : undefined}>{WORD.dark}</span>}
+    </span>
+    <span class="theme-face theme-to-light">
+      <Icon name="sun" size={variant === 'drawer' ? 20 : 18} />
+      {variant === 'bar' ? <span class="sr-only">{WORD.light}</span> : <span class={variant === 'side' ? 'ws-side-word' : undefined}>{WORD.light}</span>}
+    </span>
+  </button>
+)}
+
+<script>
+  // Shared by every switch on the page (Astro runs a component's script once).
+  const KEY = 'theme';
+  const root = document.documentElement;
+  const dark = matchMedia('(prefers-color-scheme: dark)');
+  const read = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
+  const shown = (): 'light' | 'dark' => (root.dataset.theme === 'dark' || root.dataset.theme === 'light' ? root.dataset.theme : dark.matches ? 'dark' : 'light');
+  // The browser's bar follows too: both theme-color tags say the chosen page colour, or their own again.
+  const metas = Array.from(document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'));
+  metas.forEach((m) => { m.dataset.own ??= m.content; });
+  const paint = () => {
+    const pref = read();
+    metas.forEach((m) => { m.content = pref === 'dark' ? '#15191e' : pref === 'light' ? '#f3f5f8' : m.dataset.own!; });
+    document.querySelectorAll<HTMLInputElement>('[data-theme-choice] input[name="theme-pref"]').forEach((r) => { r.checked = r.value === (pref ?? ''); });
+  };
+  const choose = (pref: 'light' | 'dark' | null) => {
+    try { pref ? localStorage.setItem(KEY, pref) : localStorage.removeItem(KEY); } catch { /* blocked storage: this page only */ }
+    if (pref) root.dataset.theme = pref; else delete root.dataset.theme;
+    paint();
+  };
+  document.addEventListener('click', (e) => {
+    const b = (e.target as Element).closest('[data-theme-toggle]');
+    if (b) choose(shown() === 'dark' ? 'light' : 'dark');
+  });
+  document.addEventListener('change', (e) => {
+    const r = e.target as HTMLInputElement;
+    if (r.name === 'theme-pref' && r.closest('[data-theme-choice]')) choose(r.value === 'light' || r.value === 'dark' ? r.value : null);
+  });
+  // Another tab changed it: follow.
+  addEventListener('storage', (e) => {
+    if (e.key !== KEY) return;
+    const v = e.newValue;
+    if (v === 'light' || v === 'dark') root.dataset.theme = v; else delete root.dataset.theme;
+    paint();
+  });
+  paint();
+</script>

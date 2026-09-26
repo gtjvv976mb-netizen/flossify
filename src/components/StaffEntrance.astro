@@ -20,6 +20,7 @@ import Icon from './ws/Icon.astro';
 import ClinicBadge from '../pages/find/_ui/ClinicBadge.astro';
 import { SIGNIN_WALK } from '../data/film';
 import { isUploadKey, photoUrl } from '../lib/uploads';
+import ThemeSwitch from './ThemeSwitch.astro';
 
 interface Props {
   title: string;
@@ -68,6 +69,7 @@ const cover = door?.cover && isUploadKey(door.cover) ? door.cover : null;
     )}
 
     <header class="entrance-top">
+      <ThemeSwitch variant="float" />
       {door?.listed ? (
         <a href={`/find/${door.slug}/`} class="entrance-out">
           <span>Patients: book a visit</span>
