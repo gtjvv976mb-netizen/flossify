@@ -626,7 +626,7 @@ the operator page. The Swiss look is retired.
   does now.
 - **Public pages keep a top bar, not a sidebar** (the film home page needs
   the full width): a soft white bar with the Flossify mark, a few plain links
-  (Find a clinic, Pricing, Clinic websites), "Staff sign-in" and one teal
+  (Find a clinic, Pricing, Clinic websites), "Clinic sign-in" and one teal
   **Open your clinic** button; on phones a menu button slides the same links
   in from the left, like the workspace. The patient account area (`/me/`)
   is app-like, so it uses the workspace's left-sidebar pattern (My visits,
@@ -707,13 +707,13 @@ and `src/components/PatientHeader.astro`. The workspace's own pieces
 | slot `aside` | beside the links, shown from 1180px (below that the links and the two actions need the bar) — the home page's "where you are" readout |
 | default slot | inside the `<header>`, after the bar — e.g. the home page's progress line (`absolute inset-x-0 bottom-0`) |
 
-- **From 960px:** mark · the links as soft pills · (aside) · Staff sign-in
+- **From 960px:** mark · the links as soft pills · (aside) · Clinic sign-in
   (`/auth/login/`, a quiet link with the user icon) · Open your clinic.
   68px tall; white 96% on blur with a hairline under it; every word ink or
   ink-2 (never muted: over a pure black film pixel muted would be 4.56).
 - **Below 960px:** menu button · mark · Open your clinic (teal only). The menu
   button opens a `<dialog class="site-drawer">` from the left: the same links
-  with icons as 48px rows, then Staff sign-in and Open your clinic. Modal (the
+  with icons as 48px rows, then Clinic sign-in and Open your clinic. Modal (the
   page behind is inert, and the page does not scroll), focus starts on the
   current link, Tab and Shift+Tab stay inside, Escape / the scrim / × slide
   it out and focus goes back to the menu button (`aria-expanded` follows). A
@@ -724,7 +724,7 @@ and `src/components/PatientHeader.astro`. The workspace's own pieces
   `<SiteHeader links="patients" cta="quiet" />` plus, on the owner's machine
   only (`SHOW_DEMO_LOGINS=1`), the "Prototype…" line as an amber callout
   under the bar.
-- **Staff find their workspace through Staff sign-in**, which opens each
+- **Staff find their workspace through Clinic sign-in**, which opens each
   person's own branch. `/clinics/` (the list of every clinic's workspace
   link) is in no bar, and no page links to it now: it answers at its
   address only. **Open:** give it a way in from the sign-in card's "Other
@@ -785,7 +785,7 @@ own them. Reuse one before drawing a new one.
 |---|---|---|
 | `src/pages/me/_Door.astro` | The way in to My visits: `<PatientHeader current="me">`, one white card holding the page's form (the slot) and a "How it works" card with three numbered steps, the one you are on marked (`step={1}` the number, `{2}` the code). Side by side from 1024px, stacked below | `/me/`, `/me/code/` |
 | `src/pages/me/_Shell.astro` | My visits' frame: the workspace's left sidebar (`.ws`, `.ws-side`, the `ws/shell.ts` script) for a patient — the waiting-room backdrop, My visits · Find a clinic, the signed-in number, the privacy notice and Sign out at the foot, one quiet "Book a visit" by the title. Not `Clinic.astro` (a patient has no clinic session); the workspace's sizes: the sidebar from 1024px, an icon rail at 768–1023px, a slim bar and the slide-in sidebar below | `/me/visits/` |
-| `src/pages/404.astro` | Not found: `<SiteHeader cta="quiet">` and one card — Go to the home page (teal), Find a clinic — with quiet rows to My visits and Staff sign-in. Sent with the 404 status for any address with no page | unknown addresses |
+| `src/pages/404.astro` | Not found: `<SiteHeader cta="quiet">` and one card — Go to the home page (teal), Find a clinic — with quiet rows to My visits and Clinic sign-in. Sent with the 404 status for any address with no page | unknown addresses |
 | `src/pages/find/_ui/patient.css` | The patient pages' own classes, all `pt-*` (title, lede, back link, `.pt-card` on a `<Pane>`, rows, insets, facts, filters, slots, the booking's steps and summary, the bookings on this device …), in `@layer components`, only what global.css does not already draw. A plain stylesheet, because the pages' scripts write some of its classes | `/find/`, a clinic's page and booking, a dentist, `/coverage/` |
 | `src/pages/find/_ui/ClinicBadge.astro` | A clinic's initials (the first letters of its first two words) in a pale teal rounded square — the sidebar's `.ws-branch-badge`, 38px; `size="lg"` 56px. Decorative beside the written name; round initials (`<Avatar>`) are for people | the patient pages, the home page's partners, `/clinics/` |
 

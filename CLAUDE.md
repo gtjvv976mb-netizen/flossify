@@ -60,7 +60,10 @@ would read as its interior — or, with no upload, a soft abstract blur. A
 clinic can upload anything, so the room is washed/dimmed enough that every line
 passes over an all-black, all-white and harshly striped cover, and
 `room-tone.ts` looks at each upload once (cached; never throws) to calm busy or
-dark ones further. A dentist's page still stands on opaque cards. Glass uses the `--glass-*`
+dark ones further. Clinic websites `/websites/` stands on the clinic's front
+door (`/img/signin-door-*.webp`, scoped to `.wb-glass`); the SwiftCare sample in
+its window stays an opaque page with its own branding. A dentist's page still
+stands on opaque cards. Glass uses the `--glass-*`
 tokens in global.css; every line on it is measured against the pixels behind
 it (light and dark, 1440 and 390) — measure again before making it clearer.
 
@@ -172,7 +175,7 @@ entrance. There used to be a readout rail fixed to the bottom of the viewport
 and a link footer after the last page; the owner removed both ("the footer
 takes too much space … label each page on the site itself"). Pages are
 labelled where they are: the bar's readout, each section's own title, and
-the "Staff entrance" pill at the head of the sign-in card. The footer's links
+the "Clinic sign-in" pill at the head of the sign-in card. The footer's links
 are in the header nav; the copyright is one line on the last page. Do not put
 a footer or a bottom bar back.
 See `docs/generation.md` for how the film was made and how to regenerate it.
@@ -274,7 +277,7 @@ workspace looks like the workspace (95% white on a light blur; soft charcoal
 in dark mode, where a light charcoal veil also dims the film). The film stays
 the ground around it (the owner: "make the boxes translucent and compact so
 that the video background is still emphasized"). The card's head is the
-Flossify mark and a small "Staff entrance" pill; top left, one quiet pill for
+Flossify mark and a small "Clinic sign-in" pill; top left, one quiet pill for
 a patient at the wrong door ("Patients: find a clinic"); nothing along the
 foot. On sign-in the camera walks from the front door
 (2.0s) to the reception desk (9.0s) at 0.85× and holds there — you sign in

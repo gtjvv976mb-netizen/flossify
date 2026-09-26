@@ -2,7 +2,7 @@
 // The public top bar, in the soft template (docs/workspace-redesign.md, "The whole site, soft" and
 // "Site API"). Public pages keep a bar at the top, not a sidebar (the film home page needs the full
 // width): the Flossify mark, a few plain links as soft pills (the page you are on tinted teal),
-// "Staff sign-in" and one teal Open your clinic. Below 960px the links move into a drawer that the
+// "Clinic sign-in" and one teal Open your clinic. Below 960px the links move into a drawer that the
 // menu button slides in from the left, like the workspace's sidebar on a phone: a modal <dialog>
 // (the rest of the page is inert), Tab stays inside, Escape, the scrim and its × close it, and focus
 // goes back to the menu button. Sticky at the top; nothing is fixed to the bottom of the screen.
@@ -73,7 +73,7 @@ const hasAside = Astro.slots.has('aside');
     </nav>
     {hasAside && <div class="site-aside"><slot name="aside" /></div>}
     <div class="site-actions">
-      <a href="/auth/login/" class="site-link site-signin" aria-current={here('signin')}><Icon name="user" />Staff sign-in</a>
+      <a href="/auth/login/" class="site-link site-signin" aria-current={here('signin')}><Icon name="user" />Clinic sign-in</a>
       <a href="/start/" class:list={['btn', ctaClass, 'site-cta']} aria-current={here('start')}><span>Open your clinic</span><Icon name="arrow-right" /></a>
     </div>
   </div>
@@ -97,7 +97,7 @@ const hasAside = Astro.slots.has('aside');
       ))}
     </nav>
     <div class="site-drawer-foot">
-      <a href="/auth/login/" class="site-drawer-link" aria-current={here('signin')}><Icon name="user" size={20} /><span>Staff sign-in</span></a>
+      <a href="/auth/login/" class="site-drawer-link" aria-current={here('signin')}><Icon name="user" size={20} /><span>Clinic sign-in</span></a>
       <a href="/start/" class:list={['btn', ctaClass, 'site-drawer-cta']} aria-current={here('start')}><span>Open your clinic</span><Icon name="arrow-right" /></a>
     </div>
   </div>
