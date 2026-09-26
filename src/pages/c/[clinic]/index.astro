@@ -53,7 +53,6 @@ import '../../../components/ws/cal/cal.css';
 import { requireWorkspace } from '../../../lib/workspace';
 import { withClinic } from '../../../lib/db';
 import { csrfOk, csrfToken, CSRF_MESSAGE } from '../../../lib/csrf';
-import { canBill } from '../../../lib/invoices';
 import { applyStatus, ALLOWED, NEXT_STATUS, StatusRefused } from '../../../lib/schedule';
 import { shellLinks } from '../../../components/ws/routes';
 import { loadDashboard } from '../../../components/ws/cal/data';
@@ -61,6 +60,7 @@ import { PT_KEYS } from '../../../components/ws/cal/model';
 import {
   DAY_MS, addDays, dayLabel, mondayOf, realDay, startMs, ymdOf, peso, summarize, summaryNotes,
 } from '../../../components/ws/cal/model';
+import { can } from '../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -89,7 +89,7 @@ if (Astro.request.method === 'POST') {
 }
 
 // Who is looking.
-const finance = canBill(session.role, clinic.can_view_finance);
+const finance = can(clinic, 'finance.bill');
 const isDentist = session.role === 'dentist' || session.role === 'associate';
 const links = shellLinks(clinic.slug);
 

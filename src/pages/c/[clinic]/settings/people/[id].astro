@@ -37,12 +37,13 @@ import {
   member, daysOf, upcomingFor, personAction, personNotice, accountState, reachable, emailOn, prettyPhone,
   SPECIALTIES, EMAIL_MAX, type ActionRefused, type EditValues,
 } from '../_lib/people';
+import { can } from '../../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
-const canSetUp = session.role === 'owner' || session.role === 'admin';
-const isOwner = session.role === 'owner';
+const canSetUp = can(ws, 'people.manage');
+const isOwner = clinic.role_owner;
 const id = Astro.params.id ?? '';
 const base = `/c/${clinic.slug}/settings/`;
 const here = `${base}people/${id}/`;

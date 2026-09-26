@@ -55,11 +55,19 @@ import { listPeople, addPerson, addedText, emptyPerson, emailOn, type AddRefused
 import { photoKeys, photoAction, MAX_PHOTOS, type PhotosRefused } from './_lib/photos';
 import { loadPrivacy, savePrivacy, savedPrivacy, type PrivacyRefused } from './_lib/privacy';
 import { loadPlan } from './_lib/plan';
+import { can } from '../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
-const canSetUp = session.role === 'owner' || session.role === 'admin';
+// Each section is for the people whose role may change it (src/lib/can.ts); the page is for anyone who
+// may change at least one. By default that is the owner and the admin, who may change all of them.
+const may: Record<SectionId, boolean> = {
+  profile: can(ws, 'settings.edit'), hours: can(ws, 'settings.edit'), fees: can(ws, 'settings.edit'),
+  people: can(ws, 'people.manage'), photos: can(ws, 'settings.edit'), privacy: can(ws, 'settings.edit'), plan: can(ws, 'plan.pay'),
+};
+const canSetUp = Object.values(may).some(Boolean);
+const shown = SECTIONS.filter((s) => may[s.id]);
 const base = `/c/${clinic.slug}/settings/`;
 const q = Astro.url.searchParams;
 
@@ -86,6 +94,7 @@ if (Astro.request.method === 'POST') {
       : from === 'privacy' ? 'privacy'
       : form.has('open[1]') ? 'legacy' : 'profile');
   const section = SECTION_OF[which];
+  if (!may[section]) return Astro.redirect(base, 303);
   if (!csrfOk(Astro.cookies, form)) return Astro.redirect(`${base}?stale=${section}#${section}`, 303);
   const who = { clinicId: clinic.id, staffId: session.staffId, base, form };
   let out: Response | object;
@@ -160,8 +169,9 @@ const STATUS: Record<SectionId, { text: string; tone?: 'warn' | 'alert' }> = !da
 const fromSection = (q.get('stale') ?? q.get('saved') ?? '') as string;
 const noticeFor: SectionId | null = q.get('person') === 'added' ? 'people' : q.get('added') === 'fee' ? 'fees' : q.get('photos') ? 'photos'
   : (q.has('paid') || q.has('unpaid') || q.has('pay')) ? 'plan' : null;
-const firstOn: SectionId = clinicRefused ? clinicRefused.part : feesRefused ? 'fees' : addRefused ? 'people' : photosRefused ? 'photos' : privacyRefused ? 'privacy'
+const wanted: SectionId = clinicRefused ? clinicRefused.part : feesRefused ? 'fees' : addRefused ? 'people' : photosRefused ? 'photos' : privacyRefused ? 'privacy'
   : isSection(fromSection) ? fromSection : noticeFor ?? 'profile';
+const firstOn: SectionId = may[wanted] ? wanted : (shown[0]?.id ?? 'profile');
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data?.c.area }} title="Clinic settings" section="settings" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
@@ -179,7 +189,7 @@ const firstOn: SectionId = clinicRefused ? clinicRefused.part : feesRefused ? 'f
         <aside class="set-side" aria-label="Clinic settings, sections">
           <Pane as="div" label="Sections" pad="tight">
             <nav class="set-toc" aria-label="Sections of Clinic settings" data-set-toc>
-              {SECTIONS.map((s) => (
+              {shown.map((s) => (
                 <a href={`#${s.id}`} class="set-toc-item" data-set-toc-item={s.id} aria-current={s.id === firstOn ? 'location' : undefined}>
                   <span class="set-toc-icon"><Icon name={s.icon} /></span>
                   <span class="set-toc-label">{s.label}</span>
@@ -201,7 +211,7 @@ const firstOn: SectionId = clinicRefused ? clinicRefused.part : feesRefused ? 'f
                 <Icon name="chevron" />
               </Fragment>
               <p class="ws-menu-head">Clinic settings</p>
-              {SECTIONS.map((s) => (
+              {shown.map((s) => (
                 <a class="ws-menu-item" href={`#${s.id}`} data-set-toc-item={s.id} aria-current={s.id === firstOn ? 'location' : undefined}>
                   <span class="ws-menu-icon"><Icon name={s.icon} /></span>
                   <span class="ws-menu-words">{s.label}<span class="ws-menu-hint">{STATUS[s.id].text}</span><span class="set-toc-dirty">Not saved yet</span></span>
@@ -210,34 +220,34 @@ const firstOn: SectionId = clinicRefused ? clinicRefused.part : feesRefused ? 'f
             </Menu>
           </div>
 
-          <ProfileSection
+          {may.profile && <ProfileSection
             base={base} data={data} welcome={q.get('welcome') === '1'} staffCount={active} on={firstOn === 'profile'}
             v={clinicRefused?.profile ?? savedProfile(data)}
             problems={clinicRefused?.part === 'profile' ? clinicRefused.problems : []}
             notes={notes.profile}
-          />
-          <HoursSection
+          />}
+          {may.hours && <HoursSection
             base={base} on={firstOn === 'hours'}
             days={clinicRefused?.hours ?? savedHours(data)}
             problems={clinicRefused?.part === 'hours' ? clinicRefused.problems : []}
             notes={notes.hours}
-          />
-          <FeesSection
+          />}
+          {may.fees && <FeesSection
             base={base} clinicName={clinic.name} rows={fees!} on={firstOn === 'fees'}
             keep={feesRefused?.kind === 'table' ? feesRefused.keep : null}
             problems={feesRefused?.kind === 'table' ? feesRefused.problems : []}
             add={feesRefused?.kind === 'add' ? feesRefused.add : emptyAdd()}
             addProblems={feesRefused?.kind === 'add' ? feesRefused.problems : []}
             notes={notes.fees}
-          />
-          <PeopleSection
-            base={base} clinicName={clinic.name} people={people!} me={session.staffId} isOwner={session.role === 'owner'} emailOn={emailOn()} on={firstOn === 'people'}
+          />}
+          {may.people && <PeopleSection
+            base={base} clinicName={clinic.name} people={people!} me={session.staffId} isOwner={clinic.role_owner} emailOn={emailOn()} on={firstOn === 'people'}
             add={addRefused?.add ?? emptyPerson()} addError={addRefused?.error ?? ''}
             notes={notes.people} highlight={q.get('person') === 'added' ? (q.get('id') ?? '') : ''}
-          />
-          <PhotosSection base={base} clinicId={clinic.id} clinicName={clinic.name} keys={keys!} error={photosRefused?.error ?? ''} notes={notes.photos} on={firstOn === 'photos'} />
-          <PrivacySection base={base} data={privacy!} v={privacyRefused?.posted ?? savedPrivacy(privacy!)} problems={privacyRefused?.problems ?? []} notes={notes.privacy} on={firstOn === 'privacy'} />
-          <PlanSection v={plan} slug={clinic.slug} on={firstOn === 'plan'} />
+          />}
+          {may.photos && <PhotosSection base={base} clinicId={clinic.id} clinicName={clinic.name} keys={keys!} error={photosRefused?.error ?? ''} notes={notes.photos} on={firstOn === 'photos'} />}
+          {may.privacy && <PrivacySection base={base} data={privacy!} v={privacyRefused?.posted ?? savedPrivacy(privacy!)} problems={privacyRefused?.problems ?? []} notes={notes.privacy} on={firstOn === 'privacy'} />}
+          {may.plan && <PlanSection v={plan} slug={clinic.slug} on={firstOn === 'plan'} />}
         </div>
       </div>
 

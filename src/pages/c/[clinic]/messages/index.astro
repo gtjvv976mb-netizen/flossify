@@ -49,6 +49,7 @@ import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
 import { queueText, prettyPhone } from '../../../../lib/messages';
+import { can } from '../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -58,7 +59,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LINK = /http|www\.|\.ph\b|\.com\b/i;
 const BODY_MAX = 300;
 const CODES = `coalesce(m.kind, '') not in ('reset', 'invite')`;
-const canSetUp = session.role === 'owner' || session.role === 'admin';
+const canSetUp = can(ws, 'people.manage');
 
 const SHOWS = {
   all: { label: 'All', where: 'true' },

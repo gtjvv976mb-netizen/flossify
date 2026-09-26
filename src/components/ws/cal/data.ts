@@ -147,7 +147,7 @@ export async function loadDashboard(clinicId: string, o: { from: Date; to: Date;
     // anyone without it, so the Dashboard does not offer them.
     const { rows: [m] } = await tx.query(
       `select c.chairs, c.area, c.name,
-              coalesce((select sa.can_edit_records from staff_access sa where sa.staff_id = $2 and sa.clinic_id = c.id), false) as can_edit,
+              staff_can($2, c.id, 'records.edit') as can_edit,
               coalesce((select json_agg(json_build_array(h.dow, h.open_min, h.close_min)) from clinic_hours h), '[]'::json) as hours,
               coalesce((select json_agg(json_build_object('id', x.id, 'name', x.name, 'days', x.days) order by x.owner desc, x.name)
                           from (select s.id, s.full_name as name, s.role = 'owner' as owner, array_agg(ss.dow order by ss.dow) as days

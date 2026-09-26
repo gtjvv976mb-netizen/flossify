@@ -53,18 +53,19 @@ import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
 import { hit, waitText, LIMITS } from '../../../../lib/throttle';
-import { canBill, pesos, fromDb } from '../../../../lib/invoices';
+import { pesos, fromDb } from '../../../../lib/invoices';
 import { canEditRecords, when, dateText } from '../../../../lib/health';
 import { prettyPhone } from '../../../../lib/messages';
 import {
   FILE_MAX, ROWS_MAX, UPLOAD_LIMIT, formUpTo, readTable, autoMap, guessKind, cleanMapping, fieldsFor, fieldByKey, missingFields, dateEvidence, suggestedOrder,
   snapshot, plan as makePlan, runPlan, lockClinic, ymdText, TEMPLATE, type Kind, type DateOrder, type Mapping, type Plan,
 } from '../../../../lib/import';
+import { can } from '../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
-const money = canBill(session.role, clinic.can_view_finance);
+const money = can(clinic, 'finance.bill');
 const base = `/c/${clinic.slug}/patients/import/`;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const q = Astro.url.searchParams;

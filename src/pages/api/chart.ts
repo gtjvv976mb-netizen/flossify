@@ -89,6 +89,7 @@ import '../../lib/dotenv';
 import type { APIRoute } from 'astro';
 import { randomUUID, createHmac } from 'node:crypto';
 import { readSession, canOpen, type Session } from '../../lib/auth';
+import { can } from '../../lib/can';
 import { withClinic, pool } from '../../lib/db';
 import { csrfHeaderOk, CSRF_MESSAGE } from '../../lib/csrf';
 import { hit, waitText, LIMITS } from '../../lib/throttle';
@@ -283,6 +284,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return fail(403, 'access', 'This account cannot open that clinic.');
   }
   if (!csrfHeaderOk(cookies, request)) return fail(403, 'csrf', CSRF_MESSAGE);
+  if (!can(clinic, 'records.edit')) return fail(403, 'access', 'Your role cannot change charts here. Ask the owner.');
 
   const rate = await hit('chart:s:' + session.staffId, ...LIMITS.chart.staff);
   if (!rate.allowed) return fail(429, 'rate', 'Too many chart changes at once. ' + waitText(rate.retryAfter));
