@@ -28,7 +28,7 @@ const clinics = (await loadDirectory()).filter((l) => l.workspace).map((l) => ({
     <div role="note" class="ws-callout mt-7 max-w-[760px]">
       <Icon name="info" />
       <p>
-        <strong class="font-semibold">Every workspace is behind a staff sign-in.</strong>{" "}
+        <strong class="font-semibold">Every workspace is behind a clinic sign-in.</strong>{" "}
         A workspace URL is an address, never a credential. Opening a branch you are not assigned to
         sends you back to the sign-in page, and every query inside runs under the database’s
         row-level security for that one clinic.
