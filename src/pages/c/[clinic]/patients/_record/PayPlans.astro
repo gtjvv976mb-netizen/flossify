@@ -1,0 +1,167 @@
+---
+// Braces and payment plans: a treatment paid over months — a down payment, then so much a month — and, for
+// braces, the adjustment visits. The money is the statement the plan made (paid on the Finances page like
+// any other), so this card only reads it: what should be paid by now, what is behind (in words and amber,
+// never colour alone), the next payment and the next adjustment. Amounts show to people who may bill;
+// anyone who may edit records writes an adjustment. On the Treatment section.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import { peso, type PayPlan } from '../../../../../lib/record-extra';
+import type { RecordProblem } from '../../../../../lib/record';
+import { dateText } from '../../../../../lib/health';
+
+interface Props { plans: PayPlan[]; canEdit: boolean; canBill: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; financesBase: string }
+const { plans, canEdit, canBill, action, problem, saved, today, firstName, financesBase } = Astro.props;
+const v = problem?.intent === 'payplan-add' ? problem.values : ({} as Record<string, string>);
+const av = problem?.intent === 'adjust-add' ? problem.values : ({} as Record<string, string>);
+const inline = problem && ['payplan-stop'].includes(problem.intent) ? problem.text : null;
+const madeInvoice = saved?.startsWith('payplan:') ? saved.slice(8) : null;
+const adjustedNext = saved?.startsWith('adjusted:') ? saved.slice(9) : null;
+const running = plans.filter((p) => p.status === 'active');
+const pct = (p: PayPlan) => Math.min(100, Math.round((p.paid / p.total) * 100));
+const help = 'text-[13px] leading-snug text-ink-2';
+---
+
+<div class="grid gap-4 max-md:gap-3">
+  {madeInvoice && (
+    <Callout tone="success" title="Plan made, with its statement.">
+      <p><a href={`${financesBase}${madeInvoice}/`} class="font-semibold underline underline-offset-2">Take the down payment</a> on the statement, as with any payment.</p>
+    </Callout>
+  )}
+  {adjustedNext && <Callout tone="success" text={`Adjustment saved. The next one is ${dateText(adjustedNext)}: book it before they leave.`} />}
+  {saved === 'payplan-stopped' && <Callout tone="success" text="Plan stopped. Its statement stays, with whatever is left to pay." />}
+  {inline && <Callout tone="alert" text={inline} />}
+  <Pane as="section" label="Braces and payment plans" id="payplans">
+    <Head icon="money" title="Braces and payment plans" meta={running.length ? `${running.length} running` : undefined} />
+    <div class="rec-lead -mt-2 mb-4">
+      <p>Treatment paid over months: a down payment, then so much a month. Payments are taken on the plan’s statement in Finances.</p>
+      {canEdit && canBill && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-payplan-add"><Icon name="plus" />New plan</button>}
+    </div>
+    {plans.length === 0 ? <Empty icon="money" text="No payment plan for this patient." /> : (
+      <ul class="grid gap-3">
+        {plans.map((p) => (
+          <li class="rx-card">
+            <div class="nt-head">
+              <p class="nt-day">{p.title}</p>
+              <p class="nt-who">{p.kind === 'braces' ? 'Braces' : 'Payment plan'} · from {dateText(p.startOn)}</p>
+            </div>
+            <p class="tx-sub mt-2">
+              {p.status === 'finished' ? <Chip tone="accent" icon="check" label="Paid in full" />
+                : p.status === 'stopped' ? <Chip tone="muted" label="Stopped" />
+                : canBill && p.missed > 0 ? <Chip tone="alert" icon="alert" label={`Behind ${p.missed === 1 ? 'one month' : `${p.missed} months`}`} />
+                : <Chip tone="neutral" label="On track" />}
+              {p.nextAdjustOn && <span class={p.nextAdjustOn < today ? 'font-semibold text-[var(--ws-amber-ink)]' : undefined}>{p.nextAdjustOn < today ? 'Adjustment was due' : 'Next adjustment'} {dateText(p.nextAdjustOn)}</span>}
+              {p.adjustments.length > 0 && <span>{p.adjustments.length} {p.adjustments.length === 1 ? 'adjustment' : 'adjustments'} so far</span>}
+            </p>
+            {canBill && (
+              <>
+                <div class="pp-bar" role="img" aria-label={`${pct(p)} percent paid`}><span style={`width:${pct(p)}%`}></span></div>
+                <dl class="pp-nums">
+                  <div><dt>Paid</dt><dd>{peso(p.paid)} of {peso(p.total)}</dd></div>
+                  <div><dt>Plan</dt><dd>{peso(p.down)} down, {peso(p.monthly)} a month × {p.months}</dd></div>
+                  {p.status === 'active' && p.behind > 0 && <div><dt>Due by now</dt><dd class="font-semibold text-[var(--ws-red-ink)]">{peso(p.behind)} behind</dd></div>}
+                  {p.status === 'active' && p.nextDueOn && <div><dt>Next payment</dt><dd>{peso(p.nextDueAmount)} {p.nextDueOn <= today ? 'now' : `on ${dateText(p.nextDueOn)}`}</dd></div>}
+                  <div><dt>Last payment</dt><dd>{dateText(p.lastOn)}</dd></div>
+                </dl>
+              </>
+            )}
+            {p.adjustments.length > 0 && (
+              <details class="mt-2">
+                <summary class="inline-flex min-h-11 cursor-pointer items-center text-[14px] font-semibold text-ink-2">Adjustments</summary>
+                <ul class="pt-list">
+                  {p.adjustments.map((a) => <li><span class="min-w-0 text-[14.5px]"><span class="font-semibold tabular-nums">{dateText(a.on)}</span><span class="block text-ink-2">{[a.note, a.by].filter(Boolean).join(' · ') || '—'}</span></span></li>)}
+                </ul>
+              </details>
+            )}
+            {p.note && <p class="mt-2 text-[14px] text-ink-2">{p.note}</p>}
+            <div class="nt-foot">
+              <span></span>
+              <span class="flex flex-wrap gap-2">
+                {canEdit && p.kind === 'braces' && p.status === 'active' && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-adjust-add" data-plan={p.id} data-plan-weeks={p.adjustWeeks ?? 4}><Icon name="check" />Adjustment done</button>}
+                {canBill && <a href={`${financesBase}${p.invoiceId}/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="money" />{p.status === 'active' ? 'Take a payment' : 'Statement'}</a>}
+                {canEdit && canBill && p.status === 'active' && (
+                  <form method="post" action={`${action}#payplans`} data-confirm="Stop this plan? Its statement stays, with whatever is left to pay."><Csrf /><input type="hidden" name="intent" value="payplan-stop" /><input type="hidden" name="plan" value={p.id} />
+                    <button class="ws-btn ws-btn-quiet ws-btn-sm">Stop plan</button></form>
+                )}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    )}
+  </Pane>
+</div>
+
+{canEdit && canBill && (
+  <SidePanel id="rec-payplan-add" title="New payment plan" meta={firstName} open={problem?.intent === 'payplan-add'}>
+    {problem?.intent === 'payplan-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
+    <form method="post" action={`${action}#payplans`} class="grid gap-4" data-pp-form>
+      <Csrf /><input type="hidden" name="intent" value="payplan-add" />
+      <fieldset class="min-w-0">
+        <legend class="mb-2 text-[14px] font-medium text-ink-2">What is it for?</legend>
+        <div class="fl-kinds">
+          <label><input type="radio" name="kind" value="braces" class="sr-only" checked={(v.kind ?? 'braces') === 'braces'} data-pp-kind />Braces</label>
+          <label><input type="radio" name="kind" value="installment" class="sr-only" checked={v.kind === 'installment'} data-pp-kind />Other treatment</label>
+        </div>
+      </fieldset>
+      <label class="field"><span class="meta">Name</span><input name="title" value={v.title ?? ''} maxlength="120" autocomplete="off" placeholder="e.g. Metal braces, upper and lower" /></label>
+      <div class="grid grid-cols-2 gap-4">
+        <label class="field"><span class="meta">Total price (₱)</span><input name="total" value={v.total ?? ''} inputmode="decimal" maxlength="14" autocomplete="off" required data-pp-total /></label>
+        <label class="field"><span class="meta">Down payment (₱)</span><input name="down" value={v.down ?? ''} inputmode="decimal" maxlength="14" autocomplete="off" placeholder="0" data-pp-down /></label>
+        <label class="field"><span class="meta">Months</span><input name="months" value={v.months ?? '18'} inputmode="numeric" maxlength="2" autocomplete="off" required data-pp-months /></label>
+        <label class="field"><span class="meta">Monthly (₱)</span><input name="monthly" value={v.monthly ?? ''} inputmode="decimal" maxlength="14" autocomplete="off" data-pp-monthly /><span class={help} data-pp-hint>Empty divides it evenly.</span></label>
+        <label class="field"><span class="meta">Starts</span><input type="date" name="start_on" value={v.start_on ?? today} /></label>
+        <label class="field" data-pp-braces><span class="meta">Adjust every (weeks)</span><input name="adjust_weeks" value={v.adjust_weeks ?? '4'} inputmode="numeric" maxlength="2" autocomplete="off" /></label>
+      </div>
+      <label class="field"><span class="meta">Note <span class="font-normal">(optional)</span></span><input name="note" value={v.note ?? ''} maxlength="300" autocomplete="off" /></label>
+      <p class={help}>Saving makes one statement for the total. Take the down payment and each month’s payment on it in Finances.</p>
+      <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Make the plan</button>
+    </form>
+  </SidePanel>
+)}
+{canEdit && (
+  <SidePanel id="rec-adjust-add" title="Adjustment done" meta={firstName} open={problem?.intent === 'adjust-add'}>
+    {problem?.intent === 'adjust-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
+    <form method="post" action={`${action}#payplans`} class="grid gap-4">
+      <Csrf /><input type="hidden" name="intent" value="adjust-add" />
+      <input type="hidden" name="plan" value={av.plan ?? ''} data-adjust-plan />
+      <label class="field"><span class="meta">Day</span><input type="date" name="done_on" value={av.done_on ?? today} max={today} data-adjust-on /></label>
+      <label class="field"><span class="meta">What was done <span class="font-normal">(optional)</span></span><input name="note" value={av.note ?? ''} maxlength="300" autocomplete="off" placeholder="e.g. Upper 0.016 NiTi, new elastics" /></label>
+      <label class="field"><span class="meta">Next adjustment</span><input type="date" name="next_on" value={av.next_on ?? ''} min={today} data-adjust-next /><span class={help}>Filled in from the plan’s interval; change it to suit.</span></label>
+      <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save</button>
+    </form>
+  </SidePanel>
+)}
+
+<script>
+  // The monthly amount as it will be, while the plan is typed; braces-only fields follow the choice.
+  const f = document.querySelector<HTMLFormElement>('[data-pp-form]');
+  if (f) {
+    const n = (s: string) => Number((f.querySelector<HTMLInputElement>(s)?.value ?? '').replace(/[₱,\s]/g, '')) || 0;
+    const hint = f.querySelector<HTMLElement>('[data-pp-hint]');
+    const upd = () => {
+      const total = n('[data-pp-total]'), down = n('[data-pp-down]'), months = n('[data-pp-months]');
+      const braces = f.querySelector<HTMLInputElement>('[data-pp-kind]:checked')?.value === 'braces';
+      f.querySelector<HTMLElement>('[data-pp-braces]')!.hidden = !braces;
+      if (hint && total > down && months > 0 && !n('[data-pp-monthly]')) hint.textContent = `Empty: ₱${Math.ceil((total - down) / months).toLocaleString('en-PH')} a month.`;
+      else if (hint) hint.textContent = 'Empty divides it evenly.';
+    };
+    f.addEventListener('input', upd); f.addEventListener('change', upd); upd();
+  }
+  const adj = document.getElementById('rec-adjust-add');
+  adj?.addEventListener('ws:panel-open', (e) => {
+    if ((e as CustomEvent).detail?.auto) return;
+    const o = (e as CustomEvent).detail?.opener as HTMLElement | null;
+    if (!o?.dataset.plan) return;
+    adj.querySelector<HTMLInputElement>('[data-adjust-plan]')!.value = o.dataset.plan;
+    const on = adj.querySelector<HTMLInputElement>('[data-adjust-on]')!.value;
+    const next = new Date(Date.parse(`${on}T00:00:00Z`) + Number(o.dataset.planWeeks || 4) * 7 * 864e5).toISOString().slice(0, 10);
+    adj.querySelector<HTMLInputElement>('[data-adjust-next]')!.value = next;
+  });
+</script>

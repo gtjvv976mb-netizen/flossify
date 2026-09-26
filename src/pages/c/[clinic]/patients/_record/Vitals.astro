@@ -1,0 +1,90 @@
+---
+// Blood pressure and pulse, taken before anaesthesia: the newest reading large, in words as well as
+// numbers (bpWords in src/lib/record-extra.ts — a guide, not a diagnosis), and the ones before it. A reading
+// is never changed; a wrong one is simply taken again. Top of the Health section, and "Take blood pressure"
+// in the record's More menu.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import { bpWords, pulseWords, type Vital } from '../../../../../lib/record-extra';
+import type { RecordProblem } from '../../../../../lib/record';
+import { when } from '../../../../../lib/health';
+
+interface Props { vitals: Vital[]; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; firstName: string }
+const { vitals, canEdit, action, problem, saved, firstName } = Astro.props;
+const latest = vitals[0] ?? null;
+const w = latest?.sys && latest?.dia ? bpWords(latest.sys, latest.dia) : null;
+const v = problem?.intent === 'vitals-add' ? problem.values : ({} as Record<string, string>);
+const savedWords = saved?.startsWith('vitals') ? (saved === 'vitals-crisis' || saved === 'vitals-high' ? null : 'Reading saved.') : null;
+const recent = vitals.slice(1, 6);
+---
+
+<Pane as="section" label="Blood pressure and pulse" id="vitals">
+  <Head icon="heart" title="Blood pressure and pulse" meta={latest ? `Taken ${when(new Date(latest.at))}` : undefined}>
+    {canEdit && <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-vitals-add"><Icon name="plus" />Take a reading</button>}
+  </Head>
+  {savedWords && <Callout tone="success" class="mb-3" text={savedWords} />}
+  {latest ? (
+    <>
+      <div class="vt-now">
+        {latest.sys && <p class="vt-big"><span class="tabular-nums">{latest.sys}/{latest.dia}</span> <span class="vt-unit">mmHg</span></p>}
+        {latest.pulse && <p class="vt-pulse"><span class="tabular-nums">{latest.pulse}</span> <span class="vt-unit">beats a minute{pulseWords(latest.pulse) ? ` · ${pulseWords(latest.pulse)}` : ''}</span></p>}
+      </div>
+      {w && (w.tone === 'neutral'
+        ? <p class="mt-2"><Chip tone="neutral" label={w.label} /></p>
+        : <Callout tone={w.tone === 'alert' ? 'alert' : 'warn'} class="mt-3" title={`${w.label} blood pressure`} text={w.advice} />)}
+      {latest.note && <p class="mt-2 text-[14px] text-ink-2">{latest.note}</p>}
+      {recent.length > 0 && (
+        <ul class="vt-list" aria-label="Earlier readings">
+          {recent.map((r) => {
+            const rw = r.sys && r.dia ? bpWords(r.sys, r.dia) : null;
+            return <li><span class="tabular-nums font-semibold">{r.sys ? `${r.sys}/${r.dia}` : '—'}</span><span class="tabular-nums">{r.pulse ? `pulse ${r.pulse}` : ''}</span><span>{rw && rw.tone !== 'neutral' ? rw.label : ''}</span><span class="vt-when">{when(new Date(r.at))}</span></li>;
+          })}
+        </ul>
+      )}
+      <p class="mt-3 text-[13px] text-ink-2">A general guide from common dental practice, not a diagnosis. The dentist decides.</p>
+    </>
+  ) : <Empty icon="info" text={`No reading yet. Take ${firstName}’s blood pressure before anaesthesia.`} />}
+</Pane>
+
+{canEdit && (
+  <SidePanel id="rec-vitals-add" title="Take a reading" meta={firstName} open={problem?.intent === 'vitals-add'}>
+    {problem?.intent === 'vitals-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
+    <form method="post" action={`${action}#vitals`} class="grid gap-4">
+      <Csrf /><input type="hidden" name="intent" value="vitals-add" />
+      <fieldset class="min-w-0">
+        <legend class="mb-2 text-[14px] font-medium text-ink-2">Blood pressure (mmHg)</legend>
+        <div class="vt-bp">
+          <label class="field"><span class="meta">Top</span><input name="systolic" value={v.systolic ?? ''} inputmode="numeric" maxlength="3" autocomplete="off" placeholder="120" aria-describedby="vt-bp-help" data-vt-sys /></label>
+          <span class="vt-slash" aria-hidden="true">/</span>
+          <label class="field"><span class="meta">Bottom</span><input name="diastolic" value={v.diastolic ?? ''} inputmode="numeric" maxlength="3" autocomplete="off" placeholder="80" data-vt-dia /></label>
+        </div>
+        <p id="vt-bp-help" class="mt-1.5 text-[13px] text-ink-2" aria-live="polite" data-vt-words>The top number is systolic, the bottom diastolic.</p>
+      </fieldset>
+      <label class="field"><span class="meta">Pulse (beats a minute)</span><input name="pulse" value={v.pulse ?? ''} inputmode="numeric" maxlength="3" autocomplete="off" placeholder="72" /></label>
+      <label class="field"><span class="meta">Note <span class="font-normal">(optional)</span></span><input name="note" value={v.note ?? ''} maxlength="300" autocomplete="off" placeholder="e.g. Took maintenance medicine this morning" /></label>
+      <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save reading</button>
+    </form>
+  </SidePanel>
+)}
+
+<script>
+  import { bpWords } from '../../../../../lib/record-extra-words';
+  // The reading in words as it is typed, before it is saved.
+  const sys = document.querySelector<HTMLInputElement>('[data-vt-sys]');
+  const dia = document.querySelector<HTMLInputElement>('[data-vt-dia]');
+  const out = document.querySelector<HTMLElement>('[data-vt-words]');
+  const say = () => {
+    if (!sys || !dia || !out) return;
+    const s = Number(sys.value), d = Number(dia.value);
+    if (!s || !d || s < 50 || d < 30 || d >= s) { out.textContent = 'The top number is systolic, the bottom diastolic.'; return; }
+    const w = bpWords(s, d);
+    out.textContent = w.advice ? `${w.label}: ${w.advice}` : w.label;
+  };
+  sys?.addEventListener('input', say); dia?.addEventListener('input', say);
+</script>

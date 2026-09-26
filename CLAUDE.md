@@ -821,7 +821,7 @@ and marked *Easiest*.
 ## The clinical record (033) — Timeline, Treatment, Notes, Prescriptions, Files, next check-up
 
 The patient record (`patients/[patient].astro`) has twelve sections: Overview · Timeline · Health · Chart ·
-Treatment · Notes · Prescriptions · Files · Visits · Money · Consent · Texts. Built from standard dental
+Treatment · Notes · Rx & letters · Files · Visits · Money · Consent · Texts. Built from standard dental
 practice — the real SwiftCare admin record the owner linked was **not** opened (another clinic's patient
 data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical`, `loadTimeline`,
 `recordAction`, `readRecordFile`); the sections are `patients/_record/*.astro` + `record.css`.
@@ -844,6 +844,32 @@ data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical
   The public `/uploads/` route cannot reach them. Remove hides a file (`removed_at`), never deletes it.
 - **Next check-up** (recall) sits on the Overview: 3/6/12 months in one tap, or a day.
 - The Timeline merges every table (money only for people who may bill) with filter chips.
+
+## The record's paperwork (034) — blood pressure, letters, HMO LOA, payment plans
+
+`src/lib/record-extra.ts` (`loadExtra`, `extraAction`, `extraEvents`, `planState`), the same rules as 033
+(canEditRecords in the transaction, audited `record.*`, a refused post comes back in its panel).
+Components: `_record/Vitals`, `Letters`, `Loas`, `PayPlans`. The head shows the safety chips (BP today
+or out of range, clearance needed/waiting/cleared, an LOA waiting, a plan behind), each a button to its section.
+
+- **Blood pressure and pulse** (`vital_sign`, insert-only) top the Health section. `bpWords`
+  (`record-extra-words.ts`, no Node imports, so the panel's script says it while typing) uses the bands
+  dental guides commonly use: 180/110 postpone and refer; 160/100 ask for medical clearance; 140/90
+  take again; under 90/60 low. The page says it is a guide, not a diagnosis.
+- **Letters** (`clinical_letter`): dental certificate, referral, request for medical clearance, in
+  "Rx & letters". Printed at `patients/<id>/letters/<id>/` (A5, PRC and PTR; a clearance carries the
+  latest BP and a part for the physician). Insert-only, except the clearance reply columns
+  (column grant). The signer needs a PRC licence on file.
+- **HMO LOA** (`hmo_loa`, `treatment_plan_item.loa_id`): asked → approved (code required) or denied →
+  used when every item it covers is done (record.ts plan-status). A plan item waiting for its LOA says
+  so and Mark done asks first. HMOs are the branch's (`payorOptions`, kind hmo).
+- **Payment plans** (`payment_plan`, `plan_adjustment`): the money is ONE statement the plan makes
+  (`createStatement`), paid in Finances like any other, so no balance is counted twice. The plan adds
+  the schedule and braces adjustments. Missed = scheduled payments due by today that what was paid does
+  not cover (the down payment counts as one). Making or stopping one needs finance.bill; amounts show
+  only with it; anyone with records.edit records an adjustment.
+- `ws:panel-open` now carries `auto: true` when the server drew a panel open (a refused post): a page
+  must not refill that form from the first matching opener (`src/components/ws/shell.ts`).
 
 ## Open — read before shipping
 

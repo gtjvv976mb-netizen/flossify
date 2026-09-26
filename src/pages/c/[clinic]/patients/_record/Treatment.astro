@@ -13,14 +13,16 @@ import Head from '../_ui/Head.astro';
 import Callout from '../_ui/Callout.astro';
 import { PLAN_STATUS, LAB_STATUS, LAB_NEXT, type Clinical, type RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
+import type { Loa } from '../../../../../lib/record-extra';
 
-interface Props { c: Clinical; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string }
-const { c, canEdit, action, meId, problem, saved, today, firstName } = Astro.props;
+interface Props { c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string }
+const { c, loas = [], canEdit, action, meId, problem, saved, today, firstName } = Astro.props;
 
 const peso = (n: number | string) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 const tooth = (fdi: number | null, surface: string | null) => (fdi ? `${fdi}${surface ? ` ${surface}` : ''}` : null);
 const dayOf = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(d));
 const meClinician = c.clinicians.some((x) => x.id === meId);
+const loaOf = (id: string | null) => (id ? loas.find((a) => a.id === id) ?? null : null);
 
 const open = c.plan.filter((i) => i.status === 'planned' || i.status === 'accepted');
 const closed = c.plan.filter((i) => i.status === 'done' || i.status === 'declined');
@@ -69,6 +71,9 @@ const cats = [...new Set(c.catalog.map((x) => x.category ?? 'Other'))];
                       <p class="tx-sub">
                         {tooth(i.fdi, i.surface) && <span class="tx-tooth"><span class="sr-only">Tooth </span>{tooth(i.fdi, i.surface)}</span>}
                         <Chip tone={PLAN_STATUS[i.status].tone} label={PLAN_STATUS[i.status].label} />
+                        {loaOf(i.loaId) && (() => { const a = loaOf(i.loaId)!; return a.status === 'approved' && !a.expired
+                          ? <Chip tone="accent" icon="check" label={`LOA ${a.loaNumber}`} />
+                          : <Chip tone="warn" icon="clock" label={a.expired ? 'LOA expired' : `Waiting for ${a.payor}’s LOA`} />; })()}
                         {i.note && <span>{i.note}</span>}
                       </p>
                     </div>
@@ -79,7 +84,7 @@ const cats = [...new Set(c.catalog.map((x) => x.category ?? 'Other'))];
                           <form method="post" action={`${action}#treatment`}><Csrf /><input type="hidden" name="intent" value="plan-status" /><input type="hidden" name="item" value={i.id} /><input type="hidden" name="to" value="accepted" />
                             <button class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="check" />Patient agreed</button></form>
                         )}
-                        <form method="post" action={`${action}#treatment`} class="tx-done-form"><Csrf /><input type="hidden" name="intent" value="plan-status" /><input type="hidden" name="item" value={i.id} /><input type="hidden" name="to" value="done" />
+                        <form method="post" action={`${action}#treatment`} class="tx-done-form" data-confirm={loaOf(i.loaId) && (loaOf(i.loaId)!.status === 'requested' || loaOf(i.loaId)!.expired) ? `${loaOf(i.loaId)!.payor} has not approved this yet (no valid LOA). Mark it done anyway? The HMO may not pay for it.` : undefined}><Csrf /><input type="hidden" name="intent" value="plan-status" /><input type="hidden" name="item" value={i.id} /><input type="hidden" name="to" value="done" />
                           {meClinician ? <input type="hidden" name="dentist" value={meId} /> : (
                             <select name="dentist" class="tx-who" required aria-label={`Who did ${i.name}`}>
                               <option value="">Done by…</option>

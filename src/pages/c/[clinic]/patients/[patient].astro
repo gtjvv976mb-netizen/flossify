@@ -102,6 +102,10 @@ import Notes from './_record/Notes.astro';
 import Prescriptions from './_record/Prescriptions.astro';
 import Files from './_record/Files.astro';
 import RecallCard from './_record/RecallCard.astro';
+import Vitals from './_record/Vitals.astro';
+import Letters from './_record/Letters.astro';
+import Loas from './_record/Loas.astro';
+import PayPlans from './_record/PayPlans.astro';
 import { shellLinks } from '../../../../components/ws/routes';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
@@ -122,6 +126,7 @@ import { patientForms, getForm, compareWithRecord, useFormDetail, healthLists, a
 import { signedText } from './_forms/words';
 import { can } from '../../../../lib/can';
 import { loadClinical, loadTimeline, recordAction, RECORD_INTENTS, RX_ROWS, type Outcome, type RecordProblem, type RxItem } from '../../../../lib/record';
+import { loadExtra, extraAction, extraEvents, bpWords, EXTRA_INTENTS, EXTRA_ANCHOR } from '../../../../lib/record-extra';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -134,6 +139,7 @@ const patientId = Astro.params.patient ?? '';
 const notFound = () => new Response('No such patient', { status: 404 });
 if (!UUID.test(patientId)) return notFound();
 const here = `/c/${clinic.slug}/patients/${patientId}/`;
+const HMO_NAMES = new Map(hmos.map((h) => [h.id, h.name]));
 const q = Astro.url.searchParams;
 
 // What a post left behind for the page to show.
@@ -247,17 +253,19 @@ if (Astro.request.method === 'POST') {
       problems.push(r === 'denied' ? 'Your account cannot change records at this branch. Ask the owner.' : r.taken);
     }
     detailsProblems = problems;
-  } else if (RECORD_INTENTS.has(intent)) {
+  } else if (RECORD_INTENTS.has(intent) || EXTRA_INTENTS.has(intent)) {
     // The clinical record (src/lib/record.ts): every intent checks canEditRecords in its own transaction.
     const outcome = slow
       ? ({ ok: false, section: 'overview', problem: slow, values: {} } as Extract<Outcome, { ok: false }>)
       : await withClinic(clinic.id, async (tx) => {
-          const o = await recordAction(tx, { clinicId: clinic.id, staffId: session.staffId, patientId }, intent, form);
+          const o = EXTRA_INTENTS.has(intent)
+            ? await extraAction(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, canBill: money, hmoNames: HMO_NAMES }, intent, form)
+            : await recordAction(tx, { clinicId: clinic.id, staffId: session.staffId, patientId }, intent, form);
           if (o !== 'none' && !o.ok) throw new Refused(o);
           return o;
         }).catch((e) => { if (e instanceof Refused) return e.outcome; throw e; });
     if (outcome === 'none') return notFound();
-    if (outcome.ok) return Astro.redirect(`${here}?saved=${encodeURIComponent(outcome.saved)}#${ANCHOR[intent] ?? outcome.section}`, 303);
+    if (outcome.ok) return Astro.redirect(`${here}?saved=${encodeURIComponent(outcome.saved)}#${ANCHOR[intent] ?? EXTRA_ANCHOR[intent] ?? outcome.section}`, 303);
     backTo = slow ? null : outcome.section;
     recordProblem = { intent, text: outcome.problem, values: outcome.values };
     if (intent === 'rx-add') {
@@ -336,8 +344,9 @@ const data = await withClinic(clinic.id, async (tx) => {
   const addedDiffers = cmp ? [...cmp.differs, ...cmp.proposed] : [];
   // The clinical record (033) and the Timeline, which reads everything above once more in one list.
   const clinical = await loadClinical(tx, clinic.id, p.id);
-  const timeline = await loadTimeline(tx, p.id, clinical, money);
-  return { clinical, timeline, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
+  const extra = await loadExtra(tx, p.id, HMO_NAMES);
+  const timeline = [...(await loadTimeline(tx, p.id, clinical, money)), ...extraEvents(extra, money)].sort((a, b) => +new Date(b.at) - +new Date(a.at));
+  return { clinical, extra, timeline, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
 });
 if (!data) return notFound();
 const { me, p: patient, visits, health, canEdit } = data;
@@ -440,6 +449,26 @@ const importHref = `/c/${clinic.slug}/patients/import/`;
 
 // --- sections ---------------------------------------------------------------
 const clin = data.clinical;
+const ext = data.extra;
+// The head's safety chips (034): the latest blood pressure when it was taken today or is out of range, and
+// whether a physician's clearance is needed (a high reading in the last 30 days with no clearance since, a
+// request still waiting, or a physician who did not clear) — always words, never colour alone.
+const latestBp = ext.vitals.find((x) => x.sys && x.dia) ?? null;
+const bpNow = latestBp ? bpWords(latestBp.sys!, latestBp.dia!) : null;
+const bpDay = latestBp ? manilaDay(new Date(latestBp.at)) : null;
+const bpRecent = !!latestBp && Date.now() - +new Date(latestBp.at) < 30 * 864e5;
+const bpChip = latestBp && bpNow && (bpDay === today || (bpRecent && bpNow.tone !== 'neutral'))
+  ? { text: `BP ${latestBp.sys}/${latestBp.dia}${bpDay === today ? ' today' : ` on ${dateText(bpDay)}`}${bpNow.tone !== 'neutral' ? ` · ${bpNow.label.toLowerCase()}` : ''}`, tone: bpNow.tone } : null;
+const lastClearance = ext.letters.find((l) => l.kind === 'clearance') ?? null;
+const clearedSince = !!lastClearance?.answer && lastClearance.answer !== 'not_cleared' && !!bpDay && (lastClearance.answeredOn ?? '') >= bpDay;
+const clearance: { text: string; tone: 'alert' | 'warn' | 'accent' } | null =
+  lastClearance && !lastClearance.answer ? { text: 'Waiting for medical clearance', tone: 'warn' }
+  : lastClearance?.answer === 'not_cleared' ? { text: 'Physician has not cleared treatment', tone: 'alert' }
+  : bpRecent && (bpNow?.level === 'high' || bpNow?.level === 'crisis') && !clearedSince ? { text: 'Needs medical clearance', tone: 'alert' }
+  : lastClearance?.answer && lastClearance.answeredOn && Date.now() - Date.parse(`${lastClearance.answeredOn}T00:00:00+08:00`) < 180 * 864e5 ? { text: `Cleared by physician ${dateText(lastClearance.answeredOn)}`, tone: 'accent' }
+  : null;
+const behindPlans = money ? ext.plans.filter((x) => x.status === 'active' && x.missed > 0) : [];
+const loaWaiting = ext.loas.filter((a) => a.status === 'requested').length;
 const planOpen = clin.plan.filter((i) => i.status === 'planned' || i.status === 'accepted');
 const SECTIONS = [
   { id: 'overview', label: 'Overview' },
@@ -448,7 +477,7 @@ const SECTIONS = [
   { id: 'chart', label: 'Chart' },
   { id: 'treatment', label: 'Treatment', count: planOpen.length || null },
   { id: 'notes', label: 'Notes', count: clin.notes.filter((n) => !n.amends).length || null },
-  { id: 'rx', label: 'Prescriptions', count: clin.rx.length || null },
+  { id: 'rx', label: 'Rx & letters', count: (clin.rx.length + ext.letters.length) || null },
   { id: 'files', label: 'Files', count: clin.files.length || null },
   { id: 'visits', label: 'Visits', count: visits.length || null },
   ...(money ? [{ id: 'money', label: 'Money', count: data.statements.filter((s) => s.status === 'issued' || s.status === 'partly_paid').length || null }] : []),
@@ -485,7 +514,8 @@ const usedLabel = used ? ({ phone: 'mobile', email: 'email', address_line: 'addr
 // A clinical-record save names its section by its first word (plan-done, rx:<id>, files:3, recall-cleared …).
 const recordSaved = (s: string | null) => {
   const w = (s ?? '').split(/[-:]/)[0];
-  return ({ plan: 'treatment', done: 'treatment', lab: 'treatment', note: 'notes', addendum: 'notes', rx: 'rx', file: 'files', files: 'files', recall: 'overview' } as Record<string, string>)[w] ?? null;
+  return ({ plan: 'treatment', done: 'treatment', lab: 'treatment', note: 'notes', addendum: 'notes', rx: 'rx', file: 'files', files: 'files', recall: 'overview',
+    vitals: 'health', letter: 'rx', answered: 'rx', loa: 'treatment', payplan: 'treatment', adjusted: 'treatment' } as Record<string, string>)[w] ?? null;
 };
 const current = backTo ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? 'overview';
 const tabItems = SECTIONS.map((s) => ({ id: `rec-${s.id}`, label: s.label, count: 'count' in s ? s.count : null }));
@@ -542,7 +572,7 @@ const visitFromForm: [string, string][] = lf ? ([
   ['Nervous about visits', answerText(FIELDS.nervous, lf.nervous)],
 ] as [string, string | null][]).filter((r): r is [string, string] => !!r[1]) : [];
 const formsBase = `/c/${clinic.slug}/patients/forms/`;
-const moreItems = (money ? 1 : 0) + (canEdit ? 5 : 0);
+const moreItems = (money ? 1 : 0) + (canEdit ? 7 : 0);
 const recHere = here;
 ---
 
@@ -582,6 +612,14 @@ const recHere = here;
                   <span class="ws-menu-icon" data-tint="blue"><Glyph name="pill" /></span>
                   <span class="ws-menu-words">Prescription<span class="ws-menu-hint">Ready to print, with PRC and PTR</span></span>
                 </button>
+                <button type="button" class="ws-menu-item" data-ws-open="rec-vitals-add" data-rec-show="health">
+                  <span class="ws-menu-icon" data-tint="red"><Glyph name="heart" /></span>
+                  <span class="ws-menu-words">Take blood pressure<span class="ws-menu-hint">Before anaesthesia</span></span>
+                </button>
+                <button type="button" class="ws-menu-item" data-ws-open="rec-letter-add" data-letter-kind="certificate" data-rec-show="rx">
+                  <span class="ws-menu-icon" data-tint="blue"><Glyph name="form" /></span>
+                  <span class="ws-menu-words">Dental certificate<span class="ws-menu-hint">Or a referral, or medical clearance</span></span>
+                </button>
                 <button type="button" class="ws-menu-item" data-ws-open="rec-file-add" data-rec-show="files">
                   <span class="ws-menu-icon" data-tint="blue"><Glyph name="image" /></span>
                   <span class="ws-menu-words">Add X-ray or photo<span class="ws-menu-hint">Or a document, as a PDF</span></span>
@@ -605,17 +643,22 @@ const recHere = here;
       </div>
     </div>
 
-    {(allergies.length > 0 || conditions.length > 0 || medications.length > 0 || minor) && (
+    {(allergies.length > 0 || conditions.length > 0 || medications.length > 0 || minor || bpChip || clearance || behindPlans.length > 0 || loaWaiting > 0) && (
       <div role="alert" class="rec-alerts mt-5">
         {allergies.map((a) => <Chip tone="alert" icon="alert">Allergy: {a}</Chip>)}
         {conditions.map((c) => <Chip tone="warn">{c}</Chip>)}
         {medications.map((m) => <Chip tone="neutral">Takes {m}</Chip>)}
+        {bpChip && <button type="button" class="rec-chip-go" data-rec-go="health"><Chip tone={bpChip.tone === 'neutral' ? 'neutral' : bpChip.tone} icon={bpChip.tone === 'neutral' ? undefined : 'alert'} label={bpChip.text} /></button>}
+        {clearance && <button type="button" class="rec-chip-go" data-rec-go="rx"><Chip tone={clearance.tone} icon={clearance.tone === 'accent' ? 'check' : 'alert'} label={clearance.text} /></button>}
+        {loaWaiting > 0 && <button type="button" class="rec-chip-go" data-rec-go="treatment"><Chip tone="warn" icon="clock" label={loaWaiting === 1 ? 'Waiting for an HMO LOA' : `Waiting for ${loaWaiting} HMO LOAs`} /></button>}
+        {behindPlans.map((x) => <button type="button" class="rec-chip-go" data-rec-go="treatment"><Chip tone="alert" icon="money" label={`${x.title}: behind ${x.missed === 1 ? 'one month' : `${x.missed} months`}`} /></button>)}
         {minor && <Chip tone="warn" icon="user">{guardianNeeded ? 'Under 18: a guardian must agree' : `Under 18 · guardian ${consentNow?.given_by_name}`}</Chip>}
       </div>
     )}
     {latest?.note && <Callout tone="alert" role="none" class="mt-3" title="Note for the dentist" text={latest.note} />}
     {stale && <Callout tone="alert" class="mt-4" text={CSRF_MESSAGE} />}
-    {recordProblem && !canEdit && <Callout tone="alert" class="mt-4" text={`${recordProblem.text} Nothing was saved.`} />}
+    {/* A refused post whose form is not on this page for this person (no records.edit, or a payment plan without finance.bill): its sentence here. */}
+    {recordProblem && (!canEdit || (recordProblem.intent === 'payplan-add' && !money)) && <Callout tone="alert" class="mt-4" text={`${recordProblem.text} Nothing was saved.`} />}
     {saved === 'new' && <Callout tone="success" class="mt-4" text={`Added. ${shortName} is on file as ${patient.chart_no}; everything from the form is below.`} />}
     {saved === 'details' && <Callout tone="success" class="mt-4" text="Details saved." />}
     {saved === 'form' && data.added && addedConsents && (
@@ -760,7 +803,8 @@ const recHere = here;
   </div>
 
   <!-- Health -->
-  <div id="rec-health" role="tabpanel" aria-labelledby="rec-rec-health-tab" hidden={current !== 'health'} class="min-w-0" data-rec-panel="health">
+  <div id="rec-health" role="tabpanel" aria-labelledby="rec-rec-health-tab" hidden={current !== 'health'} class="min-w-0 grid gap-4 max-md:gap-3" data-rec-panel="health">
+    <Vitals vitals={ext.vitals} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} firstName={patient.first_name} />
     <Pane as="section" label="Health" id="health">
       <Head icon="heart" title="Health" />
       <p class="-mt-2 text-[14px] text-muted">
@@ -880,7 +924,11 @@ const recHere = here;
 
   <!-- Treatment -->
   <div id="rec-treatment" role="tabpanel" aria-labelledby="rec-rec-treatment-tab" hidden={current !== 'treatment'} class="min-w-0" data-rec-panel="treatment">
-    <Treatment c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} />
+    <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} />
+    <div class="mt-4 grid gap-4 max-md:mt-3 max-md:gap-3">
+      <Loas loas={ext.loas} plan={clin.plan} payors={ext.hmoPayors} hmoName={patient.hmo_name} memberNo={patient.hmo_member_no} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} settingsHref={`/c/${clinic.slug}/settings/`} />
+      <PayPlans plans={ext.plans} canEdit={canEdit} canBill={money} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} financesBase={links.finances} />
+    </div>
   </div>
 
   <!-- Notes -->
@@ -891,6 +939,9 @@ const recHere = here;
   <!-- Prescriptions -->
   <div id="rec-rx" role="tabpanel" aria-labelledby="rec-rec-rx-tab" hidden={current !== 'rx'} class="min-w-0" data-rec-panel="rx">
     <Prescriptions c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} firstName={patient.first_name} printBase={`${here}rx/`} allergies={allergies} typedRows={rxTyped} />
+    <div class="mt-4 max-md:mt-3">
+      <Letters letters={ext.letters} clinicians={clin.clinicians} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} printBase={`${here}letters/`} lastVisit={lastVisit ? manilaDay(lastVisit.starts_at) : null} conditions={conditions} />
+    </div>
   </div>
 
   <!-- Files -->

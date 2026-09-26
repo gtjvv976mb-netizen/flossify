@@ -1,0 +1,152 @@
+---
+// HMO approvals (LOA): before treatment an HMO such as Maxicare or Intellicare gives a letter of
+// authorization with an approval code. Ask for one for the plan items it covers; write in the code when it
+// is approved (or the reason it was denied); it is used once every item it covers is done. A plan item
+// waiting for its LOA says so on the plan, and Mark done asks first. On the Treatment section.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import { LOA_STATUS, peso, type Loa } from '../../../../../lib/record-extra';
+import type { PlanItem, RecordProblem } from '../../../../../lib/record';
+import type { PayorOption } from '../../../../../lib/invoices';
+import { dateText } from '../../../../../lib/health';
+
+interface Props { loas: Loa[]; plan: PlanItem[]; payors: PayorOption[]; hmoName: string | null; memberNo: string | null; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; settingsHref: string }
+const { loas, plan, payors, hmoName, memberNo, canEdit, action, problem, saved, today, firstName, settingsHref } = Astro.props;
+const open = plan.filter((i) => (i.status === 'planned' || i.status === 'accepted') && !i.loaId);
+const v = problem?.intent === 'loa-add' ? problem.values : ({} as Record<string, string>);
+const dv = problem && ['loa-approve', 'loa-deny'].includes(problem.intent) ? problem.values : ({} as Record<string, string>);
+const inline = problem && ['loa-cancel'].includes(problem.intent) ? problem.text : null;
+const preset = v.payor ?? payors.find((p) => hmoName && p.name.toLowerCase() === hmoName.toLowerCase())?.value ?? '';
+const picked = new Set((v._items ?? '').split(',').filter(Boolean));
+const SAVED: Record<string, string> = { loa: 'LOA request noted. Write in the approval code when the HMO answers.', 'loa-approved': 'Approved. The code is on the record.', 'loa-denied': 'Denied. The reason is on the record.', 'loa-cancelled': 'LOA cancelled.' };
+const tone = (a: Loa) => (a.expired ? 'alert' : a.status === 'approved' ? 'accent' : a.status === 'denied' ? 'alert' : a.status === 'requested' ? 'warn' : 'muted') as 'accent' | 'alert' | 'warn' | 'muted';
+const help = 'text-[13px] leading-snug text-ink-2';
+---
+
+<div class="grid gap-4 max-md:gap-3">
+  {saved && SAVED[saved] && <Callout tone="success" text={SAVED[saved]} />}
+  {inline && <Callout tone="alert" text={inline} />}
+  <Pane as="section" label="HMO approvals" id="loas">
+    <Head icon="shield" title="HMO approvals (LOA)" meta={loas.filter((a) => a.status === 'requested').length ? `${loas.filter((a) => a.status === 'requested').length} waiting` : undefined} />
+    <div class="rec-lead -mt-2 mb-4">
+      <p>{hmoName ? `${firstName} has ${hmoName}. ` : ''}Ask the HMO for a letter of authorization before treatment, and write in its approval code here.</p>
+      {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-loa-add"><Icon name="plus" />Ask for an LOA</button>}
+    </div>
+    {loas.length === 0 ? <Empty icon="file" text="No LOA asked for yet." /> : (
+      <ul>
+        {loas.map((a) => (
+          <li class="tx-row">
+            <div class="min-w-0">
+              <p class="tx-what">{a.payor}{a.loaNumber && <span class="pt-ref ml-2">{a.loaNumber}</span>}</p>
+              <p class="tx-sub">
+                <Chip tone={tone(a)} label={a.expired ? `Expired ${dateText(a.validUntil)}` : LOA_STATUS[a.status]} />
+                <span>Asked {dateText(a.requestedOn)}</span>
+                {a.approvedOn && <span>Approved {dateText(a.approvedOn)}</span>}
+                {a.validUntil && !a.expired && a.status === 'approved' && <span>Valid until {dateText(a.validUntil)}</span>}
+                {a.amount && <span>Up to {peso(a.amount)}</span>}
+                {a.memberNo && <span>Member no. {a.memberNo}</span>}
+              </p>
+              {a.items.length > 0 && <p class="mt-1 text-[14px] text-ink-2">For: {a.items.map((i) => `${i.name}${i.fdi ? ` (${i.fdi})` : ''}${i.status === 'done' ? ' ✓' : ''}`).join(', ')}</p>}
+              {a.denialReason && <p class="mt-1 text-[14px] text-ink-2">Reason: {a.denialReason}</p>}
+              {a.note && <p class="mt-1 text-[14px] text-ink-2">{a.note}</p>}
+            </div>
+            <span></span>
+            {canEdit && (a.status === 'requested' || a.status === 'approved') && (
+              <div class="tx-acts">
+                {a.status === 'requested' && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-loa-approve" data-loa={a.id} data-loa-payor={a.payor}><Icon name="check" />Approved</button>}
+                {a.status === 'requested' && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-loa-deny" data-loa={a.id} data-loa-payor={a.payor}>Denied</button>}
+                <form method="post" action={`${action}#loas`} data-confirm="Cancel this LOA? The plan items it covered will need a new one."><Csrf /><input type="hidden" name="intent" value="loa-cancel" /><input type="hidden" name="loa" value={a.id} />
+                  <button class="ws-btn ws-btn-quiet ws-btn-sm">Cancel</button></form>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    )}
+  </Pane>
+</div>
+
+{canEdit && (
+  <>
+    <SidePanel id="rec-loa-add" title="Ask for an LOA" meta={firstName} open={problem?.intent === 'loa-add'}>
+      {problem?.intent === 'loa-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
+      {payors.length === 0 ? (
+        <Callout tone="info" text="This branch has no HMOs yet.">
+          <p><a href={settingsHref} class="font-semibold underline underline-offset-2">Tick the HMOs you take</a> in Clinic settings, then come back.</p>
+        </Callout>
+      ) : (
+        <form method="post" action={`${action}#loas`} class="grid gap-4">
+          <Csrf /><input type="hidden" name="intent" value="loa-add" />
+          <label class="field"><span class="meta">HMO</span>
+            <select name="payor" required>
+              <option value="">Choose the HMO…</option>
+              {payors.map((p) => <option value={p.value} selected={preset === p.value}>{p.name}</option>)}
+            </select>
+          </label>
+          <div class="grid grid-cols-2 gap-4">
+            <label class="field"><span class="meta">Member no.</span><input name="member_no" value={v.member_no ?? memberNo ?? ''} maxlength="40" autocomplete="off" /></label>
+            <label class="field"><span class="meta">Asked on</span><input type="date" name="requested_on" value={v.requested_on ?? today} max={today} /></label>
+          </div>
+          {open.length > 0 ? (
+            <fieldset class="min-w-0">
+              <legend class="mb-2 text-[14px] font-medium text-ink-2">For which treatment?</legend>
+              <div class="grid gap-2">
+                {open.map((i) => (
+                  <label class="pk pk-check lo-item"><input type="checkbox" name="items" value={i.id} checked={picked.has(i.id)} /><span>{i.name}{i.fdi ? ` · tooth ${i.fdi}` : ''} · {peso(i.price)}</span></label>
+                ))}
+              </div>
+            </fieldset>
+          ) : <p class={help}>Nothing on the treatment plan needs one yet. Add the treatment to the plan first to link it, or ask anyway.</p>}
+          <label class="field"><span class="meta">Note <span class="font-normal">(optional)</span></span><input name="note" value={v.note ?? ''} maxlength="300" autocomplete="off" placeholder="e.g. Called the HMO hotline; reference 55821" /></label>
+          <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save the request</button>
+        </form>
+      )}
+    </SidePanel>
+
+    <SidePanel id="rec-loa-approve" title="LOA approved" meta={firstName} open={problem?.intent === 'loa-approve'}>
+      {problem?.intent === 'loa-approve' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
+      <form method="post" action={`${action}#loas`} class="grid gap-4">
+        <Csrf /><input type="hidden" name="intent" value="loa-approve" />
+        <input type="hidden" name="loa" value={dv.loa ?? ''} data-loa-id />
+        <label class="field"><span class="meta">Approval code</span><input name="loa_number" value={dv.loa_number ?? ''} required maxlength="60" autocomplete="off" class="font-mono" /></label>
+        <div class="grid grid-cols-2 gap-4">
+          <label class="field"><span class="meta">Approved on</span><input type="date" name="approved_on" value={dv.approved_on ?? today} max={today} /></label>
+          <label class="field"><span class="meta">Valid until</span><input type="date" name="valid_until" value={dv.valid_until ?? ''} /></label>
+        </div>
+        <label class="field"><span class="meta">Approved amount (₱) <span class="font-normal">(optional)</span></span><input name="amount" value={dv.amount ?? ''} inputmode="decimal" maxlength="14" autocomplete="off" /></label>
+        <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save approval</button>
+      </form>
+    </SidePanel>
+
+    <SidePanel id="rec-loa-deny" title="LOA denied" meta={firstName} open={problem?.intent === 'loa-deny'}>
+      {problem?.intent === 'loa-deny' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
+      <form method="post" action={`${action}#loas`} class="grid gap-4">
+        <Csrf /><input type="hidden" name="intent" value="loa-deny" />
+        <input type="hidden" name="loa" value={dv.loa ?? ''} data-loa-id />
+        <label class="field"><span class="meta">The HMO’s reason</span><input name="reason" value={dv.reason ?? ''} required maxlength="300" autocomplete="off" placeholder="e.g. Not covered by the plan: cosmetic" /></label>
+        <p class={help}>The patient can still have it done and pay on their own.</p>
+        <button type="submit" class="ws-btn ws-btn-primary w-full">Save</button>
+      </form>
+    </SidePanel>
+  </>
+)}
+
+<script>
+  ['rec-loa-approve', 'rec-loa-deny'].forEach((id) => {
+    const p = document.getElementById(id);
+    p?.addEventListener('ws:panel-open', (e) => {
+    if ((e as CustomEvent).detail?.auto) return;
+      const o = (e as CustomEvent).detail?.opener as HTMLElement | null;
+      if (!o?.dataset.loa) return;
+      p.querySelector<HTMLInputElement>('[data-loa-id]')!.value = o.dataset.loa;
+      const meta = p.querySelector('[data-ws-meta]');
+      if (meta && o.dataset.loaPayor) meta.textContent = o.dataset.loaPayor;
+    });
+  });
+</script>

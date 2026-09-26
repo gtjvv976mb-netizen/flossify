@@ -1,0 +1,212 @@
+---
+// A letter on paper (034): a dental certificate, a referral or a request for medical clearance, on the
+// clinic's head, in plain formal words, signed with the dentist's PRC licence and PTR numbers. A clearance
+// request carries the latest blood pressure on the record and a part for the physician to fill in and
+// sign. A5, black on white; the bar at the top does not print. Printing is written to the audit log.
+// Behind requireWorkspace; read inside withClinic (row-level security).
+export const prerender = false;
+
+import '../../../../../../styles/global.css';
+import { requireWorkspace } from '../../../../../../lib/workspace';
+import { withClinic } from '../../../../../../lib/db';
+import { ageOn, ageText, dateText, manilaToday } from '../../../../../../lib/health';
+import { prettyPhone } from '../../../../../../lib/messages';
+import { LETTER_KIND } from '../../../../../../lib/record-extra';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session } = ws;
+const patientId = Astro.params.patient ?? '', letterId = Astro.params.letter ?? '';
+if (!UUID.test(patientId) || !UUID.test(letterId)) return new Response(null, { status: 404 });
+const back = `/c/${clinic.slug}/patients/${patientId}/#letters`;
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const l = (await tx.query(
+    `select l.*, to_char(l.issued_on, 'YYYY-MM-DD') as issued, to_char(l.seen_on, 'YYYY-MM-DD') as seen,
+            d.full_name as dentist, d.prc_licence, d.ptr_number,
+            p.first_name, p.middle_name, p.last_name, p.suffix, p.sex, to_char(p.birth_date, 'YYYY-MM-DD') as birth, p.address_line, p.city, p.province
+       from clinical_letter l join patient p on p.id = l.patient_id join staff d on d.id = l.dentist_id
+      where l.id = $1 and l.patient_id = $2`, [letterId, patientId])).rows[0];
+  if (!l) return null;
+  const c = (await tx.query('select name, address_line, barangay, city, province, phone from clinic where id = $1', [clinic.id])).rows[0];
+  const h = (await tx.query('select allergies, conditions, medications from medical_history where patient_id = $1 order by answered_at desc limit 1', [patientId])).rows[0] ?? null;
+  const v = (await tx.query(`select systolic, diastolic, pulse, taken_at from vital_sign where patient_id = $1 and systolic is not null order by taken_at desc limit 1`, [patientId])).rows[0] ?? null;
+  await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'record.letter_print', 'clinical_letter', $3)`, [clinic.id, session.staffId, letterId]);
+  return { l, c, h, v };
+});
+if (!data) return new Response(null, { status: 404 });
+const { l, c, h, v } = data;
+const title = LETTER_KIND[l.kind as keyof typeof LETTER_KIND];
+const name = [l.first_name, l.middle_name, l.last_name, l.suffix].filter(Boolean).join(' ');
+const age = l.birth ? ageOn(l.birth, manilaToday()) : null;
+const SEX: Record<string, string> = { female: 'female', male: 'male' };
+const ageSex = [age !== null ? ageText(age) : null, l.sex && SEX[l.sex]].filter(Boolean).join(', ');
+const clinicAddress = [c.address_line, c.barangay, c.city, c.province]
+  .filter((part, i, all) => part && !all.slice(0, i).some((prev) => prev && String(prev).toLowerCase().includes(String(part).toLowerCase())))
+  .join(', ');
+const patientAddress = [l.address_line, l.city, l.province].filter(Boolean).join(', ');
+const list = (x: string[] | null | undefined, none: string) => (x === null || x === undefined ? null : x.length ? x.join(', ') : none);
+const allergies = list(h?.allergies, 'None known');
+const conditions = list(h?.conditions, '');
+const medicines = list(h?.medications, '');
+const bp = v ? `${v.systolic}/${v.diastolic} mmHg${v.pulse ? `, pulse ${v.pulse}` : ''} (${dateText(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(v.taken_at))})` : null;
+const restUntil = l.seen && l.rest_days > 0 ? new Date(Date.parse(`${l.seen}T00:00:00Z`) + (l.rest_days - 1) * 864e5).toISOString().slice(0, 10) : null;
+const pageCss = `
+@page { size: A5 portrait; margin: 12mm; }
+@media print {
+  html:root:not([data-never]):not([data-never-2]) { --c-ink: #000; --c-ink-2: #1f1f1f; color-scheme: light; }
+  body { background: #fff !important; }
+  .lt-sheet { border: 0 !important; border-radius: 0 !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; max-width: none !important; min-height: 0 !important; }
+}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title} · {l.first_name} {l.last_name} — {clinic.name}</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script is:inline>
+      try { const t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }
+    </script>
+    <style is:inline set:html={pageCss}></style>
+    <style>
+      .px-body {
+        --px-bg: #f3f5f8; --px-bar: #ffffff; --px-hair: #e6e9ee; --px-ink: #1f2937; --px-teal-ink: #0d706d; --px-teal-fill: #0e7471; --px-teal-fill-hover: #0b5f5d; --px-hover: rgb(16 24 40 / 0.035);
+        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: var(--px-bg); min-height: 100vh;
+      }
+      @media screen and (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); }
+      }
+      @media screen {
+        :root[data-theme="dark"] .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); }
+      }
+      .px-body h1, .px-body h2 { font-family: inherit; }
+      .px-bar { background: var(--px-bar); border-bottom: 1px solid var(--px-hair); color: var(--px-ink); }
+      .px-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem 0.75rem; max-width: 1280px; margin-inline: auto; padding: 0.75rem 1.25rem; }
+      .px-back { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 44px; margin-right: auto; padding: 0 0.5rem; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--px-teal-ink); }
+      .px-back:hover { background: var(--px-hover); }
+      .px-print { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 1.125rem; border-radius: 10px; background: var(--px-teal-fill); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+      .px-print:hover { background: var(--px-teal-fill-hover); }
+      .px-body :focus-visible { outline: 2px solid #14908f; outline-offset: 2px; }
+      /* The paper: white with dark words in both themes, as it prints. */
+      .lt-sheet { max-width: 148mm; min-height: 200mm; margin: 2rem auto; padding: 12mm; display: flex; flex-direction: column; background: #fff; color: #1f2937; border: 1px solid #e6e9ee; border-radius: 12px; box-shadow: 0 1px 2px rgb(16 24 40 / 0.05); color-scheme: light; font-size: 14px; line-height: 1.6; }
+      .lt-head { text-align: center; padding-bottom: 4mm; border-bottom: 1.5px solid #1f2937; }
+      .lt-clinic { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+      .lt-small { font-size: 12.5px; line-height: 1.5; color: #344054; }
+      .lt-title { margin-top: 7mm; text-align: center; font-size: 17px; font-weight: 700; letter-spacing: 0.02em; }
+      .lt-date { margin-top: 5mm; text-align: right; }
+      .lt-to { margin-top: 4mm; }
+      .lt-body > * + * { margin-top: 3mm; }
+      .lt-body { margin-top: 5mm; }
+      .lt-facts { margin-top: 3mm; display: grid; grid-template-columns: max-content 1fr; gap: 1mm 5mm; }
+      .lt-facts dt { font-weight: 600; }
+      .lt-facts dd { white-space: pre-line; }
+      .lt-reply { margin-top: 8mm; padding-top: 4mm; border-top: 1px dashed #98a2b3; font-size: 13px; }
+      .lt-lines { margin-top: 3mm; display: grid; gap: 6mm; }
+      .lt-lines span { display: block; border-bottom: 1px solid #98a2b3; height: 5mm; }
+      .lt-foot { margin-top: auto; padding-top: 12mm; display: flex; justify-content: flex-end; }
+      .lt-sign { width: 62mm; text-align: center; font-size: 12.5px; line-height: 1.55; }
+      .lt-sign-line { border-top: 1px solid #1f2937; padding-top: 1.5mm; font-size: 14px; font-weight: 600; }
+      @media (max-width: 600px) { .lt-sheet { margin: 1rem; padding: 6mm; min-height: 0; } }
+    </style>
+  </head>
+  <body class="px-body">
+    <div class="px-bar print:hidden">
+      <div class="px-bar-row">
+        <a href={back} class="px-back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 6.5L9 12l5.5 5.5" /></svg>
+          Back to {l.first_name}’s record
+        </a>
+        <button type="button" class="px-print" data-print>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V4h10v5" /><rect x="3.5" y="9" width="17" height="7.5" rx="2" /><path d="M7 14h10v6H7z" /></svg>
+          Print
+        </button>
+      </div>
+    </div>
+    <main>
+      <article class="lt-sheet" aria-label={title}>
+        <header class="lt-head">
+          <h1 class="lt-clinic">{c.name}</h1>
+          {clinicAddress && <p class="lt-small">{clinicAddress}</p>}
+          {c.phone && <p class="lt-small">{prettyPhone(c.phone)}</p>}
+        </header>
+        <h2 class="lt-title">{title}</h2>
+        <p class="lt-date">{dateText(l.issued)}</p>
+        {l.kind !== 'certificate' && (
+          <p class="lt-to">
+            {l.to_name && <><b>{l.to_name}</b><br /></>}
+            {l.to_role}
+          </p>
+        )}
+        <div class="lt-body">
+          {l.kind === 'certificate' && (
+            <>
+              <p>{l.to_name ? `To ${l.to_name}:` : 'To whom it may concern:'}</p>
+              <p>This is to certify that <b>{name}</b>{ageSex ? `, ${ageSex},` : ''}{patientAddress ? ` of ${patientAddress},` : ''} was seen and treated at this clinic on <b>{dateText(l.seen)}</b>.</p>
+              <dl class="lt-facts">
+                {l.diagnosis && <><dt>Findings</dt><dd>{l.diagnosis}</dd></>}
+                {l.treatment && <><dt>Treatment</dt><dd>{l.treatment}</dd></>}
+              </dl>
+              {l.rest_days > 0 && <p>The patient is advised to rest for <b>{l.rest_days} {l.rest_days === 1 ? 'day' : 'days'}</b>{restUntil ? `, until ${dateText(restUntil)}` : ''}.</p>}
+              {l.body && <p style="white-space: pre-line">{l.body}</p>}
+              <p>This certification is issued upon the patient’s request{l.purpose ? ` (${l.purpose})` : ''}, for whatever purpose it may serve.</p>
+            </>
+          )}
+          {l.kind === 'referral' && (
+            <>
+              <p>Dear {l.to_name ? l.to_name : 'Doctor'},</p>
+              <p>I am referring <b>{name}</b>{ageSex ? `, ${ageSex},` : ''} for your evaluation and management.</p>
+              <dl class="lt-facts">
+                <dt>Reason</dt><dd>{l.diagnosis}</dd>
+                {l.treatment && <><dt>Done so far</dt><dd>{l.treatment}</dd></>}
+                {allergies && <><dt>Allergies</dt><dd>{allergies}</dd></>}
+                {conditions && <><dt>Medical history</dt><dd>{conditions}</dd></>}
+                {medicines && <><dt>Medicines</dt><dd>{medicines}</dd></>}
+              </dl>
+              {l.body && <p style="white-space: pre-line">{l.body}</p>}
+              <p>Thank you for seeing my patient. Kindly send your findings back with the patient.</p>
+            </>
+          )}
+          {l.kind === 'clearance' && (
+            <>
+              <p>Dear {l.to_name ? l.to_name : 'Doctor'},</p>
+              <p>Our patient, <b>{name}</b>{ageSex ? `, ${ageSex},` : ''} is scheduled for dental treatment. May we request your medical clearance.</p>
+              <dl class="lt-facts">
+                <dt>Planned treatment</dt><dd>{l.treatment}</dd>
+                <dt>Condition</dt><dd>{l.diagnosis}</dd>
+                {bp && <><dt>Blood pressure</dt><dd>{bp}</dd></>}
+                {allergies && <><dt>Allergies</dt><dd>{allergies}</dd></>}
+                {medicines && <><dt>Medicines</dt><dd>{medicines}</dd></>}
+              </dl>
+              {l.body && <p style="white-space: pre-line">{l.body}</p>}
+              <p>Thank you very much.</p>
+            </>
+          )}
+        </div>
+        <footer class="lt-foot">
+          <div class="lt-sign">
+            <p class="lt-sign-line">{l.dentist}</p>
+            <p>PRC Lic. No. {l.prc_licence ?? '__________'}</p>
+            <p>PTR No. {l.ptr_number ?? '__________'}</p>
+          </div>
+        </footer>
+        {l.kind === 'clearance' && (
+          <section class="lt-reply" aria-label="For the physician">
+            <p><b>For the physician:</b> ☐ Cleared for treatment &nbsp; ☐ Cleared, with conditions &nbsp; ☐ Not cleared yet</p>
+            <p class="mt-2">Remarks:</p>
+            <div class="lt-lines"><span></span><span></span></div>
+            <p class="mt-6">Physician’s signature, name and PRC no.: ______________________________ &nbsp; Date: __________</p>
+          </section>
+        )}
+      </article>
+    </main>
+    <script>
+      document.querySelector('[data-print]')?.addEventListener('click', () => window.print());
+    </script>
+  </body>
+</html>
