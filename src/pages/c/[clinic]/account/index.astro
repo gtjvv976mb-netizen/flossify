@@ -38,7 +38,7 @@ import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
 import { verifyPassword, setPassword, setSession, passwordProblem, authEvent, PASSWORD_MIN } from '../../../../lib/auth';
 import { hit, refund, clientIp, waitText } from '../../../../lib/throttle';
 import { prettyPhone } from '../../../../lib/messages';
-import { ROLE_LABEL, DAYS, ago, dateText, daysText, prcState, treats } from '../settings/_lib/common';
+import { DAYS, ago, dateText, daysText, prcState, treats } from '../settings/_lib/common';
 import { daysOf, upcomingFor } from '../settings/_lib/people';
 import { can } from '../../../../lib/can';
 
@@ -53,7 +53,7 @@ const here = `/c/${clinic.slug}/account/`;
 const canSetUp = can(clinic, 'people.manage');
 
 interface Me {
-  full_name: string; role: string; username: string; email: string; phone: string | null; prc_licence: string | null; prc_status: string | null; prc_checked_on: Date | null;
+  full_name: string; role: string; username: string; email: string | null; phone: string | null; prc_licence: string | null; prc_status: string | null; prc_checked_on: Date | null;
   prc_note: string | null; specialty: string | null; slug: string | null; practices: string[] | null; created_at: Date; password_set_at: Date | null; last_seen_at: Date | null;
 }
 // staff is group data outside row-level security; this is the signed-in person's own row.
@@ -112,13 +112,15 @@ const prc = prcState(me);
 // Finances here, in the words the person's page uses: owner and admin always; the desk by role, with the
 // claim amounts as the branch's flag says (canMoneyOf in ../finances/_claims.ts); anyone else by the flag.
 const sees = can(clinic, 'finance.bill');
-const financeWords = me.role === 'owner' || me.role === 'admin'
+const roleMoney = clinic.role_owner || clinic.role_perms.includes('finance.money');
+const roleBills = clinic.role_perms.includes('finance.bill');
+const financeWords = roleMoney
   ? 'Yes, always, claim amounts included'
-  : me.role === 'secretary'
+  : roleBills
     ? `Yes, by role. Claim amounts: ${clinic.can_view_finance ? 'shown' : 'hidden'}`
     : sees ? 'Yes, claim amounts included' : 'No';
 const done = Astro.url.searchParams.get('done') === 'password';
-const roleLabel = ROLE_LABEL[me.role] ?? me.role;
+const roleLabel = clinic.role_name;
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name }} title="My page" section="account" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
@@ -146,14 +148,16 @@ const roleLabel = ROLE_LABEL[me.role] ?? me.role;
           <Upcoming rows={upcoming.rows} total={upcoming.total} slug={clinic.slug} title="My coming appointments" emptyText={`Nothing booked for you at ${clinic.name} yet.`} />
         )}
 
-        <Pane id="password" icon="check" title="Change my password" class="set-sec">
-          <p class="set-intro mb-5">Your other devices are signed out when you change it. This one stays signed in.</p>
+        <Pane id="password" icon="check" title={clinic.must_change ? 'Choose your own password' : 'Change my password'} class="set-sec">
+          {clinic.must_change
+            ? <p class="ws-callout mb-5" data-tone="info"><Icon name="info" /><span>Someone set your password for you. Choose your own to start: type the one you were given, then yours twice. The rest of {clinic.name} opens as soon as it’s saved.</span></p>
+            : <p class="set-intro mb-5">Your other devices are signed out when you change it. This one stays signed in.</p>}
           {done && <Note tone="ok" text="Your password is changed. Every other device is signed out; sign in there with the new one." class="mb-5" />}
           {error && <Note tone="alert" text={error} class="mb-5" refused />}
           <form method="post" action={here} class="grid max-w-[30rem] gap-4" data-pw-form>
             <Csrf />
             <input type="hidden" name="action" value="password" />
-            <input type="text" name="username" value={me.email} autocomplete="username" hidden readonly />
+            <input type="text" name="username" value={me.username} autocomplete="username" hidden readonly />
             <div class="field">
               <label for="pw-current" class="meta">Current password</label>
               <div class="set-pw">
@@ -187,7 +191,7 @@ const roleLabel = ROLE_LABEL[me.role] ?? me.role;
         <Pane id="details" icon="user" title="My details" class="set-sec">
           <dl class="set-facts">
             <div><dt class="meta">Username</dt><dd><span class="font-semibold">{me.username}</span><span class="block set-help">You sign in with it at <a href={`/${clinic.slug}/sign-in/`} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">flossify.ph/{clinic.slug}</a>.</span></dd></div>
-            <div><dt class="meta">Email</dt><dd><Email address={me.email} /><span class="block set-help">It works for signing in too.</span></dd></div>
+            <div><dt class="meta">Email</dt><dd>{me.email ? <><Email address={me.email} /><span class="block set-help">It works for signing in too.</span></> : 'None on file'}</dd></div>
             <div><dt class="meta">Mobile</dt><dd class="tabular-nums">{me.phone ? prettyPhone(me.phone) : 'None on file'}<span class="block set-help">Reset codes come here by text.</span></dd></div>
             <div><dt class="meta">Branches</dt><dd>{branches.map((b) => b.name).join(', ')}</dd></div>
             <div><dt class="meta">Finances here</dt><dd>{financeWords}</dd></div>

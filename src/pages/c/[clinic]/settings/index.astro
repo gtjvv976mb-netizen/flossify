@@ -56,6 +56,7 @@ import { photoKeys, photoAction, MAX_PHOTOS, type PhotosRefused } from './_lib/p
 import { loadPrivacy, savePrivacy, savedPrivacy, type PrivacyRefused } from './_lib/privacy';
 import { loadPlan } from './_lib/plan';
 import { can } from '../../../../lib/can';
+import { listRoles, giveable } from '../../../../lib/roles';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -121,12 +122,15 @@ if (Astro.request.method === 'POST') {
 }
 
 // --- what the page shows -------------------------------------------------------------------
-const [data, fees, people, keys, privacy, plan] = canSetUp
+const [data, fees, people, keys, privacy, plan, roles] = canSetUp
   ? await Promise.all([
       loadClinic(clinic.id), loadFees(clinic.id), listPeople(clinic.id), photoKeys(clinic.id),
-      loadPrivacy(clinic.id, clinic.group_id), loadPlan({ groupId: clinic.group_id, q }),
+      loadPrivacy(clinic.id, clinic.group_id), loadPlan({ groupId: clinic.group_id, q }), listRoles(clinic.group_id),
     ])
-  : [null, null, null, null, null, null];
+  : [null, null, null, null, null, null, null];
+// The roles this person may hand out on Add member, and the one it starts on: a dentist, else the lowest.
+const offered = roles ? giveable(clinic, roles) : [];
+const startRole = (offered.find((r) => r.base === 'dentist') ?? offered[offered.length - 1])?.id ?? '';
 
 type N = { tone: 'ok' | 'alert' | 'warn'; text: string };
 const notes: Record<SectionId, N[]> = { profile: [], hours: [], fees: [], people: [], photos: [], privacy: [], plan: [] };
@@ -142,7 +146,7 @@ if (data && Astro.request.method === 'GET') {
   if (saved === 'privacy') notes.privacy.push({ tone: 'ok', text: 'Saved.' });
   if (q.get('person') === 'added') {
     const p = people?.find((x) => x.id === q.get('id'));
-    notes.people.push({ tone: 'ok', text: addedText(p?.full_name ?? 'them', q.get('via') ?? 'sms') });
+    notes.people.push({ tone: 'ok', text: addedText(p?.full_name ?? 'them', q.get('via') ?? 'sms', p ? { slug: clinic.slug, username: p.username } : undefined) });
   }
   const ph = q.get('photos');
   const n = Number(q.get('n'));
@@ -241,8 +245,8 @@ const firstOn: SectionId = may[wanted] ? wanted : (shown[0]?.id ?? 'profile');
             notes={notes.fees}
           />}
           {may.people && <PeopleSection
-            base={base} clinicName={clinic.name} people={people!} me={session.staffId} isOwner={clinic.role_owner} emailOn={emailOn()} on={firstOn === 'people'}
-            add={addRefused?.add ?? emptyPerson()} addError={addRefused?.error ?? ''}
+            base={base} clinicName={clinic.name} slug={clinic.slug} roles={offered} people={people!} me={session.staffId} isOwner={clinic.role_owner} emailOn={emailOn()} on={firstOn === 'people'}
+            add={addRefused?.add ?? { ...emptyPerson(startRole), treats: offered.find((r) => r.id === startRole)?.base === 'dentist' }} addError={addRefused?.error ?? ''}
             notes={notes.people} highlight={q.get('person') === 'added' ? (q.get('id') ?? '') : ''}
           />}
           {may.photos && <PhotosSection base={base} clinicId={clinic.id} clinicName={clinic.name} keys={keys!} error={photosRefused?.error ?? ''} notes={notes.photos} on={firstOn === 'photos'} />}
@@ -473,29 +477,6 @@ const firstOn: SectionId = may[wanted] ? wanted : (shown[0]?.id ?? 'profile');
     // The snapshot is taken after the closed days are synced, so a disabled time field is not a change.
     for (const f of forms) initial.set(f, snap(f));
     for (const f of refusedForms) mark(f);
-
-    // Add person: PRC and specialty for dentists only.
-    document.querySelectorAll<HTMLFormElement>('[data-team-form]').forEach((form) => {
-      const role = form.querySelector<HTMLSelectElement>('[data-team-role]');
-      if (!role) return;
-      const dentistOnly = [...form.querySelectorAll<HTMLElement>('[data-team-dentist]')];
-      const finance = form.querySelector<HTMLElement>('[data-team-finance]');
-      const sync = () => {
-        const on = role.value === 'dentist' || role.value === 'associate';
-        dentistOnly.forEach((el) => {
-          el.hidden = !on;
-          const input = el.querySelector<HTMLInputElement>('input[data-prc-required]');
-          if (input) input.required = on;
-        });
-        // An admin sees money always; the desk has Finances by role, so for them the box is the claim amounts.
-        if (finance) {
-          finance.hidden = role.value === 'admin';
-          finance.querySelectorAll<HTMLElement>('[data-finance-for]').forEach((s) => { s.hidden = (s.dataset.financeFor === 'desk') !== (role.value === 'secretary'); });
-        }
-      };
-      role.addEventListener('change', sync);
-      sync();
-    });
 
     // Edit prices opens at the service that was tapped (the whole guide is one form, one Save).
     const prices = document.getElementById('fees-edit');

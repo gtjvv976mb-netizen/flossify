@@ -364,6 +364,29 @@ Built for a front desk between patients and a dentist with gloves just off:
   (the API refuses with a sentence); P3 hides it when the roles screen can
   untick it.
 
+### Members the owner makes (031)
+
+- **Add member** (Clinic settings → People) takes a name, a username, a role
+  (`RoleField.astro`: the roles you may give, and "treats patients", which is
+  the professional side — PRC licence, schedule column, public profile) and a
+  first password; email and mobile are optional (`staff.email` is nullable). No
+  password and a mobile → the old invitation code. A password someone else set
+  sets `must_change_password`: `requireWorkspace` sends them to My page
+  (`?first=1#password`) until they choose their own; `setPassword()` clears it.
+  The owner's **Set a new password** on a person's page does the same and signs
+  them out everywhere.
+- **The rank rules are `src/lib/roles.ts`** (`mayManage`, `mayGive`,
+  `staffRoleFor`): you change only people below your role, give only roles
+  below yours whose every key you hold, never the Owner role, never your own
+  role. Every person action re-checks them on the server (a forged post from an
+  admin is refused — measured).
+- A role change alone does not sign anyone out (perms are read live); a change
+  of `staff.role` (the professional side, which the cookie carries) does. The
+  030 trigger now only fills `role_id` on insert.
+- A session made stale behind the person's back (a new password, disabled) is
+  cleared by `requireWorkspace`, which sends them to `/auth/login/` and so to
+  their clinic's door — not to "not for that branch".
+
 ## The patient side — `/find/`
 
 Built from `docs/service-map.md`. Rules that shaped it, and that hold:

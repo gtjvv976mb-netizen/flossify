@@ -1,0 +1,65 @@
+---
+// The role a member holds, and whether they treat patients — on Add member (People) and Edit details
+// (a person's page). The roles offered are the ones the person acting may hand out (src/lib/roles.ts:
+// below their own role, nothing they do not hold), plus the one the member already has. "Treats
+// patients" is the professional side: it asks for the PRC licence and gives them a column on the
+// schedule and a public profile. Choosing one of the dentist roles ticks it; the owner can tick it for
+// any role. The server checks all of this again; the script only keeps the form short.
+import type { Role } from '../../../../../lib/roles';
+
+interface Props { roles: Role[]; value: string; treats: boolean }
+const { roles, value, treats } = Astro.props;
+const dentistBase = (r: Role) => r.base === 'dentist' || r.base === 'associate';
+const nonDentistBase = (r: Role) => !!r.base && !dentistBase(r);
+---
+
+<label class="field">
+  <span class="meta">Role</span>
+  <select name="role_id" required data-team-role>
+    {roles.map((r) => (
+      <option value={r.id} selected={r.id === value}
+        data-treats={dentistBase(r) ? '1' : nonDentistBase(r) ? '0' : undefined}
+        data-money={r.perms.includes('finance.money') ? '1' : undefined}
+        data-bills={r.perms.includes('finance.bill') && !r.perms.includes('finance.money') ? '1' : undefined}>{r.name}</option>
+    ))}
+  </select>
+  <span class="set-help">What they may see and do comes with the role. Roles are under Clinic settings → Roles.</span>
+</label>
+<label class="check set-check items-start">
+  <input type="checkbox" name="treats" checked={treats} data-team-treats />
+  <span>
+    <span class="block font-semibold">Treats patients</span>
+    <span class="set-help block">A dentist: needs a PRC licence, gets a column on the schedule and a public profile.</span>
+  </span>
+</label>
+
+<script>
+  document.querySelectorAll<HTMLFormElement>('[data-team-form]').forEach((form) => {
+    const role = form.querySelector<HTMLSelectElement>('[data-team-role]');
+    const treats = form.querySelector<HTMLInputElement>('[data-team-treats]');
+    if (!role || !treats) return;
+    const dentistOnly = [...form.querySelectorAll<HTMLElement>('[data-team-dentist]')];
+    const finance = form.querySelector<HTMLElement>('[data-team-finance]');
+    const sync = () => {
+      const on = treats.checked;
+      dentistOnly.forEach((el) => {
+        el.hidden = !on;
+        const input = el.querySelector<HTMLInputElement>('input[data-prc-required]');
+        if (input) input.required = on;
+      });
+      // A role that sees money always needs no box; a role with Finances but not the amounts gets the claim-amounts box.
+      const opt = role.selectedOptions[0];
+      if (finance) {
+        finance.hidden = opt?.dataset.money === '1';
+        finance.querySelectorAll<HTMLElement>('[data-finance-for]').forEach((s) => { s.hidden = (s.dataset.financeFor === 'desk') !== (opt?.dataset.bills === '1'); });
+      }
+    };
+    role.addEventListener('change', () => {
+      const t = role.selectedOptions[0]?.dataset.treats;
+      if (t === '1' || t === '0') treats.checked = t === '1';
+      sync();
+    });
+    treats.addEventListener('change', sync);
+    sync();
+  });
+</script>

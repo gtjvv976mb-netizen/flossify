@@ -22,13 +22,11 @@ export const SECTIONS = [
 export type SectionId = (typeof SECTIONS)[number]['id'];
 export const isSection = (s: string | null): s is SectionId => SECTIONS.some((x) => x.id === s);
 
-/** The roles an owner hands out. 'owner' is not on the list: a second owner is a sign-up matter, not a team one. */
-export const ROLES: Record<string, string> = { dentist: 'Dentist', associate: 'Associate dentist', secretary: 'Secretary', assistant: 'Dental assistant', admin: 'Admin' };
-export const ROLE_LABEL: Record<string, string> = { owner: 'Owner', ...ROLES };
+// A person's role is a row the clinic names (clinic_role, src/lib/roles.ts); staff.role is the professional
+// side these two read: an owner, or a dentist or associate who treats patients.
 export const clinician = (role: string) => role === 'dentist' || role === 'associate';
 /** Sees patients of their own: the roles the schedule gives a column. */
 export const treats = (role: string) => role === 'owner' || clinician(role);
-export const canSetUpRole = (role: string) => role === 'owner' || role === 'admin';
 
 /** The week as a clinic says it, Monday first. dow: 0 = Sunday. */
 export const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']] as const;

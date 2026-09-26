@@ -124,7 +124,7 @@ const DUMMY_HASH = hashPassword('not-a-real-password');
  *  the account disabled, or the password changed (token version) — all take effect at once. */
 export async function canOpen(session: Session, clinicSlug: string) {
   const { rows } = await pool.query(
-    `select b.id, b.slug, b.name, b.group_id, b.can_view_finance, a.can_edit_records,
+    `select b.id, b.slug, b.name, b.group_id, b.can_view_finance, a.can_edit_records, s.must_change_password as must_change,
             r.name as role_name, r.rank as role_rank, r.is_owner as role_owner, r.perms as role_perms
        from staff_branches($1) b
        join staff s on s.id = $1
@@ -136,13 +136,14 @@ export async function canOpen(session: Session, clinicSlug: string) {
   return row ? { ...row, perms: permsOf(row) } : undefined;
 }
 /** A branch someone may open, with their role there (canOpen). */
-export interface Branch { id: string; slug: string; name: string; group_id: string; can_view_finance: boolean }
+export interface Branch { id: string; slug: string; name: string; group_id: string; can_view_finance: boolean; must_change: boolean }
 export type OpenBranch = Branch & RoleAccess & { perms: ReadonlySet<Perm> };
 
-/** Set a password. The version bump signs out every session this person has, including the one asking. */
+/** Set a password they chose themselves. The version bump signs out every session this person has,
+ *  including the one asking; and a password someone else set (031) no longer needs changing. */
 export async function setPassword(staffId: string, password: string): Promise<number> {
   const { rows } = await pool.query(
-    `update staff set password_hash = $2, token_version = token_version + 1, password_set_at = now() where id = $1 returning token_version`,
+    `update staff set password_hash = $2, token_version = token_version + 1, password_set_at = now(), must_change_password = false where id = $1 returning token_version`,
     [staffId, hashPassword(password)]);
   return rows[0].token_version as number;
 }
