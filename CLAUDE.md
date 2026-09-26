@@ -844,6 +844,15 @@ data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical
   The public `/uploads/` route cannot reach them. Remove hides a file (`removed_at`), never deletes it.
 - **Next check-up** (recall) sits on the Overview: 3/6/12 months in one tap, or a day.
 - The Timeline merges every table (money only for people who may bill) with filter chips.
+- **Colour-coded by group** (the owner asked that encoders never lose their place): `_record/sections.ts`
+  puts each section in a group with one hue — Patient teal (Overview, Timeline, Visits), Health rose,
+  Clinical blue (Chart, Treatment, Notes, Files), Documents violet (Rx & letters, Consent, Texts),
+  Billing green (Money); never amber or red, which keep their meanings. The hue is on the section's
+  button in the record's index (`RecordNav.astro`: a sticky column from 1200px, a sideways row below it;
+  still the shell's in-place tabs, `rec-rec-<id>-tab`, with up/down arrows when `aria-orientation` is
+  vertical), its banner (`Banner.astro`: group, name, one line), its cards' top edge and icons (`.hue-*`
+  classes in record.css) and its lines on the Timeline. Colour is never alone: the words say the group
+  too. Measured: no line under 4.5:1 in the index or banners, light and dark.
 
 ## The record's paperwork (034) — blood pressure, letters, HMO LOA, payment plans
 

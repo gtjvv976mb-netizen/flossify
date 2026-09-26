@@ -83,7 +83,6 @@ import Odontogram from '../../../../components/Odontogram.astro';
 import Pane from '../../../../components/ws/Pane.astro';
 import Tile from '../../../../components/ws/Tile.astro';
 import Chip from '../../../../components/ws/Chip.astro';
-import Tabs from '../../../../components/ws/Tabs.astro';
 import Empty from '../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../components/ws/SidePanel.astro';
 import Icon from '../../../../components/ws/Icon.astro';
@@ -106,6 +105,8 @@ import Vitals from './_record/Vitals.astro';
 import Letters from './_record/Letters.astro';
 import Loas from './_record/Loas.astro';
 import PayPlans from './_record/PayPlans.astro';
+import RecordNav from './_record/RecordNav.astro';
+import Banner from './_record/Banner.astro';
 import { shellLinks } from '../../../../components/ws/routes';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
@@ -518,7 +519,7 @@ const recordSaved = (s: string | null) => {
     vitals: 'health', letter: 'rx', answered: 'rx', loa: 'treatment', payplan: 'treatment', adjusted: 'treatment' } as Record<string, string>)[w] ?? null;
 };
 const current = backTo ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? 'overview';
-const tabItems = SECTIONS.map((s) => ({ id: `rec-${s.id}`, label: s.label, count: 'count' in s ? s.count : null }));
+const SECTION_LABEL = Object.fromEntries(SECTIONS.map((x) => [x.id, x.label])) as Record<string, string>;
 
 // --- money --------------------------------------------------------------------
 const stmts = data.statements.map((s) => {
@@ -706,14 +707,16 @@ const recHere = here;
       {money && <Tile label="Balance" value={pesos(balance > 0n ? balance : -balance)} tone={balance > 0n ? 'alert' : 'default'} note={balance > 0n ? `Owed${openCount ? ` on ${openCount} ${openCount === 1 ? 'statement' : 'statements'}` : ''}` : balance < 0n ? 'In credit' : 'Nothing owed'} icon="money" href="#money" />}
       <Tile label="Consent" value={consentValue} tone={consentValue === 'On record' ? 'accent' : consentValue === '—' ? 'default' : 'warn'} note={consentNote} icon="file" href="#consent" />
     </div></div>
-
-    <div class="mt-5">
-      <Tabs label="Sections of the record" group="rec" current={`rec-${current}`} items={tabItems} full class="rec-tabs" />
-    </div>
   </Pane>
 
+  {/* The record's body: its colour-coded index beside the sections (./_record/RecordNav.astro). */}
+  <div class="rec-body">
+  <RecordNav items={SECTIONS.map((x) => ({ id: x.id, label: x.label, count: 'count' in x ? x.count : null }))} current={current} name={shortName} />
+  <div class="rec-main">
+
   <!-- Overview -->
-  <div id="rec-overview" role="tabpanel" aria-labelledby="rec-rec-overview-tab" hidden={current !== 'overview'} class="min-w-0 grid items-start gap-4 max-md:gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]" data-rec-panel="overview">
+  <div id="rec-overview" role="tabpanel" aria-labelledby="rec-rec-overview-tab" hidden={current !== 'overview'} class="min-w-0 grid items-start gap-4 max-md:gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] content-start hue-teal" data-rec-panel="overview">
+    <Banner id="overview" label={SECTION_LABEL.overview} class="lg:col-span-2" />
     <Pane title="Details" icon="user" id="overview">
       <dl class="pt-facts">
         {present.map(([k, v]) => <><dt>{k}</dt><dd>{v}</dd></>)}
@@ -738,7 +741,7 @@ const recHere = here;
     <div class="grid content-start gap-4 max-md:gap-3">
       <RecallCard recall={clin.recall} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} bookHref={bookHref} />
       {(planOpen.length > 0 || clin.labs.some((l) => l.status !== 'fitted')) && (
-        <Pane as="section" label="Treatment, in short">
+        <Pane as="section" label="Treatment, in short" class="hue-blue">
           <Head icon="plan" title="Treatment plan">
             <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="treatment">Open</button>
           </Head>
@@ -757,7 +760,7 @@ const recHere = here;
         </Pane>
       )}
       {data.latestForm && (
-        <Pane as="section" label="From the patient forms">
+        <Pane as="section" label="From the patient forms" class="hue-violet">
           <Head icon="form" title="From the patient forms" meta={`Sent ${day(data.latestForm.submittedAt)} · ${data.latestForm.ref}`}>
             <a slot="actions" href={`${formsBase}${data.latestForm.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">All answers</a>
           </Head>
@@ -766,7 +769,7 @@ const recHere = here;
           ) : <p class="text-[15px] text-ink-2">Nothing about this visit on the form.</p>}
         </Pane>
       )}
-      <Pane as="section" label="Health, in short">
+      <Pane as="section" label="Health, in short" class="hue-rose">
         <Head icon="heart" title="Health">
           <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="health">{canEdit ? 'Update' : 'Open'}</button>
         </Head>
@@ -798,12 +801,14 @@ const recHere = here;
   </div>
 
   <!-- Timeline -->
-  <div id="rec-timeline" role="tabpanel" aria-labelledby="rec-rec-timeline-tab" hidden={current !== 'timeline'} class="min-w-0" data-rec-panel="timeline">
+  <div id="rec-timeline" role="tabpanel" aria-labelledby="rec-rec-timeline-tab" hidden={current !== 'timeline'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-teal" data-rec-panel="timeline">
+    <Banner id="timeline" label={SECTION_LABEL.timeline} />
     <Timeline events={data.timeline} sections={SECTIONS.map((x) => x.id)} />
   </div>
 
   <!-- Health -->
-  <div id="rec-health" role="tabpanel" aria-labelledby="rec-rec-health-tab" hidden={current !== 'health'} class="min-w-0 grid gap-4 max-md:gap-3" data-rec-panel="health">
+  <div id="rec-health" role="tabpanel" aria-labelledby="rec-rec-health-tab" hidden={current !== 'health'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-rose" data-rec-panel="health">
+    <Banner id="health" label={SECTION_LABEL.health} />
     <Vitals vitals={ext.vitals} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} firstName={patient.first_name} />
     <Pane as="section" label="Health" id="health">
       <Head icon="heart" title="Health" />
@@ -887,7 +892,8 @@ const recHere = here;
   </div>
 
   <!-- Chart -->
-  <div id="rec-chart" role="tabpanel" aria-labelledby="rec-rec-chart-tab" hidden={current !== 'chart'} class="min-w-0" data-rec-panel="chart">
+  <div id="rec-chart" role="tabpanel" aria-labelledby="rec-rec-chart-tab" hidden={current !== 'chart'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="chart">
+    <Banner id="chart" label={SECTION_LABEL.chart} />
     <Pane as="section" label="Chart" id="chart" class="pt-chart-pane">
       <Head icon="tooth" title="Chart" />
       <p class="-mt-2 mb-4 text-[14px] text-muted">Every change is saved as you make it, under your name.</p>
@@ -923,7 +929,8 @@ const recHere = here;
   </div>
 
   <!-- Treatment -->
-  <div id="rec-treatment" role="tabpanel" aria-labelledby="rec-rec-treatment-tab" hidden={current !== 'treatment'} class="min-w-0" data-rec-panel="treatment">
+  <div id="rec-treatment" role="tabpanel" aria-labelledby="rec-rec-treatment-tab" hidden={current !== 'treatment'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="treatment">
+    <Banner id="treatment" label={SECTION_LABEL.treatment} />
     <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} />
     <div class="mt-4 grid gap-4 max-md:mt-3 max-md:gap-3">
       <Loas loas={ext.loas} plan={clin.plan} payors={ext.hmoPayors} hmoName={patient.hmo_name} memberNo={patient.hmo_member_no} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} settingsHref={`/c/${clinic.slug}/settings/`} />
@@ -932,12 +939,14 @@ const recHere = here;
   </div>
 
   <!-- Notes -->
-  <div id="rec-notes" role="tabpanel" aria-labelledby="rec-rec-notes-tab" hidden={current !== 'notes'} class="min-w-0" data-rec-panel="notes">
+  <div id="rec-notes" role="tabpanel" aria-labelledby="rec-rec-notes-tab" hidden={current !== 'notes'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="notes">
+    <Banner id="notes" label={SECTION_LABEL.notes} />
     <Notes c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} />
   </div>
 
   <!-- Prescriptions -->
-  <div id="rec-rx" role="tabpanel" aria-labelledby="rec-rec-rx-tab" hidden={current !== 'rx'} class="min-w-0" data-rec-panel="rx">
+  <div id="rec-rx" role="tabpanel" aria-labelledby="rec-rec-rx-tab" hidden={current !== 'rx'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="rx">
+    <Banner id="rx" label={SECTION_LABEL.rx} />
     <Prescriptions c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} firstName={patient.first_name} printBase={`${here}rx/`} allergies={allergies} typedRows={rxTyped} />
     <div class="mt-4 max-md:mt-3">
       <Letters letters={ext.letters} clinicians={clin.clinicians} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} printBase={`${here}letters/`} lastVisit={lastVisit ? manilaDay(lastVisit.starts_at) : null} conditions={conditions} />
@@ -945,12 +954,14 @@ const recHere = here;
   </div>
 
   <!-- Files -->
-  <div id="rec-files" role="tabpanel" aria-labelledby="rec-rec-files-tab" hidden={current !== 'files'} class="min-w-0" data-rec-panel="files">
+  <div id="rec-files" role="tabpanel" aria-labelledby="rec-rec-files-tab" hidden={current !== 'files'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="files">
+    <Banner id="files" label={SECTION_LABEL.files} />
     <Files c={clin} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} fileBase={`${here}files/`} />
   </div>
 
   <!-- Visits -->
-  <div id="rec-visits" role="tabpanel" aria-labelledby="rec-rec-visits-tab" hidden={current !== 'visits'} class="min-w-0" data-rec-panel="visits">
+  <div id="rec-visits" role="tabpanel" aria-labelledby="rec-rec-visits-tab" hidden={current !== 'visits'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-teal" data-rec-panel="visits">
+    <Banner id="visits" label={SECTION_LABEL.visits} />
     <Pane title="Visits" icon="calendar" id="visits" meta={visits.length === 200 ? 'The newest 200' : `${visits.length} on record`} pad="none">
       {visits.length === 0 ? (
         <div class="px-6 py-3 max-md:px-4"><Empty icon="calendar" text="No visits yet." action={canEdit ? { label: 'Bring in past visits from a spreadsheet', href: importHref } : { label: 'Book the first one', href: bookHref }} /></div>
@@ -989,7 +1000,8 @@ const recHere = here;
 
   <!-- Money -->
   {money && (
-    <div id="rec-money" role="tabpanel" aria-labelledby="rec-rec-money-tab" hidden={current !== 'money'} class="min-w-0" data-rec-panel="money">
+    <div id="rec-money" role="tabpanel" aria-labelledby="rec-rec-money-tab" hidden={current !== 'money'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-green" data-rec-panel="money">
+    <Banner id="money" label={SECTION_LABEL.money} />
       <Pane title="Money" icon="money" id="money" pad="none">
         <Fragment slot="actions">
           <a href={`${links.finances}?patient=${patient.id}&view=all`} class="ws-btn ws-btn-quiet ws-btn-sm">In Finances <Icon name="arrow-right" size={16} /></a>
@@ -1039,7 +1051,8 @@ const recHere = here;
   )}
 
   <!-- Consent -->
-  <div id="rec-consent" role="tabpanel" aria-labelledby="rec-rec-consent-tab" hidden={current !== 'consent'} class="min-w-0" data-rec-panel="consent">
+  <div id="rec-consent" role="tabpanel" aria-labelledby="rec-rec-consent-tab" hidden={current !== 'consent'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="consent">
+    <Banner id="consent" label={SECTION_LABEL.consent} />
     <Pane as="section" label="Privacy consent">
       <Head icon="shield" title="Privacy consent" />
       <DeskConsent notice={data.notice} consents={data.consents} canRecord={canEdit} minor={minor} birthKnown={!!patient.birth} dpo={data.dpo} action={`${here}#consent`}
@@ -1078,7 +1091,8 @@ const recHere = here;
   </div>
 
   <!-- Texts -->
-  <div id="rec-texts" role="tabpanel" aria-labelledby="rec-rec-texts-tab" hidden={current !== 'texts'} class="min-w-0" data-rec-panel="texts">
+  <div id="rec-texts" role="tabpanel" aria-labelledby="rec-rec-texts-tab" hidden={current !== 'texts'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="texts">
+    <Banner id="texts" label={SECTION_LABEL.texts} />
     <Pane title="Texts" icon="message" id="texts" meta={data.texts.length === 50 ? 'The newest 50' : `${data.texts.length} about this patient`} pad="none">
       <a slot="actions" href={links.messages} class="ws-btn ws-btn-quiet ws-btn-sm">All messages <Icon name="arrow-right" size={16} /></a>
       {data.texts.length === 0 ? (
@@ -1102,6 +1116,9 @@ const recHere = here;
         </table>
       )}
     </Pane>
+  </div>
+
+  </div>
   </div>
 
   {canEdit && (

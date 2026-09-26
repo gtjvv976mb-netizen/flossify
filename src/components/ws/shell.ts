@@ -416,6 +416,8 @@ for (const d of $$<HTMLDialogElement>('dialog[data-ws-panel][data-ws-open-now]')
 
 for (const list of $$('[data-ws-tabs]')) {
   const tabs = $$<HTMLButtonElement>('[role="tab"]', list);
+  // A list drawn as a column (the patient record's index) also moves with the up and down arrows.
+  const vertical = list.getAttribute('aria-orientation') === 'vertical';
   const select = (t: HTMLButtonElement, focus = false) => {
     for (const o of tabs) {
       const on = o === t;
@@ -435,7 +437,7 @@ for (const list of $$('[data-ws-tabs]')) {
     const i = tabs.indexOf(document.activeElement as HTMLButtonElement);
     if (i < 0) return;
     const k = e.key;
-    const next = k === 'ArrowRight' ? (i + 1) % tabs.length : k === 'ArrowLeft' ? (i - 1 + tabs.length) % tabs.length
+    const next = k === 'ArrowRight' || (k === 'ArrowDown' && vertical) ? (i + 1) % tabs.length : k === 'ArrowLeft' || (k === 'ArrowUp' && vertical) ? (i - 1 + tabs.length) % tabs.length
       : k === 'Home' ? 0 : k === 'End' ? tabs.length - 1 : -1;
     if (next < 0) return;
     e.preventDefault();

@@ -1,0 +1,20 @@
+---
+// The head of a record section: its group and name, its icon and one line saying what is in it, on the
+// section's own tint (./sections.ts), so an encoder can tell at a glance which part of the record is open.
+import Glyph from '../_ui/Glyph.astro';
+import { SECTION_META } from './sections';
+
+interface Props { id: string; label: string; class?: string }
+const { id, label, class: extra } = Astro.props;
+const m = SECTION_META[id];
+---
+
+<header class:list={['rec-banner', `hue-${m.hue}`, extra]}>
+  <span class="rec-banner-icon" aria-hidden="true"><Glyph name={m.icon} size={22} /></span>
+  <div class="min-w-0">
+    <p class="rec-banner-group">{m.group}</p>
+    <h2 class="rec-banner-title">{label}</h2>
+    <p class="rec-banner-blurb">{m.blurb}</p>
+  </div>
+  {Astro.slots.has('default') && <div class="rec-banner-actions"><slot /></div>}
+</header>

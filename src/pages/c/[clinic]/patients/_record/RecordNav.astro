@@ -1,0 +1,35 @@
+---
+// The record's index: its sections grouped under Patient · Health · Clinical · Documents · Billing, each
+// with its colour, icon and count (./sections.ts). On a wide screen a column that stays in view beside the
+// content; on a narrower one a row that scrolls sideways. It is the shell's in-place tabs underneath
+// (data-ws-tabs, role="tab", ids rec-rec-<section>-tab), so the page's script and the arrow keys work as
+// before; the group names are drawn for the eye and said once in each button for a screen reader.
+import Glyph from '../_ui/Glyph.astro';
+import { GROUPS, SECTION_META } from './sections';
+
+interface Item { id: string; label: string; count?: number | null }
+interface Props { items: Item[]; current: string; name: string }
+const { items, current, name } = Astro.props;
+const groups = GROUPS.map((g) => ({ ...g, items: items.filter((i) => SECTION_META[i.id]?.group === g.name) })).filter((g) => g.items.length);
+---
+
+<nav class="rec-nav" aria-label={`Sections of ${name}’s record`}>
+  <div role="tablist" aria-label="Sections of the record" aria-orientation="vertical" class="rec-tabs rec-nav-list" data-ws-tabs>
+    {groups.map((g) => (
+      <>
+        <p class:list={['rec-nav-group', `hue-${g.hue}`]} aria-hidden="true"><span class="rec-nav-dot"></span>{g.name}</p>
+        {g.items.map((i) => {
+          const m = SECTION_META[i.id];
+          return (
+            <button type="button" role="tab" id={`rec-rec-${i.id}-tab`} aria-controls={`rec-${i.id}`} class:list={['rec-nav-item', `hue-${m.hue}`]}
+              aria-selected={i.id === current ? 'true' : 'false'} tabindex={i.id === current ? 0 : -1}>
+              <span class="rec-nav-icon" aria-hidden="true"><Glyph name={m.icon} size={17} /></span>
+              <span class="rec-nav-label"><span class="sr-only">{g.name}: </span>{i.label}</span>
+              {i.count ? <span class="rec-nav-count">{i.count}</span> : null}
+            </button>
+          );
+        })}
+      </>
+    ))}
+  </div>
+</nav>
