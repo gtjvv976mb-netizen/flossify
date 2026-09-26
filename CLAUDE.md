@@ -312,7 +312,7 @@ Built for a front desk between patients and a dentist with gloves just off:
 ## Clinic doors and usernames — `/<clinic>/sign-in/` (029)
 
 `docs/clinic-sites-design.md` is the plan (P1 usernames and doors, P2 roles,
-P3 People & Roles — shipped; P4 tasks, P5 the clinic's site at `/<clinic>/`).
+P3 People & Roles, P4 tasks — shipped; P5 the clinic's site at `/<clinic>/`).
 
 - **Every staff account has a username**, unique within its group
   (`staff.username`, `unique (group_id, username)`, `username_ok()` =
@@ -392,6 +392,20 @@ P3 People & Roles — shipped; P4 tasks, P5 the clinic's site at `/<clinic>/`).
 - A session made stale behind the person's back (a new password, disabled) is
   cleared by `requireWorkspace`, which sends them to `/auth/login/` and so to
   their clinic's door — not to "not for that branch".
+
+### Tasks (032)
+
+- `clinic_task` is clinic data under RLS: title, notes, due day, the member
+  it is for, who gave it, done at/by, cancelled. `src/lib/tasks.ts`: anyone
+  with `tasks.assign` gives tasks to anyone active at the branch; everyone may
+  note one for themselves; the person it is for or whoever gave it ticks it
+  done or back; only the giver takes it back. Checked in the same transaction.
+- The Dashboard shows "Your tasks" (compact, first three) above the calendar
+  when something is open, or to someone who may assign; `/c/<slug>/tasks/`
+  (Dashboard tab) has all of yours and the ones you gave. Every tick is a
+  small form posting to the Tasks page with `back` (this branch's Dashboard
+  or the Tasks page only), so it works with scripts off. Tasks hold no
+  patient details (the form says so) and are not part of any record.
 
 ## The patient side — `/find/`
 
@@ -867,6 +881,7 @@ src/pages/start/               a clinic sets itself up
 src/pages/[clinic]/            a clinic's own address: sign-in (its door), index (redirect until P5)
 src/lib/clinic-door.ts, username.ts  the remembered clinic, Find your clinic; username rules
 src/lib/can.ts                 permission keys, default roles, can(ws, key); roles are clinic_role rows (030)
+src/lib/roles.ts, tasks.ts     the rank rules for people and roles; tasks (032). Pages: settings Roles section, /c/<slug>/tasks/
 src/pages/c/[clinic]/settings/ profile + hours + HMOs + listing, fees, team (invites), photos, privacy (DPO), billing
 src/pages/c/[clinic]/claims/   HMO and PhilHealth claims: file, approve, deny, pay, notes, aging, CSV
 src/pages/me/                  patients: my visits by mobile (code → list; confirm / cancel / calendar)

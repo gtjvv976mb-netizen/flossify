@@ -153,7 +153,7 @@ at `/auth/login/` as before.
 - **Roles**: the ranked list; Add role; rename; tick permissions; move up/down;
   remove a role nobody holds. The Owner row is shown locked.
 
-### P4 — tasks
+### P4 — tasks (shipped)
 - Migration: `clinic_task` under RLS (clinic, title, notes, due, assignee,
   created by, done at / by). Dashboard card "Your tasks" (due and overdue first,
   tick to finish, undo); "Assign a task" for `tasks.assign`; the assigner sees

@@ -1,0 +1,117 @@
+---
+// Tasks (032; docs/clinic-sites-design.md, P4) — under the Dashboard tab. Yours first (open, then done
+// this week), then the ones you gave (for anyone whose role may assign tasks), and one teal button:
+// Assign a task (or Add a task, for someone who notes their own). Every tick on the Dashboard posts here
+// and comes back where it was. src/lib/tasks.ts says who may touch which task.
+export const prerender = false;
+
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Pane from '../../../../components/ws/Pane.astro';
+import SidePanel from '../../../../components/ws/SidePanel.astro';
+import Empty from '../../../../components/ws/Empty.astro';
+import Icon from '../../../../components/ws/Icon.astro';
+import TaskList from '../../../../components/ws/TaskList.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { withClinic } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { hit, waitText } from '../../../../lib/throttle';
+import { can } from '../../../../lib/can';
+import { manilaToday } from '../../../../lib/health';
+import { tasksFor, tasksGivenBy, assignable, addTask, taskAct, TITLE_MAX, NOTES_MAX, type TaskInput } from '../../../../lib/tasks';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const here = `/c/${clinic.slug}/tasks/`;
+const mayAssign = can(ws, 'tasks.assign');
+// Only this branch's Dashboard or this page may be where a tick comes back to.
+const backTo = (v: unknown) => { const s = String(v ?? ''); return s === `/c/${clinic.slug}/` || s.startsWith(`/c/${clinic.slug}/?`) || s === here ? s : here; };
+
+let error = '';
+let draft: TaskInput = { title: '', notes: '', dueOn: '', assigneeId: session.staffId };
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const act = String(form.get('do') ?? '');
+  const back = backTo(form.get('back'));
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+  else {
+    const rate = await hit(`tasks:s:${session.staffId}`, 120, 60 * 60);
+    if (!rate.allowed) error = `Too many changes at once. ${waitText(rate.retryAfter)}`;
+    else if (act === 'add') {
+      draft = { title: String(form.get('title') ?? ''), notes: String(form.get('notes') ?? ''), dueOn: String(form.get('due') ?? ''), assigneeId: String(form.get('assignee') ?? session.staffId) };
+      const r = await addTask({ clinicId: clinic.id, staffId: session.staffId, mayAssign, input: draft });
+      if (r.ok) return Astro.redirect(`${here}?added=${draft.assigneeId === session.staffId ? 'mine' : 'given'}`, 303);
+      error = r.error;
+    } else if (act === 'done' || act === 'undo' || act === 'cancel') {
+      const ok = await taskAct({ clinicId: clinic.id, staffId: session.staffId, taskId: String(form.get('task') ?? ''), act });
+      if (ok) return Astro.redirect(back, 303);
+      error = 'That task has changed, or it is not yours to change. The list shows where it stands now.';
+    } else error = 'Choose what to do.';
+  }
+}
+
+const [mine, given, people] = await Promise.all([
+  withClinic(clinic.id, (tx) => tasksFor(tx, session.staffId)),
+  withClinic(clinic.id, (tx) => tasksGivenBy(tx, session.staffId)),
+  mayAssign ? assignable(clinic.id) : Promise.resolve([]),
+]);
+const open = mine.filter((t) => !t.doneAt).length;
+const added = Astro.url.searchParams.get('added');
+const addLabel = mayAssign ? 'Assign a task' : 'Add a task';
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name }} title="Tasks" section="tasks" staff={{ name: session.name, role: session.role }} branches={branches} layout="panes" heading>
+  <div class="grid max-w-[52rem] gap-4">
+    {error && !draft.title && <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>}
+    {added && <p role="status" class="ws-callout" data-tone="success"><Icon name="check" /><span>{added === 'mine' ? 'Added to your tasks.' : 'Given. It is on their Dashboard now.'}</span></p>}
+
+    <Pane id="mine" icon="check" title="Your tasks" meta={open ? `${open} open` : 'Nothing open'} pad="none">
+      <Fragment slot="actions">
+        <button type="button" class="ws-btn ws-btn-primary" data-ws-open="task-new"><Icon name="plus" />{addLabel}</button>
+      </Fragment>
+      {mine.length
+        ? <TaskList tasks={mine} me={session.staffId} action={here} back={here} kind="mine" label="Your tasks" />
+        : <div class="px-6 py-5 max-md:px-4"><Empty icon="check" text="Nothing to do here yet. Tasks given to you show up on your Dashboard too." /></div>}
+    </Pane>
+
+    {(mayAssign || given.length > 0) && (
+      <Pane id="given" icon="patients" title="Tasks you gave" meta={given.length ? `${given.filter((t) => !t.doneAt).length} open` : undefined} pad="none">
+        {given.length
+          ? <TaskList tasks={given} me={session.staffId} action={here} back={here} kind="given" label="Tasks you gave" />
+          : <div class="px-6 py-5 max-md:px-4"><Empty icon="patients" text="When you give someone a task, it shows here with whether it is done." /></div>}
+      </Pane>
+    )}
+  </div>
+
+  <SidePanel id="task-new" title={addLabel} meta="Tasks" open={!!draft.title && !!error}>
+    {error && draft.title && <p role="alert" class="ws-callout mb-5" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>}
+    <form method="post" action={here} class="grid gap-4">
+      <Csrf />
+      <input type="hidden" name="do" value="add" />
+      <label class="field">
+        <span class="meta">What needs doing</span>
+        <input name="title" value={draft.title} required maxlength={TITLE_MAX} autocomplete="off" placeholder="Order more gloves (size M)" />
+      </label>
+      {mayAssign && (
+        <label class="field">
+          <span class="meta">For</span>
+          <select name="assignee">
+            {people.map((p) => <option value={p.id} selected={p.id === draft.assigneeId}>{p.id === session.staffId ? `${p.name} (you)` : p.name}</option>)}
+          </select>
+        </label>
+      )}
+      <label class="field">
+        <span class="meta">Due</span>
+        <input type="date" name="due" value={draft.dueOn} min={manilaToday()} />
+        <span class="text-[13px] leading-snug text-muted">Optional.</span>
+      </label>
+      <label class="field">
+        <span class="meta">Notes</span>
+        <textarea name="notes" rows="3" maxlength={NOTES_MAX}>{draft.notes}</textarea>
+        <span class="text-[13px] leading-snug text-muted">Optional. No patient details here: tasks are not part of any record.</span>
+      </label>
+      <div><button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />{mayAssign ? 'Give the task' : 'Add the task'}</button></div>
+    </form>
+  </SidePanel>
+</ClinicLayout>
