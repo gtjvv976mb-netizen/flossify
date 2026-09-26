@@ -1,0 +1,395 @@
+/* A clinic's own page and its booking on frosted glass (the owner, 26 Sep: "do the clinic and bookin
+   with their own photos"): the same recipe as Find a clinic, coverage and the sign-up — a photo fixed
+   behind the page, compact translucent cards over it, a column narrow enough that the room shows on
+   both sides — with one difference: the room is THAT clinic's own cover photo (ClinicRoom.astro), or
+   a soft blur of the site's colours when it has uploaded none. Never a stock room: behind a real
+   clinic's page it would read as that clinic's interior.
+
+   Imported by find/[clinic]/index.astro and find/[clinic]/book.astro only. Every rule starts with
+   .cl-room or .cl-glass, classes only those two pages have, so Find a clinic, a dentist and coverage
+   (which share patient.css) stay exactly as they are. Unlayered, like Find a clinic's own glass, so
+   it redraws patient.css (in the components layer) without raising a single selector; a [hidden]
+   element still stays hidden (the base layer's !important). Motion always on. */
+
+/* --- the room ------------------------------------------------------------------------------------
+   A fixed layer rather than background-attachment: fixed (which iOS ignores), under everything in
+   the page's flow (z-index -1), so the top bar stands above it. A clinic can upload anything — a
+   dark room, a bright one, a busy one — so the photo is not trusted to be kind to the words on the
+   glass: in the light it lies under a white wash, which lifts a black picture to a mid grey and
+   hardly changes a bright room; in the dark it is dimmed, so a white picture sits at a mid grey
+   under the dark glass. Both sized by measurement against an all-black, an all-white and a
+   black-white-red-blue striped upload; a dark or a harsh photo is also treated on its own (below). */
+.cl-room {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100vh;
+  height: 100lvh;
+  pointer-events: none;
+  overflow: hidden;
+  background: var(--c-bg);
+}
+.cl-room picture { display: block; width: 100%; height: 100%; }
+.cl-room img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 50%;
+}
+/* The wash is at full strength behind the column of cards (--cl-col is half its width, a little over
+   so the frost's blur, which reaches past a card's edge, only ever sees washed pixels) and fades to
+   a trace at the screen's sides, where nothing is written and the room shows as it is. On a phone
+   the column is the whole screen, so the wash is even. */
+.cl-room {
+  --cl-col: 37rem;
+  --cl-wash: 255 255 255;
+  --cl-veil: 0.26;
+  --cl-veil-side: 0.06;
+  --cl-veil-add: 0;
+}
+.cl-room.cl-room-narrow { --cl-col: 28rem; }
+.cl-room::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right,
+    rgb(var(--cl-wash) / calc(var(--cl-veil-side) + var(--cl-veil-add))) 0,
+    rgb(var(--cl-wash) / calc(var(--cl-veil) + var(--cl-veil-add))) calc(50% - var(--cl-col)),
+    rgb(var(--cl-wash) / calc(var(--cl-veil) + var(--cl-veil-add))) calc(50% + var(--cl-col)),
+    rgb(var(--cl-wash) / calc(var(--cl-veil-side) + var(--cl-veil-add))) 100%);
+}
+/* The photo looked at once on the server (room-tone.ts), so an ordinary room shows as it is and only
+   an unkind one is treated:
+   - a mostly dark photo (a dim room, a night shot): in the light a stronger wash, so the frost over
+     it stays pale rather than a muddy grey. The dark theme wants a dark room, so it is left alone;
+   - a harsh or loud one (stripes, strong colours): softened and quietened — blurred, its colours
+     taken down, a little more wash — and the frost over it stops boosting colour. The picture is
+     drawn past the screen's edges so the blur never fades to a pale rim. */
+.cl-room.cl-room-dark { --cl-veil: 0.55; --cl-veil-side: 0.3; }
+.cl-room.cl-room-busy { --cl-veil-add: 0.08; }
+.cl-room-busy picture { position: absolute; inset: -64px; width: auto; height: auto; }
+.cl-room-busy img { filter: blur(24px) saturate(0.5); }
+.cl-room-busy ~ .cl-glass { --glass-blur: blur(20px) saturate(1); }
+/* ... and in the light, the frost over either a little whiter. (The dark theme's .cl-glass tokens,
+   later in this file and as specific, draw its own pane over this.) */
+.cl-room:is(.cl-room-dark, .cl-room-busy) ~ .cl-glass { --glass-pane: rgb(255 255 255 / 0.7); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cl-room { --cl-wash: 12 15 19; --cl-veil: 0.12; --cl-veil-side: 0; }
+  :root:not([data-theme="light"]) .cl-room img { filter: brightness(0.62) saturate(0.9); }
+  :root:not([data-theme="light"]) .cl-room-busy img { filter: blur(24px) brightness(0.55) saturate(0.5); }
+}
+:root[data-theme="dark"] .cl-room { --cl-wash: 12 15 19; --cl-veil: 0.12; --cl-veil-side: 0; }
+:root[data-theme="dark"] .cl-room img { filter: brightness(0.62) saturate(0.9); }
+:root[data-theme="dark"] .cl-room-busy img { filter: blur(24px) brightness(0.55) saturate(0.5); }
+
+/* No photo of its own: a soft blur — large glows of the site's teal, a warm sand and white on the
+   pale ground. Clearly not a room. */
+.cl-room-soft {
+  background:
+    radial-gradient(ellipse 55% 45% at 6% 10%, rgb(20 144 143 / 0.26), transparent 72%),
+    radial-gradient(ellipse 50% 50% at 96% 18%, rgb(226 190 138 / 0.48), transparent 72%),
+    radial-gradient(ellipse 60% 42% at 28% 96%, rgb(255 255 255 / 0.95), transparent 72%),
+    radial-gradient(ellipse 50% 50% at 90% 92%, rgb(20 144 143 / 0.2), transparent 72%),
+    radial-gradient(ellipse 40% 36% at 55% 45%, rgb(236 222 200 / 0.5), transparent 72%),
+    #eef1f4;
+}
+.cl-room-soft::after { content: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cl-room-soft {
+    background:
+      radial-gradient(ellipse 55% 45% at 6% 10%, rgb(43 179 173 / 0.2), transparent 72%),
+      radial-gradient(ellipse 50% 50% at 96% 18%, rgb(196 150 90 / 0.16), transparent 72%),
+      radial-gradient(ellipse 60% 42% at 28% 96%, rgb(120 140 160 / 0.12), transparent 72%),
+      radial-gradient(ellipse 50% 50% at 90% 92%, rgb(43 179 173 / 0.12), transparent 72%),
+      #13171c;
+  }
+}
+:root[data-theme="dark"] .cl-room-soft {
+  background:
+    radial-gradient(ellipse 55% 45% at 6% 10%, rgb(43 179 173 / 0.2), transparent 72%),
+    radial-gradient(ellipse 50% 50% at 96% 18%, rgb(196 150 90 / 0.16), transparent 72%),
+    radial-gradient(ellipse 60% 42% at 28% 96%, rgb(120 140 160 / 0.12), transparent 72%),
+    radial-gradient(ellipse 50% 50% at 90% 92%, rgb(43 179 173 / 0.12), transparent 72%),
+    #13171c;
+}
+/* Not on paper, and not under the system's own high-contrast colours. */
+@media print, (forced-colors: active) {
+  .cl-room { display: none; }
+}
+
+/* --- the glass's numbers ---------------------------------------------------------------------------
+   Find a clinic's (the shared tokens stay as they are): a lighter frost, so the room reads as a room
+   through the cards. The site's own names are redrawn for the glass here, so its chips, slots,
+   buttons, fields, pills and callouts keep every state they have and only change face: secondary
+   words and small labels darker than --c-ink-2 (the muted grey is too light on glass); controls on
+   the near-solid glass field with a darker line; hairlines a translucent ink, so they show on the
+   frost; quiet insets (the consent, the summary, the reference) on a lighter inner glass; links,
+   teal words and the keyboard ring in the deep teal (the site's teal is under 4.5:1 on glass). */
+.cl-glass {
+  --glass-blur: blur(14px) saturate(1.4);
+  --cl-link: #084a48;
+  --cl-hair: rgb(16 24 40 / 0.07);
+  --cl-solid: rgb(255 255 255 / 0.86);
+  --c-ink-2: #2f3a4a;
+  --c-muted: #2f3a4a;
+  --c-accent: var(--cl-link);
+  --ws-teal-ink: var(--cl-link);
+  --c-surface: var(--glass-field);
+  --ws-field: var(--glass-field);
+  --ws-field-line: #bcc3cd;
+  --ws-field-line-hover: #98a2b3;
+  --ws-hair: rgb(16 24 40 / 0.12);
+  --ws-subtle: rgb(255 255 255 / 0.62);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cl-glass {
+    --glass-pane: rgb(22 27 33 / 0.58);
+    --cl-link: #7fdcd4;
+    --cl-hair: rgb(0 0 0 / 0.35);
+    --cl-solid: rgb(22 27 33 / 0.85);
+    --c-ink-2: #c3cad4;
+    --c-muted: #c3cad4;
+    --ws-field-line: #4a5563;
+    --ws-field-line-hover: #64707e;
+    --ws-hair: rgb(255 255 255 / 0.12);
+    --ws-subtle: rgb(12 16 20 / 0.3);
+  }
+}
+:root[data-theme="dark"] .cl-glass {
+  --glass-pane: rgb(22 27 33 / 0.58);
+  --cl-link: #7fdcd4;
+  --cl-hair: rgb(0 0 0 / 0.35);
+  --cl-solid: rgb(22 27 33 / 0.85);
+  --c-ink-2: #c3cad4;
+  --c-muted: #c3cad4;
+  --ws-field-line: #4a5563;
+  --ws-field-line-hover: #64707e;
+  --ws-hair: rgb(255 255 255 / 0.12);
+  --ws-subtle: rgb(12 16 20 / 0.3);
+}
+
+/* The keyboard ring in the deep teal: the site's #14908f is under 3:1 on the light glass. The radio
+   pills draw theirs in --c-accent, the deep teal here too. */
+.cl-glass :focus-visible { outline-color: var(--cl-link); }
+
+/* An example in an empty field a clear step lighter than a typed entry, so it never reads as filled
+   in (--c-muted is the deep secondary ink on the glass): at least 4.5:1 on the glass field. */
+.cl-glass ::placeholder { color: #5f6a7c; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cl-glass ::placeholder { color: #9ea8b6; }
+}
+:root[data-theme="dark"] .cl-glass ::placeholder { color: #9ea8b6; }
+
+/* --- the column ------------------------------------------------------------------------------------
+   About 1080px of cards on a clinic's page and 790px on the booking, so the room shows on both sides;
+   the cards one even gap apart. On a phone narrow gutters and a wider gap, so the clinic shows
+   between the cards too. */
+.cl-glass {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+  max-width: 70rem;
+  margin-inline: auto;
+  padding: 0.75rem 0.875rem 1.5rem;
+}
+.cl-glass.cl-book { max-width: 52rem; }
+@media (min-width: 640px) {
+  .cl-glass { gap: 0.75rem; padding: 1rem 1.25rem 2rem; }
+}
+
+/* --- frosted glass -------------------------------------------------------------------------------
+   The room shows through, blurred. The Pane's own white (drawn on ::before) is off. */
+.cl-glass .cl-pane {
+  background: var(--glass-pane);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--ws-r-lg);
+  box-shadow: 0 0 0 1px var(--cl-hair), var(--glass-shadow);
+}
+.cl-glass .ws-glass::before { content: none; }
+/* Where a browser draws no frost, the room would sit sharp behind the words: a near-solid pane. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .cl-glass .cl-pane { background: var(--cl-solid); }
+}
+
+/* A card's padding and head, a size down (Find a clinic's). */
+.cl-glass .cl-pane.ws-pad-normal { padding: 0.875rem; }
+.cl-glass .cl-pane.ws-pad-none > .ws-pane-head { padding: 0.75rem 0.875rem 0.625rem; }
+@media (min-width: 640px) {
+  .cl-glass .cl-pane.ws-pad-normal { padding: 0.875rem 1.125rem 1rem; }
+  .cl-glass .cl-pane.ws-pad-none > .ws-pane-head { padding: 0.75rem 1.125rem 0.625rem; }
+}
+.cl-glass .ws-pane-head { gap: 0.5rem 0.75rem; margin-bottom: 0.625rem; }
+.cl-glass .ws-pane-heading { gap: 0.625rem; }
+.cl-glass .ws-pane-icon { width: 32px; height: 32px; }
+.cl-glass .ws-pane-title { font-size: 16px; }
+.cl-glass .ws-pane-meta { font-size: 12.5px; }
+
+/* --- the heading card: the way back, the clinic's badge and name ---------------------------------- */
+.cl-glass .cl-head { padding: 0.75rem 0.875rem 0.875rem; }
+@media (min-width: 640px) {
+  .cl-glass .cl-head { padding: 0.75rem 1.125rem 1rem; }
+}
+/* The way back: 44px tall, drawn into the card's top padding so it takes one short line. Its keyboard
+   ring is drawn just inside it, so the ring lies on the glass, clear of the card's edge and of the
+   badge below. */
+.cl-glass .cl-back { margin: -0.5rem 0 0 -0.5rem; font-size: 14px; }
+.cl-glass .cl-back:focus-visible { outline-offset: -2px; }
+.cl-glass .cl-id { display: flex; align-items: center; gap: 0.75rem; }
+.cl-glass .cl-id .pt-badge-lg { width: 48px; height: 48px; font-size: 16px; }
+.cl-glass .cl-meta { font-size: 13px; line-height: 1.4; color: var(--c-ink-2); }
+.cl-glass :is(.cl-name, .pt-title) {
+  font-size: clamp(1.5rem, 3.2vw, 1.9rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.cl-glass .cl-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; margin-top: 0.125rem; }
+.cl-glass .cl-title-row .pt-status { min-height: 24px; padding: 0.0625rem 0.5625rem; font-size: 12.5px; }
+.cl-glass .cl-sub { margin-top: 0.25rem; font-size: 15px; line-height: 1.45; color: var(--c-ink-2); }
+
+/* --- a clinic's page -------------------------------------------------------------------------------
+   The head: who it is, whether it is open now, what it is, the three actions and the two facts; its
+   own two photos beside (under, on a phone), as tall as the words from 1024px. */
+.cl-glass .cl-clinic-head { display: grid; gap: 0.75rem; }
+@media (min-width: 1024px) {
+  .cl-glass .cl-clinic-head { grid-template-columns: minmax(0, 1fr) 25rem; gap: 1.25rem; align-items: stretch; }
+}
+.cl-glass .cl-about { max-width: 66ch; margin-top: 0.5rem; font-size: 15px; line-height: 1.5; color: var(--c-ink-2); text-wrap: pretty; }
+.cl-glass .cl-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+.cl-glass .cl-actions .btn { padding: 0.5625rem 0.9375rem; font-size: 14.5px; }
+.cl-glass .cl-facts { display: grid; gap: 0.1875rem; margin-top: 0.625rem; }
+.cl-glass .cl-facts .pt-fact { font-size: 14px; line-height: 1.45; }
+.cl-glass .cl-facts .pt-fact > .ws-icon { margin-top: 1px; }
+.cl-glass .cl-note { margin-top: 0.75rem; }
+
+.cl-glass .cl-photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+.cl-glass .cl-photo { aspect-ratio: 4 / 3; border: 1px solid var(--glass-edge); border-radius: var(--ws-r); }
+/* The picture fills its frame whatever its own shape; its frame is set by the card, never by it. */
+.cl-glass .cl-photo > img { position: absolute; inset: 0; }
+@media (min-width: 1024px) {
+  .cl-glass .cl-photo { aspect-ratio: auto; min-height: 14rem; }
+}
+
+/* Two columns from 1024px: the dentists and the fee guide; the hours, the cards, the reviews and
+   the way on beside them. */
+.cl-glass .cl-cols, .cl-glass .cl-col { display: grid; gap: 1rem; align-content: start; min-width: 0; }
+@media (min-width: 640px) {
+  .cl-glass .cl-cols, .cl-glass .cl-col { gap: 0.75rem; }
+}
+@media (min-width: 1024px) {
+  .cl-glass .cl-cols { grid-template-columns: minmax(0, 1fr) 22rem; align-items: start; }
+}
+
+/* The dentists: tighter rows on a translucent hairline. */
+.cl-glass .pt-rows > li { padding: 0.625rem 0.875rem 0.6875rem; }
+@media (min-width: 640px) {
+  .cl-glass .pt-rows > li { padding: 0.625rem 1.125rem 0.6875rem; }
+}
+.cl-glass .pt-person { gap: 0.75rem; }
+.cl-glass .pt-person-name { font-size: 15.5px; }
+.cl-glass .pt-person-name a:hover { color: var(--cl-link); }
+.cl-glass .cl-person-what { margin-top: 0.0625rem; font-size: 14px; line-height: 1.4; color: var(--c-ink-2); }
+.cl-glass .pt-person .pt-pills { gap: 0.25rem 0.3125rem; margin-top: 0.375rem; }
+.cl-glass .pt-pills .tag { min-height: 22px; padding: 0.0625rem 0.5rem; font-size: 12.5px; }
+
+/* The fee guide and the hours: tighter rows. */
+.cl-glass .pt-table { font-size: 14.5px; }
+.cl-glass .pt-table :is(th, td) { padding: 0.4375rem 0; line-height: 1.4; }
+.cl-glass .pt-table .ws-pill { font-size: 12px; }
+.cl-glass .cl-small { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--ws-hair); font-size: 13.5px; line-height: 1.45; color: var(--c-ink-2); }
+.cl-glass .cl-text { font-size: 14px; line-height: 1.5; color: var(--c-ink-2); }
+.cl-glass .ws-empty { min-height: 2.75rem; padding: 0.25rem 0; font-size: 14.5px; }
+.cl-glass .ws-empty-icon { padding: 7px; }
+.cl-glass .ws-empty-go { color: var(--cl-link); }
+.cl-glass .cl-pills { gap: 0.25rem 0.3125rem; }
+.cl-glass .pt-go { font-size: 14.5px; color: var(--cl-link); }
+.cl-glass .pt-link { color: var(--cl-link); }
+
+/* The way on, at the end: Book again, Other clinics — on a small glass card of their own, like
+   everything else, so their keyboard rings lie on the glass and never on the bare photo. */
+.cl-glass .cl-end { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.625rem; }
+
+/* --- the booking ----------------------------------------------------------------------------------- */
+.cl-glass .cl-wizard { padding: 0.875rem 0.875rem 1rem; }
+@media (min-width: 640px) {
+  .cl-glass .cl-wizard { padding: 0.875rem 1.25rem 1.125rem; }
+}
+/* The stepper, a size down. */
+.cl-glass .pt-steps .wiz-step { gap: 0.25rem; padding: 0 0.125rem 0.375rem; }
+.cl-glass .pt-steps .wiz-step > span:nth-child(2) { font-size: 13px; }
+/* A step done shows its check (global.css draws it over the number, which it makes transparent): the
+   number is not drawn at all, so it is never an invisible word on the glass. Forced colours show the
+   number instead of the check, so it stays there. */
+@media not (forced-colors: active) {
+  .cl-glass .pt-steps .wiz-step[data-passed] .sec-no { font-size: 0; }
+}
+.cl-glass .cl-form { margin-top: 0.625rem; padding-top: 0.875rem; border-top: 1px solid var(--ws-hair); }
+.cl-glass .pt-legend { font-size: 19px; line-height: 1.3; }
+.cl-glass .pt-help { margin-top: 0.25rem; font-size: 14.5px; line-height: 1.45; }
+.cl-glass .cl-choices { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.75rem; }
+.cl-glass :is(.chip-radio, .slot-radio) > span { padding: 0.5rem 0.8125rem; font-size: 14px; }
+.cl-glass .slot-radio > span { min-width: 5rem; }
+.cl-glass .pt-more { margin-top: 0.25rem; }
+.cl-glass .pt-more > summary { font-size: 14.5px; color: var(--cl-link); }
+.cl-glass .pt-more .cl-choices { margin-top: 0.25rem; }
+/* Closed, the services are not drawn at all (Find a clinic's "More filters" does the same), so
+   nothing of them can be laid out over the room. */
+.cl-glass .pt-more:not([open]) > :not(summary) { display: none; }
+.cl-glass .cl-callout { gap: 0.625rem; margin-top: 0.75rem; padding: 0.625rem 0.875rem; font-size: 14.5px; line-height: 1.45; }
+.cl-glass .cl-picks { display: grid; gap: 0.375rem; margin-top: 0.75rem; }
+.cl-glass .row-radio > span { padding: 0.5625rem 0.875rem; }
+.cl-glass .pt-pick > span { gap: 0.75rem; }
+.cl-glass .pt-pick-words { font-size: 15px; line-height: 1.35; }
+.cl-glass .cl-pick-line { display: block; margin-top: 0.0625rem; font-size: 13.5px; line-height: 1.4; color: var(--c-ink-2); }
+/* The empty tick drawn with a dark edge (the site's grey one is under 3:1 on the glass); chosen, it
+   fills teal as before. */
+.cl-glass .pt-tick { border-color: var(--c-ink-2); }
+.cl-glass .row-radio input:checked + span .pt-tick { border-color: var(--ws-teal-fill); }
+.cl-glass .cl-slot-area { margin-top: 0.75rem; }
+.cl-glass .pt-days { gap: 0.625rem; }
+.cl-glass .pt-day-label { font-size: 14px; }
+.cl-glass .pt-slots { gap: 0.375rem; margin-top: 0.3125rem; }
+.cl-glass .cl-slot-more { margin-top: 0.625rem; }
+.cl-glass .cl-slot-note { margin-top: 0.5rem; font-size: 14px; line-height: 1.45; color: var(--c-ink-2); }
+.cl-glass .cl-slot-note:empty { display: none; }
+.cl-glass .cl-fields { display: grid; gap: 0.625rem 0.75rem; margin-top: 0.75rem; }
+@media (min-width: 640px) {
+  .cl-glass .cl-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cl-glass .cl-fields > .cl-span { grid-column: 1 / -1; }
+}
+.cl-glass .field { gap: 0.25rem; }
+.cl-glass .field > .meta:first-child { font-size: 13.5px; color: var(--c-ink); }
+.cl-glass .field :is(input:not([type="checkbox"], [type="radio"]), select) { min-height: 44px; padding: 0.5rem 0.75rem; }
+.cl-glass .field select option { background: var(--ws-glass-strong); color: var(--c-ink); }
+/* A field in use: its edge in the deep teal, 2px (the border and a 1px ring) inside the soft halo,
+   which alone barely shows on the glass. A wrong entry keeps its red edge. */
+.cl-glass .field :is(input:not([type="checkbox"], [type="radio"]), select):focus {
+  border-color: var(--cl-link);
+  box-shadow: 0 0 0 1px var(--cl-link), 0 0 0 4px color-mix(in srgb, var(--ws-teal) 22%, transparent);
+}
+.cl-glass .field :is(input:not([type="checkbox"], [type="radio"]), select):user-invalid { border-color: var(--ws-red); }
+.cl-glass .pt-consent { margin-top: 0.75rem; padding: 0.125rem 0.875rem; border-color: var(--ws-hair); }
+.cl-glass .pt-consent .check { padding-block: 0.375rem; font-size: 14.5px; line-height: 1.45; color: var(--c-ink); }
+.cl-glass .pt-summary { margin-top: 0.75rem; border-color: var(--ws-hair); }
+.cl-glass .pt-sum-row { padding: 0.4375rem 0.875rem; }
+.cl-glass .pt-sum-row dt { font-size: 13px; }
+.cl-glass .pt-sum-row dd { font-size: 15px; }
+.cl-glass .pt-error:not(:empty) { margin-top: 0.75rem; padding: 0.625rem 0.875rem; font-size: 14.5px; }
+.cl-glass .pt-nav { margin-top: 0.875rem; padding-top: 0.75rem; }
+
+/* Done: the mark a size down, the words at 15px, the reference on the inner glass. */
+.cl-glass .pt-done-mark { width: 48px; height: 48px; }
+.cl-glass .cl-done-pill { margin-top: 0.625rem; }
+.cl-glass .pt-done-title { margin-top: 0.375rem; font-size: clamp(1.375rem, 1.15rem + 1vw, 1.75rem); }
+.cl-glass .cl-done-text { max-width: 62ch; margin-top: 0.375rem; font-size: 15px; line-height: 1.5; color: var(--c-ink-2); }
+.cl-glass .pt-ref { margin-top: 0.75rem; padding: 0.5rem 0.875rem; border-color: var(--ws-hair); }
+.cl-glass .cl-done-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.875rem; }
+.cl-glass .cl-done-note { max-width: 66ch; }
+
+/* The bookings on this device: tighter rows. */
+.cl-glass .pt-mine-row { gap: 0.375rem 0.75rem; font-size: 15px; }
+.cl-glass .pt-mine-ref { color: var(--c-ink-2); }
