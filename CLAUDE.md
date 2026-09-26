@@ -60,7 +60,10 @@ would read as its interior — or, with no upload, a soft abstract blur. A
 clinic can upload anything, so the room is washed/dimmed enough that every line
 passes over an all-black, all-white and harshly striped cover, and
 `room-tone.ts` looks at each upload once (cached; never throws) to calm busy or
-dark ones further. A dentist's page still stands on opaque cards. Glass uses the `--glass-*`
+dark ones further. Clinic websites `/websites/` stands on the clinic's front
+door (`/img/signin-door-*.webp`, scoped to `.wb-glass`); the SwiftCare sample in
+its window stays an opaque page with its own branding. A dentist's page still
+stands on opaque cards. Glass uses the `--glass-*`
 tokens in global.css; every line on it is measured against the pixels behind
 it (light and dark, 1440 and 390) — measure again before making it clearer.
 
