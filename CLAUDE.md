@@ -52,9 +52,15 @@ waiting area `/img/ws/waiting-*.webp`), PhilHealth & HMO `/coverage/` (over
 the reception desk, `/img/ws/reception-*.webp`, scoped to its `cv-*` classes)
 and My visits — the door `/me/` and `/me/code/` (`_Door.astro`) and the
 signed-in `/me/visits/` (`_Shell.astro`, scoped to `.me-shell` so the clinic
-workspace is untouched), over the waiting area. A clinic's own page, its
-booking and a dentist's page still stand on opaque cards: a stock room behind
-a real clinic's page could read as that clinic's interior. Glass uses the `--glass-*`
+workspace is untouched), over the waiting area. A clinic's own page and its
+booking (`find/_ui/ClinicRoom.astro` + `clinic-glass.css`, scoped to
+`.cl-glass`) stand on THAT clinic's own cover — its first uploaded photo
+(`up:` key), never a house or stock photo, which behind a real clinic's page
+would read as its interior — or, with no upload, a soft abstract blur. A
+clinic can upload anything, so the room is washed/dimmed enough that every line
+passes over an all-black, all-white and harshly striped cover, and
+`room-tone.ts` looks at each upload once (cached; never throws) to calm busy or
+dark ones further. A dentist's page still stands on opaque cards. Glass uses the `--glass-*`
 tokens in global.css; every line on it is measured against the pixels behind
 it (light and dark, 1440 and 390) — measure again before making it clearer.
 

@@ -1,0 +1,33 @@
+---
+// The room behind a clinic's own page and its booking: THAT clinic's cover photo (the first photo it
+// uploaded itself), fixed to the screen under the glass cards, as Find a clinic has its waiting area.
+// A clinic that has uploaded nothing gets a soft blur of the site's colours instead — never a house
+// stock photo, which behind a real clinic's page would read as that clinic's interior.
+//
+//   <ClinicRoom keys={l.photoKeys} clinicId={l.id} />          a clinic's page (a column about 1080px wide)
+//   <ClinicRoom keys={l.photoKeys} clinicId={l.id} narrow />   the booking (about 790px)
+//
+// Decorative (aria-hidden, alt=""). A phone takes the 640 file, a wider screen the 1600. The layout
+// and the light wash / dimming that keep any photo (dark, bright or busy) behind readable glass are in
+// clinic-glass.css (.cl-room), which the two pages import. The photo is looked at once (room-tone.ts):
+// a harsh or loud one (stripes, strong colours) is softened and quietened, cl-room-busy; a mostly
+// dark one gets a stronger wash in the light theme, cl-room-dark. An ordinary room shows as it is.
+import { isUploadKey, photoUrl } from '../../../lib/uploads';
+import { roomTone } from './room-tone';
+
+interface Props { keys: string[]; clinicId: string; narrow?: boolean }
+const { keys, clinicId, narrow = false } = Astro.props;
+const cover = keys.find((k) => isUploadKey(k));
+const tone = cover ? await roomTone(cover, clinicId) : null;
+---
+
+{cover ? (
+  <div class:list={['cl-room', narrow && 'cl-room-narrow', tone?.busy && 'cl-room-busy', tone?.dark && 'cl-room-dark']} aria-hidden="true">
+    <picture>
+      <source media="(max-width: 639px)" srcset={photoUrl(cover, clinicId, 640)} />
+      <img src={photoUrl(cover, clinicId, 1600)} alt="" width="1600" height="1200" decoding="async" fetchpriority="high" />
+    </picture>
+  </div>
+) : (
+  <div class:list={['cl-room cl-room-soft', narrow && 'cl-room-narrow']} aria-hidden="true"></div>
+)}
