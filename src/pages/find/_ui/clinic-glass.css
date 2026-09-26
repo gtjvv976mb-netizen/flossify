@@ -312,6 +312,8 @@
 /* The way on, at the end: Book again, Other clinics — on a small glass card of their own, like
    everything else, so their keyboard rings lie on the glass and never on the bare photo. */
 .cl-glass .cl-end { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.625rem; }
+/* The clinic's own site ends with one line inside that card: whose page it is, and that it is on Flossify. */
+.cl-glass .cl-end .cl-made { flex-basis: 100%; margin-top: 0.125rem; padding-inline: 0.25rem; }
 
 /* --- the booking ----------------------------------------------------------------------------------- */
 .cl-glass .cl-wizard { padding: 0.875rem 0.875rem 1rem; }

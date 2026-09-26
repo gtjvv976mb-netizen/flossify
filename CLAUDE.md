@@ -311,8 +311,9 @@ Built for a front desk between patients and a dentist with gloves just off:
 
 ## Clinic doors and usernames — `/<clinic>/sign-in/` (029)
 
-`docs/clinic-sites-design.md` is the plan (P1 usernames and doors, P2 roles,
-P3 People & Roles, P4 tasks — shipped; P5 the clinic's site at `/<clinic>/`).
+`docs/clinic-sites-design.md` is the plan; all five phases are shipped (P1
+usernames and doors, P2 roles, P3 People & Roles, P4 tasks, P5 the clinic's
+own site at `/<clinic>/`).
 
 - **Every staff account has a username**, unique within its group
   (`staff.username`, `unique (group_id, username)`, `username_ok()` =
@@ -332,10 +333,18 @@ P3 People & Roles, P4 tasks — shipped; P5 the clinic's site at `/<clinic>/`).
   carrying `next` and `done`; `?any=1` ("Sign in another way") stays on the email
   door. `/auth/clinic/` is "Find your clinic": a typed address opens any door,
   words search listed clinics only.
-- **`/<slug>/`** redirects to `/find/<slug>/` (listed) or the door (not listed)
-  until P5. An address that is no clinic answers `new Response(null, {status:
-  404})`, which renders the site's 404 page — `Astro.rewrite('/404/')` is refused
-  (the 404 page is prerendered).
+- **`/<slug>/` is the clinic's own site** (P5): `SiteHeader clinic=…` (its
+  initials and name, its sections as the links, Staff sign-in to its door, its
+  booking as the quiet twin of the page's teal Book) over
+  `find/_ui/ClinicPage.astro` — the same body `/find/<slug>/` draws (moved there
+  byte-for-byte, measured) — in frosted glass on its own photo, with one line
+  inside the last glass card: "© <year> <clinic> · Clinic page on Flossify".
+  Contrast: 0 fails over a real room, all-black, all-white, harsh stripes and
+  no photo, light and dark, desk and phone (lowest 5.3:1); anything added on
+  the bare room fails — keep words on glass. A clinic not listed yet opens its
+  door instead. An address that is no clinic answers `new Response(null,
+  {status: 404})`, which renders the site's 404 page — `Astro.rewrite('/404/')`
+  is refused (the 404 page is prerendered).
 - **`RESERVED` in `src/lib/slug.ts`** lists first path segments no clinic slug
   may take (`uniqueClinicSlug` skips them: "Find" → `find-2`). A page at a new
   first segment goes on that list.
@@ -878,7 +887,7 @@ src/lib/availability.ts        Manila-time status and slot arithmetic
 src/pages/api/                 availability, bookings (create / undo-or-cancel), chart (tooth_state), sms/inbound
 src/pages/auth/                sign-in, sign-out, forgot (text a code), code (set a password)
 src/pages/start/               a clinic sets itself up
-src/pages/[clinic]/            a clinic's own address: sign-in (its door), index (redirect until P5)
+src/pages/[clinic]/            a clinic's own site (index) and its staff sign-in (its door)
 src/lib/clinic-door.ts, username.ts  the remembered clinic, Find your clinic; username rules
 src/lib/can.ts                 permission keys, default roles, can(ws, key); roles are clinic_role rows (030)
 src/lib/roles.ts, tasks.ts     the rank rules for people and roles; tasks (032). Pages: settings Roles section, /c/<slug>/tasks/
