@@ -20,89 +20,294 @@ const philhealthClinics = listings.filter((l) => l.philhealth);
 <Base title="PhilHealth dental benefit and HMO cards, explained — Flossify" description="PhilHealth pays up to ₱1,000 a year for preventive dental care. What it covers, how to use it, what it costs at a private clinic, and how HMO dental cards work.">
   <PatientHeader current="coverage" />
 
-  <main id="main" class="pt-main mx-auto max-w-[1180px] px-5 pt-8 pb-16 sm:px-8 sm:pt-10">
-    <p class="meta">Patients &middot; Coverage</p>
-    <h1 class="pt-title mt-2 max-w-[780px]">PhilHealth pays for your dental check-up. Most people don’t know.</h1>
-    <p class="pt-lede">
-      Since December 2024 every PhilHealth member and dependent has up to ₱1,000 a year for preventive dental care. Here is what that buys, how to use it, and how an HMO card works alongside it.
-    </p>
+  <!-- The clinic behind the page: its reception desk, where a patient shows the PhilHealth or HMO
+       card, fixed to the screen under the glass cards (Find a clinic's technique). Decorative. -->
+  <div class="cv-room" aria-hidden="true">
+    <picture>
+      <source media="(max-width: 639px)" srcset="/img/ws/reception-960.webp" />
+      <img src="/img/ws/reception-1920.webp" srcset="/img/ws/reception-960.webp 960w, /img/ws/reception-1920.webp 1920w" sizes="100vw" alt="" width="1920" height="1080" decoding="async" fetchpriority="high" />
+    </picture>
+  </div>
 
-    <div class="mt-6 grid gap-4 lg:grid-cols-2 lg:items-start">
-      <Pane class="pt-card" id="ph" icon="file" title="PhilHealth" meta="In force since 28 December 2024">
-        <h3 class="pt-sub">What it covers, per year</h3>
-        <dl class="pt-amounts mt-3">
-          <div><dt>₱300 × 2 visits</dt><dd>Two visits at least four months apart. Each covers an oral screening, a cleaning (prophylaxis) and fluoride varnish.</dd></div>
-          <div><dt>₱200 per tooth</dt><dd>Pit-and-fissure sealants or small (Class V) fillings, up to two teeth a year.</dd></div>
-          <div><dt>Emergency extraction</dt><dd>When a tooth has to come out urgently.</dd></div>
-          <div><dt>₱1,000 cap</dt><dd>The most PhilHealth pays per member per year for all of the above.</dd></div>
-        </dl>
-
-        <h3 class="pt-sub mt-7">How to use it</h3>
-        <ol class="pt-numbered mt-3">
-          <li><span class="pt-num">1</span><span>Be registered with a <strong class="font-semibold text-ink">YAKAP</strong> (formerly Konsulta) primary-care provider. Registration is free at any YAKAP clinic.</span></li>
-          <li><span class="pt-num">2</span><span>Ask your YAKAP clinic for a dental referral, or go to a <strong class="font-semibold text-ink">PhilHealth-accredited dental clinic</strong> linked to one.</span></li>
-          <li><span class="pt-num">3</span><span>Bring your PhilHealth number and an ID. The clinic files the claim, not you.</span></li>
-          <li><span class="pt-num">4</span><span>Space the two visits four months apart so both are paid.</span></li>
-        </ol>
-
-        <h3 class="pt-sub mt-7">What you pay</h3>
-        <p class="mt-2 text-[15px] leading-relaxed text-ink-2">
-          At government facilities, nothing. A private clinic may charge the difference above PhilHealth’s rate, but the circular caps it: <strong class="font-semibold text-ink">₱1,500</strong> for the preventive package and <strong class="font-semibold text-ink">₱600</strong> for an emergency extraction.
-        </p>
-
-        <h3 class="pt-sub mt-7">Accredited clinics in this directory</h3>
-        {philhealthClinics.length ? (
-          <ul class="mt-3 grid gap-2">
-            {philhealthClinics.map((l) => (
-              <li>
-                <a href={`/find/${l.slug}/`} class="pt-clinic-link">
-                  <ClinicBadge name={l.name} />
-                  <span class="min-w-0"><span class="block text-[15px] font-semibold text-ink">{l.name}</span><span class="block text-[14px] text-ink-2">{l.area}</span></span>
-                  <Icon name="chevron-right" />
-                </a>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <Empty icon="clinic" text="No clinic in the directory lists PhilHealth dental accreditation yet." action={{ label: 'Find a clinic', href: '/find/' }} />
-        )}
-        <p class="mt-3 text-[14px] leading-relaxed text-ink-2">Accreditation is the clinic’s to keep current; ask before you rely on it. Source: PhilHealth Circular 2024-0034.</p>
-      </Pane>
-
-      <Pane class="pt-card" id="hmo" icon="wallet" title="HMO cards">
-        <div class="grid gap-2">
-          <div class="ws-callout" data-tone="success">
-            <Icon name="check" />
-            <div><h3 class="pt-sub">What is usually covered</h3><p class="mt-0.5 text-[15px] leading-relaxed text-ink-2">Consultation, a cleaning once or twice a year, simple extractions, temporary fillings and basic gum treatment.</p></div>
-          </div>
-          <div class="ws-callout pt-callout-slate">
-            <Icon name="close" />
-            <div><h3 class="pt-sub">What usually is not</h3><p class="mt-0.5 text-[15px] leading-relaxed text-ink-2">Whitening, veneers, braces, implants, crowns, bridges and most major restorations.</p></div>
-          </div>
-          <div class="ws-callout" data-tone="warn">
-            <Icon name="alert" />
-            <div><h3 class="pt-sub">What often needs approval first</h3><p class="mt-0.5 text-[15px] leading-relaxed text-ink-2">Anything beyond a cleaning or consult may need a letter of authorization from your HMO before the dentist can start. Pick your HMO when you book so it goes on the booking, and ask the clinic about approval before the day.</p></div>
-          </div>
-        </div>
-
-        <h3 class="pt-sub mt-7">At the visit</h3>
-        <ol class="pt-numbered mt-3">
-          <li><span class="pt-num">1</span><span>Book at a clinic that lists your HMO — the filter on <a href="/find/" class="pt-link">Find a clinic</a> does this.</span></li>
-          <li><span class="pt-num">2</span><span>Bring the card and a valid ID.</span></li>
-          <li><span class="pt-num">3</span><span>Ask the clinic for the breakdown — covered, approved, and what is yours to pay — before treatment.</span></li>
-        </ol>
-
-        <p role="note" class="ws-callout mt-7" data-tone="info">
-          <Icon name="info" />
-          <span>Your HMO decides what is covered, how often, and up to what amount; the same procedure can be fully covered on one plan and excluded on another. Acceptance on a clinic page is what the clinic reported. <strong class="font-semibold">Always confirm with your HMO.</strong></span>
-        </p>
-      </Pane>
-    </div>
-
-    <Pane class="pt-card pt-anchor mt-4" id="privacy" icon="user" title="How we handle your health data">
-      <p class="max-w-[74ch] text-[15px] leading-relaxed text-ink-2">
-        Health information is sensitive personal information under the Data Privacy Act of 2012. When you book, your name and mobile number go on the clinic’s record, for your visits and their texts — no marketing, never sold, and nothing new without asking you first. To withdraw, or to ask what is kept, call the clinic on the number on its page; the <a href="/privacy/" class="pt-link">privacy notice</a> has the rest. If anything ever went wrong with your data, you and the National Privacy Commission would hear from us within 72 hours.
+  <main id="main" class="pt-main cv-glass">
+    <header class="cv-pane cv-intro">
+      <p class="cv-eyebrow">Patients &middot; Coverage</p>
+      <h1 class="pt-title">PhilHealth pays for your dental check-up. Most people don’t know.</h1>
+      <p class="pt-lede">
+        Since December 2024 every PhilHealth member and dependent has up to ₱1,000 a year for preventive dental care. Here is what that buys, how to use it, and how an HMO card works alongside it.
       </p>
-    </Pane>
+    </header>
+
+    <!-- Two columns from 960px: PhilHealth on the left; the HMO cards and the health data on the right. -->
+    <div class="cv-cols">
+      <div class="cv-col">
+        <Pane class="pt-card cv-pane" id="ph" icon="file" title="PhilHealth" meta="In force since 28 December 2024">
+          <h3 class="pt-sub cv-sub">What it covers, per year</h3>
+          <dl class="pt-amounts">
+            <div><dt>₱300 × 2 visits</dt><dd>Two visits at least four months apart. Each covers an oral screening, a cleaning (prophylaxis) and fluoride varnish.</dd></div>
+            <div><dt>₱200 per tooth</dt><dd>Pit-and-fissure sealants or small (Class V) fillings, up to two teeth a year.</dd></div>
+            <div><dt>Emergency extraction</dt><dd>When a tooth has to come out urgently.</dd></div>
+            <div><dt>₱1,000 cap</dt><dd>The most PhilHealth pays per member per year for all of the above.</dd></div>
+          </dl>
+
+          <h3 class="pt-sub cv-sub">How to use it</h3>
+          <ol class="pt-numbered">
+            <li><span class="pt-num">1</span><span>Be registered with a <strong>YAKAP</strong> (formerly Konsulta) primary-care provider. Registration is free at any YAKAP clinic.</span></li>
+            <li><span class="pt-num">2</span><span>Ask your YAKAP clinic for a dental referral, or go to a <strong>PhilHealth-accredited dental clinic</strong> linked to one.</span></li>
+            <li><span class="pt-num">3</span><span>Bring your PhilHealth number and an ID. The clinic files the claim, not you.</span></li>
+            <li><span class="pt-num">4</span><span>Space the two visits four months apart so both are paid.</span></li>
+          </ol>
+
+          <h3 class="pt-sub cv-sub">What you pay</h3>
+          <p class="cv-text">
+            At government facilities, nothing. A private clinic may charge the difference above PhilHealth’s rate, but the circular caps it: <strong>₱1,500</strong> for the preventive package and <strong>₱600</strong> for an emergency extraction.
+          </p>
+
+          <h3 class="pt-sub cv-sub">Accredited clinics in this directory</h3>
+          {philhealthClinics.length ? (
+            <ul class="cv-clinics">
+              {philhealthClinics.map((l) => (
+                <li>
+                  <a href={`/find/${l.slug}/`} class="pt-clinic-link">
+                    <ClinicBadge name={l.name} />
+                    <span class="min-w-0"><span class="cv-clinic-name">{l.name}</span><span class="cv-clinic-area">{l.area}</span></span>
+                    <Icon name="chevron-right" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty icon="clinic" text="No clinic in the directory lists PhilHealth dental accreditation yet." action={{ label: 'Find a clinic', href: '/find/' }} />
+          )}
+          <p class="cv-small">Accreditation is the clinic’s to keep current; ask before you rely on it. Source: PhilHealth Circular 2024-0034.</p>
+        </Pane>
+      </div>
+
+      <div class="cv-col">
+        <Pane class="pt-card cv-pane" id="hmo" icon="wallet" title="HMO cards">
+          <div class="cv-callouts">
+            <div class="ws-callout" data-tone="success">
+              <Icon name="check" />
+              <div><h3 class="pt-sub">What is usually covered</h3><p>Consultation, a cleaning once or twice a year, simple extractions, temporary fillings and basic gum treatment.</p></div>
+            </div>
+            <div class="ws-callout pt-callout-slate">
+              <Icon name="close" />
+              <div><h3 class="pt-sub">What usually is not</h3><p>Whitening, veneers, braces, implants, crowns, bridges and most major restorations.</p></div>
+            </div>
+            <div class="ws-callout" data-tone="warn">
+              <Icon name="alert" />
+              <div><h3 class="pt-sub">What often needs approval first</h3><p>Anything beyond a cleaning or consult may need a letter of authorization from your HMO before the dentist can start. Pick your HMO when you book so it goes on the booking, and ask the clinic about approval before the day.</p></div>
+            </div>
+          </div>
+
+          <h3 class="pt-sub cv-sub">At the visit</h3>
+          <ol class="pt-numbered">
+            <li><span class="pt-num">1</span><span>Book at a clinic that lists your HMO — the filter on <a href="/find/" class="pt-link pt-link-reach">Find a clinic</a> does this.</span></li>
+            <li><span class="pt-num">2</span><span>Bring the card and a valid ID.</span></li>
+            <li><span class="pt-num">3</span><span>Ask the clinic for the breakdown — covered, approved, and what is yours to pay — before treatment.</span></li>
+          </ol>
+
+          <p role="note" class="ws-callout cv-note" data-tone="info">
+            <Icon name="info" />
+            <span>Your HMO decides what is covered, how often, and up to what amount; the same procedure can be fully covered on one plan and excluded on another. Acceptance on a clinic page is what the clinic reported. <strong>Always confirm with your HMO.</strong></span>
+          </p>
+        </Pane>
+
+        <Pane class="pt-card pt-anchor cv-pane" id="privacy" icon="user" title="How we handle your health data">
+          <p class="cv-text">
+            Health information is sensitive personal information under the Data Privacy Act of 2012. When you book, your name and mobile number go on the clinic’s record, for your visits and their texts — no marketing, never sold, and nothing new without asking you first. To withdraw, or to ask what is kept, call the clinic on the number on its page; the <a href="/privacy/" class="pt-link pt-link-reach">privacy notice</a> has the rest. If anything ever went wrong with your data, you and the National Privacy Commission would hear from us within 72 hours.
+          </p>
+        </Pane>
+      </div>
+    </div>
   </main>
 </Base>
+
+<style is:global>
+  /* Coverage on frosted glass (the owner, 26 Sep, of this page and My visits: "is still not
+     changed"): the same recipe as Find a clinic — the clinic fixed behind the page, compact
+     translucent cards over it, a column narrow enough that the room shows on both sides. Here the
+     room is the reception desk, where the card is shown. Every rule starts with .cv-room or
+     .cv-glass, classes only this page has, so the clinic page, the booking and a dentist (which
+     share patient.css) stay exactly as they were.
+
+     The photo: a fixed layer rather than background-attachment: fixed (which iOS ignores), under
+     everything in the page's flow (z-index -1), so the top bar stands above it. A phone always
+     takes the 960 image, framed on the desk and its plant; in the dark the room is dimmed, so light
+     words on the dark glass hold up over its white walls. */
+  .cv-room {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: -1;
+    width: 100%;
+    height: 100vh;
+    height: 100lvh;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .cv-room picture { display: block; width: 100%; height: 100%; }
+  .cv-room img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* The desk, its plant and the bench on a phone; on a wider screen the desk to the corridor. */
+    object-position: 26% 50%;
+  }
+  @media (min-width: 640px) {
+    .cv-room img { object-position: 38% 50%; }
+  }
+  /* On a computer the cards cover the middle of the room, so the photo is drawn a little closer and
+     pinned on its right: the desk and its vase of flowers land in the left margin and the potted tree
+     in the right one, instead of the entrance's door frames and handle. */
+  @media (min-width: 960px) {
+    .cv-room img { transform: scale(1.35); transform-origin: 100% 45%; }
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .cv-room img { filter: brightness(0.62) saturate(0.9); }
+  }
+  :root[data-theme="dark"] .cv-room img { filter: brightness(0.62) saturate(0.9); }
+  /* Not on paper, and not under the system's own high-contrast colours. */
+  @media print, (forced-colors: active) {
+    .cv-room { display: none; }
+  }
+
+  /* The page's glass numbers, Find a clinic's (the shared tokens stay as they are). The site's own
+     names are redrawn for the glass here, so its callouts, badges and links keep their shapes and
+     only change face: secondary words and small labels darker than --c-ink-2 (the muted grey is
+     too light on glass); hairlines a translucent ink, so they show on the frost; rows and the
+     neutral callout on a lighter inner glass; links and the keyboard ring in the deep teal. */
+  .cv-glass {
+    --glass-blur: blur(14px) saturate(1.4);
+    --cv-link: #084a48;
+    --cv-hair: rgb(16 24 40 / 0.07);
+    --cv-inner: rgb(255 255 255 / 0.45);
+    --cv-solid: rgb(255 255 255 / 0.86);
+    --c-ink-2: #2f3a4a;
+    --c-muted: #2f3a4a;
+    --c-surface: var(--glass-field);
+    --ws-hair: rgb(16 24 40 / 0.12);
+    --ws-subtle: rgb(255 255 255 / 0.62);
+    --ws-field-line-hover: #98a2b3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .cv-glass {
+      --glass-pane: rgb(22 27 33 / 0.58);
+      --cv-link: var(--ws-teal-ink);
+      --cv-hair: rgb(0 0 0 / 0.35);
+      --cv-inner: rgb(12 16 20 / 0.22);
+      --cv-solid: rgb(22 27 33 / 0.85);
+      --c-ink-2: #c3cad4;
+      --c-muted: #c3cad4;
+      --ws-hair: rgb(255 255 255 / 0.12);
+      --ws-subtle: rgb(12 16 20 / 0.3);
+      --ws-field-line-hover: #64707e;
+    }
+  }
+  :root[data-theme="dark"] .cv-glass {
+    --glass-pane: rgb(22 27 33 / 0.58);
+    --cv-link: var(--ws-teal-ink);
+    --cv-hair: rgb(0 0 0 / 0.35);
+    --cv-inner: rgb(12 16 20 / 0.22);
+    --cv-solid: rgb(22 27 33 / 0.85);
+    --c-ink-2: #c3cad4;
+    --c-muted: #c3cad4;
+    --ws-hair: rgb(255 255 255 / 0.12);
+    --ws-subtle: rgb(12 16 20 / 0.3);
+    --ws-field-line-hover: #64707e;
+  }
+
+  /* The keyboard ring in the deep teal: the site's #14908f is under 3:1 on the light glass. */
+  .cv-glass :focus-visible { outline-color: var(--cv-link); }
+
+  /* A column about 1080px wide, so the room shows on both sides; the cards one even gap apart. On a
+     phone narrow gutters and a wider gap, so the clinic shows between the cards too. */
+  .cv-glass {
+    display: grid;
+    gap: 1rem;
+    max-width: 70rem;
+    margin-inline: auto;
+    padding: 0.75rem 0.875rem 1.25rem;
+  }
+  .cv-cols, .cv-col { display: grid; gap: 1rem; align-content: start; min-width: 0; }
+  @media (min-width: 640px) {
+    .cv-glass { gap: 0.75rem; padding: 1rem 1.25rem 2rem; }
+    .cv-cols, .cv-col { gap: 0.75rem; }
+  }
+  @media (min-width: 960px) {
+    .cv-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  }
+
+  /* Frosted glass: the room shows through, blurred. The Pane's own white (drawn on ::before) is off. */
+  .cv-glass .cv-pane {
+    background: var(--glass-pane);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-edge);
+    border-radius: var(--ws-r-lg);
+    box-shadow: 0 0 0 1px var(--cv-hair), var(--glass-shadow);
+  }
+  .cv-glass .ws-glass::before { content: none; }
+  /* Where a browser draws no frost, the room would sit sharp behind the words: a near-solid pane. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .cv-glass .cv-pane { background: var(--cv-solid); }
+  }
+  .cv-glass .cv-pane, .cv-glass .cv-pane.ws-pad-normal { padding: 0.875rem; }
+  @media (min-width: 640px) {
+    .cv-glass .cv-pane, .cv-glass .cv-pane.ws-pad-normal { padding: 0.875rem 1.125rem 1rem; }
+  }
+  .cv-glass .ws-pane-head { margin-bottom: 0.625rem; }
+  .cv-glass .ws-pane-icon { width: 32px; height: 32px; }
+  .cv-glass .ws-pane-title { font-size: 16px; }
+  .cv-glass strong { font-weight: 600; color: var(--c-ink); }
+
+  /* The heading, in its own small card. */
+  .cv-glass .cv-eyebrow { font-size: 13px; font-weight: 600; line-height: 1.4; color: var(--cv-link); }
+  .cv-glass .pt-title {
+    margin-top: 0.125rem;
+    font-size: clamp(1.5rem, 3.2vw, 1.9rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+  .cv-glass .pt-lede { max-width: 80ch; margin-top: 0.375rem; font-size: 15px; line-height: 1.5; }
+
+  /* Inside a card: small heads a step apart, words at 14.5px. */
+  .cv-glass .cv-sub { margin: 0.75rem 0 0.375rem; font-size: 15px; }
+  @media (min-width: 640px) {
+    .cv-glass .cv-sub { margin-top: 0.875rem; }
+  }
+  .cv-glass .ws-pane-head + .cv-sub { margin-top: 0; }
+  .cv-glass .cv-text { font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
+  .cv-glass .cv-small { margin-top: 0.5rem; font-size: 13.5px; line-height: 1.45; color: var(--c-ink-2); }
+  .cv-glass .pt-link { color: var(--cv-link); }
+
+  /* What PhilHealth pays: the rows on a lighter inner glass, tighter. */
+  .cv-glass .pt-amounts { background: var(--cv-inner); }
+  .cv-glass .pt-amounts > div { gap: 0.125rem; padding: 0.5rem 0.75rem; }
+  @media (min-width: 640px) {
+    .cv-glass .pt-amounts > div { grid-template-columns: 8.75rem minmax(0, 1fr); gap: 0.75rem; }
+  }
+  .cv-glass .pt-amounts :is(dt, dd) { font-size: 14.5px; line-height: 1.45; }
+
+  /* The numbered steps, closer together. */
+  .cv-glass .pt-numbered { gap: 0.375rem; }
+  .cv-glass .pt-numbered > li { gap: 0.625rem; font-size: 14.5px; line-height: 1.45; }
+  .cv-glass .pt-num { width: 24px; height: 24px; margin-top: -1px; font-size: 12.5px; }
+
+  /* The accredited clinics: each row the whole link (44px and more), on the near-solid field glass. */
+  .cv-glass .cv-clinics { display: grid; gap: 0.375rem; }
+  .cv-glass .pt-clinic-link { gap: 0.625rem; min-height: 48px; padding: 0.375rem 0.625rem; border-color: var(--ws-hair); }
+  .cv-glass .pt-clinic-link:hover { border-color: var(--ws-field-line-hover); background: var(--c-surface); }
+  .cv-glass .pt-clinic-link:hover > .ws-icon { color: var(--cv-link); }
+  .cv-glass .pt-clinic-link .ws-branch-badge { width: 32px; height: 32px; font-size: 12px; }
+  .cv-glass .cv-clinic-name { display: block; font-size: 14.5px; font-weight: 600; line-height: 1.35; color: var(--c-ink); }
+  .cv-glass .cv-clinic-area { display: block; font-size: 13px; line-height: 1.35; color: var(--c-ink-2); }
+  .cv-glass .ws-empty-go { color: var(--cv-link); }
+
+  /* The HMO callouts: tighter, on their solid tints (the neutral one on the inner glass). */
+  .cv-glass .cv-callouts { display: grid; gap: 0.5rem; }
+  .cv-glass .ws-callout { gap: 0.625rem; padding: 0.625rem 0.875rem; font-size: 14.5px; line-height: 1.45; }
+  .cv-glass .ws-callout .pt-sub { font-size: 14.5px; }
+  .cv-glass .ws-callout p { margin-top: 0.125rem; color: var(--c-ink-2); }
+  .cv-glass .cv-note { margin-top: 0.875rem; }
+</style>

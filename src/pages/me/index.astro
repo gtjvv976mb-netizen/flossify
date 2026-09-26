@@ -64,20 +64,26 @@ if (Astro.request.method === 'POST') {
 ---
 
 <Door title="My visits — Flossify" description="Your visits at every clinic on Flossify, under the mobile number you booked with. We text you a six-digit code; no password." step={1}>
-  <span class="inline-flex size-12 items-center justify-center rounded-card bg-teal-tint text-teal-ink" aria-hidden="true"><Icon name="calendar" size={24} /></span>
-  <p class="meta mt-5">Patients &middot; My visits</p>
-  <h1 class="mt-1.5 text-[clamp(1.75rem,3.5vw,2.25rem)]">My visits</h1>
-  <p class="mt-3 max-w-[46ch] text-[16px] leading-relaxed text-ink-2">Your visits at every clinic on Flossify, under the mobile number you booked with. We text you a six-digit code; no password.</p>
+  <Fragment slot="head">
+    <div class="me-door-head">
+      <span class="me-door-mark" aria-hidden="true"><Icon name="calendar" size={20} /></span>
+      <div class="min-w-0">
+        <p class="me-door-eyebrow">Patients &middot; My visits</p>
+        <h1 class="me-door-title">My visits</h1>
+      </div>
+    </div>
+    <p class="me-door-lede">Your visits at every clinic on Flossify, under the mobile number you booked with. We text you a six-digit code; no password.</p>
+  </Fragment>
 
-  {error && <p role="alert" class="ws-callout mt-6" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>}
+  {error && <p role="alert" class="ws-callout me-door-callout" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>}
 
-  <form method="post" class="mt-7 grid max-w-[26rem] gap-5">
+  <form method="post" class="me-door-form">
     <Csrf />
     <label class="field"><span class="meta">Mobile number</span><input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="0917 000 0000" value={typed} required autofocus /></label>
-    <button type="submit" class="btn btn-primary btn-lg w-full sm:w-auto sm:justify-self-start"><span>Text me a code</span><Icon name="arrow-right" /></button>
+    <button type="submit" class="btn btn-primary me-door-go"><span>Text me a code</span><Icon name="arrow-right" /></button>
   </form>
 
-  <p class="mt-7 border-t border-hair pt-5">
-    <a href="/me/code/" class="inline-flex min-h-11 items-center gap-2 text-[15px] font-semibold text-teal-ink underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current">Already have a code? Enter it here.<Icon name="chevron-right" size={16} /></a>
+  <p class="me-door-more">
+    <a href="/me/code/" class="me-door-link">Already have a code? Enter it here.<Icon name="chevron-right" size={16} /></a>
   </p>
 </Door>

@@ -2,13 +2,19 @@
 // The patient area's frame (/me/visits/): the workspace's soft left-sidebar pattern, for a patient.
 // A patient has no clinic and no tenant, so this does not use the clinic layout (Clinic.astro reads
 // the staff session and the branch); it draws the same pieces with the same classes instead — the
-// room behind (the waiting area, the bench patients sit on), a white sidebar on the left with the
+// room behind (the waiting area, the bench patients sit on), a glass sidebar on the left with the
 // Flossify mark and two items (My visits, Find a clinic), the person at the foot of the sidebar's own
 // column (the mobile number they signed in with), the privacy notice and Sign out — and at the top of
 // the content the page's title and one quiet "Book a visit". docs/workspace-redesign.md, "Shell API"
 // and "The whole site, soft".
 //
-// Sizes are the workspace's: from 1024px the whole sidebar (244px; 220px to 1279px); 768–1023px an
+// On frosted glass, like the door and Find a clinic (the owner, 26 Sep): the waiting area sharp
+// behind, and the sidebar, the top bar and the cards translucent over it. Every rule for that is
+// below and starts with .me-shell, so the clinic workspace (/c/…), which shares the ws classes,
+// stays exactly as it was.
+//
+// Sizes are the workspace's (the content column a little narrower, so the room shows beside it):
+// from 1024px the whole sidebar (244px; 220px to 1279px); 768–1023px an
 // icon rail with a small word under each icon; to 767px no sidebar on screen — a slim bar (menu, the
 // mark, Book a visit) whose menu button slides the same sidebar in from the left over a scrim (Tab
 // stays inside, Escape / the scrim / × close it, focus returns to the menu button). That behaviour is
@@ -43,9 +49,13 @@ const nav = [
 ---
 
 <Base title={title} description={description}>
-  <div class="ws me-shell bg-transparent text-[15px] leading-normal [--ws-max:1040px]" data-room="waiting">
+  <div class="ws me-shell bg-transparent text-[15px] leading-normal [--ws-max:920px]" data-room="waiting">
+    {/* The waiting area, the door's own photo (a phone always takes the 960 image), under frosted glass. */}
     <div class="ws-backdrop" aria-hidden="true">
-      <img src={room(1920)} srcset={srcset} sizes="100vw" alt="" decoding="async" />
+      <picture>
+        <source media="(max-width: 639px)" srcset={room(960)} />
+        <img src={room(1920)} srcset={srcset} sizes="100vw" alt="" width="1920" height="1080" decoding="async" fetchpriority="high" />
+      </picture>
     </div>
 
     <div class="ws-app">
@@ -143,4 +153,165 @@ const nav = [
       .ws-right { display: flex; flex: 1 1 auto; }
     }
   }
+</style>
+
+<style is:global>
+  /* The patient shell on frosted glass (the owner, 26 Sep: the patient pages "the same" as Find a
+     clinic). Every rule starts with .me-shell, a class only this frame has, so the clinic workspace,
+     which draws the same ws classes, stays exactly as it was.
+
+     The room: the waiting area as Find a clinic and the door show it — sharp, no veil — and dimmed
+     in the dark, so light words on the dark glass hold up over its white walls. Hidden under the
+     system's own high-contrast colours (and on paper, by the workspace's own print rule). */
+  .me-shell .ws-backdrop picture { display: contents; }
+  .me-shell .ws-backdrop img { filter: none; transform: none; object-position: 42% 50%; }
+  @media (min-width: 640px) {
+    .me-shell .ws-backdrop img { object-position: 50% 50%; }
+  }
+  .me-shell .ws-backdrop::after { content: none; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .me-shell .ws-backdrop img { filter: brightness(0.62) saturate(0.9); }
+  }
+  :root[data-theme="dark"] .me-shell .ws-backdrop img { filter: brightness(0.62) saturate(0.9); }
+  @media (forced-colors: active) {
+    .me-shell .ws-backdrop { display: none; }
+  }
+
+  /* The shell's glass numbers: the door's (a lighter frost, so the room reads as a room), with the
+     workspace's own surface names redrawn for the glass inside this frame only — the cards
+     (--ws-card, drawn on each card's ::before), the sidebar, the phone's slide-in sidebar and the top
+     bar. Secondary words and small labels in a deeper slate (the muted grey is too light on glass);
+     links, the chosen tab and the keyboard ring in the deep teal (the door's link teal, which holds
+     4.5:1 where the reception desk darkens the glass), and the blue words (the "clinic will confirm"
+     hint) a shade deeper for the same reason (and a shade lighter in dark: #9fc0fb fell to 4.48:1 on a phone); the quiet buttons on the glass field's near-solid face. */
+  .me-shell {
+    --glass-blur: blur(14px) saturate(1.4);
+    --me-link: #073f3e;
+    --me-hair: rgb(16 24 40 / 0.07);
+    --me-rule: rgb(16 24 40 / 0.1);
+    --me-solid: rgb(255 255 255 / 0.86);
+    --me-drawer: rgb(255 255 255 / 0.78);
+    --me-bar: rgb(255 255 255 / 0.66);
+    --ws-card: var(--glass-pane);
+    --ws-side-bg: var(--glass-pane);
+    --ws-side-solid: var(--me-drawer);
+    --ws-bar-bg: var(--me-bar);
+    --ws-veil: transparent;
+    --ws-hair: var(--me-rule);
+    --c-ink-2: #2f3a4a;
+    --c-muted: #2f3a4a;
+    --c-surface: var(--glass-field);
+    --ws-field: var(--glass-field);
+    --ws-field-line: #bcc3cd;
+    --ws-field-line-hover: #98a2b3;
+    --ws-hover: rgb(255 255 255 / 0.5);
+    --ws-subtle: rgb(255 255 255 / 0.95);
+    --ws-teal-ink: var(--me-link);
+    --ws-blue-ink: #15357a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .me-shell {
+      --glass-pane: rgb(22 27 33 / 0.58);
+      --me-link: #7fdcd4;
+      --me-hair: rgb(0 0 0 / 0.35);
+      --me-rule: rgb(255 255 255 / 0.12);
+      --me-solid: rgb(22 27 33 / 0.85);
+      --me-drawer: rgb(22 27 33 / 0.82);
+      --me-bar: rgb(22 27 33 / 0.66);
+      --c-ink-2: #c3cad4;
+      --c-muted: #c3cad4;
+      --ws-field-line: #4a5563;
+      --ws-field-line-hover: #64707e;
+      --ws-hover: rgb(255 255 255 / 0.07);
+      --ws-subtle: rgb(38 45 54 / 0.95);
+      --ws-teal-ink: #7fdcd4;
+      --ws-blue-ink: #b4cffd;
+    }
+  }
+  :root[data-theme="dark"] .me-shell {
+    --glass-pane: rgb(22 27 33 / 0.58);
+    --me-link: #7fdcd4;
+    --me-hair: rgb(0 0 0 / 0.35);
+    --me-rule: rgb(255 255 255 / 0.12);
+    --me-solid: rgb(22 27 33 / 0.85);
+    --me-drawer: rgb(22 27 33 / 0.82);
+    --me-bar: rgb(22 27 33 / 0.66);
+    --c-ink-2: #c3cad4;
+    --c-muted: #c3cad4;
+    --ws-field-line: #4a5563;
+    --ws-field-line-hover: #64707e;
+    --ws-hover: rgb(255 255 255 / 0.07);
+    --ws-subtle: rgb(38 45 54 / 0.95);
+    --ws-teal-ink: #7fdcd4;
+    --ws-blue-ink: #b4cffd;
+  }
+
+  /* The keyboard ring in the deep teal: the site's #14908f is under 3:1 on the light glass. */
+  .me-shell :focus-visible { outline-color: var(--me-link); }
+
+  /* Frosted glass: the cards (their face is drawn on ::before, the workspace's way, so nothing in a
+     card gets a new containing block), the sidebar, and the top bar. Where a browser draws no frost,
+     a near-solid face instead. */
+  .me-shell .ws-glass {
+    border-color: var(--glass-edge);
+    border-radius: var(--ws-r-lg);
+    box-shadow: 0 0 0 1px var(--me-hair), var(--glass-shadow);
+  }
+  .me-shell .ws-glass::before {
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+  }
+  .me-shell .ws-side {
+    border-right-color: var(--glass-edge);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+  }
+  .me-shell .ws-top::before {
+    border-bottom-color: var(--glass-edge);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .me-shell { --ws-card: var(--me-solid); --ws-side-bg: var(--me-solid); --ws-bar-bg: var(--me-solid); --ws-side-solid: var(--me-solid); }
+  }
+  /* The chosen tab and the role pill on their solid pale teal, so they read as chosen on the glass. */
+  .me-shell .ws-nav-item[aria-current="page"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ws-teal) 30%, transparent); }
+
+  /* Compact, the door's density: the cards one even gap apart, their heads and rows tighter, the
+     head a size down. */
+  .me-shell .ws-main { padding-top: 1rem; padding-bottom: 2rem; }
+  .me-shell .ws-main-panes { gap: 0.75rem; }
+  .me-shell .ws-pad-none > .ws-pane-head { padding: 0.75rem 1.125rem; }
+  .me-shell .ws-pane-icon { width: 32px; height: 32px; }
+  .me-shell .ws-pane-title { font-size: 16px; }
+  .me-shell .ws-main > .ws-callout { padding: 0.625rem 0.875rem; font-size: 14.5px; }
+
+  /* A phone: the page's title, which stands at the top of the content there, on its own small glass
+     card (as Find a clinic's heading), and the room showing between the cards and at both sides —
+     the door's 20px gutters, so the cards keep their width after the code step. The bar's ends line
+     up with the cards' edges. */
+  @media (max-width: 767px) {
+    .me-shell .ws-main { padding: 0.75rem 1.25rem 2rem; }
+    .me-shell .ws-bar-row { padding-inline: 1.25rem; }
+    .me-shell .ws-devline { margin-inline: 1.25rem; }
+    .me-shell .ws-main-panes { gap: 0.875rem; }
+    .me-shell .ws-phone-title {
+      margin: 0; padding: 0.625rem 0.875rem;
+      border: 1px solid var(--glass-edge); border-radius: var(--ws-r-lg);
+      background: var(--ws-card);
+      -webkit-backdrop-filter: var(--glass-blur);
+      backdrop-filter: var(--glass-blur);
+      box-shadow: 0 0 0 1px var(--me-hair), var(--glass-shadow);
+      font-size: 20px; color: var(--c-ink);
+    }
+    .me-shell .ws-pad-none > .ws-pane-head { padding: 0.75rem 0.875rem; }
+  }
+  /* The narrowest phones (under 360px): 12px gutters, so the bar keeps "Book a visit" on one line
+     (with 20px it wrapped and the sticky bar grew from 60px to 110px). */
+  @media (max-width: 359px) {
+    .me-shell .ws-main { padding-inline: 0.75rem; }
+    .me-shell .ws-bar-row { padding-inline: 0.75rem; }
+    .me-shell .ws-devline { margin-inline: 0.75rem; }
+  }
+
 </style>

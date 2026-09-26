@@ -48,8 +48,13 @@ home page's cards on the film (`.pane.pane-glass`, see "The film"), the
 clinic sign-up `/start/`, whose compact glass cards stand on a fixed photo of
 the treatment room (`/img/ws/chair-*.webp`), and Find a clinic `/find/` (the
 "I'm a Patient" page; its glass is scoped to `.pt-glass` in the page, over the
-waiting area `/img/ws/waiting-*.webp`; the rest of the patient side still
-stands on opaque cards). Glass uses the `--glass-*`
+waiting area `/img/ws/waiting-*.webp`), PhilHealth & HMO `/coverage/` (over
+the reception desk, `/img/ws/reception-*.webp`, scoped to its `cv-*` classes)
+and My visits — the door `/me/` and `/me/code/` (`_Door.astro`) and the
+signed-in `/me/visits/` (`_Shell.astro`, scoped to `.me-shell` so the clinic
+workspace is untouched), over the waiting area. A clinic's own page, its
+booking and a dentist's page still stand on opaque cards: a stock room behind
+a real clinic's page could read as that clinic's interior. Glass uses the `--glass-*`
 tokens in global.css; every line on it is measured against the pixels behind
 it (light and dark, 1440 and 390) — measure again before making it clearer.
 
