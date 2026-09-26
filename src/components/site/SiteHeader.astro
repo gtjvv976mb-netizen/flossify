@@ -24,6 +24,7 @@
 import Icon from '../ws/Icon.astro';
 import ClinicBadge from '../../pages/find/_ui/ClinicBadge.astro';
 import type { IconName } from '../ws/icons';
+import ThemeSwitch from '../ThemeSwitch.astro';
 
 export type SiteLink = { id: string; label: string; href: string; icon: IconName };
 
@@ -89,6 +90,7 @@ const action = clinic ? { href: clinic.book.href, label: clinic.book.label, icon
     </nav>
     {hasAside && <div class="site-aside"><slot name="aside" /></div>}
     <div class="site-actions">
+      <ThemeSwitch />
       <a href={signIn.href} class="site-link site-signin" aria-current={here('signin')}><Icon name="user" />{signIn.label}</a>
       <a href={action.href} class:list={['btn', ctaClass, 'site-cta']} aria-current={here('start')}>{clinic && <Icon name={action.icon} />}<span>{action.label}</span>{!clinic && <Icon name={action.icon} />}</a>
     </div>
@@ -117,6 +119,7 @@ const action = clinic ? { href: clinic.book.href, label: clinic.book.label, icon
       ))}
     </nav>
     <div class="site-drawer-foot">
+      <ThemeSwitch variant="drawer" />
       <a href={signIn.href} class="site-drawer-link" aria-current={here('signin')}><Icon name="user" size={20} /><span>{signIn.label}</span></a>
       <a href={action.href} class:list={['btn', ctaClass, 'site-drawer-cta']} aria-current={here('start')}>{clinic && <Icon name={action.icon} />}<span>{action.label}</span>{!clinic && <Icon name={action.icon} />}</a>
     </div>

@@ -1610,6 +1610,48 @@ html:has(.site-drawer[open]) { overflow: hidden; }
 .site-drawer-foot { display: grid; gap: 0.5rem; padding-top: 0.875rem; border-top: 1px solid var(--ws-hair); }
 .site-drawer-cta { width: 100%; min-height: 48px; }
 
+
+/* --- Light or dark, the person's choice (src/components/ThemeSwitch.astro) ----------------------------
+   A switch shows what pressing it does: "Dark mode" with a moon on a light page, "Light mode" with a sun on
+   a dark one — from the page's own state, the same guards every dark block uses, so it is right before any
+   script runs. The faces are display: contents, so each place's own layout (a sidebar row, a pill, the
+   icon rail under 1024px) lays out the icon and the word directly. */
+.theme-face { display: contents; }
+.theme-to-light { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-to-dark { display: none; }
+  :root:not([data-theme="light"]) .theme-to-light { display: contents; }
+}
+:root[data-theme="dark"] .theme-to-dark { display: none; }
+:root[data-theme="dark"] .theme-to-light { display: contents; }
+.theme-switch { cursor: pointer; }
+/* The public bar: a round 44px button beside Clinic sign-in, on phones too (beside the menu). */
+.theme-switch-bar {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; padding: 0;
+  border: 1px solid var(--ws-field-line); border-radius: 999px; background: var(--ws-field); color: var(--c-ink);
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+.theme-switch-bar:hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); }
+.theme-switch-bar:focus-visible, .theme-switch-float:focus-visible, .theme-switch-side:focus-visible, .theme-switch-drawer:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+.theme-switch-side .ws-icon { color: var(--c-muted); }
+.theme-switch-float { gap: 0.5rem; }
+.entrance-top:has(.theme-switch) { gap: 0.5rem; flex-wrap: wrap; }
+/* Phones: the bar keeps the menu, the mark and its one action; the switch waits in the drawer. */
+@media (max-width: 959px) { .site-actions .theme-switch-bar { display: none; } }
+/* My page: Match my device · Light · Dark, three soft pills; the chosen one teal. */
+.theme-choice { display: grid; gap: 0.5rem; }
+.theme-seg { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.theme-seg label {
+  position: relative; display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 1rem;
+  border: 1px solid var(--ws-field-line); border-radius: 999px; background: var(--ws-field);
+  color: var(--c-ink-2); font-size: 14.5px; font-weight: 600; cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.theme-seg label:hover { border-color: var(--ws-field-line-hover); }
+.theme-seg label:has(input:checked) { border-color: var(--ws-teal); background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+.theme-seg label:has(input:focus-visible) { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+.theme-choice-note { font-size: 13.5px; line-height: 1.5; color: var(--c-ink-2); }
+
 }  /* end @layer components */
 
 /* Site fields ring their whole box with the soft teal halo (in the layer above), not the global

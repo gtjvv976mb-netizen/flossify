@@ -44,6 +44,7 @@ import { inboxFor, seenAt, SEEN_COOKIE } from '../components/ws/inbox';
 import { planLine } from '../components/ws/plan';
 import { LANDED, shellLinks } from '../components/ws/routes';
 import { withClinic } from '../lib/db';
+import ThemeSwitch from '../components/ThemeSwitch.astro';
 
 type Section =
   | 'dashboard' | 'today' | 'schedule' | 'messages' | 'tasks'
@@ -280,6 +281,7 @@ const BarTitle = heading ? 'h1' : 'p';
           {/* The button holds its word only: the sign-out guard (guardSignOut in src/lib/offline-queue.ts)
               writes "Signing out…" into it with textContent, so its icon is drawn by CSS
               (.ws-signout .ws-side-link::before) and stays through that and back. */}
+          <ThemeSwitch variant="side" />
           <form method="post" action="/auth/logout" data-staff={session?.staffId} class="ws-signout"><Csrf /><button type="submit" class="ws-side-link">Sign out</button></form>
         </div>
       </aside>

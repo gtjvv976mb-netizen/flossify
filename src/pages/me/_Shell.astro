@@ -26,6 +26,7 @@ import Base from '../../layouts/Base.astro';
 import Csrf from '../../components/Csrf.astro';
 import Icon from '../../components/ws/Icon.astro';
 import { prettyPhone } from '../../lib/messages';
+import ThemeSwitch from '../../components/ThemeSwitch.astro';
 
 interface Props {
   /** The page's title: the bar's <h1> (a phone draws it at the top of the page instead). */
@@ -97,6 +98,7 @@ const nav = [
           </a>
           {/* A form post with the CSRF token, so a stray link cannot sign a phone out. The icon is
               drawn by CSS (.ws-signout .ws-side-link::before), as in the workspace. */}
+          <ThemeSwitch variant="side" />
           <form method="post" action="/me/logout" class="ws-signout"><Csrf /><button type="submit" class="ws-side-link">Sign out</button></form>
         </div>
       </aside>

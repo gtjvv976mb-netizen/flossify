@@ -41,6 +41,7 @@ import { prettyPhone } from '../../../../lib/messages';
 import { DAYS, ago, dateText, daysText, prcState, treats } from '../settings/_lib/common';
 import { daysOf, upcomingFor } from '../settings/_lib/people';
 import { can } from '../../../../lib/can';
+import ThemeSwitch from '../../../../components/ThemeSwitch.astro';
 
 // Wrong current passwords, per person: [tries, window in seconds]. (src/lib/throttle.ts keeps the
 // service's limits in LIMITS; this one waits to move there.)
@@ -202,6 +203,10 @@ const roleLabel = clinic.role_name;
               ? <>Change your name, username, email or mobile on <a href={`/c/${clinic.slug}/settings/people/${session.staffId}/`} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">your page in Clinic settings</a>.</>
               : 'To change your name, username, email or mobile, ask the owner or an admin: sign-in and reset codes depend on them.'}
           </p>
+        </Pane>
+
+        <Pane id="appearance" icon="sun" title="Appearance" class="set-sec">
+          <ThemeSwitch variant="choice" />
         </Pane>
 
         {(patients || me.prc_licence) && (

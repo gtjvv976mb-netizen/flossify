@@ -5,7 +5,7 @@
 export type IconName =
   | 'dashboard' | 'wallet' | 'settings' | 'patients' | 'calendar' | 'plus' | 'search' | 'inbox'
   | 'user' | 'logout' | 'check' | 'alert' | 'info' | 'clock' | 'money' | 'file' | 'upload' | 'download'
-  | 'chevron' | 'chevron-right' | 'chevron-left' | 'menu' | 'close' | 'message' | 'clinic' | 'arrow-right' | 'phone' | 'shield';
+  | 'chevron' | 'chevron-right' | 'chevron-left' | 'menu' | 'close' | 'message' | 'clinic' | 'arrow-right' | 'phone' | 'shield' | 'sun' | 'moon';
 
 // Each entry is the inside of a 24×24 <svg>: paths, circles, rects.
 export const PATHS: Record<IconName, string> = {
@@ -48,6 +48,9 @@ export const PATHS: Record<IconName, string> = {
   phone: '<path d="M7.2 3.5H5.5a2 2 0 0 0-2 2.1C4 13.4 10.6 20 18.4 20.5a2 2 0 0 0 2.1-2v-1.7a1.5 1.5 0 0 0-1.1-1.45l-3.1-.85a1.5 1.5 0 0 0-1.5.4l-1.3 1.3a13 13 0 0 1-6.2-6.2l1.3-1.3a1.5 1.5 0 0 0 .4-1.5l-.85-3.1A1.5 1.5 0 0 0 7.2 3.5z"/>',
   // a shield with a tick: roles, and what each may do
   shield: '<path d="M12 3l7.5 3v5.2c0 4.6-3.2 8.3-7.5 9.8-4.3-1.5-7.5-5.2-7.5-9.8V6z"/><path d="M8.8 12.2l2.2 2.2 4.2-4.4"/>',
+  // the theme switch: a sun for light, a crescent moon for dark
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
 };
 
 /** The whole <svg> for a name, for markup built in the browser (decorative: aria-hidden). */
