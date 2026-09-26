@@ -46,7 +46,7 @@ import { LANDED, shellLinks } from '../components/ws/routes';
 import { withClinic } from '../lib/db';
 
 type Section =
-  | 'dashboard' | 'today' | 'schedule' | 'messages'
+  | 'dashboard' | 'today' | 'schedule' | 'messages' | 'tasks'
   | 'patients' | 'patient' | 'add-patient' | 'import'
   | 'finances' | 'billing' | 'claims'
   | 'settings' | 'people'
@@ -81,7 +81,7 @@ interface Props {
 const { clinic, title, section, staff, branches, groupId, layout = 'sheet', wide = false, room, heading = false } = Astro.props;
 
 const TAB_OF: Record<Section, Tab | null> = {
-  dashboard: 'dashboard', today: 'dashboard', schedule: 'dashboard', messages: 'dashboard',
+  dashboard: 'dashboard', today: 'dashboard', schedule: 'dashboard', messages: 'dashboard', tasks: 'dashboard',
   patients: 'patients', patient: 'patients', 'add-patient': 'patients', import: 'patients',
   finances: 'finances', billing: 'finances', claims: 'finances',
   settings: 'settings', people: 'settings',

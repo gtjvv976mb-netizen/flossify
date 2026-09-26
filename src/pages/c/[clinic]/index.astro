@@ -61,6 +61,9 @@ import {
   DAY_MS, addDays, dayLabel, mondayOf, realDay, startMs, ymdOf, peso, summarize, summaryNotes,
 } from '../../../components/ws/cal/model';
 import { can } from '../../../lib/can';
+import { tasksFor } from '../../../lib/tasks';
+import TaskList from '../../../components/ws/TaskList.astro';
+import Empty from '../../../components/ws/Empty.astro';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -144,6 +147,11 @@ const todayTo = new Date(startMs(today) + DAY_MS);
 const data = await loadDashboard(clinic.id, { from, to, todayFrom, todayTo, finance, staffId: session.staffId });
 // Add patient and Import refuse anyone without can_edit_records here (canEditRecords): not offered to them.
 const canEdit = data.canEdit;
+// Your open tasks (032), the first three, above the calendar; the Tasks page has the rest. Shown when there
+// is something open, or to someone who may give tasks (so they can find where to).
+const mayAssign = can(clinic, 'tasks.assign');
+const myTasks = (await withClinic(clinic.id, (tx) => tasksFor(tx, session.staffId))).filter((t) => !t.doneAt);
+const tasksHref = `/c/${clinic.slug}/tasks/`;
 const csrf = csrfToken(Astro.cookies);
 
 // The summary strip. The browser recounts it from today's visits after every change.
@@ -221,6 +229,16 @@ const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
       <Tile id="tile-done" label="Done" value={sum.done} note={notes.done} icon="check" />
     )}
   </div>
+
+  {(myTasks.length > 0 || mayAssign) && (
+    <Pane id="tasks" icon="check" title="Your tasks" meta={myTasks.length ? `${myTasks.length} open` : 'Nothing open'} pad="none" class="dash-tasks">
+      <a slot="actions" href={tasksHref} class="ws-btn ws-btn-quiet ws-btn-sm">{mayAssign ? 'Assign or see all' : 'See all'}<Icon name="arrow-right" size={16} /></a>
+      {myTasks.length
+        ? <TaskList tasks={myTasks.slice(0, 3)} me={session.staffId} action={tasksHref} back={`/c/${clinic.slug}/`} kind="mine" label="Your open tasks" compact />
+        : <div class="px-6 py-4 max-md:px-4"><Empty icon="check" text="Nothing open for you. Tasks you give the team are on the Tasks page." /></div>}
+      {myTasks.length > 3 && <p class="border-t border-[var(--ws-hair)] px-6 py-3 text-[14px] max-md:px-4"><a href={tasksHref} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">{myTasks.length - 3} more</a></p>}
+    </Pane>
+  )}
 
   <div class="dash-board" data-dash>
     <Pane id="calendar" title={title} meta={calMeta} icon="calendar" pad="none" class="dash-cal">
