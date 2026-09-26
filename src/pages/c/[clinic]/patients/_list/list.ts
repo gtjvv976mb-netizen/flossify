@@ -226,7 +226,7 @@ async function readList(tx: Tx, clinicId: string, o: {
                     count(*) filter (where ${WHERE[filter]})::int as n_matched,
                     exists (select 1 from n) as has_notice,
                     (select c.area from clinic c where c.id = $11) as clinic_area,
-                    coalesce((select sa.can_edit_records from staff_access sa where sa.staff_id = $10 and sa.clinic_id = $11), false) as can_edit
+                    staff_can($10, $11, 'records.edit') as can_edit
                from r) k
        left join lateral (
          select r.id, r.first_name, r.last_name, r.suffix, r.chart_no, r.phone, to_char(r.birth_date, 'YYYY-MM-DD') as birth, r.sex,

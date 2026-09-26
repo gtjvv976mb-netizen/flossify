@@ -31,14 +31,15 @@ import { requireWorkspace } from '../../../../../lib/workspace';
 import { OPENING_LINE } from '../../../../../lib/import';
 import { withClinic } from '../../../../../lib/db';
 import {
-  canBill, loadStatement, audit, pesos, fromDb, statementNo, methodLabel, day, stamp, tinParts,
+  loadStatement, audit, pesos, fromDb, statementNo, methodLabel, day, stamp, tinParts,
   DISCOUNTS, NOT_BIR, UUID, PAYOR_METHODS,
 } from '../../../../../lib/invoices';
+import { can } from '../../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session } = ws;
-if (!canBill(session.role, clinic.can_view_finance)) return Astro.redirect(`/c/${clinic.slug}/finances/${encodeURIComponent(Astro.params.invoice ?? '')}/`, 303);
+if (!can(clinic, 'finance.bill')) return Astro.redirect(`/c/${clinic.slug}/finances/${encodeURIComponent(Astro.params.invoice ?? '')}/`, 303);
 
 const q = Astro.url.searchParams;
 const paper = q.get('paper') === 'receipt' ? 'receipt' : 'a5';

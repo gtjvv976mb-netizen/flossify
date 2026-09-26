@@ -50,7 +50,7 @@ export async function inboxFor(clinicId: string, seen: Date, staffId?: string | 
            where source = 'request' and moved_at is null
              and status not in ('cancelled', 'no_show', 'completed')
              and starts_at >= now() - interval '1 day')::int as requests,
-         case when coalesce((select a.can_edit_records from staff_access a where a.staff_id = $3::uuid and a.clinic_id = $4::uuid), false)
+         case when staff_can($3::uuid, $4::uuid, 'records.edit')
               then (select count(*) from patient_form where status = 'new')::int end as forms`,
       [seen, WINDOW_DAYS, staffId ?? null, clinicId])).rows[0]);
     const forms: number | null = r.forms ?? null;

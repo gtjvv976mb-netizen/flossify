@@ -107,17 +107,18 @@ import {
   type HealthAnswers, type HealthVersion, type AgreedAs, type PaperIn,
 } from '../../../../lib/health';
 import { readPersonForm, updateDetails, hmoSuggestions, SEXES, NOTES_MAX, type PersonIn } from '../../../../lib/import';
-import { canBill, pesos, statementNo, STATUS as BILL_STATUS, fromDb } from '../../../../lib/invoices';
+import { pesos, statementNo, STATUS as BILL_STATUS, fromDb } from '../../../../lib/invoices';
 import { prettyPhone } from '../../../../lib/messages';
 import { hmos } from '../../../../data/directory';
 import { CONDITION_LABEL, surfaceSummary, type ToothCondition, type ToothMark, type Surface, type Notation } from '../../../../data/demo';
 import { patientForms, getForm, compareWithRecord, useFormDetail, healthLists, answerText, FIELDS, TAKEABLE, type FormConsentState } from '../../../../lib/patient-forms';
 import { signedText } from './_forms/words';
+import { can } from '../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
-const money = canBill(session.role, clinic.can_view_finance);
+const money = can(clinic, 'finance.bill');
 const links = shellLinks(clinic.slug);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

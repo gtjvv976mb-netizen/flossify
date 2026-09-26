@@ -43,14 +43,15 @@ import { shellLinks } from '../../../../components/ws/routes';
 import { prettyPhone } from '../../../../lib/messages';
 import { hmos, CATEGORY_LABEL, type Category } from '../../../../data/directory';
 import {
-  canBill, feeGuide, payorOptions, priceRange, rangeText, saveStatement, parseMoney, discountOf, pesos, moneyField,
+  feeGuide, payorOptions, priceRange, rangeText, saveStatement, parseMoney, discountOf, pesos, moneyField,
   DISCOUNTS, UUID, ID_NO_MAX, LINES_MAX, NOT_BIR, type ChargeIn, type FeeRow,
 } from '../../../../lib/invoices';
+import { can } from '../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
-const may = canBill(session.role, clinic.can_view_finance);
+const may = can(clinic, 'finance.bill');
 const home = `/c/${clinic.slug}/finances/`;
 const q = Astro.url.searchParams;
 const hmoNames = new Map(hmos.map((h) => [h.id, h.name]));

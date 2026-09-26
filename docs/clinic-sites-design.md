@@ -115,7 +115,7 @@ at `/auth/login/` as before.
 
 ## Phases — each one ships on its own
 
-### P1 — usernames and the clinic's own sign-in
+### P1 — usernames and the clinic's own sign-in (shipped, PR #25)
 - Migration **029**: `staff.username citext` (`^[a-z0-9][a-z0-9._-]{2,31}$`),
   `unique (group_id, username)`, backfilled for every existing account from
   the email's local part (deduplicated); `staff.email` nullable (a member may
@@ -134,7 +134,7 @@ at `/auth/login/` as before.
   email form.
 - Username shown on My page and on a person's page; owner/admin can change it.
 
-### P2 — roles and permissions underneath
+### P2 — roles and permissions underneath (shipped)
 - Migration **030**: `clinic_role (id, group_id, name, rank, perms text[],
   is_owner, archived_at)`, six default roles per group, `staff.role_id`
   backfilled from `staff.role`; `signup_clinic()` makes the six for a new

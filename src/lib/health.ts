@@ -283,15 +283,14 @@ export async function readHealth(tx: Tx, patientId: string, limit = 12): Promise
 }
 
 /**
- * May this person write this branch's records? staff_access.can_edit_records
- * for the branch: true for every role the team page adds today (dentists,
- * associates, secretaries, assistants, admins, the owner), and the one
- * switch that can take it away. Not a role list, so a new role does not
- * silently lose the desk's most-used form.
+ * May this person write this branch's records? Their role's "records.edit"
+ * (every default role has it), unless the branch's can_edit_records switch
+ * takes it away: staff_can() in migration 030, the SQL twin of can() in
+ * src/lib/can.ts. Read in the transaction that writes, so a role changed a
+ * moment ago already counts.
  */
 export async function canEditRecords(tx: Tx, staffId: string, clinicId: string): Promise<boolean> {
-  const { rows } = await tx.query<{ ok: boolean }>(
-    'select can_edit_records as ok from staff_access where staff_id = $1 and clinic_id = $2', [staffId, clinicId]);
+  const { rows } = await tx.query<{ ok: boolean }>(`select staff_can($1, $2, 'records.edit') as ok`, [staffId, clinicId]);
   return rows[0]?.ok === true;
 }
 

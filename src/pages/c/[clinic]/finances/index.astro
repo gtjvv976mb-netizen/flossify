@@ -61,19 +61,20 @@ import { OPENING_LINE } from '../../../../lib/import';
 import { withClinic } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
 import {
-  canBill, pesos, pesosWhole, fromDb, toDb, statementNo, day, stamp, isoDay, realDay, methodLabel,
+  pesos, pesosWhole, fromDb, toDb, statementNo, day, stamp, isoDay, realDay, methodLabel,
   STATUS, NOT_BIR, UUID, DUE_SQL, HMO_WAITING_SQL, DISCOUNTS,
 } from '../../../../lib/invoices';
 import {
-  canMoneyOf, claimFilterFrom, loadClaims, postClaim, claimsCsv, csvFile, CLAIM_DONE, CLAIM_MISSED, type ClaimPost,
+  claimFilterFrom, loadClaims, postClaim, claimsCsv, csvFile, CLAIM_DONE, CLAIM_MISSED, type ClaimPost,
 } from './_claims';
+import { can } from '../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
-const may = canBill(session.role, clinic.can_view_finance);
-const canMoney = canMoneyOf(session.role, clinic.can_view_finance);
-const canSetUp = session.role === 'owner' || session.role === 'admin';
+const may = can(clinic, 'finance.bill');
+const canMoney = can(clinic, 'finance.money');
+const canSetUp = can(clinic, 'settings.edit');
 const base = `/c/${clinic.slug}/finances/`;
 const q = Astro.url.searchParams;
 

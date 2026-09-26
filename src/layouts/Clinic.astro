@@ -23,9 +23,10 @@
 // Clinic settings (settings, people). Patients is everyone's: anyone who may
 // open this branch may open its patients' records. Finances is shown
 // only to people who may see money here — the rule the billing pages enforce,
-// canBill() in src/lib/invoices.ts: owner, admin, the desk, or anyone the
-// owner gave finance at this branch. Clinic settings is the owner's and the
-// admin's, as the settings pages enforce. For others a tab is absent, not
+// can(ws, 'finance.bill') in src/lib/can.ts: by default owner, admin, the desk,
+// or anyone the owner gave finance at this branch. Clinic settings to anyone
+// who may change a part of it (settings, people, roles or the plan), by
+// default the owner and the admin, as the settings pages enforce. For others a tab is absent, not
 // disabled. The pages re-check all of this on the server; the shell only
 // decides what to show. Every link it makes comes from shellLinks()
 // (src/components/ws/routes.ts): a rebuilt page once it has landed, today's
@@ -37,7 +38,7 @@ import Menu from '../components/ws/Menu.astro';
 import Icon from '../components/ws/Icon.astro';
 import Avatar from '../components/ws/Avatar.astro';
 import type { IconName } from '../components/ws/icons';
-import { canBill as mayBill } from '../lib/invoices';
+import { can } from '../lib/can';
 import { readSession, canOpen } from '../lib/auth';
 import { inboxFor, seenAt, SEEN_COOKIE } from '../components/ws/inbox';
 import { planLine } from '../components/ws/plan';
@@ -61,7 +62,7 @@ interface Props {
   branches: { slug: string; name: string }[];
   /** The clinic's group, for the plan line. Pages pass clinic.group_id. */
   groupId?: string;
-  /** This person may see finance at this branch (staff_access.can_view_finance). Pages that know pass clinic.can_view_finance. */
+  /** Unused since roles (030): what this person may see is read from their role with canOpen() below. Kept so pages need not change. */
   finance?: boolean;
   /** 'sheet' (default): the page sits on one white card. 'panes': the page lays out its own <Pane>s on the room. */
   layout?: 'sheet' | 'panes';
@@ -77,7 +78,7 @@ interface Props {
   heading?: boolean;
 }
 
-const { clinic, title, section, staff, branches, groupId, finance, layout = 'sheet', wide = false, room, heading = false } = Astro.props;
+const { clinic, title, section, staff, branches, groupId, layout = 'sheet', wide = false, room, heading = false } = Astro.props;
 
 const TAB_OF: Record<Section, Tab | null> = {
   dashboard: 'dashboard', today: 'dashboard', schedule: 'dashboard', messages: 'dashboard',
@@ -96,9 +97,8 @@ const roomName: Room = room ?? (tab ? ROOM_OF[tab] : 'reception');
 // (the same check requireWorkspace made), for the finance switch and the inbox.
 const session = readSession(Astro.cookies);
 const access = session ? await canOpen(session, clinic.slug) : undefined;
-const sees = finance ?? access?.can_view_finance === true;
-const canBill = mayBill(staff.role, sees);
-const canSetUp = staff.role === 'owner' || staff.role === 'admin';
+const canBill = can(access, 'finance.bill');
+const canSetUp = can(access, 'settings.edit') || can(access, 'people.manage') || can(access, 'roles.manage') || can(access, 'plan.pay');
 
 // Where each link goes: the rebuilt page once it has landed, today's page until then (routes.ts).
 const links = shellLinks(clinic.slug);
@@ -125,7 +125,7 @@ const areaOf = async (): Promise<string | null> => {
 // The inbox's counts, the plan line and the area (read once). None of them ever breaks the page.
 const [inbox, plan, area] = await Promise.all([
   access ? inboxFor(access.id, seenAt(Astro.cookies.get(SEEN_COOKIE)?.value), session?.staffId) : null,
-  groupId && canSetUp ? planLine(groupId) : null,
+  groupId && can(access, 'plan.pay') ? planLine(groupId) : null,
   areaOf(),
 ]);
 const inboxCount = inbox?.total ?? 0;

@@ -123,10 +123,9 @@ export const STATUS: Record<string, { label: string; tone: string; dot: string }
 
 export const statementNo = (prefix: string, n: number | string) => `${prefix}-${String(n).padStart(6, '0')}`;
 
-/** Who may charge and record payments: the desk (secretary), the owner, the admin, and anyone the owner lets see finance here. */
-export const canBill = (role: string, finance: boolean) => role === 'owner' || role === 'admin' || role === 'secretary' || finance;
-/** Who may void: the owner and the admin, with a reason. */
-export const canVoid = (role: string) => role === 'owner' || role === 'admin';
+// Who may charge and record payments is can(ws, 'finance.bill'), and who may void (with a reason)
+// can(ws, 'finance.void'): src/lib/can.ts. By default the desk, the owner and the admin bill — and anyone
+// the owner lets see money at the branch — and the owner and the admin void.
 
 // ---------------------------------------------------------------------------
 // Manila dates

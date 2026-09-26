@@ -37,10 +37,10 @@ import { pool } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
 import { verifyPassword, setPassword, setSession, passwordProblem, authEvent, PASSWORD_MIN } from '../../../../lib/auth';
 import { hit, refund, clientIp, waitText } from '../../../../lib/throttle';
-import { canBill } from '../../../../lib/invoices';
 import { prettyPhone } from '../../../../lib/messages';
 import { ROLE_LABEL, DAYS, ago, dateText, daysText, prcState, treats } from '../settings/_lib/common';
 import { daysOf, upcomingFor } from '../settings/_lib/people';
+import { can } from '../../../../lib/can';
 
 // Wrong current passwords, per person: [tries, window in seconds]. (src/lib/throttle.ts keeps the
 // service's limits in LIMITS; this one waits to move there.)
@@ -50,7 +50,7 @@ const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
 const here = `/c/${clinic.slug}/account/`;
-const canSetUp = session.role === 'owner' || session.role === 'admin';
+const canSetUp = can(clinic, 'people.manage');
 
 interface Me {
   full_name: string; role: string; username: string; email: string; phone: string | null; prc_licence: string | null; prc_status: string | null; prc_checked_on: Date | null;
@@ -111,7 +111,7 @@ const [days, upcoming] = await Promise.all([daysOf(clinic.id, session.staffId), 
 const prc = prcState(me);
 // Finances here, in the words the person's page uses: owner and admin always; the desk by role, with the
 // claim amounts as the branch's flag says (canMoneyOf in ../finances/_claims.ts); anyone else by the flag.
-const sees = canBill(me.role, clinic.can_view_finance);
+const sees = can(clinic, 'finance.bill');
 const financeWords = me.role === 'owner' || me.role === 'admin'
   ? 'Yes, always, claim amounts included'
   : me.role === 'secretary'

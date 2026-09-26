@@ -30,6 +30,7 @@ export const prerender = false;
 import type { APIRoute, AstroCookies } from 'astro';
 import { randomBytes } from 'node:crypto';
 import { readSession, canOpen } from '../../../lib/auth';
+import { can } from '../../../lib/can';
 import { withClinic, type Tx } from '../../../lib/db';
 import { csrfHeaderOk, CSRF_MESSAGE } from '../../../lib/csrf';
 import { hit, waitText, LIMITS } from '../../../lib/throttle';
@@ -180,6 +181,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const b = await body(request);
     const { session, clinic } = await gate(cookies, String(b.clinic ?? ''));
     if (!csrfHeaderOk(cookies, request)) throw refuse(403, CSRF_MESSAGE);
+    if (!can(clinic, 'schedule.edit')) throw refuse(403, 'Your role cannot change the schedule here. Ask the owner.');
 
     const startsAt = isoDate(b.startsAt, 'The visit');
     const minutes = minutesOf(b.minutes);
@@ -260,6 +262,7 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
     const b = await body(request);
     const { session, clinic } = await gate(cookies, String(b.clinic ?? ''));
     if (!csrfHeaderOk(cookies, request)) throw refuse(403, CSRF_MESSAGE);
+    if (!can(clinic, 'schedule.edit')) throw refuse(403, 'Your role cannot change the schedule here. Ask the owner.');
 
     const id = idOf(b.id, 'The visit');
     if (!id) throw refuse(400, 'Which visit?');

@@ -17,6 +17,7 @@ export const prerender = false;
 import '../../../lib/dotenv';
 import type { APIRoute } from 'astro';
 import { readSession, canOpen, authEvent } from '../../../lib/auth';
+import { can } from '../../../lib/can';
 import { csrfOk } from '../../../lib/csrf';
 import { hit, clientIp } from '../../../lib/throttle';
 import { startCheckout } from '../../../lib/payments';
@@ -40,7 +41,7 @@ export const POST: APIRoute = async (ctx) => {
   if (!csrfOk(ctx.cookies, form)) return see(`${billing}?stale=1`);
   const clinic = await canOpen(session, slug);
   if (!clinic) return see(`/auth/login/?next=${encodeURIComponent(billing)}&denied=1`);
-  if (session.role !== 'owner' && session.role !== 'admin') return back('role');
+  if (!can(clinic, 'plan.pay')) return back('role');
 
   const invoiceId = String(form.get('invoice') ?? '').trim();
   if (!UUID.test(invoiceId)) return back('not_due');

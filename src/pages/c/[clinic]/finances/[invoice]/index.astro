@@ -45,17 +45,18 @@ import { OPENING_LINE } from '../../../../../lib/import';
 import { withClinic } from '../../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
 import {
-  canBill, canVoid, loadStatement, recordPayment, voidPayment, voidStatement, setBirRef, fixBirRef, audit,
+  loadStatement, recordPayment, voidPayment, voidStatement, setBirRef, fixBirRef, audit,
   pesos, moneyField, fromDb, statementNo, methodLabel, day, stamp, isoDay,
   METHODS, REF_LABEL, STATUS, DISCOUNTS, NOT_BIR, UUID, REF_MAX, BIR_REF_MAX, REASON_MAX,
   type PaymentIn,
 } from '../../../../../lib/invoices';
+import { can } from '../../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
-const may = canBill(session.role, clinic.can_view_finance);
-const voider = canVoid(session.role);
+const may = can(clinic, 'finance.bill');
+const voider = can(clinic, 'finance.void');
 const id = Astro.params.invoice ?? '';
 const home = `/c/${clinic.slug}/finances/`;
 const here = `${home}${id}/`;

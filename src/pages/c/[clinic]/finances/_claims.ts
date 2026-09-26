@@ -50,8 +50,8 @@ export const CLAIM_VIEWS = {
 export type ClaimView = keyof typeof CLAIM_VIEWS;
 export interface ClaimFilter { view: ClaimView; payor: string }
 
-/** Who may see claim money and move a claim: the branch's finance flag, the owner, the admin. */
-export const canMoneyOf = (role: string, finance: boolean) => finance || role === 'owner' || role === 'admin';
+// Who may see claim money and move a claim: can(ws, 'finance.money') in src/lib/can.ts — by default the
+// owner, the admin, and anyone the owner lets see money at the branch.
 
 /** The filter from the URL; `key` is the view's parameter (Finances: claims, the old page: view). */
 export function claimFilterFrom(params: URLSearchParams, key: string): ClaimFilter {

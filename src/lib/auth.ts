@@ -12,6 +12,7 @@ import './dotenv';
 import { scryptSync, randomBytes, timingSafeEqual, createHmac } from 'node:crypto';
 import type { AstroCookies } from 'astro';
 import { pool } from './db';
+import { permsOf, type Perm, type RoleAccess } from './can';
 
 const SECRET = process.env.SESSION_SECRET;
 if (!SECRET || SECRET.length < 32) throw new Error('SESSION_SECRET must be set to at least 32 characters. See .env.example.');
@@ -123,12 +124,20 @@ const DUMMY_HASH = hashPassword('not-a-real-password');
  *  the account disabled, or the password changed (token version) — all take effect at once. */
 export async function canOpen(session: Session, clinicSlug: string) {
   const { rows } = await pool.query(
-    `select b.id, b.slug, b.name, b.group_id, b.can_view_finance
-       from staff_branches($1) b, staff s
-      where b.slug = $2 and s.id = $1 and s.disabled_at is null and s.token_version = $3`,
+    `select b.id, b.slug, b.name, b.group_id, b.can_view_finance, a.can_edit_records,
+            r.name as role_name, r.rank as role_rank, r.is_owner as role_owner, r.perms as role_perms
+       from staff_branches($1) b
+       join staff s on s.id = $1
+       join staff_access a on a.staff_id = s.id and a.clinic_id = b.id
+       join clinic_role r on r.id = s.role_id
+      where b.slug = $2 and s.disabled_at is null and s.token_version = $3`,
     [session.staffId, clinicSlug, session.tv ?? 0]);
-  return rows[0] as { id: string; slug: string; name: string; group_id: string; can_view_finance: boolean } | undefined;
+  const row = rows[0] as (Branch & RoleAccess) | undefined;
+  return row ? { ...row, perms: permsOf(row) } : undefined;
 }
+/** A branch someone may open, with their role there (canOpen). */
+export interface Branch { id: string; slug: string; name: string; group_id: string; can_view_finance: boolean }
+export type OpenBranch = Branch & RoleAccess & { perms: ReadonlySet<Perm> };
 
 /** Set a password. The version bump signs out every session this person has, including the one asking. */
 export async function setPassword(staffId: string, password: string): Promise<number> {

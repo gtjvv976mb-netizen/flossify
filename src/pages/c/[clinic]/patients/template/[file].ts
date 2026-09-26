@@ -10,7 +10,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { requireWorkspace } from '../../../../../lib/workspace';
 import { withClinic } from '../../../../../lib/db';
-import { canBill } from '../../../../../lib/invoices';
+import { can } from '../../../../../lib/can';
 import { template, type Kind } from '../../../../../lib/import';
 
 const FILES: Record<string, { kind: Kind; ext: 'csv' | 'xlsx' }> = {
@@ -34,7 +34,7 @@ export const GET: APIRoute = async (ctx) => {
           [clinic.group_id, clinic.id])).rows.map((r) => r.full_name as string),
       }))
     : { services: [], dentists: [] };
-  const t = template(want.kind, canBill(session.role, clinic.can_view_finance), extra);
+  const t = template(want.kind, can(clinic, 'finance.bill'), extra);
   const name = `flossify-${want.kind}-template.${want.ext}`;
   return new Response(want.ext === 'csv' ? t.csv : new Uint8Array(t.xlsx), {
     headers: {

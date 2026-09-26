@@ -42,16 +42,16 @@ import Glyph from './_ui/Glyph.astro';
 import './_list/list.css';
 import './_forms/forms.css';
 import { requireWorkspace } from '../../../../lib/workspace';
-import { canBill } from '../../../../lib/invoices';
 import { DAY_MS, startMs, ymdOf } from '../../../../components/ws/cal/model';
 import { loadList, readState, listHref, SORTS, type Sort } from './_list/list';
 import { newFormsWaiting } from '../../../../lib/patient-forms';
+import { can } from '../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
 
-const finance = canBill(session.role, clinic.can_view_finance);
+const finance = can(clinic, 'finance.bill');
 const base = `/c/${clinic.slug}/patients/`;
 const params = Astro.url.searchParams;
 const partAsked = params.get('part');

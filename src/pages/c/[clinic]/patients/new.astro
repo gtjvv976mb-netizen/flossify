@@ -62,7 +62,7 @@ import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
 import { hit, waitText, LIMITS } from '../../../../lib/throttle';
-import { canBill, METHODS, pesos, realDay, type Cents } from '../../../../lib/invoices';
+import { METHODS, pesos, realDay, type Cents } from '../../../../lib/invoices';
 import {
   LISTS, NOTE_MAX, NAME_MAX, manilaToday, ageOn, ageText, oneLine, readHealthForm, canEditRecords, noticeInForce,
   recordDeskConsent, recordPaperConsent, readPaperForm, PAPER_WORDS, dateText, answered, type HealthAnswers, type AgreedAs, type PaperIn,
@@ -75,11 +75,12 @@ import {
 import { hmos } from '../../../../data/directory';
 import { prettyPhone } from '../../../../lib/messages';
 import { countNewForms } from '../../../../lib/patient-forms';
+import { can } from '../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
-const money = canBill(session.role, clinic.can_view_finance);
+const money = can(clinic, 'finance.bill');
 const here = `/c/${clinic.slug}/patients/new/`;
 const today = manilaToday();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -29,10 +29,10 @@ import Claims from '../finances/_Claims.astro';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
-import { canBill } from '../../../../lib/invoices';
 import {
-  canMoneyOf, claimFilterFrom, loadClaims, postClaim, claimsCsv, CLAIM_DONE, CLAIM_MISSED, type ClaimPost,
+  claimFilterFrom, loadClaims, postClaim, claimsCsv, CLAIM_DONE, CLAIM_MISSED, type ClaimPost,
 } from '../finances/_claims';
+import { can } from '../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -40,7 +40,7 @@ const { clinic, session, branches } = ws;
 const q = Astro.url.searchParams;
 const base = `/c/${clinic.slug}/claims/`;
 
-if (canBill(session.role, clinic.can_view_finance)) {
+if (can(clinic, 'finance.bill')) {
   const to = new URLSearchParams({ show: 'claims' });
   const view = q.get('view');
   if (view && view !== 'open') to.set('claims', view);
@@ -50,7 +50,7 @@ if (canBill(session.role, clinic.can_view_finance)) {
 }
 
 // From here on: someone without Finances. No amounts, no money moves (canMoney is false for them).
-const canMoney = canMoneyOf(session.role, clinic.can_view_finance);
+const canMoney = can(clinic, 'finance.money');
 const filter = claimFilterFrom(q, 'view');
 const link = (changes: Record<string, string | null> = {}) => {
   const s = new URLSearchParams(q);

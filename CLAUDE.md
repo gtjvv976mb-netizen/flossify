@@ -311,8 +311,8 @@ Built for a front desk between patients and a dentist with gloves just off:
 
 ## Clinic doors and usernames — `/<clinic>/sign-in/` (029)
 
-`docs/clinic-sites-design.md` is the plan (P1 usernames and doors — shipped;
-P2 roles, P3 People & Roles, P4 tasks, P5 the clinic's site at `/<clinic>/`).
+`docs/clinic-sites-design.md` is the plan (P1 usernames and doors, P2 roles
+— shipped; P3 People & Roles, P4 tasks, P5 the clinic's site at `/<clinic>/`).
 
 - **Every staff account has a username**, unique within its group
   (`staff.username`, `unique (group_id, username)`, `username_ok()` =
@@ -339,6 +339,30 @@ P2 roles, P3 People & Roles, P4 tasks, P5 the clinic's site at `/<clinic>/`).
 - **`RESERVED` in `src/lib/slug.ts`** lists first path segments no clinic slug
   may take (`uniqueClinicSlug` skips them: "Find" → `find-2`). A page at a new
   first segment goes on that list.
+
+### Roles and permissions (030)
+
+- **What someone may do is `can(ws, key)`** (`src/lib/can.ts`), never a role
+  name. `requireWorkspace` returns `perms`; `canOpen()` reads them with branch
+  access on every request, so a role change counts on the next click. The keys
+  and their words are `PERMS`; SQL checks use `staff_can(staff, clinic, key)`,
+  the same rule (`canEditRecords`, the inbox, the calendar, the patient list).
+  The pages show or hide; each page and API refuses on its own.
+- **Roles are rows** (`clinic_role`, per group, ranked, `perms text[]`), and
+  every group starts with the six old roles ticked exactly as the pages allowed
+  before — `clinic_default_roles()` and `DEFAULT_ROLES`, change both together.
+  The Owner role holds every key whatever its row says. `staff.role_id` is the
+  role; `staff.role` stays as the professional side (owner, a dentist who
+  treats, the desk) and a trigger keeps `role_id` in step for code that only
+  sets `staff.role`. `staff_access.can_view_finance` still adds Finances and
+  amounts at one branch; `can_edit_records` false still takes editing away.
+- **Verified by snapshot**: 7 roles × 20 workspace pages, structure identical
+  before and after (`snap.mjs`/`cmp.mjs` in the session scratchpad; the
+  approach: sign in as each, fingerprint tabs, headings, buttons, form fields
+  and links, mask ids). Do the same when a check moves.
+- The calendar does not yet go read-only for a role without `schedule.edit`
+  (the API refuses with a sentence); P3 hides it when the roles screen can
+  untick it.
 
 ## The patient side — `/find/`
 
@@ -813,6 +837,7 @@ src/pages/auth/                sign-in, sign-out, forgot (text a code), code (se
 src/pages/start/               a clinic sets itself up
 src/pages/[clinic]/            a clinic's own address: sign-in (its door), index (redirect until P5)
 src/lib/clinic-door.ts, username.ts  the remembered clinic, Find your clinic; username rules
+src/lib/can.ts                 permission keys, default roles, can(ws, key); roles are clinic_role rows (030)
 src/pages/c/[clinic]/settings/ profile + hours + HMOs + listing, fees, team (invites), photos, privacy (DPO), billing
 src/pages/c/[clinic]/claims/   HMO and PhilHealth claims: file, approve, deny, pay, notes, aging, CSV
 src/pages/me/                  patients: my visits by mobile (code → list; confirm / cancel / calendar)
