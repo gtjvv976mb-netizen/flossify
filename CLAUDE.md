@@ -820,7 +820,7 @@ and marked *Easiest*.
 
 ## The clinical record (033) — Timeline, Treatment, Notes, Prescriptions, Files, next check-up
 
-The patient record (`patients/[patient].astro`) has twelve sections: Overview · Timeline · Health · Chart ·
+The patient record (`patients/[patient].astro`) has twelve sections: Overview · Timeline (visits, 035) · Health · Chart ·
 Treatment · Notes · Rx & letters · Files · Visits · Money · Consent · Texts. Built from standard dental
 practice — the real SwiftCare admin record the owner linked was **not** opened (another clinic's patient
 data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical`, `loadTimeline`,
@@ -843,7 +843,8 @@ data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical
   `patients/<id>/files/<file>/` behind `requireWorkspace` + RLS (no-store; views and downloads audited).
   The public `/uploads/` route cannot reach them. Remove hides a file (`removed_at`), never deletes it.
 - **Next check-up** (recall) sits on the Overview: 3/6/12 months in one tap, or a day.
-- The Timeline merges every table (money only for people who may bill) with filter chips.
+- The Timeline is built around the visits (035, below); what happened between visits stays as small lines
+  with "Open" to their section (money only for people who may bill).
 - **Colour-coded by group** (the owner asked that encoders never lose their place): `_record/sections.ts`
   puts each section in a group with one hue — Patient teal (Overview, Timeline, Visits), Health rose,
   Clinical blue (Chart, Treatment, Notes, Files), Documents violet (Rx & letters, Consent, Texts),
@@ -888,6 +889,42 @@ or out of range, clearance needed/waiting/cleared, an LOA waiting, a plan behind
   only with it; anyone with records.edit records an adjustment.
 - `ws:panel-open` now carries `auto: true` when the server drew a panel open (a refused post): a page
   must not refill that form from the first matching opener (`src/components/ws/shell.ts`).
+
+## The Timeline's visits and the signed consent (035)
+
+The owner: the Timeline is "the full details of the patient's visit" — a visit is clickable and pops out
+the doctor, the consent form, the signature (the patient signs on an iPad), the procedure, the tooth, the
+time and the amount paid.
+
+- **A visit is a card, and the card is one button** (`_record/Timeline.astro`): time, status, dentist,
+  what was done and to which tooth, "Consent signed" with a small copy of the signature, Paid / Owes.
+  It opens a side panel (`_record/VisitPanels.astro`, rendered outside the sections so Visits' "See the
+  whole visit" and Consent's "See the visit" open it too): the visit, consent and signature, treatment
+  done, the dentist's notes, BP, Rx and letters (Print), payment (charged, paid, HMO share, still owed,
+  each statement's lines, each payment), files, texts. Chips: Everything · Visits · Between visits.
+- **What belongs to a visit** is `loadVisits()` in `src/lib/visit-record.ts`: its `appointment_id`, else
+  the Manila day (the visit that had started by then). Treatment, notes, prescriptions or a statement
+  on a day with nothing booked make an "At the clinic" day of their own; BP, files, letters and payments
+  only join an existing one; a payment follows its statement. The per-visit balance is
+  `patient_balance()`'s rule, statement by statement. Every Timeline line has a `ref`
+  (`done:<id>`, `pay:<id>` …) so a line a visit holds is not listed twice.
+- **The consent is signed by hand on the clinic's tablet** at `/c/<slug>/patients/<id>/sign/<visit>/`, its
+  own page (no workspace sidebar for a patient to wander into): step 1 for the clinic (tick the plan's
+  open lines the dentist explained, anything else, the dentist), "Hand the tablet to <name>", step 2 for
+  the patient (the treatment, `TREATMENT_CONSENT`'s words in force, who signs — only a parent or guardian,
+  with relation, when the birth date says under 18 — name, finger signature, one tick). Saved, it shows
+  only "Thank you — please hand the tablet back"; the desk's button returns to the record with the visit
+  open (`?visit=<id>#timeline`). Offered for a visit going ahead today or later, or one the patient is
+  at now (`canSign`); never for a cancelled, missed or past visit.
+- **`visit_consent` (035) is insert-only for the app** (select, insert; measured: update and delete are
+  refused) and a trigger checks the visit is this patient's at this clinic and the version is a
+  treatment consent. `signVisit()` in `src/lib/visit-consent.ts` re-checks everything in the transaction
+  (canEditRecords, visit status, the words in force, the minor rule, the strokes), audit `consent.sign`.
+- **The signature is strokes, never an image**: `[[x, y], …]` lines of whole numbers in a 1000 × 400 box
+  (`readStrokes`: ≤ 80 strokes, ≤ 6000 points, enough ink to be a signature), drawn back as one SVG path
+  (`_record/Signature.astro`) in dark ink on a white slip in both themes, like paper.
+- Measured: every line on the cards, the panel, Consent's list and both signing steps ≥ 4.5:1 light and
+  dark at 1440 and 390; no target under 44px on the signing page; no sideways scroll at 390.
 
 ## Open — read before shipping
 
@@ -1002,6 +1039,9 @@ src/pages/c/[clinic]/finances/ Finances tab: statements, payments, claims, new c
 src/pages/c/[clinic]/account/  My page (details, password, my schedule)
 src/data/migrations/026, 027   patient import (past visits, paper consent), operator aggregates (counts only)
 src/data/migrations/028        patient forms: forms keys, submissions, the treatment consent version, consent channel 'form'
+src/data/migrations/035        visit_consent: the consent signed by hand on the clinic's tablet, per visit
+src/lib/visit-record.ts, visit-consent.ts  the Timeline's visits (everything per visit); signing, strokes → SVG
+src/pages/c/[clinic]/patients/[patient]/sign/  the tablet signing page (clinic step, patient step, thank you)
 src/pages/f/[key].astro        patients: the patient forms from the QR code on a clinic's desk (five steps, no account)
 src/lib/patient-forms.ts       forms key, public submit, the "New patient forms" queue, adding a form to the records
 src/lib/patient-forms-def.ts   the questions as data, reading a post, labelling the answers (no Node imports)

@@ -1,0 +1,432 @@
+---
+// The consent to examination and treatment, signed by the patient's own hand on the clinic's tablet (035).
+//
+// Opened from a visit (the Timeline's panel, "Sign consent on this tablet"). Two steps on one page, so the
+// tablet can go from the desk to the patient without anything loading:
+//   1. For the clinic: tick the treatment the dentist explained (the plan's open lines), write anything
+//      else, choose the dentist — then "Hand the tablet to <name>".
+//   2. For the patient: the treatment in plain words, the consent's words in force (TREATMENT_CONSENT),
+//      who is signing (the patient, or a parent or guardian with their relation — only a parent or
+//      guardian when the birth date on file says under 18), their name, the signature in a white box
+//      with a finger, and one tick. Sign posts once (CSRF); signVisit() in src/lib/visit-consent.ts checks
+//      everything again inside the transaction and writes the visit_consent row and an audit line.
+// A refused post comes back on step 2 with what was typed and the signature redrawn. A saved one shows
+// only "Thank you — please hand the tablet back", so the next thing the patient sees is not the record;
+// the desk's button goes back to the record with the visit open (?visit=<id>#timeline).
+//
+// Its own page, not the workspace shell: no sidebar for a patient to wander into. Behind requireWorkspace
+// like every /c/ page, read and written inside withClinic (row-level security), never cached.
+export const prerender = false;
+
+import '../../../../../../styles/global.css';
+import Csrf from '../../../../../../components/Csrf.astro';
+import { requireWorkspace } from '../../../../../../lib/workspace';
+import { withClinic } from '../../../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../../../lib/csrf';
+import { hit, waitText, LIMITS } from '../../../../../../lib/throttle';
+import { canEditRecords, dateText, isMinor } from '../../../../../../lib/health';
+import { readSignForm, signVisit, treatmentInForce, planLine, readStrokes, SIG_W, SIG_H, type SignIn } from '../../../../../../lib/visit-consent';
+import { canSign } from '../../../../../../lib/visit-record';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session } = ws;
+const patientId = Astro.params.patient ?? '', visitId = Astro.params.visit ?? '';
+const notFound = () => new Response(null, { status: 404 });
+if (!UUID.test(patientId) || !UUID.test(visitId)) return notFound();
+const here = `/c/${clinic.slug}/patients/${patientId}/sign/${visitId}/`;
+const record = `/c/${clinic.slug}/patients/${patientId}/`;
+
+let problem: string | null = Astro.url.searchParams.get('stale') === '1' ? CSRF_MESSAGE : null;
+let typed: SignIn | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(here + '?stale=1', 303);
+  typed = readSignForm(form);
+  const rate = await hit('record:s:' + session.staffId, ...LIMITS.chart.staff);
+  if (!rate.allowed) problem = 'Too many saves at once. ' + waitText(rate.retryAfter);
+  else {
+    const r = await withClinic(clinic.id, (tx) => signVisit(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, visitId }, typed!));
+    if (r === 'none') return notFound();
+    if (r.ok) return Astro.redirect(`${here}?signed=${r.id}`, 303);
+    problem = r.problem;
+  }
+}
+const signedId = Astro.url.searchParams.get('signed');
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const p = (await tx.query(
+    `select first_name, middle_name, last_name, suffix, to_char(birth_date, 'YYYY-MM-DD') as birth from patient where id = $1 and archived_at is null`, [patientId])).rows[0];
+  if (!p) return null;
+  const v = (await tx.query(
+    `select a.id, a.starts_at, a.status, a.reason, a.dentist_id, a.date_only, coalesce(s.full_name, a.dentist_name) as dentist,
+            to_char(a.starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as day
+       from appointment a left join staff s on s.id = a.dentist_id where a.id = $1 and a.patient_id = $2`, [visitId, patientId])).rows[0];
+  if (!v) return null;
+  const done = signedId && UUID.test(signedId)
+    ? (await tx.query(`select signed_by_name from visit_consent where id = $1 and appointment_id = $2`, [signedId, visitId])).rows[0] ?? null : null;
+  const items = (await tx.query(
+    `select id, name, fdi, surface, status from treatment_plan_item where patient_id = $1 and status in ('planned', 'accepted') order by (status = 'accepted') desc, phase, created_at limit 40`, [patientId])).rows;
+  const clinicians = (await tx.query(
+    `select s.id, s.full_name from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $1
+      where s.disabled_at is null and s.role in ('owner', 'dentist', 'associate') order by s.full_name`, [clinic.id])).rows;
+  const words = await treatmentInForce(tx);
+  const canEdit = await canEditRecords(tx, session.staffId, clinic.id);
+  return { p, v, done, items, clinicians, words, canEdit };
+});
+if (!data) return notFound();
+const { p, v, done, items, clinicians, words, canEdit } = data;
+const fullName = [p.first_name, p.middle_name, p.last_name, p.suffix].filter(Boolean).join(' ');
+const minor = isMinor(p.birth);
+const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const open = canSign({ id: v.id, status: v.status, day: v.day }, today);
+const time = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' }).format(v.starts_at).toLowerCase();
+const visitLine = `${dateText(v.day)}${v.date_only ? '' : `, ${time}`}${v.dentist ? ` · ${v.dentist}` : ''}`;
+
+// What the form shows: what was typed after a refused post, otherwise the plan's accepted lines ticked,
+// and the visit's reason in "anything else" when there is no plan to tick.
+const ticked = new Set(typed ? typed.items : items.filter((i) => i.status === 'accepted').map((i) => i.id));
+const other = typed ? typed.other : items.length ? '' : v.reason ?? '';
+const dentistId = typed ? typed.dentistId : v.dentist_id ?? '';
+const signedAs = typed?.signedAs === 'guardian' || minor ? 'guardian' : typed?.signedAs === 'patient' ? 'patient' : minor ? 'guardian' : '';
+const nameValue = typed ? typed.name : signedAs === 'patient' ? fullName : '';
+const relation = typed?.relation ?? '';
+const strokes = typed ? readStrokes(typed.strokes) : null;
+const onPatientStep = !!typed;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Consent · {p.first_name} {p.last_name} — {clinic.name}</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script is:inline>
+      try { const t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }
+    </script>
+    <style>
+      .sg-body { min-height: 100vh; background: var(--c-bg); color: var(--c-ink); font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+      .sg-bar { background: var(--c-surface); border-bottom: 1px solid var(--ws-hair); }
+      .sg-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; max-width: 60rem; margin-inline: auto; padding: 0.625rem 1rem; }
+      .sg-back { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 44px; padding: 0 0.5rem; margin-left: -0.5rem; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--ws-teal-ink); }
+      .sg-back:hover { background: var(--ws-subtle); }
+      .sg-clinic { margin-left: auto; font-size: 15px; font-weight: 600; color: var(--c-ink-2); }
+      .sg-main { max-width: 60rem; margin-inline: auto; padding: 1.25rem 1rem 3rem; display: grid; gap: 1rem; }
+      .sg-card { padding: 1.25rem 1.5rem; border: 1px solid var(--ws-hair); border-radius: 16px; background: var(--c-surface); }
+      @media (max-width: 639px) { .sg-card { padding: 1rem; } }
+      .sg-step { display: inline-flex; align-items: center; min-height: 26px; padding: 0 0.625rem; border-radius: 999px; background: var(--ws-violet-tint); color: var(--ws-violet-ink); font-size: 13px; font-weight: 700; }
+      .sg-h1 { margin-top: 0.5rem; font-size: 26px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; color: var(--c-ink); }
+      .sg-h2 { font-size: 18px; font-weight: 700; color: var(--c-ink); }
+      .sg-lead { margin-top: 0.25rem; font-size: 16px; line-height: 1.5; color: var(--c-ink-2); }
+      .sg-q { margin-top: 1.25rem; font-size: 16px; font-weight: 700; color: var(--c-ink); }
+      .sg-hint { margin-top: 0.125rem; font-size: 14.5px; color: var(--c-ink-2); }
+      .sg-ticks { display: grid; gap: 0.5rem; margin-top: 0.625rem; }
+      .sg-tick { display: flex; align-items: center; gap: 0.75rem; min-height: 56px; padding: 0.5rem 0.875rem; border: 1px solid var(--ws-field-line); border-radius: 12px; background: var(--ws-field); font-size: 16px; color: var(--c-ink); cursor: pointer; }
+      .sg-tick:has(input:checked) { border-color: var(--ws-teal); background: var(--ws-teal-tint); }
+      .sg-tick:has(input:focus-visible) { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+      .sg-tick input { width: 22px; height: 22px; accent-color: #0e7471; flex: none; }
+      .sg-tick small { display: block; font-size: 13.5px; color: var(--c-ink-2); }
+      .sg-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 0.75rem 1rem; margin-top: 1rem; }
+      .sg-go { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-top: 1.25rem; }
+      .sg-go .ws-btn { min-height: 52px; padding: 0.5rem 1.5rem; font-size: 17px; white-space: normal; text-align: center; }
+      .sg-card { min-width: 0; }
+      .sg-treat { margin-top: 1rem; padding: 0.875rem 1rem; border-radius: 12px; background: var(--ws-blue-tint); }
+      .sg-treat strong { display: block; font-size: 14px; color: var(--ws-blue-ink); }
+      .sg-treat ul { margin-top: 0.25rem; display: grid; gap: 0.125rem; font-size: 17px; font-weight: 600; line-height: 1.45; color: var(--c-ink); }
+      .sg-points { display: grid; gap: 0.75rem; margin-top: 1rem; }
+      .sg-points li { font-size: 16.5px; line-height: 1.55; color: var(--c-ink); }
+      .sg-points strong { display: block; font-size: 16.5px; }
+      .sg-who { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.5rem; margin-top: 0.625rem; }
+      .sg-pad-wrap { margin-top: 0.625rem; }
+      .sg-pad { position: relative; border: 2px solid #98a2b3; border-radius: 14px; background: #fff; overflow: hidden; }
+      .sg-pad canvas { display: block; width: 100%; aspect-ratio: 1000 / 400; touch-action: none; cursor: crosshair; }
+      .sg-pad-line { position: absolute; left: 4%; right: 4%; bottom: 17.5%; border-top: 2px dashed #98a2b3; pointer-events: none; }
+      .sg-pad-x { position: absolute; left: 4%; bottom: calc(17.5% + 6px); font-size: 22px; font-weight: 700; color: #667085; pointer-events: none; }
+      .sg-pad-hint { position: absolute; inset: 0; display: grid; place-items: center; font-size: 18px; font-weight: 600; color: #475467; pointer-events: none; }
+      .sg-pad[data-ink] .sg-pad-hint { display: none; }
+      .sg-pad:focus-within { border-color: #0e7471; }
+      .sg-pad-tools { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem; margin-top: 0.5rem; font-size: 14.5px; color: var(--c-ink-2); }
+      .sg-agree { display: flex; gap: 0.875rem; align-items: flex-start; margin-top: 1.25rem; padding: 0.875rem 1rem; border: 1px solid var(--ws-field-line); border-radius: 12px; background: var(--ws-field); font-size: 17px; font-weight: 600; line-height: 1.45; color: var(--c-ink); cursor: pointer; }
+      .sg-agree:has(input:checked) { border-color: var(--ws-teal); background: var(--ws-teal-tint); }
+      .sg-agree input { width: 26px; height: 26px; margin-top: 0.1rem; accent-color: #0e7471; flex: none; }
+      .sg-agree:has(input:focus-visible) { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+      .sg-problem { display: flex; gap: 0.625rem; margin-top: 1rem; padding: 0.875rem 1rem; border-radius: 12px; background: var(--ws-red-tint); color: var(--ws-red-ink); font-size: 16px; font-weight: 600; line-height: 1.45; }
+      .sg-done { text-align: center; padding: 2.5rem 1.5rem; }
+      .sg-done-mark { display: grid; place-items: center; width: 72px; height: 72px; margin: 0 auto 1rem; border-radius: 999px; background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+      .sg-done p { font-size: 18px; line-height: 1.5; color: var(--c-ink); }
+      .sg-done .ws-btn { margin-top: 1.75rem; }
+      .sg-note { font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
+      .sg-body :focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+      [data-sg-step][hidden] { display: none; }
+    </style>
+  </head>
+  <body class="sg-body">
+    <header class="sg-bar">
+      <div class="sg-bar-row">
+        <a href={`${record}?visit=${visitId}#timeline`} class="sg-back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 6.5L9 12l5.5 5.5" /></svg>
+          {p.first_name}’s record
+        </a>
+        <span class="sg-clinic">{clinic.name}</span>
+      </div>
+    </header>
+
+    <main class="sg-main">
+      {done ? (
+        <section class="sg-card sg-done" aria-labelledby="sg-done-title">
+          <span class="sg-done-mark" aria-hidden="true"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span>
+          <h1 class="sg-h1" id="sg-done-title">Thank you, {String(done.signed_by_name).split(/\s+/)[0]}.</h1>
+          <p class="mt-2">Your consent is saved with your visit.</p>
+          <p>Please hand the tablet back to the clinic.</p>
+          <a href={`${record}?visit=${visitId}#timeline`} class="ws-btn ws-btn-quiet">For the clinic: back to {p.first_name}’s record</a>
+        </section>
+      ) : !open || !canEdit || !words ? (
+        <section class="sg-card" aria-labelledby="sg-no-title">
+          <h1 class="sg-h1" id="sg-no-title">This visit cannot be signed for</h1>
+          <p class="sg-lead">{!canEdit ? 'Your role cannot change records at this branch. Ask the owner.' : !words ? 'There is no consent to treatment in force to sign. Ask Flossify.' : 'A consent is signed on the tablet for a visit today or later that is going ahead. This one is past, cancelled or missed.'}</p>
+          <p class="sg-go"><a href={`${record}?visit=${visitId}#timeline`} class="ws-btn ws-btn-quiet">Back to {p.first_name}’s record</a></p>
+        </section>
+      ) : (
+        <form method="post" action={here} class="grid gap-4" data-sg-form novalidate>
+          <Csrf />
+          <input type="hidden" name="version" value={words.id} />
+          <input type="hidden" name="strokes" value={strokes ? JSON.stringify(strokes) : ''} data-sg-strokes />
+
+          {/* 1. For the clinic */}
+          <section class="sg-card" data-sg-step="clinic" hidden={onPatientStep} aria-labelledby="sg-clinic-title">
+            <span class="sg-step">For the clinic</span>
+            <h1 class="sg-h1" id="sg-clinic-title">Consent for {fullName}</h1>
+            <p class="sg-lead">Visit {visitLine}. Choose what the dentist explained, then hand the tablet to {minor ? 'the parent or guardian' : p.first_name}.</p>
+
+            <p class="sg-q" id="sg-items-q">What did the dentist explain?</p>
+            {items.length > 0 ? (
+              <>
+                <p class="sg-hint">From the treatment plan. Tick what this consent is for.</p>
+                <div class="sg-ticks" role="group" aria-labelledby="sg-items-q">
+                  {items.map((i) => (
+                    <label class="sg-tick">
+                      <input type="checkbox" name="item" value={i.id} checked={ticked.has(i.id)} data-sg-item={planLine(i)} />
+                      <span>{planLine(i)}<small>{i.status === 'accepted' ? 'Accepted on the plan' : 'Planned'}</small></span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            ) : <p class="sg-hint">Nothing is open on the treatment plan. Write the treatment below.</p>}
+            <div class="sg-row">
+              <label class="field">
+                <span class="meta">{items.length ? 'Anything else (optional)' : 'The treatment, in plain words'}</span>
+                <textarea name="other" rows="2" maxlength="600" data-sg-other placeholder="Like “Cleaning and fluoride”">{other}</textarea>
+              </label>
+              <label class="field">
+                <span class="meta">Dentist who explained it</span>
+                <select name="dentist">
+                  <option value="">—</option>
+                  {clinicians.map((c) => <option value={c.id} selected={c.id === dentistId}>{c.full_name}</option>)}
+                </select>
+              </label>
+            </div>
+            <p class="sg-go">
+              <button type="button" class="ws-btn ws-btn-primary" data-sg-handover>Hand the tablet to {minor ? 'the parent or guardian' : p.first_name}</button>
+            </p>
+            <noscript><p class="sg-note mt-3">Signing needs the tablet’s browser to run scripts. Turn them on to take a signature.</p></noscript>
+          </section>
+
+          {/* 2. For the patient */}
+          <section class="sg-card" data-sg-step="patient" hidden={!onPatientStep} aria-labelledby="sg-patient-title" tabindex="-1" data-sg-patient>
+            <span class="sg-step">{minor ? 'For the parent or guardian' : `For ${p.first_name}`}</span>
+            <h1 class="sg-h1" id="sg-patient-title">{words.title}</h1>
+            <p class="sg-lead">{fullName} · {clinic.name} · {visitLine}</p>
+
+            <div class="sg-treat">
+              <strong>The treatment the dentist explained</strong>
+              <ul data-sg-treat>
+                {[...items.filter((i) => ticked.has(i.id)).map(planLine), ...other.split('\n').filter(Boolean)].map((t) => <li>{t}</li>)}
+              </ul>
+            </div>
+
+            <ol class="sg-points">
+              {words.points.map((pt) => <li><strong>{pt.head}</strong>{pt.body}</li>)}
+            </ol>
+
+            <p class="sg-q" id="sg-who-q">Who is signing?</p>
+            {minor && <p class="sg-hint">{p.first_name} is under 18, so a parent or guardian signs.</p>}
+            <div class="sg-who" role="radiogroup" aria-labelledby="sg-who-q">
+              {!minor && (
+                <label class="sg-tick"><input type="radio" name="signed_as" value="patient" checked={signedAs === 'patient'} data-sg-as /><span>I am {fullName}</span></label>
+              )}
+              <label class="sg-tick"><input type="radio" name="signed_as" value="guardian" checked={signedAs === 'guardian'} data-sg-as /><span>I am {p.first_name}’s parent or guardian</span></label>
+            </div>
+            <div class="sg-row">
+              <label class="field">
+                <span class="meta">Your full name</span>
+                <input name="name" value={nameValue} maxlength="120" autocomplete="off" autocapitalize="words" data-sg-name data-full={fullName} />
+              </label>
+              <label class="field" data-sg-relation hidden={signedAs !== 'guardian'}>
+                <span class="meta">How you are related to {p.first_name}</span>
+                <input name="relation" value={relation} maxlength="60" autocomplete="off" placeholder="Mother, father, guardian" />
+              </label>
+            </div>
+
+            <p class="sg-q" id="sg-sign-q">Sign here with your finger</p>
+            <div class="sg-pad-wrap">
+              <div class="sg-pad" data-sg-pad data-ink={strokes ? '' : undefined}>
+                <canvas width={SIG_W} height={SIG_H} role="img" aria-labelledby="sg-sign-q" tabindex="0" data-sg-canvas data-w={SIG_W} data-h={SIG_H}></canvas>
+                <span class="sg-pad-line" aria-hidden="true"></span>
+                <span class="sg-pad-x" aria-hidden="true">×</span>
+                <span class="sg-pad-hint" aria-hidden="true">Sign here</span>
+              </div>
+              <div class="sg-pad-tools">
+                <span data-sg-pad-state aria-live="polite">{strokes ? 'Signed. Clear it to sign again.' : 'Nothing signed yet.'}</span>
+                <button type="button" class="ws-btn ws-btn-quiet" data-sg-clear>Clear and sign again</button>
+              </div>
+            </div>
+
+            <label class="sg-agree">
+              <input type="checkbox" name="agree" value="yes" checked={typed?.agree ?? false} />
+              <span>{words.tick}</span>
+            </label>
+
+            {problem && <p class="sg-problem" role="alert" data-sg-problem>{problem}</p>}
+            <p class="sg-problem" role="alert" data-sg-check hidden></p>
+            <p class="sg-go">
+              <button type="submit" class="ws-btn ws-btn-primary">Sign</button>
+              <button type="button" class="ws-btn ws-btn-quiet" data-sg-back>For the clinic: change the treatment</button>
+            </p>
+            <p class="sg-note mt-3">Your signature is kept with your record at {clinic.name}, as the privacy notice says.</p>
+          </section>
+        </form>
+      )}
+    </main>
+
+    <script>
+      const form = document.querySelector<HTMLFormElement>('[data-sg-form]');
+      if (form) {
+        const clinicStep = form.querySelector<HTMLElement>('[data-sg-step="clinic"]')!;
+        const patientStep = form.querySelector<HTMLElement>('[data-sg-step="patient"]')!;
+        const treat = form.querySelector<HTMLElement>('[data-sg-treat]')!;
+        const other = form.querySelector<HTMLTextAreaElement>('[data-sg-other]')!;
+        const check = form.querySelector<HTMLElement>('[data-sg-check]')!;
+        const nameIn = form.querySelector<HTMLInputElement>('[data-sg-name]')!;
+        const relation = form.querySelector<HTMLElement>('[data-sg-relation]')!;
+        const hidden = form.querySelector<HTMLInputElement>('[data-sg-strokes]')!;
+        const pad = form.querySelector<HTMLElement>('[data-sg-pad]')!;
+        const canvas = form.querySelector<HTMLCanvasElement>('[data-sg-canvas]')!;
+        const state = form.querySelector<HTMLElement>('[data-sg-pad-state]')!;
+        const SIG_W = Number(canvas.dataset.w), SIG_H = Number(canvas.dataset.h);
+
+        // The treatment the patient reads is what the desk ticked and wrote, drawn as they hand it over.
+        const treatment = () => [
+          ...[...form.querySelectorAll<HTMLInputElement>('[data-sg-item]')].filter((i) => i.checked).map((i) => i.dataset.sgItem!),
+          ...other.value.split('\n').map((s) => s.trim()).filter(Boolean),
+        ];
+        const show = (step: 'clinic' | 'patient') => {
+          clinicStep.hidden = step !== 'clinic';
+          patientStep.hidden = step !== 'patient';
+          window.scrollTo({ top: 0 });
+          (step === 'patient' ? patientStep : clinicStep.querySelector<HTMLElement>('h1'))?.focus({ preventScroll: true });
+          if (step === 'patient') sizeCanvas();
+        };
+        form.querySelector('[data-sg-handover]')!.addEventListener('click', () => {
+          const t = treatment();
+          const say = clinicStep.querySelector<HTMLElement>('.sg-hint-problem') ?? Object.assign(document.createElement('p'), { className: 'sg-problem sg-hint-problem', role: 'alert' });
+          if (!t.length) { say.textContent = 'Tick the treatment the dentist explained, or write it in.'; clinicStep.querySelector('.sg-go')!.before(say); return; }
+          say.remove();
+          treat.replaceChildren(...t.map((line) => Object.assign(document.createElement('li'), { textContent: line })));
+          show('patient');
+        });
+        form.querySelector('[data-sg-back]')!.addEventListener('click', () => show('clinic'));
+
+        // Who signs: the patient's own name is filled in for them; a parent or guardian writes theirs and how they are related.
+        form.querySelectorAll<HTMLInputElement>('[data-sg-as]').forEach((r) => r.addEventListener('change', () => {
+          const guardian = r.value === 'guardian' && r.checked;
+          relation.hidden = !guardian;
+          if (r.value === 'patient' && r.checked && !nameIn.value) nameIn.value = nameIn.dataset.full ?? '';
+          if (guardian && nameIn.value === nameIn.dataset.full) nameIn.value = '';
+        }));
+
+        // The pad: strokes of whole-number points in a SIG_W × SIG_H box, the shape the server checks.
+        let strokes: [number, number][][] = [];
+        try { const s = JSON.parse(hidden.value || '[]'); if (Array.isArray(s)) strokes = s; } catch { strokes = []; }
+        const ctx = canvas.getContext('2d')!;
+        function sizeCanvas() {
+          const r = canvas.getBoundingClientRect();
+          if (!r.width) return;
+          const dpr = Math.min(window.devicePixelRatio || 1, 3);
+          canvas.width = Math.round(r.width * dpr);
+          canvas.height = Math.round(r.height * dpr);
+          redraw();
+        }
+        const scale = () => canvas.width / SIG_W;
+        function line(s: [number, number][]) {
+          const k = scale();
+          ctx.beginPath();
+          ctx.moveTo(s[0][0] * k, s[0][1] * k);
+          if (s.length === 1) ctx.lineTo(s[0][0] * k + 0.1, s[0][1] * k);
+          for (let i = 1; i < s.length; i++) ctx.lineTo(s[i][0] * k, s[i][1] * k);
+          ctx.stroke();
+        }
+        function redraw() {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.lineWidth = 6 * scale();
+          ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#1f2937';
+          strokes.forEach(line);
+        }
+        const points = () => strokes.reduce((n, s) => n + s.length, 0);
+        function saveStrokes() {
+          hidden.value = strokes.length ? JSON.stringify(strokes) : '';
+          if (strokes.length) pad.dataset.ink = ''; else delete pad.dataset.ink;
+          state.textContent = strokes.length ? 'Signed. Clear it to sign again.' : 'Nothing signed yet.';
+        }
+        const at = (e: PointerEvent): [number, number] => {
+          const r = canvas.getBoundingClientRect();
+          const x = Math.round(((e.clientX - r.left) / r.width) * SIG_W);
+          const y = Math.round(((e.clientY - r.top) / r.height) * SIG_H);
+          return [Math.max(0, Math.min(SIG_W, x)), Math.max(0, Math.min(SIG_H, y))];
+        };
+        let drawing: [number, number][] | null = null;
+        canvas.addEventListener('pointerdown', (e) => {
+          if (strokes.length >= 80 || points() >= 5800) return;
+          e.preventDefault();
+          canvas.setPointerCapture(e.pointerId);
+          drawing = [at(e)];
+          strokes.push(drawing);
+          redraw();
+        });
+        canvas.addEventListener('pointermove', (e) => {
+          if (!drawing) return;
+          e.preventDefault();
+          const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [e];
+          for (const ev of events.length ? events : [e]) {
+            const p = at(ev);
+            const last = drawing[drawing.length - 1];
+            if (Math.hypot(p[0] - last[0], p[1] - last[1]) >= 2 && points() < 5900) drawing.push(p);
+          }
+          redraw();
+        });
+        const end = () => { if (drawing) { drawing = null; saveStrokes(); } };
+        canvas.addEventListener('pointerup', end);
+        canvas.addEventListener('pointercancel', end);
+        form.querySelector('[data-sg-clear]')!.addEventListener('click', () => { strokes = []; redraw(); saveStrokes(); });
+        new ResizeObserver(() => sizeCanvas()).observe(canvas);
+
+        // Say what is missing before the post, beside the button; the server checks it all again.
+        form.addEventListener('submit', (e) => {
+          const fd = new FormData(form);
+          const as = fd.get('signed_as');
+          const missing = !as ? 'Choose who is signing.'
+            : !String(fd.get('name') ?? '').trim() ? 'Write your full name.'
+            : as === 'guardian' && !String(fd.get('relation') ?? '').trim() ? 'Write how you are related to the patient.'
+            : !strokes.length ? 'Sign in the box with your finger.'
+            : fd.get('agree') !== 'yes' ? 'Tick the box to say you agree.' : '';
+          check.hidden = !missing;
+          check.textContent = missing;
+          form.querySelector('[data-sg-problem]')?.remove();
+          if (missing) e.preventDefault();
+        });
+      }
+    </script>
+  </body>
+</html>

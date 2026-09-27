@@ -71,8 +71,8 @@ export const RX_ROWS = 6;
 
 // --- shapes ------------------------------------------------------------------------------------
 export interface PlanItem { id: string; loaId: string | null; name: string; fdi: number | null; surface: string | null; price: string; phase: number; status: string; note: string | null; createdAt: Date; decidedAt: Date | null; by: string | null }
-export interface Done { id: string; name: string; fdi: number | null; surface: string | null; price: string; at: Date; dentist: string | null; note: string | null; fromPlan: boolean }
-export interface Note { id: string; visitOn: string; dentist: string | null; complaint: string | null; findings: string | null; diagnosis: string | null; treatment: string | null; plan: string | null; teeth: number[]; amends: string | null; by: string | null; at: Date }
+export interface Done { id: string; visitId: string | null; name: string; fdi: number | null; surface: string | null; price: string; at: Date; dentist: string | null; note: string | null; fromPlan: boolean }
+export interface Note { id: string; visitId: string | null; visitOn: string; dentist: string | null; complaint: string | null; findings: string | null; diagnosis: string | null; treatment: string | null; plan: string | null; teeth: number[]; amends: string | null; by: string | null; at: Date }
 export interface RxItem { drug: string; strength: string; qty: string; sig: string }
 export interface Rx { id: string; at: Date; prescriber: string | null; prescriberId: string; prc: string | null; ptr: string | null; items: RxItem[]; notes: string | null }
 export interface FileRow { id: string; kind: string; mime: string; bytes: number; takenAt: string | null; fdi: number | null; caption: string | null; by: string | null; at: Date; thumb: boolean }
@@ -87,7 +87,7 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
   const [plan, done, notes, rx, files, recall, labs, clinicians, catalog] = await Promise.all([
     tx.query(`select i.*, s.full_name as by_name from treatment_plan_item i left join staff s on s.id = i.created_by
                where i.patient_id = $1 order by (i.status in ('done', 'declined')), i.phase, i.created_at`, [patientId]),
-    tx.query(`select d.id, coalesce(d.name, c.name, 'Treatment') as name, d.fdi, d.surface, d.price, d.performed_at, s.full_name as dentist, d.clinical_note, d.plan_id is not null as from_plan
+    tx.query(`select d.id, d.appointment_id, coalesce(d.name, c.name, 'Treatment') as name, d.fdi, d.surface, d.price, d.performed_at, s.full_name as dentist, d.clinical_note, d.plan_id is not null as from_plan
                 from procedure_done d left join procedure_catalog c on c.id = d.catalog_id left join staff s on s.id = d.performed_by
                where d.patient_id = $1 order by d.performed_at desc limit 300`, [patientId]),
     tx.query(`select n.*, to_char(n.visit_on, 'YYYY-MM-DD') as day, d.full_name as dentist, c.full_name as by_name
@@ -107,8 +107,8 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
   ]);
   return {
     plan: plan.rows.map((r) => ({ id: r.id, loaId: r.loa_id ?? null, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, phase: r.phase, status: r.status, note: r.note, createdAt: r.created_at, decidedAt: r.decided_at, by: r.by_name })),
-    done: done.rows.map((r) => ({ id: r.id, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, at: r.performed_at, dentist: r.dentist, note: r.clinical_note, fromPlan: r.from_plan })),
-    notes: notes.rows.map((r) => ({ id: r.id, visitOn: r.day, dentist: r.dentist, complaint: r.complaint, findings: r.findings, diagnosis: r.diagnosis, treatment: r.treatment, plan: r.plan, teeth: r.teeth ?? [], amends: r.amends_id, by: r.by_name, at: r.created_at })),
+    done: done.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, at: r.performed_at, dentist: r.dentist, note: r.clinical_note, fromPlan: r.from_plan })),
+    notes: notes.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, visitOn: r.day, dentist: r.dentist, complaint: r.complaint, findings: r.findings, diagnosis: r.diagnosis, treatment: r.treatment, plan: r.plan, teeth: r.teeth ?? [], amends: r.amends_id, by: r.by_name, at: r.created_at })),
     rx: rx.rows.map((r) => ({ id: r.id, at: r.issued_at, prescriber: r.full_name, prescriberId: r.prescriber_id, prc: r.prc_licence, ptr: r.ptr_number, items: Array.isArray(r.items) ? r.items : [], notes: r.notes })),
     files: files.rows.map((r) => ({ id: r.id, kind: r.kind, mime: r.mime, bytes: Number(r.bytes), takenAt: r.taken, fdi: r.fdi, caption: r.caption, by: r.by_name, at: r.created_at, thumb: String(r.storage_key).includes('|thumb') })),
     recall: recall.rows[0] ? { id: recall.rows[0].id, dueOn: recall.rows[0].due, reason: recall.rows[0].reason, by: recall.rows[0].by_name, at: recall.rows[0].created_at } : null,
@@ -120,7 +120,11 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
 
 // --- the Timeline ------------------------------------------------------------------------------
 export type TimelineKind = 'visit' | 'treatment' | 'note' | 'health' | 'chart' | 'money' | 'file' | 'message' | 'consent' | 'record';
-export interface TimelineEvent { at: Date; kind: TimelineKind; title: string; detail?: string | null; by?: string | null; section?: string; tone?: 'neutral' | 'accent' | 'warn' | 'alert' | 'muted' }
+export interface TimelineEvent {
+  at: Date; kind: TimelineKind; title: string; detail?: string | null; by?: string | null; section?: string; tone?: 'neutral' | 'accent' | 'warn' | 'alert' | 'muted';
+  /** What the line is about ("done:<id>", "pay:<id>" …): a line a visit on the Timeline already holds is not listed again. */
+  ref?: string;
+}
 export const TIMELINE_FILTERS: { id: TimelineKind | 'all'; label: string }[] = [
   { id: 'all', label: 'Everything' }, { id: 'visit', label: 'Visits' }, { id: 'treatment', label: 'Treatment' }, { id: 'note', label: 'Notes & Rx' },
   { id: 'health', label: 'Health' }, { id: 'chart', label: 'Chart' }, { id: 'file', label: 'Files' }, { id: 'money', label: 'Money' },
@@ -134,24 +138,24 @@ export async function loadTimeline(tx: Tx, patientId: string, c: Clinical, money
   const ev: TimelineEvent[] = [];
   const [p, visits, health, chart, consents, forms, texts, stmts, pays] = await Promise.all([
     tx.query(`select p.created_at, p.import_id is not null as imported, s.full_name from patient p left join staff s on s.id = p.created_by where p.id = $1`, [patientId]),
-    tx.query(`select a.starts_at, a.status, a.reason, a.source, a.date_only, coalesce(s.full_name, a.dentist_name) as dentist, a.teeth
+    tx.query(`select a.id, a.starts_at, a.status, a.reason, a.source, a.date_only, coalesce(s.full_name, a.dentist_name) as dentist, a.teeth
                 from appointment a left join staff s on s.id = a.dentist_id where a.patient_id = $1 order by a.starts_at desc limit 300`, [patientId]),
     tx.query(`select h.answered_at, h.allergies, h.conditions, h.medications, h.answered_by, s.full_name from medical_history h left join staff s on s.id = h.recorded_by
                where h.patient_id = $1 order by h.answered_at desc limit 100`, [patientId]),
     tx.query(`select date_trunc('minute', t.noted_at) as at, s.full_name, count(*)::int as n, string_agg(distinct t.fdi::text, ', ' order by t.fdi::text) as teeth
                 from tooth_state t left join staff s on s.id = t.noted_by where t.patient_id = $1 group by 1, 2 order by 1 desc limit 200`, [patientId]),
-    tx.query(`select c.given_at, c.channel, c.given_by_name, v.kind from patient_consent c join consent_version v on v.id = c.version_id where c.patient_id = $1 order by c.given_at desc`, [patientId]),
+    tx.query(`select c.id, c.appointment_id, c.given_at, c.channel, c.given_by_name, v.kind from patient_consent c join consent_version v on v.id = c.version_id where c.patient_id = $1 order by c.given_at desc`, [patientId]),
     tx.query(`select f.decided_at, f.ref from patient_form f where f.patient_id = $1 and f.status = 'added'`, [patientId]),
-    tx.query(`select m.created_at, m.direction, m.kind, m.status from message_log m where m.patient_id = $1 and m.channel = 'sms' order by m.created_at desc limit 100`, [patientId]),
-    money ? tx.query(`select i.issued_at, i.series_prefix, i.number, i.total, i.status from invoice i where i.patient_id = $1 and i.status <> 'draft' order by i.issued_at desc limit 100`, [patientId]) : Promise.resolve({ rows: [] as any[] }),
-    money ? tx.query(`select y.received_at, y.amount, y.method, y.voided_at from payment y where y.patient_id = $1 order by y.received_at desc limit 200`, [patientId]) : Promise.resolve({ rows: [] as any[] }),
+    tx.query(`select m.id, m.created_at, m.direction, m.kind, m.status from message_log m where m.patient_id = $1 and m.channel = 'sms' order by m.created_at desc limit 100`, [patientId]),
+    money ? tx.query(`select i.id, i.issued_at, i.series_prefix, i.number, i.total, i.status from invoice i where i.patient_id = $1 and i.status <> 'draft' order by i.issued_at desc limit 100`, [patientId]) : Promise.resolve({ rows: [] as any[] }),
+    money ? tx.query(`select y.id, y.received_at, y.amount, y.method, y.voided_at from payment y where y.patient_id = $1 order by y.received_at desc limit 200`, [patientId]) : Promise.resolve({ rows: [] as any[] }),
   ]);
   const row = p.rows[0];
   if (row) ev.push({ at: row.created_at, kind: 'record', title: row.imported ? 'Brought in from old records' : 'Added as a patient', by: row.full_name, section: 'overview' });
   for (const v of visits.rows) {
     const word = VISIT_WORD[v.status] ?? v.status;
     const future = new Date(v.starts_at) > new Date();
-    ev.push({ at: v.starts_at, kind: 'visit', title: future ? `Upcoming visit · ${word.toLowerCase()}` : word, detail: [v.reason, v.teeth?.length ? `teeth ${v.teeth.join(', ')}` : null, v.dentist].filter(Boolean).join(' · ') || null, section: 'visits',
+    ev.push({ ref: `visit:${v.id}`, at: v.starts_at, kind: 'visit', title: future ? `Upcoming visit · ${word.toLowerCase()}` : word, detail: [v.reason, v.teeth?.length ? `teeth ${v.teeth.join(', ')}` : null, v.dentist].filter(Boolean).join(' · ') || null, section: 'visits',
       tone: v.status === 'cancelled' || v.status === 'no_show' ? 'muted' : v.status === 'completed' ? 'accent' : 'neutral' });
   }
   for (const h of health.rows) {
@@ -159,16 +163,16 @@ export async function loadTimeline(tx: Tx, patientId: string, c: Clinical, money
     ev.push({ at: h.answered_at, kind: 'health', title: h.answered_by === 'patient' ? 'Health history from the patient forms' : 'Health history updated', detail: parts.join(' · ') || 'Nothing to note', by: h.full_name, section: 'health', tone: h.allergies?.length ? 'alert' : 'neutral' });
   }
   for (const t of chart.rows) ev.push({ at: t.at, kind: 'chart', title: `Chart: ${t.n === 1 ? 'one change' : `${t.n} changes`}`, detail: `Teeth ${t.teeth}`, by: t.full_name, section: 'chart' });
-  for (const k of consents.rows) ev.push({ at: k.given_at, kind: 'consent', title: k.kind === 'treatment' ? 'Agreed to examination and treatment' : 'Agreed to the privacy notice', detail: [({ desk: 'at the desk', paper: 'on paper', web: 'when booking online', form: 'on the patient forms' } as Record<string, string>)[k.channel] ?? k.channel, k.given_by_name ? `by ${k.given_by_name}` : null].filter(Boolean).join(' · '), section: 'consent', tone: 'accent' });
+  for (const k of consents.rows) ev.push({ ref: k.appointment_id ? `pc:${k.id}` : undefined, at: k.given_at, kind: 'consent', title: k.kind === 'treatment' ? 'Agreed to examination and treatment' : 'Agreed to the privacy notice', detail: [({ desk: 'at the desk', paper: 'on paper', web: 'when booking online', form: 'on the patient forms' } as Record<string, string>)[k.channel] ?? k.channel, k.given_by_name ? `by ${k.given_by_name}` : null].filter(Boolean).join(' · '), section: 'consent', tone: 'accent' });
   for (const f of forms.rows) if (f.decided_at) ev.push({ at: f.decided_at, kind: 'consent', title: `Patient forms added (${f.ref})`, section: 'consent' });
-  for (const m of texts.rows) ev.push({ at: m.created_at, kind: 'message', title: m.direction === 'in' ? 'Text received' : ({ confirmation: 'Booking confirmation texted', reminder: 'Reminder texted', manual: 'Text sent' } as Record<string, string>)[m.kind] ?? 'Text sent', detail: m.status === 'failed' ? 'Did not go through' : null, section: 'texts', tone: m.status === 'failed' ? 'alert' : 'neutral' });
-  for (const s of stmts.rows) ev.push({ at: s.issued_at, kind: 'money', title: `Statement ${s.series_prefix}-${String(s.number).padStart(6, '0')}`, detail: `${peso(s.total)}${s.status === 'void' ? ' · void' : s.status === 'paid' ? ' · paid' : ''}`, section: 'money', tone: s.status === 'void' ? 'muted' : 'neutral' });
-  for (const y of pays.rows) ev.push({ at: y.received_at, kind: 'money', title: y.voided_at ? 'Payment voided' : 'Payment received', detail: `${peso(y.amount)} · ${y.method}`, section: 'money', tone: y.voided_at ? 'muted' : 'accent' });
-  for (const d of c.done) ev.push({ at: d.at, kind: 'treatment', title: `Done: ${d.name}`, detail: [d.fdi ? `tooth ${d.fdi}${d.surface ? ` ${d.surface}` : ''}` : null, d.note].filter(Boolean).join(' · ') || null, by: d.dentist, section: 'treatment', tone: 'accent' });
+  for (const m of texts.rows) ev.push({ ref: `msg:${m.id}`, at: m.created_at, kind: 'message', title: m.direction === 'in' ? 'Text received' : ({ confirmation: 'Booking confirmation texted', reminder: 'Reminder texted', manual: 'Text sent' } as Record<string, string>)[m.kind] ?? 'Text sent', detail: m.status === 'failed' ? 'Did not go through' : null, section: 'texts', tone: m.status === 'failed' ? 'alert' : 'neutral' });
+  for (const s of stmts.rows) ev.push({ ref: `stmt:${s.id}`, at: s.issued_at, kind: 'money', title: `Statement ${s.series_prefix}-${String(s.number).padStart(6, '0')}`, detail: `${peso(s.total)}${s.status === 'void' ? ' · void' : s.status === 'paid' ? ' · paid' : ''}`, section: 'money', tone: s.status === 'void' ? 'muted' : 'neutral' });
+  for (const y of pays.rows) ev.push({ ref: `pay:${y.id}`, at: y.received_at, kind: 'money', title: y.voided_at ? 'Payment voided' : 'Payment received', detail: `${peso(y.amount)} · ${y.method}`, section: 'money', tone: y.voided_at ? 'muted' : 'accent' });
+  for (const d of c.done) ev.push({ ref: `done:${d.id}`, at: d.at, kind: 'treatment', title: `Done: ${d.name}`, detail: [d.fdi ? `tooth ${d.fdi}${d.surface ? ` ${d.surface}` : ''}` : null, d.note].filter(Boolean).join(' · ') || null, by: d.dentist, section: 'treatment', tone: 'accent' });
   for (const i of c.plan) ev.push({ at: i.createdAt, kind: 'treatment', title: `Planned: ${i.name}`, detail: [i.fdi ? `tooth ${i.fdi}${i.surface ? ` ${i.surface}` : ''}` : null, `phase ${i.phase}`].filter(Boolean).join(' · '), by: i.by, section: 'treatment' });
-  for (const n of c.notes) ev.push({ at: n.at, kind: 'note', title: n.amends ? 'Addendum to a clinical note' : 'Clinical note', detail: [n.diagnosis, n.treatment].filter(Boolean).join(' · ').slice(0, 160) || n.complaint, by: n.dentist ?? n.by, section: 'notes' });
-  for (const r of c.rx) ev.push({ at: r.at, kind: 'note', title: 'Prescription', detail: r.items.map((i) => [i.drug, i.strength].filter(Boolean).join(' ')).join(', '), by: r.prescriber, section: 'rx' });
-  for (const f of c.files) ev.push({ at: f.at, kind: 'file', title: `${FILE_KINDS[f.kind] ?? 'File'} added`, detail: [f.caption, f.fdi ? `tooth ${f.fdi}` : null].filter(Boolean).join(' · ') || null, by: f.by, section: 'files' });
+  for (const n of c.notes) ev.push({ ref: `note:${n.id}`, at: n.at, kind: 'note', title: n.amends ? 'Addendum to a clinical note' : 'Clinical note', detail: [n.diagnosis, n.treatment].filter(Boolean).join(' · ').slice(0, 160) || n.complaint, by: n.dentist ?? n.by, section: 'notes' });
+  for (const r of c.rx) ev.push({ ref: `rx:${r.id}`, at: r.at, kind: 'note', title: 'Prescription', detail: r.items.map((i) => [i.drug, i.strength].filter(Boolean).join(' ')).join(', '), by: r.prescriber, section: 'rx' });
+  for (const f of c.files) ev.push({ ref: `file:${f.id}`, at: f.at, kind: 'file', title: `${FILE_KINDS[f.kind] ?? 'File'} added`, detail: [f.caption, f.fdi ? `tooth ${f.fdi}` : null].filter(Boolean).join(' · ') || null, by: f.by, section: 'files' });
   for (const l of c.labs) ev.push({ at: l.at, kind: 'treatment', title: `Lab case: ${l.description}`, detail: `${l.lab} · ${LAB_STATUS[l.status] ?? l.status}`, section: 'treatment' });
   if (c.recall) ev.push({ at: c.recall.at, kind: 'visit', title: `Next check-up set for ${dateText(c.recall.dueOn)}`, detail: c.recall.reason, by: c.recall.by, section: 'overview' });
   return ev.filter((e) => e.at).sort((a, b) => +new Date(b.at) - +new Date(a.at));

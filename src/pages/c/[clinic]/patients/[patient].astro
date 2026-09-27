@@ -96,6 +96,8 @@ import './_ui/patients.css';
 import './_forms/forms.css';
 import './_record/record.css';
 import Timeline from './_record/Timeline.astro';
+import VisitPanels from './_record/VisitPanels.astro';
+import Signature from './_record/Signature.astro';
 import Treatment from './_record/Treatment.astro';
 import Notes from './_record/Notes.astro';
 import Prescriptions from './_record/Prescriptions.astro';
@@ -129,6 +131,8 @@ import { signedText } from './_forms/words';
 import { can } from '../../../../lib/can';
 import { loadClinical, loadTimeline, recordAction, RECORD_INTENTS, RX_ROWS, type Outcome, type RecordProblem, type RxItem } from '../../../../lib/record';
 import { loadExtra, extraAction, extraEvents, bpWords, EXTRA_INTENTS, EXTRA_ANCHOR } from '../../../../lib/record-extra';
+import { loadVisitConsents } from '../../../../lib/visit-consent';
+import { loadVisits } from '../../../../lib/visit-record';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -348,7 +352,10 @@ const data = await withClinic(clinic.id, async (tx) => {
   const clinical = await loadClinical(tx, clinic.id, p.id);
   const extra = await loadExtra(tx, p.id, HMO_NAMES);
   const timeline = [...(await loadTimeline(tx, p.id, clinical, money)), ...extraEvents(extra, money)].sort((a, b) => +new Date(b.at) - +new Date(a.at));
-  return { clinical, extra, timeline, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
+  // Each visit with everything from it (the Timeline's cards and their panels), and the consents signed on the tablet.
+  const signed = await loadVisitConsents(tx, p.id);
+  const fullVisits = await loadVisits(tx, p.id, clinical, extra, signed, money);
+  return { clinical, extra, timeline, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
 });
 if (!data) return notFound();
 const { me, p: patient, visits, health, canEdit } = data;
@@ -519,7 +526,9 @@ const recordSaved = (s: string | null) => {
   return ({ plan: 'treatment', done: 'treatment', lab: 'treatment', note: 'notes', addendum: 'notes', rx: 'rx', file: 'files', files: 'files', recall: 'overview',
     vitals: 'health', letter: 'rx', answered: 'rx', loa: 'treatment', payplan: 'treatment', adjusted: 'treatment' } as Record<string, string>)[w] ?? null;
 };
-const current = backTo ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? 'overview';
+// ?visit=<id>: back from signing a consent on the tablet — the Timeline, with that visit open.
+const openVisit = q.get('visit') && UUID.test(q.get('visit')!) ? q.get('visit') : null;
+const current = backTo ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? (openVisit ? 'timeline' : 'overview');
 const SECTION_LABEL = Object.fromEntries(SECTIONS.map((x) => [x.id, x.label])) as Record<string, string>;
 
 // --- money --------------------------------------------------------------------
@@ -715,6 +724,9 @@ const recHere = here;
   <RecordNav items={SECTIONS.map((x) => ({ id: x.id, label: x.label, count: 'count' in x ? x.count : null }))} current={current} name={shortName} />
   <div class="rec-main">
 
+  {/* Every visit's panel, outside the sections so it opens from the Timeline and from Visits alike. */}
+  <VisitPanels visits={data.fullVisits} slug={clinic.slug} patientId={patient.id} canEdit={canEdit} money={money} open={openVisit} today={today} firstName={patient.first_name} />
+
   <!-- Overview -->
   <div id="rec-overview" role="tabpanel" aria-labelledby="rec-rec-overview-tab" hidden={current !== 'overview'} class="min-w-0 grid items-start gap-4 max-md:gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] content-start hue-teal" data-rec-panel="overview">
     <Banner id="overview" label={SECTION_LABEL.overview} class="lg:col-span-2" />
@@ -823,7 +835,7 @@ const recHere = here;
   <!-- Timeline -->
   <div id="rec-timeline" role="tabpanel" aria-labelledby="rec-rec-timeline-tab" hidden={current !== 'timeline'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-teal" data-rec-panel="timeline">
     <Banner id="timeline" label={SECTION_LABEL.timeline} />
-    <Timeline events={data.timeline} sections={SECTIONS.map((x) => x.id)} />
+    <Timeline events={data.timeline} sections={SECTIONS.map((x) => x.id)} visits={data.fullVisits} money={money} canEdit={canEdit} today={today} />
   </div>
 
   <!-- Health -->
@@ -1004,6 +1016,7 @@ const recHere = here;
                 <td class="text-[14.5px] whitespace-nowrap tabular-nums">
                   <span class="font-semibold">{visitText(v)}</span>
                   <span class="block text-[13px] text-muted">{SOURCE[v.source] ?? v.source}{v.chair ? ` · chair ${v.chair}` : ''}</span>
+                  <button type="button" class="vx-link" data-ws-open={`rec-visit-${v.id}`} aria-haspopup="dialog">See the whole visit</button>
                 </td>
                 <td class="text-[15px]"><span class="meta ws-cell-label">Service</span>{v.reason ?? '—'}{v.notes && <span class="block max-w-[40ch] text-[13.5px] text-ink-2 max-lg:max-w-none">{v.notes}</span>}</td>
                 <td class="text-[15px]"><span class="meta ws-cell-label">Dentist</span>{v.dentist ? <Who name={v.dentist} /> : <span class="text-ink-2">—</span>}{v.dentist_free && <span class="block text-[13px] text-muted">As the old record has it</span>}</td>
@@ -1078,6 +1091,28 @@ const recHere = here;
       <DeskConsent notice={data.notice} consents={data.consents} canRecord={canEdit} minor={minor} birthKnown={!!patient.birth} dpo={data.dpo} action={`${here}#consent`}
         problem={consentProblem} givenBy={givenBy} agreedAs={agreedAs} recorded={saved === 'consent' ? 'saved' : saved === 'consent-already' ? 'already' : null}
         paperForms={data.paperForms} paper={{ ...paperState, recorded: saved === 'paper' ? 'saved' : null }} />
+    </Pane>
+    <Pane as="section" label="Signed at visits" id="visit-consents">
+      <Head icon="pen" title="Signed at visits" meta={data.signed.length === 1 ? 'One consent' : `${data.signed.length} consents`} />
+      <p class="-mt-2 mb-3 text-[14px] text-ink-2">The consent to examination and treatment, signed on the clinic’s tablet for a visit: what the dentist explained, and the signature. Open a visit on the Timeline, or in Visits, to have one signed.</p>
+      {data.signed.length === 0 ? <p class="text-[14.5px] text-ink-2">None signed on the tablet yet.</p> : (
+        <ul class="rs-list">
+          {data.signed.map((k) => {
+            const v = data.fullVisits.find((x) => x.id === k.visitId);
+            return (
+              <li class="rs-item vx-signed-row">
+                <Signature strokes={k.strokes} name={k.signedBy} />
+                <div class="min-w-0 grid gap-1.5">
+                  <p class="rs-what">{k.signedBy}{k.signedAs === 'guardian' ? `, ${(k.relation ?? 'parent or guardian').toLocaleLowerCase('en')}` : ''}</p>
+                  <p class="rp-row"><span class="rp">Signed {when(k.at)}</span>{k.dentist && <Who name={k.dentist} />}</p>
+                  <p class="text-[14.5px] text-ink">{k.treatment.split('\n').join(' · ')}</p>
+                  {v && <button type="button" class="vx-link" data-ws-open={`rec-visit-${v.key}`} aria-haspopup="dialog">See the visit, {dateText(v.day)}</button>}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </Pane>
     {data.forms.length > 0 && (
       <Pane as="section" label="Patient forms" id="patient-forms" class="mt-4 max-md:mt-3">
