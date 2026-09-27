@@ -330,3 +330,88 @@ button.rf { display: grid; min-height: 44px; }
 .pp-nums dd { margin-top: 0.125rem; font-size: 15px; }
 @media (max-width: 639px) { .rf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rf dd { font-size: 15px; } }
 .rk { justify-self: start; }
+
+/* --- visits on the Timeline, and the visit's side panel (./VisitPanels.astro) --------------------------
+   A visit is a card that is one button: the time and status, the dentist and what was done, the consent
+   (with a small copy of the signature) and the money, each its own pill. The panel is a stack of small
+   cards, each in its section's colour. The signature is always dark ink on a white slip, like paper. */
+.rp-hue-blue { border-color: transparent; background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
+.vx-card {
+  display: grid; gap: 0.625rem; width: 100%; padding: 0.875rem 1rem; text-align: left; cursor: pointer;
+  border: 1px solid var(--ws-hair); border-left: 4px solid var(--ws-teal); border-radius: 12px; background: var(--c-surface);
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+.vx-card:hover { border-color: var(--ws-teal); box-shadow: 0 1px 2px rgb(16 24 40 / 0.06); }
+.vx-card:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+.vx-card[data-status="cancelled"], .vx-card[data-status="no_show"] { border-left-color: var(--ws-hair); }
+.vx-card[data-status="day"] { border-left-color: var(--ws-blue); }
+[data-tl-item][hidden] { display: none; }
+.vx-card-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; }
+.vx-card-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+.vx-card[data-status="day"] .vx-card-icon { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
+.vx-card-title { display: grid; min-width: 0; }
+.vx-card-name { font-size: 16px; font-weight: 700; line-height: 1.35; color: var(--c-ink); overflow-wrap: anywhere; }
+.vx-card-time { font-size: 13.5px; font-weight: 500; color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
+.vx-card-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
+.vx-card-row:empty { display: none; }
+.vx-card-go { display: inline-flex; align-items: center; gap: 0.25rem; justify-self: start; font-size: 14px; font-weight: 600; color: var(--ws-teal-ink); }
+.vx-card:hover .vx-card-go { text-decoration: underline; text-underline-offset: 3px; }
+.vx-card-sig { padding-right: 0.25rem; }
+@media (max-width: 479px) {
+  .vx-card-top { grid-template-columns: auto minmax(0, 1fr); }
+  .vx-card-top > :last-child { grid-column: 2; justify-self: start; }
+}
+
+.sig { display: block; border: 1px solid #d0d5dd; border-radius: 12px; background: #fff; color: #1f2937; }
+.sig svg { display: block; width: 100%; height: auto; max-height: 220px; }
+.sig-ink { fill: none; stroke: currentColor; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+.sig-line { stroke: #98a2b3; stroke-width: 2; stroke-dasharray: 10 8; }
+.sig-none { display: block; padding: 1rem; font-size: 14px; color: #475467; }
+.sig-mini { display: inline-block; width: 64px; height: 26px; margin-left: 0.125rem; border-radius: 6px; border-color: transparent; }
+.sig-mini svg { width: 64px; height: 26px; }
+.sig-mini .sig-ink { stroke-width: 14; }
+
+.vx-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.vx-actions .ws-btn { min-height: 44px; }
+.vx-body { display: grid; gap: 0.75rem; }
+.vx-sec { padding: 0.875rem 1rem 1rem; border: 1px solid var(--ws-hair); border-top: 3px solid var(--hue-bar); border-radius: 12px; background: var(--c-surface); }
+.vx-h { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; font-size: 15.5px; font-weight: 700; color: var(--c-ink); }
+.vx-hi { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--hue-tint); color: var(--hue-ink); }
+.vx-empty { font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
+.vx-mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 14px; }
+.vx-consent { display: grid; gap: 0.5rem; }
+.vx-consent + .vx-consent { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ws-hair); }
+.vx-signed { display: grid; gap: 0.375rem; }
+.vx-signer { font-size: 16px; font-weight: 700; color: var(--c-ink); }
+.vx-lines { display: grid; gap: 0.125rem; font-size: 15px; line-height: 1.5; color: var(--c-ink); }
+.vx-words { margin-top: 0.25rem; border-radius: 10px; background: var(--ws-subtle); }
+.vx-words summary { display: flex; align-items: center; min-height: 44px; padding: 0 0.875rem; font-size: 14px; font-weight: 600; color: var(--hue-ink); cursor: pointer; }
+.vx-words summary:focus-visible { outline: 2px solid var(--hue-bar); outline-offset: 2px; border-radius: 10px; }
+.vx-words ul { display: grid; gap: 0.375rem; padding: 0 0.875rem 0.5rem; font-size: 14px; line-height: 1.5; color: var(--c-ink); }
+.vx-tick { display: flex; gap: 0.375rem; padding: 0 0.875rem 0.75rem; font-size: 14px; font-weight: 600; color: var(--c-ink); }
+.vx-agreed { margin-top: 0.5rem; }
+.vx-note + .vx-note { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ws-hair); }
+.vx-note > .rp-row { margin-bottom: 0.25rem; }
+.vx-link { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 44px; font-size: 14px; font-weight: 600; color: var(--ws-teal-ink); text-decoration: underline; text-underline-offset: 3px; }
+.vx-link:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; border-radius: 6px; }
+.vx-sums { grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); margin-bottom: 0.75rem; }
+.vx-sums dd { font-variant-numeric: tabular-nums; }
+.vx-paid { color: var(--ws-green-ink) !important; }
+.vx-owed { color: var(--ws-amber-ink) !important; }
+.vx-stmt + .vx-stmt { margin-top: 0.5rem; }
+.vx-bill { display: grid; margin-top: 0.25rem; border-top: 1px solid var(--ws-hair); font-size: 14.5px; color: var(--c-ink); }
+.vx-bill li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.375rem 0; border-bottom: 1px solid var(--ws-hair); }
+.vx-bill-total { font-weight: 700; }
+.vx-pay[data-void] { opacity: 0.8; }
+.vx-pay[data-void] .rp:first-child { text-decoration: line-through; }
+.vx-files { display: grid; gap: 0.5rem; }
+.vx-file { display: flex; align-items: center; gap: 0.75rem; min-height: 60px; padding: 0.5rem; border: 1px solid var(--ws-hair); border-radius: 10px; color: var(--c-ink); }
+.vx-file:hover { border-color: var(--ws-teal); }
+.vx-file:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+.vx-file img, .vx-file-icon { flex: none; width: 72px; height: 54px; border-radius: 8px; object-fit: cover; background: var(--ws-subtle); }
+.vx-file-icon { display: grid; place-items: center; color: var(--ws-blue-ink); }
+.vx-file > span { display: grid; font-size: 14px; }
+.vx-file strong { font-size: 15px; }
+.vx-file span span { color: var(--c-ink-2); }
+.vx-signed-row { grid-template-columns: minmax(0, 14rem) minmax(0, 1fr); align-items: start; gap: 0.875rem; }
+@media (max-width: 639px) { .vx-signed-row { grid-template-columns: minmax(0, 1fr); } }

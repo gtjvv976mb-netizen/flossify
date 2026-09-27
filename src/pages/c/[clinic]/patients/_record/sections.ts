@@ -19,7 +19,7 @@ export const GROUPS: { name: string; hue: Hue }[] = [
 
 export const SECTION_META: Record<string, SectionMeta> = {
   overview: { group: 'Patient', hue: 'teal', icon: 'user', blurb: 'Who they are, the next check-up, and each part of the record in short.' },
-  timeline: { group: 'Patient', hue: 'teal', icon: 'history', blurb: 'Everything on the record, newest first.' },
+  timeline: { group: 'Patient', hue: 'teal', icon: 'history', blurb: 'Every visit, newest first. Open one to see all of it.' },
   visits: { group: 'Patient', hue: 'teal', icon: 'calendar', blurb: 'Every booking and visit, past and coming.' },
   health: { group: 'Health', hue: 'rose', icon: 'heart', blurb: 'Blood pressure, allergies, conditions and medicines. Check before treatment.' },
   chart: { group: 'Clinical', hue: 'blue', icon: 'tooth', blurb: 'The teeth as they are. Every change saves as you make it.' },

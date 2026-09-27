@@ -131,16 +131,16 @@ export function extraEvents(x: Extra, money: boolean): TimelineEvent[] {
   const ev: TimelineEvent[] = [];
   for (const v of x.vitals) {
     const w = v.sys && v.dia ? bpWords(v.sys, v.dia) : null;
-    ev.push({ at: v.at, kind: 'health', title: v.sys ? `Blood pressure ${v.sys}/${v.dia}` : `Pulse ${v.pulse}`, detail: [w?.label, v.pulse && v.sys ? `pulse ${v.pulse}` : null, v.note].filter(Boolean).join(' · ') || null, by: v.by, section: 'health', tone: w?.tone === 'alert' ? 'alert' : 'neutral' });
+    ev.push({ ref: `vital:${v.id}`, at: v.at, kind: 'health', title: v.sys ? `Blood pressure ${v.sys}/${v.dia}` : `Pulse ${v.pulse}`, detail: [w?.label, v.pulse && v.sys ? `pulse ${v.pulse}` : null, v.note].filter(Boolean).join(' · ') || null, by: v.by, section: 'health', tone: w?.tone === 'alert' ? 'alert' : 'neutral' });
   }
   for (const l of x.letters) {
-    ev.push({ at: l.at, kind: 'note', title: LETTER_KIND[l.kind], detail: l.kind === 'certificate' ? l.purpose ?? l.diagnosis : [l.toRole, l.toName].filter(Boolean).join(' · ') || null, by: l.dentist, section: 'rx' });
+    ev.push({ ref: `letter:${l.id}`, at: l.at, kind: 'note', title: LETTER_KIND[l.kind], detail: l.kind === 'certificate' ? l.purpose ?? l.diagnosis : [l.toRole, l.toName].filter(Boolean).join(' · ') || null, by: l.dentist, section: 'rx' });
     if (l.answer && l.answeredOn) ev.push({ at: new Date(`${l.answeredOn}T12:00:00+08:00`), kind: 'health', title: `Physician replied: ${ANSWER[l.answer].toLowerCase()}`, detail: l.answerNote, section: 'rx', tone: l.answer === 'not_cleared' ? 'alert' : 'accent' });
   }
   for (const a of x.loas) ev.push({ at: a.at, kind: 'money', title: `LOA from ${a.payor}: ${LOA_STATUS[a.status].toLowerCase()}`, detail: a.loaNumber ? `Approval code ${a.loaNumber}` : a.items.map((i) => i.name).join(', ') || null, section: 'treatment', tone: a.status === 'denied' ? 'alert' : a.status === 'approved' ? 'accent' : 'neutral' });
   for (const p of x.plans) {
     ev.push({ at: p.at, kind: 'money', title: `${p.kind === 'braces' ? 'Braces plan' : 'Payment plan'} started: ${p.title}`, detail: money ? `${peso(p.total)} · ${peso(p.down)} down, ${peso(p.monthly)} a month for ${p.months} months` : null, section: 'treatment' });
-    for (const a of p.adjustments) ev.push({ at: new Date(`${a.on}T12:00:00+08:00`), kind: 'treatment', title: 'Braces adjustment', detail: a.note, by: a.by, section: 'treatment', tone: 'accent' });
+    for (const a of p.adjustments) ev.push({ ref: `adj:${a.id}`, at: new Date(`${a.on}T12:00:00+08:00`), kind: 'treatment', title: 'Braces adjustment', detail: a.note, by: a.by, section: 'treatment', tone: 'accent' });
   }
   return ev;
 }

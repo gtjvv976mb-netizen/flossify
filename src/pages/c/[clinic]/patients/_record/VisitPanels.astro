@@ -1,0 +1,234 @@
+---
+// One side panel per visit (src/lib/visit-record.ts): everything from that visit in one place, opened from
+// its card on the Timeline or its row in Visits. Top to bottom, the order the owner named: the visit
+// (when, the dentist, the chair, why), the consent with the patient's own signature, what was done to which
+// tooth, the dentist's notes, blood pressure, prescriptions and letters, what it cost and what was paid,
+// X-rays and photos, and the texts about it. Each part is a small card in its section's colour; a part with
+// nothing in it is left out, except the consent and the treatment, which say so.
+//
+// Rendered outside the record's sections, so a panel opens whichever section is showing. `open` is the
+// visit a signing just came back to (?visit=<id>).
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Glyph from '../_ui/Glyph.astro';
+import Who from './Who.astro';
+import Signature from './Signature.astro';
+import { dateText } from '../../../../../lib/health';
+import { FILE_KINDS } from '../../../../../lib/record';
+import { LETTER_KIND } from '../../../../../lib/record-extra';
+import { TREATMENT_CONSENT } from '../../../../../lib/patient-forms-def';
+import { pesos } from '../../../../../lib/invoices';
+import { canSign, sourceWords, VISIT_STATUS, type Visit } from '../../../../../lib/visit-record';
+
+interface Props { visits: Visit[]; slug: string; patientId: string; canEdit: boolean; money: boolean; open: string | null; today: string; firstName: string }
+const { visits, slug, patientId, canEdit, money, open, today, firstName } = Astro.props;
+
+const tz = 'Asia/Manila';
+const time = (d: Date | string) => new Intl.DateTimeFormat('en-PH', { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(new Date(d)).toLowerCase();
+const weekday = (day: string) => new Intl.DateTimeFormat('en-PH', { timeZone: 'UTC', weekday: 'long' }).format(new Date(`${day}T00:00:00Z`));
+const dayOf = (d: Date | string) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(d));
+const stamp = (d: Date | string) => { const k = dayOf(d); return `${dateText(k)}, ${time(d)}`; };
+const base = `/c/${slug}/patients/${patientId}`;
+const tooth = (fdi: number | null, surface: string | null) => (fdi ? `${fdi}${surface ? ` ${surface}` : ''}` : null);
+const NOTE_PARTS = [['complaint', 'Why they came'], ['findings', 'Findings'], ['diagnosis', 'Diagnosis'], ['treatment', 'Treatment'], ['plan', 'Next']] as const;
+---
+
+{visits.map((v) => {
+  const s = v.status ? VISIT_STATUS[v.status] : null;
+  const title = v.id ? `Visit · ${dateText(v.day)}` : `At the clinic · ${dateText(v.day)}`;
+  const signable = canEdit && canSign(v, today);
+  const hours = v.dateOnly ? 'Time not on the old record' : v.end && v.id ? `${time(v.at)} – ${time(v.end)}` : time(v.at);
+  return (
+    <SidePanel id={`rec-visit-${v.key}`} title={title} meta={s ? s.label : 'Work recorded without a booking'} wide open={open === v.key}>
+      {(signable || v.future) && <div slot="actions" class="vx-actions">
+        {signable && (
+          <a href={`${base}/sign/${v.id}/`} class="ws-btn ws-btn-primary">
+            <Glyph name="pen" size={18} />{v.consents.length ? 'Sign another consent' : 'Sign consent on this tablet'}
+          </a>
+        )}
+        {v.future && <span class="rp rp-ok">Coming up</span>}
+      </div>}
+
+      <div class="vx-body">
+        {/* The visit */}
+        <section class="vx-sec hue-teal" aria-labelledby={`vx-${v.key}-when`}>
+          <h3 class="vx-h" id={`vx-${v.key}-when`}><span class="vx-hi"><Icon name="calendar" size={18} /></span>The visit</h3>
+          <dl class="rf-grid">
+            <div class="rf"><dt>Day</dt><dd>{weekday(v.day)}, {dateText(v.day)}</dd></div>
+            <div class="rf"><dt>Time</dt><dd>{hours}</dd></div>
+            <div class="rf"><dt>Dentist</dt><dd>{v.dentist ? <Who name={v.dentist} /> : <span class="text-ink-2">Not named</span>}</dd></div>
+            {v.chair && <div class="rf"><dt>Chair</dt><dd>Chair {v.chair}</dd></div>}
+            {v.arrivedAt && <div class="rf"><dt>Arrived</dt><dd>{time(v.arrivedAt)}</dd></div>}
+            {v.seatedAt && <div class="rf"><dt>In the chair</dt><dd>{time(v.seatedAt)}</dd></div>}
+            {(v.source || v.bookedBy) && <div class="rf"><dt>Booked</dt><dd>{[sourceWords(v.source), v.bookedBy ? `by ${v.bookedBy}` : null].filter(Boolean).join(' ')}</dd></div>}
+            {v.ref && <div class="rf"><dt>Booking reference</dt><dd class="vx-mono">{v.ref}</dd></div>}
+            {v.reason && <div class="rf rf-wide"><dt>Reason for the visit</dt><dd>{v.reason}</dd></div>}
+            {v.teeth.length > 0 && <div class="rf rf-wide"><dt>Teeth</dt><dd class="rp-row">{v.teeth.map((t) => <span class="rp rp-tooth"><Glyph name="tooth" size={14} />{t}</span>)}</dd></div>}
+          </dl>
+        </section>
+
+        {/* Consent and the signature */}
+        <section class="vx-sec hue-violet" aria-labelledby={`vx-${v.key}-consent`}>
+          <h3 class="vx-h" id={`vx-${v.key}-consent`}><span class="vx-hi"><Glyph name="shield" size={18} /></span>Consent and signature</h3>
+          {v.consents.length === 0 && v.agreed.length === 0 && (
+            <p class="vx-empty">{signable ? `No consent signed for this visit yet. Press “Sign consent on this tablet”, choose what the dentist explained, and hand the tablet to ${firstName}.` : v.id ? 'No consent was signed on the tablet for this visit.' : 'Work recorded without a booking has no consent of its own. Consents signed on paper or on the patient forms are in Consent.'}</p>
+          )}
+          {v.consents.map((k) => {
+            const words = TREATMENT_CONSENT[k.versionId];
+            return (
+              <article class="vx-consent">
+                <Signature strokes={k.strokes} name={k.signedBy} />
+                <div class="vx-signed">
+                  <p class="vx-signer">{k.signedBy}</p>
+                  <p class="rp-row">
+                    <span class="rp rp-ok"><Icon name="check" size={14} />{k.signedAs === 'guardian' ? `${k.relation ?? 'Parent or guardian'}, for the patient` : 'The patient'}</span>
+                    <span class="rp">Signed {stamp(k.at)}</span>
+                  </p>
+                </div>
+                <div class="rs-line"><span class="rk">Agreed to</span><p class="text-[15px] text-ink">{k.title}</p></div>
+                <div class="rs-line"><span class="rk">Explained</span><ul class="vx-lines">{k.treatment.split('\n').map((t) => <li>{t}</li>)}</ul></div>
+                {k.dentist && <div class="rs-line"><span class="rk">By</span><p><Who name={k.dentist} /></p></div>}
+                {k.recordedBy && <div class="rs-line"><span class="rk">At the desk</span><p><Who name={k.recordedBy} /></p></div>}
+                {words && (
+                  <details class="vx-words">
+                    <summary>Read the words they agreed to</summary>
+                    <ul>{words.points.map((pt) => <li><strong>{pt.head}.</strong> {pt.body}</li>)}</ul>
+                    <p class="vx-tick"><Icon name="check" size={16} />{words.tick}</p>
+                  </details>
+                )}
+              </article>
+            );
+          })}
+          {v.agreed.map((a) => (
+            <p class="rp-row vx-agreed"><span class="rp rp-ok"><Icon name="check" size={14} />{a.title}</span><span class="rp">Agreed {a.how}{a.by ? ` by ${a.by}` : ''}</span><span class="rp">{stamp(a.at)}</span></p>
+          ))}
+        </section>
+
+        {/* What was done */}
+        <section class="vx-sec hue-blue" aria-labelledby={`vx-${v.key}-done`}>
+          <h3 class="vx-h" id={`vx-${v.key}-done`}><span class="vx-hi"><Glyph name="plan" size={18} /></span>Treatment done</h3>
+          {v.procs.length === 0 && v.adjustments.length === 0 ? (
+            <p class="vx-empty">{v.future ? 'Nothing yet: this visit is still to come.' : 'Nothing was recorded as done at this visit.'}</p>
+          ) : (
+            <ul class="rs-list">
+              {v.procs.map((d) => (
+                <li class="rs-item">
+                  <p class="rs-what">{d.name}</p>
+                  <p class="rp-row">
+                    {tooth(d.fdi, d.surface) && <span class="rp rp-tooth"><Glyph name="tooth" size={14} />Tooth {tooth(d.fdi, d.surface)}</span>}
+                    <span class="rp">{time(d.at)}</span>
+                    {d.dentist && <Who name={d.dentist} />}
+                    {money && Number(d.price) > 0 && <span class="rp rp-money">{pesos(d.price)}</span>}
+                  </p>
+                  {d.note && <p class="text-[14.5px] text-ink-2">{d.note}</p>}
+                </li>
+              ))}
+              {v.adjustments.map((a) => (
+                <li class="rs-item"><p class="rs-what">Braces adjustment</p><p class="rp-row">{a.by && <Who name={a.by} />}{a.note && <span class="rp">{a.note}</span>}</p></li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {v.notes.length > 0 && (
+          <section class="vx-sec hue-blue" aria-labelledby={`vx-${v.key}-notes`}>
+            <h3 class="vx-h" id={`vx-${v.key}-notes`}><span class="vx-hi"><Glyph name="pen" size={18} /></span>The dentist’s notes</h3>
+            {v.notes.map((n) => (
+              <article class="vx-note">
+                <p class="rp-row">{n.amends && <span class="rp rp-warn">Addendum</span>}{(n.dentist ?? n.by) && <Who name={n.dentist ?? n.by} />}<span class="rp">Written {stamp(n.at)}</span>{n.teeth.map((t) => <span class="rp rp-tooth">{t}</span>)}</p>
+                {NOTE_PARTS.filter(([k]) => n[k]).map(([k, label]) => <div class="rs-line"><span class="rk">{label}</span><p class="nt-text">{n[k]}</p></div>)}
+              </article>
+            ))}
+          </section>
+        )}
+
+        {v.vitals.length > 0 && (
+          <section class="vx-sec hue-rose" aria-labelledby={`vx-${v.key}-bp`}>
+            <h3 class="vx-h" id={`vx-${v.key}-bp`}><span class="vx-hi"><Glyph name="heart" size={18} /></span>Blood pressure and pulse</h3>
+            <p class="rp-row">{v.vitals.map((s) => <span class="rp">{s.sys ? `${s.sys}/${s.dia} mmHg` : ''}{s.sys && s.pulse ? ' · ' : ''}{s.pulse ? `pulse ${s.pulse}` : ''} · {time(s.at)}</span>)}</p>
+          </section>
+        )}
+
+        {(v.rx.length > 0 || v.letters.length > 0) && (
+          <section class="vx-sec hue-violet" aria-labelledby={`vx-${v.key}-rx`}>
+            <h3 class="vx-h" id={`vx-${v.key}-rx`}><span class="vx-hi"><Glyph name="pill" size={18} /></span>Prescriptions and letters</h3>
+            <ul class="rs-list">
+              {v.rx.map((r) => (
+                <li class="rs-item">
+                  <p class="rs-what">Prescription</p>
+                  <ul class="vx-lines">{r.items.map((i) => <li><strong>{[i.drug, i.strength].filter(Boolean).join(' ')}</strong>{i.qty ? ` · #${i.qty}` : ''}{i.sig ? ` · ${i.sig}` : ''}</li>)}</ul>
+                  <p class="rp-row">{r.prescriber && <Who name={r.prescriber} />}<a class="vx-link" href={`${base}/rx/${r.id}/`}><Glyph name="print" size={16} />Print</a></p>
+                </li>
+              ))}
+              {v.letters.map((l) => (
+                <li class="rs-item">
+                  <p class="rs-what">{LETTER_KIND[l.kind]}</p>
+                  <p class="rp-row"><Who name={l.dentist} />{l.purpose && <span class="rp">{l.purpose}</span>}<a class="vx-link" href={`${base}/letters/${l.id}/`}><Glyph name="print" size={16} />Print</a></p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {money && v.money && (
+          <section class="vx-sec hue-green" aria-labelledby={`vx-${v.key}-money`}>
+            <h3 class="vx-h" id={`vx-${v.key}-money`}><span class="vx-hi"><Icon name="money" size={18} /></span>Payment</h3>
+            <dl class="rf-grid vx-sums">
+              <div class="rf"><dt>Charged</dt><dd>{v.money.charged}</dd></div>
+              <div class="rf"><dt>Paid</dt><dd class="vx-paid">{v.money.paid}</dd></div>
+              {v.money.payor && <div class="rf"><dt>HMO or PhilHealth pays</dt><dd>{v.money.payor}</dd></div>}
+              <div class="rf"><dt>Still owed</dt><dd class:list={[v.money.owedCents > 0n && 'vx-owed']}>{v.money.owedCents > 0n ? v.money.owed : 'Nothing'}</dd></div>
+            </dl>
+            {v.money.statements.map((st) => (
+              <article class="vx-stmt">
+                <p class="rp-row"><a class="vx-link vx-mono" href={`/c/${slug}/finances/${st.id}/`}>{st.no}</a><span class:list={['rp', st.status === 'paid' ? 'rp-ok' : st.status === 'void' ? '' : 'rp-warn']}>{({ issued: 'Not paid yet', partly_paid: 'Part paid', paid: 'Paid', void: 'Void' } as Record<string, string>)[st.status] ?? st.status}</span>{st.payor && <span class="rp">{st.payor} pays {st.payorShare ? pesos(st.payorShare) : ''}</span>}</p>
+                {st.lines.length > 0 && <ul class="vx-bill">{st.lines.map((l) => <li><span>{l.description}</span><span class="tabular-nums">{pesos(l.amount)}</span></li>)}<li class="vx-bill-total"><span>Total</span><span class="tabular-nums">{pesos(st.total)}</span></li></ul>}
+              </article>
+            ))}
+            {v.money.payments.length > 0 && (
+              <ul class="rs-list mt-2">
+                {v.money.payments.map((y) => (
+                  <li class="rs-item vx-pay" data-void={y.voided ? '' : undefined}>
+                    <p class="rp-row">
+                      <span class:list={['rp', y.voided ? '' : 'rp-money']}>{pesos(y.amount)}</span>
+                      <span class="rp">{y.method}</span>
+                      {y.paidOn && <span class="rp">{dateText(y.paidOn)}</span>}
+                      {y.statementNo && <span class="rp vx-mono">{y.statementNo}</span>}
+                      {y.birRef && <span class="rp">BIR {y.birRef}</span>}
+                      {y.by && <Who name={y.by} />}
+                      {y.voided && <span class="rp rp-alert">Voided</span>}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p class="mt-2 text-[13px] text-ink-2">Statements of account, not BIR receipts.</p>
+          </section>
+        )}
+
+        {v.files.length > 0 && (
+          <section class="vx-sec hue-blue" aria-labelledby={`vx-${v.key}-files`}>
+            <h3 class="vx-h" id={`vx-${v.key}-files`}><span class="vx-hi"><Glyph name="image" size={18} /></span>X-rays, photos and files</h3>
+            <ul class="vx-files">
+              {v.files.map((f) => (
+                <li>
+                  <a class="vx-file" href={`${base}/files/${f.id}/`} target="_blank" rel="noopener">
+                    {f.thumb ? <img src={`${base}/files/${f.id}/?thumb=1`} alt="" loading="lazy" width="96" height="72" /> : <span class="vx-file-icon"><Icon name="file" size={22} /></span>}
+                    <span class="min-w-0"><strong>{FILE_KINDS[f.kind] ?? 'File'}</strong>{(f.caption || f.fdi) && <span>{[f.caption, f.fdi ? `tooth ${f.fdi}` : null].filter(Boolean).join(' · ')}</span>}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {v.texts.length > 0 && (
+          <section class="vx-sec hue-violet" aria-labelledby={`vx-${v.key}-texts`}>
+            <h3 class="vx-h" id={`vx-${v.key}-texts`}><span class="vx-hi"><Icon name="message" size={18} /></span>Texts about this visit</h3>
+            <p class="rp-row">{v.texts.map((t) => <span class:list={['rp', t.failed && 'rp-alert']}>{t.word} · {stamp(t.at)}{t.failed ? ' · did not go through' : ''}</span>)}</p>
+          </section>
+        )}
+      </div>
+    </SidePanel>
+  );
+})}

@@ -1,0 +1,18 @@
+---
+// A signature as it was drawn on the tablet (035): the strokes (src/lib/visit-consent.ts) as one SVG path on
+// a white slip with a line to sign on, dark ink whatever the theme — it reads like the paper it replaces.
+// `mini` is the small copy a visit's card on the Timeline carries.
+import { SIG_W, SIG_H, strokesPath, type Strokes } from '../../../../../lib/visit-consent';
+
+interface Props { strokes: Strokes | null; name: string; mini?: boolean; class?: string }
+const { strokes, name, mini = false, class: extra } = Astro.props;
+const d = strokes ? strokesPath(strokes) : '';
+---
+<span class:list={['sig', mini && 'sig-mini', extra]}>
+  {d ? (
+    <svg viewBox={`0 0 ${SIG_W} ${SIG_H}`} role="img" aria-label={`Signature of ${name}`} focusable="false" preserveAspectRatio="xMidYMid meet">
+      {!mini && <line x1="40" y1={SIG_H - 70} x2={SIG_W - 40} y2={SIG_H - 70} class="sig-line" />}
+      <path d={d} class="sig-ink" />
+    </svg>
+  ) : <span class="sig-none">Signature could not be read</span>}
+</span>
