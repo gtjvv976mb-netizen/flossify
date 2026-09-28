@@ -26,8 +26,11 @@
 //
 // The state is in the address, so a reload, a link and the back button come
 // back to the same view: ?q= (name, mobile or chart no.; the old /patients/?q=
-// links land here too), ?f=all|today|new|balance|attention, ?sort=name|last|next,
-// ?show= (rows from the start, for a browser without JavaScript). With
+// links land here too), ?f=all|today|new|due|quiet|balance|attention (due and
+// quiet are the recall list: Due for check-up, Not seen in a year — list.ts),
+// ?sort=name|last|next|due (left out at the filter's own default: Due for
+// check-up starts soonest first, the rest by name — defaultSort()), ?show=
+// (rows from the start, for a browser without JavaScript). With
 // JavaScript the page asks itself for the changing part only: ?part=list (the
 // pills, the line, the rows) as the desk types, filters or sorts, and
 // ?part=rows&from=N (the next rows) for "Show more" — no layout, no-store.
@@ -43,7 +46,7 @@ import './_list/list.css';
 import './_forms/forms.css';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { DAY_MS, startMs, ymdOf } from '../../../../components/ws/cal/model';
-import { loadList, readState, listHref, SORTS, type Sort } from './_list/list';
+import { loadList, readState, listHref, defaultSort, SORTS, type Sort } from './_list/list';
 import { newFormsWaiting } from '../../../../lib/patient-forms';
 import { can } from '../../../../lib/can';
 
@@ -75,6 +78,7 @@ const SORT_LABEL: Record<Sort, { label: string; hint: string }> = {
   name: { label: 'Last name', hint: 'A to Z' },
   last: { label: 'Last visit', hint: 'Most recent first' },
   next: { label: 'Next visit', hint: 'Soonest first' },
+  due: { label: 'Check-up due', hint: 'Soonest first' },
 };
 const canEdit = data.canEdit;
 // Forms waiting in "New patient forms" (the full page only; a part never needs it).
@@ -101,7 +105,7 @@ const boot = JSON.stringify({ base, q: state.q, f: state.f, sort: state.sort }).
         <div class="pts-head">
           <form method="get" action={base} class="pts-find" role="search" data-pts-find>
             {state.f !== 'all' && <input type="hidden" name="f" value={state.f} data-pts-keep="f" />}
-            {state.sort !== 'name' && <input type="hidden" name="sort" value={state.sort} data-pts-keep="sort" />}
+            {state.sort !== defaultSort(state.f) && <input type="hidden" name="sort" value={state.sort} data-pts-keep="sort" />}
             <label class="pts-search">
               <Icon name="search" class="pts-search-icon" />
               <span class="sr-only">Search patients by name, mobile or chart no.</span>
@@ -183,13 +187,23 @@ const boot = JSON.stringify({ base, q: state.q, f: state.f, sort: state.sort }).
     const error = root.querySelector<HTMLElement>('[data-pts-error]')!;
     const sortWord = root.querySelector<HTMLElement>('[data-pts-sort-word]');
     const sortButton = root.querySelector<HTMLButtonElement>('.pts-sort-btn');
-    const SORT_WORD: Record<string, string> = { name: 'Last name', last: 'Last visit', next: 'Next visit' };
+    const SORT_WORD: Record<string, string> = { name: 'Last name', last: 'Last visit', next: 'Next visit', due: 'Check-up due' };
+    // The sort a filter starts with (defaultSort() in ./_list/list.ts, which the page cannot import: it reads the database).
+    const defaultSort = (f: string) => (f === 'due' ? 'due' : 'name');
+    /** The sort button and its list say the sort now chosen. */
+    const showSort = () => {
+      for (const it of root.querySelectorAll<HTMLAnchorElement>('a[data-pts-sort]')) {
+        if (it.dataset.ptsSort === S.sort) it.setAttribute('aria-current', 'page'); else it.removeAttribute('aria-current');
+      }
+      if (sortWord) sortWord.textContent = SORT_WORD[S.sort] ?? 'Last name';
+      sortButton?.setAttribute('aria-label', `Sort: ${SORT_WORD[S.sort] ?? 'Last name'}`);
+    };
 
     const query = (extra: Record<string, string | number> = {}) => {
       const p = new URLSearchParams();
       if (S.q) p.set('q', S.q);
       if (S.f !== 'all') p.set('f', S.f);
-      if (S.sort !== 'name') p.set('sort', S.sort);
+      if (S.sort !== defaultSort(S.f)) p.set('sort', S.sort);
       for (const [k, v] of Object.entries(extra)) p.set(k, String(v));
       return p;
     };
@@ -205,7 +219,7 @@ const boot = JSON.stringify({ base, q: state.q, f: state.f, sort: state.sort }).
     const sortLinks = () => {
       for (const it of root.querySelectorAll<HTMLAnchorElement>('a[data-pts-sort]')) {
         const p = query();
-        if (it.dataset.ptsSort === 'name') p.delete('sort'); else p.set('sort', it.dataset.ptsSort!);
+        if (it.dataset.ptsSort === defaultSort(S.f)) p.delete('sort'); else p.set('sort', it.dataset.ptsSort!);
         const s = p.toString(); it.href = s ? `${boot.base}?${s}` : boot.base;
       }
     };
@@ -247,7 +261,7 @@ const boot = JSON.stringify({ base, q: state.q, f: state.f, sort: state.sort }).
       sortLinks();
       for (const k of ['f', 'sort'] as const) {
         const keep = form.querySelector<HTMLInputElement>(`[data-pts-keep="${k}"]`);
-        const want = k === 'f' ? S.f !== 'all' : S.sort !== 'name';
+        const want = k === 'f' ? S.f !== 'all' : S.sort !== defaultSort(S.f);
         if (want && !keep) {
           const h = document.createElement('input');
           h.type = 'hidden'; h.name = k; h.dataset.ptsKeep = k; form.prepend(h);
@@ -285,7 +299,11 @@ const boot = JSON.stringify({ base, q: state.q, f: state.f, sort: state.sort }).
       const pill = (e.target as Element).closest<HTMLAnchorElement>('a[data-pts-f]');
       if (pill) {
         e.preventDefault();
-        S.f = pill.dataset.ptsF ?? 'all';
+        const f = pill.dataset.ptsF ?? 'all';
+        // A sort the person chose stays; a filter's own start (Due for check-up: soonest first) gives way to the next's.
+        if (S.sort === defaultSort(S.f)) S.sort = defaultSort(f);
+        S.f = f;
+        showSort();
         await refresh(() => region.querySelector<HTMLElement>(`a[data-pts-f="${S.f}"]`)?.focus());
         return;
       }
@@ -319,11 +337,7 @@ const boot = JSON.stringify({ base, q: state.q, f: state.f, sort: state.sort }).
       const pop = menu?.querySelector<HTMLElement>(':scope > .ws-menu-pop');
       const button = menu?.querySelector<HTMLButtonElement>(':scope > button');
       if (pop && button) { pop.hidden = true; button.setAttribute('aria-expanded', 'false'); }
-      for (const it of root.querySelectorAll<HTMLAnchorElement>('a[data-pts-sort]')) {
-        if (it.dataset.ptsSort === S.sort) it.setAttribute('aria-current', 'page'); else it.removeAttribute('aria-current');
-      }
-      if (sortWord) sortWord.textContent = SORT_WORD[S.sort] ?? 'Last name';
-      sortButton?.setAttribute('aria-label', `Sort: ${SORT_WORD[S.sort] ?? 'Last name'}`);
+      showSort();
       button?.focus();
       await refresh();
     });

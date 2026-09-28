@@ -96,6 +96,9 @@
   .pts-k { display: inline-block; min-width: 2.4rem; font-size: 13px; font-weight: 500; color: var(--c-muted); }
   .pts-when { font-weight: 600; color: var(--c-ink); }
   .pts-today { color: var(--ws-teal-ink); }
+  /* The check-up set on the record and when its reminder went out, under Next and Last; "overdue" is the
+     word that says it (amber only underlines it — never colour alone). */
+  .pts-overdue { font-weight: 600; color: var(--ws-amber-ink); }
   .pts-c-visits { white-space: nowrap; }
   .pts-c-bal { text-align: right; white-space: nowrap; }
   .pts-bal {
