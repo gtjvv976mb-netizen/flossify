@@ -15,8 +15,9 @@ import { PLAN_STATUS, LAB_STATUS, LAB_NEXT, type Clinical, type RecordProblem } 
 import { dateText } from '../../../../../lib/health';
 import type { Loa } from '../../../../../lib/record-extra';
 
-interface Props { c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string }
-const { c, loas = [], canEdit, action, meId, problem, saved, today, firstName } = Astro.props;
+/** visitId: today's visit (036) — a treatment recorded or marked done is written against it. openNow: the page opens Record a treatment as it loads (?open=done). */
+interface Props { c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; visitId?: string | null; openNow?: boolean }
+const { c, loas = [], canEdit, action, meId, problem, saved, today, firstName, visitId = null, openNow = false } = Astro.props;
 
 const peso = (n: number | string) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 const tooth = (fdi: number | null, surface: string | null) => (fdi ? `${fdi}${surface ? ` ${surface}` : ''}` : null);
@@ -85,6 +86,7 @@ const cats = [...new Set(c.catalog.map((x) => x.category ?? 'Other'))];
                             <button class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="check" />Patient agreed</button></form>
                         )}
                         <form method="post" action={`${action}#treatment`} class="tx-done-form" data-confirm={loaOf(i.loaId) && (loaOf(i.loaId)!.status === 'requested' || loaOf(i.loaId)!.expired) ? `${loaOf(i.loaId)!.payor} has not approved this yet (no valid LOA). Mark it done anyway? The HMO may not pay for it.` : undefined}><Csrf /><input type="hidden" name="intent" value="plan-status" /><input type="hidden" name="item" value={i.id} /><input type="hidden" name="to" value="done" />
+                          {visitId && <input type="hidden" name="visit" value={visitId} />}
                           {meClinician ? <input type="hidden" name="dentist" value={meId} /> : (
                             <select name="dentist" class="tx-who" required aria-label={`Who did ${i.name}`}>
                               <option value="">Done by…</option>
@@ -237,11 +239,12 @@ const cats = [...new Set(c.catalog.map((x) => x.category ?? 'Other'))];
       </form>
     </SidePanel>
 
-    <SidePanel id="rec-done-add" title="Record a treatment" meta={firstName} open={problem?.intent === 'done-add'}>
+    <SidePanel id="rec-done-add" title="Record a treatment" meta={firstName} open={problem?.intent === 'done-add' || openNow}>
       {problem?.intent === 'done-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was recorded.`} />}
       <p class="mb-4 text-[14px] text-ink-2">For work that was not on the plan. Something on the plan? Use its Mark done instead.</p>
       <form method="post" action={`${action}#treatment-done`} class="grid gap-4" data-fee-form>
         <Csrf /><input type="hidden" name="intent" value="done-add" />
+        {visitId && <input type="hidden" name="visit" value={visitId} />}
         <label class="field"><span class="meta">From your fee guide</span>
           <select name="catalog_id" data-fee-pick>
             <option value="">Choose a treatment…</option>

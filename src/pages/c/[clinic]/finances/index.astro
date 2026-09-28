@@ -348,6 +348,7 @@ const claimMissed = q.get('missed') ? CLAIM_MISSED : '';
             <a href={newCharge} class="ws-btn ws-btn-primary" data-fin-new data-fin-for="statements" hidden={show !== 'statements'}>
               <Icon name="plus" />New charge
             </a>
+            <a href={`${base}close/`} class="ws-btn ws-btn-quiet" data-fin-close><Icon name="check" />Close the day</a>
             {canMoney && (
               <button type="button" class="ws-btn ws-btn-primary" data-ws-open="claim-new" data-fin-for="claims" hidden={show !== 'claims'}>
                 <Icon name="plus" />New claim

@@ -1,8 +1,10 @@
 // /api/schedule — the schedule page's one door for reading and changing visits.
 //
 //   GET   ?clinic=<slug>&from=<ISO>&to=<ISO>       → 200 Range (src/lib/schedule.ts), eight days at most
-//   POST  { clinic, patientId | newPatient: { name, phone? }, dentistId?, chair, startsAt, minutes, reason?, catalogCode?, notes? }
+//   POST  { clinic, patientId | newPatient: { name, phone? }, dentistId?, chair, startsAt, minutes, reason?, catalogCode?, notes?, status?: 'arrived' }
 //                                                  → 201 { appointment }   a new visit, status 'booked', source 'staff'
+//                                                    status 'arrived' is a walk-in (036): checked in as it is booked, through the
+//                                                    same state machine, and no confirmation text — they are standing at the desk
 //   PATCH { clinic, id, startsAt?, minutes?, chair?, dentistId?, status?, reason?, notes? }
 //                                                  → 200 { appointment }   a move, a status change, or both
 //   Every visit in an answer also carries the Dashboard's extras (service, fee-guide price, who booked it
@@ -37,6 +39,7 @@ import { hit, waitText, LIMITS } from '../../../lib/throttle';
 import { queueText, normalizePhone, PH_MOBILE } from '../../../lib/messages';
 import { loadRange, findClash, applyStatus, dropStaleTexts, readAppt, canText, scheduleTexts, ALLOWED, DONE, WORDS, StatusRefused, type Appt } from '../../../lib/schedule';
 import { extrasFor, mergeExtras, withExtras } from '../../../components/ws/cal/data';
+import { splitName } from '../../../lib/import';
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -192,6 +195,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const reason = text(b.reason, REASON_MAX);
     const notes = text(b.notes, NOTES_MAX);
     const catalogCode = text(b.catalogCode, 60);
+    // A walk-in is the only status a visit may start in besides booked.
+    if (b.status !== undefined && b.status !== null && b.status !== 'arrived') throw refuse(400, 'A new visit starts as booked, or as arrived for a walk-in.');
+    const walkIn = b.status === 'arrived';
 
     // Who the visit is for: a patient on file, or a new one from a name and a mobile.
     let newPatient: { name: string; phone: string | null } | null = null;
@@ -218,11 +224,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
         if (!rows[0]) throw refuse(400, 'No such patient at this clinic.');
         pid = rows[0].id; phone = rows[0].phone;
       } else {
-        const [first, ...rest] = newPatient!.name.split(' ');
-        const last = rest.join(' ') || '—';
+        // The name as Filipino names go (splitName, the import's rule): "Maria Cristina Dela Cruz" is Maria Cristina ·
+        // Dela Cruz, "Jose Rizal Jr." keeps Jr. as the suffix; one word is a first name with no surname yet ('—').
+        const n = splitName(newPatient!.name);
+        const first = n.first || n.last, last = n.first ? n.last : '—';
         const { rows } = await tx.query<{ id: string }>(
-          'insert into patient (clinic_id, chart_no, first_name, last_name, phone) values ($1, $2, $3, $4, $5) returning id',
-          [clinic.id, await nextChartNo(tx), first, last, newPatient!.phone]);
+          'insert into patient (clinic_id, chart_no, first_name, last_name, suffix, phone) values ($1, $2, $3, $4, $5, $6) returning id',
+          [clinic.id, await nextChartNo(tx), first, last, n.suffix, newPatient!.phone]);
         pid = rows[0].id; phone = newPatient!.phone;
         await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'patient.create', 'patient', $3)`, [clinic.id, session.staffId, pid]);
       }
@@ -244,10 +252,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
         [clinic.id, pid, dentistId, chair, startsAt, endsAt, why, ref, catalogId, notes, session.staffId]);
 
       let texted = false;
-      if (canText(phone) && startsAt.getTime() > Date.now()) {
+      if (!walkIn && canText(phone) && startsAt.getTime() > Date.now()) {
         texted = (await queueText(tx, { clinicId: clinic.id, to: phone!, body: scheduleTexts.confirmation(c.name, why, startsAt, ref, c.phone), kind: 'confirmation', patientId: pid, appointmentId: row.id, staffId: session.staffId })) !== null;
       }
       await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.create', 'appointment', $3)`, [clinic.id, session.staffId, row.id]);
+      if (walkIn) await applyStatus(tx, clinic.id, session.staffId, row.id, 'arrived', 'booked');
       return { appointment: await withExtras(tx, await mustRead(tx, row.id)), texted };
     });
     return json(saved, 201);

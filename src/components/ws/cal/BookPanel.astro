@@ -61,6 +61,9 @@ const { chairs, catalog, date, addPatient } = Astro.props;
       <label class="field"><span class="meta">Date</span><input type="date" data-bk-date value={date} required /></label>
       <label class="field"><span class="meta">Time</span><input type="time" step="900" data-bk-time required /></label>
     </div>
+    {/* A walk-in (036): the visit is today, now, and checked in the moment it is saved — one press instead of
+        a booking and then Arrived on the card. No confirmation text: they are standing at the desk. */}
+    <label class="check bk-check"><input type="checkbox" data-bk-now /><span>Here now (a walk-in): checked in as soon as it is saved</span></label>
     <div class="bk-two">
       <label class="field">
         <span class="meta">Chair</span>

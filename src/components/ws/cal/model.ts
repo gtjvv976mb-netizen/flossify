@@ -43,8 +43,42 @@ export interface Extras {
   /** The patient's last name as the record keeps it ("Dela Cruz"), null when there is none: a card that has
    *  no room for the whole name shows this, never the name's last word. */
   lastName: string | null;
+  /** The fee-guide row's code (the aftercare sheet is chosen by it). */
+  catalogCode: string | null;
+  /** The fee guide's category (ortho, restore …), for the aftercare sheet (src/lib/aftercare.ts). */
+  catalogCategory: string | null;
+  // --- Before we start, and before they leave (036): what the desk and the chair need at the moment of decision.
+  /** When the health history was last asked (the latest version), ISO; null when never. */
+  healthAskedAt: string | null;
+  /** A blood pressure taken on the visit's day. */
+  bpOnDay: boolean;
+  /** A consent signed on the tablet for this visit. */
+  consentSigned: boolean;
+  /** A lab case for the patient still at the lab (ordered or sent). */
+  labPending: boolean;
+  /** A request for medical clearance with no reply yet. */
+  clearanceWaiting: boolean;
+  /** Treatments done at this visit (or that day) with no statement line yet. */
+  unbilled: number;
+  /** The visit's own statement, when one was charged from it. */
+  statement: { id: string; no: string; status: string } | null;
+  /** The patient's open check-up, YYYY-MM-DD, or null. */
+  recallDue: string | null;
+  /** The patient's next visit after this one, ISO, or null. */
+  nextVisitAt: string | null;
 }
 export type Card = Appt & Extras;
+
+/** How long a patient has waited since arrival, in whole minutes; null unless they are here and not yet seated. */
+export function waitMinutes(c: Pick<Card, 'status' | 'arrivedAt'>, now = Date.now()): number | null {
+  if ((c.status !== 'arrived' && c.status !== 'in_lobby') || !c.arrivedAt) return null;
+  return Math.max(0, Math.floor((now - Date.parse(c.arrivedAt)) / 60_000));
+}
+/** Past this many minutes on the bench the wait is said in amber (docs/clinic-operations.md: under 10 for a
+ *  returning patient, under 5 for a new one; alert at 15). The words carry the minutes either way. */
+export const WAIT_ALERT_MIN = 15;
+/** A finished visit with nothing after it: no next visit on the book and no check-up set. */
+export const noNextVisit = (c: Pick<Card, 'status' | 'nextVisitAt' | 'recallDue'>) => c.status === 'completed' && !c.nextVisitAt && !c.recallDue;
 
 export interface StaffDay { id: string; name: string; days: number[] }
 
@@ -330,18 +364,27 @@ export interface Summary {
   expected: number; priced: number; unpriced: number; ranged: number;
   /** A dentist's own share of today, when the page shows a dentist's view. */
   mine: number;
+  /** The longest wait on the bench right now, in minutes, and whose it is. */
+  waitMax: number; waitWho: string | null;
+  /** Finished visits with no next visit on the book and no check-up set. */
+  noNext: number;
 }
 /** Today's numbers from today's visits (cancelled ones are never in the list). */
-export function summarize(today: Card[], me = ''): Summary {
-  const s: Summary = { booked: 0, fromWeb: 0, waiting: 0, inChair: 0, done: 0, noShow: 0, expected: 0, priced: 0, unpriced: 0, ranged: 0, mine: 0 };
+export function summarize(today: Card[], me = '', now = Date.now()): Summary {
+  const s: Summary = { booked: 0, fromWeb: 0, waiting: 0, inChair: 0, done: 0, noShow: 0, expected: 0, priced: 0, unpriced: 0, ranged: 0, mine: 0, waitMax: 0, waitWho: null, noNext: 0 };
   for (const c of today) {
     if (c.status === 'cancelled') continue;
     s.booked++;
     if (c.source !== 'staff') s.fromWeb++;
     if (me && c.dentistId === me) s.mine++;
-    if (c.status === 'arrived' || c.status === 'in_lobby') s.waiting++;
+    if (c.status === 'arrived' || c.status === 'in_lobby') {
+      s.waiting++;
+      const w = waitMinutes(c, now);
+      if (w !== null && w >= s.waitMax) { s.waitMax = w; s.waitWho = c.patientName; }
+    }
     if (c.status === 'in_chair') s.inChair++;
     if (c.status === 'completed') s.done++;
+    if (noNextVisit(c)) s.noNext++;
     if (c.status === 'no_show') { s.noShow++; continue; }
     if (c.price) { s.expected += c.price.min; s.priced++; if (c.price.max === null ? c.price.from : c.price.max !== c.price.min) s.ranged++; }
     else s.unpriced++;
@@ -353,12 +396,16 @@ export function summarize(today: Card[], me = ''): Summary {
  *  done and no-shows said under Booked today and what the fee guide expects said under Collected. */
 export function summaryNotes(s: Summary, chairs: number, isDentist: boolean, money = false) {
   const n = (k: number, one: string, many = one + 's') => `${k} ${k === 1 ? one : many}`;
+  const noNext = s.noNext ? `${s.noNext} with no next visit` : '';
   const booked = s.booked === 0 ? 'nothing on the book yet'
-    : money ? [isDentist && `${s.mine} with you`, s.done ? `${s.done} done` : !isDentist && 'none done yet', s.noShow && n(s.noShow, 'no-show')].filter(Boolean).join(' · ')
-    : isDentist ? `${s.mine} with you` : s.fromWeb ? `${s.fromWeb} from the web` : 'all booked at the desk';
+    : money ? [isDentist && `${s.mine} with you`, s.done ? `${s.done} done` : !isDentist && 'none done yet', s.noShow && n(s.noShow, 'no-show'), noNext].filter(Boolean).join(' · ')
+    : [isDentist ? `${s.mine} with you` : s.fromWeb ? `${s.fromWeb} from the web` : 'all booked at the desk', noNext].filter(Boolean).join(' · ');
   return {
     booked,
-    waiting: 'here, not seated yet',
+    // The longest wait on the bench, said in minutes; past WAIT_ALERT_MIN the tile turns amber and the words say so.
+    waiting: s.waiting === 0 ? 'here, not seated yet'
+      : s.waitMax >= WAIT_ALERT_MIN ? `longest ${s.waitMax} min${s.waitWho ? ` · ${s.waitWho}` : ''} · over ${WAIT_ALERT_MIN}`
+      : s.waitMax > 0 ? `longest ${s.waitMax} min${s.waitWho ? ` · ${s.waitWho}` : ''}` : 'here, not seated yet',
     inChair: `of ${n(chairs, 'chair')}`,
     done: s.noShow ? n(s.noShow, 'no-show') : 'finished today',
     // The fee guide's low end of today's visits (a range counts at its low end; a visit with no price counts

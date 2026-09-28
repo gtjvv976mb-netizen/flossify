@@ -232,10 +232,13 @@ export const audit = (tx: Tx, clinicId: string, staffId: string, action: string,
 // Charging: a numbered statement
 // ---------------------------------------------------------------------------
 
-export interface LineIn { catalogId: string; desc: string; qty: string; price: string }
+/** procedureId: the treatment done this line charges (procedure_done, 036), so it is never charged twice and the visit's panel knows. */
+export interface LineIn { catalogId: string; desc: string; qty: string; price: string; procedureId?: string }
 export interface ChargeIn {
   patientId: string; lines: LineIn[]; discount: string; discountId: string;
   payor: string; payorShare: string; formKey: string;
+  /** The visit this statement is for (appointment.id, 036), when the desk charged it from the visit. */
+  visitId?: string;
 }
 export interface Totals { subtotal: Cents; discount: Cents; total: Cents; payorShare: Cents; patientPart: Cents }
 
@@ -259,6 +262,20 @@ export async function createStatement(
     ? (await tx.query(`select id from patient where id = $1 and archived_at is null`, [input.patientId])).rows[0]
     : null;
   if (!patient) problems.push('Pick the patient from the search.');
+  // The visit and the treatments a line names must be this patient's; anything else is simply not named.
+  const visitId = patient && input.visitId && UUID.test(input.visitId)
+    ? ((await tx.query(`select id from appointment where id = $1 and patient_id = $2 and status not in ('cancelled', 'no_show')`, [input.visitId, input.patientId])).rows[0]?.id ?? null) : null;
+  const procIds = [...new Set(input.lines.map((l) => l.procedureId ?? '').filter((id) => UUID.test(id)))];
+  // Charge once: two desks charging the same visit take turns on this patient's treatments, and the check below
+  // runs after the wait (a fresh snapshot per statement), so the second sees the first one's lines and is refused.
+  if (patient && procIds.length) await tx.query(`select pg_advisory_xact_lock(hashtext('charge:' || $1::text))`, [input.patientId]);
+  const procRows = patient && procIds.length ? (await tx.query(
+    `select d.id, coalesce(d.name, 'Treatment') as name,
+            (select i.series_prefix || '-' || lpad(i.number::text, 6, '0') from invoice_line l join invoice i on i.id = l.invoice_id
+              where l.procedure_id = d.id and i.status <> 'void' limit 1) as charged_on
+       from procedure_done d where d.id = any($1::uuid[]) and d.patient_id = $2`, [procIds, input.patientId])).rows : [];
+  for (const r of procRows) if (r.charged_on) problems.push(`${r.name} is already charged on statement ${r.charged_on}. Take its line off, or void that statement first.`);
+  const procs = new Set<string>(procRows.filter((r) => !r.charged_on).map((r) => r.id as string));
 
   const lines = input.lines.filter((l) => l.catalogId || l.desc.trim() || l.price.trim());
   if (lines.length === 0) problems.push('Add at least one line: a service from the fee guide, or something else with a price.');
@@ -269,7 +286,7 @@ export async function createStatement(
     ids.length ? (await tx.query(`select id, code, name, local_name, category, default_price, price_max, price_from, unit from procedure_catalog where id = any($1::uuid[]) and active`, [ids])).rows.map((r: FeeRow) => [r.id, r]) : [],
   );
 
-  const clean: { catalogId: string | null; desc: string; qty: bigint; price: Cents; amount: Cents }[] = [];
+  const clean: { catalogId: string | null; desc: string; qty: bigint; price: Cents; amount: Cents; procedureId: string | null }[] = [];
   lines.forEach((l, i) => {
     const n = `Line ${i + 1}`;
     const row = l.catalogId ? guide.get(l.catalogId) : undefined;
@@ -291,7 +308,7 @@ export async function createStatement(
     } else if (price <= 0n) {
       problems.push(`${n}: give it a price above zero.`);
     }
-    clean.push({ catalogId: row?.id ?? null, desc, qty, price, amount: qty * price });
+    clean.push({ catalogId: row?.id ?? null, desc, qty, price, amount: qty * price, procedureId: l.procedureId && procs.has(l.procedureId) ? l.procedureId : null });
   });
 
   const subtotal = clean.reduce((s, l) => s + l.amount, 0n);
@@ -336,16 +353,16 @@ export async function createStatement(
       // issued_at is the moment the number was taken (clock_timestamp, not the
       // transaction's start), so number order and time order always agree.
       `insert into invoice (clinic_id, patient_id, series_prefix, number, issued_at, subtotal, discount, discount_kind, discount_id_no,
-                            vat_rate, vat_amount, total, payor_kind, payor_name, payor_share, status, created_by, form_key)
-       values ($1, $2, $3, $4, clock_timestamp(), $5, $6, $7, $8, 0, 0, $9, $10, $11, $12, 'issued', $13, $14) returning id`,
+                            vat_rate, vat_amount, total, payor_kind, payor_name, payor_share, status, created_by, form_key, appointment_id)
+       values ($1, $2, $3, $4, clock_timestamp(), $5, $6, $7, $8, 0, 0, $9, $10, $11, $12, 'issued', $13, $14, $15) returning id`,
       [clinicId, input.patientId, SERIES, num.number, toDb(subtotal), toDb(discount), kind, kind === 'none' ? null : idNo,
-       toDb(total), payor?.kind ?? null, payor?.name ?? null, toDb(payorShare), staffId, input.formKey]);
+       toDb(total), payor?.kind ?? null, payor?.name ?? null, toDb(payorShare), staffId, input.formKey, visitId]);
     let no = 0;
     for (const l of clean) {
       await tx.query(
-        `insert into invoice_line (clinic_id, invoice_id, catalog_id, description, quantity, unit_price, amount, line_no)
-         values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [clinicId, inv.id, l.catalogId, l.desc, String(l.qty), toDb(l.price), toDb(l.amount), ++no]);
+        `insert into invoice_line (clinic_id, invoice_id, catalog_id, description, quantity, unit_price, amount, line_no, procedure_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [clinicId, inv.id, l.catalogId, l.desc, String(l.qty), toDb(l.price), toDb(l.amount), ++no, l.procedureId]);
     }
     await audit(tx, clinicId, staffId, 'invoice.create', 'invoice', inv.id);
     return { id: inv.id };
@@ -358,12 +375,20 @@ export async function createStatement(
 }
 
 /** Run createStatement in its own clinic transaction, turning a repeated form into the statement it made. */
+/**
+ * `after` runs in the same transaction once the statement is made (the payment taken with it, 036): what it
+ * throws rolls the statement back too, so a refused payment leaves nothing half-done.
+ */
 export async function saveStatement(
   withClinic: <T>(id: string, fn: (tx: Tx) => Promise<T>) => Promise<T>,
-  clinicId: string, staffId: string, input: ChargeIn, payors: PayorOption[],
+  clinicId: string, staffId: string, input: ChargeIn, payors: PayorOption[], after?: (tx: Tx, id: string) => Promise<void>,
 ): Promise<{ id: string; again?: boolean } | { problems: string[] }> {
   try {
-    return await withClinic(clinicId, (tx) => createStatement(tx, clinicId, staffId, input, payors));
+    return await withClinic(clinicId, async (tx) => {
+      const made = await createStatement(tx, clinicId, staffId, input, payors);
+      if ('id' in made && after) await after(tx, made.id);
+      return made;
+    });
   } catch (e) {
     if (!(e instanceof AlreadySaved)) throw e;
     const id = e.id || (await withClinic(clinicId, async (tx) => (await tx.query(`select id from invoice where form_key = $1`, [input.formKey])).rows[0]?.id));

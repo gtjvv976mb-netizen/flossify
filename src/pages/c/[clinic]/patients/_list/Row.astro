@@ -1,23 +1,28 @@
 ---
 // One patient in the Patients tab's list (index.astro): their avatar, name
 // (the link that opens the record — it stretches over the whole row), chart
-// no., age and sex, mobile and HMO, alert pills, next and last visit, the
-// balance (finance roles), and the record check. From a wide card these are
-// columns; narrower, the mobile folds under the name; on a phone the row is a
-// small card (list.css).
+// no., age and sex, mobile and HMO, alert pills, next and last visit — and
+// under them the check-up set on the record ("Check-up due 3 Oct · cleaning",
+// or overdue since when) and when its reminder was last texted — the balance
+// (finance roles), and the record check. From a wide card these are columns;
+// narrower, the mobile folds under the name; on a phone the row is a small
+// card (list.css). On Not seen in a year the last visit is said as an age
+// ("Last seen 14 months ago · 20 Jul 2025"), which is what that list is for.
 import Avatar from '../../../../../components/ws/Avatar.astro';
 import Icon from '../../../../../components/ws/Icon.astro';
-import { ageOf, nearWhen, dateText, prettyPhone } from '../../../../../components/ws/cal/model';
+import { ageOf, nearWhen, dateText, manila, prettyPhone } from '../../../../../components/ws/cal/model';
 import { fromDb, pesos, pesosWhole } from '../../../../../lib/invoices';
-import { needsLine, type Row } from './list';
+import { needsLine, type Filter, type Row } from './list';
 
 interface Props {
   r: Row;
   href: string;
   today: string;
   finance: boolean;
+  /** The list being shown (Not seen in a year says the last visit's age). */
+  filter?: Filter;
 }
-const { r, href, today, finance } = Astro.props;
+const { r, href, today, finance, filter = 'all' } = Astro.props;
 const SEX: Record<string, string> = { female: 'Female', male: 'Male', other: 'Other' };
 const age = ageOf(r.birth, today);
 const facts = [age === null ? null : age < 1 ? 'Under 1' : `${age}`, r.sex ? SEX[r.sex] ?? null : null].filter(Boolean) as string[];
@@ -28,6 +33,34 @@ const bal = finance && r.balance !== null ? fromDb(r.balance) : 0n;
 // Whole pesos, the centavos only when there are any — "₱2,400", "₱1,075.50" — as the Dashboard writes a balance (pesoBal).
 const money = (c: bigint) => (c % 100n === 0n ? pesosWhole(c) : pesos(c));
 const needs = needsLine(r.needs);
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "3 Oct" from a Manila day; the year only when it is not this year ("3 Oct 2027"). */
+const dayShort = (ymd: string) => {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return `${d} ${MONTHS[m - 1]}${y === Number(today.slice(0, 4)) ? '' : ` ${y}`}`;
+};
+/** Whole months from one Manila day to today. */
+const monthsAgo = (ymd: string) => {
+  const [y, m, d] = ymd.split('-').map(Number), [ty, tm, td] = today.split('-').map(Number);
+  return (ty - y) * 12 + (tm - m) - (td < d ? 1 : 0);
+};
+/** "14 months ago", "2 years ago" (from two years, whole years). */
+const agoWords = (ymd: string) => {
+  const months = monthsAgo(ymd);
+  if (months < 1) return 'this month';
+  if (months < 24) return `${months} month${months === 1 ? '' : 's'} ago`;
+  const years = Math.floor(months / 12);
+  return `${years} year${years === 1 ? '' : 's'} ago`;
+};
+// The reason without the words the line already says: "Check-up and cleaning" → "cleaning"; "Check-up" alone → nothing.
+const reason = r.recallReason ? r.recallReason.replace(/^check-?up(?:\s+and\s+|\s*$)/i, '').trim() || null : null;
+const overdue = r.recallDue !== null && r.recallDue < today;
+const dueToday = r.recallDue === today;
+const texted = r.recallTextedAt ? dayShort(manila(new Date(r.recallTextedAt).toISOString()).ymd) : null;
+const lastDay = r.lastAt ? manila(new Date(r.lastAt).toISOString()).ymd : null;
+const quiet = filter === 'quiet';
+const historyTitle = r.needs.staleHistory && r.historyAt ? `Health history last answered ${dateText(new Date(r.historyAt).toISOString())}` : undefined;
 const conditions = r.conditions.slice(0, 2);
 const moreConditions = r.conditions.length - conditions.length;
 ---
@@ -59,14 +92,35 @@ const moreConditions = r.conditions.length - conditions.length;
     <span class="pts-line pts-quiet">{r.hmo ?? 'No HMO'}</span>
   </td>
   <td class="pts-c-visits">
+    {/* A real space after each label ("Next", "Last", "Check-up", "Texted"): the label's min-width makes
+        the column, the space keeps the words apart when they are read out or copied. */}
     <span class="pts-line">
-      <span class="pts-k">Next</span>
+      <span class="pts-k">Next</span>{' '}
       {next ? <b class:list={['pts-when', r.today && next.startsWith('Today') && 'pts-today']}>{next}</b> : <span class="pts-quiet">None booked</span>}
     </span>
     <span class="pts-line">
-      <span class="pts-k">Last</span>
-      {last ? <span>{last}</span> : <span class="pts-quiet">Not seen yet</span>}
+      <span class="pts-k">Last</span>{' '}
+      {last ? (
+        quiet && lastDay ? <span>seen {agoWords(lastDay)} · {last}</span> : <span>{last}</span>
+      ) : (
+        <span class="pts-quiet">Not seen yet</span>
+      )}
     </span>
+    {r.recallDue && (
+      <span class="pts-line pts-recall">
+        <span class="pts-k">Check-up</span>{' '}
+        <span>
+          {overdue ? <><b class="pts-overdue">overdue</b> since {dayShort(r.recallDue)}</> : dueToday ? 'due today' : `due ${dayShort(r.recallDue)}`}
+          {reason && <> · {reason}</>}
+        </span>
+      </span>
+    )}
+    {texted && (
+      <span class="pts-line pts-recall">
+        <span class="pts-k">Texted</span>{' '}
+        <span>{texted}<span class="sr-only"> (the check-up reminder)</span></span>
+      </span>
+    )}
   </td>
   {finance && (
     <td class="pts-c-bal">
@@ -81,7 +135,7 @@ const moreConditions = r.conditions.length - conditions.length;
   )}
   <td class="pts-c-check">
     {needs ? (
-      <span class="pts-need"><Icon name="alert" size={16} />{needs}</span>
+      <span class="pts-need" title={historyTitle}><Icon name="alert" size={16} />{needs}</span>
     ) : (
       <span class="pts-ok"><Icon name="check" size={16} />Complete</span>
     )}

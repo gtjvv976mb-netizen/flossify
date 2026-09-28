@@ -24,7 +24,8 @@ export const PH_MOBILE = /^09\d{9}$/;
 /** For display: 0917 000 0000. */
 export const prettyPhone = (s: string) => { const n = normalizePhone(s); return PH_MOBILE.test(n) ? `${n.slice(0, 4)} ${n.slice(4, 7)} ${n.slice(7)}` : s; };
 
-export type Kind = 'confirmation' | 'reminder' | 'reset' | 'invite' | 'manual';
+/** 'recall': a check-up is due (036, the worker's Tuesday pass); 'aftercare': the evening after a treatment (applyStatus). */
+export type Kind = 'confirmation' | 'reminder' | 'reset' | 'invite' | 'manual' | 'recall' | 'aftercare';
 
 export interface Outgoing {
   clinicId: string;
@@ -36,6 +37,8 @@ export interface Outgoing {
   appointmentId?: string | null;
   /** Set it to make a text happen at most once, e.g. 'reminder:<appointment id>'. */
   dedupeKey?: string | null;
+  /** Not before this moment (the aftercare text goes some hours after the visit); the worker's quiet hours still hold it. */
+  sendAfter?: Date | null;
 }
 
 /** Queue one text. Returns the row id, or null when the dedupe key already had one. */
@@ -43,11 +46,11 @@ export async function queueText(tx: Tx, m: Outgoing): Promise<string | null> {
   const to = normalizePhone(m.to);
   if (!PH_MOBILE.test(to)) throw new Error(`Not a Philippine mobile number: ${m.to}`);
   const { rows } = await tx.query(
-    `insert into message_log (clinic_id, patient_id, staff_id, appointment_id, channel, to_address, body, status, kind, dedupe_key)
-     values ($1, $2, $3, $4, 'sms', $5, $6, 'queued', $7, $8)
+    `insert into message_log (clinic_id, patient_id, staff_id, appointment_id, channel, to_address, body, status, kind, dedupe_key, next_attempt_at)
+     values ($1, $2, $3, $4, 'sms', $5, $6, 'queued', $7, $8, coalesce($9, now()))
      on conflict (dedupe_key) where dedupe_key is not null do nothing
      returning id`,
-    [m.clinicId, m.patientId ?? null, m.staffId ?? null, m.appointmentId ?? null, to, m.body.slice(0, 480), m.kind, m.dedupeKey ?? null]);
+    [m.clinicId, m.patientId ?? null, m.staffId ?? null, m.appointmentId ?? null, to, m.body.slice(0, 480), m.kind, m.dedupeKey ?? null, m.sendAfter ?? null]);
   return rows[0]?.id ?? null;
 }
 

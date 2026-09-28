@@ -1,0 +1,222 @@
+---
+// An aftercare sheet on paper: what the patient does, avoids and watches for after today's treatment,
+// from src/lib/aftercare.ts — the clinic's name, address and number at the head, the patient's first
+// name and the day, the sheet's title, then Do · Avoid · Call the clinic if…, with the clinic's number
+// in the call line and one small foot. English and Filipino are each a whole sheet of their own
+// (?lang=en | fil | both, both by default): side by side on a wide screen, stacked on a phone, and in
+// print one A5 page each, so either can be handed over on its own. A5, black on white; the bar at the
+// top (the way back, the language, one teal Print) does not print. Opening it is written to the audit
+// log like a view. Behind requireWorkspace; the patient is read inside withClinic, so row-level
+// security decides whether they are this clinic's. An unknown kind or patient is 404.
+export const prerender = false;
+
+import '../../../../../../styles/global.css';
+import { requireWorkspace } from '../../../../../../lib/workspace';
+import { withClinic } from '../../../../../../lib/db';
+import { dateText, manilaToday } from '../../../../../../lib/health';
+import { prettyPhone } from '../../../../../../lib/messages';
+import { AFTERCARE, type AftercareKind } from '../../../../../../lib/aftercare';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session } = ws;
+const patientId = Astro.params.patient ?? '', kindParam = Astro.params.kind ?? '';
+if (!UUID.test(patientId) || !Object.prototype.hasOwnProperty.call(AFTERCARE, kindParam)) return new Response(null, { status: 404 });
+const kind = kindParam as AftercareKind;
+const sheet = AFTERCARE[kind];
+
+const q = Astro.url.searchParams;
+const langParam = q.get('lang');
+const lang: 'en' | 'fil' | 'both' = langParam === 'en' || langParam === 'fil' ? langParam : 'both';
+const visitParam = q.get('visit');
+const visit = visitParam && UUID.test(visitParam) ? visitParam : null;
+const back = visit ? `/c/${clinic.slug}/patients/${patientId}/?visit=${visit}#timeline` : `/c/${clinic.slug}/patients/${patientId}/#timeline`;
+const langHref = (l: 'en' | 'fil' | 'both') => `?lang=${l}${visit ? `&visit=${visit}` : ''}`;
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const p = (await tx.query('select first_name, last_name from patient where id = $1', [patientId])).rows[0];
+  if (!p) return null;
+  const c = (await tx.query('select name, address_line, barangay, city, province, phone from clinic where id = $1', [clinic.id])).rows[0];
+  await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'record.aftercare_print', 'patient', $3)`, [clinic.id, session.staffId, patientId]);
+  return { p, c };
+});
+if (!data) return new Response(null, { status: 404 });
+const { p, c } = data;
+const clinicAddress = [c.address_line, c.barangay, c.city, c.province]
+  .filter((part, i, all) => part && !all.slice(0, i).some((prev) => prev && String(prev).toLowerCase().includes(String(part).toLowerCase())))
+  .join(', ');
+const phone = c.phone ? prettyPhone(c.phone) : null;
+const today = dateText(manilaToday());
+
+// The sheet's title in Filipino, beside the English one the library carries.
+const FIL_TITLE: Record<AftercareKind, string> = {
+  extraction: 'Pagkatapos ng pagbunot ng ngipin',
+  surgical_extraction: 'Pagkatapos ng surgical extraction o pagbunot ng wisdom tooth',
+  root_canal: 'Pagkatapos ng root canal treatment',
+  filling: 'Pagkatapos ng pasta',
+  cleaning: 'Pagkatapos ng paglilinis ng ngipin',
+  crown: 'Pagkatapos ng crown, bridge o veneer',
+  denture: 'Ang iyong bagong pustiso',
+  braces_adjustment: 'Pagkatapos ng adjustment ng braces',
+  whitening: 'Pagkatapos ng teeth whitening',
+};
+type Lang = 'en' | 'fil';
+const WORDS: Record<Lang, { name: string; code: string; title: string; for: string; do: string; avoid: string; call: string; phone: string; foot: string }> = {
+  en: {
+    name: 'English', code: 'en', title: sheet.title, for: `For ${p.first_name}`,
+    do: 'Do', avoid: 'Avoid', call: 'Call the clinic if…',
+    phone: phone ? `Call ${phone}` : 'Call the clinic',
+    foot: 'General guidance from your dentist. If in doubt, call.',
+  },
+  fil: {
+    name: 'Filipino', code: 'fil', title: FIL_TITLE[kind], for: `Para kay ${p.first_name}`,
+    do: 'Gawin', avoid: 'Iwasan', call: 'Tumawag sa clinic kung…',
+    phone: phone ? `Tumawag sa ${phone}` : 'Tumawag sa clinic',
+    foot: 'Pangkalahatang gabay mula sa iyong dentista. Kung may pag-aalinlangan, tumawag.',
+  },
+};
+const sheets: Lang[] = lang === 'both' ? ['en', 'fil'] : [lang];
+const LANGS: { l: 'en' | 'fil' | 'both'; word: string }[] = [{ l: 'en', word: 'English' }, { l: 'fil', word: 'Filipino' }, { l: 'both', word: 'Both' }];
+
+const pageCss = `
+@page { size: A5 portrait; margin: 12mm; }
+@media print {
+  html:root:not([data-never]):not([data-never-2]) { --c-ink: #000; --c-ink-2: #1f1f1f; color-scheme: light; }
+  body { background: #fff !important; }
+  .ac-main { display: block !important; padding: 0 !important; max-width: none !important; }
+  .ac-sheet { border: 0 !important; border-radius: 0 !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; max-width: none !important; min-height: 0 !important; break-after: page; }
+  .ac-sheet:last-child { break-after: auto; }
+  .ac-sec h2 { break-after: avoid; }
+  .ac-list li { break-inside: avoid; }
+}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Aftercare · {sheet.title} · {p.first_name} {p.last_name} — {clinic.name}</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script is:inline>
+      try { const t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }
+    </script>
+    <style is:inline set:html={pageCss}></style>
+    <style>
+      .px-body {
+        --px-bg: #f3f5f8; --px-bar: #ffffff; --px-hair: #e6e9ee; --px-ink: #1f2937; --px-teal-ink: #0d706d; --px-teal-fill: #0e7471; --px-teal-fill-hover: #0b5f5d; --px-hover: rgb(16 24 40 / 0.035); --px-teal-tint: #e3f2f1;
+        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: var(--px-bg); min-height: 100vh;
+      }
+      @media screen and (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); --px-teal-tint: #223a3a; }
+      }
+      @media screen {
+        :root[data-theme="dark"] .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); --px-teal-tint: #223a3a; }
+      }
+      .px-body h1, .px-body h2 { font-family: inherit; }
+      .px-bar { background: var(--px-bar); border-bottom: 1px solid var(--px-hair); color: var(--px-ink); }
+      .px-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem 0.75rem; max-width: 1280px; margin-inline: auto; padding: 0.75rem 1.25rem; }
+      .px-back { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 44px; margin-right: auto; padding: 0 0.5rem; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--px-teal-ink); }
+      .px-back:hover { background: var(--px-hover); }
+      .px-print { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 1.125rem; border-radius: 10px; background: var(--px-teal-fill); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+      .px-print:hover { background: var(--px-teal-fill-hover); }
+      .px-body :focus-visible { outline: 2px solid #14908f; outline-offset: 2px; }
+      /* The language: three quiet pills (44px targets), the chosen one on the teal tint. */
+      .ac-langs { display: inline-flex; gap: 0.125rem; }
+      .ac-langs a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.875rem; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--px-ink); }
+      .ac-langs a:hover { background: var(--px-hover); }
+      .ac-langs a[aria-current="page"] { background: var(--px-teal-tint); color: var(--px-teal-ink); }
+      /* The paper: white with dark words in both themes, as it prints. Two sheets side by side from 1000px. */
+      .ac-main { display: grid; gap: 1.5rem; max-width: 1200px; margin-inline: auto; padding: 2rem 1rem; }
+      @media (min-width: 1000px) { .ac-main[data-lang="both"] { grid-template-columns: 1fr 1fr; align-items: start; } }
+      .ac-sheet { width: 100%; max-width: 148mm; min-height: 200mm; margin-inline: auto; padding: 12mm; display: flex; flex-direction: column; background: #fff; color: #1f2937; border: 1px solid #e6e9ee; border-radius: 12px; box-shadow: 0 1px 2px rgb(16 24 40 / 0.05); color-scheme: light; }
+      .ac-head { text-align: center; padding-bottom: 3.5mm; border-bottom: 1.5px solid #1f2937; }
+      .ac-clinic { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+      .ac-small { font-size: 12.5px; line-height: 1.5; color: #344054; }
+      .ac-for { display: flex; justify-content: space-between; gap: 4mm; padding: 3.5mm 0 0; font-size: 13px; color: #344054; }
+      .ac-for b { font-weight: 600; color: #1f2937; }
+      .ac-title { margin-top: 3mm; font-size: 21px; font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
+      .ac-sec { margin-top: 5mm; }
+      .ac-sec h2 { display: flex; align-items: center; gap: 2mm; padding-bottom: 1.5mm; border-bottom: 1px solid #98a2b3; font-size: 14.5px; font-weight: 700; }
+      .ac-sec h2 svg { flex: none; }
+      .ac-list { margin: 2.5mm 0 0; padding: 0; list-style: none; display: grid; gap: 1.8mm; }
+      .ac-list li { position: relative; padding-left: 5.5mm; font-size: 13px; line-height: 1.45; }
+      .ac-list li::before { content: ""; position: absolute; left: 0; top: 0.45em; width: 3mm; height: 3mm; }
+      /* Do: a tick. Avoid: a cross. Call: a filled dot. Drawn, so they print in any face. */
+      .ac-do li::before { top: 0.3em; width: 1.6mm; height: 2.8mm; margin-left: 0.7mm; border: solid #1f2937; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+      .ac-avoid li::before { background: linear-gradient(45deg, transparent 42%, #1f2937 42% 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, #1f2937 42% 58%, transparent 58%); }
+      .ac-call li::before { top: 0.5em; width: 2.2mm; height: 2.2mm; margin-left: 0.4mm; border-radius: 50%; background: #1f2937; }
+      .ac-phone { margin-top: 2.5mm; display: inline-flex; align-items: center; gap: 1.5mm; padding: 1.5mm 3mm; border: 1.5px solid #1f2937; border-radius: 999px; font-size: 13.5px; font-weight: 700; }
+      .ac-foot { margin-top: auto; padding-top: 6mm; font-size: 12px; line-height: 1.5; color: #344054; }
+      @media (max-width: 600px) { .ac-main { padding: 1rem; gap: 1rem; } .ac-sheet { padding: 6mm; min-height: 0; } }
+    </style>
+  </head>
+  <body class="px-body">
+    <div class="px-bar print:hidden">
+      <div class="px-bar-row">
+        <a href={back} class="px-back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 6.5L9 12l5.5 5.5" /></svg>
+          Back to {p.first_name}’s record
+        </a>
+        <nav class="ac-langs" aria-label="Language of the sheet">
+          {LANGS.map(({ l, word }) => (
+            <a href={langHref(l)} aria-current={lang === l ? 'page' : undefined}>{word}</a>
+          ))}
+        </nav>
+        <button type="button" class="px-print" data-print>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V4h10v5" /><rect x="3.5" y="9" width="17" height="7.5" rx="2" /><path d="M7 14h10v6H7z" /></svg>
+          Print
+        </button>
+      </div>
+    </div>
+    <main class="ac-main" data-lang={lang}>
+      {sheets.map((l) => {
+        const w = WORDS[l];
+        const lists = sheet[l];
+        return (
+          <article class="ac-sheet" lang={w.code} aria-label={`Aftercare sheet, ${w.name}`}>
+            <header class="ac-head">
+              <p class="ac-clinic">{c.name}</p>
+              {clinicAddress && <p class="ac-small">{clinicAddress}</p>}
+              {phone && <p class="ac-small">{phone}</p>}
+            </header>
+            <p class="ac-for"><b>{w.for}</b><span>{today}{sheets.length > 1 ? ` · ${w.name}` : ''}</span></p>
+            <h1 class="ac-title">{w.title}</h1>
+            <section class="ac-sec ac-do" aria-labelledby={`${l}-do`}>
+              <h2 id={`${l}-do`}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                {w.do}
+              </h2>
+              <ul class="ac-list">{lists.do.map((line) => <li>{line}</li>)}</ul>
+            </section>
+            <section class="ac-sec ac-avoid" aria-labelledby={`${l}-avoid`}>
+              <h2 id={`${l}-avoid`}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M6.5 6.5l11 11" /></svg>
+                {w.avoid}
+              </h2>
+              <ul class="ac-list">{lists.avoid.map((line) => <li>{line}</li>)}</ul>
+            </section>
+            <section class="ac-sec ac-call" aria-labelledby={`${l}-call`}>
+              <h2 id={`${l}-call`}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h3.5l1.5 4-2 1.5a11 11 0 0 0 6.5 6.5l1.5-2 4 1.5V19a1.5 1.5 0 0 1-1.5 1.5A15 15 0 0 1 3.5 5.5 1.5 1.5 0 0 1 5 4z" /></svg>
+                {w.call}
+              </h2>
+              <ul class="ac-list">{lists.call.map((line) => <li>{line}</li>)}</ul>
+              <p class="ac-phone">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h3.5l1.5 4-2 1.5a11 11 0 0 0 6.5 6.5l1.5-2 4 1.5V19a1.5 1.5 0 0 1-1.5 1.5A15 15 0 0 1 3.5 5.5 1.5 1.5 0 0 1 5 4z" /></svg>
+                {w.phone}
+              </p>
+            </section>
+            <footer class="ac-foot">{w.foot}</footer>
+          </article>
+        );
+      })}
+    </main>
+    <script>
+      document.querySelector('[data-print]')?.addEventListener('click', () => window.print());
+    </script>
+  </body>
+</html>

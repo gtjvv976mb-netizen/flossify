@@ -25,12 +25,15 @@ interface Props {
   max?: string;
   fixed?: boolean;
   hint?: string;
+  /** The treatment done this line charges (a line the visit pre-filled, 036). */
+  procedureId?: string;
 }
-const { catalogId = '', desc = '', qty = '1', price = '', min = '', max = '', fixed = false, hint = '' } = Astro.props;
+const { catalogId = '', desc = '', qty = '1', price = '', min = '', max = '', fixed = false, hint = '', procedureId = '' } = Astro.props;
 ---
 
 <li data-line class="chg-line" data-line-min={min} data-line-max={max} data-line-fixed={fixed ? '1' : undefined}>
   <input type="hidden" name="line_catalog" value={catalogId} data-line-catalog />
+  <input type="hidden" name="line_procedure" value={procedureId} data-line-procedure />
   <label class="field chg-line-desc">
     <span class="meta">{catalogId ? 'From the fee guide' : 'Something else'}</span>
     <input name="line_desc" value={desc} maxlength="120" autocomplete="off" data-line-desc placeholder={catalogId ? '' : 'What it is for'} />

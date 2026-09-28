@@ -17,11 +17,21 @@
 // in it (all, or replies) marks them seen for this browser: the inbox counts
 // replies after that moment (fl_replies_seen, src/components/ws/inbox.ts).
 //
-// Three posts, each a form with the CSRF token: text a patient who is in
-// today or tomorrow (in a side panel, so the list stays in view; a refused
-// text comes back in the panel with its reason and the draft), send a failed
-// text again, and cancel one that has not left yet. A post without a matching token changes nothing and comes back
-// here with ?stale=1, which shows the sentence to try again.
+// Three posts, each a form with the CSRF token: text a patient (in a side
+// panel, so the list stays in view; a refused text comes back in the panel
+// with its reason and the draft), send a failed text again, and cancel one
+// that has not left yet. A post without a matching token changes nothing and
+// comes back here with ?stale=1, which shows the sentence to try again.
+//
+// Text a patient is for anyone with a reason to hear from the clinic, each
+// row saying why (RECIPIENTS): on the book within a week either way, seen in
+// the last 30 days, a check-up due within 60 days, lab work back in the last
+// 30 days, or a balance (only to someone who may see amounts). ?to=<patient>
+// — the record's Text link — adds any active patient with a mobile. The
+// server checks the same set before queueing, and refuses anyone without
+// messages.send (the button is hidden for them). The templates
+// (src/lib/text-templates.ts) fill the box from the chosen row's facts in the
+// browser; with scripts off they are listed under the box to copy by hand.
 //
 // A sign-in code is for the phone it was texted to, never for a page: the
 // body of every reset and invite row is blanked in the query itself, so it
@@ -50,6 +60,8 @@ import { withClinic } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
 import { queueText, prettyPhone } from '../../../../lib/messages';
 import { can } from '../../../../lib/can';
+import { shortName } from '../../../../lib/schedule';
+import { TEXT_TEMPLATES, phpAmount } from '../../../../lib/text-templates';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -60,6 +72,10 @@ const LINK = /http|www\.|\.ph\b|\.com\b/i;
 const BODY_MAX = 300;
 const CODES = `coalesce(m.kind, '') not in ('reset', 'invite')`;
 const canSetUp = can(ws, 'people.manage');
+// The page hides Text a patient from someone without the key; the send post refuses them itself.
+const canSend = can(ws, 'messages.send');
+const canMoney = can(ws, 'finance.money');
+const NO_SEND = 'Only members whose role may text patients can send one; ask the owner or an admin.';
 
 const SHOWS = {
   all: { label: 'All', where: 'true' },
@@ -81,18 +97,58 @@ const missed = Astro.url.searchParams.get('missed') ?? '';
 // What they typed, kept on the form when the post is refused.
 let draft = { patient: '', body: '' };
 
-// Who can be texted: anyone on the book today or tomorrow with a mobile on file.
-// The number is the booker's when the visit is for someone else, as the reminder does.
+// The record's "Text <name>" link: ?to=<patient id> puts that patient in the list whatever the
+// reason (any active patient of the branch with a mobile). A send carries it as a hidden field.
+const toParam = Astro.url.searchParams.get('to') ?? '';
+let to = UUID.test(toParam) ? toParam : '';
+
+// Who can be texted: anyone with a reason to hear from the clinic, with a mobile on file, each row
+// carrying the facts the templates say (the visit's time, day and dentist; the balance). $1 is the
+// ?to= patient (or null), $2 whether the caller may see amounts: the balance is read only then.
+// The number is the booker's when the visit is for someone else, as the reminder does. A patient
+// with several reasons is one row; reasonOf() below picks the first for the list.
 const RECIPIENTS = `
-  select distinct on (p.id) p.id, p.first_name, p.last_name, p.chart_no,
-         coalesce(nullif(a.booked_by_phone, ''), p.phone) as phone, a.starts_at
-  from appointment a join patient p on p.id = a.patient_id
-  where (a.starts_at at time zone 'Asia/Manila')::date
-          between (now() at time zone 'Asia/Manila')::date and (now() at time zone 'Asia/Manila')::date + 1
-    and a.status not in ('cancelled', 'no_show')
-    and coalesce(nullif(a.booked_by_phone, ''), p.phone) is not null
-    and p.archived_at is null
-  order by p.id, a.starts_at`;
+  with today as (select (now() at time zone 'Asia/Manila')::date as d),
+  visit as (
+    -- The visit the text is about: the nearest one ahead, else the latest one behind, within a week.
+    -- A missed visit (no_show) counts: "we missed you today" is for them.
+    select distinct on (a.patient_id) a.patient_id, a.starts_at, a.status,
+           nullif(a.booked_by_phone, '') as booker_phone, s.full_name as dentist
+    from appointment a left join staff s on s.id = a.dentist_id
+    where a.status not in ('cancelled', 'completed')
+      and a.starts_at between now() - interval '7 days' and now() + interval '7 days'
+    order by a.patient_id, (a.starts_at < now()), abs(extract(epoch from a.starts_at - now()))
+  ),
+  seen as (
+    select a.patient_id, max(a.starts_at) as seen_at from appointment a
+    where a.status = 'completed' and a.starts_at > now() - interval '30 days' group by a.patient_id
+  ),
+  due as (
+    select r.patient_id, min(r.due_on) as due_on from recall r, today
+    where r.completed_at is null and r.due_on <= today.d + 60 group by r.patient_id
+  ),
+  lab as (
+    select l.patient_id, max(coalesce(l.received_on, today.d)) as back_on from lab_order l, today
+    where l.status = 'received' and coalesce(l.received_on, today.d) >= today.d - 30 group by l.patient_id
+  ),
+  owes as (
+    -- Only a patient with a statement still open can owe, so only they go through the balance function.
+    select i.patient_id, patient_balance(i.patient_id) as balance
+    from (select distinct patient_id from invoice where status in ('issued', 'partly_paid')) i
+  )
+  select p.id, p.first_name, p.last_name, coalesce(v.booker_phone, p.phone) as phone,
+         v.starts_at, v.status as visit_status, v.dentist, s.seen_at,
+         d.due_on::text as due_on, l.back_on::text as back_on,
+         case when $2::boolean then o.balance end as balance
+  from patient p
+  left join visit v on v.patient_id = p.id
+  left join seen s on s.patient_id = p.id
+  left join due d on d.patient_id = p.id
+  left join lab l on l.patient_id = p.id
+  left join owes o on o.patient_id = p.id and o.balance > 0
+  where p.archived_at is null and coalesce(v.booker_phone, p.phone) is not null
+    and (v.patient_id is not null or s.patient_id is not null or d.patient_id is not null or l.patient_id is not null
+         or ($2::boolean and o.patient_id is not null) or p.id = $1::uuid)`;
 
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
@@ -125,15 +181,20 @@ if (Astro.request.method === 'POST') {
   if (act === 'send') {
     const patient = String(f.get('patient') ?? '');
     const body = String(f.get('body') ?? '').replace(/\s+/g, ' ').trim();
+    const toField = String(f.get('to') ?? '');
+    to = UUID.test(toField) ? toField : '';
     draft = { patient, body };
+    // The button is hidden from them; a post made anyway is refused here, whatever it carries.
+    if (!canSend) return Astro.redirect(withQ('missed=send'), 303);
     if (!UUID.test(patient)) sendError = 'Pick who the text is for.';
     else if (!body) sendError = 'Write the text first.';
     else if (body.length > BODY_MAX) sendError = `Keep it under ${BODY_MAX} characters; that is about two texts.`;
     else if (LINK.test(body)) sendError = 'Take the link out. Philippine telcos drop texts that contain one, so it would never arrive. Say it in words instead.';
     else {
       const outcome = await withClinic(clinic.id, async (tx) => {
-        const p = (await tx.query(`select * from (${RECIPIENTS}) r where r.id = $1`, [patient])).rows[0];
-        if (!p) return 'That patient is not on the book today or tomorrow. Pick one from the list.';
+        // The same set the list was drawn from, read again now: a reason may have gone since.
+        const p = (await tx.query(`select * from (${RECIPIENTS}) r where r.id = $3`, [to || null, canMoney, patient])).rows[0];
+        if (!p) return 'That patient is not in the list. Pick one from it, or text them from their record.';
         let id: string | null;
         try {
           id = await queueText(tx, { clinicId: clinic.id, to: p.phone, body: `${clinic.name}: ${body}`, kind: 'manual', patientId: p.id });
@@ -150,8 +211,10 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const { area, texts, recipients, failedCount } = await withClinic(clinic.id, async (tx) => ({
+const { area, clinicPhone, texts, recipients, failedCount } = await withClinic(clinic.id, async (tx) => ({
   area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area,
+  // The number the templates tell the patient to call.
+  clinicPhone: ((await tx.query('select phone from clinic where id = $1', [clinic.id])).rows[0]?.phone ?? null) as string | null,
   texts: (await tx.query(
     `select m.id, m.direction, m.kind, m.status, m.to_address,
             -- A live sign-in code is for the phone it was texted to, never for the page.
@@ -163,7 +226,7 @@ const { area, texts, recipients, failedCount } = await withClinic(clinic.id, asy
      left join staff s on s.id = m.staff_id
      where m.channel = 'sms' and ${SHOWS[show].where}
      order by m.created_at desc limit 100`)).rows,
-  recipients: (await tx.query(`select * from (${RECIPIENTS}) r order by r.starts_at, r.last_name, r.first_name`)).rows,
+  recipients: canSend ? (await tx.query(RECIPIENTS, [to || null, canMoney])).rows : [],
   failedCount: (await tx.query(
     `select count(*)::int as n from message_log m where m.channel = 'sms' and ${SHOWS.failed.where}`)).rows[0].n as number,
 }));
@@ -176,7 +239,7 @@ if (Astro.request.method === 'GET' && show !== 'failed') {
 }
 
 const KIND: Record<string, string> = {
-  confirmation: 'Booking confirmation', reminder: 'Reminder', reset: 'Sign-in code', invite: 'Invitation', reply: 'Reply', manual: 'Note',
+  confirmation: 'Booking confirmation', reminder: 'Reminder', reset: 'Sign-in code', invite: 'Invitation', reply: 'Reply', manual: 'Note', recall: 'Check-up due', aftercare: 'Aftercare',
 };
 
 // "Thu 24 Sep, 9:12 am", composed from parts: the locale strings put the comma and the case elsewhere.
@@ -211,12 +274,58 @@ function statusOf(m: (typeof texts)[number]): { label: string; tone: Tone; why?:
 
 const manilaDay = (d: Date) => { const p = parts(d, { year: 'numeric', month: '2-digit', day: '2-digit' }); return `${p.year}-${p.month}-${p.day}`; };
 const isToday = (d: Date) => manilaDay(d) === manilaDay(new Date());
+const isTomorrow = (d: Date) => manilaDay(d) === manilaDay(new Date(Date.now() + 86_400_000));
+const dayOf = (d: Date) => { const p = parts(d, { weekday: 'short', day: 'numeric', month: 'short' }); return `${p.weekday} ${p.day} ${p.month}`; };
+// A date column comes back as text ("2026-10-15"); noon Manila keeps it on that day whatever the server's clock says.
+const dateAt = (iso: string) => new Date(`${iso}T12:00:00+08:00`);
+const dayWords = (d: Date) => (isToday(d) ? 'today' : isTomorrow(d) ? 'tomorrow' : dayOf(d));
+
+// Each row's reason, in the order the list groups them: a patient with several is listed once,
+// under the first. `soon` puts today's and tomorrow's at the top of their group.
+const GROUPS = {
+  chosen: 'From the record', book: 'On the book', seen: 'Seen recently', due: 'Due for a check-up', lab: 'Lab work back', owes: 'Owes',
+} as const;
+type Group = keyof typeof GROUPS;
+type Recipient = (typeof recipients)[number];
+const todayIso = manilaDay(new Date());
+function reasonOf(r: Recipient): { group: Group; why: string; soon: boolean } {
+  if (r.starts_at) {
+    const soon = isToday(r.starts_at) || isTomorrow(r.starts_at);
+    return { group: 'book', soon, why: r.visit_status === 'no_show' ? `missed ${dayWords(r.starts_at)}` : `${dayWords(r.starts_at)} ${time(r.starts_at)}` };
+  }
+  if (r.seen_at) return { group: 'seen', why: `seen ${dayWords(r.seen_at)}`, soon: isToday(r.seen_at) };
+  if (r.due_on) return { group: 'due', why: `check-up ${r.due_on < todayIso ? 'was due' : 'due'} ${dayOf(dateAt(r.due_on))}`, soon: false };
+  if (r.back_on) return { group: 'lab', why: `lab work back ${dayOf(dateAt(r.back_on))}`, soon: false };
+  if (r.balance != null && Number(r.balance) > 0) return { group: 'owes', why: `owes ${phpAmount(r.balance)}`, soon: false };
+  return { group: 'chosen', why: 'from the record', soon: false };
+}
+const byName = (a: Recipient, b: Recipient) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name);
+const reasoned = recipients.map((r) => ({ r, ...reasonOf(r) }));
+const grouped = (Object.keys(GROUPS) as Group[])
+  .map((g) => ({ label: GROUPS[g], rows: reasoned.filter((x) => x.group === g).sort((a, b) => Number(b.soon) - Number(a.soon) || byName(a.r, b.r)) }))
+  .filter((g) => g.rows.length > 0);
+// The option picked: the draft's after a refused post, else the record's patient.
+const chosen = draft.patient || to;
+const toMissing = Boolean(to) && !recipients.some((r) => r.id === to);
+const clinicPhoneWords = clinicPhone ? prettyPhone(clinicPhone) : '';
+// The facts a template fills in, on the option so the page's script can read them for the chosen patient.
+const facts = (r: Recipient) => ({
+  'data-first': r.first_name,
+  'data-time': r.starts_at ? time(r.starts_at) : undefined,
+  'data-day': r.starts_at ? dayOf(r.starts_at) : undefined,
+  'data-dentist': r.dentist ? shortName(r.dentist) : undefined,
+  'data-amount': r.balance != null && Number(r.balance) > 0 ? phpAmount(r.balance) : undefined,
+  'data-visit': r.starts_at ? '1' : undefined,
+  'data-lab': r.back_on ? '1' : undefined,
+  'data-balance': r.balance != null && Number(r.balance) > 0 ? '1' : undefined,
+});
 const notice = done === 'sent' ? 'Queued. It leaves with the next pass of the sender.'
   : done === 'retry' ? 'Queued again. It leaves with the next pass of the sender.'
   : done === 'cancel' ? 'Cancelled. It will not be sent.'
   : missed === 'cancel' ? 'That text had already left the sender, so it could not be cancelled. Check its status in the list.'
   : missed === 'retry' ? 'That text is no longer marked failed, so there was nothing to send again.'
-  : missed === 'code' ? CODE_WHY : '';
+  : missed === 'code' ? CODE_WHY
+  : missed === 'send' ? NO_SEND : '';
 
 const listed = texts.length === 100 ? 'The last 100' : `${texts.length} ${texts.length === 1 ? 'text' : 'texts'}`;
 const noticeTone = done ? 'success' : 'info';
@@ -233,9 +342,9 @@ const emptyText = show === 'failed' ? `No text has failed in the last ${WINDOW_D
         { id: 'failed', label: 'Failed', href: `${here}?show=failed`, count: failedCount },
         { id: 'replies', label: 'Replies', href: `${here}?show=replies` },
       ]} />
-      <button type="button" class="ws-btn ws-btn-primary" data-ws-open="send"><Icon name="message" />Text a patient</button>
+      {canSend && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="send"><Icon name="message" />Text a patient</button>}
     </div>
-    <p class="msg-lede">Texts go out every ten seconds. Between 9 pm and 8 am, reminders and your own texts wait until morning.</p>
+    <p class="msg-lede">Texts go out every ten seconds. Between 9 pm and 8 am, reminders and your own texts wait until morning.{!canSend && ` ${NO_SEND}`}</p>
   </Pane>
 
   {notice && !error && <p role="status" class="ws-callout" data-tone={noticeTone}><Icon name={done ? 'check' : 'info'} /><span>{notice}</span></p>}
@@ -293,30 +402,53 @@ const emptyText = show === 'failed' ? `No text has failed in the last ${WINDOW_D
     )}
   </Pane>
 
-  <SidePanel id="send" title="Text a patient" meta="Someone on the book today or tomorrow" open={Boolean(sendError)}>
+  <SidePanel id="send" title="Text a patient" meta="Anyone with a reason to hear from you" open={Boolean(sendError) || Boolean(to && canSend)}>
     {sendError && <p role="alert" class="ws-callout mb-5" data-tone="alert"><Icon name="alert" /><span>{sendError}</span></p>}
-    {recipients.length === 0 ? (
-      <Empty icon="calendar" text="Nobody is on the book today or tomorrow with a mobile number on file." />
+    {!canSend ? (
+      <Empty icon="message" text={NO_SEND} />
+    ) : recipients.length === 0 ? (
+      <Empty icon="message" text="No one to text yet: nobody with a mobile on file is on the book this week, was seen in the last 30 days, is due for a check-up or has lab work back. Anyone else is texted from their record." />
     ) : (
-      <form method="post" action={back} class="grid gap-5">
+      <form method="post" action={back} class="grid gap-5" data-send-form data-phone={clinicPhoneWords}>
         <Csrf />
         <input type="hidden" name="act" value="send" />
+        {to && <input type="hidden" name="to" value={to} />}
+        {toMissing && <p class="ws-callout" data-tone="info"><Icon name="info" /><span>That patient has no mobile number on file, so a text cannot reach them. Add one on their record.</span></p>}
         <label class="field">
           <span class="meta">Patient</span>
-          <select name="patient" required>
-            <option value="" disabled selected={!draft.patient}>Choose a patient</option>
-            {recipients.map((r) => (
-              <option value={r.id} selected={draft.patient === r.id}>
-                {r.first_name} {r.last_name} · {isToday(r.starts_at) ? 'today' : 'tomorrow'} {time(r.starts_at)} · {prettyPhone(r.phone)}
-              </option>
+          {recipients.length > 40 && <input type="search" placeholder="Find by name" aria-label="Find a patient by name" autocomplete="off" data-send-filter hidden />}
+          <select name="patient" required data-send-patient>
+            <option value="" disabled selected={!chosen}>Choose a patient</option>
+            {grouped.map((g) => (
+              <optgroup label={g.label}>
+                {g.rows.map(({ r, why }) => (
+                  <option value={r.id} selected={chosen === r.id} {...facts(r)}>
+                    {r.first_name} {r.last_name} · {why} · {prettyPhone(r.phone)}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </label>
+        <div class="msg-templates" data-send-chips hidden>
+          <p class="meta" id="send-templates-label">Use a template</p>
+          <div class="msg-chips" role="group" aria-labelledby="send-templates-label">
+            {TEXT_TEMPLATES.map((t) => <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-send-template={t.id}>{t.label}</button>)}
+          </div>
+        </div>
         <label class="field">
           <span class="meta">Message</span>
-          <textarea name="body" rows="5" maxlength={BODY_MAX} required placeholder="Your 2 pm is moved to 3 pm. Call us if that does not work.">{draft.body}</textarea>
-          <span class="msg-hint">It starts with “{clinic.name}:” so they know who it is from. Up to {BODY_MAX} letters, and no links.</span>
+          <textarea name="body" rows="5" maxlength={BODY_MAX} required placeholder="Your 2 pm is moved to 3 pm. Call us if that does not work." data-send-body>{draft.body}</textarea>
+          <span class="msg-hint">It starts with “{clinic.name}:” so they know who it is from. <span data-send-count>{draft.body.length}</span> of {BODY_MAX} letters, and no links.</span>
         </label>
+        <p role="status" class="msg-note" data-send-note hidden></p>
+        {!clinicPhone && <p class="msg-note">Your clinic has no phone number on file, so a template says “call the clinic”. Add the number in Clinic settings.</p>}
+        <div class="msg-template-list" data-send-template-list>
+          <p class="meta">Templates to copy</p>
+          <ul>
+            {TEXT_TEMPLATES.map((t) => <li><b>{t.label}.</b> {t.body}</li>)}
+          </ul>
+        </div>
         <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="message" />Send text</button>
       </form>
     )}
@@ -354,6 +486,14 @@ const emptyText = show === 'failed' ? `No text has failed in the last ${WINDOW_D
     .msg-go { font-size: 14px; }
     .msg-side { display: flex; flex-direction: column; align-items: flex-end; gap: 0.625rem; }
     .msg-hint { font-size: 13.5px; line-height: 1.45; color: var(--c-muted); }
+    /* Text a patient: the template chips above the box, the note under it, and the plain list for scripts off. */
+    .msg-templates { display: grid; gap: 0.5rem; }
+    .msg-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .msg-chips .ws-btn { white-space: normal; text-align: center; }
+    .msg-note { font-size: 14px; line-height: 1.5; color: var(--c-ink-2); }
+    .msg-template-list { display: grid; gap: 0.5rem; }
+    .msg-template-list ul { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; font-size: 14px; line-height: 1.5; color: var(--c-ink-2); overflow-wrap: anywhere; }
+    .msg-template-list b { font-weight: 600; color: var(--c-ink); }
     @media (max-width: 767px) {
       .msg-row { grid-template-columns: auto minmax(0, 1fr); padding: 0.875rem 1rem; }
       .msg-side { grid-column: 2; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; margin-top: 0.375rem; }
@@ -362,3 +502,67 @@ const emptyText = show === 'failed' ? `No text has failed in the last ${WINDOW_D
     }
   }
 </style>
+
+<script>
+  import { TEXT_TEMPLATES, fillTemplate } from '../../../../lib/text-templates';
+  // The template chips: pick one and the box fills in from the chosen patient's facts (the data-*
+  // attributes on their option, and the clinic's number on the form). The words stay editable,
+  // the count is live, and choosing another patient refills a box that still holds a template
+  // exactly as it was filled. With scripts off the chips stay hidden and the templates are
+  // listed under the box instead.
+  const form = document.querySelector<HTMLFormElement>('[data-send-form]');
+  const select = form?.querySelector<HTMLSelectElement>('[data-send-patient]');
+  const body = form?.querySelector<HTMLTextAreaElement>('[data-send-body]');
+  if (form && select && body) {
+    const chips = form.querySelector<HTMLElement>('[data-send-chips]');
+    const list = form.querySelector<HTMLElement>('[data-send-template-list]');
+    const count = form.querySelector<HTMLElement>('[data-send-count]');
+    const note = form.querySelector<HTMLElement>('[data-send-note]');
+    const filter = form.querySelector<HTMLInputElement>('[data-send-filter]');
+    const phone = form.dataset.phone || null;
+    chips?.removeAttribute('hidden');
+    list?.setAttribute('hidden', '');
+    filter?.removeAttribute('hidden');
+
+    const NEEDS = {
+      visit: 'No visit on the book for them: check the time and day before sending.',
+      lab: 'No lab work is marked back for them: check before sending.',
+      balance: 'No balance shows for them here: check the amount before sending.',
+    } as const;
+    const say = () => { if (count) count.textContent = String(body.value.length); };
+    let last = '';
+    let lastId = '';
+    const use = (id: string) => {
+      const t = TEXT_TEMPLATES.find((x) => x.id === id);
+      if (!t) return;
+      const o = select.selectedOptions[0];
+      const d: DOMStringMap = o?.value ? o.dataset : {};
+      body.value = last = fillTemplate(t, { first: d.first ?? '', phone, time: d.time, day: d.day, dentist: d.dentist, amount: d.amount });
+      lastId = id;
+      say();
+      const words = !o?.value ? 'Choose the patient and the text will say their name.'
+        : t.needs && d[t.needs] !== '1' ? NEEDS[t.needs] : 'Change any words, then send.';
+      if (note) { note.textContent = `${t.label} filled in. ${words}`; note.hidden = false; }
+    };
+    chips?.addEventListener('click', (e) => {
+      const b = (e.target as Element).closest<HTMLElement>('[data-send-template]');
+      if (b?.dataset.sendTemplate) use(b.dataset.sendTemplate);
+    });
+    select.addEventListener('change', () => { if (lastId && body.value === last) use(lastId); });
+    body.addEventListener('input', say);
+
+    // A long list: typing narrows it to matching names; the chosen one always stays.
+    filter?.addEventListener('input', () => {
+      const q = filter.value.trim().toLowerCase();
+      for (const o of Array.from(select.options)) {
+        if (!o.value) continue;
+        const hide = q !== '' && !o.text.toLowerCase().includes(q) && !o.selected;
+        o.hidden = hide;
+        o.disabled = hide;
+      }
+      for (const g of Array.from(select.querySelectorAll('optgroup'))) {
+        g.hidden = !Array.from(g.querySelectorAll('option')).some((o) => !o.hidden);
+      }
+    });
+  }
+</script>

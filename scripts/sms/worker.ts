@@ -53,7 +53,7 @@ const BATCHES_PER_TICK = 25;
 /** Wait after the first, second and third failed try; the fourth is final. */
 const BACKOFF = ['1 minute', '5 minutes', '30 minutes'];
 const MAX_ATTEMPTS = 4;
-const QUIET_KINDS = new Set(['reminder', 'manual']);
+const QUIET_KINDS = new Set(['reminder', 'manual', 'recall', 'aftercare']);
 const QUIET_FROM = 21; // 9 pm Manila
 const QUIET_UNTIL = 8; // 8 am Manila
 
@@ -130,6 +130,9 @@ function intervalText(minutes: number): string {
 async function enqueueReminders() {
   const { rows } = await pool.query('select sms_enqueue_reminders() as n');
   log(`reminders queued: ${rows[0].n}`);
+  // Check-ups due (036): one text per open recall at clinics that switched it on, Tuesday and Wednesday mornings only
+  // (the function itself answers 0 at any other time), at most one per recall in 60 days.
+  try { const r = await pool.query('select sms_enqueue_recalls() as n'); if (r.rows[0].n) log(`check-up texts queued: ${r.rows[0].n}`); } catch (e) { log(`recall pass failed: ${(e as Error).message}`); }
   // Retention rides along too: text logs older than two years go, as the privacy notice says, and
   // patient forms (028) nobody added go 30 days after they were sent.
   try { const r = await pool.query('select retention_purge() as n'); if (r.rows[0].n) log(`retention: ${r.rows[0].n} old rows deleted (texts, patient forms)`); } catch (e) { log(`retention pass failed: ${(e as Error).message}`); }

@@ -20,11 +20,14 @@ import { avatar, callout, icon, pill } from './ui';
 import type { Card } from './model';
 import type { Ctx } from './board';
 import type { Pt } from './patients';
+import { AFTERCARE, kindForCatalog } from '../../../lib/aftercare';
 
 export interface Panels {
   openVisit: (id: string, opener: Element | null, o?: { place?: boolean }) => void;
   openBook: (o: { ymd?: string; min?: number; col?: string; by?: 'chair' | 'dentist'; patientId?: string }, opener: Element | null) => void;
   openPatient: (id: string, opener: Element | null) => void;
+  /** The visit whose panel is open right now, or null (the live board refills it when that visit changes). */
+  visitOpen: () => string | null;
 }
 
 /** The words on each status button; the order is the order they appear in. */
@@ -65,20 +68,23 @@ export function initPanels(ctx: Ctx): Panels {
   const hide = (p: HTMLElement) => { p.hidden = true; p.replaceChildren(); };
   const allergyOf = (c: Card): string => { const raw = c.allergies as unknown; return Array.isArray(raw) ? (raw as string[]).join(', ') : (raw as string | null) ?? ''; };
   const pt = (id: string): Pt | undefined => ctx.patients.byId.get(id);
-  const recordHref = (id: string) => `${boot.links.record}${id}/`;
-  // Finances' new charge, pre-filled: ?patient=<id>&service=<fee guide id> (src/pages/c/[clinic]/finances/new.astro).
-  const chargeHref = (patientId: string, catalogId: string | null) => {
+  // The record; with a visit, the record opens on that visit (today's: the chairside strip; a past one: its Timeline card).
+  const recordHref = (id: string, visitId?: string | null) => `${boot.links.record}${id}/${visitId ? `?visit=${encodeURIComponent(visitId)}` : ''}`;
+  // The consent, signed by the patient on this tablet for one visit (035).
+  const signHref = (patientId: string, visitId: string) => `${boot.links.record}${patientId}/sign/${encodeURIComponent(visitId)}/`;
+  // Finances' new charge, pre-filled: ?patient=<id>&service=<fee guide id>&visit=<visit> (src/pages/c/[clinic]/finances/new.astro);
+  // with the visit, the lines come from what was done at it.
+  const chargeHref = (patientId: string, catalogId: string | null, visitId?: string | null) => {
     const q = new URLSearchParams({ patient: patientId });
     if (catalogId) q.set('service', catalogId);
+    if (visitId) q.set('visit', visitId);
     return `${boot.links.charge}?${q}`;
   };
-  // Messages texts anyone on the book today or tomorrow with a mobile on file (its own rule, checked again
-  // when the text is sent); ?to= names the patient. For anyone else the action is left out, not offered and refused.
+  // Messages texts anyone with a reason (its own rule, checked again when the text is sent); ?to= names the patient.
+  // Only for someone who may text (messages.send): for anyone else the action is left out, not offered and refused.
   const textHref = (patientId: string) => `${boot.links.messages}?to=${encodeURIComponent(patientId)}`;
-  const tomorrow = M.addDays(boot.today, 1);
-  const soon = (iso: string | null) => !!iso && M.manila(iso).ymd >= boot.today && M.manila(iso).ymd <= tomorrow;
-  const textableVisit = (c: Card) => !!c.phone && ((soon(c.startsAt) && c.status !== 'cancelled' && c.status !== 'no_show') || soon(pt(c.patientId)?.next ?? null));
-  const textablePatient = (p: Pt) => !!p.phone && (p.today || soon(p.next));
+  const textableVisit = (c: Card) => boot.canText && !!c.phone && c.status !== 'cancelled';
+  const textablePatient = (p: Pt) => boot.canText && !!p.phone;
   /** Replace one panel with another: the first slides out, then the next slides in. */
   function swap(fromId: string, then: () => void) {
     const d = document.getElementById(fromId) as HTMLDialogElement | null;
@@ -152,10 +158,96 @@ export function initPanels(ctx: Ctx): Panels {
     minutes: $<HTMLInputElement>('[data-vp-minutes]')!, dentist: $<HTMLSelectElement>('[data-vp-dentist]')!,
     save: $<HTMLButtonElement>('[data-vp-move-save]')!, saveWord: $('[data-vp-move-save-word]')!, moveClose: $<HTMLButtonElement>('[data-vp-move-close]')!,
     title: $('#visit [data-ws-title]')!, meta: $('#visit [data-ws-meta]')!,
+    check: $('[data-vp-check]')!, checkTitle: $('[data-vp-check-title]')!, checkList: $('[data-vp-check-list]')!,
   };
   const vMenu = menuOf(V.more);
   let current: string | null = null;
   let busy = false;
+  const STMT_WORD: Record<string, string> = { issued: 'not paid yet', partly_paid: 'part paid', paid: 'paid' };
+
+  /** Before we start (a visit today, still to happen) and Before they leave (a visit done): only what is missing,
+   *  each line the fact in words and its one action — never a step blocked, never colour alone (036). */
+  function fillCheck(c: Card) {
+    V.checkList.replaceChildren();
+    const req = M.isRequest(c);
+    const day = M.manila(c.startsAt).ymd;
+    type Tone = 'ok' | 'warn' | 'alert' | 'plain';
+    const line = (tone: Tone, words: string, go?: { label: string; href?: string; onClick?: () => void } | Node) => {
+      const li = el('li'); li.dataset.tone = tone;
+      const w = el('span', 'vp-check-word');
+      w.append(icon(tone === 'ok' ? 'check' : tone === 'plain' ? 'info' : 'alert', 15), words);
+      li.append(w);
+      if (go instanceof Node) li.append(go);
+      else if (go?.href) { const a = el('a', 'vp-check-go', go.label); a.href = go.href; li.append(a); }
+      else if (go) { const b = el('button', 'vp-check-go', go.label); b.type = 'button'; b.addEventListener('click', go.onClick!); li.append(b); }
+      V.checkList.append(li);
+    };
+    if (!req && day === boot.today && !M.DONE.has(c.status)) {
+      V.checkTitle.textContent = 'Before we start';
+      const rec = (hash: string, open?: string) => `${recordHref(c.patientId, c.id)}${open ? `&open=${open}` : ''}#${hash}`;
+      const months = c.healthAskedAt ? Math.floor((Date.now() - Date.parse(c.healthAskedAt)) / (30.44 * M.DAY_MS)) : null;
+      if (months === null) line('warn', 'Health history: not asked yet', { label: 'Ask now', href: rec('health') });
+      else if (months >= 12) line('warn', `Health history: last asked ${months} months ago`, { label: 'Ask again', href: rec('health') });
+      else line('ok', `Health history: asked ${M.dateText(c.healthAskedAt!)}`, { label: 'Still true?', href: rec('health') });
+      if (c.bpOnDay) line('ok', 'Blood pressure: taken today');
+      else line('warn', 'Blood pressure: not taken today', { label: 'Take it', href: rec('vitals', 'vitals') });
+      if (c.consentSigned) line('ok', 'Consent: signed on the tablet for this visit');
+      else line('warn', 'Consent: not signed for this visit', boot.canEdit ? { label: 'Sign on this tablet', href: signHref(c.patientId, c.id) } : undefined);
+      const age = M.ageOf(c.birth, boot.today);
+      if (age !== null && age < 18) line('plain', 'Under 18: a parent or guardian signs');
+      if (c.clearanceWaiting) line('alert', 'Medical clearance: waiting for the physician', { label: 'See the letter', href: rec('rx') });
+      if (c.labPending) line('warn', 'Lab case: still at the lab', { label: 'See it', href: rec('treatment') });
+      V.check.hidden = false;
+    } else if (!req && c.status === 'completed') {
+      V.checkTitle.textContent = 'Before they leave';
+      let missing = 0;
+      if (boot.finance) {
+        if (c.statement) line('ok', `Statement ${c.statement.no}: ${STMT_WORD[c.statement.status] ?? c.statement.status}`, { label: 'Open', href: `${boot.links.finances}${c.statement.id}/` });
+        else {
+          missing++;
+          line('warn', c.unbilled ? `${c.unbilled === 1 ? 'One treatment' : `${c.unbilled} treatments`} done, not charged yet` : 'Not charged yet',
+            { label: 'Charge this visit', href: chargeHref(c.patientId, c.catalogId, c.id) });
+        }
+      }
+      // The aftercare sheet for what was done (036): printed for the patient to take home; the text goes by itself.
+      const kind = kindForCatalog(c.catalogCode, c.service, c.catalogCategory);
+      if (kind) line('plain', `Aftercare sheet: ${AFTERCARE[kind].title}`, { label: 'Print', href: `${boot.links.record}${c.patientId}/aftercare/${kind}/?visit=${encodeURIComponent(c.id)}` });
+      if (c.nextVisitAt) line('ok', `Next visit: ${M.nearWhen(c.nextVisitAt, boot.today)}`);
+      else if (c.recallDue) line('ok', `Next check-up: ${M.dateText(`${c.recallDue}T12:00:00+08:00`)}`);
+      else {
+        missing++;
+        const acts = el('span', 'vp-check-acts');
+        for (const [m, w] of [[3, 'In 3 months'], [6, '6 months'], [12, 'A year']] as [number, string][]) {
+          const b = btn(w, QUIET); b.addEventListener('click', () => void setRecall(c, m, b)); acts.append(b);
+        }
+        const book = btn('Book a visit', QUIET, 'calendar');
+        book.addEventListener('click', () => openBook({ ymd: boot.today, patientId: c.patientId }, book));
+        acts.append(book);
+        line('warn', 'No next visit yet: set the check-up, or book one', acts);
+      }
+      if (!missing) line('ok', 'All done for this visit.');
+      V.check.hidden = false;
+    } else V.check.hidden = true;
+  }
+  /** The next check-up in 3, 6 or 12 months, through /api/recall (the record's own rule), from the panel. */
+  async function setRecall(c: Card, months: number, from: HTMLButtonElement) {
+    from.disabled = true;
+    try {
+      const res = await fetch('/api/recall', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'content-type': 'application/json', 'X-CSRF': boot.csrf, accept: 'application/json' },
+        body: JSON.stringify({ clinic: boot.slug, patientId: c.patientId, months }),
+      });
+      const data: any = await res.json().catch(() => null);
+      if (!res.ok) { show(V.err, typeof data?.error === 'string' ? data.error : 'Could not set the check-up.'); return; }
+      const due: string | null = data?.recall?.dueOn ?? null;
+      const updated: Card = { ...c, recallDue: due };
+      ctx.absorb(updated);
+      if (current === c.id) fillVisit(updated);
+      show(V.said, due ? `Next check-up set for ${M.dateText(`${due}T12:00:00+08:00`)}.` : 'Next check-up set.');
+    } catch { show(V.err, 'Could not reach the clinic. Nothing was set.'); }
+    finally { from.disabled = false; }
+  }
 
   /** The one step the desk most likely takes next, drawn as the teal button. */
   function primaryOf(c: Card, allowed: string[]): string | null {
@@ -200,9 +292,13 @@ export function initPanels(ctx: Ctx): Panels {
       b.addEventListener('click', () => void setStatus(c.id, to, word));
       V.actions.append(b);
     }
-    if (chargeFirst) V.actions.append(linkBtn('Charge', chargeHref(c.patientId, c.catalogId), PRIMARY, 'money'));
+    // Done, for the people who may see money: charge what was done at this visit — or, charged already, open the statement.
+    if (chargeFirst) {
+      if (c.statement) V.actions.append(linkBtn(`Statement ${c.statement.no}`, `${boot.links.finances}${c.statement.id}/`, QUIET, 'money'));
+      else V.actions.append(linkBtn(c.unbilled ? 'Charge this visit' : 'Charge', chargeHref(c.patientId, c.catalogId, c.id), PRIMARY, 'money'));
+    }
     if (!M.DONE.has(c.status) && !req) { const b = btn('Move', QUIET, 'clock'); b.addEventListener('click', () => toMove()); V.actions.append(b); }
-    V.actions.append(linkBtn('Open record', recordHref(c.patientId), QUIET, 'file'));
+    V.actions.append(linkBtn('Open record', recordHref(c.patientId, c.id), QUIET, 'file'));
 
     // More: the other steps, then charge and text, then Cancel (asked first).
     for (const [to, word] of STEP) {
@@ -212,7 +308,7 @@ export function initPanels(ctx: Ctx): Panels {
       it.addEventListener('click', () => { vMenu.close(); void setStatus(c.id, to, word); });
       V.more.append(it);
     }
-    if (boot.finance && !chargeFirst) V.more.append(menuItem('Charge', { href: chargeHref(c.patientId, c.catalogId), ic: 'money', tint: 'green', hint: 'A statement for this visit' }));
+    if (boot.finance && !chargeFirst) V.more.append(menuItem('Charge', { href: chargeHref(c.patientId, c.catalogId, c.id), ic: 'money', tint: 'green', hint: 'A statement for this visit' }));
     if (textableVisit(c)) V.more.append(menuItem('Text the patient', { href: textHref(c.patientId), ic: 'message', tint: 'blue' }));
     if (allowed.includes('cancelled')) {
       if (V.more.childElementCount) { const sep = el('div', 'ws-menu-sep'); sep.setAttribute('aria-hidden', 'true'); V.more.append(sep); }
@@ -222,6 +318,7 @@ export function initPanels(ctx: Ctx): Panels {
       V.more.append(it);
     }
     vMenu.fit();
+    fillCheck(c);
 
     // The visit.
     const dur = Math.round((Date.parse(c.endsAt) - Date.parse(c.startsAt)) / 60_000);
@@ -393,9 +490,25 @@ export function initPanels(ctx: Ctx): Panels {
     chair: $<HTMLSelectElement>('[data-bk-chair]')!, free: $('[data-bk-free]')!, dentist: $<HTMLSelectElement>('[data-bk-dentist]')!,
     notes: $<HTMLTextAreaElement>('[data-bk-notes]')!, save: $<HTMLButtonElement>('[data-bk-save]')!, saveWord: $('[data-bk-save-word]')!,
     face: $('[data-bk-chosen-face]')!, more: $<HTMLDetailsElement>('[data-bk-more]')!,
+    now: $<HTMLInputElement>('[data-bk-now]')!, textNote: $('[data-bk-text]')!,
   };
   let patientId = '';
   let autoReason = false;
+  const TEXT_NOTE = 'A booking still ahead is texted to the patient when they have a mobile on file.';
+  // "Here now": today, the next five minutes, the first free chair — and checked in the moment it is saved (036).
+  B.now.addEventListener('change', () => {
+    if (!B.now.checked) { B.textNote.textContent = TEXT_NOTE; freeHint(); return; }
+    B.date.value = boot.today;
+    fillDentists(B.dentist, boot.today, B.dentist.value);
+    B.time.value = M.hhmm(Math.min(23 * 60 + 55, Math.ceil(M.manila(Date.now()).min / 5) * 5));
+    if (!B.chair.value) {
+      const day = ctx.dayCards(boot.today), open = M.hoursOf(boot.hours, M.dowOf(boot.today));
+      const f = day && open ? M.nextFree(day, open, M.startMs(boot.today), true, boot.chairs) : null;
+      if (f) B.chair.value = String(f.chair);
+    }
+    B.textNote.textContent = 'A walk-in is checked in as soon as it is saved. No confirmation text: they are here.';
+    freeHint();
+  });
 
   function choose(p: { id: string; name: string; chart: string; phone: string | null }) {
     patientId = p.id;
@@ -494,6 +607,7 @@ export function initPanels(ctx: Ctx): Panels {
     B.more.open = false;
     hide(B.err);
     autoReason = false; B.search.disabled = false; B.price.textContent = '';
+    B.textNote.textContent = TEXT_NOTE;
     unchoose(); B.newBox.hidden = true;
     results([], 'Type two letters of a name, a chart number or a mobile.');
     const ymd = o.ymd && M.realDay(o.ymd) ? o.ymd : boot.today;
@@ -535,6 +649,8 @@ export function initPanels(ctx: Ctx): Panels {
     if (B.reason.value.trim()) body.reason = B.reason.value.trim();
     if (B.service.value) body.catalogCode = B.service.value;
     if (B.notes.value.trim()) body.notes = B.notes.value.trim();
+    const walkIn = B.now.checked;
+    if (walkIn) body.status = 'arrived';
     B.save.disabled = true; B.saveWord.textContent = 'Saving…';
     const r = await ctx.call('POST', body);
     B.save.disabled = false; B.saveWord.textContent = 'Save booking';
@@ -548,7 +664,7 @@ export function initPanels(ctx: Ctx): Panels {
     ws().closePanel('book');
     ctx.absorb(c);
     const onScreen = document.querySelector(`.cal-card[data-id="${c.id}"]`);
-    ctx.say(`Booked: ${c.patientName}, ${M.whenOf(c.startsAt)}${c.chair ? `, Chair ${c.chair}` : ''}${c.dentistName ? `, ${M.shortName(c.dentistName)}` : ''}.${r.texted ? ' A confirmation text is queued.' : ''}`,
+    ctx.say(`${walkIn ? 'Checked in' : 'Booked'}: ${c.patientName}, ${M.whenOf(c.startsAt)}${c.chair ? `, Chair ${c.chair}` : ''}${c.dentistName ? `, ${M.shortName(c.dentistName)}` : ''}.${r.texted ? ' A confirmation text is queued.' : ''}`,
       onScreen ? undefined : { label: 'Show that day', ymd: M.manila(c.startsAt).ymd, id: c.id });
   });
 
@@ -593,5 +709,5 @@ export function initPanels(ctx: Ctx): Panels {
     swap('visit', () => swap('book', () => ws().openPanel('patient', opener)));
   }
 
-  return { openVisit, openBook, openPatient };
+  return { openVisit, openBook, openPatient, visitOpen: () => (V.panel.open ? current : null) };
 }

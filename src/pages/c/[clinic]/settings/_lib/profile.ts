@@ -30,6 +30,8 @@ export interface ProfileValues {
   name: string; area: string; address_line: string; phone: string; email: string; maps_url: string; about: string;
   chairs: number; walk_ins: boolean; philhealth_dental: boolean; booking_mode: string;
   hmoIds: string[]; noHmos: boolean; listed: boolean; tin: string; branch: string;
+  /** Texts to patients (036): a second reminder two days before, and a text when a check-up is due. */
+  remind_48h: boolean; recall_texts: boolean;
 }
 export type HoursValues = Record<number, DayRow>;
 
@@ -40,6 +42,7 @@ export interface ClinicData {
     name: string; area: string | null; address_line: string | null; city: string | null; province: string | null; phone: string | null;
     email: string | null; maps_url: string | null; about: string | null; chairs: number; walk_ins: boolean; philhealth_dental: boolean;
     booking_mode: string; listed: boolean; photo_keys: string[] | null; slug: string; tin: string | null; bir_branch_code: string | null;
+    remind_48h: boolean; recall_texts: boolean;
   };
   hours: Hours;
   hmoIds: string[];
@@ -53,7 +56,7 @@ export async function loadClinic(clinicId: string): Promise<ClinicData> {
   return withClinic(clinicId, async (tx) => ({
     c: (await tx.query(
       `select name, area, address_line, city, province, phone, email, maps_url, about, chairs, walk_ins, philhealth_dental, booking_mode, listed,
-              photo_keys, slug::text as slug, tin, bir_branch_code
+              photo_keys, slug::text as slug, tin, bir_branch_code, remind_48h, recall_texts
          from clinic where id = $1`, [clinicId])).rows[0],
     hours: (await tx.query('select dow, open_min, close_min from clinic_hours order by dow')).rows,
     hmoIds: (await tx.query('select hmo_id from clinic_hmo order by hmo_id')).rows.map((r) => r.hmo_id as string),
@@ -81,6 +84,7 @@ export function savedProfile(d: ClinicData): ProfileValues {
     maps_url: d.c.maps_url ?? '', about: d.c.about ?? '', chairs: d.c.chairs, walk_ins: d.c.walk_ins, philhealth_dental: d.c.philhealth_dental,
     booking_mode: d.c.booking_mode, hmoIds: d.hmoIds, noHmos: d.hmoIds.length === 0 && d.saidNoHmos, listed: d.c.listed,
     tin: tax?.tin ?? '', branch: tax?.branch || d.c.bir_branch_code || '00000',
+    remind_48h: d.c.remind_48h, recall_texts: d.c.recall_texts,
   };
 }
 export function savedHours(d: ClinicData): HoursValues {
@@ -114,6 +118,7 @@ export async function saveClinic(
       hmoIds: form.getAll('hmo').map(String).filter((id) => hmos.some((h) => h.id === id)),
       noHmos: form.get('hmo_none') === 'on', listed: form.get('listed') === 'on',
       tin: s('tin'), branch: s('bir_branch_code'),
+      remind_48h: form.get('remind_48h') === 'on', recall_texts: form.get('recall_texts') === 'on',
     };
     if (!p.name) problems.push('The clinic needs a name.');
     else if (p.name.length > 80) problems.push('Keep the clinic name under 80 characters.');
@@ -162,10 +167,10 @@ export async function saveClinic(
       const place = placeOf(p.area);
       await tx.query(
         `update clinic set name = $2, area = $3, address_line = $4, city = $5, province = $6, phone = $7, email = $8, maps_url = $9, about = $10,
-                chairs = $11, walk_ins = $12, philhealth_dental = $13, booking_mode = $14
+                chairs = $11, walk_ins = $12, philhealth_dental = $13, booking_mode = $14, remind_48h = $15, recall_texts = $16
          where id = $1`,
         [o.clinicId, p.name, p.area, p.address_line, place.city === undefined ? data.c.city : place.city, place.province === undefined ? data.c.province : place.province,
-         p.phone, p.email || null, p.maps_url || null, p.about || null, p.chairs, p.walk_ins, p.philhealth_dental, p.booking_mode]);
+         p.phone, p.email || null, p.maps_url || null, p.about || null, p.chairs, p.walk_ins, p.philhealth_dental, p.booking_mode, p.remind_48h, p.recall_texts]);
       if (tax) await tx.query('update clinic set tin = $2, bir_branch_code = $3 where id = $1', [o.clinicId, tax.tin, tax.branch]);
       await tx.query('delete from clinic_hmo where clinic_id = $1', [o.clinicId]);
       for (const id of p.noHmos ? [] : p.hmoIds) await tx.query('insert into clinic_hmo (clinic_id, hmo_id) values ($1, $2)', [o.clinicId, id]);

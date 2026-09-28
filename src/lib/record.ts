@@ -71,12 +71,12 @@ export const RX_ROWS = 6;
 
 // --- shapes ------------------------------------------------------------------------------------
 export interface PlanItem { id: string; loaId: string | null; name: string; fdi: number | null; surface: string | null; price: string; phase: number; status: string; note: string | null; createdAt: Date; decidedAt: Date | null; by: string | null }
-export interface Done { id: string; visitId: string | null; name: string; fdi: number | null; surface: string | null; price: string; at: Date; dentist: string | null; note: string | null; fromPlan: boolean }
+export interface Done { id: string; visitId: string | null; name: string; code: string | null; category: string | null; fdi: number | null; surface: string | null; price: string; at: Date; dentist: string | null; note: string | null; fromPlan: boolean }
 export interface Note { id: string; visitId: string | null; visitOn: string; dentist: string | null; complaint: string | null; findings: string | null; diagnosis: string | null; treatment: string | null; plan: string | null; teeth: number[]; amends: string | null; by: string | null; at: Date }
 export interface RxItem { drug: string; strength: string; qty: string; sig: string }
-export interface Rx { id: string; at: Date; prescriber: string | null; prescriberId: string; prc: string | null; ptr: string | null; items: RxItem[]; notes: string | null }
-export interface FileRow { id: string; kind: string; mime: string; bytes: number; takenAt: string | null; fdi: number | null; caption: string | null; by: string | null; at: Date; thumb: boolean }
-export interface Recall { id: string; dueOn: string; reason: string; by: string | null; at: Date }
+export interface Rx { id: string; visitId: string | null; at: Date; prescriber: string | null; prescriberId: string; prc: string | null; ptr: string | null; items: RxItem[]; notes: string | null }
+export interface FileRow { id: string; visitId: string | null; kind: string; mime: string; bytes: number; takenAt: string | null; fdi: number | null; caption: string | null; by: string | null; at: Date; thumb: boolean }
+export interface Recall { id: string; dueOn: string; reason: string; by: string | null; at: Date; /** The Manila day the check-up text last went (036), or null. */ textedOn: string | null }
 export interface Lab { id: string; lab: string; description: string; shade: string | null; sentOn: string | null; dueOn: string | null; receivedOn: string | null; cost: string; status: string; note: string | null; at: Date }
 export interface Clinician { id: string; name: string; prc: string | null; ptr: string | null }
 export interface CatalogItem { id: string; name: string; price: string; max: string | null; from: boolean; tooth: boolean; category: string | null }
@@ -87,17 +87,17 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
   const [plan, done, notes, rx, files, recall, labs, clinicians, catalog] = await Promise.all([
     tx.query(`select i.*, s.full_name as by_name from treatment_plan_item i left join staff s on s.id = i.created_by
                where i.patient_id = $1 order by (i.status in ('done', 'declined')), i.phase, i.created_at`, [patientId]),
-    tx.query(`select d.id, d.appointment_id, coalesce(d.name, c.name, 'Treatment') as name, d.fdi, d.surface, d.price, d.performed_at, s.full_name as dentist, d.clinical_note, d.plan_id is not null as from_plan
+    tx.query(`select d.id, d.appointment_id, coalesce(d.name, c.name, 'Treatment') as name, c.code, c.category, d.fdi, d.surface, d.price, d.performed_at, s.full_name as dentist, d.clinical_note, d.plan_id is not null as from_plan
                 from procedure_done d left join procedure_catalog c on c.id = d.catalog_id left join staff s on s.id = d.performed_by
                where d.patient_id = $1 order by d.performed_at desc limit 300`, [patientId]),
     tx.query(`select n.*, to_char(n.visit_on, 'YYYY-MM-DD') as day, d.full_name as dentist, c.full_name as by_name
                 from clinical_note n left join staff d on d.id = n.dentist_id left join staff c on c.id = n.created_by
                where n.patient_id = $1 order by n.visit_on desc, n.created_at desc limit 300`, [patientId]),
-    tx.query(`select r.id, r.issued_at, r.items, r.notes, r.prescriber_id, s.full_name, s.prc_licence, s.ptr_number
+    tx.query(`select r.id, r.appointment_id, r.issued_at, r.items, r.notes, r.prescriber_id, s.full_name, s.prc_licence, s.ptr_number
                 from prescription r left join staff s on s.id = r.prescriber_id where r.patient_id = $1 order by r.issued_at desc limit 200`, [patientId]),
-    tx.query(`select a.id, a.kind, a.mime, a.bytes, to_char(a.taken_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as taken, a.fdi, a.caption, s.full_name as by_name, a.created_at, a.storage_key
+    tx.query(`select a.id, a.appointment_id, a.kind, a.mime, a.bytes, to_char(a.taken_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as taken, a.fdi, a.caption, s.full_name as by_name, a.created_at, a.storage_key
                 from attachment a left join staff s on s.id = a.uploaded_by where a.patient_id = $1 and a.removed_at is null order by coalesce(a.taken_at, a.created_at) desc limit 500`, [patientId]),
-    tx.query(`select r.id, to_char(r.due_on, 'YYYY-MM-DD') as due, r.reason, s.full_name as by_name, r.created_at
+    tx.query(`select r.id, to_char(r.due_on, 'YYYY-MM-DD') as due, r.reason, s.full_name as by_name, r.created_at, to_char(r.last_sent_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as texted
                 from recall r left join staff s on s.id = r.created_by where r.patient_id = $1 and r.completed_at is null order by r.due_on limit 1`, [patientId]),
     tx.query(`select l.*, to_char(l.sent_on, 'YYYY-MM-DD') as sent, to_char(l.due_on, 'YYYY-MM-DD') as due, to_char(l.received_on, 'YYYY-MM-DD') as received
                 from lab_order l where l.patient_id = $1 order by (l.status = 'fitted'), l.created_at desc limit 100`, [patientId]),
@@ -107,11 +107,11 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
   ]);
   return {
     plan: plan.rows.map((r) => ({ id: r.id, loaId: r.loa_id ?? null, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, phase: r.phase, status: r.status, note: r.note, createdAt: r.created_at, decidedAt: r.decided_at, by: r.by_name })),
-    done: done.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, at: r.performed_at, dentist: r.dentist, note: r.clinical_note, fromPlan: r.from_plan })),
+    done: done.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, name: r.name, code: r.code ?? null, category: r.category ?? null, fdi: r.fdi, surface: r.surface, price: r.price, at: r.performed_at, dentist: r.dentist, note: r.clinical_note, fromPlan: r.from_plan })),
     notes: notes.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, visitOn: r.day, dentist: r.dentist, complaint: r.complaint, findings: r.findings, diagnosis: r.diagnosis, treatment: r.treatment, plan: r.plan, teeth: r.teeth ?? [], amends: r.amends_id, by: r.by_name, at: r.created_at })),
-    rx: rx.rows.map((r) => ({ id: r.id, at: r.issued_at, prescriber: r.full_name, prescriberId: r.prescriber_id, prc: r.prc_licence, ptr: r.ptr_number, items: Array.isArray(r.items) ? r.items : [], notes: r.notes })),
-    files: files.rows.map((r) => ({ id: r.id, kind: r.kind, mime: r.mime, bytes: Number(r.bytes), takenAt: r.taken, fdi: r.fdi, caption: r.caption, by: r.by_name, at: r.created_at, thumb: String(r.storage_key).includes('|thumb') })),
-    recall: recall.rows[0] ? { id: recall.rows[0].id, dueOn: recall.rows[0].due, reason: recall.rows[0].reason, by: recall.rows[0].by_name, at: recall.rows[0].created_at } : null,
+    rx: rx.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, at: r.issued_at, prescriber: r.full_name, prescriberId: r.prescriber_id, prc: r.prc_licence, ptr: r.ptr_number, items: Array.isArray(r.items) ? r.items : [], notes: r.notes })),
+    files: files.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, kind: r.kind, mime: r.mime, bytes: Number(r.bytes), takenAt: r.taken, fdi: r.fdi, caption: r.caption, by: r.by_name, at: r.created_at, thumb: String(r.storage_key).includes('|thumb') })),
+    recall: recall.rows[0] ? { id: recall.rows[0].id, dueOn: recall.rows[0].due, reason: recall.rows[0].reason, by: recall.rows[0].by_name, at: recall.rows[0].created_at, textedOn: recall.rows[0].texted ?? null } : null,
     labs: labs.rows.map((r) => ({ id: r.id, lab: r.lab_name, description: r.description, shade: r.shade, sentOn: r.sent, dueOn: r.due, receivedOn: r.received, cost: r.cost, status: r.status, note: r.note, at: r.created_at })),
     clinicians: clinicians.rows.map((r) => ({ id: r.id, name: r.full_name, prc: r.prc_licence, ptr: r.ptr_number })),
     catalog: catalog.rows.map((r) => ({ id: r.id, name: r.name, price: r.default_price, max: r.price_max, from: r.price_from, tooth: r.tooth_scoped, category: r.category })),
@@ -191,6 +191,19 @@ export const RECORD_INTENTS = new Set(Object.keys(SECTION_OF));
 const audit = (tx: Tx, c: Ctx, action: string, entity: string, id: string) =>
   tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, $4, $5)`, [c.clinicId, c.staffId, action, entity, id]);
 
+/**
+ * The visit a chairside post is for (036): the record's This visit strip puts the visit's id in a hidden
+ * `visit` field on the treatment, note, prescription, blood pressure and file forms, so what is written
+ * during a visit names it (appointment_id) instead of being matched to it by the day later. Only this
+ * patient's own visit, and never a cancelled or missed one; anything else is simply no visit.
+ */
+export async function visitOf(tx: Tx, form: FormData, patientId: string): Promise<string | null> {
+  const id = String(form.get('visit') ?? '');
+  if (!UUID.test(id)) return null;
+  const r = await tx.query(`select id from appointment where id = $1 and patient_id = $2 and status not in ('cancelled', 'no_show')`, [id, patientId]);
+  return r.rows[0]?.id ?? null;
+}
+
 /** One post from the record page. The patient must exist here (RLS) and the person may edit records. */
 export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormData): Promise<Outcome | 'none'> {
   const section = SECTION_OF[intent] ?? 'overview';
@@ -237,9 +250,9 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       if (on > manilaToday()) return fail('A treatment done cannot be dated in the future.');
       const note = text(form.get('note'), 2000);
       const { rows: [d] } = await tx.query(
-        `insert into procedure_done (clinic_id, patient_id, catalog_id, name, fdi, surface, price, performed_by, performed_at, clinical_note, created_by)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, case when $9::date = (now() at time zone 'Asia/Manila')::date then now() else ($9::date + time '12:00') at time zone 'Asia/Manila' end, $10, $11) returning id`,
-        [c.clinicId, c.patientId, cat?.id ?? null, name, fdi, surface, price, dentist.id, on, note || null, c.staffId]);
+        `insert into procedure_done (clinic_id, patient_id, catalog_id, name, fdi, surface, price, performed_by, performed_at, clinical_note, created_by, appointment_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, case when $9::date = (now() at time zone 'Asia/Manila')::date then now() else ($9::date + time '12:00') at time zone 'Asia/Manila' end, $10, $11, $12) returning id`,
+        [c.clinicId, c.patientId, cat?.id ?? null, name, fdi, surface, price, dentist.id, on, note || null, c.staffId, await visitOf(tx, form, c.patientId)]);
       await audit(tx, c, 'record.done_add', 'procedure_done', d.id);
       return done('done');
     }
@@ -255,9 +268,9 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
         const dentist = await clinician(String(form.get('dentist') ?? '')) ?? await clinician(c.staffId);
         if (!dentist) return fail('Choose the dentist who did it.');
         const { rows: [d] } = await tx.query(
-          `insert into procedure_done (clinic_id, patient_id, plan_id, catalog_id, name, fdi, surface, price, performed_by, clinical_note, created_by)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
-          [c.clinicId, c.patientId, it.plan_id, it.catalog_id, it.name, it.fdi, it.surface, it.price, dentist.id, it.note, c.staffId]);
+          `insert into procedure_done (clinic_id, patient_id, plan_id, catalog_id, name, fdi, surface, price, performed_by, clinical_note, created_by, appointment_id)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,
+          [c.clinicId, c.patientId, it.plan_id, it.catalog_id, it.name, it.fdi, it.surface, it.price, dentist.id, it.note, c.staffId, await visitOf(tx, form, c.patientId)]);
         doneId = d.id;
       }
       await tx.query('update treatment_plan_item set status = $2, decided_at = now(), done_id = coalesce($3, done_id) where id = $1', [id, to, doneId]);
@@ -287,9 +300,9 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       const on = dayOf(form.get('visit_on')) ?? manilaToday();
       if (on > manilaToday()) return fail('A clinical note cannot be dated in the future.');
       const { rows: [n] } = await tx.query(
-        `insert into clinical_note (clinic_id, patient_id, visit_on, dentist_id, complaint, findings, diagnosis, treatment, plan, teeth, amends_id, created_by)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,
-        [c.clinicId, c.patientId, on, dentist?.id ?? null, fields.complaint || null, fields.findings || null, fields.diagnosis || null, fields.treatment || null, fields.plan || null, teethFrom(form.get('teeth')), amends || null, c.staffId]);
+        `insert into clinical_note (clinic_id, patient_id, visit_on, dentist_id, complaint, findings, diagnosis, treatment, plan, teeth, amends_id, created_by, appointment_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
+        [c.clinicId, c.patientId, on, dentist?.id ?? null, fields.complaint || null, fields.findings || null, fields.diagnosis || null, fields.treatment || null, fields.plan || null, teethFrom(form.get('teeth')), amends || null, c.staffId, await visitOf(tx, form, c.patientId)]);
       await audit(tx, c, amends ? 'record.note_addendum' : 'record.note_add', 'clinical_note', n.id);
       return done(amends ? 'addendum' : 'note');
     }
@@ -309,8 +322,8 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       if (!items.length) return fail('Write at least one medicine.');
       const notes = text(form.get('notes'), 500);
       const { rows: [r] } = await tx.query(
-        `insert into prescription (clinic_id, patient_id, prescriber_id, items, notes) values ($1, $2, $3, $4::jsonb, $5) returning id`,
-        [c.clinicId, c.patientId, prescriber.id, JSON.stringify(items), notes || null]);
+        `insert into prescription (clinic_id, patient_id, prescriber_id, items, notes, appointment_id) values ($1, $2, $3, $4::jsonb, $5, $6) returning id`,
+        [c.clinicId, c.patientId, prescriber.id, JSON.stringify(items), notes || null, await visitOf(tx, form, c.patientId)]);
       await audit(tx, c, 'record.rx_add', 'prescription', r.id);
       return { ok: true, section, saved: `rx:${r.id}` };
     }
@@ -337,6 +350,7 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       }
       const dir = join(UPLOAD_DIR, 'records', c.clinicId);
       await mkdir(dir, { recursive: true });
+      const visit = await visitOf(tx, form, c.patientId);
       for (const f of files) {
         const id = randomUUID();
         const bytes = read.get(f)!;
@@ -350,9 +364,9 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
           } catch { return fail(`${f.name} could not be read as a picture.`); }
         }
         const { rows: [a] } = await tx.query(
-          `insert into attachment (clinic_id, patient_id, kind, storage_key, bytes, mime, taken_at, fdi, caption, uploaded_by)
-           values ($1, $2, $3, $4, $5, $6, case when $7::date is null then null else ($7::date + time '12:00') at time zone 'Asia/Manila' end, $8, $9, $10) returning id`,
-          [c.clinicId, c.patientId, f.type === 'application/pdf' && kind !== 'other' ? 'document' : kind, `${id}.${FILE_TYPES[f.type]}${thumb ? '|thumb' : ''}`, f.size, f.type, taken, fdi, caption || (files.length === 1 ? null : f.name.slice(0, 200)), c.staffId]);
+          `insert into attachment (clinic_id, patient_id, kind, storage_key, bytes, mime, taken_at, fdi, caption, uploaded_by, appointment_id)
+           values ($1, $2, $3, $4, $5, $6, case when $7::date is null then null else ($7::date + time '12:00') at time zone 'Asia/Manila' end, $8, $9, $10, $11) returning id`,
+          [c.clinicId, c.patientId, f.type === 'application/pdf' && kind !== 'other' ? 'document' : kind, `${id}.${FILE_TYPES[f.type]}${thumb ? '|thumb' : ''}`, f.size, f.type, taken, fdi, caption || (files.length === 1 ? null : f.name.slice(0, 200)), c.staffId, visit]);
         await audit(tx, c, 'record.file_add', 'attachment', a.id);
       }
       return done(files.length === 1 ? 'file' : `files:${files.length}`);

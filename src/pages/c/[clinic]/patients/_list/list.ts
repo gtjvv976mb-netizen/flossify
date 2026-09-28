@@ -7,10 +7,11 @@
 // How the statement goes: `pt` is the patients the search leaves (name either
 // way round, chart no., or the mobile's digits — 0917… and +63 917… alike, as
 // the top bar's search); the visits (`v`), the newest health history (`mh`),
-// the consents to the notice in force (`cs`), the latest HMO claim (`cl`) and
-// — for the people who may see money only — who has any statement or loose
-// payment at all (`m`) are each one grouped pass joined to `pt`, never a
-// subquery per patient. patient_balance() is the one balance definition; it
+// the open check-up (`rc`: the record's "Next check-up", the soonest `recall`
+// row not completed), the consents to the notice in force (`cs`), the latest
+// HMO claim (`cl`) and — for the people who may see money only — who has any
+// statement or loose payment at all (`m`) are each one grouped pass joined to
+// `pt`, never a subquery per patient. patient_balance() is the one balance definition; it
 // is called only for patients with money on file (anyone else's is 0 by that
 // same definition). The counts come from the searched set (so the pills say
 // what each filter would show for this search); the page of rows from the
@@ -21,6 +22,10 @@
 //   health history  the newest medical_history version answers nothing (null
 //                   lists and no note: nobody has asked yet; "None known" is an
 //                   answer)
+//   history update  the newest version answers, but was answered more than 12
+//                   months ago (docs/clinic-operations.md §3: active patients
+//                   refresh the history at every visit, a full new form every
+//                   two years — a year-old one is asked again)
 //   consent         no consent to the privacy notice in force
 //                   (current_consent_version()), or — under 18 by the birth
 //                   date — none from a parent or guardian (health.ts, the
@@ -33,15 +38,31 @@
 // rule, so a patient is new on both or on neither. Today: a visit today
 // (Manila) that is not cancelled. With balance: patient_balance() above zero
 // (finance roles only).
+//
+// The recall list (docs/clinic-operations.md §7) — the two filters a clinic
+// works every week, both only for people with nothing on the book (a future
+// visit means the desk has already reached them):
+//   Due for check-up   an open check-up (recall.completed_at is null) due in
+//                      the next 30 days or overdue; sorted soonest first, so
+//                      the most overdue is at the top (the `due` sort, the
+//                      filter's own default — defaultSort()).
+//   Not seen in a year no completed visit in the last 12 months: the last one
+//                      is older, or there was none and the record itself is
+//                      older than 12 months (a record added last week and not
+//                      seen yet is New, not lost).
 import type { Tx } from '../../../../../lib/db';
 import { withClinic } from '../../../../../lib/db';
 import { hmoById } from '../../../../../data/directory';
 import { isNewSql } from '../../../../../components/ws/cal/data';
 
-export const FILTERS = ['all', 'today', 'new', 'balance', 'attention'] as const;
+export const FILTERS = ['all', 'today', 'new', 'due', 'quiet', 'balance', 'attention'] as const;
 export type Filter = (typeof FILTERS)[number];
-export const SORTS = ['name', 'last', 'next'] as const;
+export const SORTS = ['name', 'last', 'next', 'due'] as const;
 export type Sort = (typeof SORTS)[number];
+/** The sort a filter starts with when the address names none: Due for check-up soonest first, the rest by name. */
+export const defaultSort = (f: Filter): Sort => (f === 'due' ? 'due' : 'name');
+/** The days ahead a check-up counts as due (with everything overdue). */
+export const DUE_DAYS = 30;
 /** Rows drawn at a time; "Show more" asks for the next ones. */
 export const PAGE = 50;
 /** The most rows one page draws (a link with ?show= from a browser without JavaScript). */
@@ -58,7 +79,7 @@ export interface ListState {
   from: number;
 }
 
-export interface Counts { all: number; today: number; new: number; balance: number; attention: number }
+export interface Counts { all: number; today: number; new: number; due: number; quiet: number; balance: number; attention: number }
 
 export interface Row {
   id: string;
@@ -76,8 +97,16 @@ export interface Row {
   balance: string | null;
   allergies: string[];
   conditions: string[];
+  /** The open check-up's day (YYYY-MM-DD), or null when none is set on the record. */
+  recallDue: string | null;
+  /** Why it was set ("Check-up and cleaning"), as the record wrote it. */
+  recallReason: string | null;
+  /** When the check-up reminder was last texted, or null. */
+  recallTextedAt: Date | null;
+  /** When the newest health history was answered, or null when there is none. */
+  historyAt: Date | null;
   /** What the record still needs, in the order the desk asks for it. */
-  needs: { birth: boolean; history: boolean; consent: boolean; guardian: boolean; mobile: boolean };
+  needs: { birth: boolean; history: boolean; staleHistory: boolean; consent: boolean; guardian: boolean; mobile: boolean };
 }
 
 export interface ListResult {
@@ -98,7 +127,7 @@ export function readState(params: URLSearchParams, finance: boolean): ListState 
   const fAsked = params.get('f') ?? '';
   const f: Filter = (FILTERS as readonly string[]).includes(fAsked) && (fAsked !== 'balance' || finance) ? (fAsked as Filter) : 'all';
   const sAsked = params.get('sort') ?? '';
-  const sort: Sort = (SORTS as readonly string[]).includes(sAsked) ? (sAsked as Sort) : 'name';
+  const sort: Sort = (SORTS as readonly string[]).includes(sAsked) ? (sAsked as Sort) : defaultSort(f);
   const n = (k: string, dflt: number, min: number, max: number) => {
     const v = Number.parseInt(params.get(k) ?? '', 10);
     return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : dflt;
@@ -111,7 +140,7 @@ export function listHref(base: string, s: Pick<ListState, 'q' | 'f' | 'sort'> & 
   const p = new URLSearchParams();
   if (s.q) p.set('q', s.q);
   if (s.f !== 'all') p.set('f', s.f);
-  if (s.sort !== 'name') p.set('sort', s.sort);
+  if (s.sort !== defaultSort(s.f)) p.set('sort', s.sort);
   if (s.show && s.show !== PAGE) p.set('show', String(s.show));
   const t = p.toString();
   return t ? `${base}?${t}` : base;
@@ -126,9 +155,10 @@ const ORDER: Record<Sort, string> = {
   name: NAME_ORDER,
   last: `r.last_at desc nulls last, ${NAME_ORDER}`,
   next: `r.next_at asc nulls last, ${NAME_ORDER}`,
+  due: `r.recall_due asc nulls last, ${NAME_ORDER}`,
 };
 const WHERE: Record<Filter, string> = {
-  all: 'true', today: 'r.today', new: 'r.is_new', balance: 'r.balance > 0', attention: 'r.attention',
+  all: 'true', today: 'r.today', new: 'r.is_new', due: 'r.is_due', quiet: 'r.is_quiet', balance: 'r.balance > 0', attention: 'r.attention',
 };
 
 /**
@@ -152,7 +182,7 @@ async function readList(tx: Tx, clinicId: string, o: {
   const filter = s.f === 'balance' && !finance ? 'all' : s.f;
   const params: unknown[] = [
     o.todayFrom, o.todayTo, s.q, words.length ? words : ['%'], `%${esc(s.q)}%`, byPhone, `%${digits}%`, `%${local}%`,
-    o.today, o.staffId, clinicId, Math.min(s.show, SHOW_MAX), s.from,
+    o.today, o.staffId, clinicId, Math.min(s.show, SHOW_MAX), s.from, DUE_DAYS,
   ];
 
   const { rows } = await tx.query(
@@ -175,11 +205,16 @@ async function readList(tx: Tx, clinicId: string, o: {
          from appointment a join pt on pt.id = a.patient_id
         group by a.patient_id
      ), mh as (
-       select distinct on (h.patient_id) h.patient_id, h.allergies, h.conditions,
+       select distinct on (h.patient_id) h.patient_id, h.allergies, h.conditions, h.answered_at,
               (h.allergies is not null or h.conditions is not null or h.medications is not null
                or nullif(btrim(coalesce(h.note, '')), '') is not null) as answered
          from medical_history h join pt on pt.id = h.patient_id
         order by h.patient_id, h.answered_at desc, h.id desc
+     ), rc as (
+       select distinct on (r.patient_id) r.patient_id, r.due_on, r.reason, r.last_sent_at
+         from recall r join pt on pt.id = r.patient_id
+        where r.completed_at is null
+        order by r.patient_id, r.due_on, r.created_at desc
      ), n as (
        select v.id from current_consent_version() v where v.id is not null
      ), cs as (
@@ -199,14 +234,19 @@ async function readList(tx: Tx, clinicId: string, o: {
               coalesce(mh.allergies, '{}') as allergies, coalesce(mh.conditions, '{}') as conditions,
               ${isNewSql('v.first_done', 'pt.created_at')} as is_new,
               ${finance ? 'case when m.patient_id is null then 0::numeric else patient_balance(pt.id) end' : 'null::numeric'} as balance,
+              rc.due_on as recall_due, rc.reason as recall_reason, rc.last_sent_at as recall_texted, mh.answered_at as history_at,
+              (rc.due_on is not null and rc.due_on <= $9::date + $14::int and v.next_at is null) as is_due,
+              (v.next_at is null and coalesce(v.last_at, pt.created_at) < now() - interval '12 months') as is_quiet,
               pt.birth_date is null as no_birth,
               not coalesce(mh.answered, false) as no_history,
+              (coalesce(mh.answered, false) and mh.answered_at < now() - interval '12 months') as stale_history,
               nullif(btrim(coalesce(pt.phone, '')), '') is null as no_mobile,
               (pt.birth_date is not null and pt.birth_date > ($9::date - interval '18 years')) as minor,
               exists (select 1 from n) as notice, cs.patient_id is not null as consented, coalesce(cs.guardian, false) as guardian
          from pt
          left join v on v.patient_id = pt.id
          left join mh on mh.patient_id = pt.id
+         left join rc on rc.patient_id = pt.id
          left join cs on cs.patient_id = pt.id
          left join cl on cl.patient_id = pt.id
          ${finance ? 'left join m on m.patient_id = pt.id' : ''}
@@ -214,13 +254,15 @@ async function readList(tx: Tx, clinicId: string, o: {
        select r0.*,
               (r0.notice and (not r0.consented or (r0.minor and not r0.guardian))) as no_consent,
               (r0.notice and r0.minor and not r0.guardian) as needs_guardian,
-              (r0.no_birth or r0.no_history or r0.no_mobile or (r0.notice and (not r0.consented or (r0.minor and not r0.guardian)))) as attention
+              (r0.no_birth or r0.no_history or r0.stale_history or r0.no_mobile or (r0.notice and (not r0.consented or (r0.minor and not r0.guardian)))) as attention
          from r0
      )
      select k.*, x.*
        from (select count(*)::int as n_all,
                     count(*) filter (where r.today)::int as n_today,
                     count(*) filter (where r.is_new)::int as n_new,
+                    count(*) filter (where r.is_due)::int as n_due,
+                    count(*) filter (where r.is_quiet)::int as n_quiet,
                     count(*) filter (where r.balance > 0)::int as n_balance,
                     count(*) filter (where r.attention)::int as n_attention,
                     count(*) filter (where ${WHERE[filter]})::int as n_matched,
@@ -231,7 +273,8 @@ async function readList(tx: Tx, clinicId: string, o: {
        left join lateral (
          select r.id, r.first_name, r.last_name, r.suffix, r.chart_no, r.phone, to_char(r.birth_date, 'YYYY-MM-DD') as birth, r.sex,
                 r.hmo_name, r.claim_hmo, r.hmo_id, r.last_at, r.next_at, r.today, r.is_new, r.balance, r.allergies, r.conditions,
-                r.no_birth, r.no_history, r.no_consent, r.needs_guardian, r.no_mobile,
+                to_char(r.recall_due, 'YYYY-MM-DD') as recall_due, r.recall_reason, r.recall_texted, r.history_at,
+                r.no_birth, r.no_history, r.stale_history, r.no_consent, r.needs_guardian, r.no_mobile,
                 row_number() over (order by ${ORDER[s.sort]}) as ord
            from r
           where ${WHERE[filter]}
@@ -245,7 +288,10 @@ async function readList(tx: Tx, clinicId: string, o: {
   const clean = (v: unknown) => (Array.isArray(v) ? (v as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim() !== '') : []);
   const hmoName = (id: string | null) => (id ? (hmoById(id)?.name ?? id) : null);
   return {
-    counts: { all: k.n_all ?? 0, today: k.n_today ?? 0, new: k.n_new ?? 0, balance: finance ? k.n_balance ?? 0 : 0, attention: k.n_attention ?? 0 },
+    counts: {
+      all: k.n_all ?? 0, today: k.n_today ?? 0, new: k.n_new ?? 0, due: k.n_due ?? 0, quiet: k.n_quiet ?? 0,
+      balance: finance ? k.n_balance ?? 0 : 0, attention: k.n_attention ?? 0,
+    },
     matched: k.n_matched ?? 0,
     notice: k.has_notice === true,
     area: k.clinic_area ?? null,
@@ -266,7 +312,11 @@ async function readList(tx: Tx, clinicId: string, o: {
       balance: finance && r.balance !== null ? String(r.balance) : null,
       allergies: clean(r.allergies),
       conditions: clean(r.conditions),
-      needs: { birth: r.no_birth, history: r.no_history, consent: r.no_consent, guardian: r.needs_guardian, mobile: r.no_mobile },
+      recallDue: r.recall_due ?? null,
+      recallReason: r.recall_reason?.trim() || null,
+      recallTextedAt: r.recall_texted ?? null,
+      historyAt: r.history_at ?? null,
+      needs: { birth: r.no_birth, history: r.no_history, staleHistory: r.stale_history === true, consent: r.no_consent, guardian: r.needs_guardian, mobile: r.no_mobile },
     })),
   };
 }
@@ -275,7 +325,7 @@ async function readList(tx: Tx, clinicId: string, o: {
 export function needsLine(n: Row['needs']): string | null {
   const items = [
     n.birth && 'birth date',
-    n.history && 'health history',
+    n.history ? 'health history' : n.staleHistory && 'health history update',
     n.consent && (n.guardian ? 'a guardian’s consent' : 'consent'),
     n.mobile && 'mobile',
   ].filter(Boolean) as string[];

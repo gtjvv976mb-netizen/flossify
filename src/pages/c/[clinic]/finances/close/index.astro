@@ -1,0 +1,572 @@
+---
+// Close the day: the front desk's end-of-day page (docs/clinic-operations.md
+// §2, "End-of-day close": received = recorded = deposited). Five minutes,
+// top to bottom:
+//
+//   - Payments received today, by how they were paid (cash, GCash, Maya, card,
+//     bank transfer, cheque, HMO, PhilHealth): how many and how much, and the
+//     total. Only payments dated today (paid_on, Manila) that are not void.
+//   - Count the drawer: the cash counted against the cash the payments say
+//     should be there. The server does the arithmetic in centavos and says the
+//     difference in words ("₱200 short", "₱50 over", "Matches"); Close the
+//     day writes one day_close row (037) and the audit line day.close. A day
+//     can be closed again after a correction: the newest close counts, the old
+//     ones stay.
+//   - Still open: what should be settled before the lights go off — visits
+//     still arrived / in the lobby / in the chair, treatments done today that
+//     no statement charges, statements issued today with nothing paid on them,
+//     patients who completed a visit today and still owe, and today's no-shows
+//     and cancellations to rebook.
+//   - Tomorrow: how many visits, how many not confirmed, how many patients
+//     with no mobile (no reminder can reach them), the first visit's time.
+//
+// Who: the page is for people who may open Finances (can 'finance.bill');
+// amounts — the takings by method, the expected cash, the difference, prices
+// and balances — are for people who may see money ('finance.money'). Someone
+// who bills but may not see money still counts the drawer: they type the
+// count blind, the server keeps the expected figure and the difference for
+// the owner. That is the stronger control (the count is not steered by the
+// figure), and it is exactly what the permission's words promise.
+//
+// The page prints as it is (the shell hides itself in print; global.css):
+// black on white, the form and the buttons left out, a line to sign. Print is
+// a quiet button; the one teal button on the screen is Close the day.
+//
+// Every read and the write run inside withClinic(): row-level security keeps
+// them to this branch. The form carries <Csrf />; the post checks csrfOk and
+// the permission again before touching anything.
+export const prerender = false;
+
+import '../_fin.css';
+import ClinicLayout from '../../../../../layouts/Clinic.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Pane from '../../../../../components/ws/Pane.astro';
+import Tile from '../../../../../components/ws/Tile.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Avatar from '../../../../../components/ws/Avatar.astro';
+import { requireWorkspace } from '../../../../../lib/workspace';
+import { withClinic } from '../../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
+import { shellLinks } from '../../../../../components/ws/routes';
+import { pesos, parseMoney, toDb, fromDb, stamp, day, isoDay, statementNo, methodLabel, METHODS, type Cents } from '../../../../../lib/invoices';
+import { can } from '../../../../../lib/can';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const may = can(clinic, 'finance.bill');
+const canMoney = can(clinic, 'finance.money');
+const home = `/c/${clinic.slug}/finances/`;
+const base = `${home}close/`;
+const links = shellLinks(clinic.slug);
+const q = Astro.url.searchParams;
+
+const NO_ACCESS = 'Closing the day is for the desk, the owner, the admin and anyone the owner lets see finance at this branch; ask the owner if you need it.';
+const NOTE_MAX = 500;
+/** Today, as every query below counts it: the Manila day. */
+const TODAY_SQL = `(now() at time zone 'Asia/Manila')::date`;
+const MANILA_DAY = (col: string) => `(${col} at time zone 'Asia/Manila')::date`;
+
+/** counted − expected, in words. Never a bare number: the desk reads it once, at the end of a day. */
+const varianceWords = (v: Cents) => (v === 0n ? 'Matches' : v < 0n ? `${pesos(-v)} short` : `${pesos(v)} over`);
+
+// --- a post: Close the day ----------------------------------------------------
+
+let problem = q.get('stale') === '1' ? CSRF_MESSAGE : '';
+let typed = { counted: '', note: '' };
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(`${base}?stale=1`, 303);
+  if (!may) return Astro.redirect(home, 303);
+  if (String(f.get('intent') ?? '') !== 'close') return Astro.redirect(base, 303);
+  typed = { counted: String(f.get('cash_counted') ?? '').trim(), note: String(f.get('note') ?? '').replace(/\s+/g, ' ').trim() };
+  const counted = parseMoney(typed.counted);
+  if (counted === null) problem = 'Type the cash in the drawer as an amount, like 12500 or 12500.50.';
+  else if (typed.note.length > NOTE_MAX) problem = `The note is long: keep it to ${NOTE_MAX} characters.`;
+  else {
+    // The expected figure is read in the same transaction as the write, so a payment recorded
+    // while the desk was counting is either in both numbers or in neither.
+    await withClinic(clinic.id, async (tx) => {
+      const expected = fromDb((await tx.query(
+        `select coalesce(sum(amount), 0) as cash from payment where method = 'cash' and voided_at is null and paid_on = ${TODAY_SQL}`)).rows[0].cash);
+      const { rows } = await tx.query(
+        `insert into day_close (clinic_id, day, cash_counted, cash_expected, variance, note, closed_by)
+         values ($1, ${TODAY_SQL}, $2, $3, $4, $5, $6) returning id`,
+        [clinic.id, toDb(counted), toDb(expected), toDb(counted - expected), typed.note || null, session.staffId]);
+      await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'day.close', 'day_close', $3)`,
+        [clinic.id, session.staffId, rows[0].id]);
+    });
+    return Astro.redirect(`${base}?closed=1`, 303);
+  }
+}
+
+// --- the page's data ----------------------------------------------------------
+
+interface MethodRow { method: string; n: number; sum: string }
+interface Visit { id: string; starts_at: Date; status: string; patient_id: string; first_name: string; last_name: string }
+interface Done { id: string; name: string | null; catalog_id: string | null; fdi: number | null; price: string; patient_id: string; first_name: string; last_name: string }
+interface Unpaid { id: string; series_prefix: string; number: string; issued_at: Date; total: string; patient_id: string; first_name: string; last_name: string }
+interface Owing { id: string; first_name: string; last_name: string; balance: string }
+interface Close { id: string; cash_counted: string; cash_expected: string; variance: string; note: string | null; closed_at: Date; closed_by_name: string | null }
+
+const data = may ? await withClinic(clinic.id, async (tx) => {
+  const methods = (await tx.query(
+    `select method, count(*)::int as n, coalesce(sum(amount), 0) as sum
+       from payment where voided_at is null and paid_on = ${TODAY_SQL} group by method`)).rows as MethodRow[];
+  const closes = (await tx.query(
+    `select c.id, c.cash_counted, c.cash_expected, c.variance, c.note, c.closed_at, s.full_name as closed_by_name
+       from day_close c left join staff s on s.id = c.closed_by
+      where c.day = ${TODAY_SQL} order by c.closed_at desc`)).rows as Close[];
+  const inClinic = (await tx.query(
+    `select a.id, a.starts_at, a.status, p.id as patient_id, p.first_name, p.last_name
+       from appointment a join patient p on p.id = a.patient_id
+      where ${MANILA_DAY('a.starts_at')} = ${TODAY_SQL} and a.status in ('arrived', 'in_lobby', 'in_chair')
+      order by a.starts_at`)).rows as Visit[];
+  // A line on a void statement charged nothing: the treatment is still uncharged.
+  const uncharged = (await tx.query(
+    `select d.id, coalesce(d.name, pc.name) as name, d.catalog_id, d.fdi, d.price, p.id as patient_id, p.first_name, p.last_name
+       from procedure_done d
+       join patient p on p.id = d.patient_id
+       left join procedure_catalog pc on pc.id = d.catalog_id
+      where ${MANILA_DAY('d.performed_at')} = ${TODAY_SQL}
+        and not exists (select 1 from invoice_line l join invoice i on i.id = l.invoice_id where l.procedure_id = d.id and i.status <> 'void')
+      order by d.performed_at`)).rows as Done[];
+  const unpaid = (await tx.query(
+    `select i.id, i.series_prefix, i.number, i.issued_at, i.total, p.id as patient_id, p.first_name, p.last_name
+       from invoice i join patient p on p.id = i.patient_id
+      where ${MANILA_DAY('i.issued_at')} = ${TODAY_SQL} and i.status in ('issued', 'partly_paid', 'paid')
+        and not exists (select 1 from payment y where y.invoice_id = i.id and y.voided_at is null)
+      order by i.issued_at`)).rows as Unpaid[];
+  const owing = (await tx.query(
+    `select p.id, p.first_name, p.last_name, b.balance
+       from patient p
+       cross join lateral (select patient_balance(p.id) as balance) b
+      where p.archived_at is null and b.balance > 0
+        and exists (select 1 from appointment a where a.patient_id = p.id and a.status = 'completed' and ${MANILA_DAY('a.starts_at')} = ${TODAY_SQL})
+      order by p.last_name, p.first_name`)).rows as Owing[];
+  const missed = (await tx.query(
+    `select a.id, a.starts_at, a.status, p.id as patient_id, p.first_name, p.last_name
+       from appointment a join patient p on p.id = a.patient_id
+      where ${MANILA_DAY('a.starts_at')} = ${TODAY_SQL} and a.status in ('no_show', 'cancelled')
+      order by a.starts_at`)).rows as Visit[];
+  const tomorrow = (await tx.query(
+    `select count(*)::int as n,
+            count(*) filter (where a.status = 'booked')::int as unconfirmed,
+            count(*) filter (where nullif(btrim(coalesce(p.phone, '')), '') is null)::int as no_phone,
+            min(a.starts_at) as first_at
+       from appointment a join patient p on p.id = a.patient_id
+      where ${MANILA_DAY('a.starts_at')} = ${TODAY_SQL} + 1 and a.status in ('booked', 'confirmed')`)).rows[0] as
+    { n: number; unconfirmed: number; no_phone: number; first_at: Date | null };
+  return { methods, closes, inClinic, uncharged, unpaid, owing, missed, tomorrow };
+}) : null;
+
+// --- words ------------------------------------------------------------------
+
+const today = isoDay();
+const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'Asia/Manila' }).format(new Date());
+const todayWords = `${weekday}, ${day(today)}`;
+const time = (d: Date) => stamp(d).split(', ').pop();
+const n = (x: number, one: string, many = `${one}s`) => `${x} ${x === 1 ? one : many}`;
+const name = (p: { first_name: string; last_name: string }) => `${p.first_name} ${p.last_name}`;
+const patientHref = (id: string) => `/c/${clinic.slug}/patients/${id}/`;
+
+// The methods in the order the desk counts them: the drawer first, then the phones, the cards, the
+// bank, and last what a payor sends. Every method is listed, at 0 too, so a full sheet reads the same
+// every evening; anything else a row carries (an imported "unrecorded") is added after.
+const METHOD_ORDER = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque', 'hmo', 'philhealth'];
+const byMethod = new Map((data?.methods ?? []).map((m) => [m.method, m]));
+const methodRows = [...METHOD_ORDER, ...[...byMethod.keys()].filter((m) => !METHOD_ORDER.includes(m))].map((m) => ({
+  method: m, label: m === 'unrecorded' ? 'Not recorded (imported)' : methodLabel(m) || METHODS[m] || m,
+  n: byMethod.get(m)?.n ?? 0, sum: fromDb(byMethod.get(m)?.sum),
+}));
+const totalN = methodRows.reduce((s, r) => s + r.n, 0);
+const totalSum = methodRows.reduce((s, r) => s + r.sum, 0n);
+const cashExpected = fromDb(byMethod.get('cash')?.sum);
+const cashN = byMethod.get('cash')?.n ?? 0;
+
+const newest = data?.closes[0] ?? null;
+const closedNow = q.get('closed') === '1';
+const openCount = data ? data.inClinic.length + data.uncharged.length + data.unpaid.length + data.owing.length + data.missed.length : 0;
+const T = data?.tomorrow;
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name }} title="Close the day" section="finances" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  <div class="fin-page dc-page">
+    {!may || !data ? (
+      <Pane as="div" label="Close the day">
+        <a href={home} class="fin-back"><Icon name="chevron-left" size={16} />Finances</a>
+        <p class="ws-callout" data-tone="info" data-dc-closed-to><Icon name="info" /><span>{NO_ACCESS}</span></p>
+      </Pane>
+    ) : (
+      <>
+        <header class="dc-print-only dc-print-head">
+          <p class="dc-print-clinic">{clinic.name}</p>
+          <p class="dc-print-title">Close the day — {todayWords}</p>
+        </header>
+
+        {problem && <p role="alert" class="ws-callout dc-noprint" data-tone="alert" data-dc-problem><Icon name="alert" /><span>{problem}</span></p>}
+        {closedNow && newest && (
+          <p role="status" class="ws-callout dc-noprint" data-tone="success" data-dc-done>
+            <Icon name="check" />
+            <span>
+              The day is closed. Closed by <strong class="font-semibold">{newest.closed_by_name ?? 'a member who has left'}</strong> at {time(newest.closed_at)}
+              {canMoney ? <> — the drawer {fromDb(newest.variance) === 0n ? 'matches the payments' : `is ${varianceWords(fromDb(newest.variance))}`}.</> : '.'}
+            </span>
+          </p>
+        )}
+
+        <Pane title="Payments received today" icon="money" meta={todayWords} id="received" pad="none">
+          <div slot="actions" class="dc-noprint">
+            <a href={home} class="ws-btn ws-btn-quiet"><Icon name="chevron-left" size={16} />Finances</a>
+            <button type="button" class="ws-btn ws-btn-quiet" data-dc-print><Icon name="file" />Print</button>
+          </div>
+          <table class="dc-table" data-dc-methods>
+            <caption class="sr-only">Payments received today at {clinic.name}, by how they were paid</caption>
+            <thead>
+              <tr>
+                <th scope="col" class="meta">Paid by</th>
+                <th scope="col" class="meta dc-num">Payments</th>
+                {canMoney && <th scope="col" class="meta dc-num">Amount</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {methodRows.map((r) => (
+                <tr data-method={r.method} data-zero={r.n === 0 ? '' : undefined}>
+                  <th scope="row">{r.label}</th>
+                  <td class="dc-num tabular-nums">{r.n}</td>
+                  {canMoney && <td class="dc-num tabular-nums fin-money">{pesos(r.sum)}</td>}
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row">Total</th>
+                <td class="dc-num tabular-nums" data-dc-total-n>{totalN}</td>
+                {canMoney && <td class="dc-num tabular-nums fin-money" data-dc-total>{pesos(totalSum)}</td>}
+              </tr>
+            </tfoot>
+          </table>
+          {!canMoney && (
+            <p class="ws-callout dc-inset" data-tone="info" data-dc-no-money><Icon name="info" /><span>Amounts are for people who may see money at this branch; the counts are yours.</span></p>
+          )}
+          {totalN === 0 && <p class="dc-inset dc-help">No payment is dated today yet. A payment recorded on a statement with today’s date lands here.</p>}
+        </Pane>
+
+        <Pane title="Count the drawer" icon="wallet" id="drawer">
+          {newest ? (
+            <p class="ws-callout" data-tone={closedNow ? 'success' : 'info'} data-dc-closed-by>
+              <Icon name={closedNow ? 'check' : 'clock'} />
+              <span>
+                Closed by <strong class="font-semibold">{newest.closed_by_name ?? 'a member who has left'}</strong> at {time(newest.closed_at)}
+                {data.closes.length > 1 && <> ({n(data.closes.length, 'close')} today; the newest counts)</>}
+                {canMoney && <>: counted {pesos(newest.cash_counted)} against {pesos(newest.cash_expected)} expected — <strong class="font-semibold">{varianceWords(fromDb(newest.variance))}</strong></>}.
+                {newest.note && <> Note: {newest.note}</>}
+              </span>
+            </p>
+          ) : (
+            <p class="dc-print-only dc-help">Not closed yet.</p>
+          )}
+
+          <form method="post" action={base} class="dc-form dc-noprint" data-dc-form data-expected={canMoney ? String(cashExpected) : undefined}>
+            <Csrf />
+            <input type="hidden" name="intent" value="close" />
+            <div class="dc-form-grid">
+              <label class="field">
+                <span class="meta">Cash counted, in pesos</span>
+                <input name="cash_counted" value={typed.counted} inputmode="decimal" autocomplete="off" required placeholder="0.00" class="tabular-nums" aria-describedby="dc-variance" data-dc-counted />
+              </label>
+              <div class="dc-expected" data-dc-expected-box>
+                <span class="meta">Cash expected</span>
+                {canMoney ? (
+                  <>
+                    <strong class="dc-expected-value tabular-nums" data-dc-expected>{pesos(cashExpected)}</strong>
+                    <span class="dc-help">{n(cashN, 'cash payment')} dated today</span>
+                  </>
+                ) : (
+                  <>
+                    <strong class="dc-expected-value">Kept for the owner</strong>
+                    <span class="dc-help">You count; the expected figure and the difference are for people who may see money.</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <p id="dc-variance" class="dc-variance" data-dc-variance aria-live="polite">
+              {canMoney ? 'Type the count and the difference is said here; it is checked again when you close.' : 'The difference is worked out when you close and kept with the close.'}
+            </p>
+            <label class="field">
+              <span class="meta">Note (optional)</span>
+              <input name="note" value={typed.note} maxlength={NOTE_MAX} autocomplete="off" placeholder="Anything the owner should know — a float taken out, a payment still to record" />
+            </label>
+            <div class="dc-form-end">
+              <button type="submit" class="ws-btn ws-btn-primary" data-dc-close><Icon name="check" />{newest ? 'Close the day again' : 'Close the day'}</button>
+              <p class="dc-help">{newest ? 'A new close is added and the newest counts; the earlier ones stay on record.' : 'Writes the count, the expected cash and the difference, with your name and the time.'}</p>
+            </div>
+          </form>
+          <p class="dc-print-only dc-sign" aria-hidden="true">Checked by ____________________________ &nbsp; Date __________</p>
+        </Pane>
+
+        <Pane title="Still open" icon="clock" id="open" meta={openCount === 0 ? 'Nothing waiting' : n(openCount, 'thing', 'things') + ' to settle'}>
+          {openCount === 0 ? (
+            <p class="ws-empty" data-dc-all-clear>
+              <Icon name="check" size={20} class="ws-empty-icon" />
+              <span class="ws-empty-text">Nothing is waiting: every visit is done, every treatment charged, every statement paid, no one left owing, no one missed.</span>
+            </p>
+          ) : (
+            <div class="dc-groups">
+              <section class="dc-group" aria-labelledby="dc-h-visits">
+                <h3 id="dc-h-visits" class="dc-h">Still in the clinic <span class="dc-count">{data.inClinic.length}</span></h3>
+                {data.inClinic.length === 0 ? <p class="dc-none"><Icon name="check" size={16} />Every visit is completed.</p> : (
+                  <ul class="dc-list">
+                    {data.inClinic.map((v) => (
+                      <li class="dc-row">
+                        <span class="fin-person"><Avatar name={name(v)} size="sm" /><a href={links.booking(today, v.id)} class="fin-link dc-name">{name(v)}</a></span>
+                        <span class="dc-when tabular-nums">{time(v.starts_at)}</span>
+                        <Chip status={v.status} dot />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section class="dc-group" aria-labelledby="dc-h-uncharged">
+                <h3 id="dc-h-uncharged" class="dc-h">Done, not charged <span class="dc-count">{data.uncharged.length}</span></h3>
+                {data.uncharged.length === 0 ? <p class="dc-none"><Icon name="check" size={16} />Every treatment done today is on a statement.</p> : (
+                  <ul class="dc-list">
+                    {data.uncharged.map((d) => (
+                      <li class="dc-row">
+                        <span class="fin-person"><Avatar name={name(d)} size="sm" /><a href={patientHref(d.patient_id) + '#treatment'} class="fin-link dc-name">{name(d)}</a></span>
+                        <span class="dc-what">{d.name ?? 'Treatment'}{d.fdi ? ` · tooth ${d.fdi}` : ''}</span>
+                        {canMoney && <span class="dc-amount tabular-nums">{pesos(d.price)}</span>}
+                        <a href={`${home}new/?patient=${d.patient_id}${d.catalog_id ? `&service=${d.catalog_id}` : ''}`} class="fin-link dc-go dc-noprint">Charge</a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section class="dc-group" aria-labelledby="dc-h-unpaid">
+                <h3 id="dc-h-unpaid" class="dc-h">Charged, nothing paid yet <span class="dc-count">{data.unpaid.length}</span></h3>
+                {data.unpaid.length === 0 ? <p class="dc-none"><Icon name="check" size={16} />Every statement issued today has a payment on it.</p> : (
+                  <ul class="dc-list">
+                    {data.unpaid.map((i) => (
+                      <li class="dc-row">
+                        <span class="fin-person"><Avatar name={name(i)} size="sm" /><a href={`${home}${i.id}/`} class="fin-link dc-name">{name(i)}</a></span>
+                        <span class="dc-what"><span class="fin-no">{statementNo(i.series_prefix, i.number)}</span> · {time(i.issued_at)}</span>
+                        {canMoney && <span class="dc-amount tabular-nums">{pesos(i.total)}</span>}
+                        <a href={`${home}${i.id}/`} class="fin-link dc-go dc-noprint">Record payment</a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section class="dc-group" aria-labelledby="dc-h-owing">
+                <h3 id="dc-h-owing" class="dc-h">Left owing <span class="dc-count">{data.owing.length}</span></h3>
+                {data.owing.length === 0 ? <p class="dc-none"><Icon name="check" size={16} />Nobody who completed a visit today owes anything.</p> : (
+                  <ul class="dc-list">
+                    {data.owing.map((p) => (
+                      <li class="dc-row">
+                        <span class="fin-person"><Avatar name={name(p)} size="sm" /><a href={patientHref(p.id) + '#money'} class="fin-link dc-name">{name(p)}</a></span>
+                        <span class="dc-what">Completed a visit today</span>
+                        {canMoney ? <span class="dc-amount dc-owes tabular-nums">Owes {pesos(p.balance)}</span> : <span class="dc-amount dc-owes">Owes</span>}
+                        <a href={`${home}?view=unpaid&patient=${p.id}`} class="fin-link dc-go dc-noprint">Statements</a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section class="dc-group" aria-labelledby="dc-h-missed">
+                <h3 id="dc-h-missed" class="dc-h">Did not come <span class="dc-count">{data.missed.length}</span></h3>
+                {data.missed.length === 0 ? <p class="dc-none"><Icon name="check" size={16} />No no-shows and no cancellations today.</p> : (
+                  <ul class="dc-list">
+                    {data.missed.map((v) => (
+                      <li class="dc-row">
+                        <span class="fin-person"><Avatar name={name(v)} size="sm" /><a href={links.booking(today, v.id)} class="fin-link dc-name">{name(v)}</a></span>
+                        <span class="dc-when tabular-nums">{time(v.starts_at)}</span>
+                        <Chip status={v.status} dot />
+                        <a href={`${links.newBooking}&patient=${v.patient_id}`} class="fin-link dc-go dc-noprint">Rebook</a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
+          )}
+        </Pane>
+
+        <Pane title="Tomorrow" icon="calendar" id="tomorrow" meta={day(new Date(Date.now() + 86_400_000))}>
+          {T && T.n === 0 ? (
+            <p class="ws-empty" data-dc-tomorrow-empty>
+              <Icon name="calendar" size={20} class="ws-empty-icon" />
+              <span class="ws-empty-text">Nothing booked for tomorrow yet.</span>
+              <a href={links.newBooking} class="ws-empty-go dc-noprint">New booking <Icon name="arrow-right" size={16} /></a>
+            </p>
+          ) : T && (
+            <div class="ws-tiles" data-dc-tomorrow>
+              <Tile label="Visits" value={T.n} icon="calendar" note={`First at ${T.first_at ? time(T.first_at) : '—'}`} href={`/c/${clinic.slug}/?date=${isoDay(new Date(Date.now() + 86_400_000))}`} />
+              <Tile label="Not confirmed" value={T.unconfirmed} icon="phone" tone={T.unconfirmed > 0 ? 'warn' : 'default'}
+                note={T.unconfirmed > 0 ? 'Still only booked: call to confirm' : 'Everyone has confirmed'} />
+              <Tile label="No mobile on file" value={T.no_phone} icon="alert" tone={T.no_phone > 0 ? 'warn' : 'default'}
+                note={T.no_phone > 0 ? 'No reminder can reach them' : 'Every patient gets a reminder'} />
+            </div>
+          )}
+        </Pane>
+      </>
+    )}
+  </div>
+</ClinicLayout>
+
+<style is:global>
+  @layer theme, base, components, utilities;
+  /* Close the day: only what the shell and _fin.css do not draw — the methods table, the drawer form,
+     the open lists and the paper. Inside the components layer, so a utility in the markup still wins;
+     the print rules are unlayered on purpose (they must beat everything). */
+  @layer components {
+    .dc-page { gap: 1rem; }
+    .dc-inset { margin: 1rem 1.5rem 1.25rem; }
+    .dc-help { font-size: 13.5px; line-height: 1.45; color: var(--c-ink-2); }
+    p.dc-help.dc-inset { margin-top: 0.75rem; }
+
+    /* Payments by method: a small table that keeps its columns at every width (three columns fit a phone). */
+    .dc-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 15px; }
+    .dc-table th, .dc-table td { padding: 0.75rem 1.5rem; border-bottom: 1px solid var(--ws-hair); vertical-align: middle; }
+    .dc-table thead th { padding-block: 0.625rem; background: var(--ws-subtle); font-weight: 500; }
+    .dc-table tbody th { font-weight: 500; color: var(--c-ink); }
+    .dc-table tbody tr[data-zero] :is(th, td) { color: var(--c-ink-2); }
+    .dc-table tfoot th, .dc-table tfoot td { border-bottom: 0; font-weight: 600; color: var(--c-ink); }
+    .dc-table .dc-num { text-align: right; }
+    .dc-table :is(th, td):not(:first-child) { padding-left: 0.5rem; }
+
+    /* The drawer: the count beside the expected figure, the difference under them, the note, the one button. */
+    .dc-form { display: grid; gap: 1rem; margin-top: 1.25rem; }
+    .dc-form-grid { display: grid; gap: 1rem; align-items: stretch; }
+    @container fin-page (min-width: 640px) {
+      .dc-form-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    }
+    .dc-expected {
+      display: grid; align-content: start; gap: 0.25rem; padding: 0.75rem 1rem;
+      border: 1px solid var(--ws-hair); border-radius: var(--ws-r-ctl); background: var(--ws-subtle);
+    }
+    .dc-expected .meta, .dc-expected .dc-help { color: var(--c-ink-2); }
+    .dc-expected-value { font-size: 22px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; color: var(--c-ink); }
+    .dc-variance {
+      display: flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0.5rem 1rem; border-radius: var(--ws-r-ctl);
+      border: 1px solid var(--ws-hair); background: var(--ws-subtle); font-size: 15px; line-height: 1.45; color: var(--c-ink-2);
+    }
+    .dc-variance[data-tone="match"] { background: var(--ws-green-tint); border-color: color-mix(in srgb, var(--ws-green) 25%, transparent); color: var(--ws-green-ink); font-weight: 600; }
+    .dc-variance[data-tone="short"] { background: var(--ws-red-tint); border-color: color-mix(in srgb, var(--ws-red) 25%, transparent); color: var(--ws-red-ink); font-weight: 600; }
+    .dc-variance[data-tone="over"] { background: var(--ws-amber-tint); border-color: color-mix(in srgb, var(--ws-amber) 28%, transparent); color: var(--ws-amber-ink); font-weight: 600; }
+    .dc-form-end { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; }
+    .dc-form-end .dc-help { flex: 1 1 16rem; }
+
+    /* Still open: five small groups, each a heading with its count and a list of rows. */
+    .dc-groups { display: grid; gap: 1.25rem; }
+    .dc-h { display: flex; align-items: center; gap: 0.5rem; font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--c-ink); }
+    .dc-count {
+      display: inline-flex; align-items: center; justify-content: center; min-width: 1.5rem; height: 1.5rem; padding-inline: 0.4rem;
+      border-radius: var(--ws-r-pill); background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-size: 13px; font-variant-numeric: tabular-nums;
+    }
+    .dc-none { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.375rem; font-size: 14.5px; line-height: 1.45; color: var(--c-ink-2); }
+    .dc-none > .ws-icon { flex: none; color: var(--ws-green-ink); }
+    .dc-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.375rem; }
+    .dc-row {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who chip" "what amount" "go go";
+      gap: 0.125rem 0.75rem; align-items: center; padding: 0.625rem 0.875rem;
+      border: 1px solid var(--ws-hair); border-radius: var(--ws-r-ctl); background: var(--ws-subtle); font-size: 15px;
+    }
+    .dc-row > .fin-person { grid-area: who; }
+    .dc-row > .ws-chip { grid-area: chip; justify-self: end; }
+    .dc-row > .dc-when { grid-area: what; padding-left: 2.5rem; color: var(--c-ink-2); }
+    .dc-row > .dc-what { grid-area: what; padding-left: 2.5rem; color: var(--c-ink-2); overflow-wrap: anywhere; }
+    .dc-row > .dc-amount { grid-area: amount; justify-self: end; font-weight: 600; color: var(--c-ink); white-space: nowrap; }
+    .dc-row > .dc-owes { color: var(--ws-amber-ink); }
+    .dc-row > .dc-go { grid-area: go; padding-left: 2.5rem; }
+    .dc-row .dc-name { min-height: 44px; overflow-wrap: anywhere; }
+    @container fin-page (min-width: 760px) {
+      .dc-row { grid-template-columns: minmax(12rem, 1.2fr) minmax(0, 1fr) auto auto; grid-template-areas: "who what amount go"; gap: 0.75rem 1rem; }
+      .dc-row > .dc-when, .dc-row > .dc-what, .dc-row > .dc-go { padding-left: 0; }
+      .dc-row > .ws-chip { grid-area: amount; }
+      .dc-row > .dc-go { justify-self: end; }
+      /* A row with a chip and a link: the chip takes the amount's column. */
+      .dc-row > .ws-chip + .dc-go { grid-area: go; }
+    }
+
+    /* The paper's own pieces are not on the screen. */
+    .dc-print-only { display: none; }
+  }
+
+  @media print {
+    .dc-noprint, .ws-pane-icon, .ws-pane-actions { display: none !important; }
+    .dc-print-only { display: block !important; }
+    .ws-main { padding: 0; max-width: none; }
+    .ws-main-panes, .dc-page { gap: 0.75rem; }
+    .dc-page, .dc-page * { color: #000 !important; background: #fff !important; box-shadow: none !important; }
+    .ws-glass::before { display: none; }
+    .ws-pane { border: 0; border-radius: 0; padding: 0; break-inside: avoid; }
+    .ws-pad-none > .ws-pane-head, .ws-pane-head { padding: 0; margin: 0 0 0.375rem; border-bottom: 1px solid #000; }
+    .ws-pane-title { font-size: 13pt; }
+    .dc-print-head { margin-bottom: 0.5rem; }
+    .dc-print-clinic { font-size: 10pt; }
+    .dc-print-title { font-size: 15pt; font-weight: 600; }
+    .dc-table { font-size: 10.5pt; }
+    .dc-table th, .dc-table td { padding: 3px 8px 3px 0; border-bottom: 1px solid #bbb !important; }
+    .dc-table thead th { font-weight: 600; }
+    .dc-inset { margin: 0.375rem 0 0; }
+    .ws-callout { border: 1px solid #bbb !important; padding: 0.375rem 0.625rem; font-size: 10.5pt; }
+    .ws-callout > .ws-icon { display: none; }
+    .dc-sign { margin-top: 1.25rem; font-size: 10.5pt; }
+    .dc-groups { gap: 0.5rem; }
+    .dc-h { font-size: 11pt; }
+    .dc-count { border: 1px solid #bbb !important; }
+    .dc-none, .dc-help { font-size: 10pt; }
+    .dc-list { gap: 0; }
+    .dc-row { border: 0; border-bottom: 1px solid #bbb !important; border-radius: 0; padding: 3px 0; font-size: 10.5pt; }
+    .dc-row .dc-name, .fin-link { min-height: 0; }
+    .ws-avatar { display: none; }
+    .ws-chip { border: 1px solid #bbb !important; font-size: 9.5pt; }
+    .ws-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+    .ws-tile { min-height: 0; padding: 0.375rem 0.625rem; border: 1px solid #bbb !important; border-radius: 0; }
+    .ws-tile-icon, .ws-tile-go { display: none; }
+    .ws-tile-value { font-size: 14pt; }
+    .fin-link { text-decoration: none; }
+  }
+</style>
+
+<script>
+  // The desk's conveniences only: the difference said as they type (the server counts it again and
+  // keeps it), and Print. Money in whole centavos, never a float; the expected figure comes as an
+  // integer string on the form — only for someone who may see money.
+  document.querySelector<HTMLButtonElement>('[data-dc-print]')?.addEventListener('click', () => window.print());
+  const form = document.querySelector<HTMLFormElement>('[data-dc-form]');
+  const input = form?.querySelector<HTMLInputElement>('[data-dc-counted]');
+  const out = form?.querySelector<HTMLElement>('[data-dc-variance]');
+  const expectedRaw = form?.dataset.expected;
+  if (form && input && out && expectedRaw !== undefined && /^\d+$/.test(expectedRaw)) {
+    const expected = BigInt(expectedRaw);
+    const PESO = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const peso = (c: bigint) => PESO.format(`${c / 100n}.${String(c % 100n).padStart(2, '0')}` as any);
+    const cents = (s: string): bigint | null => {
+      const m = /^(\d{1,9})(?:\.(\d{1,2}))?$/.exec(s.replace(/[₱,\s]/g, '').replace(/^php/i, ''));
+      return m ? BigInt(m[1]) * 100n + BigInt((m[2] ?? '').padEnd(2, '0')) : null;
+    };
+    const idle = out.textContent ?? '';
+    const say = () => {
+      const c = cents(input.value.trim());
+      if (input.value.trim() === '') { out.textContent = idle; delete out.dataset.tone; return; }
+      if (c === null) { out.textContent = 'Type an amount, like 12500 or 12500.50.'; delete out.dataset.tone; return; }
+      const v = c - expected;
+      if (v === 0n) { out.textContent = 'Matches: the drawer holds what the payments say.'; out.dataset.tone = 'match'; }
+      else if (v < 0n) { out.textContent = `${peso(-v)} short of the ${peso(expected)} expected.`; out.dataset.tone = 'short'; }
+      else { out.textContent = `${peso(v)} over the ${peso(expected)} expected.`; out.dataset.tone = 'over'; }
+    };
+    input.addEventListener('input', say);
+    say();
+  }
+  form?.addEventListener('submit', () => {
+    const btn = form.querySelector<HTMLButtonElement>('[data-dc-close]');
+    // One press is one close; a slow answer must not add a second.
+    window.setTimeout(() => { if (btn) { btn.disabled = true; btn.textContent = 'Closing…'; } }, 0);
+  });
+</script>

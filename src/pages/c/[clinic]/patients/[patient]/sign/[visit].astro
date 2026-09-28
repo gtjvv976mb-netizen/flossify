@@ -12,7 +12,7 @@
 //      everything again inside the transaction and writes the visit_consent row and an audit line.
 // A refused post comes back on step 2 with what was typed and the signature redrawn. A saved one shows
 // only "Thank you — please hand the tablet back", so the next thing the patient sees is not the record;
-// the desk's button goes back to the record with the visit open (?visit=<id>#timeline).
+// the desk's button goes back to the record with the visit open (?visit=<id>: today's visit shows its This visit strip, a later one opens on the Timeline).
 //
 // Its own page, not the workspace shell: no sidebar for a patient to wander into. Behind requireWorkspace
 // like every /c/ page, read and written inside withClinic (row-level security), never cached.
@@ -166,7 +166,7 @@ const onPatientStep = !!typed;
   <body class="sg-body">
     <header class="sg-bar">
       <div class="sg-bar-row">
-        <a href={`${record}?visit=${visitId}#timeline`} class="sg-back">
+        <a href={`${record}?visit=${visitId}`} class="sg-back">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 6.5L9 12l5.5 5.5" /></svg>
           {p.first_name}’s record
         </a>
@@ -181,13 +181,13 @@ const onPatientStep = !!typed;
           <h1 class="sg-h1" id="sg-done-title">Thank you, {String(done.signed_by_name).split(/\s+/)[0]}.</h1>
           <p class="mt-2">Your consent is saved with your visit.</p>
           <p>Please hand the tablet back to the clinic.</p>
-          <a href={`${record}?visit=${visitId}#timeline`} class="ws-btn ws-btn-quiet">For the clinic: back to {p.first_name}’s record</a>
+          <a href={`${record}?visit=${visitId}`} class="ws-btn ws-btn-quiet">For the clinic: back to {p.first_name}’s record</a>
         </section>
       ) : !open || !canEdit || !words ? (
         <section class="sg-card" aria-labelledby="sg-no-title">
           <h1 class="sg-h1" id="sg-no-title">This visit cannot be signed for</h1>
           <p class="sg-lead">{!canEdit ? 'Your role cannot change records at this branch. Ask the owner.' : !words ? 'There is no consent to treatment in force to sign. Ask Flossify.' : 'A consent is signed on the tablet for a visit today or later that is going ahead. This one is past, cancelled or missed.'}</p>
-          <p class="sg-go"><a href={`${record}?visit=${visitId}#timeline`} class="ws-btn ws-btn-quiet">Back to {p.first_name}’s record</a></p>
+          <p class="sg-go"><a href={`${record}?visit=${visitId}`} class="ws-btn ws-btn-quiet">Back to {p.first_name}’s record</a></p>
         </section>
       ) : (
         <form method="post" action={here} class="grid gap-4" data-sg-form novalidate>

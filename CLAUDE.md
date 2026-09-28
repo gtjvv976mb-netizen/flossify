@@ -926,6 +926,76 @@ time and the amount paid.
 - Measured: every line on the cards, the panel, Consent's list and both signing steps ≥ 4.5:1 light and
   dark at 1440 and 390; no target under 44px on the signing page; no sideways scroll at 390.
 
+## The paperless day (036) — arrival, this visit, checkout, texts after, the desk's lists
+
+Built from `docs/clinic-operations.md` (how a dental clinic runs, from the call the day before to the archive;
+the owner: "be the manager and the dentist owner, improve the experience for the clinic, the staff and the
+patient"). One migration, 036; the pieces in the order of a visit:
+
+- **Arrival.** A visit's card shows the minutes waited (`waitMinutes`, amber past `WAIT_ALERT_MIN` = 15) and
+  Today's patients rows have one tap for the next step (`stepOf` in `patients.ts`: Arrived · In the chair · Done,
+  through `/api/schedule` like the panel, `boot.canSchedule`). A walk-in is a tick on the booking panel ("Here
+  now"): `POST /api/schedule` takes `status: 'arrived'` only as that first step, sends no confirmation text and
+  runs `applyStatus` to arrived in the same transaction. The board refreshes itself every 30 s while visible
+  (`refresh()` in `board.ts`: `LIVE_KEYS` decide what counts as a change; a status change flashes the card and is
+  said in the `data-cal-live` region; a card gone from the range is drawn cancelled; nothing moves under a drag).
+- **The visit panel's checklist** (`fillCheck` in `panels.ts`, `data.ts`'s EXTRA subselects): "Before we start"
+  on a visit today — health history asked (and how long ago), blood pressure today, the consent signed for THIS
+  visit, under 18, a clearance or lab case still out — and "Before they leave" on a done one: the statement (or
+  Charge this visit, which pre-fills the visit), the aftercare sheet, the next visit or check-up (In 3 months · 6
+  months · A year → `POST /api/recall`, the same `recall-set` as the record) or Book a visit. Every line is
+  words plus its one action, never a blocked step.
+- **This visit on the record** (`_record/VisitStrip.astro`, above the sections, for today's going visit:
+  `?visit=` else the one under way, else the next, else the one just done). Lines for what is missing in the
+  order a visit runs, pills for what is done, "All done" when nothing is. Every chairside form it opens — a
+  reading, a note, a treatment (and a plan item's Mark done), a prescription, files, the health form — carries a
+  hidden `visit`, read by `visitOf()` in `record.ts` (this patient's, not cancelled, else null) and written to
+  `appointment_id` (036 added it to `prescription`, `vital_sign` and `attachment`), so the Timeline places it
+  under the visit instead of matching it by the day (`visit-record.ts` still falls back to the day for old rows).
+  "No change" is `intent=health-checked` → `recheckHealth()`: a copy of the latest answers under the person who
+  asked (audit `health.checked`), so "last checked" is today; a history over a year old is an amber chip on the
+  head. `?open=vitals|note|rx|done|file` opens that panel as the page loads (its section shown behind it); a
+  post from the strip comes back with `?visit=` kept, so the strip is still there. A signing comes back to
+  `?visit=<id>` (no hash): today's visit shows the strip, a later one opens on the Timeline.
+- **Checkout.** `finances/new/?visit=<id>` pre-fills every treatment recorded at the visit (stamped, or that day
+  with no visit named) that no non-void statement charges yet, at the price the dentist wrote, the tooth in the
+  words; the statement stores `appointment_id` and each line `procedure_id` (`LineIn.procedureId`,
+  `ChargeIn.visitId`, checked to be the patient's own), so the panel's `unbilled` count and the Timeline's Paid
+  are right and nothing is charged twice: `createStatement` takes a per-patient advisory lock (`charge:<patient>`)
+  and refuses a treatment already on a non-void statement, naming it. A recorded price of 0 is left blank for the
+  desk; one outside the fee guide's range is pre-filled as a line of its own, so the save is never refused on a line
+  nobody typed. "Paid now" (a Payment card) records the payment in the statement's own transaction
+  (`saveStatement(…, after)`: a refused payment rolls the statement back and the page says so) and lands on
+  `?done=paid&p=<payment>`, where the acknowledgment prints. The booking panel's new patient is named by
+  `splitName()` (the import's Filipino-name rule: particles, suffixes), not split on the first space.
+- **Recall that acts.** `applyStatus('completed')` closes the open recall due within 60 days of the visit. Clinic
+  settings → Clinic profile has two switches, `clinic.remind_48h` (a second reminder two days before; on by
+  default) and `clinic.recall_texts` (off by default): `sms_enqueue_reminders()` now writes both passes
+  (`remind48:<id>`), and `sms_enqueue_recalls()` (definer, called by the worker every pass, acting only Tuesday
+  and Wednesday 9–11 am Manila) texts one open recall due within 14 days or up to 60 days overdue, no future
+  visit, a `09` mobile, at most once in 60 days (`recall.last_sent_at`, shown on the Next check-up card). Texts
+  of kind `recall` and `aftercare` wait through quiet hours like reminders.
+- **Aftercare** (`src/lib/aftercare.ts`, no Node imports; a dentist reads the words before a clinic ships them).
+  Nine sheets (extraction, surgical extraction, root canal, filling, cleaning, crown, denture, braces adjustment,
+  whitening), English and Filipino, printed at `patients/<id>/aftercare/<kind>/` (A5, `?lang=en|fil|both`, audit
+  `record.aftercare_print`); `kindForCatalog(code, name, category)` finds the sheet from the fee guide's code,
+  else the words, else an ortho category. On Done, `queueAftercare` in `schedule.ts` texts the check-in
+  (`aftercareText`, GSM-safe, no link, "call <clinic number>") `AFTERCARE[kind].hours` later (`queueText`'s
+  `sendAfter` → `next_attempt_at`), once per visit (`aftercare:<id>`), only with a Philippine mobile on file.
+- **The desk's lists.** `/c/<slug>/calls/` (Dashboard → Today's patients → Calls): tomorrow's and the next open
+  day's `booked` visits grouped by mobile, the reminder's state, Confirmed / Left message / No answer / Will call
+  back (`appointment_contact`, 038, insert-only), no-shows and cancellations to call back, a printable sheet.
+  `/c/<slug>/finances/close/` (Finances → Close the day, and the Dashboard's Collected today tile): payments
+  today by method, the drawer count against the cash expected (`day_close`, 037, insert-only, many closes a day
+  and the newest counts), what is still open (in the clinic, done and not charged, charged and unpaid, left
+  owing, did not come), tomorrow in three numbers. `finance.bill` opens it; `finance.money` shows amounts.
+  Messages → Text a patient lists anyone with a reason (on the book, seen lately, a check-up due, lab work back,
+  owes) and fills a template (`src/lib/text-templates.ts`, eight, GSM-safe, no link, no reply asked). The
+  Patients tab has Due for check-up and Not seen in a year, and Needs attention includes a health history older
+  than a year.
+- Measured: every new line ≥ 4.5:1 light and dark at 1440 and 390 against its composited background, no target
+  under 44 px, no sideways scroll; the strip's done pills sit in 44 px hit boxes (`.vs-go`, as the head's chips).
+
 ## Open — read before shipping
 
 - The Semaphore provider is written to their v4 API but has not been run
@@ -1049,7 +1119,15 @@ src/lib/qr.ts                  QR codes as SVG: error correction H, the Flossify
 src/pages/c/[clinic]/patients/qr/     the QR poster: page, print/, _poster.ts (the drawing steps), _draw.ts (the PNG)
 src/pages/c/[clinic]/patients/forms/  "New patient forms": the queue, one form (<id>/) and its printout (<id>/print/)
 src/pages/c/[clinic]/patients/_forms/ the forms' shared pieces: Answers, Confirm, forms.css, words, fit
-scripts/sms/worker.ts          the sender: npm run sms:worker (loop) / sms:once
+scripts/sms/worker.ts          the sender: npm run sms:worker (loop) / sms:once; every pass also runs sms_enqueue_recalls()
+src/data/migrations/036, 037, 038  the paperless day: visit links, reminder passes, recall texts, clinic switches; day_close; appointment_contact
+src/pages/c/[clinic]/patients/_record/VisitStrip.astro  This visit: today's visit checklist above the record's sections
+src/lib/aftercare.ts           the nine aftercare sheets (en + fil), kindForCatalog, the evening text; printed at patients/<id>/aftercare/<kind>/
+src/lib/text-templates.ts      the eight texts Messages → Text a patient fills in (GSM-safe, no link, no reply asked)
+src/pages/c/[clinic]/calls/    the desk's call list: tomorrow's visits to confirm, a call log, no-shows to call back, a print sheet
+src/pages/c/[clinic]/finances/close/  Close the day: payments by method, the drawer count, what is still open, tomorrow
+src/pages/api/recall.ts        POST: the next check-up in one tap from the Dashboard's visit panel (recall-set)
+docs/clinic-operations.md      how a dental clinic runs, front door to archive: the brief the paperless day was built from
 public/samples/swiftcare/       sample clinic website (see "Sample client sites")
 docs/service-map.md            what to build for patients, dentists and clinics, and why (Sept 2026)
 src/components/Odontogram.astro  32 teeth, FDI/Universal/Palmer, surface-scoped

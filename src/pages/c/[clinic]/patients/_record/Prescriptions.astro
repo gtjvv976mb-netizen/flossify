@@ -14,8 +14,9 @@ import Glyph from '../_ui/Glyph.astro';
 import { RX_ROWS, type Clinical, type RecordProblem, type RxItem } from '../../../../../lib/record';
 import { when } from '../../../../../lib/health';
 
-interface Props { c: Clinical; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; firstName: string; printBase: string; allergies: string[]; typedRows?: RxItem[] }
-const { c, canEdit, action, meId, problem, saved, firstName, printBase, allergies, typedRows = [] } = Astro.props;
+/** visitId: today's visit (036) — a new prescription is written against it. openNow: the page opens the panel as it loads (?open=rx). */
+interface Props { c: Clinical; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; firstName: string; printBase: string; allergies: string[]; typedRows?: RxItem[]; visitId?: string | null; openNow?: boolean }
+const { c, canEdit, action, meId, problem, saved, firstName, printBase, allergies, typedRows = [], visitId = null, openNow = false } = Astro.props;
 
 // Names only, the ones a dental clinic writes most. No strengths or doses.
 const DRUGS = ['Amoxicillin', 'Co-amoxiclav (amoxicillin + clavulanic acid)', 'Clindamycin', 'Azithromycin', 'Metronidazole', 'Cefalexin',
@@ -66,11 +67,12 @@ const help = 'text-[13px] leading-snug text-ink-2';
 </div>
 
 {canEdit && (
-  <SidePanel id="rec-rx-add" title="New prescription" meta={firstName} wide open={!!v}>
+  <SidePanel id="rec-rx-add" title="New prescription" meta={firstName} wide open={!!v || openNow}>
     {problem?.intent === 'rx-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
     {allergies.length > 0 && <Callout tone="alert" role="none" class="mb-4" title={`Allergies on file: ${allergies.join(', ')}`} text="Check every medicine against them." />}
     <form method="post" action={`${action}#rx`} class="grid gap-4" data-rx-form>
       <Csrf /><input type="hidden" name="intent" value="rx-add" />
+      {visitId && <input type="hidden" name="visit" value={visitId} />}
       <label class="field"><span class="meta">Prescribed by</span>
         <select name="prescriber" required>
           <option value="">Choose the dentist…</option>

@@ -27,7 +27,7 @@ export const VISIT_STATUS: Record<string, { label: string; tone: 'neutral' | 'ac
   cancelled: { label: 'Cancelled', tone: 'muted' }, no_show: { label: 'Did not come', tone: 'muted' },
 };
 const SOURCE: Record<string, string> = { web: 'Booked online', request: 'Asked for online', staff: 'Booked at the desk', import: 'From old records' };
-const TEXT_WORD: Record<string, string> = { confirmation: 'Booking confirmation', reminder: 'Reminder', manual: 'Text from the clinic', moved: 'New time', cancelled: 'Cancelled' };
+const TEXT_WORD: Record<string, string> = { confirmation: 'Booking confirmation', reminder: 'Reminder', manual: 'Text from the clinic', moved: 'New time', cancelled: 'Cancelled', aftercare: 'Aftercare text', recall: 'Check-up due' };
 const CHANNEL: Record<string, string> = { web: 'when booking online', desk: 'at the desk', paper: 'on paper', form: 'on the patient forms', sms: 'by text' };
 
 export interface VisitLine { description: string; amount: string }
@@ -72,6 +72,9 @@ export interface Visit {
   /** The Timeline's lines this visit holds ("done:<id>" …), so they are not listed twice. */
   refs: string[];
 }
+
+/** Today's visit as the record's This visit strip sees it (036): the row, its status and what it was charged. */
+export interface StripVisit { id: string; startsAt: Date; status: string; reason: string | null; dentist: string | null; chair: number | null; charged: string | null }
 
 /** A consent is signed on the tablet for a visit going ahead, today or later, or one the patient is at now. */
 export const canSign = (v: Pick<Visit, 'id' | 'status' | 'day'>, today: string) =>
@@ -127,7 +130,7 @@ export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extr
 
   for (const d of c.done) { const v = place(d.visitId, d.at, dayKey(d.at), true)!; v.procs.push(d); v.refs.push(`done:${d.id}`); }
   for (const n of c.notes) { const v = place(n.visitId, n.at, n.visitOn, true)!; v.notes.push(n); v.refs.push(`note:${n.id}`); }
-  for (const r of c.rx) { const v = place(null, r.at, dayKey(r.at), true)!; v.rx.push(r); v.refs.push(`rx:${r.id}`); }
+  for (const r of c.rx) { const v = place(r.visitId, r.at, dayKey(r.at), true)!; v.rx.push(r); v.refs.push(`rx:${r.id}`); }
 
   const stmtVisit = new Map<string, Visit>();
   const stmtNo = new Map<string, string>();
@@ -181,14 +184,14 @@ export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extr
     const v = visits.get(m.appointment_id);
     if (v) { v.texts.push({ word: m.direction === 'in' ? 'Reply from the patient' : TEXT_WORD[m.kind] ?? 'Text', at: m.created_at, failed: m.status === 'failed', incoming: m.direction === 'in' }); v.refs.push(`msg:${m.id}`); }
   }
-  for (const s of x.vitals) { const v = onDay(s.at, dayKey(s.at), false); if (v) { v.vitals.push(s); v.refs.push(`vital:${s.id}`); } }
+  for (const s of x.vitals) { const v = place(s.visitId, s.at, dayKey(s.at), false); if (v) { v.vitals.push(s); v.refs.push(`vital:${s.id}`); } }
   for (const l of x.letters) { const v = onDay(l.at, l.issuedOn ?? dayKey(l.at), false); if (v) { v.letters.push(l); v.refs.push(`letter:${l.id}`); } }
   for (const p of x.plans) for (const a of p.adjustments) {
     const at = new Date(`${a.on}T12:00:00+08:00`);
     const v = onDay(at, a.on ?? dayKey(at), false);
     if (v) { v.adjustments.push({ id: a.id, note: a.note, by: a.by }); v.refs.push(`adj:${a.id}`); }
   }
-  for (const f of c.files) { const v = onDay(f.at, f.takenAt ?? dayKey(f.at), false); if (v) { v.files.push(f); v.refs.push(`file:${f.id}`); } }
+  for (const f of c.files) { const v = place(f.visitId, f.at, f.takenAt ?? dayKey(f.at), false); if (v) { v.files.push(f); v.refs.push(`file:${f.id}`); } }
 
   for (const v of visits.values()) {
     const t = new Set<number>([...v.procs.map((p) => p.fdi).filter((n): n is number => !!n), ...v.notes.flatMap((n) => n.teeth), ...v.asked, ...v.files.map((f) => f.fdi).filter((n): n is number => !!n)]);

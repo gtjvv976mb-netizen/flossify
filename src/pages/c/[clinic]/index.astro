@@ -190,7 +190,7 @@ const whoItems = !isDentist && data.staff.length > 1
 const boot = {
   slug: clinic.slug, csrf, today, date, view, by, dentist: dentistParam,
   me: { id: session.staffId, name: session.name, dentist: isDentist },
-  finance, canEdit, canSchedule: can(clinic, 'schedule.edit'),
+  finance, canEdit, canSchedule: can(clinic, 'schedule.edit'), canText: can(clinic, 'messages.send'),
   chairs: data.clinic.chairs, hours: data.hours, staff: data.staff, catalog: data.catalog,
   next: NEXT_STATUS,
   cards: data.range, todayCards: data.today, toPlace: data.toPlace, toConfirm: data.toConfirm,
@@ -199,8 +199,9 @@ const boot = {
   patients: { keys: PT_KEYS, rows: data.patients.map((p) => PT_KEYS.map((k) => p[k])) },
   links: {
     record: `/c/${clinic.slug}/patients/`,
-    // Finances' new charge, pre-filled (?patient=&service=). /billing/new/ still answers, by a redirect there.
+    // Finances' new charge, pre-filled (?patient=&service=&visit=). /billing/new/ still answers, by a redirect there.
     charge: `/c/${clinic.slug}/finances/new/`,
+    finances: links.finances,
     messages: links.messages,
     addPatient: `/c/${clinic.slug}/patients/new/`,
     importPatients: `/c/${clinic.slug}/patients/import/`,
@@ -224,7 +225,7 @@ const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
     <Tile id="tile-waiting" label="Waiting" value={sum.waiting} note={notes.waiting} icon="clock" tone={sum.waiting ? 'warn' : 'default'} />
     <Tile id="tile-chair" label="In the chair" value={sum.inChair} note={notes.inChair} icon="user" tone={sum.inChair ? 'accent' : 'default'} />
     {finance && data.collected ? (
-      <Tile id="tile-collected" label="Collected today" value={peso(data.collected.amount)} note={notes.expected} icon="money" tone={data.collected.amount > 0 ? 'success' : 'default'} href={`/c/${clinic.slug}/finances/`} />
+      <Tile id="tile-collected" label="Collected today" value={peso(data.collected.amount)} note={notes.expected} icon="money" tone={data.collected.amount > 0 ? 'success' : 'default'} href={`/c/${clinic.slug}/finances/close/`} />
     ) : (
       <Tile id="tile-done" label="Done" value={sum.done} note={notes.done} icon="check" />
     )}
@@ -306,6 +307,9 @@ const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
           <div role="status" class="ws-callout cal-toast" data-tone="success" data-cal-ok hidden></div>
         </div>
       </div>
+      <!-- What changed on another screen (the desk marked Arrived; the tablet marked Done), said for a screen reader
+           when the board refreshes itself (board.ts, 036). -->
+      <p class="sr-only" aria-live="polite" data-cal-live></p>
 
       <section id="requests" class="cal-lane" aria-labelledby="requests-title" data-reqs data-some={data.toPlace.length + data.toConfirm.length ? '' : undefined}>
         <span id="web-title" class="sr-only"></span>
@@ -344,7 +348,11 @@ const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
     {/* Today's patients: only the people with a visit today, in the order they come (patients.ts draws the rows).
         Every patient — searched, filtered, each record's check — is the Patients tab, one link away. */}
     <Pane id="patients" title="Today’s patients" meta={todayMeta} icon="patients" pad="none" class="dash-pts">
-      <a slot="actions" href={links.patients} class="ws-btn ws-btn-quiet ws-btn-sm pt-all" data-pt-all>See all patients <Icon name="arrow-right" size={16} /></a>
+      <div slot="actions" class="flex flex-wrap gap-2">
+        {/* The desk's call list (036): tomorrow's visits still to confirm, and who to call back. */}
+        <a href={`/c/${clinic.slug}/calls/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="phone" size={16} />Calls</a>
+        <a href={links.patients} class="ws-btn ws-btn-quiet ws-btn-sm pt-all" data-pt-all>See all patients <Icon name="arrow-right" size={16} /></a>
+      </div>
       <p class="pt-scope" data-pt-scope></p>
       <ul id="pt-list" class="pt-list" data-pt-list aria-label="Today’s patients, in the order they come"></ul>
       <div class="pt-empty" data-pt-empty hidden></div>

@@ -9,7 +9,7 @@
 // same markup.
 import Icon from '../../../../../components/ws/Icon.astro';
 import Row from './Row.astro';
-import { listHref, PAGE, type Counts, type Filter, type ListState, type Row as RowData } from './list';
+import { listHref, defaultSort, DUE_DAYS, PAGE, type Counts, type Filter, type ListState, type Row as RowData } from './list';
 
 interface Props {
   /** 'list': everything that changes; 'rows': the rows after those on screen, and the new "Show more". */
@@ -29,22 +29,31 @@ const { mode, rows, counts, matched, state, base, slug, today, finance, canEdit,
 
 const n = (v: number) => v.toLocaleString('en-PH');
 const plural = (v: number, one: string, many: string) => `${n(v)} ${v === 1 ? one : many}`;
-const FILTER_LABEL: Record<Filter, string> = { all: 'All', today: 'Today', new: 'New', balance: 'With balance', attention: 'Needs attention' };
-const pills: Filter[] = ['all', 'today', 'new', ...(finance ? (['balance'] as const) : []), 'attention'];
+const FILTER_LABEL: Record<Filter, string> = {
+  all: 'All', today: 'Today', new: 'New', due: 'Due for check-up', quiet: 'Not seen in a year', balance: 'With balance', attention: 'Needs attention',
+};
+const pills: Filter[] = ['all', 'today', 'new', 'due', 'quiet', ...(finance ? (['balance'] as const) : []), 'attention'];
+// A pill keeps the sort the person chose; the sort a filter starts with (Due for check-up: soonest first)
+// gives way to the next filter's own start.
+const pillHref = (f: Filter) => listHref(base, { q: state.q, f, sort: state.sort === defaultSort(state.f) ? defaultSort(f) : state.sort });
 
-// What is shown, in one line — and for New and Needs attention the rule the filter follows, said once, here.
+// What is shown, in one line — and for New, the recall lists and Needs attention the rule the filter follows, said once, here.
 const missing = ['a birth date', 'health history', ...(notice ? ['consent to the privacy notice'] : []), 'a mobile'];
 const missingText = `${missing.slice(0, -1).join(', ')} or ${missing[missing.length - 1]}`;
 const SHOWS: Record<Filter, (v: number) => string> = {
   all: (v) => plural(v, 'patient', 'patients'),
   today: (v) => `${plural(v, 'patient', 'patients')} with a visit today`,
   new: (v) => plural(v, 'new patient', 'new patients'),
+  due: (v) => `${plural(v, 'patient is', 'patients are')} due for a check-up`,
+  quiet: (v) => `${plural(v, 'patient', 'patients')} not seen in a year`,
   balance: (v) => `${plural(v, 'patient owes', 'patients owe')} the clinic`,
   attention: (v) => `${plural(v, 'record needs', 'records need')} something added`,
 };
 const RULE: Partial<Record<Filter, string>> = {
   new: 'New: a first visit in the last 30 days, or added in them and not seen yet.',
-  attention: `Needs attention: a record without ${missingText}.`,
+  due: `Due for check-up: the next check-up set on the record is due in the next ${DUE_DAYS} days or overdue, and nothing is booked. Most overdue first.`,
+  quiet: 'Not seen in a year: no completed visit in the last 12 months, and nothing booked.',
+  attention: `Needs attention: a record without ${missingText}, or with a health history older than a year.`,
 };
 const head = state.q
   ? `${matched === 0 ? 'No patient matches' : plural(matched, 'patient matches', 'patients match')} “${state.q}”${state.f !== 'all' ? ` in ${FILTER_LABEL[state.f]}` : ''}`
@@ -80,6 +89,8 @@ if (rows.length === 0 && mode === 'list') {
       all: ['No patients yet.', 'patients'],
       today: ['Nobody has a visit today.', 'calendar'],
       new: ['No new patients in the last 30 days.', 'patients'],
+      due: [`Nobody is due for a check-up in the next ${DUE_DAYS} days. Next check-ups are set on the record.`, 'calendar'],
+      quiet: ['Everyone on file has been seen in the last year.', 'check'],
       balance: ['Nobody owes the clinic. Everyone is paid up.', 'check'],
       attention: ['Every record is complete.', 'check'],
     };
@@ -90,7 +101,7 @@ if (rows.length === 0 && mode === 'list') {
 
 {mode === 'rows' ? (
   <>
-    <table><tbody data-pts-new-rows>{rows.map((r) => <Row r={r} href={record(r.id)} today={today} finance={finance} />)}</tbody></table>
+    <table><tbody data-pts-new-rows>{rows.map((r) => <Row r={r} href={record(r.id)} today={today} finance={finance} filter={state.f} />)}</tbody></table>
     <div data-pts-new-more>
       {left > 0 && <a href={moreHref} class="ws-btn ws-btn-quiet pts-more" data-pts-more data-from={shown}>Show {n(nextCount)} more <span class="pts-more-left">· {n(left)} left</span></a>}
     </div>
@@ -99,7 +110,7 @@ if (rows.length === 0 && mode === 'list') {
   <>
     <nav class="ws-seg pts-filters" aria-label="Show patients">
       {pills.map((f) => (
-        <a href={listHref(base, { ...state, f })} class="ws-seg-item" aria-current={f === state.f ? 'page' : undefined} data-pts-f={f}>
+        <a href={pillHref(f)} class="ws-seg-item" aria-current={f === state.f ? 'page' : undefined} data-pts-f={f}>
           <span class="ws-seg-label">{FILTER_LABEL[f]}</span>
           <span class="ws-seg-count" data-zero={counts[f] === 0 ? '' : undefined}>{n(counts[f])}</span>
         </a>
@@ -131,7 +142,7 @@ if (rows.length === 0 && mode === 'list') {
           </tr>
         </thead>
         <tbody data-pts-rows>
-          {rows.map((r) => <Row r={r} href={record(r.id)} today={today} finance={finance} />)}
+          {rows.map((r) => <Row r={r} href={record(r.id)} today={today} finance={finance} filter={state.f} />)}
         </tbody>
       </table>
     )}

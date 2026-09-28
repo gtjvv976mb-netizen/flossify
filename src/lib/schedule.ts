@@ -17,7 +17,8 @@
 
 import type { Tx } from './db';
 import { withClinic } from './db';
-import { normalizePhone, PH_MOBILE } from './messages';
+import { normalizePhone, PH_MOBILE, queueText } from './messages';
+import { AFTERCARE, aftercareText, kindForCatalog } from './aftercare';
 import { willRemind } from './availability';
 
 export type Appt = {
@@ -40,6 +41,10 @@ export type Appt = {
   notes: string | null;
   /** The latest medical history's allergies, joined with commas; null when none are recorded. */
   allergies: string | null;
+  /** When they arrived (Arrived or straight to the lobby) and when they were seated, ISO; null until then. The
+   *  queue reads "Waiting 12 min" from the first (036). */
+  arrivedAt: string | null;
+  seatedAt: string | null;
 };
 
 export type Range = {
@@ -102,6 +107,7 @@ const APPT_SELECT = `
   select a.id, a.patient_id, concat_ws(' ', p.first_name, nullif(p.last_name, '—')) as patient_name, p.chart_no,
          coalesce(nullif(a.booked_by_phone, ''), p.phone) as phone,
          a.dentist_id, s.full_name as dentist_name, a.chair, a.starts_at, a.ends_at, a.reason, a.status, a.source, a.public_ref, a.notes,
+         a.arrived_at, a.seated_at,
          (select h.allergies from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as allergies
     from appointment a
     join patient p on p.id = a.patient_id
@@ -112,6 +118,7 @@ type ApptRow = {
   id: string; patient_id: string; patient_name: string; chart_no: string; phone: string | null;
   dentist_id: string | null; dentist_name: string | null; chair: number | null; starts_at: Date; ends_at: Date;
   reason: string | null; status: string; source: string; public_ref: string | null; notes: string | null; allergies: string[] | null;
+  arrived_at: Date | null; seated_at: Date | null;
 };
 
 export function rowToAppt(r: ApptRow): Appt {
@@ -121,6 +128,8 @@ export function rowToAppt(r: ApptRow): Appt {
     startsAt: new Date(r.starts_at).toISOString(), endsAt: new Date(r.ends_at).toISOString(),
     reason: r.reason ?? null, status: r.status, source: r.source, publicRef: r.public_ref ?? null, notes: r.notes ?? null,
     allergies: r.allergies?.length ? r.allergies.join(', ') : null,
+    arrivedAt: r.arrived_at ? new Date(r.arrived_at).toISOString() : null,
+    seatedAt: r.seated_at ? new Date(r.seated_at).toISOString() : null,
   };
 }
 
@@ -217,6 +226,19 @@ export async function applyStatus(tx: Tx, clinicId: string, staffId: string, id:
   if (to === 'cancelled') {
     await tx.query(`update message_log set status = 'cancelled' where appointment_id = $1 and status = 'queued' and direction = 'out'`, [id]);
   }
+  if (to === 'completed') {
+    // A visit that happened is the check-up it was due for: the open recall due within 60 days of it, either way,
+    // is closed (036). The Overview then offers the next one.
+    const r = await tx.query(
+      `update recall r set completed_at = now() from appointment a
+        where a.id = $1 and r.patient_id = a.patient_id and r.completed_at is null
+          and r.due_on between (a.starts_at at time zone 'Asia/Manila')::date - 60 and (a.starts_at at time zone 'Asia/Manila')::date + 60
+        returning r.id`, [id]);
+    for (const row of r.rows) {
+      await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'record.recall_done', 'recall', $3)`, [clinicId, staffId, row.id]);
+    }
+    await queueAftercare(tx, clinicId, staffId, id);
+  }
   await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'appointment', $4)`,
     [clinicId, staffId, `appointment.${to}`, id]);
 }
@@ -266,3 +288,31 @@ export const scheduleTexts = {
   moved: (clinic: string, at: Date, ref: string | null, clinicPhone: string | null) =>
     `${clinic}: your visit moved to ${whenText(at)}.${ref ? ` Ref ${ref}.` : ''} To change it, call ${clinicPhone ?? 'the clinic'}.`,
 };
+
+/**
+ * The text after a treatment (036): once a visit is done, the patient gets the aftercare check-in for what was
+ * done — the instructions that matter tonight and when to call — some hours later (AFTERCARE[kind].hours; the
+ * worker's quiet hours hold it to the morning). The kind comes from the treatments recorded at the visit (the
+ * first one the sheets know), else the service the visit was booked for, else the words of its reason. No
+ * kind, or no Philippine mobile on file, and nothing is sent. Once per visit (dedupe aftercare:<id>).
+ */
+async function queueAftercare(tx: Tx, clinicId: string, staffId: string, id: string): Promise<void> {
+  const v = (await tx.query(
+    `select a.patient_id, a.reason, p.phone, c.name as clinic_name, c.phone as clinic_phone, pc.code, pc.name as pc_name, pc.category
+       from appointment a join patient p on p.id = a.patient_id join clinic c on c.id = a.clinic_id
+       left join procedure_catalog pc on pc.id = a.catalog_id where a.id = $1`, [id])).rows[0];
+  if (!v?.phone || !PH_MOBILE.test(normalizePhone(v.phone))) return;
+  const done = (await tx.query(
+    `select coalesce(d.name, x.name) as name, x.code, x.category from procedure_done d left join procedure_catalog x on x.id = d.catalog_id
+      where d.patient_id = $2 and (d.appointment_id = $1 or (d.appointment_id is null
+        and (d.performed_at at time zone 'Asia/Manila')::date = (select (starts_at at time zone 'Asia/Manila')::date from appointment where id = $1)))
+      order by d.performed_at`, [id, v.patient_id])).rows;
+  const kind = done.map((d) => kindForCatalog(d.code, d.name, d.category)).find((k) => k)
+    ?? kindForCatalog(v.code, v.pc_name, v.category) ?? kindForCatalog(null, v.reason, null);
+  if (!kind) return;
+  await queueText(tx, {
+    clinicId, to: v.phone, body: aftercareText(kind, { name: v.clinic_name, phone: v.clinic_phone }), kind: 'aftercare',
+    patientId: v.patient_id, appointmentId: id, staffId, dedupeKey: `aftercare:${id}`,
+    sendAfter: new Date(Date.now() + AFTERCARE[kind].hours * 3600e3),
+  });
+}

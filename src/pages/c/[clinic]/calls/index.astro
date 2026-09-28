@@ -1,0 +1,544 @@
+---
+// Calls — the front desk's confirmation list (docs/clinic-operations.md §2, "Confirmation as a
+// 10-minute routine"), under the Dashboard tab. Every visit still 'booked' on the next two days the
+// clinic is open (and what is left of today), grouped by day and then by mobile number, so a family on
+// one number is one call; each row says whether the reminder text went, what the desk has tried so far
+// ("Called twice · left a message 3:10 pm"), and offers Confirmed and three ways a call can end. Below,
+// "Call back": today's and yesterday's no-shows and cancellations nobody has booked again.
+//
+// Confirmed is the visit's status, moved by applyStatus() in src/lib/schedule.ts — the server's state
+// machine, never a fork here — with the row locked and its current status read first, so a visit that
+// has since left the book is refused with the server's sentence. A call attempt is a row in
+// appointment_contact (038): written once, never changed, audited 'appointment.contact'. Every button is a
+// small form that posts back here and comes back with ?done=…, so the page works with scripts off.
+//
+// Print call sheet prints this page as one A4 table, black on white with the shell hidden, for the
+// mid-morning routine and for a brownout: the numbers are on paper before the line goes.
+export const prerender = false;
+
+import ClinicLayout from '../../../../layouts/Clinic.astro';
+import Pane from '../../../../components/ws/Pane.astro';
+import Empty from '../../../../components/ws/Empty.astro';
+import Icon from '../../../../components/ws/Icon.astro';
+import Avatar from '../../../../components/ws/Avatar.astro';
+import Chip from '../../../../components/ws/Chip.astro';
+import Csrf from '../../../../components/Csrf.astro';
+import { requireWorkspace } from '../../../../lib/workspace';
+import { withClinic } from '../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
+import { hit, waitText } from '../../../../lib/throttle';
+import { can } from '../../../../lib/can';
+import { manilaToday } from '../../../../lib/health';
+import { applyStatus, StatusRefused, DONE, WORDS, timeText, whenText, shortName } from '../../../../lib/schedule';
+import { normalizePhone, prettyPhone, PH_MOBILE } from '../../../../lib/messages';
+import { willRemind } from '../../../../lib/availability';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const here = `/c/${clinic.slug}/calls/`;
+const maySchedule = can(ws, 'schedule.edit');
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** How a call can end, short of a confirmation. The button's word, and the past tense the row reads. */
+const OUTCOMES: Record<string, { button: string; past: string }> = {
+  left_message: { button: 'Left message', past: 'left a message' },
+  no_answer: { button: 'No answer', past: 'no answer' },
+  will_call_back: { button: 'Will call back', past: 'they will call back' },
+  wrong_number: { button: 'Wrong number', past: 'wrong number' },
+};
+/** The three the page offers; a wrong number is noted on the record, where the number gets fixed. */
+const BUTTONS = ['left_message', 'no_answer', 'will_call_back'] as const;
+
+/** Thrown inside the transaction so a refused post leaves nothing half-done. */
+class Refused extends Error {}
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  const ids = form.getAll('visit').map(String).filter((v) => UUID.test(v)).slice(0, 12);
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+  else if (!maySchedule) error = 'Your role here does not include confirming visits or noting calls.';
+  else if (!ids.length) error = 'Which visit? The page may have changed; try that once more.';
+  else if (intent !== 'confirm' && !BUTTONS.includes(intent as (typeof BUTTONS)[number])) error = 'Choose what happened on the call.';
+  else {
+    const rate = await hit(`calls:s:${session.staffId}`, 240, 60 * 60);
+    if (!rate.allowed) error = `Too many changes at once. ${waitText(rate.retryAfter)}`;
+    else {
+      const out = await withClinic(clinic.id, async (tx) => {
+        // The rows locked and their status read first: the machine decides from where the visit is now,
+        // not from where the page last drew it.
+        const { rows } = await tx.query<{ id: string; status: string }>(
+          `select a.id, a.status from appointment a where a.id = any($1::uuid[]) order by a.starts_at for update`, [ids]);
+        if (rows.length !== ids.length) throw new Refused('That visit is not on this branch’s book any more.');
+        if (intent === 'confirm') {
+          for (const cur of rows) {
+            if (cur.status === 'confirmed') continue; // someone else got there first: nothing to do
+            try {
+              await applyStatus(tx, clinic.id, session.staffId, cur.id, 'confirmed', cur.status);
+            } catch (e) {
+              if (e instanceof StatusRefused) throw new Refused(e.message);
+              throw e;
+            }
+          }
+          return 'confirmed';
+        }
+        for (const cur of rows) {
+          if (DONE.has(cur.status)) throw new Refused(`That visit is already marked ${WORDS[cur.status] ?? cur.status}: there is nothing to call about.`);
+          await tx.query(`insert into appointment_contact (clinic_id, appointment_id, staff_id, outcome) values ($1, $2, $3, $4)`,
+            [clinic.id, cur.id, session.staffId, intent]);
+          await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.contact', 'appointment', $3)`,
+            [clinic.id, session.staffId, cur.id]);
+        }
+        return intent;
+      }).catch((e) => { if (e instanceof Refused) return { error: e.message }; throw e; });
+      if (typeof out === 'string') return Astro.redirect(`${here}?done=${out}`, 303);
+      error = out.error;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Days. Manila's calendar, as YYYY-MM-DD; the next two days the clinic is open
+// (clinic_hours), looked for up to three weeks ahead so a holiday week still
+// finds them; and what is left of today.
+// ---------------------------------------------------------------------------
+const today = manilaToday();
+const ymdAt = (ymd: string, days = 0) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + days)); };
+const ymdOf = (d: Date) => d.toISOString().slice(0, 10);
+const addDays = (ymd: string, n: number) => ymdOf(ymdAt(ymd, n));
+const dowOf = (ymd: string) => ymdAt(ymd).getUTCDay();
+const yesterday = addDays(today, -1), tomorrow = addDays(today, 1);
+// Built from en-US parts, as health.ts does: the locale's own string puts the month first, and en-GB
+// spells September "Sept" in current ICU data.
+const dayParts = (ymd: string, long = false) => Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+  weekday: long ? 'long' : 'short', day: 'numeric', month: long ? 'long' : 'short', year: 'numeric', timeZone: 'UTC',
+}).formatToParts(ymdAt(ymd)).map((x) => [x.type, x.value]));
+/** "Tue 29 Sep" */
+const dayWords = (ymd: string) => { const p = dayParts(ymd); return `${p.weekday} ${p.day} ${p.month}`; };
+/** "Tuesday 29 September 2026" */
+const longDayWords = (ymd: string) => { const p = dayParts(ymd, true); return `${p.weekday} ${p.day} ${p.month} ${p.year}`; };
+const relWords = (ymd: string) => (ymd === today ? 'Today' : ymd === tomorrow ? 'Tomorrow' : null);
+/** A time, or the day and time when it was another day. */
+const stamp = (d: Date) => (manilaToday(d) === today ? timeText(d) : whenText(d));
+
+type Visit = {
+  id: string; patientId: string; startsAt: Date; day: string; patientName: string; chartNo: string; phone: string | null;
+  dentist: string | null; service: string | null; reason: string | null; source: string;
+};
+type Reminder = { status: string; nextAt: Date; sentAt: Date | null };
+type Attempt = { outcome: string; at: Date };
+type CallBack = { id: string; patientId: string; patientName: string; chartNo: string; phone: string | null; status: string; startsAt: Date; cancelledAt: Date | null; service: string | null; reason: string | null; dentist: string | null };
+
+const VISIT = `
+  select a.id, a.patient_id, a.starts_at, a.reason, a.source, a.status, a.cancelled_at,
+         concat_ws(' ', p.first_name, nullif(p.last_name, '—')) as patient_name, p.chart_no,
+         coalesce(nullif(a.booked_by_phone, ''), p.phone) as phone,
+         coalesce(s.full_name, a.dentist_name) as dentist, c.name as service,
+         to_char(a.starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as day
+    from appointment a
+    join patient p on p.id = a.patient_id
+    left join staff s on s.id = a.dentist_id
+    left join procedure_catalog c on c.id = a.catalog_id`;
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const { rows: hrs } = await tx.query<{ dow: number }>('select dow from clinic_hours');
+  const open = new Set(hrs.map((h) => Number(h.dow)));
+  const days: string[] = [];
+  for (let i = 1; i <= 21 && days.length < 2; i++) { const d = addDays(today, i); if (open.has(dowOf(d))) days.push(d); }
+
+  // Still to confirm: 'booked' only (a confirmed visit needs no call; anything further along is at the
+  // clinic already), never a request the desk has not placed (no time to confirm yet), never a past
+  // visit brought in with its day only.
+  const { rows: vs } = await tx.query(
+    `${VISIT}
+      where a.status = 'booked' and not (a.source = 'request' and a.moved_at is null) and not a.date_only
+        and (to_char(a.starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') = any($1::text[])
+             or (to_char(a.starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') = $2 and a.starts_at > now()))
+      order by a.starts_at, patient_name`, [days, today]);
+  const visits: Visit[] = vs.map((r) => ({
+    id: r.id, patientId: r.patient_id, startsAt: new Date(r.starts_at), day: r.day, patientName: r.patient_name, chartNo: r.chart_no,
+    phone: r.phone ?? null, dentist: r.dentist ?? null, service: r.service ?? null, reason: r.reason ?? null, source: r.source,
+  }));
+  const ids = visits.map((v) => v.id);
+
+  // The reminder text, the newest row per visit; and every call attempt, oldest first.
+  const reminders = new Map<string, Reminder>();
+  const attempts = new Map<string, Attempt[]>();
+  if (ids.length) {
+    const { rows: ms } = await tx.query(
+      `select distinct on (appointment_id) appointment_id, status, next_attempt_at, sent_at
+         from message_log where kind = 'reminder' and direction = 'out' and appointment_id = any($1::uuid[])
+        order by appointment_id, created_at desc`, [ids]);
+    for (const m of ms) reminders.set(m.appointment_id, { status: m.status, nextAt: new Date(m.next_attempt_at), sentAt: m.sent_at ? new Date(m.sent_at) : null });
+    const { rows: cs } = await tx.query(
+      `select appointment_id, outcome, at from appointment_contact where appointment_id = any($1::uuid[]) order by at`, [ids]);
+    for (const c of cs) {
+      const list = attempts.get(c.appointment_id) ?? [];
+      list.push({ outcome: c.outcome, at: new Date(c.at) });
+      attempts.set(c.appointment_id, list);
+    }
+  }
+
+  // Call back: a no-show today or yesterday, or a visit cancelled today or yesterday (whenever it was
+  // for), when the patient has nothing else ahead on the book.
+  const { rows: cb } = await tx.query(
+    `${VISIT}
+      where p.archived_at is null
+        and ((a.status = 'no_show' and to_char(a.starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') in ($1, $2))
+             or (a.status = 'cancelled' and to_char(coalesce(a.cancelled_at, a.starts_at) at time zone 'Asia/Manila', 'YYYY-MM-DD') in ($1, $2)))
+        and not exists (select 1 from appointment b
+                         where b.patient_id = a.patient_id and b.id <> a.id and b.ends_at > now()
+                           and b.status not in ('cancelled', 'no_show', 'completed'))
+      order by coalesce(a.cancelled_at, a.starts_at) desc, patient_name`, [today, yesterday]);
+  const callBack: CallBack[] = cb.map((r) => ({
+    id: r.id, patientId: r.patient_id, patientName: r.patient_name, chartNo: r.chart_no, phone: r.phone ?? null, status: r.status,
+    startsAt: new Date(r.starts_at), cancelledAt: r.cancelled_at ? new Date(r.cancelled_at) : null,
+    service: r.service ?? null, reason: r.reason ?? null, dentist: r.dentist ?? null,
+  }));
+  return { days, visits, reminders, attempts, callBack };
+});
+const { days, visits, reminders, attempts, callBack } = data;
+
+// ---------------------------------------------------------------------------
+// Rows: one per number per day, so a family on one mobile is one call. A visit
+// with no number is its own row.
+// ---------------------------------------------------------------------------
+type Row = { key: string; phone: string | null; visits: Visit[]; attempts: Attempt[] };
+const dayOrder = [today, ...days];
+const byDay = new Map<string, Row[]>();
+for (const v of visits) {
+  const rows = byDay.get(v.day) ?? [];
+  const phone = v.phone ? normalizePhone(v.phone) : '';
+  const key = phone ? `p:${phone}` : `v:${v.id}`;
+  let row = rows.find((r) => r.key === key);
+  if (!row) { row = { key, phone: v.phone, visits: [], attempts: [] }; rows.push(row); }
+  row.visits.push(v);
+  byDay.set(v.day, rows);
+}
+// One press notes a call on every visit in the row in one transaction, so the same instant on two rows
+// is one call: the row's attempts are the distinct moments.
+for (const rows of byDay.values()) for (const row of rows) {
+  const seen = new Map<number, Attempt>();
+  for (const v of row.visits) for (const a of attempts.get(v.id) ?? []) if (!seen.has(a.at.getTime())) seen.set(a.at.getTime(), a);
+  row.attempts = [...seen.values()].sort((a, b) => a.at.getTime() - b.at.getTime());
+}
+const dayList = dayOrder.filter((d) => byDay.has(d)).map((d) => ({ day: d, rows: byDay.get(d)! }));
+const totalRows = dayList.reduce((n, d) => n + d.rows.length, 0);
+
+// Words.
+const canText = (phone: string | null) => !!phone && PH_MOBILE.test(normalizePhone(phone));
+const telHref = (phone: string) => { const n = normalizePhone(phone); return `tel:${PH_MOBILE.test(n) ? `+63${n.slice(1)}` : n}`; };
+const whatFor = (v: { service: string | null; reason: string | null }) => v.service ?? v.reason ?? 'Visit';
+const whoWith = (d: string | null) => (d ? shortName(d) : 'Any dentist');
+type Tone = 'ok' | 'wait' | 'none';
+function reminderWords(v: Visit): { text: string; tone: Tone; short: string } {
+  if (!canText(v.phone)) return { text: 'No reminder: no mobile on file', tone: 'none', short: 'none, no mobile' };
+  const r = reminders.get(v.id);
+  if (!r) return willRemind(v.startsAt)
+    ? { text: 'Reminder goes the day before', tone: 'wait', short: 'goes the day before' }
+    : { text: 'No reminder: booked too late for one', tone: 'none', short: 'none, booked late' };
+  if (r.status === 'sent' || r.status === 'delivered') { const at = stamp(r.sentAt ?? r.nextAt); return { text: `Reminder sent ${at}`, tone: 'ok', short: `sent ${at}` }; }
+  if (r.status === 'queued' || r.status === 'sending') { const at = stamp(r.nextAt); return { text: `Reminder queued for ${at}`, tone: 'wait', short: `queued ${at}` }; }
+  if (r.status === 'failed') return { text: 'Reminder could not be sent', tone: 'none', short: 'failed' };
+  return { text: 'Reminder withdrawn', tone: 'none', short: 'withdrawn' };
+}
+function attemptsWords(list: Attempt[]): string | null {
+  if (!list.length) return null;
+  const last = list[list.length - 1];
+  const count = list.length === 1 ? 'Called once' : list.length === 2 ? 'Called twice' : `Called ${list.length} times`;
+  return `${count} · ${OUTCOMES[last.outcome]?.past ?? last.outcome} ${stamp(last.at)}`;
+}
+const REMINDER_ICON: Record<Tone, 'check' | 'clock' | 'info'> = { ok: 'check', wait: 'clock', none: 'info' };
+
+const done = Astro.url.searchParams.get('done');
+const DONE_WORDS: Record<string, string> = {
+  confirmed: 'Marked confirmed. It is off the list.',
+  left_message: 'Noted: you left a message.',
+  no_answer: 'Noted: no answer. Try again later.',
+  will_call_back: 'Noted: they will call back.',
+};
+const daysMeta = days.length === 2 ? `${relWords(days[0]) ?? dayWords(days[0])} and ${dayWords(days[1])}` : days.map(dayWords).join(', ');
+const visitWord = (n: number) => `${n} ${n === 1 ? 'visit' : 'visits'}`;
+const callWord = (n: number) => `${n} ${n === 1 ? 'call' : 'calls'}`;
+const printedOn = `${longDayWords(today)}, ${timeText(new Date())}`;
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name }} title="Calls" section="dashboard" staff={{ name: session.name, role: session.role }} branches={branches} layout="panes" heading>
+  <div class="cs-screen grid max-w-[60rem] gap-4">
+    {error && <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>}
+    {done && DONE_WORDS[done] && <p role="status" class="ws-callout" data-tone="success"><Icon name="check" /><span>{DONE_WORDS[done]}</span></p>}
+    {!maySchedule && <p class="ws-callout" data-tone="warn"><Icon name="info" /><span>Your role here lets you see the list and print it. Confirming a visit or noting a call is for someone who books and checks in visits.</span></p>}
+
+    <Pane id="confirm" icon="phone" title="Still to confirm" meta={totalRows ? `${visitWord(visits.length)} · ${callWord(totalRows)}` : 'Nothing waiting'} pad="none">
+      <Fragment slot="actions">
+        <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-cs-print><Icon name="file" />Print call sheet</button>
+      </Fragment>
+      {/* On the card, not the bare room: over the photo the small words fell to 4.46:1 on a phone. */}
+      <p class="cs-lede">The next two clinic days: {daysMeta}. Ring each number once, note how it went, and a visit leaves the list when it is confirmed.</p>
+      {dayList.length ? dayList.map(({ day, rows }) => (
+        <section class="cs-day" aria-labelledby={`cs-day-${day}`}>
+          <h3 id={`cs-day-${day}`} class="cs-day-head">
+            <span class="cs-day-name">{relWords(day) ?? dayWords(day)}</span>
+            {relWords(day) && <span class="cs-day-date">{dayWords(day)}</span>}
+            <span class="ws-count" aria-label={`${callWord(rows.length)}`}>{rows.length}</span>
+          </h3>
+          <ul class="cs-list" aria-label={`Calls for ${dayWords(day)}`}>
+            {rows.map((row) => {
+              const family = row.visits.length > 1;
+              const tried = attemptsWords(row.attempts);
+              return (
+                <li class="cs-row" data-family={family ? '' : undefined}>
+                  <div class="cs-when">
+                    <span class="cs-time">{timeText(row.visits[0].startsAt)}</span>
+                    {family && <span class="cs-time-more">{row.visits.length} on one number</span>}
+                  </div>
+                  <div class="cs-who">
+                    {row.visits.map((v) => (
+                      <div class="cs-person">
+                        <Avatar name={v.patientName} size="sm" />
+                        <div class="cs-person-words">
+                          <p class="cs-name"><a href={`/c/${clinic.slug}/patients/${v.patientId}/`}>{v.patientName}</a>{family && <span class="cs-name-time"> · {timeText(v.startsAt)}</span>}</p>
+                          <p class="cs-line">{whatFor(v)} · {whoWith(v.dentist)}{v.source === 'web' && ' · booked online'}</p>
+                          {(() => { const rem = reminderWords(v); return <p class:list={['cs-rem', `cs-rem-${rem.tone}`]}><Icon name={REMINDER_ICON[rem.tone]} size={14} />{rem.text}</p>; })()}
+                        </div>
+                        {family && maySchedule && (
+                          <form method="post" action={here} class="cs-confirm-one">
+                            <Csrf />
+                            <input type="hidden" name="intent" value="confirm" />
+                            <input type="hidden" name="visit" value={v.id} />
+                            <button type="submit" class="ws-btn ws-btn-sm cs-yes"><Icon name="check" size={16} />Confirmed<span class="sr-only">: {v.patientName}</span></button>
+                          </form>
+                        )}
+                      </div>
+                    ))}
+                    {tried && <p class="cs-tried"><Icon name="phone" size={14} />{tried}</p>}
+                  </div>
+                  <div class="cs-act">
+                    {row.phone
+                      ? <a href={telHref(row.phone)} class="cs-tel"><Icon name="phone" size={18} /><span>{prettyPhone(row.phone)}</span><span class="sr-only">, call {row.visits.map((v) => v.patientName).join(' and ')}</span></a>
+                      : <p class="cs-nophone"><Icon name="alert" size={16} />No mobile on file</p>}
+                    {maySchedule && (
+                      <div class="cs-forms">
+                        {!family && (
+                          <form method="post" action={here}>
+                            <Csrf />
+                            <input type="hidden" name="intent" value="confirm" />
+                            <input type="hidden" name="visit" value={row.visits[0].id} />
+                            <button type="submit" class="ws-btn ws-btn-sm cs-yes"><Icon name="check" size={16} />Confirmed<span class="sr-only">: {row.visits[0].patientName}</span></button>
+                          </form>
+                        )}
+                        {BUTTONS.map((o) => (
+                          <form method="post" action={here}>
+                            <Csrf />
+                            <input type="hidden" name="intent" value={o} />
+                            {row.visits.map((v) => <input type="hidden" name="visit" value={v.id} />)}
+                            <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm">{OUTCOMES[o].button}<span class="sr-only">: {row.visits.map((v) => v.patientName).join(' and ')}</span></button>
+                          </form>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )) : (
+        <div class="px-6 py-5 max-md:px-4"><Empty icon="check" text={`Every visit for ${daysMeta} is confirmed, and nothing is left today. Tomorrow's bookings show here as they come in.`} /></div>
+      )}
+    </Pane>
+
+    <Pane id="callback" icon="clock" title="Call back" meta="No-shows and cancellations from today and yesterday, not booked again" pad="none">
+      {callBack.length ? (
+        <ul class="cs-list" aria-label="Patients to call back">
+          {callBack.map((c) => (
+            <li class="cs-row cs-row-back">
+              <div class="cs-when">
+                <Chip status={c.status} />
+              </div>
+              <div class="cs-who">
+                <div class="cs-person">
+                  <Avatar name={c.patientName} size="sm" />
+                  <div class="cs-person-words">
+                    <p class="cs-name"><a href={`/c/${clinic.slug}/patients/${c.patientId}/`}>{c.patientName}</a></p>
+                    <p class="cs-line">{whatFor(c)} · {whoWith(c.dentist)} · {c.status === 'cancelled' && c.cancelledAt ? `cancelled ${stamp(c.cancelledAt)}, was for ${whenText(c.startsAt)}` : `was for ${whenText(c.startsAt)}`}</p>
+                  </div>
+                </div>
+              </div>
+              <div class="cs-act">
+                {c.phone
+                  ? <a href={telHref(c.phone)} class="cs-tel"><Icon name="phone" size={18} /><span>{prettyPhone(c.phone)}</span><span class="sr-only">, call {c.patientName}</span></a>
+                  : <p class="cs-nophone"><Icon name="alert" size={16} />No mobile on file</p>}
+                {maySchedule && <a href={`/c/${clinic.slug}/?new=booking&patient=${c.patientId}`} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="calendar" size={16} />Book again<span class="sr-only">: {c.patientName}</span></a>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div class="px-6 py-5 max-md:px-4"><Empty icon="check" text="Nobody missed or cancelled a visit today or yesterday without booking again." /></div>
+      )}
+    </Pane>
+  </div>
+
+  {/* The call sheet: paper only. One A4 table, black on white, with a blank column to write on. */}
+  <div class="cs-sheet">
+    <h1 class="cs-sheet-title">{clinic.name} · Calls to confirm</h1>
+    <p class="cs-sheet-meta">Printed {printedOn} · {visitWord(visits.length)}, {callWord(totalRows)}. Outcome: C confirmed · LM left message · NA no answer · CB will call back.</p>
+    {dayList.length ? dayList.map(({ day, rows }) => (
+      <table class="cs-sheet-table">
+        <caption>{relWords(day) ? `${relWords(day)} · ${dayWords(day)}` : dayWords(day)}</caption>
+        <thead><tr><th scope="col">Time</th><th scope="col">Name</th><th scope="col">Mobile</th><th scope="col">Service</th><th scope="col">Dentist</th><th scope="col">Reminder</th><th scope="col" class="cs-sheet-out">Outcome</th></tr></thead>
+        <tbody>
+          {rows.flatMap((row) => row.visits.map((v, i) => (
+            <tr>
+              <td>{timeText(v.startsAt)}</td>
+              <td>{v.patientName}{row.visits.length > 1 && <span class="cs-sheet-fam"> (same number{i === 0 ? '' : ', see above'})</span>}</td>
+              <td>{row.phone ? prettyPhone(row.phone) : '—'}</td>
+              <td>{whatFor(v)}</td>
+              <td>{whoWith(v.dentist)}</td>
+              <td>{reminderWords(v).short}{attempts.get(v.id)?.length ? ` · ${attemptsWords(attempts.get(v.id)!)}` : ''}</td>
+              <td class="cs-sheet-out"></td>
+            </tr>
+          )))}
+        </tbody>
+      </table>
+    )) : <p>Nothing to confirm for {daysMeta}.</p>}
+    {callBack.length > 0 && (
+      <table class="cs-sheet-table">
+        <caption>Call back · missed or cancelled, not booked again</caption>
+        <thead><tr><th scope="col">Was for</th><th scope="col">Name</th><th scope="col">Mobile</th><th scope="col">Service</th><th scope="col">Dentist</th><th scope="col">What happened</th><th scope="col" class="cs-sheet-out">Outcome</th></tr></thead>
+        <tbody>
+          {callBack.map((c) => (
+            <tr>
+              <td>{whenText(c.startsAt)}</td>
+              <td>{c.patientName}</td>
+              <td>{c.phone ? prettyPhone(c.phone) : '—'}</td>
+              <td>{whatFor(c)}</td>
+              <td>{whoWith(c.dentist)}</td>
+              <td>{c.status === 'no_show' ? 'No-show' : `Cancelled${c.cancelledAt ? ` ${stamp(c.cancelledAt)}` : ''}`}</td>
+              <td class="cs-sheet-out"></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
+  </div>
+
+  <script>
+    document.querySelector('[data-cs-print]')?.addEventListener('click', () => window.print());
+  </script>
+</ClinicLayout>
+
+<style is:global>
+  /* The layer order global.css declares, said again so this page can never be the first to name a
+     layer; inside the components layer a utility in the markup still wins. */
+  @layer theme, base, components, utilities;
+
+  @layer components {
+    .cs-lede { max-width: 66ch; padding: 0.875rem 1.5rem 0.25rem; font-size: 15px; line-height: 1.55; color: var(--c-ink-2); }
+    @media (max-width: 767px) { .cs-lede { padding-inline: 1rem; } }
+
+    .cs-day { border-bottom: 1px solid var(--ws-hair); }
+    .cs-day:last-child { border-bottom: 0; }
+    .cs-day-head {
+      display: flex; align-items: center; gap: 0.5rem; padding: 0.875rem 1.5rem 0.5rem;
+      font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--c-ink);
+    }
+    .cs-day-date { font-weight: 500; color: var(--c-ink-2); }
+    .cs-day-head .ws-count { background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+
+    .cs-list { display: grid; }
+    .cs-row {
+      display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; align-items: start; gap: 0.5rem 1rem;
+      padding: 0.875rem 1.5rem 1rem; border-top: 1px solid var(--ws-hair);
+    }
+    .cs-when { display: grid; gap: 0.25rem; padding-top: 0.25rem; }
+    .cs-time { font-size: 17px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--c-ink); }
+    .cs-time-more { font-size: 13px; line-height: 1.35; color: var(--c-ink-2); }
+
+    .cs-who { display: grid; gap: 0.625rem; min-width: 0; }
+    .cs-person { display: flex; align-items: flex-start; gap: 0.625rem; min-width: 0; }
+    .cs-person > .ws-avatar { margin-top: 0.125rem; }
+    .cs-person-words { display: grid; flex: 1 1 auto; gap: 0.125rem; min-width: 0; }
+    .cs-name { font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--c-ink); overflow-wrap: anywhere; }
+    /* The name opens the record. A 44px target on a 20px line: the box is tall and the margins pull
+       the line back, the way the operations pages draw an inline call link. */
+    .cs-name a { display: inline-flex; align-items: center; min-height: 44px; margin-block: -0.75rem; color: inherit; text-decoration: none; border-radius: 4px; }
+    .cs-name a:hover { text-decoration: underline; text-underline-offset: 3px; color: var(--ws-teal-ink); }
+    .cs-name-time { font-weight: 500; color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
+    .cs-line { font-size: 13.5px; line-height: 1.45; color: var(--c-ink-2); overflow-wrap: anywhere; }
+    .cs-rem, .cs-tried {
+      display: inline-flex; align-items: center; gap: 0.375rem; width: fit-content; max-width: 100%; margin-top: 0.125rem;
+      padding: 0.2rem 0.55rem; border-radius: var(--ws-r-pill); font-size: 13px; font-weight: 600; line-height: 1.3;
+    }
+    .cs-rem .ws-icon, .cs-tried .ws-icon { flex: none; }
+    .cs-rem-ok { background: var(--ws-green-tint); color: var(--ws-green-ink); }
+    .cs-rem-wait { background: var(--ws-amber-tint); color: var(--ws-amber-ink); }
+    .cs-rem-none { background: var(--ws-subtle); color: var(--c-ink-2); }
+    .cs-tried { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
+    .cs-confirm-one { flex: none; margin-left: auto; }
+
+    .cs-act { display: grid; justify-items: end; gap: 0.5rem; }
+    .cs-tel {
+      display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 0.875rem 0 0.75rem;
+      border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-ctl); background: var(--c-surface); box-shadow: var(--ws-shadow);
+      font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; color: var(--c-ink); text-decoration: none; white-space: nowrap;
+      transition: background-color 160ms ease, border-color 160ms ease;
+    }
+    .cs-tel .ws-icon { color: var(--ws-teal-ink); }
+    .cs-tel:hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); }
+    .cs-nophone { display: inline-flex; align-items: center; gap: 0.375rem; min-height: 44px; font-size: 14px; font-weight: 600; color: var(--ws-amber-ink); }
+    .cs-forms { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
+    .cs-forms form { display: contents; }
+    /* Confirmed: white with a teal word and check, so the row's yes stands out without a filled button
+       on every line. */
+    .cs-yes { background: var(--c-surface); color: var(--ws-teal-ink); border-color: color-mix(in srgb, var(--ws-teal) 50%, transparent); box-shadow: var(--ws-shadow); }
+    .cs-yes:hover { background: var(--ws-teal-tint); border-color: var(--ws-teal); }
+
+    .cs-row-back .cs-when { padding-top: 0.35rem; }
+
+    @media (max-width: 899px) {
+      .cs-row { grid-template-columns: 6.5rem minmax(0, 1fr); }
+      .cs-act { grid-column: 1 / -1; justify-items: start; }
+      .cs-forms { justify-content: flex-start; }
+    }
+    @media (max-width: 767px) {
+      .cs-day-head { padding-inline: 1rem; }
+      .cs-row { grid-template-columns: minmax(0, 1fr); padding-inline: 1rem; }
+      .cs-when { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.625rem; padding-top: 0; }
+      .cs-confirm-one { margin-left: 0; }
+      .cs-person { flex-wrap: wrap; }
+      .cs-person-words { flex-basis: 12rem; }
+      .cs-act { width: 100%; }
+      .cs-tel { width: 100%; justify-content: center; }
+      .cs-forms { width: 100%; }
+      .cs-forms .ws-btn { flex: 1 1 8rem; }
+    }
+
+    /* The call sheet lives only on paper. */
+    .cs-sheet { display: none; }
+  }
+
+  @media print {
+    @page { size: A4 portrait; margin: 12mm; }
+    html { color-scheme: light; }
+    body.ws { background: #fff !important; }
+    .ws-backdrop, .ws-skip, .ws-side, .ws-scrim, .ws-top, .ws-tabrow, .ws-devline, .ws-phone-title, .cs-screen, dialog { display: none !important; }
+    .ws-app { display: block !important; min-height: 0 !important; }
+    .ws-col { display: block !important; }
+    .ws-main { display: block !important; max-width: none !important; padding: 0 !important; }
+    .cs-sheet { display: block !important; color: #000; font-family: var(--ws-font); font-size: 11.5px; line-height: 1.35; }
+    .cs-sheet-title { margin: 0 0 0.25rem; font-size: 17px; font-weight: 700; color: #000; }
+    .cs-sheet-meta { margin: 0 0 0.75rem; font-size: 11px; color: #000; }
+    .cs-sheet-table { width: 100%; margin: 0 0 1rem; border-collapse: collapse; color: #000; }
+    .cs-sheet-table caption { padding: 0.35rem 0; text-align: left; font-weight: 700; color: #000; }
+    .cs-sheet-table th, .cs-sheet-table td { padding: 5px 8px 5px 0; border-bottom: 1px solid #999; text-align: left; vertical-align: top; }
+    .cs-sheet-table td:nth-child(1), .cs-sheet-table td:nth-child(3) { white-space: nowrap; }
+    .cs-sheet-table th { font-weight: 700; border-bottom: 1.5px solid #000; }
+    .cs-sheet-table tr { break-inside: avoid; }
+    .cs-sheet-out { width: 24mm; }
+    .cs-sheet-fam { color: #000; }
+  }
+</style>

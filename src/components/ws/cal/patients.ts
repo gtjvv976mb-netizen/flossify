@@ -95,9 +95,37 @@ export function initPatients(ctx: Ctx): PatientsList {
     return p;
   }
 
+  /** The visit's next step, as the desk takes it (the visit panel's teal button, in the same order): Arrived, In the
+   *  chair, Done — one press on the row, no panel (036). Null when there is none, or this person cannot schedule. */
+  function stepOf(c: Card): { to: string; word: string; said: string } | null {
+    if (!boot.canSchedule || M.isRequest(c)) return null;
+    const allowed = boot.next[c.status] ?? [];
+    const pick = (to: string, word: string, said: string) => (allowed.includes(to) ? { to, word, said } : null);
+    if (c.status === 'booked' || c.status === 'confirmed') return pick('arrived', 'Arrived', 'has arrived');
+    if (c.status === 'arrived' || c.status === 'in_lobby') return pick('in_chair', 'In the chair', 'is in the chair');
+    if (c.status === 'in_chair') return pick('completed', 'Done', 'is done');
+    return null;
+  }
+  let stepping = false;
+  async function takeStep(btn: HTMLButtonElement) {
+    if (stepping) return;
+    const id = btn.dataset.visit!, to = btn.dataset.to!, said = btn.dataset.said!;
+    if (!todays.has(id)) return;
+    stepping = true; btn.disabled = true;
+    const r = await ctx.call('PATCH', { id, status: to });
+    stepping = false; btn.disabled = false;
+    if (!r.ok) { ctx.fail(r.error); return; }
+    ctx.absorb(r.card);
+    ctx.flash(r.card.id);
+    ctx.say(`${r.card.patientName} ${said}.`);
+    // The list was redrawn: the focus stays with this visit's next step.
+    list.querySelector<HTMLButtonElement>(`.pt-step[data-visit="${id}"]`)?.focus({ preventScroll: true });
+  }
+
   function row({ p, c }: { p: Pt; c: Card }): HTMLLIElement {
     const li = el('li');
-    const b = el('button', 'pt-row');
+    const wrap = el('div', 'pt-row');
+    const b = el('button', 'pt-open');
     b.type = 'button'; b.dataset.patient = p.id;
     const age = M.ageOf(p.birth, boot.today);
     const main = el('span', 'pt-main');
@@ -123,6 +151,10 @@ export function initPatients(ctx: Ctx): PatientsList {
     }
     const side = el('span', 'pt-side');
     side.append(statusPill(c));
+    // On the bench: how long, in words; amber past the alert. A finished visit with nothing after it says so.
+    const wait = M.waitMinutes(c);
+    if (wait !== null) { const w = pill(`Waiting ${wait} min`, wait >= M.WAIT_ALERT_MIN ? 'amber' : 'slate', 'clock'); w.classList.add('pt-wait'); side.append(w); }
+    if (M.noNextVisit(c)) side.append(pill('No next visit', 'amber'));
     // The balance only where there is one: a column of ₱0 is noise.
     const bal = boot.finance ? (p.balance ?? 0) : 0;
     if (bal !== 0) {
@@ -131,13 +163,23 @@ export function initPatients(ctx: Ctx): PatientsList {
       if (bal < 0) v.dataset.zero = '';
       side.append(v);
     }
-    b.append(avatar(p.name), main, side);
+    const step = stepOf(c);
+    if (step) {
+      const s = el('button', 'ws-btn ws-btn-quiet ws-btn-sm pt-step');
+      s.type = 'button'; s.dataset.visit = c.id; s.dataset.to = step.to; s.dataset.said = step.said;
+      s.append(icon('check', 16), step.word);
+      s.setAttribute('aria-label', `${step.word}: ${p.name}`);
+      side.append(s);
+    }
+    b.append(avatar(p.name), main);
     const status = M.isRequest(c) ? 'request, not placed yet' : M.statusWord(c.status).toLowerCase();
     const label = [p.name, age !== null ? `${age} years` : '', p.chart, `today ${time === 'Today' ? '' : time}`.trim(), what, status,
+      wait !== null ? `waiting ${wait} minutes` : '', M.noNextVisit(c) ? 'no next visit' : '',
       p.phone ?? 'no mobile', p.allergies.length ? `allergy: ${p.allergies.join(', ')}` : '', p.conditions.length ? `alerts: ${p.conditions.join(', ')}` : '',
       p.isNew ? 'new' : '', boot.finance && (p.balance ?? 0) > 0 ? `owes ${M.pesoBal(p.balance ?? 0)}` : ''].filter(Boolean).join(', ');
     b.setAttribute('aria-label', label);
-    li.append(b);
+    wrap.append(b, side);
+    li.append(wrap);
     return li;
   }
 
@@ -176,9 +218,14 @@ export function initPatients(ctx: Ctx): PatientsList {
   }
 
   list.addEventListener('click', (e) => {
-    const b = (e.target as Element).closest<HTMLButtonElement>('.pt-row[data-patient]');
+    const t = e.target as Element;
+    const step = t.closest<HTMLButtonElement>('.pt-step[data-visit]');
+    if (step) { void takeStep(step); return; }
+    const b = t.closest<HTMLButtonElement>('.pt-open[data-patient]');
     if (b) ctx.panels.openPatient(b.dataset.patient!, b);
   });
+  // The minutes on the bench move with the clock.
+  window.setInterval(() => { if ([...todays.values()].some((c) => M.waitMinutes(c) !== null)) render(); }, 60_000);
 
   render();
 

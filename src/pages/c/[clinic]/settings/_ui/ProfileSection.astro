@@ -151,6 +151,20 @@ const taxProblem = problems.some((p) => /TIN|BIR|branch code/i.test(p));
           <label class="row-radio"><input type="radio" name="booking_mode" value="request" checked={v.booking_mode !== 'live'} /><span><strong class="font-semibold">They send a request</strong><span class="block text-[14px] text-ink-2">The desk texts back a time.</span></span></label>
         </div>
       </fieldset>
+      <fieldset>
+        <legend class="meta">Texts to patients</legend>
+        <p class="mt-1 text-[14px] text-ink-2">The reminder the day before every visit always goes. These two are yours to switch on.</p>
+        <div class="mt-2 grid gap-2">
+          <label class="check set-check items-start">
+            <input type="checkbox" name="remind_48h" checked={v.remind_48h} />
+            <span><span class="block text-[16px] font-semibold text-ink">A second reminder two days before</span><span class="mt-0.5 block text-[14.5px] text-ink-2">Gives the patient a day to move it, so the chair is not left empty.</span></span>
+          </label>
+          <label class="check set-check items-start">
+            <input type="checkbox" name="recall_texts" checked={v.recall_texts} />
+            <span><span class="block text-[16px] font-semibold text-ink">Text patients when their check-up is due</span><span class="mt-0.5 block text-[14.5px] text-ink-2">Tuesday or Wednesday morning, from two weeks before it is due until two months after, at most once in 60 days. The text names your number and asks them to call.</span></span>
+          </label>
+        </div>
+      </fieldset>
     </div>
 
     <h3 class="set-sub" id="hmos">HMOs you accept</h3>
