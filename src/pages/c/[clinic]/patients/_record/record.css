@@ -415,3 +415,38 @@ button.rf { display: grid; min-height: 44px; }
 .vx-file span span { color: var(--c-ink-2); }
 .vx-signed-row { grid-template-columns: minmax(0, 14rem) minmax(0, 1fr); align-items: start; gap: 0.875rem; }
 @media (max-width: 639px) { .vx-signed-row { grid-template-columns: minmax(0, 1fr); } }
+
+/* --- This visit (036): the visit's checklist above the sections. A line for what is still missing, in
+   the tone of how much it matters (plain · amber "needs attention" · red "blocked"), the one action beside
+   it; what is done as one row of teal pills. Ink on the tints is the page's ink, the icon the tint's own
+   ink — both measured pairs. --- */
+.vs-status { display: flex; align-items: center; gap: 0.5rem; }
+.vs-list { display: grid; gap: 0.375rem; }
+.vs-line {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.375rem 0.75rem;
+  min-height: 44px; padding: 0.375rem 0.5rem 0.375rem 0.75rem; border: 1px solid var(--ws-hair); border-radius: 12px; background: var(--c-surface);
+  font-size: 14.5px; color: var(--c-ink);
+}
+.vs-line > .ws-icon { flex: none; color: var(--c-ink-2); }
+.vs-line[data-tone="warn"] { border-color: transparent; background: var(--ws-amber-tint); }
+.vs-line[data-tone="warn"] > .ws-icon { color: var(--ws-amber-ink); }
+.vs-line[data-tone="alert"] { border-color: transparent; background: var(--ws-red-tint); }
+.vs-line[data-tone="alert"] > .ws-icon { color: var(--ws-red-ink); }
+.vs-words { font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.vs-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.375rem; }
+.vs-acts form { display: contents; }
+.vs-all { display: flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 0.75rem; border-radius: 12px; background: var(--ws-teal-tint); font-size: 14.5px; font-weight: 600; color: var(--c-ink); }
+.vs-all > .ws-icon { color: var(--ws-teal-ink); }
+.vs-done { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.375rem; margin-top: 0.5rem; }
+/* A done pill is a way to its section: the pill inside a 44px hit box (rec-chip-go), as the head's chips. */
+.vs-go { text-decoration: none; }
+.vs-go > .rp { min-height: 30px; }
+.vs-go:hover > .rp { background: color-mix(in srgb, var(--ws-teal) 22%, var(--ws-teal-tint)); }
+.vs-also { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ws-hair); font-size: 13.5px; color: var(--c-ink-2); }
+.vs-also .vs-who { margin-left: auto; }
+@media (max-width: 639px) {
+  .vs-line { grid-template-columns: auto minmax(0, 1fr); }
+  .vs-acts { grid-column: 1 / -1; justify-content: flex-start; }
+  .vs-acts .ws-btn { flex: 1 1 auto; }
+  .vs-also .vs-who { margin-left: 0; }
+}

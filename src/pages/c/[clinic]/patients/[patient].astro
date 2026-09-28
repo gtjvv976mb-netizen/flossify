@@ -110,6 +110,7 @@ import PayPlans from './_record/PayPlans.astro';
 import RecordNav from './_record/RecordNav.astro';
 import Banner from './_record/Banner.astro';
 import Who from './_record/Who.astro';
+import VisitStrip from './_record/VisitStrip.astro';
 import { shellLinks } from '../../../../components/ws/routes';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
@@ -118,7 +119,7 @@ import { hit, waitText, LIMITS } from '../../../../lib/throttle';
 import {
   LISTS, NOTE_MAX, NAME_MAX, manilaToday, ageOn, ageText, when, day, oneLine, readHealthForm, saveHealth, readHealth,
   canEditRecords, readConsents, noticeInForce, recordDeskConsent, versionChanges, listText, answered, dateText, capitalise,
-  consentInForce, readPaperForms, readPaperForm, recordPaperConsent, PAPER_WORDS,
+  consentInForce, readPaperForms, readPaperForm, recordPaperConsent, PAPER_WORDS, recheckHealth,
   type HealthAnswers, type HealthVersion, type AgreedAs, type PaperIn,
 } from '../../../../lib/health';
 import { readPersonForm, updateDetails, hmoSuggestions, SEXES, NOTES_MAX, type PersonIn } from '../../../../lib/import';
@@ -132,7 +133,7 @@ import { can } from '../../../../lib/can';
 import { loadClinical, loadTimeline, recordAction, RECORD_INTENTS, RX_ROWS, type Outcome, type RecordProblem, type RxItem } from '../../../../lib/record';
 import { loadExtra, extraAction, extraEvents, bpWords, EXTRA_INTENTS, EXTRA_ANCHOR } from '../../../../lib/record-extra';
 import { loadVisitConsents } from '../../../../lib/visit-consent';
-import { loadVisits } from '../../../../lib/visit-record';
+import { loadVisits, type StripVisit } from '../../../../lib/visit-record';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -162,6 +163,8 @@ let formUseProblem: string | null = null;
 // A clinical-record post (Treatment, Notes, Prescriptions, Files, the next check-up) that was refused.
 let recordProblem: RecordProblem | null = null;
 let rxTyped: RxItem[] = [];
+// "No change" on the This visit strip (intent health-checked) that was refused: its sentence, on the strip.
+let stripProblem: string | null = null;
 // The section a post came back to.
 let backTo: string | null = null;
 // Where on the page a clinical-record post lands again.
@@ -176,6 +179,10 @@ if (Astro.request.method === 'POST') {
   // Same allowance as the chart: a person saving never meets it; a script does.
   const rate = await hit('record:s:' + session.staffId, ...LIMITS.chart.staff);
   const slow = rate.allowed ? null : 'Too many saves at once. ' + waitText(rate.retryAfter);
+  // The visit a chairside post was for (036): the This visit strip's forms and the panels it opens carry it,
+  // and the page comes back with ?visit=<id> kept, so the strip is still there after the save.
+  const postedVisit = UUID.test(String(form.get('visit') ?? '')) ? String(form.get('visit')) : null;
+  const to = (qs: string, hash: string) => `${here}?${[postedVisit ? `visit=${postedVisit}` : '', qs].filter(Boolean).join('&')}${hash ? `#${hash}` : ''}`;
 
   if (intent === 'health') {
     backTo = 'health';
@@ -191,8 +198,8 @@ if (Astro.request.method === 'POST') {
           ? saveHealth(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, base, answers, birth, birthWas: birthWas || null })
           : ({ kind: 'denied' } as const));
       if (r.kind === 'none') return notFound();
-      if (r.kind === 'saved') return Astro.redirect(`${here}?saved=${r.answers ? 'health' : 'birth'}#health`, 303);
-      if (r.kind === 'unchanged') return Astro.redirect(`${here}?saved=nothing#health`, 303);
+      if (r.kind === 'saved') return Astro.redirect(to(`saved=${r.answers ? 'health' : 'birth'}`, 'health'), 303);
+      if (r.kind === 'unchanged') return Astro.redirect(to('saved=nothing', 'health'), 303);
       if (r.kind === 'denied') problems.push('Your account cannot change records at this branch. Ask the owner.');
       if (r.kind === 'conflict') {
         conflict = { latest: r.latest, birth: r.birth, versionMoved: (r.latest?.id ?? 'none') !== base, birthMoved: (r.birth ?? '') !== birthWas };
@@ -271,13 +278,24 @@ if (Astro.request.method === 'POST') {
           return o;
         }).catch((e) => { if (e instanceof Refused) return e.outcome; throw e; });
     if (outcome === 'none') return notFound();
-    if (outcome.ok) return Astro.redirect(`${here}?saved=${encodeURIComponent(outcome.saved)}#${ANCHOR[intent] ?? EXTRA_ANCHOR[intent] ?? outcome.section}`, 303);
+    if (outcome.ok) return Astro.redirect(to(`saved=${encodeURIComponent(outcome.saved)}`, ANCHOR[intent] ?? EXTRA_ANCHOR[intent] ?? outcome.section), 303);
     backTo = slow ? null : outcome.section;
     recordProblem = { intent, text: outcome.problem, values: outcome.values };
     if (intent === 'rx-add') {
       const col = (k: string) => form.getAll(k).map((x) => String(x));
       const [dr, st, qt, sg] = [col('drug'), col('strength'), col('qty'), col('sig')];
       rxTyped = Array.from({ length: RX_ROWS }, (_, i) => ({ drug: dr[i] ?? '', strength: st[i] ?? '', qty: qt[i] ?? '', sig: sg[i] ?? '' }));
+    }
+  } else if (intent === 'health-checked') {
+    // "No change" on the This visit strip: the health history asked again today and still true (recheckHealth).
+    if (slow) stripProblem = slow;
+    else {
+      const r = await withClinic(clinic.id, async (tx) =>
+        (await canEditRecords(tx, session.staffId, clinic.id)) ? recheckHealth(tx, { clinicId: clinic.id, staffId: session.staffId, patientId }) : ('denied' as const));
+      if (r === 'saved') return Astro.redirect(to('saved=checked', ''), 303);
+      if (r === 'today') return Astro.redirect(to('saved=checked-today', ''), 303);
+      stripProblem = r === 'denied' ? 'Your account cannot change records at this branch. Ask the owner.'
+        : 'There is no health history on file to check yet. Ask the patient and save the answers in Health.';
     }
   } else if (intent === 'form-use') {
     // One detail from an added patient form onto the record ("Use 0917 555 0199").
@@ -406,6 +424,23 @@ const manilaDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asi
 const visitText = (v: { starts_at: Date; date_only: boolean }) => (v.date_only ? dateText(manilaDay(v.starts_at))! : visitWhen(v.starts_at));
 const SOURCE: Record<string, string> = { web: 'Web', request: 'Web request', staff: 'Desk', import: 'Imported' };
 
+// --- this visit (036) ---------------------------------------------------------
+// ?visit=<id>: a visit to open — today's, and the record shows its This visit strip above the sections;
+// another day's, and the Timeline opens with that visit's panel (back from signing a consent for a later visit).
+const openVisit = q.get('visit') && UUID.test(q.get('visit')!) ? q.get('visit') : null;
+const going = (s: string) => s !== 'cancelled' && s !== 'no_show';
+const todays = visits.filter((v) => !v.date_only && going(v.status) && manilaDay(v.starts_at) === today);
+// The visit the strip is for: the one asked for, else the one under way, else the next one today, else the one just done.
+const thisRow = openVisit ? todays.find((v) => v.id === openVisit) ?? null
+  : todays.find((v) => ['arrived', 'in_lobby', 'in_chair'].includes(v.status)) ?? todays.find((v) => v.status !== 'completed') ?? todays[0] ?? null;
+const thisVisit: StripVisit | null = thisRow ? { id: thisRow.id, startsAt: thisRow.starts_at, status: thisRow.status, reason: thisRow.reason, dentist: thisRow.dentist, chair: thisRow.chair, charged: thisRow.charged } : null;
+// A visit already on the book after this one (the strip then does not ask for a check-up).
+const laterVisits = thisVisit ? visits.filter((v) => v.id !== thisVisit.id && going(v.status) && v.status !== 'completed' && +v.starts_at > +thisVisit.startsAt) : [];
+const laterVisitAt: Date | null = laterVisits.length ? laterVisits[laterVisits.length - 1].starts_at : null;
+// ?open=vitals|note|rx|done|file: the page opens that panel as it loads (the Dashboard's "Take it", "Write the note").
+const OPEN_PANEL: Record<string, string> = { vitals: 'health', note: 'notes', rx: 'rx', done: 'treatment', file: 'files' };
+const openNow = canEdit && Object.hasOwn(OPEN_PANEL, q.get('open') ?? '') ? q.get('open')! : null;
+
 // The chips: the quick picks in a fixed order (the same place every time), then
 // anything else on the record or typed, ticked.
 const lower = (s: string) => s.toLocaleLowerCase('en');
@@ -526,9 +561,13 @@ const recordSaved = (s: string | null) => {
   return ({ plan: 'treatment', done: 'treatment', lab: 'treatment', note: 'notes', addendum: 'notes', rx: 'rx', file: 'files', files: 'files', recall: 'overview',
     vitals: 'health', letter: 'rx', answered: 'rx', loa: 'treatment', payplan: 'treatment', adjusted: 'treatment' } as Record<string, string>)[w] ?? null;
 };
-// ?visit=<id>: back from signing a consent on the tablet — the Timeline, with that visit open.
-const openVisit = q.get('visit') && UUID.test(q.get('visit')!) ? q.get('visit') : null;
-const current = backTo ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? (openVisit ? 'timeline' : 'overview');
+// The section showing first: where a post came back to, the section of what was just saved, the section of a
+// panel to open, the Timeline for another day's visit (?visit=), else the Overview.
+const current = backTo ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? (openNow ? OPEN_PANEL[openNow] : openVisit && !thisVisit ? 'timeline' : 'overview');
+// The privacy notice, for the strip: agreed and in force, or what is missing.
+const privacyState = { ok: !data.notice || (!!consentNow && !guardianNeeded), words: guardianNeeded ? 'Privacy notice: a parent or guardian must agree for a patient under 18' : 'Privacy notice: not agreed yet' };
+// A health history over a year old is asked again (the head says so; the strip offers "No change").
+const staleHealth = !!latest && answered(latest) && Date.now() - +new Date(latest.at) > 365 * 864e5;
 const SECTION_LABEL = Object.fromEntries(SECTIONS.map((x) => [x.id, x.label])) as Record<string, string>;
 
 // --- money --------------------------------------------------------------------
@@ -654,7 +693,7 @@ const recHere = here;
       </div>
     </div>
 
-    {(allergies.length > 0 || conditions.length > 0 || medications.length > 0 || minor || bpChip || clearance || behindPlans.length > 0 || loaWaiting > 0) && (
+    {(allergies.length > 0 || conditions.length > 0 || medications.length > 0 || minor || bpChip || clearance || behindPlans.length > 0 || loaWaiting > 0 || staleHealth) && (
       <div role="alert" class="rec-alerts mt-5">
         {allergies.map((a) => <Chip tone="alert" icon="alert">Allergy: {a}</Chip>)}
         {conditions.map((c) => <Chip tone="warn">{c}</Chip>)}
@@ -664,6 +703,7 @@ const recHere = here;
         {loaWaiting > 0 && <button type="button" class="rec-chip-go" data-rec-go="treatment"><Chip tone="warn" icon="clock" label={loaWaiting === 1 ? 'Waiting for an HMO LOA' : `Waiting for ${loaWaiting} HMO LOAs`} /></button>}
         {behindPlans.map((x) => <button type="button" class="rec-chip-go" data-rec-go="treatment"><Chip tone="alert" icon="money" label={`${x.title}: behind ${x.missed === 1 ? 'one month' : `${x.missed} months`}`} /></button>)}
         {minor && <Chip tone="warn" icon="user">{guardianNeeded ? 'Under 18: a guardian must agree' : `Under 18 · guardian ${consentNow?.given_by_name}`}</Chip>}
+        {staleHealth && <button type="button" class="rec-chip-go" data-rec-go="health"><Chip tone="warn" icon="clock" label={`Health history last checked ${day(new Date(latest!.at))}: ask again`} /></button>}
       </div>
     )}
     {latest?.note && <Callout tone="alert" role="none" class="mt-3" title="Note for the dentist" text={latest.note} />}
@@ -725,7 +765,14 @@ const recHere = here;
   <div class="rec-main">
 
   {/* Every visit's panel, outside the sections so it opens from the Timeline and from Visits alike. */}
-  <VisitPanels visits={data.fullVisits} slug={clinic.slug} patientId={patient.id} canEdit={canEdit} money={money} open={openVisit} today={today} firstName={patient.first_name} />
+  <VisitPanels visits={data.fullVisits} slug={clinic.slug} patientId={patient.id} canEdit={canEdit} money={money} open={thisVisit && openVisit === thisVisit.id ? null : openVisit} today={today} firstName={patient.first_name} />
+
+  {/* Today's visit, above the sections: what is still to do at it and what is done (036). */}
+  {thisVisit && (
+    <VisitStrip visit={thisVisit} c={clin} x={ext} signed={data.signed} health={latest} privacy={privacyState} minor={minor} laterVisitAt={laterVisitAt}
+      canEdit={canEdit} money={money} today={today} firstName={patient.first_name} action={here} chargeHref={`${chargeHref}&visit=${thisVisit.id}`} printBase={`${here}rx/`}
+      saved={saved} problem={stripProblem} />
+  )}
 
   <!-- Overview -->
   <div id="rec-overview" role="tabpanel" aria-labelledby="rec-rec-overview-tab" hidden={current !== 'overview'} class="min-w-0 grid items-start gap-4 max-md:gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] content-start hue-teal" data-rec-panel="overview">
@@ -841,7 +888,7 @@ const recHere = here;
   <!-- Health -->
   <div id="rec-health" role="tabpanel" aria-labelledby="rec-rec-health-tab" hidden={current !== 'health'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-rose" data-rec-panel="health">
     <Banner id="health" label={SECTION_LABEL.health} />
-    <Vitals vitals={ext.vitals} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} firstName={patient.first_name} />
+    <Vitals vitals={ext.vitals} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'vitals'} />
     <Pane as="section" label="Health" id="health">
       <Head icon="heart" title="Health" />
       <p class="-mt-2 text-[14px] text-muted">
@@ -871,6 +918,7 @@ const recHere = here;
           <input type="hidden" name="intent" value="health" />
           <input type="hidden" name="base" value={base} />
           <input type="hidden" name="birth_was" value={birthWas} />
+          {thisVisit && <input type="hidden" name="visit" value={thisVisit.id} />}
 
           <div class="field border-b border-[var(--ws-hair)] pb-5">
             <label for="birth_date" class="meta">Birth date</label>
@@ -963,7 +1011,7 @@ const recHere = here;
   <!-- Treatment -->
   <div id="rec-treatment" role="tabpanel" aria-labelledby="rec-rec-treatment-tab" hidden={current !== 'treatment'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="treatment">
     <Banner id="treatment" label={SECTION_LABEL.treatment} />
-    <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} />
+    <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'done'} />
     <div class="mt-4 grid gap-4 max-md:mt-3 max-md:gap-3">
       <Loas loas={ext.loas} plan={clin.plan} payors={ext.hmoPayors} hmoName={patient.hmo_name} memberNo={patient.hmo_member_no} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} settingsHref={`/c/${clinic.slug}/settings/`} />
       <PayPlans plans={ext.plans} canEdit={canEdit} canBill={money} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} financesBase={links.finances} />
@@ -973,13 +1021,13 @@ const recHere = here;
   <!-- Notes -->
   <div id="rec-notes" role="tabpanel" aria-labelledby="rec-rec-notes-tab" hidden={current !== 'notes'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="notes">
     <Banner id="notes" label={SECTION_LABEL.notes} />
-    <Notes c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} />
+    <Notes c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'note'} />
   </div>
 
   <!-- Prescriptions -->
   <div id="rec-rx" role="tabpanel" aria-labelledby="rec-rec-rx-tab" hidden={current !== 'rx'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="rx">
     <Banner id="rx" label={SECTION_LABEL.rx} />
-    <Prescriptions c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} firstName={patient.first_name} printBase={`${here}rx/`} allergies={allergies} typedRows={rxTyped} />
+    <Prescriptions c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} firstName={patient.first_name} printBase={`${here}rx/`} allergies={allergies} typedRows={rxTyped} visitId={thisVisit?.id ?? null} openNow={openNow === 'rx'} />
     <div class="mt-4 max-md:mt-3">
       <Letters letters={ext.letters} clinicians={clin.clinicians} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} printBase={`${here}letters/`} lastVisit={lastVisit ? manilaDay(lastVisit.starts_at) : null} conditions={conditions} />
     </div>
@@ -988,7 +1036,7 @@ const recHere = here;
   <!-- Files -->
   <div id="rec-files" role="tabpanel" aria-labelledby="rec-rec-files-tab" hidden={current !== 'files'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="files">
     <Banner id="files" label={SECTION_LABEL.files} />
-    <Files c={clin} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} fileBase={`${here}files/`} />
+    <Files c={clin} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} fileBase={`${here}files/`} visitId={thisVisit?.id ?? null} openNow={openNow === 'file'} />
   </div>
 
   <!-- Visits -->

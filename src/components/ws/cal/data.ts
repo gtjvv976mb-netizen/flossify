@@ -56,13 +56,33 @@ const TEETH = '^[[:space:]]+#?[0-9][0-9[:space:],&/#-]*$';
 const BASE = `a.id, a.patient_id, concat_ws(' ', p.first_name, nullif(p.last_name, '—')) as patient_name, p.chart_no,
        coalesce(nullif(a.booked_by_phone, ''), p.phone) as phone,
        a.dentist_id, s.full_name as dentist_name, a.chair, a.starts_at, a.ends_at, a.reason, a.status, a.source, a.public_ref, a.notes,
+       a.arrived_at, a.seated_at,
        mh.allergies`;
-const EXTRA = `coalesce(pc.id, pr.id) as catalog_id, coalesce(pc.name, pr.name) as service,
+// The extras (model.ts Extras): the service and its price, who booked, the patient's alerts — and, since 036,
+// what the desk and the chair need at the moment of decision: whether the history was asked and when, blood
+// pressure on the visit's day, a consent signed for this visit, a lab case or a medical clearance still out,
+// treatments done at the visit with no statement line yet, the visit's statement, the open recall, and the
+// patient's next visit after this one. Each is one small subselect; a day has a few dozen cards.
+const MANILA_DAY = (col: string) => `(${col} at time zone 'Asia/Manila')::date`;
+const EXTRA = `coalesce(pc.id, pr.id) as catalog_id, coalesce(pc.name, pr.name) as service, coalesce(pc.code, pr.code) as catalog_code,
        coalesce(pc.default_price, pr.default_price) as price_min, coalesce(pc.price_max, pr.price_max) as price_max,
        coalesce(pc.price_from, pr.price_from) as price_from, coalesce(pc.unit, pr.unit) as price_unit,
        a.created_at, cb.full_name as created_by_name, a.booked_by_name, a.moved_at, a.hmo_id,
        mh.conditions, to_char(p.birth_date, 'YYYY-MM-DD') as birth, a.date_only, a.dentist_name as dentist_free,
-       ${PATIENT_HMO} as patient_hmo, nullif(nullif(btrim(p.last_name), '—'), '') as last_name`;
+       ${PATIENT_HMO} as patient_hmo, nullif(nullif(btrim(p.last_name), '—'), '') as last_name,
+       mh.answered_at as health_asked_at,
+       exists (select 1 from vital_sign v where v.patient_id = p.id and ${MANILA_DAY('v.taken_at')} = ${MANILA_DAY('a.starts_at')}) as bp_on_day,
+       exists (select 1 from visit_consent vc where vc.appointment_id = a.id) as consent_signed,
+       exists (select 1 from lab_order lo where lo.patient_id = p.id and lo.status in ('ordered', 'sent')) as lab_pending,
+       exists (select 1 from clinical_letter cl where cl.patient_id = p.id and cl.kind = 'clearance' and cl.answer is null) as clearance_waiting,
+       (select count(*) from procedure_done d
+         where d.patient_id = p.id
+           and (d.appointment_id = a.id or (d.appointment_id is null and ${MANILA_DAY('d.performed_at')} = ${MANILA_DAY('a.starts_at')}))
+           and not exists (select 1 from invoice_line l where l.procedure_id = d.id))::int as unbilled,
+       st.id as statement_id, st.series_prefix as statement_prefix, st.number as statement_number, st.status as statement_status,
+       (select to_char(r.due_on, 'YYYY-MM-DD') from recall r where r.patient_id = p.id and r.completed_at is null order by r.due_on limit 1) as recall_due,
+       (select min(x.starts_at) from appointment x
+         where x.patient_id = p.id and x.id <> a.id and x.starts_at > a.ends_at and x.status not in ('cancelled', 'no_show', 'completed')) as next_visit_at`;
 const FROM = `
   from appointment a
   join patient p on p.id = a.patient_id
@@ -70,7 +90,7 @@ const FROM = `
   left join staff cb on cb.id = a.created_by
   left join procedure_catalog pc on pc.id = a.catalog_id
   left join lateral (
-    select x.id, x.name, x.default_price, x.price_max, x.price_from, x.unit from procedure_catalog x
+    select x.id, x.code, x.name, x.default_price, x.price_max, x.price_from, x.unit from procedure_catalog x
      cross join lateral (values (btrim(a.reason))) r(t)
      where a.catalog_id is null and a.reason is not null and x.active
        and (lower(r.t) = lower(x.name) or lower(r.t) = lower(x.code)
@@ -79,7 +99,10 @@ const FROM = `
      order by lower(r.t) = lower(x.name) desc, lower(r.t) = lower(x.code) desc, char_length(x.name) desc, x.name
      limit 1) pr on true
   left join lateral (
-    select h.allergies, h.conditions from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) mh on true`;
+    select h.allergies, h.conditions, h.answered_at from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) mh on true
+  left join lateral (
+    select i.id, i.series_prefix, i.number, i.status from invoice i
+     where i.appointment_id = a.id and i.status <> 'void' order by i.issued_at desc limit 1) st on true`;
 
 type Row = Record<string, any>;
 
@@ -101,6 +124,16 @@ function extrasOf(r: Row): Extras {
     dateOnly: r.date_only === true,
     dentistFree: (r.dentist_free as string | null)?.trim() || null,
     lastName: (r.last_name as string | null) ?? null,
+    catalogCode: (r.catalog_code as string | null) ?? null,
+    healthAskedAt: iso(r.health_asked_at),
+    bpOnDay: r.bp_on_day === true,
+    consentSigned: r.consent_signed === true,
+    labPending: r.lab_pending === true,
+    clearanceWaiting: r.clearance_waiting === true,
+    unbilled: Number(r.unbilled ?? 0),
+    statement: r.statement_id ? { id: r.statement_id as string, no: `${r.statement_prefix}-${String(r.statement_number).padStart(6, '0')}`, status: r.statement_status as string } : null,
+    recallDue: (r.recall_due as string | null) ?? null,
+    nextVisitAt: iso(r.next_visit_at),
   };
 }
 /** A visit and its extras as one card. A visit brought in from old records may name a dentist who is not on

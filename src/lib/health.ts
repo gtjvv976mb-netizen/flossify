@@ -350,6 +350,27 @@ export async function saveHealth(tx: Tx, a: {
   return { kind: 'saved', answers: answersChanged || checked, birth: birthChanged };
 }
 
+/**
+ * "No change since <date>": the desk asked the patient at this visit and the health history still holds
+ * (036, the record's This visit strip). Writes a new version that copies the latest answers under the
+ * person who asked — the same row a Save with nothing changed writes — so the history shows when it was
+ * last checked, and a history over a year old stops being flagged. Nothing to copy (never asked) is
+ * 'none'; a version already saved today is 'today', so a second press writes nothing.
+ */
+export async function recheckHealth(tx: Tx, a: { clinicId: string; staffId: string; patientId: string }): Promise<'none' | 'today' | 'saved'> {
+  const here = (await tx.query('select 1 from patient where id = $1 and archived_at is null', [a.patientId])).rowCount;
+  if (!here) return 'none';
+  const latest = (await readHealth(tx, a.patientId, 1)).versions[0] ?? null;
+  if (!latest || !answered(latest)) return 'none';
+  if (manilaToday(new Date(latest.at)) === manilaToday()) return 'today';
+  await tx.query(
+    `insert into medical_history (clinic_id, patient_id, answered_by, recorded_by, allergies, conditions, medications, note, answers)
+     values ($1, $2, 'staff', $3, $4, $5, $6, $7, '{}'::jsonb)`,
+    [a.clinicId, a.patientId, a.staffId, latest.allergies, latest.conditions, latest.medications, latest.note]);
+  await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'health.checked', 'patient', $3)`, [a.clinicId, a.staffId, a.patientId]);
+  return 'saved';
+}
+
 export interface NoticeInForce { id: string; title: string; summary: string; effective: string }
 
 /** The privacy notice in force (012's definer function), or null when none is yet. */

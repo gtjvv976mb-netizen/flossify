@@ -15,8 +15,9 @@ import { bpWords, pulseWords, type Vital } from '../../../../../lib/record-extra
 import type { RecordProblem } from '../../../../../lib/record';
 import { when } from '../../../../../lib/health';
 
-interface Props { vitals: Vital[]; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; firstName: string }
-const { vitals, canEdit, action, problem, saved, firstName } = Astro.props;
+/** visitId: today's visit (036) — the reading is written against it. openNow: the page opens the panel as it loads (?open=vitals). */
+interface Props { vitals: Vital[]; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; firstName: string; visitId?: string | null; openNow?: boolean }
+const { vitals, canEdit, action, problem, saved, firstName, visitId = null, openNow = false } = Astro.props;
 const latest = vitals[0] ?? null;
 const w = latest?.sys && latest?.dia ? bpWords(latest.sys, latest.dia) : null;
 const v = problem?.intent === 'vitals-add' ? problem.values : ({} as Record<string, string>);
@@ -53,10 +54,11 @@ const recent = vitals.slice(1, 6);
 </Pane>
 
 {canEdit && (
-  <SidePanel id="rec-vitals-add" title="Take a reading" meta={firstName} open={problem?.intent === 'vitals-add'}>
+  <SidePanel id="rec-vitals-add" title="Take a reading" meta={firstName} open={problem?.intent === 'vitals-add' || openNow}>
     {problem?.intent === 'vitals-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
     <form method="post" action={`${action}#vitals`} class="grid gap-4">
       <Csrf /><input type="hidden" name="intent" value="vitals-add" />
+      {visitId && <input type="hidden" name="visit" value={visitId} />}
       <fieldset class="min-w-0">
         <legend class="mb-2 text-[14px] font-medium text-ink-2">Blood pressure (mmHg)</legend>
         <div class="vt-bp">

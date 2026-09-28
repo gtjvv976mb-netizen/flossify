@@ -27,12 +27,14 @@ export interface Boot {
   /** May book, move and check in visits (can(ws, 'schedule.edit')). Without it the calendar is to look at:
    *  nothing drags, New opens nothing, and a change is refused here with the server's own sentence. */
   canSchedule: boolean;
+  /** May text patients (can(ws, 'messages.send')): "Text the patient" is offered only then. */
+  canText: boolean;
   chairs: number; hours: Record<number, [number, number] | null>; staff: StaffDay[]; catalog: Service[];
   next: Record<string, string[]>;
   cards: Card[]; todayCards: Card[]; toPlace: Card[]; toConfirm: Card[];
   /** Every patient, packed (model.ts, PT_KEYS); patients.ts unpacks it. */
   patients: PackedPts;
-  links: { record: string; charge: string; messages: string; addPatient: string; importPatients: string };
+  links: { record: string; charge: string; finances: string; messages: string; addPatient: string; importPatients: string };
   open: { new: boolean; patient: string | null; booking: string | null };
   pf: string; pq: string;
 }
@@ -155,19 +157,23 @@ function start(boot: Boot) {
     }
   }
   let loadSeq = 0;
+  /** One range straight from the server, past the cache: the cards, or null when it could not be reached. */
+  async function fetchRaw(from: number, to: number): Promise<Card[] | null> {
+    try {
+      const q = new URLSearchParams({ clinic: boot.slug, from: new Date(from).toISOString(), to: new Date(to).toISOString() });
+      const res = await fetch(`/api/schedule?${q}`, { credentials: 'same-origin', headers: { accept: 'application/json' } });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return Array.isArray(data?.appointments) ? (data.appointments as Card[]) : null;
+    } catch { return null; }
+  }
   async function fetchRange(date: string, view: View): Promise<Card[] | null> {
     const r = rangeOf(date, view), key = `${r.from}|${r.to}`;
     const hit = cache.get(key);
     if (hit) return hit;
-    try {
-      const q = new URLSearchParams({ clinic: boot.slug, from: new Date(r.from).toISOString(), to: new Date(r.to).toISOString() });
-      const res = await fetch(`/api/schedule?${q}`, { credentials: 'same-origin', headers: { accept: 'application/json' } });
-      if (!res.ok) return null;
-      const data = await res.json();
-      const list = Array.isArray(data?.appointments) ? (data.appointments as Card[]) : null;
-      if (list) { cache.set(key, list); if (cache.size > 12) cache.delete(cache.keys().next().value as string); }
-      return list;
-    } catch { return null; }
+    const list = await fetchRaw(r.from, r.to);
+    if (list) { cache.set(key, list); if (cache.size > 12) cache.delete(cache.keys().next().value as string); }
+    return list;
   }
 
   // --- the messages under the bar -----------------------------------------------------------------
@@ -311,15 +317,24 @@ function start(boot: Boot) {
       b.append(top, who, statusEl);
     } else {
       top.append(statusEl);
+      // On the bench: how long, beside the status. tickNow keeps it current; past the alert the words go amber.
+      const w = M.waitMinutes(c);
+      if (w !== null) {
+        const wait = el('span', 'cal-card-wait', `Waiting ${w} min`);
+        wait.dataset.waitFor = c.id;
+        if (w >= M.WAIT_ALERT_MIN) wait.dataset.over = '';
+        top.append(wait);
+      }
       b.append(top, who, what, how);
     }
 
+    const waited = M.waitMinutes(c);
     const label = [
       o.undated ? `${M.dayLabel(M.manila(c.startsAt).ymd, 'long')}, no time on record` : o.static ? M.whenOf(c.startsAt) : M.span(startMin, startMin + dur),
       `${c.patientName}, chart ${c.chartNo}`,
       serviceOf(c), price && `fee guide ${price}`,
       c.dentistName ?? 'any dentist', c.chair === null ? 'no chair' : `chair ${c.chair}`,
-      word, allergy && `allergy: ${allergy}`, c.conditions && `alert: ${c.conditions}`, M.sourceLine(c),
+      word, waited !== null && `waiting ${waited} minutes`, allergy && `allergy: ${allergy}`, c.conditions && `alert: ${c.conditions}`, M.sourceLine(c),
     ].filter(Boolean).join(', ');
     b.setAttribute('aria-label', label);
     return b;
@@ -503,8 +518,65 @@ function start(boot: Boot) {
     const show = (S.view === 'day' ? S.date === boot.today : rangeOf(S.date, 'week').from <= t0 && t0 < rangeOf(S.date, 'week').to) && m >= geo.start && m <= geo.end;
     for (const l of lines) { l.hidden = !show; l.style.setProperty('--s', String(m - geo.start)); }
     if (label) { label.hidden = !show; label.style.setProperty('--s', String(m - geo.start)); label.textContent = M.hm(m).replace(' ', ''); }
+    // The minutes on the bench move with the clock: the cards' words, and the Waiting tile's note.
+    let waiting = false;
+    for (const w of $$<HTMLElement>('[data-wait-for]')) {
+      const c = S.cards.get(w.dataset.waitFor!) ?? S.today.get(w.dataset.waitFor!);
+      const mins = c ? M.waitMinutes(c, now) : null;
+      if (mins === null) continue;
+      waiting = true;
+      w.textContent = `Waiting ${mins} min`;
+      if (mins >= M.WAIT_ALERT_MIN) w.dataset.over = ''; else delete w.dataset.over;
+    }
+    if (waiting || [...S.today.values()].some((c) => M.waitMinutes(c, now) !== null)) renderTiles();
   }
   window.setInterval(() => { if (!S.dragging) tickNow(); }, 30_000);
+
+  // --- the live board (036) ----------------------------------------------------------------------------
+  // Every 30 s while this tab is visible, today's visits (and the range on screen, when that is another day)
+  // are fetched again, and any visit that changed on another screen — the front desk pressed Arrived, the
+  // tablet pressed Done — is absorbed and flashed, so the desk PC and the operatory tablet agree without a
+  // reload. Not while a card is being dragged; the open visit panel is refilled unless its move form is open.
+  const LIVE_KEYS: (keyof Card)[] = ['status', 'chair', 'startsAt', 'endsAt', 'dentistId', 'arrivedAt', 'seatedAt', 'reason', 'notes',
+    'healthAskedAt', 'bpOnDay', 'consentSigned', 'labPending', 'clearanceWaiting', 'unbilled', 'recallDue', 'nextVisitAt'];
+  const differs = (a: Card, b: Card) => LIVE_KEYS.some((k) => a[k] !== b[k])
+    || (a.statement?.id ?? null) !== (b.statement?.id ?? null) || (a.statement?.status ?? null) !== (b.statement?.status ?? null);
+  const liveLine = $('[data-cal-live]');
+  let refreshing = false;
+  async function refresh() {
+    if (refreshing || S.dragging || document.visibilityState !== 'visible' || navigator.onLine === false) return;
+    refreshing = true;
+    try {
+      const ranges = [rangeOf(boot.today, 'day')];
+      const shown = rangeOf(S.date, S.view);
+      if (shown.from !== ranges[0].from || shown.to !== ranges[0].to) ranges.push(shown);
+      for (const rg of ranges) {
+        const got = await fetchRaw(rg.from, rg.to);
+        if (!got) return;
+        cache.set(`${rg.from}|${rg.to}`, got);
+        const seen = new Set<string>();
+        const moveOpen = !!document.querySelector('dialog[open] [data-vp-move]:not([hidden])');
+        for (const c of got) {
+          seen.add(c.id);
+          const old = S.cards.get(c.id) ?? S.today.get(c.id) ?? S.lane.get(c.id);
+          if (old && !differs(old, c)) continue;
+          absorb(c);
+          if (old && old.status !== c.status) {
+            flash(c.id);
+            if (liveLine) liveLine.textContent = `${c.patientName}: ${M.statusWord(c.status).toLowerCase()}, ${M.timeOf(new Date().toISOString())}`;
+          }
+          if (panels.visitOpen() === c.id && !moveOpen) panels.openVisit(c.id, null);
+        }
+        // A visit no longer in the range (cancelled, or moved to another day) leaves the board.
+        for (const old of [...S.cards.values(), ...S.today.values()]) {
+          if (!seen.has(old.id) && !M.isRequest(old) && Date.parse(old.startsAt) < rg.to && Date.parse(old.endsAt) > rg.from) absorb({ ...old, status: 'cancelled' });
+        }
+      }
+    } finally { refreshing = false; }
+  }
+  window.setInterval(() => void refresh(), 30_000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void refresh(); });
+  window.addEventListener('online', () => void refresh());
 
   /** One short line beside the view switch: how full the day is and where the next free half hour is. */
   function renderCount() {

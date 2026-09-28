@@ -16,8 +16,9 @@ import Who from './Who.astro';
 import { FILE_KINDS, type Clinical, type RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
 
-interface Props { c: Clinical; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; fileBase: string }
-const { c, canEdit, action, problem, saved, today, firstName, fileBase } = Astro.props;
+/** visitId: today's visit (036) — files added are written against it. openNow: the page opens Add files as it loads (?open=file). */
+interface Props { c: Clinical; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; fileBase: string; visitId?: string | null; openNow?: boolean }
+const { c, canEdit, action, problem, saved, today, firstName, fileBase, visitId = null, openNow = false } = Astro.props;
 
 const GROUP: Record<string, 'xray' | 'photo' | 'doc'> = { xray_periapical: 'xray', xray_bitewing: 'xray', xray_panoramic: 'xray', cbct: 'xray', photo_intraoral: 'photo', photo_extraoral: 'photo', document: 'doc', other: 'doc' };
 const FILTERS = [{ id: 'all', label: 'All' }, { id: 'xray', label: 'X-rays' }, { id: 'photo', label: 'Photos' }, { id: 'doc', label: 'Documents' }]
@@ -87,10 +88,11 @@ const help = 'text-[13px] leading-snug text-ink-2';
 </div>
 
 {canEdit && (
-  <SidePanel id="rec-file-add" title="Add files" meta={firstName} wide open={problem?.intent === 'file-add'}>
+  <SidePanel id="rec-file-add" title="Add files" meta={firstName} wide open={problem?.intent === 'file-add' || openNow}>
     {problem?.intent === 'file-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was added; choose the files again.`} />}
     <form method="post" action={`${action}#files`} enctype="multipart/form-data" class="grid gap-5" data-fl-form>
       <Csrf /><input type="hidden" name="intent" value="file-add" />
+      {visitId && <input type="hidden" name="visit" value={visitId} />}
       <label class="fl-drop" data-fl-drop>
         <Icon name="upload" size={28} />
         <strong>Drop files here, or choose them</strong>

@@ -32,6 +32,12 @@ const { chairs } = Astro.props;
 
   <p role="alert" class="ws-callout vp-say" data-tone="alert" data-vp-error hidden></p>
   <p role="status" class="ws-callout vp-say" data-tone="success" data-vp-said hidden></p>
+  {/* Before we start (a visit today, not yet done) or Before they leave (a visit done): only what is missing, each
+      line a word and its one action (panels.ts fills it; 036). */}
+  <section class="vp-check" data-vp-check hidden aria-labelledby="vp-check-h">
+    <h3 id="vp-check-h" class="vp-check-h" data-vp-check-title>Before we start</h3>
+    <ul data-vp-check-list></ul>
+  </section>
   <div class="ws-callout vp-ask" data-tone="alert" data-vp-ask hidden>
     <Icon name="alert" />
     <div class="min-w-0">

@@ -1,0 +1,169 @@
+---
+// This visit (036): the card at the top of the record while the patient is in today — booked, arrived,
+// waiting, in the chair or just done. It is the visit's checklist, in the order a visit runs: before we
+// start (the health history checked, blood pressure, the consent signed on the tablet), during (what was
+// done to which tooth, the dentist's note), before they leave (the next check-up, the charge). Only what is
+// still missing is a line, each with the one thing to press; what is done is one row of pills; nothing
+// missing says so. It stands above the sections, so it stays in view whichever one is open.
+//
+// Every write it starts carries the visit's id in a hidden `visit` field (the panels' forms take a
+// visitId), so a reading, a note, a treatment, a prescription or a file taken now names this visit on the
+// Timeline instead of being matched to it by the day later. "No change" (intent health-checked) copies the
+// health history under the person who asked, so "last checked" moves to today.
+//
+// What belongs to the visit: anything stamped with its id, or written today with no visit on it (the
+// desk's old habit). The same rule the Timeline uses (src/lib/visit-record.ts), for today only.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Callout from '../_ui/Callout.astro';
+import Glyph from '../_ui/Glyph.astro';
+import Who from './Who.astro';
+import { answered, dateText, type HealthVersion } from '../../../../../lib/health';
+import { bpWords, type Extra } from '../../../../../lib/record-extra';
+import type { Clinical } from '../../../../../lib/record';
+import type { VisitConsent } from '../../../../../lib/visit-consent';
+import { VISIT_STATUS, type StripVisit } from '../../../../../lib/visit-record';
+import { fromDb, pesos } from '../../../../../lib/invoices';
+
+interface Props {
+  visit: StripVisit;
+  c: Clinical;
+  x: Extra;
+  signed: VisitConsent[];
+  /** The newest health history version on file, or null. */
+  health: HealthVersion | null;
+  /** The privacy notice: agreed and in force (or none in force), or the words for what is missing. */
+  privacy: { ok: boolean; words: string };
+  /** Under 18 by the birth date on file: a parent or guardian signs. */
+  minor: boolean;
+  /** A visit already booked after this one, or null. */
+  laterVisitAt: Date | null;
+  canEdit: boolean;
+  money: boolean;
+  today: string;
+  firstName: string;
+  /** The record's URL: the forms post here. */
+  action: string;
+  chargeHref: string;
+  printBase: string;
+  saved: string | null;
+  problem: string | null;
+}
+const { visit, c, x, signed, health, privacy, minor, laterVisitAt, canEdit, money, today, firstName, action, chargeHref, printBase, saved, problem } = Astro.props;
+
+const tz = 'Asia/Manila';
+const dayOf = (d: Date | string) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(d));
+const time = (d: Date | string) => new Intl.DateTimeFormat('en-PH', { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(new Date(d)).toLowerCase();
+/** Belongs to this visit: stamped with it, or written today with no visit named. */
+const ofVisit = (id: string | null, at: Date | string) => id === visit.id || (!id && dayOf(at) === today);
+
+const done = c.done.filter((d) => ofVisit(d.visitId, d.at));
+const notes = c.notes.filter((n) => !n.amends && (n.visitId === visit.id || (!n.visitId && n.visitOn === today)));
+const rx = c.rx.filter((r) => ofVisit(r.visitId, r.at));
+const files = c.files.filter((f) => f.visitId === visit.id || (!f.visitId && (f.takenAt ?? dayOf(f.at)) === today));
+const bp = x.vitals.find((v) => v.sys && v.dia && ofVisit(v.visitId, v.at)) ?? null;
+const bpW = bp ? bpWords(bp.sys!, bp.dia!) : null;
+const consent = signed.find((k) => k.visitId === visit.id) ?? null;
+const planOpen = c.plan.filter((i) => i.status === 'planned' || i.status === 'accepted').length;
+
+const asked = !!health && answered(health);
+const checkedDay = asked ? dayOf(health!.at) : null;
+const stale = !!checkedDay && Date.now() - +new Date(health!.at) > 365 * 864e5;
+
+const started = visit.status === 'in_chair' || visit.status === 'completed';
+const finished = visit.status === 'completed';
+const s = VISIT_STATUS[visit.status] ?? null;
+const meta = [time(visit.startsAt), visit.dentist ?? 'Any dentist', visit.reason, visit.chair ? `Chair ${visit.chair}` : null].filter(Boolean).join(' · ');
+
+type Tone = 'plain' | 'warn' | 'alert';
+interface Act { label: string; href?: string; open?: string; show?: string; go?: string; form?: string; amends?: boolean }
+interface Line { tone: Tone; words: string; acts: Act[] }
+const lines: Line[] = [];
+const ok: { words: string; href?: string; go?: string }[] = [];
+
+// Before we start.
+if (!asked) lines.push({ tone: 'warn', words: 'Health history: not asked yet', acts: canEdit ? [{ label: 'Ask now', go: 'health' }] : [] });
+else if (checkedDay === today) ok.push({ words: 'Health history checked', go: 'health' });
+else lines.push({ tone: stale ? 'warn' : 'plain', words: `Health history: last checked ${dateText(checkedDay)}${stale ? ', over a year ago' : ''}`, acts: canEdit ? [{ label: 'No change', form: 'health-checked' }, { label: 'Something changed', go: 'health' }] : [] });
+if (bp && bpW) {
+  if (bpW.tone === 'neutral') ok.push({ words: `BP ${bp.sys}/${bp.dia} · ${bpW.label.toLowerCase()}`, go: 'health' });
+  else lines.push({ tone: bpW.tone === 'alert' ? 'alert' : 'warn', words: `Blood pressure ${bp.sys}/${bp.dia}: ${bpW.label.toLowerCase()}`, acts: canEdit ? [{ label: 'Take again', open: 'rec-vitals-add', show: 'health' }, { label: 'What to do', go: 'health' }] : [{ label: 'What to do', go: 'health' }] });
+} else if (!finished) lines.push({ tone: 'plain', words: 'Blood pressure: not taken', acts: canEdit ? [{ label: 'Take it', open: 'rec-vitals-add', show: 'health' }] : [] });
+if (consent) ok.push({ words: `Consent signed by ${consent.signedBy}, ${time(consent.at)}`, go: 'consent' });
+// Signing on the tablet is for a visit going ahead (canSign); once the visit is done, the record can only say so.
+else if (finished) lines.push({ tone: 'warn', words: 'Consent to treatment: not signed at this visit', acts: [{ label: 'Consent', go: 'consent' }] });
+else lines.push({ tone: 'warn', words: `Consent to treatment: not signed${minor ? ' (a parent or guardian signs)' : ''}`, acts: canEdit ? [{ label: 'Sign on this tablet', href: `${action}sign/${visit.id}/` }] : [] });
+if (!privacy.ok) lines.push({ tone: 'warn', words: privacy.words, acts: canEdit ? [{ label: 'Record it', go: 'consent' }] : [] });
+
+// During the visit.
+for (const d of done) ok.push({ words: `${d.name}${d.fdi ? ` · ${d.fdi}${d.surface ? ` ${d.surface}` : ''}` : ''}`, go: 'treatment' });
+if (started && !done.length) lines.push({ tone: 'plain', words: `Treatment done: nothing recorded yet${planOpen ? ` · ${planOpen} on the plan` : ''}`, acts: canEdit ? [{ label: 'Record it', open: 'rec-done-add', show: 'treatment' }, ...(planOpen ? [{ label: 'The plan', go: 'treatment' }] : [])] : [] });
+if (notes.length) ok.push({ words: `Note by ${notes[0].dentist ?? notes[0].by ?? 'the dentist'}, ${time(notes[0].at)}`, go: 'notes' });
+else if (started) lines.push({ tone: 'plain', words: 'Clinical note: none yet', acts: canEdit ? [{ label: 'Write it', open: 'rec-note-add', show: 'notes', amends: true }] : [] });
+for (const r of rx) ok.push({ words: `Prescription · Print`, href: `${printBase}${r.id}/` });
+if (files.length) ok.push({ words: files.length === 1 ? 'One file' : `${files.length} files`, go: 'files' });
+
+// Before they leave.
+if (finished || visit.status === 'in_chair') {
+  if (laterVisitAt) ok.push({ words: `Next visit ${dateText(dayOf(laterVisitAt))}`, go: 'visits' });
+  else if (c.recall) ok.push({ words: `Next check-up ${dateText(c.recall.dueOn)}`, href: '#recall' });
+  else lines.push({ tone: finished ? 'warn' : 'plain', words: 'Next check-up: not set', acts: canEdit ? [{ label: 'Set it', href: '#recall' }] : [] });
+}
+if (finished && money) {
+  if (visit.charged) ok.push({ words: `Charged ${pesos(fromDb(visit.charged))}`, go: 'money' });
+  else lines.push({ tone: 'warn', words: 'Not charged yet', acts: [{ label: 'Charge this visit', href: chargeHref }] });
+}
+
+const SAVED: Record<string, string> = { checked: `Health history checked with ${firstName}: no change.`, 'checked-today': 'The health history was already checked today.' };
+const TONE_ICON: Record<Tone, 'info' | 'alert'> = { plain: 'info', warn: 'alert', alert: 'alert' };
+---
+
+<Pane as="section" title="This visit" icon="calendar" meta={meta} id="this-visit" class="vs hue-teal">
+  <div slot="actions" class="vs-status">{s && <Chip status={visit.status} />}</div>
+  {saved && SAVED[saved] && <Callout tone="success" class="mb-3" text={SAVED[saved]} />}
+  {problem && <Callout tone="alert" class="mb-3" text={problem} />}
+  {lines.length > 0 ? (
+    <ul class="vs-list" aria-label="Still to do at this visit">
+      {lines.map((l) => (
+        <li class="vs-line" data-tone={l.tone}>
+          <Icon name={TONE_ICON[l.tone]} size={18} />
+          <span class="vs-words">{l.words}</span>
+          {l.acts.length > 0 && (
+            <div class="vs-acts">
+              {l.acts.map((a) =>
+                a.form ? (
+                  <form method="post" action={action}><Csrf /><input type="hidden" name="intent" value={a.form} /><input type="hidden" name="visit" value={visit.id} /><button class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="check" />{a.label}</button></form>
+                ) : a.href ? (
+                  <a href={a.href} class="ws-btn ws-btn-quiet ws-btn-sm">{a.label}</a>
+                ) : a.open ? (
+                  <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open={a.open} data-rec-show={a.show} data-amends={a.amends ? '' : undefined}>{a.label}</button>
+                ) : (
+                  <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go={a.go}>{a.label}</button>
+                ))}
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p class="vs-all"><Icon name="check" size={18} />{finished ? 'All done for this visit.' : started ? 'Nothing missing so far.' : `Ready to start: nothing missing for ${firstName}.`}</p>
+  )}
+  {ok.length > 0 && (
+    <p class="vs-done">
+      <span class="rk">Done</span>
+      {ok.map((o) => o.href ? <a href={o.href} class="rec-chip-go vs-go" target={o.href.startsWith('#') ? undefined : '_blank'} rel={o.href.startsWith('#') ? undefined : 'noopener'}><span class="rp rp-ok"><Icon name="check" size={14} />{o.words}</span></a>
+        : <button type="button" class="rec-chip-go vs-go" data-rec-go={o.go}><span class="rp rp-ok"><Icon name="check" size={14} />{o.words}</span></button>)}
+    </p>
+  )}
+  {canEdit && (
+    <p class="vs-also">
+      <span>Also for this visit:</span>
+      <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-rx-add" data-rec-show="rx"><Glyph name="pill" size={16} />Prescription</button>
+      <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-file-add" data-rec-show="files"><Glyph name="image" size={16} />X-ray or photo</button>
+      <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="chart"><Glyph name="tooth" size={16} />Chart</button>
+      {visit.dentist && <Who name={visit.dentist} class="vs-who" />}
+    </p>
+  )}
+</Pane>

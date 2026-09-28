@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import type { Tx } from './db';
 import { canEditRecords, manilaToday, oneLine } from './health';
 import { createStatement, payorOptions, type PayorOption } from './invoices';
-import type { Outcome, TimelineEvent } from './record';
+import { visitOf, type Outcome, type TimelineEvent } from './record';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -35,7 +35,7 @@ export { bpWords, pulseWords, type BpLevel, type BpWords } from './record-extra-
 
 
 // --- shapes ------------------------------------------------------------------------------------------
-export interface Vital { id: string; at: Date; sys: number | null; dia: number | null; pulse: number | null; note: string | null; by: string | null }
+export interface Vital { id: string; visitId: string | null; at: Date; sys: number | null; dia: number | null; pulse: number | null; note: string | null; by: string | null }
 export interface Letter {
   id: string; kind: 'certificate' | 'referral' | 'clearance'; dentist: string; dentistId: string; prc: string | null; issuedOn: string; seenOn: string | null;
   toName: string | null; toRole: string | null; purpose: string | null; diagnosis: string | null; treatment: string | null; restDays: number | null; body: string | null;
@@ -101,7 +101,7 @@ export async function loadExtra(tx: Tx, patientId: string, hmoNames: Map<string,
     payorOptions(tx, hmoNames),
   ]);
   return {
-    vitals: vitals.rows.map((r) => ({ id: r.id, at: r.taken_at, sys: r.systolic, dia: r.diastolic, pulse: r.pulse, note: r.note, by: r.full_name })),
+    vitals: vitals.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, at: r.taken_at, sys: r.systolic, dia: r.diastolic, pulse: r.pulse, note: r.note, by: r.full_name })),
     letters: letters.rows.map((r) => ({
       id: r.id, kind: r.kind, dentist: r.dentist, dentistId: r.dentist_id, prc: r.prc_licence, issuedOn: r.issued, seenOn: r.seen, toName: r.to_name, toRole: r.to_role,
       purpose: r.purpose, diagnosis: r.diagnosis, treatment: r.treatment, restDays: r.rest_days, body: r.body, answer: r.answer, answerNote: r.answer_note, answeredOn: r.answered,
@@ -182,8 +182,8 @@ export async function extraAction(tx: Tx, c: ExtraCtx, intent: string, form: For
       if (pulse !== null && (pulse < 20 || pulse > 250)) return fail('A pulse is between 20 and 250 beats a minute.');
       const note = line(form.get('note'), 300);
       if (note.length > 300) return fail('Keep the note under 300 characters.');
-      const { rows: [v] } = await tx.query(`insert into vital_sign (clinic_id, patient_id, systolic, diastolic, pulse, note, taken_by) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-        [c.clinicId, c.patientId, sys, dia, pulse, note || null, c.staffId]);
+      const { rows: [v] } = await tx.query(`insert into vital_sign (clinic_id, patient_id, systolic, diastolic, pulse, note, taken_by, appointment_id) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+        [c.clinicId, c.patientId, sys, dia, pulse, note || null, c.staffId, await visitOf(tx, form, c.patientId)]);
       await audit(tx, c, 'record.vitals_add', 'vital_sign', v.id);
       return done(sys !== null ? `vitals-${bpWords(sys, dia!).level}` : 'vitals');
     }

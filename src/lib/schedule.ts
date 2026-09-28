@@ -40,6 +40,10 @@ export type Appt = {
   notes: string | null;
   /** The latest medical history's allergies, joined with commas; null when none are recorded. */
   allergies: string | null;
+  /** When they arrived (Arrived or straight to the lobby) and when they were seated, ISO; null until then. The
+   *  queue reads "Waiting 12 min" from the first (036). */
+  arrivedAt: string | null;
+  seatedAt: string | null;
 };
 
 export type Range = {
@@ -102,6 +106,7 @@ const APPT_SELECT = `
   select a.id, a.patient_id, concat_ws(' ', p.first_name, nullif(p.last_name, '—')) as patient_name, p.chart_no,
          coalesce(nullif(a.booked_by_phone, ''), p.phone) as phone,
          a.dentist_id, s.full_name as dentist_name, a.chair, a.starts_at, a.ends_at, a.reason, a.status, a.source, a.public_ref, a.notes,
+         a.arrived_at, a.seated_at,
          (select h.allergies from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) as allergies
     from appointment a
     join patient p on p.id = a.patient_id
@@ -112,6 +117,7 @@ type ApptRow = {
   id: string; patient_id: string; patient_name: string; chart_no: string; phone: string | null;
   dentist_id: string | null; dentist_name: string | null; chair: number | null; starts_at: Date; ends_at: Date;
   reason: string | null; status: string; source: string; public_ref: string | null; notes: string | null; allergies: string[] | null;
+  arrived_at: Date | null; seated_at: Date | null;
 };
 
 export function rowToAppt(r: ApptRow): Appt {
@@ -121,6 +127,8 @@ export function rowToAppt(r: ApptRow): Appt {
     startsAt: new Date(r.starts_at).toISOString(), endsAt: new Date(r.ends_at).toISOString(),
     reason: r.reason ?? null, status: r.status, source: r.source, publicRef: r.public_ref ?? null, notes: r.notes ?? null,
     allergies: r.allergies?.length ? r.allergies.join(', ') : null,
+    arrivedAt: r.arrived_at ? new Date(r.arrived_at).toISOString() : null,
+    seatedAt: r.seated_at ? new Date(r.seated_at).toISOString() : null,
   };
 }
 
@@ -216,6 +224,18 @@ export async function applyStatus(tx: Tx, clinicId: string, staffId: string, id:
      where id = $1`, [id, to]);
   if (to === 'cancelled') {
     await tx.query(`update message_log set status = 'cancelled' where appointment_id = $1 and status = 'queued' and direction = 'out'`, [id]);
+  }
+  if (to === 'completed') {
+    // A visit that happened is the check-up it was due for: the open recall due within 60 days of it, either way,
+    // is closed (036). The Overview then offers the next one.
+    const r = await tx.query(
+      `update recall r set completed_at = now() from appointment a
+        where a.id = $1 and r.patient_id = a.patient_id and r.completed_at is null
+          and r.due_on between (a.starts_at at time zone 'Asia/Manila')::date - 60 and (a.starts_at at time zone 'Asia/Manila')::date + 60
+        returning r.id`, [id]);
+    for (const row of r.rows) {
+      await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'record.recall_done', 'recall', $3)`, [clinicId, staffId, row.id]);
+    }
   }
   await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'appointment', $4)`,
     [clinicId, staffId, `appointment.${to}`, id]);
