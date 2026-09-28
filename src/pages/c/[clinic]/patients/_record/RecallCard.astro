@@ -12,8 +12,9 @@ import Callout from '../_ui/Callout.astro';
 import { RECALL_REASONS, type Recall, type RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
 
-interface Props { recall: Recall | null; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; bookHref: string }
-const { recall, canEdit, action, problem, saved, today, firstName, bookHref } = Astro.props;
+/** texts: the clinic texts patients when a check-up is due (Clinic settings, 036). */
+interface Props { recall: Recall | null; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; bookHref: string; texts?: boolean }
+const { recall, canEdit, action, problem, saved, today, firstName, bookHref, texts = false } = Astro.props;
 
 const days = recall ? Math.round((Date.parse(`${recall.dueOn}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 864e5) : 0;
 const state = !recall ? null : days < 0 ? 'overdue' : days <= 14 ? 'due' : 'later';
@@ -36,7 +37,9 @@ const quick = (months: number, label: string) => ({ months, label });
       <p class="mt-1 flex flex-wrap items-center gap-2 text-[14.5px] text-ink-2">
         <Chip tone={state === 'overdue' ? 'alert' : state === 'due' ? 'warn' : 'neutral'} icon={state === 'later' ? undefined : 'alert'} label={inWords.charAt(0).toUpperCase() + inWords.slice(1)} />
         <span>{recall.reason}</span>
+        {recall.textedOn && <span class="rp"><Icon name="message" size={14} />Texted {dateText(recall.textedOn)}</span>}
       </p>
+      <p class="mt-2 text-[13.5px] text-ink-2">{texts ? 'When it is due, the patient is texted to call and book (Tuesday or Wednesday morning, once).' : 'Check-up texts are off for this clinic; the desk calls. The owner switches them on in Clinic settings.'}</p>
       {canEdit && (
         <div class="rc-when">
           {state !== 'later' && <a href={bookHref} class="ws-btn ws-btn-quiet"><Icon name="calendar" />Book it</a>}

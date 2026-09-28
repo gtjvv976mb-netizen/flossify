@@ -313,7 +313,7 @@ if (Astro.request.method === 'POST') {
 }
 
 const data = await withClinic(clinic.id, async (tx) => {
-  const me = (await tx.query('select area, notation from clinic where id = $1', [clinic.id])).rows[0];
+  const me = (await tx.query('select area, notation, recall_texts from clinic where id = $1', [clinic.id])).rows[0];
   const p = (await tx.query(
     `select p.id, p.chart_no, p.first_name, p.middle_name, p.last_name, p.suffix, p.sex, p.phone, p.email::text as email,
             p.address_line, p.city, p.province, p.hmo_name, p.hmo_member_no, p.emergency_name, p.emergency_relation, p.emergency_phone, p.notes,
@@ -581,7 +581,7 @@ const openCount = stmts.filter((s) => s.status === 'issued' || s.status === 'par
 const STMT_TINT: Record<string, string> = { paid: 'ws-tint-green', issued: 'ws-tint-red', partly_paid: 'ws-tint-amber' };
 
 // --- texts ---------------------------------------------------------------------
-const TEXT_KIND: Record<string, string> = { confirmation: 'Booking confirmation', reminder: 'Reminder', manual: 'Note', reply: 'Reply' };
+const TEXT_KIND: Record<string, string> = { confirmation: 'Booking confirmation', reminder: 'Reminder', manual: 'Note', reply: 'Reply', recall: 'Check-up due', aftercare: 'Aftercare' };
 const textStatus = (m: { direction: string; status: string }) =>
   m.direction === 'in' ? { label: 'Received', tone: 'accent' as const }
   : m.status === 'failed' ? { label: 'Failed', tone: 'alert' as const }
@@ -814,7 +814,7 @@ const recHere = here;
     </Pane>
     </div>
     <div class="grid content-start gap-4 max-md:gap-3">
-      <RecallCard recall={clin.recall} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} bookHref={bookHref} />
+      <RecallCard recall={clin.recall} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} bookHref={bookHref} texts={me.recall_texts === true} />
       <Pane as="section" label="Health, in short" class="hue-rose">
         <Head icon="heart" title="Health">
           <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="health">{canEdit ? 'Update' : 'Open'}</button>

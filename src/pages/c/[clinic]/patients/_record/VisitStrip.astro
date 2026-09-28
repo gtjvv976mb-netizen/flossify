@@ -24,8 +24,9 @@ import { answered, dateText, type HealthVersion } from '../../../../../lib/healt
 import { bpWords, type Extra } from '../../../../../lib/record-extra';
 import type { Clinical } from '../../../../../lib/record';
 import type { VisitConsent } from '../../../../../lib/visit-consent';
-import { VISIT_STATUS, type StripVisit } from '../../../../../lib/visit-record';
+import { VISIT_STATUS, canSign, type StripVisit } from '../../../../../lib/visit-record';
 import { fromDb, pesos } from '../../../../../lib/invoices';
+import { AFTERCARE, kindForCatalog } from '../../../../../lib/aftercare';
 
 interface Props {
   visit: StripVisit;
@@ -91,10 +92,11 @@ if (bp && bpW) {
   if (bpW.tone === 'neutral') ok.push({ words: `BP ${bp.sys}/${bp.dia} · ${bpW.label.toLowerCase()}`, go: 'health' });
   else lines.push({ tone: bpW.tone === 'alert' ? 'alert' : 'warn', words: `Blood pressure ${bp.sys}/${bp.dia}: ${bpW.label.toLowerCase()}`, acts: canEdit ? [{ label: 'Take again', open: 'rec-vitals-add', show: 'health' }, { label: 'What to do', go: 'health' }] : [{ label: 'What to do', go: 'health' }] });
 } else if (!finished) lines.push({ tone: 'plain', words: 'Blood pressure: not taken', acts: canEdit ? [{ label: 'Take it', open: 'rec-vitals-add', show: 'health' }] : [] });
+// Signing on the tablet is for a visit today or later (canSign, the same rule as the signing page): a visit done today
+// can still be signed while the patient is at the desk; a visit of an earlier day can only be said to be unsigned.
+const signable = canEdit && canSign({ id: visit.id, status: visit.status, day: dayOf(visit.startsAt) }, today);
 if (consent) ok.push({ words: `Consent signed by ${consent.signedBy}, ${time(consent.at)}`, go: 'consent' });
-// Signing on the tablet is for a visit going ahead (canSign); once the visit is done, the record can only say so.
-else if (finished) lines.push({ tone: 'warn', words: 'Consent to treatment: not signed at this visit', acts: [{ label: 'Consent', go: 'consent' }] });
-else lines.push({ tone: 'warn', words: `Consent to treatment: not signed${minor ? ' (a parent or guardian signs)' : ''}`, acts: canEdit ? [{ label: 'Sign on this tablet', href: `${action}sign/${visit.id}/` }] : [] });
+else lines.push({ tone: 'warn', words: `Consent to treatment: not signed${minor && signable ? ' (a parent or guardian signs)' : finished ? ' at this visit' : ''}`, acts: signable ? [{ label: 'Sign on this tablet', href: `${action}sign/${visit.id}/` }] : [{ label: 'Consent', go: 'consent' }] });
 if (!privacy.ok) lines.push({ tone: 'warn', words: privacy.words, acts: canEdit ? [{ label: 'Record it', go: 'consent' }] : [] });
 
 // During the visit.
@@ -103,6 +105,9 @@ if (started && !done.length) lines.push({ tone: 'plain', words: `Treatment done:
 if (notes.length) ok.push({ words: `Note by ${notes[0].dentist ?? notes[0].by ?? 'the dentist'}, ${time(notes[0].at)}`, go: 'notes' });
 else if (started) lines.push({ tone: 'plain', words: 'Clinical note: none yet', acts: canEdit ? [{ label: 'Write it', open: 'rec-note-add', show: 'notes', amends: true }] : [] });
 for (const r of rx) ok.push({ words: `Prescription · Print`, href: `${printBase}${r.id}/` });
+// The aftercare sheet for what was done (src/lib/aftercare.ts): printed for the patient to take home.
+const sheet = done.map((d) => kindForCatalog(d.code, d.name, d.category)).find((k) => k) ?? null;
+if (sheet) ok.push({ words: `Aftercare sheet: ${AFTERCARE[sheet].title} · Print`, href: `${action}aftercare/${sheet}/?visit=${visit.id}` });
 if (files.length) ok.push({ words: files.length === 1 ? 'One file' : `${files.length} files`, go: 'files' });
 
 // Before they leave.

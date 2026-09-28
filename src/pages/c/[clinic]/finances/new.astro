@@ -11,6 +11,14 @@
 // can raise within it). An id that is not this branch's patient or an active
 // fee guide row is simply left out.
 //
+// Charged from a visit (&visit=<appointment id>, 036): every treatment recorded
+// at that visit — stamped with it, or done that day with no visit named — that
+// no statement charges yet is a line, at the price the dentist recorded, with
+// the tooth in its words; the statement remembers the visit and each line the
+// treatment it charges, so the visit's panel and the Timeline know it is paid
+// for and nothing is charged twice. "Paid now" records the payment with the
+// statement in one transaction (a refused payment saves nothing).
+//
 // The desk, the owner, the admin and anyone with finance access here may
 // charge (canBill). Prices from the fee guide stay inside the guide's range;
 // anything else is a line of its own. The page's script adds lines and keeps
@@ -43,8 +51,8 @@ import { shellLinks } from '../../../../components/ws/routes';
 import { prettyPhone } from '../../../../lib/messages';
 import { hmos, CATEGORY_LABEL, type Category } from '../../../../data/directory';
 import {
-  feeGuide, payorOptions, priceRange, rangeText, saveStatement, parseMoney, discountOf, pesos, moneyField,
-  DISCOUNTS, UUID, ID_NO_MAX, LINES_MAX, NOT_BIR, type ChargeIn, type FeeRow,
+  feeGuide, payorOptions, priceRange, rangeText, saveStatement, recordPayment, parseMoney, discountOf, pesos, moneyField, fromDb,
+  DISCOUNTS, UUID, ID_NO_MAX, LINES_MAX, NOT_BIR, METHODS, PAYOR_METHODS, REF_LABEL, REF_MAX, type ChargeIn, type FeeRow,
 } from '../../../../lib/invoices';
 import { can } from '../../../../lib/can';
 
@@ -64,31 +72,63 @@ const data = await withClinic(clinic.id, async (tx) => ({
 }));
 const byId = new Map(data.guide.map((r) => [r.id, r]));
 
+// Charged from a visit: its treatments not yet on a statement, each a line (the fee guide's row when it is still
+// active, else the words alone), at the price the dentist recorded, the tooth in the words.
+const askedVisit = UUID.test(q.get('visit') ?? '') ? q.get('visit')! : '';
+const fromVisit = may && askedVisit ? await withClinic(clinic.id, async (tx) => {
+  const a = (await tx.query(`select id, patient_id from appointment where id = $1 and status not in ('cancelled', 'no_show')`, [askedVisit])).rows[0];
+  if (!a) return null;
+  const rows = (await tx.query(
+    `select d.id, d.catalog_id, coalesce(d.name, c.name, 'Treatment') as name, d.price, d.fdi, d.surface
+       from procedure_done d left join procedure_catalog c on c.id = d.catalog_id
+      where d.patient_id = $2
+        and (d.appointment_id = $1 or (d.appointment_id is null and (d.performed_at at time zone 'Asia/Manila')::date = (select (starts_at at time zone 'Asia/Manila')::date from appointment where id = $1)))
+        and not exists (select 1 from invoice_line l join invoice i on i.id = l.invoice_id where l.procedure_id = d.id and i.status <> 'void')
+      order by d.performed_at limit $3`, [a.id, a.patient_id, LINES_MAX])).rows;
+  return { id: a.id as string, patientId: a.patient_id as string, rows };
+}) : null;
+
 let problems: string[] = [];
 let draft: ChargeIn = {
-  patientId: UUID.test(q.get('patient') ?? '') ? q.get('patient')! : '',
-  // The Dashboard's Charge: each service= a line from the fee guide, at the guide's price.
-  lines: q.getAll('service').filter((id) => byId.has(id)).slice(0, LINES_MAX).map((id) => {
+  patientId: UUID.test(q.get('patient') ?? '') ? q.get('patient')! : fromVisit?.patientId ?? '',
+  // From a visit, its treatments; else the Dashboard's Charge: each service= a line from the fee guide, at the guide's
+  // price (with a visit that has nothing recorded at the chair yet, the service it was booked for).
+  lines: fromVisit?.rows.length ? fromVisit.rows.map((d) => ({
+    catalogId: byId.has(d.catalog_id) ? (d.catalog_id as string) : '',
+    desc: `${d.name}${d.fdi ? ` · tooth ${d.fdi}${d.surface ? ` ${d.surface}` : ''}` : ''}`,
+    qty: '1', price: moneyField(fromDb(d.price)), procedureId: d.id as string,
+  })) : q.getAll('service').filter((id) => byId.has(id)).slice(0, LINES_MAX).map((id) => {
     const r = byId.get(id)!;
     return { catalogId: r.id, desc: r.name, qty: '1', price: moneyField(priceRange(r).min) };
   }),
   discount: 'none', discountId: '', payor: '', payorShare: '', formKey: crypto.randomUUID(),
+  visitId: fromVisit?.id,
 };
+// Paid now (036): the payment taken with the statement. The amount follows the patient's part until it is typed.
+const payMethods = Object.entries(METHODS).filter(([k]) => !PAYOR_METHODS.has(k));
+let pay = { now: false, method: 'cash', amount: '', reference: '', key: crypto.randomUUID() };
+/** A payment the statement's own transaction refused: thrown so the statement rolls back with it. */
+class PayRefused extends Error { constructor(public problems: string[]) { super('payment refused'); } }
 
 if (Astro.request.method === 'POST' && may) {
   const f = await Astro.request.formData();
   if (!csrfOk(Astro.cookies, f)) return Astro.redirect(`${home}new/?stale=1`, 303);
   const all = (k: string) => f.getAll(k).map(String);
-  const cat = all('line_catalog'), desc = all('line_desc'), qty = all('line_qty'), price = all('line_price');
+  const cat = all('line_catalog'), desc = all('line_desc'), qty = all('line_qty'), price = all('line_price'), proc = all('line_procedure');
   const s = (k: string) => String(f.get(k) ?? '').trim();
   const key = s('form_key');
   draft = {
     patientId: s('patient'),
-    lines: cat.map((c, i) => ({ catalogId: UUID.test(c) ? c : '', desc: desc[i] ?? '', qty: qty[i] ?? '', price: price[i] ?? '' })),
+    lines: cat.map((c, i) => ({ catalogId: UUID.test(c) ? c : '', desc: desc[i] ?? '', qty: qty[i] ?? '', price: price[i] ?? '', procedureId: UUID.test(proc[i] ?? '') ? proc[i] : undefined })),
     discount: s('discount') || 'none', discountId: s('discount_id'), payor: s('payor'), payorShare: s('payor_share'),
     formKey: UUID.test(key) ? key : crypto.randomUUID(),
+    visitId: UUID.test(s('visit')) ? s('visit') : undefined,
   };
-  const out = await saveStatement(withClinic, clinic.id, session.staffId, draft, data.payors);
+  pay = { now: f.get('pay_now') === 'on', method: Object.hasOwn(METHODS, s('pay_method')) ? s('pay_method') : 'cash', amount: s('pay_amount'), reference: s('pay_reference'), key: UUID.test(s('pay_key')) ? s('pay_key') : crypto.randomUUID() };
+  const out = await saveStatement(withClinic, clinic.id, session.staffId, draft, data.payors, pay.now ? async (tx, id) => {
+    const p = await recordPayment(tx, clinic.id, session.staffId, id, { method: pay.method, amount: pay.amount, reference: pay.reference, paidOn: '', birRef: '', formKey: pay.key });
+    if ('problems' in p) throw new PayRefused(p.problems);
+  } : undefined).catch((e) => { if (e instanceof PayRefused) return { problems: e.problems.map((x) => `Paid now: ${x}`) }; throw e; });
   if ('id' in out) return Astro.redirect(`${home}${out.id}/?done=${out.again ? 'again' : 'new'}`, 303);
   problems = out.problems;
 }
@@ -149,9 +189,15 @@ const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the adm
         )}
         <p role="alert" hidden class="ws-callout" data-tone="alert" data-bill-client-error><Icon name="alert" /><span data-bill-client-text></span></p>
 
+        {fromVisit && draft.visitId && problems.length === 0 && (
+          <p class="ws-callout" data-tone="info" data-visit-note><Icon name="info" /><span>{fromVisit.rows.length === 0
+            ? `Nothing recorded at the chair for this visit is left to charge${draft.lines.length ? ': the line is the service it was booked for' : ''}. Add what was done from the fee guide.`
+            : `From the visit: ${fromVisit.rows.length === 1 ? 'the one treatment' : `the ${fromVisit.rows.length} treatments`} recorded at the chair, at the price the dentist wrote. Take off a line that is not charged; the record then still shows it as not charged.`}</span></p>
+        )}
         <form method="post" class="chg-grid" data-bill-form data-slug={clinic.slug} data-add-patient={addPatient ?? undefined}>
           <Csrf />
           <input type="hidden" name="form_key" value={draft.formKey} />
+          {draft.visitId && <input type="hidden" name="visit" value={draft.visitId} />}
 
           <div class="chg-main">
             <Pane as="section" title="Patient" icon="user" id="who">
@@ -204,7 +250,7 @@ const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the adm
               <ol class="chg-lines" data-bill-lines hidden={draft.lines.length === 0}>
                 {draft.lines.map((l) => {
                   const r = l.catalogId ? byId.get(l.catalogId) : undefined;
-                  return <Line catalogId={r ? l.catalogId : ''} desc={l.desc} qty={l.qty} price={l.price} {...lineProps(r)} />;
+                  return <Line catalogId={r ? l.catalogId : ''} desc={l.desc} qty={l.qty} price={l.price} procedureId={l.procedureId ?? ''} {...lineProps(r)} />;
                 })}
               </ol>
               <p class="ws-empty mt-2" data-bill-empty hidden={draft.lines.length > 0}>
@@ -249,6 +295,26 @@ const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the adm
                     </label>
                   </div>
                 )}
+              </div>
+            </Pane>
+
+            <Pane as="section" title="Payment" icon="wallet" id="pay">
+              <label class="check items-start">
+                <input type="checkbox" name="pay_now" checked={pay.now} data-pay-now />
+                <span><span class="block text-[16px] font-semibold text-ink">Paid now</span><span class="block text-[14px] text-ink-2">Record the payment with the statement in one go. Leave it off to take payment later, on the statement.</span></span>
+              </label>
+              <div class="mt-4 grid gap-4" data-pay-box hidden={!pay.now}>
+                <fieldset>
+                  <legend class="meta">How they paid</legend>
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    {payMethods.map(([k, label]) => <label class="chip-radio"><input type="radio" name="pay_method" value={k} checked={pay.method === k} data-pay-method /><span class="min-h-11 text-[15px]">{label}</span></label>)}
+                  </div>
+                </fieldset>
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <label class="field"><span class="meta">Amount received (₱)</span><input name="pay_amount" value={pay.amount} inputmode="decimal" autocomplete="off" class="tabular-nums" placeholder="0.00" data-pay-amount data-pay-auto={pay.amount ? '0' : '1'} /><span class={help}>The patient’s part, unless they pay less today.</span></label>
+                  <label class="field"><span class="meta" data-pay-ref-label>{REF_LABEL[pay.method] ?? 'Reference'} <span class="font-normal">(optional)</span></span><input name="pay_reference" value={pay.reference} maxlength={REF_MAX} autocomplete="off" /></label>
+                </div>
+                <input type="hidden" name="pay_key" value={pay.key} />
               </div>
             </Pane>
           </div>
@@ -468,7 +534,18 @@ const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the adm
       set('payor-name', payor?.selectedOptions[0]?.textContent?.replace(/ \(.*\)$/, '') ?? 'their');
       form!.querySelector<HTMLElement>('[data-t-row="payor"]')!.hidden = share === 0;
       set('patient', peso(Math.max(0, total - share)));
+      // Paid now: the amount follows the patient's part until the desk types one.
+      if (payAmount && payAmount.dataset.payAuto !== '0') payAmount.value = total - share > 0 ? dec(total - share).replace(/\.00$/, '') : '';
     }
+    // --- paid now ----------------------------------------------------------
+    const payNow = $<HTMLInputElement>('[data-pay-now]'), payBox = $('[data-pay-box]'), payAmount = $<HTMLInputElement>('[data-pay-amount]');
+    const REF_WORD: Record<string, string> = { cash: 'Reference', gcash: 'GCash reference no.', maya: 'Maya reference no.', card: 'Approval no. on the card slip', bank_transfer: 'Bank reference' };
+    payNow?.addEventListener('change', () => { if (payBox) payBox.hidden = !payNow.checked; if (payNow.checked) recount(); if (payNow.checked) payAmount?.focus(); });
+    payAmount?.addEventListener('input', () => { payAmount.dataset.payAuto = payAmount.value.trim() ? '0' : '1'; });
+    form.addEventListener('change', (e) => {
+      const t = e.target as HTMLInputElement;
+      if (t.matches('[data-pay-method]')) { const l = $('[data-pay-ref-label]'); if (l) l.firstChild!.textContent = `${REF_WORD[t.value] ?? 'Reference'} `; }
+    });
     recount();
 
     // --- save --------------------------------------------------------------
@@ -477,6 +554,7 @@ const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the adm
       let why = '';
       if (!pid.value) why = 'Pick the patient first: type their name and choose them from the list.';
       else if ($$('[data-line]', list).length === 0) why = 'Add at least one line before saving.';
+      else if (payNow?.checked && !(payAmount?.value ?? '').trim()) why = 'Paid now is ticked: write the amount received, or untick it to take payment later.';
       if (why) {
         e.preventDefault();
         clientError.querySelector('[data-bill-client-text]')!.textContent = why; clientError.hidden = false;

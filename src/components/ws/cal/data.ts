@@ -64,7 +64,7 @@ const BASE = `a.id, a.patient_id, concat_ws(' ', p.first_name, nullif(p.last_nam
 // treatments done at the visit with no statement line yet, the visit's statement, the open recall, and the
 // patient's next visit after this one. Each is one small subselect; a day has a few dozen cards.
 const MANILA_DAY = (col: string) => `(${col} at time zone 'Asia/Manila')::date`;
-const EXTRA = `coalesce(pc.id, pr.id) as catalog_id, coalesce(pc.name, pr.name) as service, coalesce(pc.code, pr.code) as catalog_code,
+const EXTRA = `coalesce(pc.id, pr.id) as catalog_id, coalesce(pc.name, pr.name) as service, coalesce(pc.code, pr.code) as catalog_code, coalesce(pc.category, pr.category) as catalog_category,
        coalesce(pc.default_price, pr.default_price) as price_min, coalesce(pc.price_max, pr.price_max) as price_max,
        coalesce(pc.price_from, pr.price_from) as price_from, coalesce(pc.unit, pr.unit) as price_unit,
        a.created_at, cb.full_name as created_by_name, a.booked_by_name, a.moved_at, a.hmo_id,
@@ -90,7 +90,7 @@ const FROM = `
   left join staff cb on cb.id = a.created_by
   left join procedure_catalog pc on pc.id = a.catalog_id
   left join lateral (
-    select x.id, x.code, x.name, x.default_price, x.price_max, x.price_from, x.unit from procedure_catalog x
+    select x.id, x.code, x.name, x.category, x.default_price, x.price_max, x.price_from, x.unit from procedure_catalog x
      cross join lateral (values (btrim(a.reason))) r(t)
      where a.catalog_id is null and a.reason is not null and x.active
        and (lower(r.t) = lower(x.name) or lower(r.t) = lower(x.code)
@@ -125,6 +125,7 @@ function extrasOf(r: Row): Extras {
     dentistFree: (r.dentist_free as string | null)?.trim() || null,
     lastName: (r.last_name as string | null) ?? null,
     catalogCode: (r.catalog_code as string | null) ?? null,
+    catalogCategory: (r.catalog_category as string | null) ?? null,
     healthAskedAt: iso(r.health_asked_at),
     bpOnDay: r.bp_on_day === true,
     consentSigned: r.consent_signed === true,

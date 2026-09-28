@@ -17,7 +17,8 @@
 
 import type { Tx } from './db';
 import { withClinic } from './db';
-import { normalizePhone, PH_MOBILE } from './messages';
+import { normalizePhone, PH_MOBILE, queueText } from './messages';
+import { AFTERCARE, aftercareText, kindForCatalog } from './aftercare';
 import { willRemind } from './availability';
 
 export type Appt = {
@@ -236,6 +237,7 @@ export async function applyStatus(tx: Tx, clinicId: string, staffId: string, id:
     for (const row of r.rows) {
       await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'record.recall_done', 'recall', $3)`, [clinicId, staffId, row.id]);
     }
+    await queueAftercare(tx, clinicId, staffId, id);
   }
   await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, 'appointment', $4)`,
     [clinicId, staffId, `appointment.${to}`, id]);
@@ -286,3 +288,31 @@ export const scheduleTexts = {
   moved: (clinic: string, at: Date, ref: string | null, clinicPhone: string | null) =>
     `${clinic}: your visit moved to ${whenText(at)}.${ref ? ` Ref ${ref}.` : ''} To change it, call ${clinicPhone ?? 'the clinic'}.`,
 };
+
+/**
+ * The text after a treatment (036): once a visit is done, the patient gets the aftercare check-in for what was
+ * done — the instructions that matter tonight and when to call — some hours later (AFTERCARE[kind].hours; the
+ * worker's quiet hours hold it to the morning). The kind comes from the treatments recorded at the visit (the
+ * first one the sheets know), else the service the visit was booked for, else the words of its reason. No
+ * kind, or no Philippine mobile on file, and nothing is sent. Once per visit (dedupe aftercare:<id>).
+ */
+async function queueAftercare(tx: Tx, clinicId: string, staffId: string, id: string): Promise<void> {
+  const v = (await tx.query(
+    `select a.patient_id, a.reason, p.phone, c.name as clinic_name, c.phone as clinic_phone, pc.code, pc.name as pc_name, pc.category
+       from appointment a join patient p on p.id = a.patient_id join clinic c on c.id = a.clinic_id
+       left join procedure_catalog pc on pc.id = a.catalog_id where a.id = $1`, [id])).rows[0];
+  if (!v?.phone || !PH_MOBILE.test(normalizePhone(v.phone))) return;
+  const done = (await tx.query(
+    `select coalesce(d.name, x.name) as name, x.code, x.category from procedure_done d left join procedure_catalog x on x.id = d.catalog_id
+      where d.patient_id = $2 and (d.appointment_id = $1 or (d.appointment_id is null
+        and (d.performed_at at time zone 'Asia/Manila')::date = (select (starts_at at time zone 'Asia/Manila')::date from appointment where id = $1)))
+      order by d.performed_at`, [id, v.patient_id])).rows;
+  const kind = done.map((d) => kindForCatalog(d.code, d.name, d.category)).find((k) => k)
+    ?? kindForCatalog(v.code, v.pc_name, v.category) ?? kindForCatalog(null, v.reason, null);
+  if (!kind) return;
+  await queueText(tx, {
+    clinicId, to: v.phone, body: aftercareText(kind, { name: v.clinic_name, phone: v.clinic_phone }), kind: 'aftercare',
+    patientId: v.patient_id, appointmentId: id, staffId, dedupeKey: `aftercare:${id}`,
+    sendAfter: new Date(Date.now() + AFTERCARE[kind].hours * 3600e3),
+  });
+}

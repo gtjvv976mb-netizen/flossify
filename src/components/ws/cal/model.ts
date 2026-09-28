@@ -45,6 +45,8 @@ export interface Extras {
   lastName: string | null;
   /** The fee-guide row's code (the aftercare sheet is chosen by it). */
   catalogCode: string | null;
+  /** The fee guide's category (ortho, restore …), for the aftercare sheet (src/lib/aftercare.ts). */
+  catalogCategory: string | null;
   // --- Before we start, and before they leave (036): what the desk and the chair need at the moment of decision.
   /** When the health history was last asked (the latest version), ISO; null when never. */
   healthAskedAt: string | null;

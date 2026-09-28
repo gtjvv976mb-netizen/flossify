@@ -20,6 +20,7 @@ import { avatar, callout, icon, pill } from './ui';
 import type { Card } from './model';
 import type { Ctx } from './board';
 import type { Pt } from './patients';
+import { AFTERCARE, kindForCatalog } from '../../../lib/aftercare';
 
 export interface Panels {
   openVisit: (id: string, opener: Element | null, o?: { place?: boolean }) => void;
@@ -208,6 +209,9 @@ export function initPanels(ctx: Ctx): Panels {
             { label: 'Charge this visit', href: chargeHref(c.patientId, c.catalogId, c.id) });
         }
       }
+      // The aftercare sheet for what was done (036): printed for the patient to take home; the text goes by itself.
+      const kind = kindForCatalog(c.catalogCode, c.service, c.catalogCategory);
+      if (kind) line('plain', `Aftercare sheet: ${AFTERCARE[kind].title}`, { label: 'Print', href: `${boot.links.record}${c.patientId}/aftercare/${kind}/?visit=${encodeURIComponent(c.id)}` });
       if (c.nextVisitAt) line('ok', `Next visit: ${M.nearWhen(c.nextVisitAt, boot.today)}`);
       else if (c.recallDue) line('ok', `Next check-up: ${M.dateText(`${c.recallDue}T12:00:00+08:00`)}`);
       else {

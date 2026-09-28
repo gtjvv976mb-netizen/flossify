@@ -71,12 +71,12 @@ export const RX_ROWS = 6;
 
 // --- shapes ------------------------------------------------------------------------------------
 export interface PlanItem { id: string; loaId: string | null; name: string; fdi: number | null; surface: string | null; price: string; phase: number; status: string; note: string | null; createdAt: Date; decidedAt: Date | null; by: string | null }
-export interface Done { id: string; visitId: string | null; name: string; fdi: number | null; surface: string | null; price: string; at: Date; dentist: string | null; note: string | null; fromPlan: boolean }
+export interface Done { id: string; visitId: string | null; name: string; code: string | null; category: string | null; fdi: number | null; surface: string | null; price: string; at: Date; dentist: string | null; note: string | null; fromPlan: boolean }
 export interface Note { id: string; visitId: string | null; visitOn: string; dentist: string | null; complaint: string | null; findings: string | null; diagnosis: string | null; treatment: string | null; plan: string | null; teeth: number[]; amends: string | null; by: string | null; at: Date }
 export interface RxItem { drug: string; strength: string; qty: string; sig: string }
 export interface Rx { id: string; visitId: string | null; at: Date; prescriber: string | null; prescriberId: string; prc: string | null; ptr: string | null; items: RxItem[]; notes: string | null }
 export interface FileRow { id: string; visitId: string | null; kind: string; mime: string; bytes: number; takenAt: string | null; fdi: number | null; caption: string | null; by: string | null; at: Date; thumb: boolean }
-export interface Recall { id: string; dueOn: string; reason: string; by: string | null; at: Date }
+export interface Recall { id: string; dueOn: string; reason: string; by: string | null; at: Date; /** The Manila day the check-up text last went (036), or null. */ textedOn: string | null }
 export interface Lab { id: string; lab: string; description: string; shade: string | null; sentOn: string | null; dueOn: string | null; receivedOn: string | null; cost: string; status: string; note: string | null; at: Date }
 export interface Clinician { id: string; name: string; prc: string | null; ptr: string | null }
 export interface CatalogItem { id: string; name: string; price: string; max: string | null; from: boolean; tooth: boolean; category: string | null }
@@ -87,7 +87,7 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
   const [plan, done, notes, rx, files, recall, labs, clinicians, catalog] = await Promise.all([
     tx.query(`select i.*, s.full_name as by_name from treatment_plan_item i left join staff s on s.id = i.created_by
                where i.patient_id = $1 order by (i.status in ('done', 'declined')), i.phase, i.created_at`, [patientId]),
-    tx.query(`select d.id, d.appointment_id, coalesce(d.name, c.name, 'Treatment') as name, d.fdi, d.surface, d.price, d.performed_at, s.full_name as dentist, d.clinical_note, d.plan_id is not null as from_plan
+    tx.query(`select d.id, d.appointment_id, coalesce(d.name, c.name, 'Treatment') as name, c.code, c.category, d.fdi, d.surface, d.price, d.performed_at, s.full_name as dentist, d.clinical_note, d.plan_id is not null as from_plan
                 from procedure_done d left join procedure_catalog c on c.id = d.catalog_id left join staff s on s.id = d.performed_by
                where d.patient_id = $1 order by d.performed_at desc limit 300`, [patientId]),
     tx.query(`select n.*, to_char(n.visit_on, 'YYYY-MM-DD') as day, d.full_name as dentist, c.full_name as by_name
@@ -97,7 +97,7 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
                 from prescription r left join staff s on s.id = r.prescriber_id where r.patient_id = $1 order by r.issued_at desc limit 200`, [patientId]),
     tx.query(`select a.id, a.appointment_id, a.kind, a.mime, a.bytes, to_char(a.taken_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as taken, a.fdi, a.caption, s.full_name as by_name, a.created_at, a.storage_key
                 from attachment a left join staff s on s.id = a.uploaded_by where a.patient_id = $1 and a.removed_at is null order by coalesce(a.taken_at, a.created_at) desc limit 500`, [patientId]),
-    tx.query(`select r.id, to_char(r.due_on, 'YYYY-MM-DD') as due, r.reason, s.full_name as by_name, r.created_at
+    tx.query(`select r.id, to_char(r.due_on, 'YYYY-MM-DD') as due, r.reason, s.full_name as by_name, r.created_at, to_char(r.last_sent_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as texted
                 from recall r left join staff s on s.id = r.created_by where r.patient_id = $1 and r.completed_at is null order by r.due_on limit 1`, [patientId]),
     tx.query(`select l.*, to_char(l.sent_on, 'YYYY-MM-DD') as sent, to_char(l.due_on, 'YYYY-MM-DD') as due, to_char(l.received_on, 'YYYY-MM-DD') as received
                 from lab_order l where l.patient_id = $1 order by (l.status = 'fitted'), l.created_at desc limit 100`, [patientId]),
@@ -107,11 +107,11 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
   ]);
   return {
     plan: plan.rows.map((r) => ({ id: r.id, loaId: r.loa_id ?? null, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, phase: r.phase, status: r.status, note: r.note, createdAt: r.created_at, decidedAt: r.decided_at, by: r.by_name })),
-    done: done.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, at: r.performed_at, dentist: r.dentist, note: r.clinical_note, fromPlan: r.from_plan })),
+    done: done.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, name: r.name, code: r.code ?? null, category: r.category ?? null, fdi: r.fdi, surface: r.surface, price: r.price, at: r.performed_at, dentist: r.dentist, note: r.clinical_note, fromPlan: r.from_plan })),
     notes: notes.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, visitOn: r.day, dentist: r.dentist, complaint: r.complaint, findings: r.findings, diagnosis: r.diagnosis, treatment: r.treatment, plan: r.plan, teeth: r.teeth ?? [], amends: r.amends_id, by: r.by_name, at: r.created_at })),
     rx: rx.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, at: r.issued_at, prescriber: r.full_name, prescriberId: r.prescriber_id, prc: r.prc_licence, ptr: r.ptr_number, items: Array.isArray(r.items) ? r.items : [], notes: r.notes })),
     files: files.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, kind: r.kind, mime: r.mime, bytes: Number(r.bytes), takenAt: r.taken, fdi: r.fdi, caption: r.caption, by: r.by_name, at: r.created_at, thumb: String(r.storage_key).includes('|thumb') })),
-    recall: recall.rows[0] ? { id: recall.rows[0].id, dueOn: recall.rows[0].due, reason: recall.rows[0].reason, by: recall.rows[0].by_name, at: recall.rows[0].created_at } : null,
+    recall: recall.rows[0] ? { id: recall.rows[0].id, dueOn: recall.rows[0].due, reason: recall.rows[0].reason, by: recall.rows[0].by_name, at: recall.rows[0].created_at, textedOn: recall.rows[0].texted ?? null } : null,
     labs: labs.rows.map((r) => ({ id: r.id, lab: r.lab_name, description: r.description, shade: r.shade, sentOn: r.sent, dueOn: r.due, receivedOn: r.received, cost: r.cost, status: r.status, note: r.note, at: r.created_at })),
     clinicians: clinicians.rows.map((r) => ({ id: r.id, name: r.full_name, prc: r.prc_licence, ptr: r.ptr_number })),
     catalog: catalog.rows.map((r) => ({ id: r.id, name: r.name, price: r.default_price, max: r.price_max, from: r.price_from, tooth: r.tooth_scoped, category: r.category })),

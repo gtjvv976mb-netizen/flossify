@@ -27,7 +27,7 @@ export const VISIT_STATUS: Record<string, { label: string; tone: 'neutral' | 'ac
   cancelled: { label: 'Cancelled', tone: 'muted' }, no_show: { label: 'Did not come', tone: 'muted' },
 };
 const SOURCE: Record<string, string> = { web: 'Booked online', request: 'Asked for online', staff: 'Booked at the desk', import: 'From old records' };
-const TEXT_WORD: Record<string, string> = { confirmation: 'Booking confirmation', reminder: 'Reminder', manual: 'Text from the clinic', moved: 'New time', cancelled: 'Cancelled' };
+const TEXT_WORD: Record<string, string> = { confirmation: 'Booking confirmation', reminder: 'Reminder', manual: 'Text from the clinic', moved: 'New time', cancelled: 'Cancelled', aftercare: 'Aftercare text', recall: 'Check-up due' };
 const CHANNEL: Record<string, string> = { web: 'when booking online', desk: 'at the desk', paper: 'on paper', form: 'on the patient forms', sms: 'by text' };
 
 export interface VisitLine { description: string; amount: string }
