@@ -39,6 +39,7 @@ import { hit, waitText, LIMITS } from '../../../lib/throttle';
 import { queueText, normalizePhone, PH_MOBILE } from '../../../lib/messages';
 import { loadRange, findClash, applyStatus, dropStaleTexts, readAppt, canText, scheduleTexts, ALLOWED, DONE, WORDS, StatusRefused, type Appt } from '../../../lib/schedule';
 import { extrasFor, mergeExtras, withExtras } from '../../../components/ws/cal/data';
+import { splitName } from '../../../lib/import';
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -223,11 +224,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
         if (!rows[0]) throw refuse(400, 'No such patient at this clinic.');
         pid = rows[0].id; phone = rows[0].phone;
       } else {
-        const [first, ...rest] = newPatient!.name.split(' ');
-        const last = rest.join(' ') || '—';
+        // The name as Filipino names go (splitName, the import's rule): "Maria Cristina Dela Cruz" is Maria Cristina ·
+        // Dela Cruz, "Jose Rizal Jr." keeps Jr. as the suffix; one word is a first name with no surname yet ('—').
+        const n = splitName(newPatient!.name);
+        const first = n.first || n.last, last = n.first ? n.last : '—';
         const { rows } = await tx.query<{ id: string }>(
-          'insert into patient (clinic_id, chart_no, first_name, last_name, phone) values ($1, $2, $3, $4, $5) returning id',
-          [clinic.id, await nextChartNo(tx), first, last, newPatient!.phone]);
+          'insert into patient (clinic_id, chart_no, first_name, last_name, suffix, phone) values ($1, $2, $3, $4, $5, $6) returning id',
+          [clinic.id, await nextChartNo(tx), first, last, n.suffix, newPatient!.phone]);
         pid = rows[0].id; phone = newPatient!.phone;
         await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'patient.create', 'patient', $3)`, [clinic.id, session.staffId, pid]);
       }

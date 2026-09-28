@@ -93,11 +93,19 @@ let draft: ChargeIn = {
   patientId: UUID.test(q.get('patient') ?? '') ? q.get('patient')! : fromVisit?.patientId ?? '',
   // From a visit, its treatments; else the Dashboard's Charge: each service= a line from the fee guide, at the guide's
   // price (with a visit that has nothing recorded at the chair yet, the service it was booked for).
-  lines: fromVisit?.rows.length ? fromVisit.rows.map((d) => ({
-    catalogId: byId.has(d.catalog_id) ? (d.catalog_id as string) : '',
-    desc: `${d.name}${d.fdi ? ` · tooth ${d.fdi}${d.surface ? ` ${d.surface}` : ''}` : ''}`,
-    qty: '1', price: moneyField(fromDb(d.price)), procedureId: d.id as string,
-  })) : q.getAll('service').filter((id) => byId.has(id)).slice(0, LINES_MAX).map((id) => {
+  // A price of nothing is left for the desk to type; a price the fee guide's range would refuse (a discount the
+  // dentist gave, a guide changed since) becomes a line of its own, so the save is never refused on a line nobody typed.
+  lines: fromVisit?.rows.length ? fromVisit.rows.map((d) => {
+    const price = fromDb(d.price);
+    const r = byId.get(d.catalog_id);
+    const range = r ? priceRange(r) : null;
+    const fits = !!range && price > 0n && price >= range.min && (range.max === null || price <= range.max);
+    return {
+      catalogId: fits ? (d.catalog_id as string) : '',
+      desc: `${d.name}${d.fdi ? ` · tooth ${d.fdi}${d.surface ? ` ${d.surface}` : ''}` : ''}`,
+      qty: '1', price: price > 0n ? moneyField(price) : '', procedureId: d.id as string,
+    };
+  }) : q.getAll('service').filter((id) => byId.has(id)).slice(0, LINES_MAX).map((id) => {
     const r = byId.get(id)!;
     return { catalogId: r.id, desc: r.name, qty: '1', price: moneyField(priceRange(r).min) };
   }),
@@ -125,11 +133,14 @@ if (Astro.request.method === 'POST' && may) {
     visitId: UUID.test(s('visit')) ? s('visit') : undefined,
   };
   pay = { now: f.get('pay_now') === 'on', method: Object.hasOwn(METHODS, s('pay_method')) ? s('pay_method') : 'cash', amount: s('pay_amount'), reference: s('pay_reference'), key: UUID.test(s('pay_key')) ? s('pay_key') : crypto.randomUUID() };
+  let paidId: string | null = null;
   const out = await saveStatement(withClinic, clinic.id, session.staffId, draft, data.payors, pay.now ? async (tx, id) => {
     const p = await recordPayment(tx, clinic.id, session.staffId, id, { method: pay.method, amount: pay.amount, reference: pay.reference, paidOn: '', birRef: '', formKey: pay.key });
     if ('problems' in p) throw new PayRefused(p.problems);
+    paidId = p.id;
   } : undefined).catch((e) => { if (e instanceof PayRefused) return { problems: e.problems.map((x) => `Paid now: ${x}`) }; throw e; });
-  if ('id' in out) return Astro.redirect(`${home}${out.id}/?done=${out.again ? 'again' : 'new'}`, 303);
+  // Paid now lands where the statement page offers the acknowledgment to print (?done=paid&p=<payment>).
+  if ('id' in out) return Astro.redirect(`${home}${out.id}/?done=${out.again ? 'again' : paidId ? `paid&p=${paidId}` : 'new'}`, 303);
   problems = out.problems;
 }
 

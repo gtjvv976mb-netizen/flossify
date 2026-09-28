@@ -266,7 +266,16 @@ export async function createStatement(
   const visitId = patient && input.visitId && UUID.test(input.visitId)
     ? ((await tx.query(`select id from appointment where id = $1 and patient_id = $2 and status not in ('cancelled', 'no_show')`, [input.visitId, input.patientId])).rows[0]?.id ?? null) : null;
   const procIds = [...new Set(input.lines.map((l) => l.procedureId ?? '').filter((id) => UUID.test(id)))];
-  const procs = new Set<string>(patient && procIds.length ? (await tx.query(`select id from procedure_done where id = any($1::uuid[]) and patient_id = $2`, [procIds, input.patientId])).rows.map((r) => r.id as string) : []);
+  // Charge once: two desks charging the same visit take turns on this patient's treatments, and the check below
+  // runs after the wait (a fresh snapshot per statement), so the second sees the first one's lines and is refused.
+  if (patient && procIds.length) await tx.query(`select pg_advisory_xact_lock(hashtext('charge:' || $1::text))`, [input.patientId]);
+  const procRows = patient && procIds.length ? (await tx.query(
+    `select d.id, coalesce(d.name, 'Treatment') as name,
+            (select i.series_prefix || '-' || lpad(i.number::text, 6, '0') from invoice_line l join invoice i on i.id = l.invoice_id
+              where l.procedure_id = d.id and i.status <> 'void' limit 1) as charged_on
+       from procedure_done d where d.id = any($1::uuid[]) and d.patient_id = $2`, [procIds, input.patientId])).rows : [];
+  for (const r of procRows) if (r.charged_on) problems.push(`${r.name} is already charged on statement ${r.charged_on}. Take its line off, or void that statement first.`);
+  const procs = new Set<string>(procRows.filter((r) => !r.charged_on).map((r) => r.id as string));
 
   const lines = input.lines.filter((l) => l.catalogId || l.desc.trim() || l.price.trim());
   if (lines.length === 0) problems.push('Add at least one line: a service from the fee guide, or something else with a price.');

@@ -961,8 +961,13 @@ patient"). One migration, 036; the pieces in the order of a visit:
   with no visit named) that no non-void statement charges yet, at the price the dentist wrote, the tooth in the
   words; the statement stores `appointment_id` and each line `procedure_id` (`LineIn.procedureId`,
   `ChargeIn.visitId`, checked to be the patient's own), so the panel's `unbilled` count and the Timeline's Paid
-  are right and nothing is charged twice. "Paid now" (a Payment card) records the payment in the statement's own
-  transaction (`saveStatement(…, after)`: a refused payment rolls the statement back and the page says so).
+  are right and nothing is charged twice: `createStatement` takes a per-patient advisory lock (`charge:<patient>`)
+  and refuses a treatment already on a non-void statement, naming it. A recorded price of 0 is left blank for the
+  desk; one outside the fee guide's range is pre-filled as a line of its own, so the save is never refused on a line
+  nobody typed. "Paid now" (a Payment card) records the payment in the statement's own transaction
+  (`saveStatement(…, after)`: a refused payment rolls the statement back and the page says so) and lands on
+  `?done=paid&p=<payment>`, where the acknowledgment prints. The booking panel's new patient is named by
+  `splitName()` (the import's Filipino-name rule: particles, suffixes), not split on the first space.
 - **Recall that acts.** `applyStatus('completed')` closes the open recall due within 60 days of the visit. Clinic
   settings → Clinic profile has two switches, `clinic.remind_48h` (a second reminder two days before; on by
   default) and `clinic.recall_texts` (off by default): `sms_enqueue_reminders()` now writes both passes

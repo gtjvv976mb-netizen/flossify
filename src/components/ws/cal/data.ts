@@ -78,7 +78,7 @@ const EXTRA = `coalesce(pc.id, pr.id) as catalog_id, coalesce(pc.name, pr.name) 
        (select count(*) from procedure_done d
          where d.patient_id = p.id
            and (d.appointment_id = a.id or (d.appointment_id is null and ${MANILA_DAY('d.performed_at')} = ${MANILA_DAY('a.starts_at')}))
-           and not exists (select 1 from invoice_line l where l.procedure_id = d.id))::int as unbilled,
+           and not exists (select 1 from invoice_line l join invoice i on i.id = l.invoice_id where l.procedure_id = d.id and i.status <> 'void'))::int as unbilled,
        st.id as statement_id, st.series_prefix as statement_prefix, st.number as statement_number, st.status as statement_status,
        (select to_char(r.due_on, 'YYYY-MM-DD') from recall r where r.patient_id = p.id and r.completed_at is null order by r.due_on limit 1) as recall_due,
        (select min(x.starts_at) from appointment x
