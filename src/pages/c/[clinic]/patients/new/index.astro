@@ -74,9 +74,9 @@ const missingPatient = !!patientParam && !patient;
 
 // The cards, and whether each is open here.
 const noForms = gates.templates.length === 0;
-const phoneOff = !gates.phoneOpen
-  ? (gates.production && !gates.page1Open ? 'Opens when the clinic’s privacy notice covers it.' : PHONE_PATH_BUILT ? 'Opens when the clinic’s privacy notice covers it.' : 'Not open on this server yet. Use “At the clinic” for now.')
-  : noForms ? 'Opens when the clinic’s consent forms are reviewed.' : null;
+const phoneOff = noForms ? 'Opens when the clinic’s consent forms are reviewed.'
+  : !gates.phoneOpen ? (gates.production || PHONE_PATH_BUILT ? 'Opens when the clinic’s privacy notice covers it.' : 'Not open on this server yet. Use “At the clinic” for now.')
+  : null;
 const clinicOff = noForms ? 'Opens when the clinic’s consent forms are reviewed.' : patient && !patient.birth ? `Add ${patient.firstName}’s birth date to their record first.` : null;
 // A new patient while page 1 is closed: the clinic card types the details first.
 const clinicLine = !patient && !gates.page1Open
