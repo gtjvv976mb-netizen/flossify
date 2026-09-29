@@ -140,6 +140,22 @@ html:has(.dash-board) { scroll-padding-top: calc(var(--dash-bar, 0px) + 0.75rem)
 .cal-undated-show::after { content: 'Show them'; }
 .cal-undated[open] .cal-undated-show::after { content: 'Hide them'; }
 .cal-undated-head:hover .cal-undated-show { text-decoration: underline; text-underline-offset: 4px; }
+/* The Blocked strip (040): the dated blocks over the range on screen, each a pill (32 px) in a 44 px button. */
+.cal-blocks { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; margin: 0 1.5rem 0.875rem; padding: 0 0.875rem; }
+.cal-blocks[hidden] { display: none; }
+.cal-blocks-label { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 14px; font-weight: 600; color: var(--c-ink-2); }
+.cal-blocks-list { display: flex; flex-wrap: wrap; gap: 0 0.5rem; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.cal-block-pill { display: inline-flex; align-items: center; max-width: 100%; min-height: 44px; color: var(--c-ink); text-align: left; cursor: pointer; }
+.cal-block-pill-words {
+  display: inline-flex; align-items: center; gap: 0.4rem; max-width: 100%; min-height: 32px; padding: 0.25rem 0.75rem;
+  border: 1px solid var(--ws-hair-strong); border-radius: var(--ws-r-pill); background: var(--c-bg-soft);
+  font-size: 14px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere;
+}
+.cal-block-pill-words > .ws-icon { flex: none; color: var(--c-ink-2); }
+.cal-block-pill:hover .cal-block-pill-words { border-color: var(--ws-field-line-hover); background: var(--ws-subtle); }
+.cal-block-pill:focus-visible { outline: none; }
+.cal-block-pill:focus-visible .cal-block-pill-words { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+@media (max-width: 767px) { .cal-blocks { margin-inline: 1rem; padding-inline: 0; } }
 
 /* --- the grid ------------------------------------------------------------------------ */
 .cal-frame {
@@ -196,6 +212,17 @@ button.cal-colhead { container-type: inline-size; }
   background: repeating-linear-gradient(135deg, var(--cal-hatch) 0 6px, transparent 6px 12px);
 }
 .cal-lanecol[data-selected] { background-color: color-mix(in srgb, var(--ws-teal-tint) 45%, transparent); }
+/* Blocked time (040): the closed-hours hatch with a dashed rule on top, taking no clicks (a click on the lane still
+   opens New booking there); its words on a solid slate chip at its top-left, never on the hatch. Under the cards. */
+.cal-block {
+  position: absolute; left: 0; right: 0; z-index: 1; top: calc(var(--s) * var(--mpx)); height: calc(var(--d) * var(--mpx)); pointer-events: none;
+  border-top: 1px dashed var(--ws-hair-strong);
+  background: repeating-linear-gradient(135deg, var(--cal-hatch) 0 6px, transparent 6px 12px);
+}
+.cal-block-chip {
+  position: absolute; top: 3px; left: 3px; display: block; max-width: calc(100% - 6px);
+  overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 600;
+}
 
 .cal-slot {
   position: absolute; left: 3px; right: 3px; z-index: 1; pointer-events: none;
@@ -361,6 +388,8 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
 .cal-empty { padding: 0.75rem 0; font-size: 15px; color: var(--c-ink-2); }
 .cal-empty.ws-empty { padding: 0.5rem 0; }
 .cal-list-quiet { padding: 0.625rem 0.875rem; border: 1px dashed var(--ws-hair-strong); border-radius: var(--ws-r); font-size: 14px; }
+/* A phone's list: blocked time as a line among the cards, not a button (040). */
+.cal-list-block { padding: 0.5rem 0.875rem; border: 1px dashed var(--ws-hair-strong); border-radius: var(--ws-r); background: var(--c-bg-soft); font-size: 14px; font-weight: 600; color: var(--c-ink-2); }
 
 /* --- print: the day list, nothing else ------------------------------------------------------------ */
 .cal-print-list { display: none; }
@@ -519,6 +548,38 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
 .ft-say, .ft-note { font-size: 13.5px; line-height: 1.45; color: var(--c-ink-2); }
 .ft-say:empty, .ft-note:empty { display: none; }
 
+/* --- blocked time in the panels (040): Book's line before saving, the Block time panel -------------------------- */
+.bk-block { margin-top: -0.375rem; }
+.bk-block[hidden] { display: none; }
+.bl-say { margin-bottom: 1rem; }
+.bl-say[hidden] { display: none; }
+.bl-form { display: grid; gap: 1rem; }
+.bl-form[hidden], .bl-view[hidden], .bl-ask[hidden] { display: none; }
+.bl-kinds { display: grid; gap: 0.5rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+.bl-kind {
+  position: relative; display: flex; align-items: center; gap: 0.75rem; min-height: 44px; padding: 0.5rem 0.875rem;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-ctl); background: var(--c-surface); cursor: pointer;
+}
+.bl-kind:hover { border-color: var(--ws-field-line-hover); background: var(--ws-subtle); }
+.bl-kind input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.bl-kind:has(input:checked) { border-color: var(--ws-teal); background: var(--ws-teal-tint); box-shadow: inset 0 0 0 1px var(--ws-teal); }
+.bl-kind:has(input:focus-visible) { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+.bl-kind-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: none; border-radius: var(--ws-r-pill); background: var(--c-bg-soft); color: var(--c-ink-2); }
+.bl-kind:has(input:checked) .bl-kind-icon { background: var(--c-surface); color: var(--ws-teal-ink); }
+.bl-kind-words { display: grid; min-width: 0; }
+.bl-kind-label { font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--c-ink); }
+.bl-kind-hint { font-size: 13.5px; line-height: 1.4; color: var(--c-ink-2); }
+.bl-kind:has(input:checked) .bl-kind-label, .bl-kind:has(input:checked) .bl-kind-hint { color: var(--ws-teal-ink); }
+.bl-when { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.bl-when > [hidden] { display: none; }
+[data-bl-dentist-row][hidden], [data-bl-chair-row][hidden] { display: none; }
+.bl-inside-list { display: grid; gap: 0; margin: 0.5rem 0 0; padding: 0; list-style: none; }
+.bl-inside-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; padding: 0.375rem 0; border-top: 1px solid color-mix(in srgb, var(--ws-amber) 25%, transparent); }
+.bl-inside-words { display: grid; flex: 1 1 12rem; min-width: 0; font-size: 14px; line-height: 1.4; }
+.bl-inside-words b { font-weight: 600; }
+.bl-inside-reminder { color: var(--c-ink-2); }
+.bl-inside-calls { display: inline-flex; align-items: center; min-height: 44px; margin-bottom: -0.5rem; font-weight: 600; color: var(--c-ink); text-decoration: underline; text-underline-offset: 4px; }
+
 @keyframes cal-rise { from { opacity: 0; transform: translateY(4px); } }
 @keyframes cal-fade { from { opacity: 0.35; } }
 @keyframes cal-flash { 0%, 45% { outline: 2px solid var(--c-accent); outline-offset: 2px; } 100% { outline: 2px solid transparent; outline-offset: 2px; } }
@@ -539,6 +600,8 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
   .ws-glass::before { display: none; }
   .cal-print-list { display: table !important; width: calc(100% - 3rem); margin: 0.5rem 1.5rem 0; border-collapse: collapse; font-size: 11.5px; color: #000; }
   .cal-print-list caption { padding-bottom: 0.4rem; text-align: left; color: #000; }
+  .cal-print-blocks { display: block; margin-top: 0.2rem; }
+  .cal-print-blocks:empty { display: none; }
   .cal-print-list th, .cal-print-list td { padding: 4px 10px 4px 0; border-bottom: 1px solid #bbb; text-align: left; vertical-align: top; }
   .cal-print-list tr { break-inside: avoid; }
 }

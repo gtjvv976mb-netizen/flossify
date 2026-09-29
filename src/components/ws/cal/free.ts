@@ -4,7 +4,9 @@
 // The arithmetic is model.ts's (freeStarts, pickStarts, freeDays: pure, the server can import it); the book comes
 // from the calendar when the day is on screen, else from one GET of eight days (ctx.rangeCards, kept 60 s). A
 // suggestion honours the clinic's hours, the dentist's weekdays, every visit that still holds its time, visits with
-// no chair or no dentist yet (counted), and the visit being moved (never in its own way). A chip never saves:
+// no chair or no dentist yet (counted), and the visit being moved (never in its own way) — and blocked time (040):
+// lunch and a closure hold everything, a chair out of use its chair, a dentist away or outside their hours that
+// dentist (model.ts blockHolds), so a day a closure or a dentist's leave covers says why. A chip never saves:
 // Save does, and the server checks the book again under its lock (findClash), so a time another desk took
 // meanwhile is refused with its own sentence, the board reloads and the chips are read again.
 //
@@ -12,6 +14,7 @@
 import * as M from './model';
 import type { Ctx } from './board';
 import { icon } from './ui';
+import { blockSentence } from '../../../lib/block-words';
 
 export interface FreeFields {
   date: HTMLInputElement; time: HTMLInputElement; minutes: HTMLInputElement; chair: HTMLSelectElement; dentist: HTMLSelectElement;
@@ -19,6 +22,8 @@ export interface FreeFields {
   exclude: () => string | null;
   /** True while the block must stay hidden and fetch nothing: Book's "Here now" ticked; Move's form folded. */
   off: () => boolean;
+  /** Called when a read of days not on screen has landed (their blocked time is now known: the soft stop's line). */
+  loaded?: () => void;
 }
 export interface FreeTimes {
   update: (o?: { fresh?: boolean; keep?: boolean }) => void;
@@ -60,8 +65,16 @@ export function initFreeTimes(ctx: Ctx, hook: 'bk' | 'vp', f: FreeFields): FreeT
   // rowFor: the day the day row was drawn for (kept on screen while that day is read again).
   let seq = 0, shownYmd = '', shownBase = '', nextShown = false, pendingFocus = false, nextFor = '', rowFor = '';
 
-  /** What stands in the way on a day: the visits that hold their time, less the one being moved. */
-  const dayHolds = (list: M.Slotted[], ymd: string): M.Hold[] => M.holdsOf(list, M.startMs(ymd), f.exclude());
+  /** What stands in the way on a day: the visits that hold their time, less the one being moved, and its blocked time. */
+  const dayHolds = (list: M.Slotted[], blocks: M.Blocky[], ymd: string): M.Hold[] =>
+    [...M.holdsOf(list, M.startMs(ymd), f.exclude()), ...M.blockHolds(blocks, M.startMs(ymd))];
+  /** Blocked time that leaves the whole day with nothing (040): a closure over it, or the chosen dentist away all of it. */
+  const blockReason = (blocks: M.BlockRange[], ymd: string, d: M.StaffDay | undefined): string => {
+    const shut = M.wholeDayClosed(blocks, boot.hours, ymd);
+    if (shut) return blockSentence(shut);
+    const away = d ? M.wholeDayAway(blocks, boot.hours, ymd, d) : null;
+    return away ? blockSentence(away) : '';
+  };
 
   function chip(min: number, chair: number, ymd?: string): HTMLButtonElement {
     const b = ctx.el('button', 'ft-chip');
@@ -143,7 +156,7 @@ export function initFreeTimes(ctx: Ctx, hook: 'bk' | 'vp', f: FreeFields): FreeT
   }
 
   /** The day's chips (at most four, in time order) from a list of visits, and the words under them. */
-  function drawDay(list: M.Slotted[], ymd: string, dow: number, open: [number, number], minutes: number, withName: string) {
+  function drawDay(list: M.Slotted[], blocks: M.Blocky[], ymd: string, dow: number, open: [number, number], minutes: number, withName: string) {
     const today = boot.today;
     const from = Math.ceil((ymd === today ? Math.max(open[0], M.manila(Date.now()).min) : open[0]) / 15) * 15;
     const ask: M.FreeAsk = {
@@ -151,7 +164,7 @@ export function initFreeTimes(ctx: Ctx, hook: 'bk' | 'vp', f: FreeFields): FreeT
       anyOf: boot.staff.filter((s) => s.days.includes(dow)).map((s) => s.id),
       preferChair: Number(f.chair.value) || null, turnover: M.TURNOVER_MIN,
     };
-    const holds = dayHolds(list, ymd);
+    const holds = dayHolds(list, blocks, ymd);
     const all = M.freeStarts(holds, { ...ask, limit: Infinity });
     const at = timeMin(f.time.value), atChair = at !== null && at >= from ? M.freeAt(holds, ask, at) : null;
     const chips = M.pickStarts(all, { at: atChair === null ? null : { min: at!, chair: atChair }, limit: 4, gap: M.chipGap(minutes, from, open[1], 4) });
@@ -198,10 +211,16 @@ export function initFreeTimes(ctx: Ctx, hook: 'bk' | 'vp', f: FreeFields): FreeT
       : !id && boot.staff.length && !boot.staff.some((s) => s.days.includes(dow)) ? `No dentist is on the schedule on ${M.DAYS[dow]}.`
       : '';
     let drawn = false;
-    if (reason) { say.textContent = reason; row.replaceChildren(); rowFor = ''; note.textContent = ''; }
+    const sayReason = (why: string) => { say.textContent = why; row.replaceChildren(); rowFor = ''; note.textContent = ''; };
+    /** The day row from a list of visits and its blocked time: its chips, or why a block leaves it none. */
+    const dayFrom = (list: M.Slotted[], blocks: M.BlockRange[]) => {
+      const why = blockReason(blocks, ymd, d);
+      if (why) sayReason(why); else drawDay(list, blocks, ymd, dow, open!, minutes, withName);
+    };
+    if (reason) sayReason(reason);
     else {
       const local = o.fresh ? null : ctx.dayCards(ymd);
-      if (local) { drawDay(local, ymd, dow, open!, minutes, withName); drawn = true; }
+      if (local) { dayFrom(local, ctx.dayBlocks(ymd) ?? []); drawn = true; }
       // Another day: its chips go at once. The same day read again (a new length, dentist or chair): its chips stay
       // until the answer replaces them, which from what is kept comes before a press is released.
       else if (rowFor !== ymd) { row.replaceChildren(); rowFor = ''; note.textContent = ''; say.textContent = LOOKING; }
@@ -213,9 +232,10 @@ export function initFreeTimes(ctx: Ctx, hook: 'bk' | 'vp', f: FreeFields): FreeT
     // Another dentist's next days go at once; the same dentist's stay until the new answer replaces them.
     if (nextFor !== id) hideNext();
     const base = ymd >= today ? ymd : today;
-    const list = await ctx.rangeCards(base, { fresh: o.fresh });
+    const book = await ctx.rangeCards(base, { fresh: o.fresh });
     if (my !== seq) return;
-    if (!list) {
+    f.loaded?.();
+    if (!book) {
       const words = navigator.onLine === false ? OFFLINE : FAILED;
       if (reason || drawn) {
         // The day row stands (drawn from the board, or its reason said): only the next-free part could not be read.
@@ -226,17 +246,19 @@ export function initFreeTimes(ctx: Ctx, hook: 'bk' | 'vp', f: FreeFields): FreeT
       restore(kept);
       return;
     }
-    if (!reason && !drawn) drawDay(list, ymd, dow, open!, minutes, withName);
+    if (!reason && !drawn) dayFrom(book.cards, M.blocksOn(book.blocks, ymd));
     if (d) {
-      const days = M.freeDays(list, {
+      const days = M.freeDays(book.cards, {
         after: ymd, today, nowMin: M.manila(Date.now()).min, days: 7, hours: boot.hours, dentist: d, staff: boot.staff,
         at: timeMin(f.time.value), minutes, chairs: boot.chairs, preferChair: Number(f.chair.value) || null, excludeId: f.exclude(),
         turnover: M.TURNOVER_MIN, max: 2,
+        extra: (day) => M.blockHolds(M.blocksOn(book.blocks, day), M.startMs(day)),
       });
       nextHead.textContent = `Next free with ${name}`;
       fillRow(nextRow, days);
+      // Their hours and the blocked time are honoured now (040), so the note names the hours too.
       nextNote.textContent = days.length
-        ? `Going by the days ${name} is in (${M.daysText(d.days)}), not their hours.`
+        ? `Going by the days and hours ${name} is in (${M.daysHoursText(d)}).`
         : `No free ${minutes} minutes with ${name} ${ymd < today ? 'in the next 7 days' : 'in the 7 days after this one'}.`;
       next.hidden = false; nextShown = true; nextFor = id; shownBase = base;
     } else hideNext();

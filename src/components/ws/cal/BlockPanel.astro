@@ -1,0 +1,94 @@
+---
+// Block time (040): a closed day, a dentist away, a chair out of use — added from the calendar. The shell's
+// <SidePanel>. Opened by More → Block time and by + New → Block time (/c/<slug>/?new=block), for schedule.edit;
+// and by a pill in the calendar's Blocked strip, in view mode, for anyone who may open the calendar.
+//
+// Very simple: what is blocked (three pills), who or which chair when it is one of them, all day or from a time,
+// until when, a note for the team. One teal button, Block this time. Saving is one POST to
+// /api/schedule/blocks; the visits already booked in that time are listed with their reminders, and nothing is
+// done to them (no text is queued, cancelled or changed). Lunch and a dentist's regular hours are weekly and live
+// in Clinic settings. panels.ts fills and wires it (the "blocked time" section).
+import SidePanel from '../SidePanel.astro';
+import Icon from '../Icon.astro';
+import type { StaffDay } from './model';
+
+interface Props { chairs: number; staff: StaffDay[]; canSchedule: boolean; hoursHref: string | null }
+const { chairs, staff, canSchedule, hoursHref } = Astro.props;
+const KINDS = [
+  { value: 'closed', label: 'The clinic is closed', hint: 'A holiday, a typhoon, a meeting', icon: 'clinic' },
+  { value: 'leave', label: 'A dentist is away', hint: 'Leave, a seminar, sick', icon: 'user' },
+  { value: 'chair_out', label: 'A chair is out of use', hint: 'A repair, a delivery', icon: 'settings' },
+] as const;
+---
+
+<SidePanel id="block" title="Block time" meta="Calendar">
+  <p role="alert" class="ws-callout bl-say" data-tone="alert" data-bl-error hidden></p>
+  <div role="status" class="ws-callout bl-say" data-tone="success" data-bl-said hidden></div>
+  <div class="ws-callout bl-say" data-tone="warn" data-bl-inside hidden></div>
+
+  {/* The form, for schedule.edit only: anyone else opens a block from the strip to read it, never to add one. */}
+  {canSchedule && (
+  <form class="bl-form" data-bl-form novalidate>
+    <fieldset class="bl-kinds">
+      <legend class="bk-legend">What is blocked</legend>
+      {KINDS.map((k, i) => (
+        <label class="bl-kind">
+          <input type="radio" name="bl-kind" value={k.value} data-bl-kind checked={i === 0} />
+          <span class="bl-kind-icon" aria-hidden="true"><Icon name={k.icon} size={16} /></span>
+          <span class="bl-kind-words"><span class="bl-kind-label">{k.label}</span><span class="bl-kind-hint">{k.hint}</span></span>
+        </label>
+      ))}
+    </fieldset>
+    <label class="field" data-bl-dentist-row hidden>
+      <span class="meta">Dentist</span>
+      <select data-bl-dentist>
+        {staff.map((s) => <option value={s.id}>{s.name}</option>)}
+      </select>
+    </label>
+    <label class="field" data-bl-chair-row hidden>
+      <span class="meta">Chair</span>
+      <select data-bl-chair>
+        {Array.from({ length: chairs }, (_, i) => <option value={i + 1}>Chair {i + 1}</option>)}
+      </select>
+    </label>
+    <label class="check bk-check"><input type="checkbox" data-bl-allday checked /><span>All day</span></label>
+    <div class="bl-when">
+      <label class="field"><span class="meta">From</span><input type="date" data-bl-from-date required /></label>
+      <label class="field" data-bl-times hidden><span class="meta">Starts at</span><input type="time" step="900" data-bl-from-time /></label>
+      <label class="field"><span class="meta">Until</span><input type="date" data-bl-to-date required /></label>
+      <label class="field" data-bl-times hidden><span class="meta">Ends at</span><input type="time" step="900" data-bl-to-time /></label>
+    </div>
+    <label class="field">
+      <span class="meta">Note for the team (optional)</span>
+      <input data-bl-note maxlength="200" autocomplete="off" aria-describedby="bl-note-hint" />
+      <span class="bk-hint" id="bl-note-hint">Patients never see it; they see only that the time is not open.</span>
+    </label>
+    <p class="bk-hint">Visits already booked in that time stay as they are; you will see them listed.</p>
+    {hoursHref && <p class="bk-hint" data-bl-settings>Lunch and a dentist’s regular hours are set in <a href={hoursHref}>Clinic settings</a>.</p>}
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" class="ws-btn ws-btn-primary" data-bl-save><Icon name="check" /><span data-bl-save-word>Block this time</span></button>
+      <button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Cancel</button>
+    </div>
+  </form>
+  )}
+
+  {/* View mode: one dated block, from the strip. Remove is for schedule.edit only, and asks first. */}
+  <div class="bl-view" data-bl-view hidden>
+    <dl class="vp-dl bl-facts" data-bl-facts></dl>
+    {canSchedule && (
+      <>
+        <div class="ws-callout bl-ask" data-tone="warn" data-bl-ask hidden>
+          <Icon name="alert" />
+          <div class="min-w-0">
+            <p class="font-semibold">Remove it? Patients can book this time again.</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-bl-yes>Yes, remove it</button>
+              <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-bl-keep>Not now</button>
+            </div>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2"><button type="button" class="ws-btn ws-btn-quiet" data-bl-remove><Icon name="close" />Remove this block</button></div>
+      </>
+    )}
+  </div>
+</SidePanel>

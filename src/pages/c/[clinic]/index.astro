@@ -31,7 +31,7 @@
 // clinic.
 //
 // Query: ?date=YYYY-MM-DD (Manila; default today) ?view=day|week ?by=chair|dentist
-// ?dentist=<id>|all ?new=booking[&patient=<id>] ?booking=<id> (open that visit)
+// ?dentist=<id>|all ?new=booking[&patient=<id>] ?new=block (Block time, + New's) ?booking=<id> (open that visit)
 // #requests is the website lane (the top bar's inbox links there); #patients
 // is today's patients. The old ?pq=<text> / ?pf= (the patients list that was
 // here) go on to the Patients tab with the same search and filter.
@@ -49,6 +49,7 @@ import Menu from '../../../components/ws/Menu.astro';
 import VisitPanel from '../../../components/ws/cal/VisitPanel.astro';
 import BookPanel from '../../../components/ws/cal/BookPanel.astro';
 import PatientPanel from '../../../components/ws/cal/PatientPanel.astro';
+import BlockPanel from '../../../components/ws/cal/BlockPanel.astro';
 import '../../../components/ws/cal/cal.css';
 import { requireWorkspace } from '../../../lib/workspace';
 import { withClinic } from '../../../lib/db';
@@ -133,6 +134,8 @@ const filter = filterOf(dentistParam);
 const byAsked = qs.get('by');
 const by: 'chair' | 'dentist' = byAsked === 'dentist' || byAsked === 'chair' ? byAsked : byDefault(dentistParam);
 const openNew = qs.get('new') === 'booking';
+// + New → Block time (040) lands here from any workspace page. Only for schedule.edit; anyone else is told why.
+const openBlock = qs.get('new') === 'block';
 const openPatient = UUID.test(qs.get('patient') ?? '') ? qs.get('patient')!.toLowerCase() : null;
 const openBooking = UUID.test(qs.get('booking') ?? '') ? qs.get('booking')!.toLowerCase() : null;
 const stale = qs.get('stale') === '1';
@@ -187,11 +190,15 @@ const whoItems = !isDentist && data.staff.length > 1
   ? [{ id: '', label: 'All dentists' }, ...data.staff.map((s) => ({ id: s.id, label: s.name }))]
   : [];
 
+const canSchedule = can(clinic, 'schedule.edit');
+const canSettings = can(clinic, 'settings.edit');
 const boot = {
   slug: clinic.slug, csrf, today, date, view, by, dentist: dentistParam,
   me: { id: session.staffId, name: session.name, dentist: isDentist },
-  finance, canEdit, canSchedule: can(clinic, 'schedule.edit'), canText: can(clinic, 'messages.send'),
+  finance, canEdit, canSchedule, canSettings, canText: can(clinic, 'messages.send'),
   chairs: data.clinic.chairs, hours: data.hours, staff: data.staff, catalog: data.catalog,
+  // Blocked time (040) over the range on screen and today (data.ts): the hatch, the strip, the count line, the soft stop.
+  blocks: data.blocks,
   next: NEXT_STATUS,
   cards: data.range, todayCards: data.today, toPlace: data.toPlace, toConfirm: data.toConfirm,
   // Every patient, as rows under one list of keys (PT_KEYS): a clinic with thousands of patients sends each
@@ -205,8 +212,11 @@ const boot = {
     messages: links.messages,
     addPatient: `/c/${clinic.slug}/patients/new/`,
     importPatients: `/c/${clinic.slug}/patients/import/`,
+    // Lunch and a dentist's hours live in Clinic settings; the visits in closed time on Calls.
+    hours: `/c/${clinic.slug}/settings/#hours`,
+    calls: `/c/${clinic.slug}/calls/#closed-time`,
   },
-  open: { new: openNew, patient: openPatient, booking: openBooking },
+  open: { new: openNew, patient: openPatient, booking: openBooking, block: openBlock },
   // The patients list's filter and search moved to the Patients tab; the calendar's script still reads the keys.
   pf: 'all', pq: '',
 };
@@ -291,6 +301,12 @@ const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
               <div class="ws-menu-sep"></div>
             </>
           )}
+          {canSchedule && (
+            <button type="button" class="ws-menu-item" data-cal-block-new>
+              <span class="ws-menu-icon" data-tint="blue"><Icon name="clock" /></span>
+              <span class="ws-menu-words">Block time<span class="ws-menu-hint">A closed day, a dentist away, a chair out of use</span></span>
+            </button>
+          )}
           <button type="button" class="ws-menu-item" data-cal-print>
             <span class="ws-menu-icon" data-tint="blue"><Icon name="file" /></span>
             <span class="ws-menu-words">Print the day’s list<span class="ws-menu-hint">Every visit on screen, in time order</span></span>
@@ -333,13 +349,20 @@ const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
         <ul class="cal-lane-list" data-undated-list aria-label="Past visits with no time on record"></ul>
       </details>
 
+      <!-- Blocked time someone added (040): a closure, a dentist away, a chair out of use, each a pill that opens it.
+           Lunch and a dentist's regular hours are weekly (Clinic settings) and are drawn on the grid only. -->
+      <div class="cal-blocks" data-cal-blocks hidden>
+        <span class="cal-blocks-label" aria-hidden="true"><Icon name="clock" size={16} />Blocked</span>
+        <ul class="cal-blocks-list" data-cal-blocks-list aria-label="Blocked time"></ul>
+      </div>
+
       <div class="cal-frame" data-cal-frame role="group" aria-label="Calendar" aria-busy="true" tabindex="-1">
         <noscript><p class="p-6 text-[15px] text-ink-2">The calendar needs JavaScript in this browser. Every visit is also on each patient's record.</p></noscript>
       </div>
       <div class="cal-list" data-cal-list></div>
 
       <table class="cal-print-list" data-cal-print-list>
-        <caption class="meta" data-cal-print-caption>{clinic.name} · {title}</caption>
+        <caption class="meta"><span data-cal-print-caption>{clinic.name} · {title}</span><span class="cal-print-blocks" data-cal-print-blocks></span></caption>
         <thead><tr><th scope="col">Time</th><th scope="col">Patient</th><th scope="col">Chart</th><th scope="col">Service</th><th scope="col">Dentist</th><th scope="col">Chair</th><th scope="col">Status</th></tr></thead>
         <tbody data-cal-print-rows></tbody>
       </table>
@@ -363,6 +386,7 @@ const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
   <VisitPanel chairs={data.clinic.chairs} />
   <BookPanel chairs={data.clinic.chairs} catalog={data.catalog} date={date} addPatient={canEdit ? `/c/${clinic.slug}/patients/new/` : null} />
   <PatientPanel />
+  <BlockPanel chairs={data.clinic.chairs} staff={data.staff} canSchedule={canSchedule} hoursHref={canSettings ? boot.links.hours : null} />
 
   <script is:inline type="application/json" data-dash-boot set:html={bootJson}></script>
 </ClinicLayout>
