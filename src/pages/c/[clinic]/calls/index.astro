@@ -31,7 +31,7 @@ import { can } from '../../../../lib/can';
 import { manilaToday } from '../../../../lib/health';
 import { applyStatus, StatusRefused, DONE, WORDS, timeText, whenText, shortName } from '../../../../lib/schedule';
 import { normalizePhone, prettyPhone, PH_MOBILE } from '../../../../lib/messages';
-import { willRemind } from '../../../../lib/availability';
+import { remindersFor, reminderWords as reminderState } from '../../../../lib/reminder-state';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -127,7 +127,6 @@ type Visit = {
   id: string; patientId: string; startsAt: Date; day: string; patientName: string; chartNo: string; phone: string | null;
   dentist: string | null; service: string | null; reason: string | null; source: string;
 };
-type Reminder = { status: string; nextAt: Date; sentAt: Date | null };
 type Attempt = { outcome: string; at: Date };
 type CallBack = { id: string; patientId: string; patientName: string; chartNo: string; phone: string | null; status: string; startsAt: Date; cancelledAt: Date | null; service: string | null; reason: string | null; dentist: string | null };
 
@@ -163,15 +162,10 @@ const data = await withClinic(clinic.id, async (tx) => {
   }));
   const ids = visits.map((v) => v.id);
 
-  // The reminder text, the newest row per visit; and every call attempt, oldest first.
-  const reminders = new Map<string, Reminder>();
+  // The reminder text, the newest row per visit (src/lib/reminder-state.ts); and every call attempt, oldest first.
+  const reminders = await remindersFor(tx, ids);
   const attempts = new Map<string, Attempt[]>();
   if (ids.length) {
-    const { rows: ms } = await tx.query(
-      `select distinct on (appointment_id) appointment_id, status, next_attempt_at, sent_at
-         from message_log where kind = 'reminder' and direction = 'out' and appointment_id = any($1::uuid[])
-        order by appointment_id, created_at desc`, [ids]);
-    for (const m of ms) reminders.set(m.appointment_id, { status: m.status, nextAt: new Date(m.next_attempt_at), sentAt: m.sent_at ? new Date(m.sent_at) : null });
     const { rows: cs } = await tx.query(
       `select appointment_id, outcome, at from appointment_contact where appointment_id = any($1::uuid[]) order by at`, [ids]);
     for (const c of cs) {
@@ -228,22 +222,12 @@ const dayList = dayOrder.filter((d) => byDay.has(d)).map((d) => ({ day: d, rows:
 const totalRows = dayList.reduce((n, d) => n + d.rows.length, 0);
 
 // Words.
-const canText = (phone: string | null) => !!phone && PH_MOBILE.test(normalizePhone(phone));
 const telHref = (phone: string) => { const n = normalizePhone(phone); return `tel:${PH_MOBILE.test(n) ? `+63${n.slice(1)}` : n}`; };
 const whatFor = (v: { service: string | null; reason: string | null }) => v.service ?? v.reason ?? 'Visit';
 const whoWith = (d: string | null) => (d ? shortName(d) : 'Any dentist');
 type Tone = 'ok' | 'wait' | 'none';
-function reminderWords(v: Visit): { text: string; tone: Tone; short: string } {
-  if (!canText(v.phone)) return { text: 'No reminder: no mobile on file', tone: 'none', short: 'none, no mobile' };
-  const r = reminders.get(v.id);
-  if (!r) return willRemind(v.startsAt)
-    ? { text: 'Reminder goes the day before', tone: 'wait', short: 'goes the day before' }
-    : { text: 'No reminder: booked too late for one', tone: 'none', short: 'none, booked late' };
-  if (r.status === 'sent' || r.status === 'delivered') { const at = stamp(r.sentAt ?? r.nextAt); return { text: `Reminder sent ${at}`, tone: 'ok', short: `sent ${at}` }; }
-  if (r.status === 'queued' || r.status === 'sending') { const at = stamp(r.nextAt); return { text: `Reminder queued for ${at}`, tone: 'wait', short: `queued ${at}` }; }
-  if (r.status === 'failed') return { text: 'Reminder could not be sent', tone: 'none', short: 'failed' };
-  return { text: 'Reminder withdrawn', tone: 'none', short: 'withdrawn' };
-}
+/** The reminder text's state in words (src/lib/reminder-state.ts, shared with the Block time panel). */
+const reminderWords = (v: Visit) => reminderState(v, reminders.get(v.id));
 function attemptsWords(list: Attempt[]): string | null {
   if (!list.length) return null;
   const last = list[list.length - 1];

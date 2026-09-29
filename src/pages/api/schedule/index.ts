@@ -7,6 +7,13 @@
 //                                                    same state machine, and no confirmation text — they are standing at the desk
 //   PATCH { clinic, id, startsAt?, minutes?, chair?, dentistId?, status?, reason?, notes? }
 //                                                  → 200 { appointment }   a move, a status change, or both
+//   Blocked time (040), additions only: GET's Range also carries `blocks` (lunch, a dentist's time not in, the
+//   dated blocks: src/lib/blocks.ts) and each staff[] entry `hours` (dow → [fromMin, toMin], their own hours).
+//   A POST, or a PATCH that moves, into closed time is a soft stop: 409 { error: <one sentence>, blocked: true,
+//   kind } (src/lib/block-words.ts), and the same body with anyway: true books it and marks it kept
+//   (blocked_ok_at, audit appointment.anyway). A walk-in (status 'arrived') is never asked, and is marked the
+//   same way. A clash is still a hard 409 with no anyway, and it is checked first. A status-only or words-only
+//   PATCH never looks at blocks. /api/schedule/blocks adds and removes dated blocks.
 //   Every visit in an answer also carries the Dashboard's extras (service, fee-guide price, who booked it
 //   and when, conditions, birth date, whether it was brought in with its day only, and for such a visit
 //   the dentist its old record names as dentistName; src/components/ws/cal/data.ts), and POST and PATCH
@@ -29,120 +36,40 @@
 // meets it; a script does.
 export const prerender = false;
 
-import type { APIRoute, AstroCookies } from 'astro';
+import type { APIRoute } from 'astro';
 import { randomBytes } from 'node:crypto';
-import { readSession, canOpen } from '../../../lib/auth';
 import { can } from '../../../lib/can';
 import { withClinic, type Tx } from '../../../lib/db';
 import { csrfHeaderOk, CSRF_MESSAGE } from '../../../lib/csrf';
-import { hit, waitText, LIMITS } from '../../../lib/throttle';
 import { queueText, normalizePhone, PH_MOBILE } from '../../../lib/messages';
-import { loadRange, findClash, applyStatus, dropStaleTexts, readAppt, canText, scheduleTexts, ALLOWED, DONE, WORDS, StatusRefused, type Appt } from '../../../lib/schedule';
+import { loadRange, findClash, applyStatus, dropStaleTexts, readAppt, canText, scheduleTexts, isDentistHere, ALLOWED, DONE, WORDS, type Appt } from '../../../lib/schedule';
+import { findBlock } from '../../../lib/blocks';
+import { json, refuse, answer, gate, body, isoDate, chairOf, idOf, text, clinicRow, checkChair } from '../../../lib/schedule-api';
 import { extrasFor, mergeExtras, withExtras } from '../../../components/ws/cal/data';
 import { splitName } from '../../../lib/import';
 
-const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_DAYS = 8;
 const MINUTES = { min: 5, max: 480 };
 const REASON_MAX = 200, NOTES_MAX = 500, NAME_MAX = 120, PHONE_MAX = 40;
 /** What the patient quotes on the phone: SE-7K3Q — the same shape the bookings API mints. */
 const publicRef = (slug: string) => `${slug.slice(0, 2).toUpperCase()}-${randomBytes(3).toString('base64url').replace(/[-_]/g, 'X').slice(0, 4).toUpperCase()}`;
 
-class Refusal { constructor(public status: number, public error: string) {} }
-const refuse = (status: number, error: string) => new Refusal(status, error);
-
-/** The two gates every call passes: a session that can open the clinic, and the per-staff limit. */
-async function gate(cookies: AstroCookies, slug: string) {
-  const session = readSession(cookies);
-  if (!session) throw refuse(401, 'Sign in to open the schedule.');
-  const clinic = await canOpen(session, slug);
-  if (!clinic) throw refuse(403, 'This account cannot open that clinic.');
-  const rate = await hit('schedule:s:' + session.staffId, ...LIMITS.schedule.staff);
-  if (!rate.allowed) throw refuse(429, 'Too many schedule changes at once. ' + waitText(rate.retryAfter));
-  return { session, clinic };
-}
-
-const answer = (e: unknown) =>
-  e instanceof Refusal ? json({ error: e.error }, e.status)
-  : e instanceof StatusRefused ? json({ error: e.message }, 400)
-  : Promise.reject(e);
-
 // ---------------------------------------------------------------------------
-// Reading the body
+// Reading the body (the rest is src/lib/schedule-api.ts)
 // ---------------------------------------------------------------------------
-async function body(request: Request): Promise<Record<string, unknown>> {
-  let b: unknown;
-  try { b = await request.json(); } catch { throw refuse(400, 'Send JSON.'); }
-  if (!b || typeof b !== 'object' || Array.isArray(b)) throw refuse(400, 'Send JSON.');
-  return b as Record<string, unknown>;
-}
-
-// A book covers the years a clinic works in. Anything outside them is a mistake or a
-// probe, and a date at the edge of what a Date can hold makes arithmetic on it useless.
-const EARLIEST = Date.parse('2000-01-01T00:00:00Z'), LATEST_AHEAD = 3 * 365 * 86_400_000;
-function isoDate(v: unknown, what: string): Date {
-  const d = new Date(typeof v === 'string' || typeof v === 'number' ? v : NaN);
-  if (Number.isNaN(d.getTime())) throw refuse(400, `${what} needs a date and time.`);
-  if (d.getTime() < EARLIEST || d.getTime() > Date.now() + LATEST_AHEAD) throw refuse(400, `${what} is outside the years this book covers.`);
-  return d;
-}
-
 function minutesOf(v: unknown): number {
   const n = Number(v);
   if (!Number.isInteger(n) || n < MINUTES.min || n > MINUTES.max) throw refuse(400, `A visit is between ${MINUTES.min} minutes and ${MINUTES.max / 60} hours long.`);
   return n;
 }
 
-/** A chair number or null (unplaced). The upper bound is the clinic's chair count, checked inside the transaction. */
-function chairOf(v: unknown): number | null {
-  if (v === null || v === undefined || v === '') return null;
-  const n = Number(v);
-  if (!Number.isInteger(n) || n < 1) throw refuse(400, 'A chair is numbered from 1.');
-  return n;
-}
-
-function idOf(v: unknown, what: string): string | null {
-  if (v === null || v === undefined || v === '') return null;
-  // Postgres writes uuids in lower case; comparing the caller's spelling would read an
-  // unchanged dentist as a change and write a move that never happened.
-  const s = String(v).toLowerCase();
-  if (!UUID.test(s)) throw refuse(400, `${what} was not recognised.`);
-  return s;
-}
-
-function text(v: unknown, max: number): string | null {
-  if (v === null || v === undefined) return null;
-  const s = String(v).replace(/\s+/g, ' ').trim();
-  return s ? s.slice(0, max) : null;
-}
-
 // ---------------------------------------------------------------------------
 // Inside the transaction
 // ---------------------------------------------------------------------------
-type ClinicRow = { chairs: number; name: string; phone: string | null; slug: string };
-
-async function clinicRow(tx: Tx, clinicId: string): Promise<ClinicRow> {
-  // One writer per clinic book at a time, for this transaction only.
-  await tx.query('select pg_advisory_xact_lock(hashtext($1))', [clinicId]);
-  const { rows } = await tx.query<ClinicRow>('select chairs, name, phone, slug from clinic where id = $1', [clinicId]);
-  if (!rows[0]) throw refuse(403, 'This account cannot open that clinic.');
-  return rows[0];
-}
-
-function checkChair(chair: number | null, c: ClinicRow) {
-  if (chair !== null && chair > c.chairs) throw refuse(400, c.chairs === 1 ? 'This branch has one chair.' : `This branch has ${c.chairs} chairs; pick one of them.`);
-}
-
-/** A dentist is a staff member with access to, or days at, this clinic, in a role that treats. */
+/** A dentist is a staff member with access to, or days at, this clinic, in a role that treats (isDentistHere). */
 async function checkDentist(tx: Tx, clinicId: string, dentistId: string | null) {
   if (dentistId === null) return;
-  const { rowCount } = await tx.query(
-    `select 1 from staff s
-      where s.id = $1 and s.disabled_at is null and s.role in ('owner', 'dentist', 'associate')
-        and (exists (select 1 from staff_access a where a.staff_id = s.id and a.clinic_id = $2)
-          or exists (select 1 from staff_schedule ss where ss.staff_id = s.id and ss.clinic_id = $2))`, [dentistId, clinicId]);
-  if (!rowCount) throw refuse(400, 'That dentist is not at this clinic.');
+  if (!(await isDentistHere(tx, clinicId, dentistId))) throw refuse(400, 'That dentist is not at this clinic.');
 }
 
 /** The next free desk chart number: P-0007. Counted per clinic (RLS) and stepped past any number already taken. */
@@ -198,6 +125,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // A walk-in is the only status a visit may start in besides booked.
     if (b.status !== undefined && b.status !== null && b.status !== 'arrived') throw refuse(400, 'A new visit starts as booked, or as arrived for a walk-in.');
     const walkIn = b.status === 'arrived';
+    // Book anyway: the desk has seen the soft stop's sentence and books into closed time on purpose (040).
+    const anyway = b.anyway === true;
 
     // Who the visit is for: a patient on file, or a new one from a name and a mobile.
     let newPatient: { name: string; phone: string | null } | null = null;
@@ -244,18 +173,23 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
       const clash = await findClash(tx, clinic.id, { startsAt, endsAt, chair, dentistId });
       if (clash) throw refuse(409, clash);
+      // Closed time (040) is a soft stop: one sentence and Book anyway. A clash above always wins over it, and a
+      // walk-in is never asked — the patient is at the desk — but the visit still records that it sits there.
+      const blk = await findBlock(tx, clinic.id, { startsAt, endsAt, chair, dentistId });
+      if (blk && !anyway && !walkIn) throw refuse(409, blk.sentence, { blocked: true, kind: blk.kind });
 
       const ref = publicRef(c.slug);
       const { rows: [row] } = await tx.query<{ id: string }>(
-        `insert into appointment (clinic_id, patient_id, dentist_id, chair, starts_at, ends_at, reason, status, source, public_ref, catalog_id, notes, created_by)
-         values ($1, $2, $3, $4, $5, $6, $7, 'booked', 'staff', $8, $9, $10, $11) returning id`,
-        [clinic.id, pid, dentistId, chair, startsAt, endsAt, why, ref, catalogId, notes, session.staffId]);
+        `insert into appointment (clinic_id, patient_id, dentist_id, chair, starts_at, ends_at, reason, status, source, public_ref, catalog_id, notes, created_by, blocked_ok_at)
+         values ($1, $2, $3, $4, $5, $6, $7, 'booked', 'staff', $8, $9, $10, $11, case when $12::boolean then now() end) returning id`,
+        [clinic.id, pid, dentistId, chair, startsAt, endsAt, why, ref, catalogId, notes, session.staffId, !!blk]);
 
       let texted = false;
       if (!walkIn && canText(phone) && startsAt.getTime() > Date.now()) {
         texted = (await queueText(tx, { clinicId: clinic.id, to: phone!, body: scheduleTexts.confirmation(c.name, why, startsAt, ref, c.phone), kind: 'confirmation', patientId: pid, appointmentId: row.id, staffId: session.staffId })) !== null;
       }
       await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.create', 'appointment', $3)`, [clinic.id, session.staffId, row.id]);
+      if (blk) await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.anyway', 'appointment', $3)`, [clinic.id, session.staffId, row.id]);
       if (walkIn) await applyStatus(tx, clinic.id, session.staffId, row.id, 'arrived', 'booked');
       return { appointment: await withExtras(tx, await mustRead(tx, row.id)), texted };
     });
@@ -284,6 +218,7 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
     const wantDentist = has('dentistId') ? idOf(b.dentistId, 'The dentist') : undefined;
     const wantReason = has('reason') ? text(b.reason, REASON_MAX) : undefined;
     const wantNotes = has('notes') ? text(b.notes, NOTES_MAX) : undefined;
+    const anyway = b.anyway === true;
 
     const saved = await withClinic(clinic.id, async (tx) => {
       let texted = false;
@@ -308,8 +243,12 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
         if (dentistId !== cur.dentist_id) await checkDentist(tx, clinic.id, dentistId);
         const clash = await findClash(tx, clinic.id, { id, startsAt, endsAt, chair, dentistId });
         if (clash) throw refuse(409, clash);
-        await tx.query('update appointment set starts_at = $2, ends_at = $3, chair = $4, dentist_id = $5, moved_at = now() where id = $1', [id, startsAt, endsAt, chair, dentistId]);
+        // A move into closed time asks first (Move anyway, Place anyway); a move out of it clears the kept mark.
+        const blk = await findBlock(tx, clinic.id, { id, startsAt, endsAt, chair, dentistId });
+        if (blk && !anyway) throw refuse(409, blk.sentence, { blocked: true, kind: blk.kind });
+        await tx.query('update appointment set starts_at = $2, ends_at = $3, chair = $4, dentist_id = $5, moved_at = now(), blocked_ok_at = case when $6::boolean then now() else null end where id = $1', [id, startsAt, endsAt, chair, dentistId, !!blk]);
         await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.move', 'appointment', $3)`, [clinic.id, session.staffId, id]);
+        if (blk) await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.anyway', 'appointment', $3)`, [clinic.id, session.staffId, id]);
         // A new time for a visit still ahead, and a number to reach: tell them — after
         // dropping the texts that still name the old time, so nobody gets both.
         if (timeChanged) await dropStaleTexts(tx, id);
