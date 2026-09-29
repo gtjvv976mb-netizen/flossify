@@ -1361,6 +1361,9 @@ the record's Consent forms pane are phase 2; the phone path phase 3; the record 
   while its visit sits in closed time nobody handled? The default ships reminders unchanged); a dentist reads
   the chart-effect mapping and its sentences (should a crown over a charted root canal be offered? should one
   visit's offers be gathered into one?). Turnover between visits stays 0 until the owner sets it.
+- A new web patient's chart number is `W-` + (patients here + 1) (`api/bookings`): the app never deletes a
+  patient, but one deleted by hand makes the next web booking for a new mobile fail on the unique key until
+  another patient is added. Test scripts that share a database archive their patients instead of deleting.
 - Patient forms throttles are estimates: 40 an hour per address and poster,
   8 a day per mobile, 300 a day per poster, 200 missed links an hour per
   address; 500 waiting forms per poster answers "full".
