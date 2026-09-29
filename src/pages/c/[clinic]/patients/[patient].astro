@@ -53,7 +53,10 @@
 //                   email, address, HMO, emergency contact, notes —
 //                   updateDetails() in src/lib/import.ts, audit patient.update.
 //                   The birth date stays with the health form, which keeps its
-//                   history.
+//                   history. Opened from the Dashboard's desk note
+//                   (?open=details&dash=<visit>), the form carries the visit in
+//                   a hidden dash, and a save goes back to the Dashboard with that
+//                   visit open (only a visit of this patient's).
 // All need staff_access.can_edit_records for this branch (every role has it
 // today; see canEditRecords()). On success the page redirects to itself
 // (?saved=…) so a reload does not post again; on a problem it renders again
@@ -163,6 +166,8 @@ let agreedAs: AgreedAs | null = null;
 let paperState: { open: boolean; problem: string | null; values: Partial<PaperIn> } = { open: false, problem: null, values: {} };
 let detailsProblems: string[] = [];
 let detailsPosted: PersonIn | null = null;
+// Edit details opened from the Dashboard (?open=details&dash=<visit>): the visit to go back to once it is saved.
+let detailsDash: string | null = null;
 let formUseProblem: string | null = null;
 // A clinical-record post (Treatment, Notes, Prescriptions, Files, the next check-up) that was refused.
 let recordProblem: RecordProblem | null = null;
@@ -259,6 +264,8 @@ if (Astro.request.method === 'POST') {
     backTo = 'overview';
     const { person, problems } = readPersonForm(form);
     detailsPosted = person;
+    const dashIn = String(form.get('dash') ?? '');
+    detailsDash = UUID.test(dashIn) ? dashIn.toLowerCase() : null;
     if (slow) problems.unshift(slow);
     if (!problems.length) {
       const r = await withClinic(clinic.id, async (tx) =>
@@ -266,6 +273,12 @@ if (Astro.request.method === 'POST') {
           ? updateDetails(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, p: person })
           : ('denied' as const));
       if (r === 'none') return notFound();
+      if (r === 'saved' && detailsDash) {
+        // Back to the Dashboard with that visit's panel open, showing the new note: only a visit of this patient's.
+        const v = await withClinic(clinic.id, async (tx) => (await tx.query(
+          `select to_char(starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as ymd from appointment where id = $1 and patient_id = $2`, [detailsDash, patientId])).rows[0]);
+        if (v) return Astro.redirect(`/c/${clinic.slug}/?${v.ymd === manilaToday() ? '' : `date=${v.ymd}&`}booking=${detailsDash}`, 303);
+      }
       if (r === 'saved') return Astro.redirect(`${here}?saved=details#overview`, 303);
       problems.push(r === 'denied' ? 'Your account cannot change records at this branch. Ask the owner.' : r.taken);
     }
@@ -443,9 +456,11 @@ const thisVisit: StripVisit | null = thisRow ? { id: thisRow.id, startsAt: thisR
 // A visit already on the book after this one (the strip then does not ask for a check-up).
 const laterVisits = thisVisit ? visits.filter((v) => v.id !== thisVisit.id && going(v.status) && v.status !== 'completed' && +v.starts_at > +thisVisit.startsAt) : [];
 const laterVisitAt: Date | null = laterVisits.length ? laterVisits[laterVisits.length - 1].starts_at : null;
-// ?open=vitals|note|rx|done|file: the page opens that panel as it loads (the Dashboard's "Take it", "Write the note").
-const OPEN_PANEL: Record<string, string> = { vitals: 'health', note: 'notes', rx: 'rx', done: 'treatment', file: 'files' };
+// ?open=vitals|note|rx|done|file|details: the page opens that panel as it loads (the Dashboard's "Take it", "Write the
+// note", the desk note's "Edit"). &dash=<visit> with details: saving goes back to the Dashboard with that visit open.
+const OPEN_PANEL: Record<string, string> = { vitals: 'health', note: 'notes', rx: 'rx', done: 'treatment', file: 'files', details: 'overview' };
 const openNow = canEdit && Object.hasOwn(OPEN_PANEL, q.get('open') ?? '') ? q.get('open')! : null;
+const dashVisit = UUID.test(q.get('dash') ?? '') ? q.get('dash')!.toLowerCase() : null;
 
 // The chips: the quick picks in a fixed order (the same place every time), then
 // anything else on the record or typed, ticked.
@@ -1253,11 +1268,13 @@ const recHere = here;
   </div>
 
   {canEdit && (
-    <SidePanel id="details" title="Edit details" meta={shortName} wide open={detailsProblems.length > 0}>
+    <SidePanel id="details" title="Edit details" meta={shortName} wide open={detailsProblems.length > 0 || openNow === 'details'}>
       {detailsProblems.length > 0 && <Callout tone="alert" class="mb-5" title="Nothing was saved." items={detailsProblems} />}
-      <form method="post" action={`${here}#overview`} class="grid gap-4">
+      {/* From the Dashboard (dash), no #overview on the action: a redirect keeps the post's fragment, and the Dashboard needs none. */}
+      <form method="post" action={(detailsDash ?? dashVisit) ? here : `${here}#overview`} class="grid gap-4">
         <Csrf />
         <input type="hidden" name="intent" value="details" />
+        {(detailsDash ?? dashVisit) && <input type="hidden" name="dash" value={detailsDash ?? dashVisit} />}
         <div class="grid gap-4 sm:grid-cols-2">
           <label class="field"><span class="meta">Last name</span><input name="last_name" value={d.last} required maxlength="60" autocomplete="off" /></label>
           <label class="field"><span class="meta">First name</span><input name="first_name" value={d.first} required maxlength="60" autocomplete="off" /></label>
@@ -1285,7 +1302,7 @@ const recHere = here;
           <label class="field"><span class="meta">Their number</span><input type="tel" name="emergency_phone" value={d.emergencyPhone ? prettyPhone(d.emergencyPhone) : ''} maxlength="20" inputmode="tel" autocomplete="off" /></label>
           <label class="field"><span class="meta">Chart no.</span><input name="chart_no" value={d.chartNo ?? ''} maxlength="20" autocomplete="off" /><span class={help}>Change it only to match the card.</span></label>
         </div>
-        <label class="field"><span class="meta">Notes</span><textarea name="notes" rows="3" maxlength={NOTES_MAX}>{d.notes ?? ''}</textarea></label>
+        <label class="field"><span class="meta">Notes</span><textarea name="notes" rows="3" maxlength={NOTES_MAX} data-rec-details-notes>{d.notes ?? ''}</textarea><span class={help}>The desk sees this beside the patient’s visits on the Dashboard. Keep health details in Health.</span></label>
         <datalist id="rec-hmo-names">{data.hmoNames.map((h) => <option value={h} />)}</datalist>
         <p class="flex items-start gap-2 text-[13.5px] text-muted"><Icon name="info" size={16} class="mt-0.5 shrink-0" />The birth date is changed on Health, where its history is kept.</p>
         <div><button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save details</button></div>
@@ -1325,6 +1342,20 @@ const recHere = here;
   });
   window.addEventListener('hashchange', fromHash);
   fromHash();
+
+  // ?open=details (the Dashboard's desk note, "Edit"): the caret waits at the end of Notes, once the shell has opened
+  // the panel and focused its title; then the address drops open and dash, so Back does not open the panel again.
+  if (new URLSearchParams(location.search).get('open') === 'details') {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const panel = document.getElementById('details') as HTMLDialogElement | null;
+      if (!panel?.open) return;
+      const notes = panel.querySelector<HTMLTextAreaElement>('[data-rec-details-notes]');
+      if (notes) { notes.focus(); notes.setSelectionRange(notes.value.length, notes.value.length); }
+      const url = new URL(location.href);
+      url.searchParams.delete('open'); url.searchParams.delete('dash');
+      history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    }));
+  }
   document.querySelectorAll<HTMLElement>('[data-rec-go]').forEach((b) => b.addEventListener('click', () => { show(b.dataset.recGo!, true); }));
   // A quick action in More (a note, a plan item, a prescription, a file) brings its section forward behind its panel.
   document.querySelectorAll<HTMLElement>('[data-rec-show]').forEach((b) => b.addEventListener('click', () => { show(b.dataset.recShow!); }));
