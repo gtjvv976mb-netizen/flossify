@@ -1,0 +1,170 @@
+/* Add patient, step by step (the intake, 039): the desk's screens — Add
+   patient's chooser (../new/), the list (./), and one intake's steps (./<id>/:
+   Who and which forms · The clinic's part · Check · Hand over · Add to the
+   records · Explain and confirm). Only what the shell (global.css, "The
+   workspace — the soft template"), ../_ui/patients.css (.imp-steps) and
+   ../_forms/forms.css do not already draw; all ik-*. Hooks the script reads
+   are data-ik-*.
+
+   The layer order global.css declares, stated again so this file can never be
+   the first to name a layer. Soft template: rounded, slate words, pale tints,
+   tokens only (both themes come from them); motion always on. */
+@layer theme, base, components, utilities;
+
+@layer components {
+
+.ik-lede { max-width: 64ch; font-size: 15px; line-height: 1.55; color: var(--c-ink-2); }
+.ik-help { font-size: 14px; line-height: 1.45; color: var(--c-ink-2); }
+.ik-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
+.ik-actions-end { justify-content: flex-end; }
+@media (max-width: 30rem) { .ik-actions > .ws-btn-primary { flex: 1 1 100%; justify-content: center; } }
+.ik-sep { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--ws-hair); }
+
+/* --- radio cards: Add patient's ways, the devices on Check ----------------------------------- */
+.ik-ways { display: grid; gap: 0.625rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+.ik-way { position: relative; display: block; cursor: pointer; }
+.ik-way > input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+.ik-way-box {
+  display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 0.75rem; min-height: 72px; padding: 0.75rem 1rem;
+  border: 1px solid var(--ws-field-line); border-radius: var(--ws-r); background: var(--c-surface); color: var(--c-ink);
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+/* A radio dot, so the choice is never colour alone. */
+.ik-way-box::before {
+  content: ""; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--ws-field-line-hover); background: var(--c-surface);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.ik-way:hover > .ik-way-box { border-color: var(--ws-field-line-hover); }
+.ik-way > input:checked + .ik-way-box { border-color: var(--ws-teal); box-shadow: inset 0 0 0 1px var(--ws-teal); background: var(--ws-teal-tint); }
+.ik-way > input:checked + .ik-way-box::before { border-color: var(--ws-teal-fill); box-shadow: inset 0 0 0 3px var(--c-surface), inset 0 0 0 9px var(--ws-teal-fill); }
+.ik-way > input:focus-visible + .ik-way-box { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.ik-way:has(> input:disabled) { cursor: not-allowed; }
+.ik-way > input:disabled + .ik-way-box { border-style: dashed; background: var(--c-bg-soft); }
+.ik-way > input:disabled + .ik-way-box::before { background: var(--c-bg-soft); }
+.ik-way-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+.ik-way > input:checked + .ik-way-box .ik-way-icon { background: var(--c-surface); }
+.ik-way > input:disabled + .ik-way-box .ik-way-icon { background: var(--c-surface); color: var(--c-ink-2); }
+.ik-way-words { display: grid; gap: 0.125rem; min-width: 0; }
+.ik-way-title { font-size: 16px; font-weight: 600; line-height: 1.3; }
+.ik-way > input:checked + .ik-way-box .ik-way-title { color: var(--ws-teal-ink); }
+.ik-way-line { font-size: 14px; line-height: 1.4; color: var(--c-ink-2); }
+.ik-way-off { font-size: 14px; line-height: 1.4; font-weight: 500; color: var(--c-ink-2); }
+.ik-way-pill {
+  display: inline-flex; align-items: center; margin-left: 0.375rem; padding: 0.0625rem 0.5rem; border-radius: var(--ws-r-pill); vertical-align: 1px;
+  background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-size: 12.5px; font-weight: 600; line-height: 1.5;
+}
+.ik-way > input:checked + .ik-way-box .ik-way-pill { background: var(--c-surface); }
+@media (forced-colors: active) {
+  .ik-way-box::before { forced-color-adjust: none; border-color: CanvasText; background: Canvas; box-shadow: none; }
+  .ik-way > input:checked + .ik-way-box { border-color: Highlight; }
+  .ik-way > input:checked + .ik-way-box::before { border-color: Highlight; box-shadow: inset 0 0 0 3px Canvas, inset 0 0 0 9px Highlight; }
+}
+
+/* Quiet ways on: import, the poster, a patient on file. */
+.ik-links { display: grid; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+.ik-links a {
+  display: flex; align-items: center; gap: 0.625rem; min-height: 44px; padding: 0.25rem 0.5rem; border-radius: var(--ws-r-ctl);
+  color: var(--c-ink); font-size: 15px; font-weight: 500;
+}
+.ik-links a:hover { background: var(--ws-subtle); }
+.ik-links a > .ws-icon:first-child { color: var(--ws-teal-ink); }
+.ik-links-hint { color: var(--c-ink-2); font-weight: 400; }
+
+/* --- the head of an intake: who it is for ------------------------------------------------------ */
+.ik-who { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
+.ik-who-name { font-size: 17px; font-weight: 600; }
+.ik-ref { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 14px; color: var(--c-ink-2); }
+.ik-q { display: grid; gap: 0.5rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+.ik-q > legend { margin-bottom: 0.25rem; font-size: 15px; font-weight: 600; color: var(--c-ink); }
+.ik-q-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+/* --- step 1: the checklist -------------------------------------------------------------------- */
+.ik-group { margin-top: 1rem; }
+.ik-group:first-child { margin-top: 0; }
+.ik-group-head { margin-bottom: 0.5rem; font-size: 14.5px; font-weight: 600; color: var(--c-ink-2); }
+.ik-forms { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.ik-form {
+  display: flex; align-items: center; gap: 0.5rem 0.75rem; min-height: 56px; padding: 0.375rem 0.5rem 0.375rem 0.875rem;
+  border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--c-surface);
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+.ik-form:has(.ik-form-check:checked) { border-color: color-mix(in srgb, var(--ws-teal) 45%, transparent); background: var(--ws-teal-tint); }
+.ik-form:has(.ik-form-check:disabled) { background: var(--c-bg-soft); }
+.ik-form-main { display: flex; flex: 1; align-items: center; gap: 0.75rem; min-width: 0; min-height: 44px; cursor: pointer; }
+.ik-form:has(.ik-form-check:disabled) .ik-form-main { cursor: not-allowed; }
+.ik-form-check { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--ws-teal-fill); }
+.ik-form-words { display: grid; gap: 0.125rem; min-width: 0; padding: 0.25rem 0; }
+.ik-form-title { font-size: 15.5px; font-weight: 600; line-height: 1.35; color: var(--c-ink); }
+.ik-form-fil { font-size: 14px; font-weight: 400; color: var(--c-ink-2); }
+.ik-form-why { font-size: 14px; line-height: 1.4; color: var(--c-ink-2); }
+.ik-form-tags { display: flex; flex-wrap: wrap; gap: 0.25rem 0.375rem; }
+.ik-form-tags .ws-pill { white-space: normal; }
+.ik-form-always { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 5px; background: var(--ws-teal-fill); color: #fff; }
+.ik-form-side { display: flex; flex: none; align-items: center; gap: 0.5rem; }
+.ik-running { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 15px; font-weight: 600; color: var(--c-ink); }
+
+/* The preview: the patient's page, read-only, in a phone-wide box inside the side panel. */
+.ik-preview { max-width: 390px; margin-inline: auto; }
+
+/* --- step 2: one card per form ---------------------------------------------------------------- */
+.ik-card { padding: 1rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--c-surface); }
+.ik-card + .ik-card { margin-top: 0.75rem; }
+.ik-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.75rem; }
+.ik-card-title { font-size: 16px; font-weight: 600; }
+.ik-fields { display: grid; gap: 0.875rem 1.25rem; }
+@container (min-width: 40rem) { .ik-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ik-fields > .ik-wide { grid-column: 1 / -1; } }
+.ik-cq { container-type: inline-size; }
+.ik-proposed { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 13px; font-weight: 500; color: var(--ws-blue-ink); }
+.ik-chips { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.375rem; }
+.ik-chip {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.875rem; border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-pill);
+  background: var(--c-surface); color: var(--c-ink); font-size: 14px; font-weight: 500; cursor: pointer;
+}
+.ik-chip:hover { border-color: var(--ws-field-line-hover); }
+.ik-chip:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.ik-money { display: grid; gap: 0.5rem; }
+.ik-money-row { display: flex; flex-wrap: wrap; align-items: end; gap: 0.5rem 0.75rem; }
+.ik-money-row .field { flex: 1 1 9rem; }
+.ik-opts { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
+.ik-frozen { display: flex; align-items: center; gap: 0.5rem; font-size: 14.5px; color: var(--c-ink-2); }
+
+/* --- step 3: the pages in order --------------------------------------------------------------- */
+.ik-pages { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.ik-page { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; min-height: 56px; padding: 0.5rem 0; border-top: 1px solid var(--ws-hair); }
+.ik-page:first-child { border-top: 0; }
+.ik-page-no {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px; border-radius: var(--ws-r-pill);
+  background: var(--c-bg-soft); color: var(--c-ink); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.ik-page-words { display: grid; flex: 1; gap: 0.125rem; min-width: 12rem; }
+.ik-page-title { font-size: 15.5px; font-weight: 600; }
+.ik-page-note { font-size: 14px; color: var(--c-ink-2); }
+
+/* --- a part's state: a dot and words, never colour alone ------------------------------------ */
+.ik-tag {
+  display: inline-flex; align-items: center; gap: 0.375rem; min-height: 26px; padding: 0.125rem 0.625rem; border-radius: var(--ws-r-pill);
+  background: var(--c-bg-soft); color: var(--c-ink-2); font-size: 13.5px; font-weight: 600; line-height: 1.3; white-space: nowrap;
+}
+.ik-tag::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.ik-tag[data-tone="info"] { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
+.ik-tag[data-tone="success"] { background: var(--ws-green-tint); color: var(--ws-green-ink); }
+.ik-tag[data-tone="warn"] { background: var(--ws-amber-tint); color: var(--ws-amber-ink); }
+.ik-tag[data-tone="alert"] { background: var(--ws-red-tint); color: var(--ws-red-ink); }
+
+/* --- the list ----------------------------------------------------------------------------------- */
+.ik-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.ik-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; min-height: 60px; padding: 0.5rem 0; border-top: 1px solid var(--ws-hair); }
+.ik-row:first-child { border-top: 0; }
+.ik-row-main { display: flex; flex: 1; align-items: center; gap: 0.75rem; min-width: 14rem; min-height: 44px; color: var(--c-ink); }
+.ik-row-main:hover .ik-row-name { text-decoration: underline; text-underline-offset: 3px; }
+.ik-row-name { font-size: 15.5px; font-weight: 600; }
+.ik-row-meta { font-size: 14px; color: var(--c-ink-2); }
+
+/* --- Add to the records: the look-alikes -------------------------------------------------------- */
+.ik-alike { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; min-height: 64px; padding: 0.625rem 0; border-top: 1px solid var(--ws-hair); }
+.ik-alike:first-child { border-top: 0; }
+.ik-alike-main { display: flex; flex: 1; align-items: center; gap: 0.75rem; min-width: 14rem; }
+.ik-kept { display: grid; gap: 0.375rem; margin: 0; padding: 0; list-style: none; }
+.ik-kept li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; min-height: 44px; }
+
+}

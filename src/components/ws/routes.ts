@@ -24,7 +24,7 @@ export const LANDED = {
   patients: true,
   /** /c/<slug>/finances/ exists. */
   finances: true,
-  /** /c/<slug>/patients/new/ exists. */
+  /** /c/<slug>/patients/new/ exists: Add patient's chooser (the intake, 039). The shell shows it only to people who can add patients (records.edit). */
   addPatient: true,
   /** /c/<slug>/account/ exists. */
   myPage: true,

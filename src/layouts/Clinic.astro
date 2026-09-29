@@ -103,6 +103,8 @@ const canSetUp = can(access, 'settings.edit') || can(access, 'people.manage') ||
 
 // Where each link goes: the rebuilt page once it has landed, today's page until then (routes.ts).
 const links = shellLinks(clinic.slug);
+// Add patient (the New menu, and search's "Add a patient"): only for people who can add patients here.
+const addPatient = can(access, 'records.edit') ? links.addPatient : null;
 const tabs: { id: Tab; label: string; short: string; href: string; icon: IconName }[] = [
   { id: 'dashboard', label: 'Dashboard', short: 'Dashboard', href: links.dashboard, icon: 'dashboard' },
   { id: 'patients', label: 'Patients', short: 'Patients', href: links.patients, icon: 'patients' },
@@ -299,7 +301,7 @@ const BarTitle = heading ? 'h1' : 'p';
             </div>
 
             <div class="ws-right">
-              <div id="ws-search" class="ws-search" role="search" data-clinic={clinic.slug} data-add-patient={links.addPatient ?? undefined}>
+              <div id="ws-search" class="ws-search" role="search" data-clinic={clinic.slug} data-add-patient={addPatient ?? undefined}>
                 <Icon name="search" class="ws-search-icon" />
                 <label for="ws-q" class="sr-only">Search patients and bookings</label>
                 <input id="ws-q" class="ws-search-input" type="search" placeholder="Search patients, bookings" autocomplete="off" spellcheck="false" enterkeyhint="go"
@@ -373,8 +375,8 @@ const BarTitle = heading ? 'h1' : 'p';
                       <span class="ws-menu-words">Block time<span class="ws-menu-hint">A closed day, a dentist away, a chair out of use</span></span>
                     </a>
                   )}
-                  {links.addPatient && (
-                    <a class="ws-menu-item" href={links.addPatient}>
+                  {addPatient && (
+                    <a class="ws-menu-item" href={addPatient}>
                       <span class="ws-menu-icon" data-tint="blue"><Icon name="patients" /></span>
                       <span class="ws-menu-words">Add patient<span class="ws-menu-hint">Details, health history and past visits</span></span>
                     </a>
