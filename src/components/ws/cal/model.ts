@@ -12,7 +12,12 @@
 // Times are Manila's calendar and clock whatever the machine says. Manila
 // keeps +08:00 all year, so a day is exactly 24 hours and the offset exact.
 import type { Appt } from '../../../lib/schedule';
+// Types only: blocks.ts reads the database (pg), which must never reach the browser's bundle. block-words.ts is pure.
+import type { BlockRange } from '../../../lib/blocks';
+import type { RangeKind, RangeLike } from '../../../lib/block-words';
 import { statusOf } from '../status';
+
+export type { BlockRange } from '../../../lib/blocks';
 
 export const TZ = 'Asia/Manila';
 export const DAY_MS = 86_400_000;
@@ -80,7 +85,9 @@ export const WAIT_ALERT_MIN = 15;
 /** A finished visit with nothing after it: no next visit on the book and no check-up set. */
 export const noNextVisit = (c: Pick<Card, 'status' | 'nextVisitAt' | 'recallDue'>) => c.status === 'completed' && !c.nextVisitAt && !c.recallDue;
 
-export interface StaffDay { id: string; name: string; days: number[] }
+/** A dentist at this branch: their weekdays and, on the days that have them, their own hours (040): dow → [fromMin,
+ *  toMin]; a day in `days` with no entry is the clinic's hours. */
+export interface StaffDay { id: string; name: string; days: number[]; hours?: Record<number, [number, number]> }
 
 /** A row of the Patients list (data.ts reads it; patients.ts shows it). */
 export interface Pt {
@@ -341,18 +348,20 @@ export function pickStarts(starts: FreeStart[], o: { at: FreeStart | null; limit
   return pick.sort((x, y) => x.min - y.min);
 }
 
-/** The first half hour a chair is free from now (or from opening, on another day), lowest chair first.
- *  Unchanged answers: renderCount's line and the walk-in's chair read it (no pool, no turnover). `extra` is for
- *  holds that are not visits (blocked time, 040), in the same minutes; none today, so the answer is the old one. */
-export function nextFree(list: Card[], open: [number, number] | null, dayStart: number, isToday: boolean, chairs: number, now = Date.now(), extra: Hold[] = []): { chair: number; min: number } | null {
+/** The first half hour a chair is free from now (or from opening, on another day), lowest chair first: the count
+ *  line and the walk-in's chair (no pool, no turnover). It skips the day's blocked time (040): the clinic's closures
+ *  and lunch, each chair's own time out of use, and — with `dentistId` — that dentist's time away or not in. With no
+ *  blocks its answer is the one it always gave. */
+export function nextFree(list: Card[], open: [number, number] | null, dayStart: number, isToday: boolean, chairs: number, now = Date.now(),
+  blocks: Blocky[] = [], dentistId: string | null = null): { chair: number; min: number } | null {
   if (!open) return null;
   const from = isToday ? Math.ceil((now - dayStart) / 60_000 / 15) * 15 : open[0];
-  return freeStarts([...holdsOf(list, dayStart), ...extra], { open, from, minutes: 30, chairs })[0] ?? null;
+  return freeStarts([...holdsOf(list, dayStart), ...blockHolds(blocks, dayStart, { only: dentistId ?? '' })], { open, from, minutes: 30, chairs })[0] ?? null;
 }
 
 /** "Next free with Dr. Cariño": on each of the next days the dentist is in, the first free start at or after `at`
  *  (the form's clock time), else that day's first free start; at most `max` days. `extra(ymd)` adds holds that are
- *  not visits for that day (blocked time, 040); none today. */
+ *  not visits for that day: its blocked time (040), blockHolds(). */
 export function freeDays(list: Slotted[], o: {
   after: string; today: string; nowMin: number; days: number; hours: Record<number, [number, number] | null>;
   dentist: StaffDay; staff: StaffDay[]; at: number | null; minutes: number; chairs: number;
@@ -385,6 +394,105 @@ export function daysText(days: number[]): string {
     i = j + 1;
   }
   return out.join(', ');
+}
+
+// --- blocked time (040) ------------------------------------------------------------------------
+// A range of clinic_unavailable() as the page has it: /api/schedule's `blocks` (a BlockRange), or the weekly shut
+// hours this file works out from the clinic's hours (shutRanges). The words are src/lib/block-words.ts's.
+
+/** A range the calendar reads: a BlockRange, or a weekly shut range (no id, no dentist, no chair). */
+export type Blocky = RangeLike & { id?: string | null; dentistId?: string | null };
+
+/** Blocked time as holds (p24 × p07). The clinic's closures, lunch and shut hours hold every chair and dentist; a chair
+ *  out of use holds that chair; a dentist away or not in holds that dentist, so freeAt's own rules for a chosen dentist
+ *  and for Any dentist apply (the free times). With `only` (nextFree's rule, the count line and the walk-in) a
+ *  dentist's time is left out, except the time of the dentist `only` names, which holds everything. */
+export function blockHolds(blocks: Blocky[], dayStart: number, o: { only?: string } = {}): Hold[] {
+  const out: Hold[] = [];
+  for (const r of blocks) {
+    const s = (Date.parse(r.startsAt) - dayStart) / 60_000, e = (Date.parse(r.endsAt) - dayStart) / 60_000;
+    if (r.kind === 'closed' || r.kind === 'lunch' || r.kind === 'shut') out.push({ s, e, chair: 'all', dentist: 'all' });
+    else if (r.kind === 'chair_out') { if (r.chair) out.push({ s, e, chair: r.chair, dentist: null }); }
+    else if (r.dentistId) {
+      if (o.only === undefined) out.push({ s, e, chair: null, dentist: r.dentistId });
+      else if (o.only && r.dentistId === o.only) out.push({ s, e, chair: 'all', dentist: 'all' });
+    }
+  }
+  return out;
+}
+
+/** The ranges that touch one Manila day. */
+export function blocksOn<T extends { startsAt: string; endsAt: string }>(blocks: T[], ymd: string): T[] {
+  const s = startMs(ymd), e = s + DAY_MS;
+  return blocks.filter((b) => Date.parse(b.startsAt) < e && Date.parse(b.endsAt) > s);
+}
+
+/** The weekly shut hours of one day as ranges, as clinic_unavailable() writes them: before opening and after closing,
+ *  or the whole day on a weekday with no hours. None for a clinic that has set no hours at all. */
+export function shutRanges(hours: Record<number, [number, number] | null>, ymd: string): Blocky[] {
+  if (![0, 1, 2, 3, 4, 5, 6].some((d) => hours[d])) return [];
+  const s = startMs(ymd), open = hoursOf(hours, dowOf(ymd));
+  const r = (a: number, b: number): Blocky => ({ kind: 'shut', startsAt: new Date(s + a * 60_000).toISOString(), endsAt: new Date(s + b * 60_000).toISOString(), dentistId: null, chair: null });
+  if (!open) return [r(0, 1440)];
+  const out: Blocky[] = [];
+  if (open[0] > 0) out.push(r(0, open[0]));
+  if (open[1] < 1440) out.push(r(open[1], 1440));
+  return out;
+}
+
+/** findBlock's order when a visit sits in more than one range: the widest reason first. */
+const PRIORITY: RangeKind[] = ['closed', 'shut', 'lunch', 'leave', 'hours', 'chair_out'];
+/** The range a proposed visit would sit in, in its scope (the whole clinic, its dentist, its chair), by findBlock's
+ *  priority then time; null when none. `blocks` are the loaded ranges of that day (null: not loaded; the weekly hours
+ *  are always known). The server decides on save; this only says it first. */
+export function blockAt(blocks: Blocky[] | null, hours: Record<number, [number, number] | null>,
+  p: { ymd: string; startMin: number; endMin: number; chair: number | null; dentistId: string | null }): Blocky | null {
+  const d0 = startMs(p.ymd), s = d0 + p.startMin * 60_000, e = d0 + p.endMin * 60_000;
+  const all: Blocky[] = [...(blocks ?? [])];
+  for (let d = p.ymd; startMs(d) < e; d = addDays(d, 1)) all.push(...shutRanges(hours, d));
+  const hit = all.filter((r) => Date.parse(r.startsAt) < e && Date.parse(r.endsAt) > s
+    && ((!r.dentistId && !r.chair) || (!!p.dentistId && r.dentistId === p.dentistId) || (p.chair !== null && r.chair === p.chair)));
+  hit.sort((x, y) => PRIORITY.indexOf(x.kind) - PRIORITY.indexOf(y.kind) || Date.parse(x.startsAt) - Date.parse(y.startsAt));
+  return hit[0] ?? null;
+}
+
+/** The clinic's closure that covers a whole day (its opening hours, or the whole day when it has none), or null. */
+export function wholeDayClosed<T extends Blocky>(blocks: T[], hours: Record<number, [number, number] | null>, ymd: string): T | null {
+  const d0 = startMs(ymd), open = hoursOf(hours, dowOf(ymd)) ?? [0, 1440];
+  return blocks.find((r) => r.kind === 'closed' && !r.dentistId && !r.chair
+    && Date.parse(r.startsAt) <= d0 + open[0] * 60_000 && Date.parse(r.endsAt) >= d0 + open[1] * 60_000) ?? null;
+}
+/** A dentist's time away that covers a whole day they are in (their hours, else the clinic's), or null. */
+export function wholeDayAway<T extends Blocky>(blocks: T[], hours: Record<number, [number, number] | null>, ymd: string, dentist: StaffDay): T | null {
+  const dow = dowOf(ymd), d0 = startMs(ymd);
+  const own = dentist.hours?.[dow], open = own ? [own[0], own[1]] : (hoursOf(hours, dow) ?? [0, 1440]);
+  return blocks.find((r) => r.kind === 'leave' && r.dentistId === dentist.id
+    && Date.parse(r.startsAt) <= d0 + open[0] * 60_000 && Date.parse(r.endsAt) >= d0 + open[1] * 60_000) ?? null;
+}
+
+/** The day's lunch (minutes after midnight), or null. */
+export function lunchOn(blocks: Blocky[], ymd: string): [number, number] | null {
+  const d0 = startMs(ymd), r = blocks.find((b) => b.kind === 'lunch' && Date.parse(b.startsAt) >= d0 && Date.parse(b.startsAt) < d0 + DAY_MS);
+  return r ? [Math.round((Date.parse(r.startsAt) - d0) / 60_000), Math.round((Date.parse(r.endsAt) - d0) / 60_000)] : null;
+}
+
+/** "12–1 pm", "11:30 am–12:30 pm", "9 am–12 pm": a short span for the count line and the printed day. */
+export const spanShort = (s: number, e: number) => {
+  const ap = (m: number) => (Math.floor(m / 60) % 24 >= 12 ? 'pm' : 'am');
+  const f = (m: number) => { const h = Math.floor(m / 60) % 24; return `${h % 12 || 12}${m % 60 ? `:${pad(m % 60)}` : ''}`; };
+  return ap(s) === ap(e) ? `${f(s)}–${f(e)} ${ap(e)}` : `${f(s)} ${ap(s)}–${f(e)} ${ap(e)}`;
+};
+
+/** A dentist's days and, where they have them, their hours: "Mon–Sat", "Tue 1–6 pm, Thu". Days with the same
+ *  hours (or none) are joined as daysText joins them. */
+export function daysHoursText(s: StaffDay): string {
+  const groups = new Map<string, number[]>();
+  for (const d of s.days) { const h = s.hours?.[d]; const k = h ? `${h[0]}-${h[1]}` : ''; groups.set(k, [...(groups.get(k) ?? []), d]); }
+  return [...groups.entries()].sort((a, b) => Math.min(...a[1]) - Math.min(...b[1])).map(([k, days]) => {
+    if (!k) return daysText(days);
+    const [a, b] = k.split('-').map(Number);
+    return `${daysText(days)} ${spanShort(a, b)}`;
+  }).join(', ');
 }
 
 // --- words ------------------------------------------------------------------------

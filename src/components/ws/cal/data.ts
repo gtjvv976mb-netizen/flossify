@@ -27,6 +27,7 @@ import type { Tx } from '../../../lib/db';
 import { withClinic } from '../../../lib/db';
 import { rowToAppt, type Appt } from '../../../lib/schedule';
 import { hmoById } from '../../../data/directory';
+import { loadBlocks, type BlockRange } from '../../../lib/blocks';
 import type { Card, Extras, Price, Pt, Service, StaffDay } from './model';
 
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
@@ -169,6 +170,8 @@ export interface Dashboard {
   toConfirm: Card[];
   collected: { amount: number; count: number } | null;
   patients: PatientRow[];
+  /** Blocked time (040) over the range on screen and over today: lunch, a dentist's time not in, the dated blocks. */
+  blocks: BlockRange[];
 }
 
 /**
@@ -183,8 +186,9 @@ export async function loadDashboard(clinicId: string, o: { from: Date; to: Date;
       `select c.chairs, c.area, c.name,
               staff_can($2, c.id, 'records.edit') as can_edit,
               coalesce((select json_agg(json_build_array(h.dow, h.open_min, h.close_min)) from clinic_hours h), '[]'::json) as hours,
-              coalesce((select json_agg(json_build_object('id', x.id, 'name', x.name, 'days', x.days) order by x.owner desc, x.name)
-                          from (select s.id, s.full_name as name, s.role = 'owner' as owner, array_agg(ss.dow order by ss.dow) as days
+              coalesce((select json_agg(json_build_object('id', x.id, 'name', x.name, 'days', x.days, 'hours', x.hours) order by x.owner desc, x.name)
+                          from (select s.id, s.full_name as name, s.role = 'owner' as owner, array_agg(ss.dow order by ss.dow) as days,
+                                       coalesce(jsonb_object_agg(ss.dow, jsonb_build_array(ss.from_min, ss.to_min)) filter (where ss.from_min is not null), '{}'::jsonb) as hours
                                   from staff s join staff_schedule ss on ss.staff_id = s.id
                                  where ss.clinic_id = c.id and s.disabled_at is null and s.role in ('owner', 'dentist', 'associate')
                                  group by s.id, s.full_name, s.role) x), '[]'::json) as staff,
@@ -245,6 +249,15 @@ export async function loadDashboard(clinicId: string, o: { from: Date; to: Date;
         order by v.next_at nulls last, v.last_at desc nulls last, p.last_name, p.first_name`,
       [o.todayFrom, o.todayTo]);
 
+    // Blocked time: the range on screen, and today when today is not in it (the walk-in and the live board read
+    // today); two reads of a week at most, so a date 18 months ahead still draws its lunch. Merged by identity.
+    const blocks = await loadBlocks(tx, clinicId, o.from, o.to);
+    if (o.todayFrom < o.from || o.todayFrom >= o.to) {
+      const key = (b: BlockRange) => b.id ?? `${b.kind}|${b.dentistId}|${b.chair}|${b.startsAt}`;
+      const seen = new Set(blocks.map(key));
+      for (const b of await loadBlocks(tx, clinicId, o.todayFrom, o.todayTo)) if (!seen.has(key(b))) blocks.push(b);
+    }
+
     const hours: Dashboard['hours'] = { 0: null, 1: null, 2: null, 3: null, 4: null, 5: null, 6: null };
     for (const [dow, open, close] of (m?.hours ?? []) as [number, number, number][]) hours[dow] = [open, close];
     const cards = rows.map((r: Row) => ({ r, c: cardOf(r) }));
@@ -259,6 +272,7 @@ export async function loadDashboard(clinicId: string, o: { from: Date; to: Date;
       toPlace: cards.filter((x) => x.r.to_place).map((x) => x.c),
       toConfirm: cards.filter((x) => x.r.to_confirm).map((x) => x.c),
       collected: collected ? { amount: Number(collected.amount), count: Number(collected.n) } : null,
+      blocks,
       patients: pts.map((r: Row) => ({
         id: r.id, name: r.name, sort: r.sort, chart: r.chart_no, phone: r.phone ?? null, birth: r.birth ?? null,
         allergies: (r.allergies ?? []).filter(Boolean), conditions: (r.conditions ?? []).filter(Boolean),

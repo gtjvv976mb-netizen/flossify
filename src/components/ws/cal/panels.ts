@@ -21,7 +21,8 @@ import type { Card } from './model';
 import type { Ctx } from './board';
 import type { Pt } from './patients';
 import { AFTERCARE, kindForCatalog } from '../../../lib/aftercare';
-import { initFreeTimes } from './free';
+import { blockDone, blockLabel, blockSentence, whenWords, whyWords } from '../../../lib/block-words';
+import { initFreeTimes, timeMin } from './free';
 
 export interface Panels {
   openVisit: (id: string, opener: Element | null, o?: { place?: boolean }) => void;
@@ -31,6 +32,10 @@ export interface Panels {
   visitOpen: () => string | null;
   /** The live board absorbed changes on these Manila days: an open panel's free times over one of them are drawn again. */
   changed: (days: Set<string>) => void;
+  /** A dated block, in view mode (the strip's pills): what, when, the note, who added it; Remove for schedule.edit. */
+  openBlock: (id: string, opener: Element | null) => void;
+  /** Block time (040): a closure, a dentist away, a chair out of use, from the day given (schedule.edit only). */
+  openBlockNew: (o: { ymd?: string; min?: number }, opener: Element | null) => void;
 }
 
 /** The words on each status button; the order is the order they appear in. */
@@ -53,6 +58,11 @@ const STEP_ICON: Record<string, IconName> = {
   confirmed: 'check', arrived: 'user', in_lobby: 'clock', in_chair: 'user', completed: 'check', no_show: 'alert', cancelled: 'close',
 };
 const DAYWORD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** Blocked time's kinds in the words a toast uses: "It is in closed time (lunch)." */
+const KIND_WORD: Record<string, string> = {
+  lunch: 'lunch', shut: 'outside opening hours', closed: 'the clinic is closed', leave: 'the dentist is away',
+  hours: 'the dentist is not in', chair_out: 'the chair is out of use',
+};
 /** What a status change says, once it is saved. */
 const SAID: Record<string, (name: string) => string> = {
   confirmed: (n) => `${n}'s visit is confirmed.`,
@@ -121,7 +131,9 @@ export function initPanels(ctx: Ctx): Panels {
   function fillDentists(select: HTMLSelectElement, ymd: string, keep: string, keepName?: string | null) {
     const d = M.dowOf(ymd);
     const opts = [new Option('Any dentist', '')];
-    for (const s of boot.staff) if (s.days.includes(d) || s.id === keep) opts.push(new Option(s.days.includes(d) ? s.name : `${s.name} · not in on ${DAYWORD[d]}`, s.id));
+    // A dentist with their own hours that weekday (040) reads "Dr. Cariño · in 1:00–6:00 pm".
+    const inWords = (s: M.StaffDay) => { const h = s.hours?.[d]; return h ? `${s.name} · in ${M.span(h[0], h[1])}` : s.name; };
+    for (const s of boot.staff) if (s.days.includes(d) || s.id === keep) opts.push(new Option(s.days.includes(d) ? inWords(s) : `${s.name} · not in on ${DAYWORD[d]}`, s.id));
     if (keep && !opts.some((o) => o.value === keep)) opts.push(new Option(keepName ?? 'Dentist', keep));
     select.replaceChildren(...opts);
     select.value = keep;
@@ -129,6 +141,19 @@ export function initPanels(ctx: Ctx): Panels {
   /** The chosen dentist's name as the select shows it, before " · not in on Tue": kept when the day changes, so a
    *  dentist not on this branch's schedule keeps their name rather than turning into "Dentist". */
   const keptName = (s: HTMLSelectElement) => s.selectedOptions[0]?.text.split(' · ')[0] || null;
+  /** Blocked time before saving (040): the sentence when a form's day, time, length, chair and dentist fall in a loaded
+   *  block or outside the weekly hours, with "Saving asks you to confirm."; null when they do not (or cannot say yet).
+   *  The server decides on save (findBlock); this only says it first. */
+  function blockWords(f: { date: HTMLInputElement; time: HTMLInputElement; minutes: HTMLInputElement; chair: HTMLSelectElement; dentist: HTMLSelectElement }): string | null {
+    const ymd = f.date.value, t = timeMin(f.time.value), m = Number(f.minutes.value);
+    if (!M.realDay(ymd) || t === null || !Number.isInteger(m) || m < 5 || m > 480) return null;
+    const r = M.blockAt(ctx.dayBlocks(ymd), boot.hours, { ymd, startMin: t, endMin: t + m, chair: Number(f.chair.value) || null, dentistId: f.dentist.value || null });
+    return r ? `${blockSentence(r)} Saving asks you to confirm.` : null;
+  }
+  /** A quiet button that sends the same thing again into blocked time on purpose (Book / Move / Place anyway). */
+  function anywayBtn(label: string, hook: string, run: () => void) {
+    const b = btn(label, QUIET); b.setAttribute(hook, ''); b.addEventListener('click', run); return b;
+  }
   const QUIET = 'ws-btn ws-btn-quiet ws-btn-sm', PRIMARY = 'ws-btn ws-btn-primary ws-btn-sm';
   const btn = (label: string, cls = QUIET, ic?: IconName) => { const b = el('button', cls); b.type = 'button'; if (ic) b.append(icon(ic)); b.append(label); return b; };
   const linkBtn = (label: string, href: string, cls = QUIET, ic?: IconName) => { const a = el('a', cls); a.href = href; if (ic) a.append(icon(ic)); a.append(label); return a; };
@@ -373,7 +398,7 @@ export function initPanels(ctx: Ctx): Panels {
     moveNoteBase = req
       ? 'Pick a chair and a time. Until then it is not a booking and no reminder goes out.'
       : 'A new time for a visit still ahead is texted to the patient.';
-    V.moveNote.textContent = closedNote(M.manila(c.startsAt).ymd, moveNoteBase);
+    V.moveNote.textContent = moveNoteBase;
     V.saveWord.textContent = req ? 'Place it' : 'Save new time';
     const m = M.manila(c.startsAt);
     V.date.value = m.ymd; V.time.value = M.hhmm(m.min);
@@ -390,6 +415,7 @@ export function initPanels(ctx: Ctx): Panels {
         }
       } else V.chair.value = '1';
     }
+    vpNote();
     if (o.place) window.setTimeout(() => toMove(), 320);
   }
   /** The visit texts the number it was booked from; say so when that is someone else's (the patient's own differs). */
@@ -415,7 +441,7 @@ export function initPanels(ctx: Ctx): Panels {
     hide(V.err); hide(V.said);
     fillVisit(c, o);
     if (V.panel.open) return;
-    swap('book', () => swap('patient', () => ws().openPanel('visit', opener)));
+    swap('block', () => swap('book', () => swap('patient', () => ws().openPanel('visit', opener))));
   }
   V.panel.addEventListener('ws:panel-close', () => {
     // The card that opened it may have been redrawn since: find it again by id.
@@ -425,7 +451,9 @@ export function initPanels(ctx: Ctx): Panels {
     }
   });
 
-  async function patch(body: Record<string, unknown>): Promise<{ card: Card; texted: boolean } | null> {
+  /** One PATCH from the panel. `anyway`: what a press of Move (or Place) anyway does, offered beside the sentence when
+   *  the server's refusal is blocked time (040); a clash (another visit there) never offers it. */
+  async function patch(body: Record<string, unknown>, o: { anyway?: () => void } = {}): Promise<{ card: Card; texted: boolean } | null> {
     if (busy) return null;
     busy = true; V.panel.setAttribute('aria-busy', 'true');
     vMenu.close();
@@ -434,9 +462,15 @@ export function initPanels(ctx: Ctx): Panels {
     busy = false; V.panel.removeAttribute('aria-busy');
     for (const b of V.panel.querySelectorAll<HTMLButtonElement>('button')) b.disabled = false;
     if (!r.ok) {
-      hide(V.said); show(V.err, r.error); V.err.scrollIntoView({ block: 'nearest' });
-      // Taken meanwhile by another desk: the board reads the book again, then the free times do (not from what is kept).
-      if (r.status === 409 && !V.move.hidden) void ctx.reload().then(() => vpFree.update({ fresh: true }));
+      hide(V.said);
+      if (r.blocked && o.anyway) {
+        const run = o.anyway;
+        callout(V.err, r.error, [document.createTextNode(' '), anywayBtn(V.saveWord.textContent === 'Place it' ? 'Place anyway' : 'Move anyway', 'data-vp-anyway', () => { hide(V.err); run(); })]);
+      } else show(V.err, r.error);
+      V.err.scrollIntoView({ block: 'nearest' });
+      // Taken meanwhile by another desk (a clash, not blocked time): the board reads the book again, then the free
+      // times do (not from what is kept).
+      if (r.status === 409 && !r.blocked && !V.move.hidden) void ctx.reload().then(() => vpFree.update({ fresh: true }));
       return null;
     }
     hide(V.err);
@@ -460,28 +494,34 @@ export function initPanels(ctx: Ctx): Panels {
   }
   V.askYes.addEventListener('click', () => { if (current) void setStatus(current, 'cancelled', 'Cancelled'); });
   V.askKeep.addEventListener('click', () => { V.ask.hidden = true; V.more.closest<HTMLElement>('[data-ws-menu]')?.querySelector<HTMLElement>(':scope > button')?.focus(); });
-  const DAYNAME = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
-  /** One line under the move form: a closed day is allowed, but said. */
-  function closedNote(ymd: string, base: string) {
-    const d = M.realDay(ymd) ? M.dowOf(ymd) : -1;
-    return d >= 0 && !M.hoursOf(boot.hours, d) ? `${base} The clinic is closed on ${DAYNAME[d]}.` : base;
+  /** The line under the move form: the base, and — while the fields point into blocked time (040) — its sentence and
+   *  "Saving asks you to confirm." (a closed weekday was said here before; now every kind is). */
+  function vpNote() {
+    const w = blockWords(V);
+    V.moveNote.textContent = w ? `${moveNoteBase} ${w}` : moveNoteBase;
   }
   let moveNoteBase = '';
   V.date.addEventListener('change', () => {
     fillDentists(V.dentist, V.date.value || boot.today, V.dentist.value, keptName(V.dentist));
-    V.moveNote.textContent = closedNote(V.date.value, moveNoteBase);
+    vpNote();
     vpFree.update();
   });
-  for (const x of [V.minutes, V.dentist, V.chair]) x.addEventListener('change', () => vpFree.update());
-  V.time.addEventListener('input', () => vpFree.mark());
-  V.move.addEventListener('submit', async (e) => {
+  for (const x of [V.minutes, V.dentist, V.chair]) x.addEventListener('change', () => { vpNote(); vpFree.update(); });
+  V.time.addEventListener('input', () => { vpNote(); vpFree.mark(); });
+  V.minutes.addEventListener('input', () => vpNote());
+  V.move.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!current) return;
-    const was = ctx.card(current);
     const minutes = Number(V.minutes.value);
     if (!Number.isInteger(minutes) || minutes < 5 || minutes > 480) return show(V.err, 'Minutes is a whole number from 5 to 480.');
     if (!M.realDay(V.date.value) || !/^\d{2}:\d{2}/.test(V.time.value)) return show(V.err, 'Pick a date and a time.');
-    const r = await patch({ id: current, startsAt: M.isoOf(V.date.value, V.time.value), minutes, chair: V.chair.value === '' ? null : Number(V.chair.value), dentistId: V.dentist.value || null });
+    void moveTo({ id: current, startsAt: M.isoOf(V.date.value, V.time.value), minutes, chair: V.chair.value === '' ? null : Number(V.chair.value), dentistId: V.dentist.value || null });
+  });
+  /** Save the move form's time; into blocked time the refusal offers Move (Place) anyway, which sends it again. */
+  async function moveTo(body: Record<string, unknown>) {
+    const id = body.id as string;
+    const was = ctx.card(id);
+    const r = await patch(body, { anyway: () => void moveTo({ ...body, anyway: true }) });
     if (!r) return;
     const c = r.card;
     const placed = was ? M.isRequest(was) && !M.isRequest(c) : false;
@@ -492,7 +532,7 @@ export function initPanels(ctx: Ctx): Panels {
     V.said.scrollIntoView({ block: 'nearest' });
     const onScreen = document.querySelector(`.cal-card[data-id="${c.id}"]`);
     ctx.say(`${c.patientName}: ${sentence}`, onScreen ? undefined : { label: 'Show that day', ymd: M.manila(c.startsAt).ymd, id: c.id });
-  });
+  }
 
   // ================================================================ a new booking
   const B = {
@@ -508,25 +548,34 @@ export function initPanels(ctx: Ctx): Panels {
     notes: $<HTMLTextAreaElement>('[data-bk-notes]')!, save: $<HTMLButtonElement>('[data-bk-save]')!, saveWord: $('[data-bk-save-word]')!,
     face: $('[data-bk-chosen-face]')!, more: $<HTMLDetailsElement>('[data-bk-more]')!,
     now: $<HTMLInputElement>('[data-bk-now]')!, textNote: $('[data-bk-text]')!,
+    block: $('[data-bk-block]')!,
   };
   let patientId = '';
   let autoReason = false;
   // Free times under Chair · Dentist (p24), in place of "Next free half hour". Hidden, and nothing fetched, while
   // "Here now" is ticked: a walk-in is booked now.
-  const bkFree = initFreeTimes(ctx, 'bk', { date: B.date, time: B.time, minutes: B.minutes, chair: B.chair, dentist: B.dentist, exclude: () => null, off: () => B.now.checked });
+  const bkFree = initFreeTimes(ctx, 'bk', { date: B.date, time: B.time, minutes: B.minutes, chair: B.chair, dentist: B.dentist, exclude: () => null, off: () => B.now.checked, loaded: () => bkNote() });
+  /** Before saving (040): the amber line when the form points into blocked time. Hidden while Here now is ticked: a
+   *  walk-in is never asked, the patient is at the desk. */
+  function bkNote() {
+    const w = B.now.checked ? null : blockWords(B);
+    if (w) callout(B.block, w); else hide(B.block);
+  }
   const TEXT_NOTE = 'A booking still ahead is texted to the patient when they have a mobile on file.';
   // "Here now": today, the next five minutes, the first free chair — and checked in the moment it is saved (036).
   B.now.addEventListener('change', () => {
-    if (!B.now.checked) { B.textNote.textContent = TEXT_NOTE; bkFree.update(); return; }
+    if (!B.now.checked) { B.textNote.textContent = TEXT_NOTE; bkNote(); bkFree.update(); return; }
     B.date.value = boot.today;
     fillDentists(B.dentist, boot.today, B.dentist.value, keptName(B.dentist));
     B.time.value = M.hhmm(Math.min(23 * 60 + 55, Math.ceil(M.manila(Date.now()).min / 5) * 5));
     if (!B.chair.value) {
       const day = ctx.dayCards(boot.today), open = M.hoursOf(boot.hours, M.dowOf(boot.today));
-      const f = day && open ? M.nextFree(day, open, M.startMs(boot.today), true, boot.chairs) : null;
+      // Skipping today's blocked time: the clinic's, each chair's, and the chosen dentist's (040).
+      const f = day && open ? M.nextFree(day, open, M.startMs(boot.today), true, boot.chairs, Date.now(), ctx.dayBlocks(boot.today) ?? [], B.dentist.value || null) : null;
       if (f) B.chair.value = String(f.chair);
     }
     B.textNote.textContent = 'A walk-in is checked in as soon as it is saved. No confirmation text: they are here.';
+    bkNote();
     bkFree.hide();
   });
 
@@ -599,13 +648,15 @@ export function initPanels(ctx: Ctx): Panels {
     if (!o || !o.value) return;
     if (o.dataset.minutes) B.minutes.value = o.dataset.minutes;
     if (!B.reason.value.trim() || autoReason) { B.reason.value = o.dataset.name ?? o.text; autoReason = true; }
+    bkNote();
     bkFree.update();
   }
   B.service.addEventListener('change', servicePicked);
   B.reason.addEventListener('input', () => { autoReason = false; });
-  B.date.addEventListener('change', () => { fillDentists(B.dentist, B.date.value || boot.today, B.dentist.value, keptName(B.dentist)); bkFree.update(); });
-  for (const x of [B.minutes, B.dentist, B.chair]) x.addEventListener('change', () => bkFree.update());
-  B.time.addEventListener('input', () => bkFree.mark());
+  B.date.addEventListener('change', () => { fillDentists(B.dentist, B.date.value || boot.today, B.dentist.value, keptName(B.dentist)); bkNote(); bkFree.update(); });
+  for (const x of [B.minutes, B.dentist, B.chair]) x.addEventListener('change', () => { bkNote(); bkFree.update(); });
+  B.time.addEventListener('input', () => { bkNote(); bkFree.mark(); });
+  B.minutes.addEventListener('input', () => bkNote());
 
   function openBook(o: { ymd?: string; min?: number; col?: string; by?: 'chair' | 'dentist'; patientId?: string }, opener: Element | null) {
     // A role without scheduling looks at the calendar; the sentence says why nothing opens.
@@ -632,11 +683,12 @@ export function initPanels(ctx: Ctx): Panels {
     fillDentists(B.dentist, ymd, by === 'dentist' && o.col !== undefined ? o.col : (ctx.filter() || soloId));
     const p = o.patientId ? ctx.patients.byId.get(o.patientId) : undefined;
     if (p) choose(p);
+    bkNote();
     bkFree.update();
-    swap('visit', () => swap('patient', () => {
+    swap('block', () => swap('visit', () => swap('patient', () => {
       ws().openPanel('book', opener);
       window.setTimeout(() => (p ? B.service : B.search).focus(), 60);
-    }));
+    })));
   }
 
   B.form.addEventListener('submit', async (e) => {
@@ -661,14 +713,22 @@ export function initPanels(ctx: Ctx): Panels {
     if (B.notes.value.trim()) body.notes = B.notes.value.trim();
     const walkIn = B.now.checked;
     if (walkIn) body.status = 'arrived';
+    void book(body, walkIn);
+  });
+  /** Save the booking. Into blocked time (040) the server asks first: its sentence, and a quiet Book anyway that sends
+   *  the same booking again with anyway: true. A walk-in is never asked. */
+  async function book(body: Record<string, unknown>, walkIn: boolean, kind?: string) {
+    hide(B.err);
     B.save.disabled = true; B.saveWord.textContent = 'Saving…';
     const r = await ctx.call('POST', body);
     B.save.disabled = false; B.saveWord.textContent = 'Save booking';
     if (!r.ok) {
-      show(B.err, r.error); B.err.scrollIntoView({ block: 'nearest' });
-      // Taken meanwhile by another desk: the board reads the book again (their visit appears behind the panel), then
-      // the free times read the chosen day again, so the time refused is no longer offered.
-      if (r.status === 409) void ctx.reload().then(() => bkFree.update({ fresh: true }));
+      if (r.blocked) callout(B.err, r.error, [document.createTextNode(' '), anywayBtn('Book anyway', 'data-bk-anyway', () => void book({ ...body, anyway: true }, walkIn, r.kind))]);
+      else show(B.err, r.error);
+      B.err.scrollIntoView({ block: 'nearest' });
+      // Taken meanwhile by another desk (a clash, not blocked time): the board reads the book again (their visit
+      // appears behind the panel), then the free times read the chosen day again, so the time refused is not offered.
+      if (r.status === 409 && !r.blocked) void ctx.reload().then(() => bkFree.update({ fresh: true }));
       return;
     }
     const c = r.card;
@@ -680,9 +740,10 @@ export function initPanels(ctx: Ctx): Panels {
     ws().closePanel('book');
     ctx.absorb(c);
     const onScreen = document.querySelector(`.cal-card[data-id="${c.id}"]`);
-    ctx.say(`${walkIn ? 'Checked in' : 'Booked'}: ${c.patientName}, ${M.whenOf(c.startsAt)}${c.chair ? `, Chair ${c.chair}` : ''}${c.dentistName ? `, ${M.shortName(c.dentistName)}` : ''}.${r.texted ? ' A confirmation text is queued.' : ''}`,
+    const closedWord = kind && !walkIn ? ` It is in closed time (${KIND_WORD[kind] ?? 'blocked time'}).` : '';
+    ctx.say(`${walkIn ? 'Checked in' : 'Booked'}: ${c.patientName}, ${M.whenOf(c.startsAt)}${c.chair ? `, Chair ${c.chair}` : ''}${c.dentistName ? `, ${M.shortName(c.dentistName)}` : ''}.${closedWord}${r.texted ? ' A confirmation text is queued.' : ''}`,
       onScreen ? undefined : { label: 'Show that day', ymd: M.manila(c.startsAt).ymd, id: c.id });
-  });
+  }
 
   // ================================================================ a patient
   const P = {
@@ -722,11 +783,181 @@ export function initPanels(ctx: Ctx): Panels {
       ['Balance', boot.finance ? ((p.balance ?? 0) > 0 ? M.pesoBal(p.balance ?? 0) : (p.balance ?? 0) < 0 ? `${M.pesoBal(-(p.balance ?? 0))} credit` : 'Nothing owed') : null],
       ['Last visit', p.last ? M.dateText(p.last) : 'None yet'],
     ]);
-    swap('visit', () => swap('book', () => ws().openPanel('patient', opener)));
+    swap('block', () => swap('visit', () => swap('book', () => ws().openPanel('patient', opener))));
   }
+
+  // ================================================================ blocked time (040)
+  // Block time: a closure, a dentist away, a chair out of use, added from the calendar (schedule.edit), and one dated
+  // block in view mode from the strip (anyone who may open the calendar; Remove only for schedule.edit). One POST
+  // (or PATCH remove) to /api/schedule/blocks with the X-CSRF header; the board then reads the book again, clearing
+  // what it kept, so the hatch, the strip, the count line and the free times all follow. Nothing is done to the
+  // visits already booked in that time: they are listed, each with its reminder's state (reminder-state.ts's words).
+  const L = {
+    panel: document.getElementById('block') as HTMLDialogElement,
+    title: $('#block [data-ws-title]')!, meta: $('#block [data-ws-meta]')!,
+    err: $('[data-bl-error]')!, said: $('[data-bl-said]')!, inside: $('[data-bl-inside]')!,
+    view: $('[data-bl-view]')!, facts: $('[data-bl-facts]')!,
+    remove: $<HTMLButtonElement>('[data-bl-remove]'), ask: $('[data-bl-ask]'), yes: $<HTMLButtonElement>('[data-bl-yes]'), keep: $<HTMLButtonElement>('[data-bl-keep]'),
+  };
+  // The form is on the page for schedule.edit only (BlockPanel.astro); anyone else has view mode alone.
+  const formEl = $<HTMLFormElement>('[data-bl-form]');
+  const F = formEl ? {
+    form: formEl,
+    kinds: [...formEl.querySelectorAll<HTMLInputElement>('[data-bl-kind]')],
+    dentistRow: $('[data-bl-dentist-row]')!, dentist: $<HTMLSelectElement>('[data-bl-dentist]')!,
+    chairRow: $('[data-bl-chair-row]')!, chair: $<HTMLSelectElement>('[data-bl-chair]')!,
+    allday: $<HTMLInputElement>('[data-bl-allday]')!, times: [...formEl.querySelectorAll<HTMLElement>('[data-bl-times]')],
+    fromDate: $<HTMLInputElement>('[data-bl-from-date]')!, fromTime: $<HTMLInputElement>('[data-bl-from-time]')!,
+    toDate: $<HTMLInputElement>('[data-bl-to-date]')!, toTime: $<HTMLInputElement>('[data-bl-to-time]')!,
+    note: $<HTMLInputElement>('[data-bl-note]')!, save: $<HTMLButtonElement>('[data-bl-save]')!, saveWord: $('[data-bl-save-word]')!,
+  } : null;
+  let viewing: M.BlockRange | null = null;
+  const blReset = () => { hide(L.err); hide(L.said); hide(L.inside); if (L.ask) L.ask.hidden = true; };
+  if (F) wireBlockForm(F);
+
+  function openBlockNew(o: { ymd?: string; min?: number }, opener: Element | null) {
+    if (!boot.canSchedule || !F) { ctx.fail('Your role cannot change the schedule here. Ask the owner.'); return; }
+    const L2 = F;
+    viewing = null;
+    blReset();
+    L2.form.reset();
+    L2.form.hidden = false; L.view.hidden = true;
+    L.title.textContent = 'Block time'; L.meta.textContent = 'Calendar'; L.meta.hidden = false;
+    const ymd = o.ymd && M.realDay(o.ymd) ? o.ymd : boot.today;
+    L2.fromDate.value = ymd; L2.toDate.value = ymd;
+    // All day by default; from a time on the grid, that hour.
+    const from = o.min ?? 12 * 60;
+    L2.allday.checked = o.min === undefined;
+    L2.fromTime.value = M.hhmm(from); L2.toTime.value = M.hhmm(Math.min(from + 60, 23 * 60 + 45));
+    // The dentist the calendar is filtered to, else the first one.
+    const f = ctx.filter();
+    if (boot.staff.length) L2.dentist.value = boot.staff.some((s) => s.id === f) ? f : boot.staff[0].id;
+    L2.chair.value = '1';
+    blShape(L2);
+    swap('visit', () => swap('book', () => swap('patient', () => {
+      ws().openPanel('block', opener);
+      window.setTimeout(() => L2.kinds[0]?.focus(), 60);
+    })));
+  }
+
+  type BlockForm = NonNullable<typeof F>;
+  /** Dentist for a dentist away, Chair for a chair out of use; the times only when it is not all day. */
+  function blShape(F: BlockForm) {
+    const k = F.kinds.find((x) => x.checked)?.value ?? 'closed';
+    F.dentistRow.hidden = k !== 'leave';
+    F.chairRow.hidden = k !== 'chair_out';
+    for (const t of F.times) t.hidden = F.allday.checked;
+  }
+  function wireBlockForm(F: BlockForm) {
+    for (const k of F.kinds) k.addEventListener('change', () => blShape(F));
+    F.allday.addEventListener('change', () => blShape(F));
+    // Until follows From while it would otherwise end before it.
+    F.fromDate.addEventListener('change', () => { if (M.realDay(F.fromDate.value) && (!M.realDay(F.toDate.value) || F.toDate.value < F.fromDate.value)) F.toDate.value = F.fromDate.value; });
+    F.form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      blReset();
+      const kind = F.kinds.find((k) => k.checked)?.value ?? 'closed';
+      const fromD = F.fromDate.value, toD = F.toDate.value || fromD;
+      const timed = !F.allday.checked;
+      if (!M.realDay(fromD) || !M.realDay(toD) || (timed && (timeMin(F.fromTime.value) === null || timeMin(F.toTime.value) === null))) {
+        show(L.err, 'Pick when it starts and when it ends.'); F.fromDate.focus(); return;
+      }
+      // All day: from the first day's midnight to the midnight after the last (Manila), as Settings writes whole days.
+      const startsAt = timed ? M.isoOf(fromD, F.fromTime.value) : new Date(M.startMs(fromD)).toISOString();
+      const endsAt = timed ? M.isoOf(toD, F.toTime.value) : new Date(M.startMs(toD) + M.DAY_MS).toISOString();
+      const body: Record<string, unknown> = { clinic: boot.slug, kind, startsAt, endsAt };
+      if (kind === 'leave') body.dentistId = F.dentist.value;
+      if (kind === 'chair_out') body.chair = Number(F.chair.value);
+      if (F.note.value.trim()) body.note = F.note.value.trim();
+      F.save.disabled = true; F.saveWord.textContent = 'Saving…';
+      const r = await blockCall('POST', body);
+      F.save.disabled = false; F.saveWord.textContent = 'Block this time';
+      if (!r.ok) { show(L.err, r.error); L.err.scrollIntoView({ block: 'nearest' }); return; }
+      const block = r.data.block as M.BlockRange, inside = (r.data.inside ?? []) as InsideRow[];
+      // The board reads the book again, forgetting what it kept: the hatch, the strip and the count line follow.
+      await ctx.reload({ clear: true });
+      F.form.hidden = true;
+      callout(L.said, blockDone(block));
+      if (inside.length) insideList(inside);
+      L.title.focus();
+    });
+  }
+
+  type InsideRow = { id: string; patientName: string; startsAt: string; endsAt: string; dentistName: string | null; chair: number | null; reminder: string; reminderTone?: string };
+  /** The visits already booked in the time just blocked: nothing was done to them; each with its reminder's state and
+   *  a Show that opens it on the calendar. */
+  function insideList(rows: InsideRow[]) {
+    const n = rows.length;
+    const ul = el('ul', 'bl-inside-list');
+    for (const v of [...rows].sort((a, b) => a.startsAt.localeCompare(b.startsAt))) {
+      const li = el('li', 'bl-inside-row');
+      const words = el('span', 'bl-inside-words');
+      words.append(el('b', '', v.patientName),
+        el('span', '', [M.whenOf(v.startsAt), v.chair ? `Chair ${v.chair}` : 'no chair yet', v.dentistName ? M.shortName(v.dentistName) : 'any dentist'].join(' · ')),
+        el('span', 'bl-inside-reminder', v.reminder));
+      const go = btn('Show', QUIET);
+      go.addEventListener('click', () => { const ymd = M.manila(v.startsAt).ymd, id = v.id; ws().closePanel('block'); void ctx.show(ymd, id); });
+      li.append(words, go);
+      ul.append(li);
+    }
+    const calls = link('Open Calls', boot.links.calls);
+    calls.className = 'bl-inside-calls';
+    callout(L.inside, n === 1
+      ? '1 visit is already booked in this time. Nothing was changed for it, and its reminder text still goes out. Move it or call them.'
+      : `${n} visits are already booked in this time. Nothing was changed for them, and their reminder texts still go out. Move each one or call them.`,
+    [ul, calls]);
+  }
+
+  async function blockCall(method: 'POST' | 'PATCH', body: Record<string, unknown>): Promise<{ ok: true; data: any } | { ok: false; error: string }> {
+    if (!boot.canSchedule) return { ok: false, error: 'Your role cannot change the schedule here. Ask the owner.' };
+    try {
+      const res = await fetch('/api/schedule/blocks', {
+        method, credentials: 'same-origin',
+        headers: { 'content-type': 'application/json', 'X-CSRF': boot.csrf, accept: 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data: any = await res.json().catch(() => null);
+      if (res.ok && data) return { ok: true, data };
+      if (res.status === 401) return { ok: false, error: 'Your sign-in has ended. Sign in again, then try that once more.' };
+      return { ok: false, error: typeof data?.error === 'string' && data.error ? data.error : 'Could not reach the clinic. Nothing was saved; try again.' };
+    } catch { return { ok: false, error: 'Could not reach the clinic. Nothing was saved; try again.' }; }
+  }
+
+  /** What a dated block is, in a few words: "Clinic closed · Holy week", "Dr. Cariño away", "Chair 2 out of use". */
+  const blockWhat = (r: M.BlockRange) => whyWords(r);
+  function openBlock(id: string, opener: Element | null) {
+    const r = ctx.blockById(id);
+    if (!r) return;
+    viewing = r;
+    blReset();
+    if (formEl) formEl.hidden = true;
+    L.view.hidden = false;
+    L.title.textContent = blockLabel(r, 'strip'); L.meta.textContent = 'Blocked time'; L.meta.hidden = false;
+    dl(L.facts, [
+      ['What', blockWhat(r)],
+      ['When', whenWords(r)],
+      ['Note', r.note],
+      ['Added by', r.byName ? `${r.byName}${r.createdAt ? `, ${M.dateText(r.createdAt)}` : ''}` : null],
+    ]);
+    swap('visit', () => swap('book', () => swap('patient', () => ws().openPanel('block', opener))));
+  }
+  L.remove?.addEventListener('click', () => { if (L.ask) { L.ask.hidden = false; L.yes?.focus(); } });
+  L.keep?.addEventListener('click', () => { if (L.ask) L.ask.hidden = true; L.remove?.focus(); });
+  L.yes?.addEventListener('click', async () => {
+    const r = viewing;
+    if (!r?.id) return;
+    L.yes!.disabled = true;
+    const res = await blockCall('PATCH', { clinic: boot.slug, id: r.id, remove: true });
+    L.yes!.disabled = false;
+    if (!res.ok) { if (L.ask) L.ask.hidden = true; show(L.err, res.error); return; }
+    ws().closePanel('block');
+    await ctx.reload({ clear: true });
+    ctx.say(`Removed: ${blockWhat(r)}, ${whenWords(r)}. Patients can book that time again.`);
+  });
 
   return {
     openVisit, openBook, openPatient, visitOpen: () => (V.panel.open ? current : null),
     changed: (days) => { if (B.panel.open) bkFree.changed(days); if (V.panel.open) vpFree.changed(days); },
+    openBlock, openBlockNew,
   };
 }

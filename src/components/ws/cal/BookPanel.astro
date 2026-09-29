@@ -12,6 +12,8 @@
 // folded under "More details" — opened by itself when one of them needs a word.
 // Under Chair · Dentist, the free times for that length on that day (p24,
 // free.ts): a tap fills Time and Chair; nothing is saved until Save booking.
+// A time in blocked time (040) is said under them before saving, and saving
+// asks to confirm (Book anyway) — except for a walk-in, who is at the desk.
 //
 // The patient comes from the Dashboard's own list (every patient, already on
 // the page, so the answer is instant) and, when nothing there matches, from
@@ -81,6 +83,9 @@ const { chairs, catalog, date, addPatient } = Astro.props;
       <label class="field"><span class="meta">Dentist</span><select data-bk-dentist><option value="">Any dentist</option></select></label>
     </div>
     <FreeTimes hook="bk" />
+    {/* Blocked time (040), said before saving: lunch, a closure, a dentist away or not in, a chair out of use, or
+        outside the hours. Saving then asks to confirm (Book anyway). Hidden for a walk-in: the patient is here. */}
+    <p class="ws-callout bk-block" data-tone="warn" data-bk-block hidden></p>
 
     <details class="bk-more" data-bk-more>
       <summary class="bk-more-head"><Icon name="chevron" size={16} class="bk-more-chev" />More details <span class="bk-more-hint">length, reason, a note</span></summary>
