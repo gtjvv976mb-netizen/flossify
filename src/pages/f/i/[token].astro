@@ -1,0 +1,741 @@
+---
+export const prerender = false;
+
+// The intake's patient pages (039; the intake spec §2): what a patient fills
+// in and signs on a clinic tablet, on the desk's device handed to them, or
+// (phase 3) on their own phone — flossify.ph/f/i/<token>/. No account, no
+// site bar: the clinic's own room behind (ClinicRoom), its initials and name,
+// "Part 3 of 5" and a quiet "Ask the desk".
+//
+// Screens, in order: page 1 "Patient information" (a new patient only: you ·
+// contact · health · privacy, the forms' own questions by name, INTAKE_DEF in
+// src/lib/intake-def.ts), each consent form (Template.order, never the desk's),
+// Check and send, and a thank-you that shows nothing of the record. Which
+// screen shows is worked out from what is saved (nothing is in the address or
+// in the browser's storage): the first thing not done. "Change" and "Back"
+// post the screen to go to, and the answer is that screen.
+//
+// Every screen posts to this same address with `at` and `intent`: saved → a
+// 303 to the next; something to fix → drawn again with the answers (422); a
+// stale page (CSRF) → drawn again with the answers (403), never a redirect; a
+// filled honeypot is answered as saved and writes nothing. The definers in 039
+// check everything again and answer a status word (src/lib/intake-public.ts).
+//
+// A procedure form not explained yet reads "Read before you see the dentist":
+// no ticks, no decision, no pad, one Continue. A form that can be signed has
+// the patient's questions, the ticks, how it reached them, the decision, who
+// signs (the Family Code's order for a minor; a mark, a court guardian or a
+// representative only on a clinic device), the sentence their signature means
+// and the pad (strokes, never an image). The server draws what was decided and
+// freezes it (the snapshot); the database seals it.
+//
+// Shared-device hygiene, as /f/[key]: a page from the browser's memory is
+// hidden and loaded again, a page a post drew becomes a GET in the history,
+// autocomplete is off except the contact fields' own tokens, a honeypot on
+// every form. On the desk's own device, the page tells the workspace's other
+// tabs it was handed over (they cover themselves) and that nobody is signed in.
+import Base from '../../../layouts/Base.astro';
+import Icon from '../../../components/ws/Icon.astro';
+import Csrf from '../../../components/Csrf.astro';
+import ConsentDocument from '../../../components/consent/ConsentDocument.astro';
+import SignPad from '../../../components/consent/SignPad.astro';
+import ClinicBadge from '../../find/_ui/ClinicBadge.astro';
+import ClinicRoom from '../../find/_ui/ClinicRoom.astro';
+import Field from '../_Field.astro';
+import '../../find/_ui/patient.css';
+import '../../find/_ui/clinic-glass.css';
+import '../_forms.css';
+import './_intake.css';
+import { clientIp } from '../../../lib/throttle';
+import { csrfOk, csrfToken, CSRF_MESSAGE } from '../../../lib/csrf';
+import { manilaToday, dateText } from '../../../lib/health';
+import { readCappedForm, newNonce } from '../../../lib/patient-forms';
+import { parseScreen, parseForm, valuesAsForm, shown, isMinorOn, ageFrom, HONEYPOT_FIELD, NONCE_FIELD, PRIVACY_TICK, type FieldDef, type RawValues } from '../../../lib/patient-forms-def';
+import { INTAKE_DEF, INTAKE_STEPS, INTAKE_SCREENS, INTAKE_FIELD_SCREEN, PRIVACY_AS, type IntakeScreen } from '../../../lib/intake-def';
+import {
+  lookupIntake, deviceProof, patientOf, renderPage, faceOf, savePage1, markPage, decidePage, sendIntake, pingIntake, postAllowed,
+  INTAKE_WORDS, INTAKE_POST_MAX, type IntakeLook, type IntakePageView,
+} from '../../../lib/intake-public';
+import { EXPLAINED_LANGS, signerChoices, holds, type RawPart, type SignerChoice, type Signer, type Decision } from '../../../lib/consent-library';
+import { bornLine } from '../../../lib/consent-docs';
+import { readStrokes, type Strokes } from '../../../lib/visit-consent';
+
+Astro.response.headers.set('Cache-Control', 'no-store');
+Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+Astro.response.headers.set('Referrer-Policy', 'same-origin');
+csrfToken(Astro.cookies);
+
+const token = String(Astro.params.token ?? '').toLowerCase();
+const self = `/f/i/${token}/`;
+const ip = clientIp(Astro);
+const proof = deviceProof(Astro.cookies);
+const device = proof?.hash ?? '';
+let look: IntakeLook = await lookupIntake(token, proof?.hash ?? null, ip);
+const today = manilaToday();
+
+type Screen = IntakeScreen | `c:${string}` | 'check' | 'done';
+let screen: Screen | null = null;
+let errors: Record<string, string> = {};
+let formNote = '';
+let raw: RawValues = {};
+let partRaw: RawPart = {};
+let strokes: Strokes | null = null;
+let asked = false;
+let done: { added: boolean; target: 'new' | 'existing'; firstName: string } | null = null;
+const posted = Astro.request.method === 'POST';
+
+// ---------------------------------------------------------------------------
+// Where they are: the first thing not done
+// ---------------------------------------------------------------------------
+const saved = (): Record<string, unknown> => look.intake?.answers ?? {};
+const pages = (): IntakePageView[] => look.pages ?? [];
+const ageClash = () => {
+  const b = typeof saved().birth_date === 'string' ? String(saved().birth_date) : null;
+  const d = look.intake?.deskMinor;
+  if (!b || !d || d === 'unsure') return false;
+  const minor = isMinorOn(b, today);
+  return (d === 'no' && minor) || (d === 'yes' && !minor);
+};
+const screenDone = (s: IntakeScreen) => {
+  const r = parseScreen(INTAKE_DEF, valuesAsForm(INTAKE_DEF, saved()), s, { privacyVersion: look.privacy?.id ?? null, today, prior: saved() });
+  return r.ok;
+};
+const needs = (p: IntakePageView) => {
+  const st = p.page?.state ?? null;
+  if (!st) return true;
+  if ((st === 'agreed' || st === 'refused') && p.page!.docRev !== p.rev) return true;
+  if (st === 'reading' || st === 'question') return true;
+  if (st === 'read' && p.signable) return true;
+  return false;
+};
+function nextScreen(): Screen {
+  if (look.intake?.target === 'new' && !look.intake.page1DoneAt) {
+    if (ageClash()) return 'you';
+    for (const s of INTAKE_SCREENS) if (s === 'privacy' || !screenDone(s)) return s;
+  }
+  const p = pages().find(needs);
+  return p ? `c:${p.id}` : 'check';
+}
+const asScreen = (s: string): Screen | null => {
+  if ((INTAKE_SCREENS as readonly string[]).includes(s)) return look.intake?.target === 'new' ? (s as Screen) : null;
+  if (s === 'check') return 'check';
+  if (s.startsWith('c:') && pages().some((p) => `c:${p.id}` === s)) return s as Screen;
+  return null;
+};
+const reload = async () => { look = await lookupIntake(token, device || null, ip); };
+const rawAll = (form: FormData): RawPart => {
+  const out: Record<string, string | string[]> = {};
+  for (const [k, v] of form.entries()) {
+    if (typeof v !== 'string') continue;
+    const had = out[k];
+    out[k] = had === undefined ? v : Array.isArray(had) ? [...had, v] : [had, v];
+  }
+  return out;
+};
+
+// ---------------------------------------------------------------------------
+// The post
+// ---------------------------------------------------------------------------
+if (posted && look.status === 'open' && device) {
+  const form = await readCappedForm(Astro.request, INTAKE_POST_MAX);
+  const at = form ? String(form.get('at') ?? '') : '';
+  const intent = form ? String(form.get('intent') ?? '') : '';
+  if (!form) {
+    Astro.response.status = 413;
+    formNote = 'That was too much to send in one go, so nothing was saved. Please ask the desk.';
+  } else if (String(form.get(HONEYPOT_FIELD) ?? '').trim() !== '') {
+    // For robots: answered as if saved; nothing is written.
+    return Astro.redirect(self, 303);
+  } else {
+    raw = Object.fromEntries([...new Set([...form.keys()])].map((k) => [k, form.getAll(k).length > 1 ? form.getAll(k).map(String) : String(form.get(k) ?? '')]));
+    partRaw = rawAll(form);
+    strokes = readStrokes(String(form.get('strokes') ?? ''));
+    screen = asScreen(at);
+    if (!csrfOk(Astro.cookies, form)) {
+      Astro.response.status = 403;
+      formNote = `${CSRF_MESSAGE} Your answers are still here: check them and press the button again.`;
+    } else if (intent === 'ping') {
+      const r = await postAllowed({ intakeId: look.intake!.id, clinicId: look.clinic!.id, ip, ping: true });
+      return new Response(JSON.stringify({ ok: r.ok ? (await pingIntake(token, device)) === 'open' : false }), { status: r.ok ? 200 : 429, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+    } else if (intent === 'goto') {
+      raw = {}; partRaw = {}; strokes = null;
+    } else {
+      const lim = await postAllowed({ intakeId: look.intake!.id, clinicId: look.clinic!.id, ip });
+      if (!lim.ok) {
+        Astro.response.status = 429;
+        formNote = 'Too many at once. Wait a moment and press the button again.';
+      } else if (intent === 'page1' && screen && (INTAKE_SCREENS as readonly string[]).includes(screen)) {
+        const s = screen as IntakeScreen;
+        const opts = { privacyVersion: look.privacy?.id ?? null, today };
+        const parsed = s === 'privacy'
+          ? parseForm<Record<string, unknown>, typeof opts>(INTAKE_DEF, valuesAsForm(INTAKE_DEF, saved(), { form, step: 'privacy' }), opts)
+          : parseScreen<Record<string, unknown>, typeof opts>(INTAKE_DEF, form, s, { ...opts, prior: saved() });
+        if (!parsed.ok) {
+          errors = parsed.errors;
+          // An answer on an earlier screen that needs a look: that screen.
+          const first = Object.keys(errors).find((k) => INTAKE_FIELD_SCREEN[k]);
+          if (s === 'privacy' && first && INTAKE_FIELD_SCREEN[first] !== 'privacy') { screen = INTAKE_FIELD_SCREEN[first]; raw = {}; }
+          Astro.response.status = 422;
+        } else {
+          const value = { ...parsed.value, v: INTAKE_DEF.version } as Record<string, unknown>;
+          for (const k of Object.keys(value)) if (!(k in INTAKE_DEF.fields) && k !== 'v') delete value[k];
+          const r = await savePage1(token, device, s, value);
+          if (r === 'saved' || r === 'page1' || r === 'age_check') return Astro.redirect(self, 303);
+          if (r === 'changed') { await reload(); formNote = 'The clinic’s privacy notice was updated while you were filling in. Read it again, and tick it again.'; Astro.response.status = 409; }
+          else if (r === 'invalid') { formNote = 'Something in these answers could not be saved. Check them, or ask the desk.'; Astro.response.status = 422; }
+          else { await reload(); }
+        }
+      } else if ((intent === 'read' || intent === 'question' || intent === 'decide') && screen?.startsWith('c:')) {
+        const p = pages().find((x) => `c:${x.id}` === screen)!;
+        const rev = Number(form.get('rev'));
+        if (intent === 'read' || intent === 'question') {
+          const r = await markPage(token, device, p.id, rev, intent === 'read' ? 'read' : 'question');
+          if (r === 'saved' && intent === 'read') return Astro.redirect(self, 303);
+          if (r === 'saved') { asked = true; raw = {}; partRaw = {}; }
+          else if (r === 'changed') { await reload(); formNote = 'The clinic changed this form while you were reading it. Here it is as it is now.'; Astro.response.status = 409; raw = {}; partRaw = {}; strokes = null; }
+          else if (r !== 'invalid') await reload();
+        } else if (rev !== p.rev) {
+          await reload(); formNote = 'The clinic changed this form while you were reading it. Here it is as it is now.'; Astro.response.status = 409; raw = {}; partRaw = {}; strokes = null;
+        } else {
+          const r = await decidePage(token, device, look, p, await faceOf(look), partRaw, String(form.get('strokes') ?? ''));
+          if (r.status === 'saved') return Astro.redirect(self, 303);
+          if ('errors' in r) { errors = r.errors; Astro.response.status = 422; }
+          else if (r.status === 'not_ready') formNote = `You sign this after ${p.dentistName ?? 'the dentist'} has explained it to you.`;
+          else if (r.status === 'changed') { await reload(); formNote = 'The clinic updated this form. Please ask the desk.'; Astro.response.status = 409; }
+          else if (r.status === 'order') { screen = null; formNote = 'Please fill in your details first.'; }
+          else if (r.status === 'invalid') { formNote = 'This could not be saved as it is. Check who is signing, or ask the desk.'; Astro.response.status = 422; }
+          else await reload();
+        }
+      } else if (intent === 'send') {
+        const r = await sendIntake(token, device, String(form.get(NONCE_FIELD) ?? ''), look.clinic!.id, look.intake!.id);
+        if (r.status === 'sent' || r.status === 'added' || r.status === 'again') {
+          done = { added: r.added || r.status === 'added', target: look.intake!.target, firstName: patientOf(look).firstName };
+          screen = 'done';
+        } else if (r.status === 'unfinished') { screen = 'check'; formNote = 'Some parts are not finished yet. They are listed below.'; Astro.response.status = 409; }
+        else if (r.status === 'changed') { screen = 'check'; formNote = 'The clinic updated one of the forms. Please ask the desk.'; Astro.response.status = 409; }
+        else { await reload(); }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// What the page draws
+// ---------------------------------------------------------------------------
+const open = look.status === 'open' && !!device;
+if (look.status === 'open' && !device) look = { status: 'taken', clinic: look.clinic };
+if (open && !done && !screen) screen = nextScreen();
+const clinic = look.clinic;
+const who = open ? patientOf(look) : null;
+const page = screen?.startsWith('c:') ? pages().find((p) => `c:${p.id}` === screen) ?? null : null;
+// A form drawn for the first time is marked opened (the definer resets a page whose form changed since).
+if (open && page && !posted && (!page.page || !page.page.openedAt)) {
+  const r = await markPage(token, device, page.id, page.rev, 'opened');
+  if (r === 'changed') await reload();
+}
+const face = open && page?.template ? await faceOf(look) : null;
+const rendered = open && page?.template && face ? renderPage(look, page, face) : null;
+const onClinicDevice = look.device === 'tablet' || look.device === 'desk';
+const status = look.status;
+if (!open && status !== 'open' && !done) Astro.response.status = INTAKE_WORDS[status as Exclude<typeof status, 'open'>]?.code ?? 404;
+if (status === 'wait') Astro.response.headers.set('Retry-After', String(look.retryAfter ?? 60));
+
+// Parts: page 1 (a new patient) and each form.
+const page1 = look.intake?.target === 'new';
+const parts = (page1 ? 1 : 0) + pages().length;
+const partNo = (s: Screen | null) => !s ? null : (INTAKE_SCREENS as readonly string[]).includes(s) ? 1 : s.startsWith('c:') ? (page1 ? 1 : 0) + pages().findIndex((p) => `c:${p.id}` === s) + 1 : null;
+const partWords = screen === 'check' ? 'Check and send' : screen === 'done' ? 'Done' : partNo(screen) ? `Part ${partNo(screen)} of ${parts}` : '';
+
+// Page 1's screens: what shows, filled from the post or what was saved.
+const valOf = (name: string): string | string[] | undefined => {
+  if (raw[name] !== undefined) return raw[name] as string | string[];
+  const v = saved()[name];
+  if (v === null || v === undefined || v === false) return undefined;
+  if (v === true) return '1';
+  if (Array.isArray(v)) return INTAKE_DEF.fields[name]?.kind === 'textarea' ? v.map(String).join('\n') : v.map(String);
+  return String(v);
+};
+const get = (name: string) => valOf(name) ?? null;
+const birthNow = typeof valOf('birth_date') === 'string' ? String(valOf('birth_date')) : null;
+const minorNow = isMinorOn(birthNow, today);
+const ageNow = ageFrom(birthNow, today);
+const stepDef = screen && (INTAKE_SCREENS as readonly string[]).includes(screen) ? INTAKE_STEPS.find((s) => s.id === screen)! : null;
+const privacyChoices = PRIVACY_AS.filter((c) => (minorNow ? c.value !== 'patient' : c.value === 'patient'));
+const fieldFor = (f: FieldDef<string>): FieldDef<string> => (f.name === 'privacy_as' ? { ...f, choices: privacyChoices } : f);
+const errList = Object.entries(errors).filter(([k]) => k !== '_form');
+const screenIdx = stepDef ? INTAKE_SCREENS.indexOf(stepDef.id) : -1;
+
+// A consent page: the posted choices, or what was saved on it.
+const pv = (k: string, fallback = '') => { const v = partRaw[k]; return Array.isArray(v) ? String(v[0] ?? '') : v !== undefined ? String(v) : fallback; };
+const pvAll = (k: string) => { const v = partRaw[k]; return v === undefined ? [] : Array.isArray(v) ? v.map(String) : [String(v)]; };
+const t = page?.template ?? null;
+const choices: SignerChoice[] = open && who && who.minor !== null ? signerChoices(who.minor, look.device === 'phone' ? 'phone' : 'clinic') : [];
+const SIGNER_WORDS: Record<SignerChoice, { title: string; note?: string }> = {
+  patient: { title: 'I am the patient' },
+  mark: { title: 'The patient, by mark', note: 'For a patient who cannot write. A staff member watches and confirms.' },
+  parent: { title: 'I am their parent' },
+  court_guardian: { title: 'I am their guardian, appointed by a court', note: 'The desk checks the court order.' },
+  substitute: { title: 'I have substitute parental authority', note: 'Only when the parents have died, cannot be found, or are unfit (Family Code Arts. 214 and 216). A parent who is simply not here today is not this.' },
+  written: { title: 'A parent authorised me in writing', note: 'The desk checks the parent’s letter.' },
+  representative: { title: 'I represent the patient', note: 'Only after the dentist has recorded that the patient cannot decide.' },
+};
+const defaultChoice: SignerChoice | '' = choices.length === 1 ? choices[0] : choices.includes('patient') ? 'patient' : '';
+const signerChosen = pv('signer_as', page?.page?.signedAs === 'patient' ? (page.page.method === 'mark' ? 'mark' : 'patient') : (page?.page?.authority ?? defaultChoice));
+const decisionChosen = pv('decision', page?.page?.state === 'agreed' ? 'agree' : page?.page?.state === 'refused' ? 'refuse' : page?.page?.state === 'later' ? 'later' : '');
+const langDefault = page?.attestation?.explainedIn && EXPLAINED_LANGS.some((c) => c.value === page.attestation!.explainedIn) ? page.attestation.explainedIn : page?.attestation ? 'other' : '';
+// The sentence a signature means: drawn by the server for each decision and who signs; the page's script shows the one chosen.
+const MARK_A = '', MARK_B = '';
+const meaning = (decision: Decision, forThem: boolean) => {
+  if (!page || !t || !face) return [];
+  const signer: Signer = forThem
+    ? { name: MARK_A, as: 'guardian', method: 'sign', relation: MARK_B, authority: 'parent', ground: null, note: null }
+    : { name: who!.name, as: 'patient', method: 'sign', relation: null, authority: null, ground: null, note: null };
+  const text = renderPage(look, page, face, { decision, signer }).meaning ?? '';
+  return text.split(/([])/).filter(Boolean).map((x) => (x === MARK_A ? { slot: 'name' } : x === MARK_B ? { slot: 'relation' } : { text: x }));
+};
+const statements = t ? {
+  mark: t.words.by_mark, parent: t.words.as_parent, court_guardian: t.words.as_guardian, written: t.words.as_written, substitute: t.words.as_substitute, representative: t.words.as_representative,
+} : null;
+const lineText = (l: { en: readonly unknown[] }) => l.en.map((r) => (typeof r === 'string' ? r : '…')).join('').replace(/\s+/g, ' ').trim();
+const nonce = newNonce();
+const partState = (p: IntakePageView) => {
+  const st = p.page?.state ?? null;
+  const signedChanged = (st === 'agreed' || st === 'refused') && p.page!.docRev !== p.rev;
+  if (signedChanged) return { words: 'Sign again: the form changed', done: false };
+  if (st === 'agreed') return { words: `Signed ${p.page?.decidedAt ? new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(new Date(p.page.decidedAt)).toLowerCase() : ''}`.trim(), done: true };
+  if (st === 'refused') return { words: p.code === 'photos' ? 'No photos' : 'Did not agree', done: true };
+  if (st === 'later') return { words: 'Will ask the dentist', done: true };
+  if (st === 'read' && !p.signable) return { words: 'Read · signed after the dentist explains', done: true };
+  return { words: 'Not finished', done: false };
+};
+const unfinished = pages().filter((p) => !partState(p).done);
+const page1Done = !page1 || !!look.intake?.page1DoneAt;
+const titleWords = clinic ? `Your forms · ${clinic.name} — Flossify` : 'Your forms — Flossify';
+const phoneHref = (p: string | null) => (p ? `tel:${p.replace(/[^\d+]/g, '')}` : null);
+const fil = (s: { fil?: string }) => s.fil;
+---
+
+<Base title={titleWords} description="A patient’s forms for their clinic.">
+  <!-- What the last person typed never comes back: a page from the browser's memory, or an old post sent again,
+       is hidden at once and loaded again from the server before it paints. -->
+  <script is:inline data-ip-self={self} data-ip-posted={posted ? '' : undefined}>
+    document.documentElement.classList.add('pf-js');
+    window.addEventListener('load', function () {
+      if (!document.documentElement.classList.contains('pf-ready')) document.documentElement.classList.remove('pf-js');
+    });
+    (function (me) {
+      var to = me && me.getAttribute('data-ip-self');
+      if (!to) return;
+      function leave() { document.documentElement.classList.add('pf-leaving'); location.replace(to); }
+      var nav = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+      if (nav && nav.type === 'back_forward' && me.hasAttribute('data-ip-posted')) leave();
+      window.addEventListener('pageshow', function (e) { if (e.persisted) leave(); });
+    })(document.currentScript);
+  </script>
+
+  <ClinicRoom keys={clinic?.photoKeys ?? []} clinicId={clinic?.id ?? ''} narrow />
+
+  <main id="main" class="pt-main cl-glass cl-book pf ip" data-ip data-ip-device={look.device ?? (proof?.tablet ? 'tablet' : undefined)} data-ip-done={done ? '' : undefined} data-ip-over={!open && !done && proof?.tablet ? '' : undefined}>
+    <header class="cl-pane cl-head ip-bar">
+      <div class="cl-id">
+        {clinic ? <ClinicBadge name={clinic.name} size="lg" /> : <span class="pt-done-mark"><Icon name="info" /></span>}
+        <div class="min-w-0">
+          <p class="pt-title m-0!">{clinic?.name ?? 'Patient forms'}</p>
+          {open && partWords && <p class="ip-part">{partWords}</p>}
+        </div>
+      </div>
+      {open && screen !== 'done' && page && (
+        <form method="post" action={self}>
+          <Csrf /><input type="hidden" name="at" value={screen} /><input type="hidden" name="intent" value="question" /><input type="hidden" name="rev" value={page.rev} />
+          <button type="submit" class="btn btn-quiet ip-ask"><Icon name="message" />Ask the desk</button>
+        </form>
+      )}
+    </header>
+
+    {!open && !done && (
+      <section class="ws-pane ws-glass pt-card cl-pane pf-done" aria-labelledby="ip-status-title">
+        <h1 class="pt-done-title pf-done-title" id="ip-status-title">{INTAKE_WORDS[status as Exclude<typeof status, 'open'>]?.title ?? 'These forms are not open'}</h1>
+        <p class="pf-done-lead">{status === 'wait' && look.message ? look.message : INTAKE_WORDS[status as Exclude<typeof status, 'open'>]?.lead}</p>
+        {clinic?.phone && status !== 'finished' && <div class="pf-done-actions"><a href={phoneHref(clinic.phone)} class="btn btn-quiet"><Icon name="phone" />Call {clinic.phone}</a></div>}
+        {status === 'finished' && proof && !proof.tablet && <p class="pf-done-text"><a href="/auth/unlock/" class="pt-link">For the clinic</a></p>}
+      </section>
+    )}
+
+    {formNote && open && screen !== 'done' && (
+      <p class="ip-banner" data-tone="warn" role="alert" tabindex="-1" data-ip-note><Icon name="alert" /><span>{formNote}</span></p>
+    )}
+    {asked && <p class="ip-banner" data-tone="ok" role="status"><Icon name="check" /><span>We have told the desk. Someone will come to you. You can keep reading.</span></p>}
+
+    {/* ---------------------------------------------------------------- page 1 */}
+    {open && stepDef && (
+      <div class="ws-pane ws-glass pt-card cl-pane cl-wizard pf-card">
+        {screenIdx === 0 && !look.intake?.answers && (
+          <p class="pf-intro"><Icon name="clock" /><span>{parts === 1 ? '1 part' : `${parts} short parts`}, about {5 + pages().reduce((n, p) => n + (p.template?.minutes ?? 2), 0)} minutes. Your answers go only to {clinic!.name}. Prefer paper? Ask the desk.</span></p>
+        )}
+        {ageClash() && stepDef.id === 'you' && <p class="ip-banner" data-tone="warn" role="alert"><Icon name="alert" /><span>Please ask the desk before going on: the date of birth and what the desk wrote do not agree.</span></p>}
+        <form class="cl-form pf-form" method="post" action={self} novalidate autocomplete="off" data-ip-page1 data-birth={birthNow ?? ''}>
+          <Csrf />
+          <input type="hidden" name="at" value={stepDef.id} />
+          <input type="hidden" name="intent" value="page1" />
+          <div class="pf-hp" aria-hidden="true"><label>Website <input type="text" name={HONEYPOT_FIELD} value="" tabindex="-1" autocomplete="off" /></label></div>
+          {errList.length > 0 && (
+            <div class="pf-alert" role="alert" tabindex="-1" data-ip-alert>
+              <p class="pf-alert-title"><Icon name="alert" /><span>{errList.length === 1 ? 'One answer needs a look.' : `${errList.length} answers need a look.`}</span></p>
+              <ul>{errList.slice(0, 5).map(([k, v]) => <li><a href={`#f-${k}`}><strong>{INTAKE_DEF.fields[k]?.short ?? INTAKE_DEF.fields[k]?.label ?? k}</strong><span>{v}</span></a></li>)}</ul>
+            </div>
+          )}
+          <fieldset class="wiz pf-step">
+            <legend class="pt-legend" tabindex="-1">{stepDef.title}</legend>
+            <p class="pt-help">{stepDef.lede}</p>
+            {stepDef.sections.map((sec) => {
+              const Tag = sec.fold ? 'details' : 'section';
+              return (
+                <Tag class:list={['pf-sec', sec.fold && 'pf-fold']} open={sec.fold ? sec.fields.some((f) => !!valOf(f.name) || !!errors[f.name]) : undefined} data-show={sec.showIf ? JSON.stringify(sec.showIf) : undefined} data-off={sec.showIf && !shown(sec.showIf, get, minorNow, ageNow) ? '' : undefined}>
+                  {sec.fold ? (
+                    <summary class="pf-fold-sum"><span class="pf-sec-title">{sec.fold}<span class="pf-optional"> (optional)</span></span><Icon name="chevron" class="pf-fold-chev" /></summary>
+                  ) : <h2 class="pf-sec-title">{sec.title}</h2>}
+                  {sec.help && <p class="pf-sec-help">{sec.help}</p>}
+                  {sec.id === 'privacy' && look.privacy && (
+                    <div class="ip-notice">
+                      <p class="ip-notice-title">{look.privacy.title}</p>
+                      <p class="ip-notice-text">{look.privacy.summary}{clinic?.dpoName ? ` Questions about your data: ${clinic.dpoName}, the clinic’s Data Protection Officer.` : ''}</p>
+                      <a href="/privacy/" target="_blank" rel="noopener" class="pt-link pf-notice-link"><span>Read the privacy notice</span><Icon name="arrow-right" /><span class="sr-only"> (opens in a new tab)</span></a>
+                    </div>
+                  )}
+                  <div class="pf-grid">
+                    {sec.fields.map((f) => (
+                      <Field f={fieldFor(f)} value={valOf(f.name)} error={errors[f.name] ?? ''} off={f.kind !== 'hidden' && !shown(f.showIf, get, minorNow, ageNow)}
+                        label={f.name === 'consent_privacy' ? PRIVACY_TICK : undefined} hiddenValue={f.name === 'privacy_version' ? look.privacy?.id : undefined}
+                        today={today} minor={minorNow} nojs={null} />
+                    ))}
+                  </div>
+                </Tag>
+              );
+            })}
+          </fieldset>
+          <div class="pt-nav">
+            {screenIdx > 0 && <button type="submit" form="ip-back" class="btn btn-quiet" data-ip-back><Icon name="chevron-left" />Back</button>}
+            <button type="submit" class="btn btn-primary"><span>{stepDef.id === 'privacy' ? 'Save my details' : 'Continue'}</span><Icon name="arrow-right" /></button>
+          </div>
+        </form>
+        {screenIdx > 0 && (
+          <form method="post" action={self} id="ip-back" hidden>
+            <Csrf /><input type="hidden" name="at" value={INTAKE_SCREENS[screenIdx - 1]} /><input type="hidden" name="intent" value="goto" />
+          </form>
+        )}
+      </div>
+    )}
+
+    {/* ---------------------------------------------------------------- a consent form */}
+    {open && page && t && rendered && (
+      <form method="post" action={self} novalidate autocomplete="off" class="ip-paper" data-ip-consent data-signable={page.signable ? '' : undefined}>
+        <Csrf />
+        <input type="hidden" name="at" value={screen} />
+        <input type="hidden" name="rev" value={page.rev} />
+        <div class="pf-hp" aria-hidden="true"><label>Website <input type="text" name={HONEYPOT_FIELD} value="" tabindex="-1" autocomplete="off" /></label></div>
+        {!page.signable && (
+          <p class="ip-banner"><Icon name="info" /><span>Read before you see the dentist. You sign after {page.dentistName ?? 'the dentist'} has explained it to you.</span></p>
+        )}
+        {page.page && (page.page.state === 'agreed' || page.page.state === 'refused') && page.page.docRev !== page.rev && (
+          <p class="ip-banner" data-tone="warn"><Icon name="alert" /><span>Sign again: the clinic changed this form, or your details changed.</span></p>
+        )}
+        {errList.length > 0 && (
+          <div class="pf-alert" role="alert" tabindex="-1" data-ip-alert>
+            <p class="pf-alert-title"><Icon name="alert" /><span>{errList.length === 1 ? 'One thing needs a look.' : `${errList.length} things need a look.`}</span></p>
+            <ul>{errList.map(([k, v]) => <li><a href={`#ip-${k.replace(/^tick_.*/, 'ticks').replace(/^initials.*/, 'doc').replace(/^strokes$/, 'strokes-box').replace(/^why$/, 'decision')}`}><span>{v}</span></a></li>)}</ul>
+          </div>
+        )}
+        <ConsentDocument mode="patient" id="ip-doc" doc={rendered} part={`${partWords} · Consent form`} version={page.versionId} ref={page.ref}
+          forLine={bornLine(who!.birth, today)} plannedLang={page.explainedIn === 'en' ? 'English' : page.explainedIn === 'fil' ? 'Filipino' : page.explainedOther}
+          initials={page.signable ? { value: pv('initials_' + (rendered.sections.find((s) => s.initials)?.id ?? ''), page.page?.initials ?? ''), error: errors.initials } : null} />
+        {errors.initials && <p class="ip-err" id="ip-err-initials"><Icon name="alert" size={16} />{errors.initials}</p>}
+
+        {!page.signable ? (
+          <div class="ip-actions">
+            <input type="hidden" name="intent" value="read" />
+            <button type="submit" class="btn btn-primary">Continue <Icon name="arrow-right" /></button>
+          </div>
+        ) : (
+          <>
+          <input type="hidden" name="intent" value="decide" />
+          {t.patientFields.filter((f) => holds(f.when, t, page.fields, who!.minor)).length > 0 && (
+            <div class="ip-part-block" id="ip-questions">
+              <h2 class="ip-h">Your answers</h2>
+              {t.patientFields.filter((f) => holds(f.when, t, page.fields, who!.minor)).map((f) => (
+                <fieldset class="ip-q" id={`ip-${f.name}`}>
+                  <legend>{f.label.en}{rendered.langs.includes('fil') && f.label.fil && <span class="ip-fil" lang="fil">{f.label.fil}</span>}</legend>
+                  <div class="ip-pills">
+                    {(f.kind === 'yesno' ? [['yes', 'Yes'], ['no', 'No']] : f.kind === 'yesnounsure' ? [['yes', 'Yes'], ['no', 'No'], ['unsure', 'Not sure']] : (f.choices ?? []).map((c) => [c.value, c.label])).map(([v, w]) => (
+                      <label class="ip-pill"><input type={f.kind === 'choices' ? 'checkbox' : 'radio'} name={f.name} value={v} checked={f.kind === 'choices' ? pvAll(f.name).includes(v) : pv(f.name, String(page.page?.answers?.[f.name] ?? '')) === v} data-stop={f.stop?.includes(v) ? '' : undefined} /><span>{w}</span></label>
+                    ))}
+                  </div>
+                  {errors[f.name] && <p class="ip-err"><Icon name="alert" size={16} />{errors[f.name]}</p>}
+                </fieldset>
+              ))}
+            </div>
+          )}
+
+          {t.ticks.length > 0 && (
+            <div class="ip-part-block" id="ip-ticks">
+              <h2 class="ip-h">To agree, tick each one</h2>
+              <ul class="ip-ticks">
+                {rendered.ticks.map((k) => (
+                  <li><label class="ip-tick"><input type="checkbox" name={`tick_${k.id}`} value="1" checked={pv(`tick_${k.id}`) === '1'} data-ip-tick /><span>{k.text.en}{k.text.fil && <span class="ip-fil" lang="fil">{k.text.fil}</span>}</span></label></li>
+                ))}
+              </ul>
+              {Object.keys(errors).some((k) => k.startsWith('tick_')) && <p class="ip-err"><Icon name="alert" size={16} />Tick each one to agree, or choose another answer below.</p>}
+            </div>
+          )}
+
+          <div class="ip-part-block" id="ip-read">
+            <h2 class="ip-h">How it reached you</h2>
+            {t.attest && (
+              <fieldset class="ip-q" id="ip-explained_lang">
+                <legend>It was explained to me in</legend>
+                <div class="ip-pills">
+                  {EXPLAINED_LANGS.map((c) => <label class="ip-pill"><input type="radio" name="explained_lang" value={c.value} checked={pv('explained_lang', langDefault) === c.value} /><span>{c.label}</span></label>)}
+                </div>
+                <label class="ip-field"><span>Another language</span><input name="explained_other" value={pv('explained_other', langDefault === 'other' ? page.attestation?.explainedIn ?? '' : '')} maxlength="40" autocomplete="off" /></label>
+                {errors.explained_lang && <p class="ip-err"><Icon name="alert" size={16} />{errors.explained_lang}</p>}
+              </fieldset>
+            )}
+            <fieldset class="ip-q">
+              <legend>Who read this form</legend>
+              <div class="ip-pills">
+                <label class="ip-pill"><input type="radio" name="read" value="self" checked={pv('read', 'self') === 'self'} /><span>I read it myself</span></label>
+                <label class="ip-pill"><input type="radio" name="read" value="to" checked={pv('read') === 'to'} data-ip-read-to /><span>It was read to me</span></label>
+              </div>
+              <label class="ip-field" data-ip-read-by><span>Who read it to you</span><input name="read_by" value={pv('read_by')} maxlength="60" autocomplete="off" /></label>
+              {errors.read && <p class="ip-err"><Icon name="alert" size={16} />{errors.read}</p>}
+            </fieldset>
+          </div>
+
+          <div class="ip-part-block" id="ip-decision">
+            <fieldset class="ip-decide">
+              <legend>What do you decide?</legend>
+              {t.refuseUnsigned ? (
+                <>
+                <label class="ip-choice"><input type="radio" name="decision" value="agree" checked={decisionChosen === 'agree'} data-ip-decision /><span><span class="ip-choice-words"><span class="ip-choice-title">Yes, with these choices</span><span class="ip-choice-note">Answer the questions above, then sign.</span></span></span></label>
+                <label class="ip-choice"><input type="radio" name="decision" value="refuse" checked={decisionChosen === 'refuse'} data-ip-decision data-unsigned /><span><span class="ip-choice-words"><span class="ip-choice-title">No, thank you</span><span class="ip-choice-note">No photos for publication. Saying no never changes your care.</span></span></span></label>
+                </>
+              ) : (
+                <>
+                <label class="ip-choice"><input type="radio" name="decision" value="agree" checked={decisionChosen === 'agree'} data-ip-decision data-stoppable /><span><span class="ip-choice-words"><span class="ip-choice-title">I agree</span><span class="ip-choice-note">{rendered.decision_words.agree.en}</span>{rendered.decision_words.agree.fil && <span class="ip-fil" lang="fil">{rendered.decision_words.agree.fil}</span>}</span></span></label>
+                <label class="ip-choice"><input type="radio" name="decision" value="later" checked={decisionChosen === 'later'} data-ip-decision data-unsigned data-later /><span><span class="ip-choice-words"><span class="ip-choice-title">I want to ask the dentist first</span><span class="ip-choice-note">Nothing is signed. The desk is told.</span></span></span></label>
+                <label class="ip-choice"><input type="radio" name="decision" value="refuse" checked={decisionChosen === 'refuse'} data-ip-decision /><span><span class="ip-choice-words"><span class="ip-choice-title">I do not agree</span><span class="ip-choice-note">{rendered.decision_words.refuse.en}</span>{rendered.decision_words.refuse.fil && <span class="ip-fil" lang="fil">{rendered.decision_words.refuse.fil}</span>}</span></span></label>
+                </>
+              )}
+              {errors.decision && <p class="ip-err"><Icon name="alert" size={16} />{errors.decision}</p>}
+              {t.patientFields.some((f) => f.stop) && <p class="ip-banner" data-tone="warn" hidden data-ip-stopped><Icon name="alert" /><span>Please talk to the dentist before whitening. The product label says it is not for anyone pregnant, anyone who smokes or drinks often, or within 2 weeks of a filling or crown.</span></p>}
+              <label class="ip-field" data-ip-why><span>Why? (optional)</span><input name="why" value={pv('why')} maxlength="200" autocomplete="off" /></label>
+            </fieldset>
+          </div>
+
+          <div class="ip-part-block" id="ip-signer_as" data-ip-signing>
+            <fieldset class="ip-decide">
+              <legend>Who is signing?</legend>
+              {choices.length === 0 && <p class="ip-hint">Please ask the desk.</p>}
+              {choices.map((c) => (
+                <label class="ip-choice"><input type="radio" name="signer_as" value={c} checked={signerChosen === c} data-ip-signer={c} /><span><span class="ip-choice-words"><span class="ip-choice-title">{SIGNER_WORDS[c].title}</span>{SIGNER_WORDS[c].note && <span class="ip-choice-note">{SIGNER_WORDS[c].note}</span>}</span></span></label>
+              ))}
+              {who!.minor && <p class="ip-hint">If nobody here is a parent or legal guardian, choose “I want to ask the dentist first”: only a parent or legal guardian can sign. If the parents do not agree with each other, the clinic stops and talks with both.</p>}
+              {errors.signer_as && <p class="ip-err"><Icon name="alert" size={16} />{errors.signer_as}</p>}
+            </fieldset>
+            <div data-ip-self-name>
+              <label class="ip-field"><span>Name</span><input value={who!.name} readonly aria-readonly="true" tabindex="-1" /></label>
+            </div>
+            <div data-ip-guardian>
+              <label class="ip-field" id="ip-signer_name"><span>Your full name</span><input name="signer_name" value={pv('signer_name', page.page?.signedAs === 'guardian' ? page.page.signedByName ?? '' : '')} maxlength="120" autocomplete="name" data-ip-name /></label>
+              {errors.signer_name && <p class="ip-err"><Icon name="alert" size={16} />{errors.signer_name}</p>}
+              <label class="ip-field" id="ip-signer_relation"><span>Who you are to the patient</span><input name="signer_relation" value={pv('signer_relation', page.page?.relation ?? '')} maxlength="60" autocomplete="off" placeholder="Mother, father" data-ip-relation /></label>
+              {errors.signer_relation && <p class="ip-err"><Icon name="alert" size={16} />{errors.signer_relation}</p>}
+            </div>
+            <div data-ip-substitute>
+              <label class="ip-field" id="ip-signer_ground"><span>Why the parents cannot sign</span>
+                <select name="signer_ground"><option value="">Choose</option>{(['died', 'absent', 'unfit'] as const).map((g) => <option value={g} selected={pv('signer_ground') === g}>The parents {t.words.grounds[g]}</option>)}</select>
+              </label>
+              {errors.signer_ground && <p class="ip-err"><Icon name="alert" size={16} />{errors.signer_ground}</p>}
+              <label class="ip-field" id="ip-signer_who"><span>You are the patient’s</span>
+                <select name="signer_who"><option value="">Choose</option>{(['grandparent', 'sibling_21', 'custodian_21'] as const).map((w) => <option value={w} selected={pv('signer_who') === w}>{t.words.who[w]}</option>)}</select>
+              </label>
+              {errors.signer_who && <p class="ip-err"><Icon name="alert" size={16} />{errors.signer_who}</p>}
+              <label class="ip-tick mt-3"><input type="checkbox" name="signer_over21" value="1" checked={pv('signer_over21') === '1'} /><span>I am 21 or older</span></label>
+              {errors.signer_over21 && <p class="ip-err"><Icon name="alert" size={16} />{errors.signer_over21}</p>}
+            </div>
+            {statements && Object.entries(statements).map(([c, l]) => (
+              <p class="ip-statement" data-ip-statement={c} hidden={signerChosen !== c ? true : undefined}>{lineText(l)}</p>
+            ))}
+            <p class="ip-meaning" aria-live="polite" data-ip-meaning>
+              {(['agree', 'refuse'] as const).flatMap((d) => [false, true].map((forThem) => (
+                <span data-ip-meaning-for={`${d}:${forThem ? 'them' : 'self'}`} hidden={!(d === (decisionChosen === 'refuse' ? 'refuse' : 'agree') && forThem === !['patient', 'mark', ''].includes(signerChosen)) ? true : undefined}>
+                  {meaning(d === 'agree' ? 'agreed' : 'refused', forThem).map((x) => ('slot' in x ? <span data-ip-slot={x.slot}>{x.slot === 'name' ? (pv('signer_name') || 'your name') : (pv('signer_relation') || 'their parent')}</span> : x.text))}
+                </span>
+              )))}
+            </p>
+            <div data-ip-pad id="ip-strokes-box">
+              <SignPad label="Sign here with your finger" strokes={strokes} error={errors.strokes} id="ip-strokes" />
+            </div>
+          </div>
+
+          <div class="ip-actions">
+            <button type="submit" class="btn btn-primary" data-ip-go>Sign and continue <Icon name="arrow-right" /></button>
+          </div>
+          </>
+        )}
+      </form>
+    )}
+
+    {/* ---------------------------------------------------------------- check and send */}
+    {open && screen === 'check' && (
+      <div class="ws-pane ws-glass pt-card cl-pane pf-card">
+        <h1 class="pt-title">Check and send</h1>
+        <p class="pt-help">Look over each part. When everything is right, send it to {clinic!.name}.</p>
+        <ul class="ip-parts">
+          {page1 && (
+            <li>
+              <span class="ip-parts-words"><span class="ip-parts-title">Patient information</span><span class="ip-parts-state">{page1Done ? (look.intake?.privacyAs === 'none' ? 'Done · the privacy consent waits for a parent or guardian' : 'Done') : 'Not finished'}</span></span>
+              <form method="post" action={self}><Csrf /><input type="hidden" name="at" value="you" /><input type="hidden" name="intent" value="goto" /><button type="submit" class="btn btn-quiet">Change</button></form>
+            </li>
+          )}
+          {pages().map((p) => { const s = partState(p); return (
+            <li>
+              <span class="ip-parts-words"><span class="ip-parts-title">{p.template?.title.en ?? 'A form'}</span><span class="ip-parts-state">{s.words}</span></span>
+              <form method="post" action={self}><Csrf /><input type="hidden" name="at" value={`c:${p.id}`} /><input type="hidden" name="intent" value="goto" /><button type="submit" class="btn btn-quiet">View or change</button></form>
+            </li>); })}
+        </ul>
+        {(unfinished.length > 0 || !page1Done) && (
+          <p class="ip-banner mt-4" data-tone="warn"><Icon name="alert" /><span>Not finished yet: {[...(!page1Done ? ['Patient information'] : []), ...unfinished.map((p) => p.template?.title.en ?? 'a form')].join(', ')}.</span></p>
+        )}
+        <form method="post" action={self} class="ip-actions">
+          <Csrf />
+          <input type="hidden" name="at" value="check" /><input type="hidden" name="intent" value="send" />
+          <input type="hidden" name={NONCE_FIELD} value={nonce} />
+          <div class="pf-hp" aria-hidden="true"><label>Website <input type="text" name={HONEYPOT_FIELD} value="" tabindex="-1" autocomplete="off" /></label></div>
+          <button type="submit" class="btn btn-primary" disabled={unfinished.length > 0 || !page1Done}><Icon name="check" />Send to {clinic!.name}</button>
+        </form>
+      </div>
+    )}
+
+    {/* ---------------------------------------------------------------- done */}
+    {done && clinic && (
+      <section class="ws-pane ws-glass pt-card cl-pane pf-done" aria-labelledby="ip-done-title" data-ip-done-card>
+        <span class="pt-done-mark"><Icon name="check" size={26} /></span>
+        <h1 class="pt-done-title pf-done-title" id="ip-done-title" tabindex="-1">{onClinicDevice ? 'Thank you' : `Thank you, ${done.firstName}`}</h1>
+        <div class="ip-done-body">
+          {onClinicDevice ? (
+            <p class="pf-done-lead">Please hand the {look.device === 'tablet' ? 'tablet' : 'device'} back to the clinic.</p>
+          ) : done.target === 'new' ? (
+            <p class="pf-done-lead">Your details are with {clinic.name}. Please tell the desk you are finished.</p>
+          ) : (
+            <p class="pf-done-lead">Your forms are with {clinic.name}. Please tell the desk you are finished.</p>
+          )}
+        </div>
+        {look.device === 'desk' && <p class="pf-done-text"><a href="/auth/unlock/" class="pt-link">For the clinic</a></p>}
+      </section>
+    )}
+  </main>
+
+  <script>
+    // Nothing here stores an answer (no storage, no address): the answers live in the page until it posts.
+    const root = document.documentElement;
+    root.classList.add('pf-ready');
+    const main = document.querySelector<HTMLElement>('main.ip');
+    const byPost = document.querySelector('script[data-ip-posted]') !== null;
+    // A page a post drew becomes a plain GET in the history: Back or a reload never sends it again.
+    if (byPost) history.replaceState(null, '', location.pathname);
+    (document.querySelector<HTMLElement>('[data-ip-alert]') ?? document.querySelector<HTMLElement>('[data-ip-note]'))?.focus();
+
+    // The desk's own device, handed over: the workspace's other tabs cover themselves, and nobody is signed in here.
+    if (main?.dataset.ipDevice === 'desk' && typeof BroadcastChannel !== 'undefined') {
+      const ch = new BroadcastChannel('flossify-offline');
+      ch.postMessage({ parked: true, at: Date.now() });
+      ch.postMessage({ who: null, sid: null, at: Date.now() });
+      ch.close();
+    }
+
+    // The thank-you on a clinic device turns neutral after 20 seconds; a clinic tablet goes back to waiting.
+    if (main?.hasAttribute('data-ip-done') && (main.dataset.ipDevice === 'tablet' || main.dataset.ipDevice === 'desk')) {
+      setTimeout(() => {
+        main.setAttribute('data-ip-neutral', '');
+        if (main.dataset.ipDevice === 'tablet') location.replace('/f/t/');
+      }, 20_000);
+    }
+
+    // A clinic tablet on a link that is over (sent, stopped, replaced): back to waiting for the next patient.
+    if (main?.hasAttribute('data-ip-over')) setTimeout(() => location.replace('/f/t/'), 8_000);
+
+    // Page 1: a question shows when its answer calls for it (the same rules the server reads by).
+    import { shown, isMinorOn, ageFrom, FIELDS, type ShowIf } from '../../../lib/patient-forms-def';
+    const p1 = document.querySelector<HTMLFormElement>('[data-ip-page1]');
+    if (p1) {
+      const get = (name: string): string | string[] | null => {
+        const f = FIELDS[name];
+        const els = p1.querySelectorAll<HTMLInputElement>(`[name="${name}"]`);
+        if (!els.length) return name === 'birth_date' ? (p1.dataset.birth || null) : null;
+        if (f?.kind === 'checks') return Array.from(els).filter((i) => i.checked).map((i) => i.value);
+        if (f?.kind === 'radio') return Array.from(els).find((i) => i.checked)?.value ?? null;
+        if (f?.kind === 'agree') return els[0].checked ? '1' : null;
+        return els[0].value || null;
+      };
+      const conditional = Array.from(p1.querySelectorAll<HTMLElement>('[data-show]')).map((el) => ({ el, s: JSON.parse(el.dataset.show!) as ShowIf }));
+      const sync = () => {
+        const birth = (get('birth_date') as string | null) ?? p1.dataset.birth ?? null;
+        const minor = isMinorOn(birth, new Date().toISOString().slice(0, 10));
+        const age = ageFrom(birth, new Date().toISOString().slice(0, 10));
+        for (const { el, s } of conditional) el.toggleAttribute('data-off', !shown(s, get, minor, age));
+      };
+      p1.addEventListener('input', sync);
+      p1.addEventListener('change', sync);
+      sync();
+    }
+
+    // A consent form: who signs, the statement above the pad, the sentence the signature means, "Why?" and the pad
+    // only when they apply; a whitening stop answer takes "I agree" away. The server checks all of it again.
+    const cf = document.querySelector<HTMLFormElement>('[data-ip-consent][data-signable]');
+    if (cf) {
+      const $ = <T extends HTMLElement>(s: string) => cf.querySelector<T>(s);
+      const $$ = <T extends HTMLElement>(s: string) => Array.from(cf.querySelectorAll<T>(s));
+      const readTo = $<HTMLInputElement>('[data-ip-read-to]');
+      const readBy = $('[data-ip-read-by]');
+      const go = $<HTMLButtonElement>('[data-ip-go]');
+      const name = $<HTMLInputElement>('[data-ip-name]'), relation = $<HTMLInputElement>('[data-ip-relation]');
+      const sync = () => {
+        const decision = $$<HTMLInputElement>('[data-ip-decision]').find((i) => i.checked);
+        const signer = $$<HTMLInputElement>('[data-ip-signer]').find((i) => i.checked)?.value ?? '';
+        const unsigned = !!decision?.hasAttribute('data-unsigned');
+        const later = !!decision?.hasAttribute('data-later');
+        const forThem = !!signer && signer !== 'patient' && signer !== 'mark';
+        if (readBy) readBy.hidden = !readTo?.checked;
+        const why = $('[data-ip-why]'); if (why) why.hidden = !decision || decision.value === 'agree';
+        const signing = $('[data-ip-signing]'); if (signing) signing.hidden = later;
+        const pad = $('[data-ip-pad]'); if (pad) pad.hidden = unsigned;
+        const guardian = $('[data-ip-guardian]'); if (guardian) guardian.hidden = !forThem;
+        const selfName = $('[data-ip-self-name]'); if (selfName) selfName.hidden = forThem || !signer;
+        const sub = $('[data-ip-substitute]'); if (sub) sub.hidden = signer !== 'substitute';
+        $$('[data-ip-statement]').forEach((el) => { el.hidden = el.dataset.ipStatement !== signer; });
+        const d = decision?.value === 'refuse' ? 'refuse' : 'agree';
+        $$('[data-ip-meaning-for]').forEach((el) => { el.hidden = later || !signer || el.dataset.ipMeaningFor !== `${d}:${forThem ? 'them' : 'self'}`; });
+        $$('[data-ip-slot="name"]').forEach((el) => { el.textContent = name?.value.trim() || 'your name'; });
+        $$('[data-ip-slot="relation"]').forEach((el) => { el.textContent = relation?.value.trim() || 'their parent'; });
+        const stopped = $$<HTMLInputElement>('[data-stop]').some((i) => i.checked);
+        const stopLine = $('[data-ip-stopped]'); if (stopLine) stopLine.hidden = !stopped;
+        $$<HTMLInputElement>('[data-stoppable]').forEach((i) => { i.disabled = stopped; if (stopped) i.checked = false; });
+        if (go) go.firstChild!.textContent = later || (unsigned && decision?.value === 'refuse') ? 'Continue ' : 'Sign and continue ';
+      };
+      cf.addEventListener('input', sync);
+      cf.addEventListener('change', sync);
+      sync();
+    }
+
+    // Keep the link alive while the page is open and in view.
+    const csrf = document.querySelector<HTMLInputElement>('input[name="_csrf"]')?.value;
+    const at = document.querySelector<HTMLInputElement>('input[name="at"]')?.value;
+    if (csrf && at && !main?.hasAttribute('data-ip-done')) {
+      setInterval(() => {
+        if (document.visibilityState !== 'visible') return;
+        const body = new URLSearchParams({ _csrf: csrf, intent: 'ping', at });
+        fetch(location.pathname, { method: 'POST', body, credentials: 'same-origin' }).catch(() => {});
+      }, 120_000);
+    }
+  </script>
+</Base>

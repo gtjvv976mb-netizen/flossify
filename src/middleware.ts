@@ -25,6 +25,10 @@
 //    error overlay). Astro still renders src/pages/500.astro for it if one is
 //    ever added; there is none now, so the 500 has no body.
 //
+//    A patient's own pages (/f/…: the poster's forms, an intake, a clinic
+//    tablet) are no-store, noindex and Referrer-Policy: same-origin, and an
+//    error there is logged with the link's key or token left out (logPath).
+//
 //    Every clinic workspace response (/c/…) is also Cache-Control: no-store:
 //    records, health histories, the patient forms' answers and their
 //    printouts must not stay in a shared clinic computer's disk cache or its
@@ -69,6 +73,16 @@ const HSTS = 'max-age=31536000';
 
 const HEALTHZ = /^\/healthz\/?$/;
 const WORKSPACE = /^\/c\//;
+// A patient's own pages (/f/<key>/ the QR poster's forms, /f/i/<token>/ an intake, /f/t/ a clinic tablet):
+// never cached, never indexed, and their address never sent to another site. Referrer-Policy is
+// same-origin, not no-referrer: under no-referrer a browser sends `Origin: null` with the page's own form
+// posts, and Astro's Origin check refuses every one of them (measured).
+const PATIENT = /^\/f\//;
+const PATIENT_HEADERS = { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow', 'Referrer-Policy': 'same-origin' };
+
+/** A path as the log may show it: an intake's token and a poster's key are secrets of the patient's link. */
+const logPath = (p: string): string =>
+  p.replace(/^\/f\/i\/[^/]+/, '/f/i/…').replace(/^\/f\/(?!i\/|t\/|i$|t$)[^/]+/, '/f/…');
 
 function withHeaders(response: Response, headers: Record<string, string>): Response {
   try {
@@ -129,9 +143,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
   } catch (e) {
     if (import.meta.env.DEV) throw e;
     // What Astro would log (the stack); no query string, which can carry a code.
-    console.error(`[error] ${context.request.method} ${context.url.pathname}\n${(e as Error)?.stack ?? String(e)}`);
+    console.error(`[error] ${context.request.method} ${logPath(context.url.pathname)}\n${(e as Error)?.stack ?? String(e)}`);
     // No body: Astro renders src/pages/500.astro into it if one exists, keeping these headers.
     response = new Response(null, { status: 500 });
   }
-  return withHeaders(response, WORKSPACE.test(context.url.pathname) ? { ...headers, 'Cache-Control': 'no-store' } : headers);
+  const path = context.url.pathname;
+  return withHeaders(response, WORKSPACE.test(path) ? { ...headers, 'Cache-Control': 'no-store' } : PATIENT.test(path) ? { ...headers, ...PATIENT_HEADERS } : headers);
 });

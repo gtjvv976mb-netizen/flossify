@@ -1,0 +1,132 @@
+---
+// A signature pad: a white slip with a dashed line, Clear, and the strokes in
+// a hidden field — never an image. The strokes are 035's shape (src/lib/
+// visit-consent.ts, readStrokes): lines of whole-number [x, y] points in a
+// SIG_W × SIG_H box, at most 80 lines and 6000 points, enough ink to be a
+// signature; the server reads them again and the database checks them a third
+// time (consent_strokes_ok). A post that comes back refused draws the same
+// strokes again. The slip is white in both themes, like paper, with dark ink.
+//
+//   <SignPad label="Sign here with your finger" strokes={strokes} error={err} />
+//
+// Hooks are data-sp-*; the one hidden input is named `strokes`.
+import { SIG_W, SIG_H, type Strokes } from '../../lib/visit-consent';
+
+interface Props {
+  label: string;
+  strokes?: Strokes | null;
+  error?: string;
+  id?: string;
+}
+const { label, strokes = null, error = '', id = 'sp' } = Astro.props;
+---
+
+<div class="sp" data-sp>
+  <p class="sp-q" id={`${id}-q`}>{label}</p>
+  <input type="hidden" name="strokes" value={strokes ? JSON.stringify(strokes) : ''} data-sp-strokes />
+  <div class="sp-pad" data-sp-pad data-ink={strokes ? '' : undefined} data-bad={error ? '' : undefined}>
+    <canvas width={SIG_W} height={SIG_H} role="img" aria-labelledby={`${id}-q ${id}-state`} tabindex="0" data-sp-canvas data-w={SIG_W} data-h={SIG_H}></canvas>
+    <span class="sp-line" aria-hidden="true"></span>
+    <span class="sp-x" aria-hidden="true">×</span>
+    <span class="sp-hint" aria-hidden="true">Sign here</span>
+  </div>
+  <div class="sp-tools">
+    <span id={`${id}-state`} data-sp-state aria-live="polite">{strokes ? 'Signed. Clear it to sign again.' : 'Nothing signed yet.'}</span>
+    <button type="button" class="btn btn-quiet sp-clear" data-sp-clear>Clear</button>
+  </div>
+  {error && <p class="sp-error" id={`${id}-err`}>{error}</p>}
+  <p class="sp-turn">Turn your phone sideways for more room.</p>
+</div>
+
+<style>
+  .sp-q { margin: 0 0 0.5rem; font-size: 17px; font-weight: 600; color: var(--c-ink); }
+  .sp-pad { position: relative; border: 2px solid #667085; border-radius: 14px; background: #fff; overflow: hidden; }
+  .sp-pad[data-bad] { border-color: #b42318; }
+  .sp-pad canvas { display: block; width: 100%; aspect-ratio: 1000 / 400; touch-action: none; cursor: crosshair; }
+  .sp-pad:focus-within { border-color: #0e7471; box-shadow: 0 0 0 3px rgba(14, 116, 113, 0.22); }
+  .sp-line { position: absolute; left: 4%; right: 4%; bottom: 17.5%; border-top: 2px dashed #667085; pointer-events: none; }
+  .sp-x { position: absolute; left: 4%; bottom: calc(17.5% + 6px); font-size: 22px; font-weight: 700; color: #475467; pointer-events: none; }
+  .sp-hint { position: absolute; inset: 0; display: grid; place-items: center; font-size: 18px; font-weight: 600; color: #475467; pointer-events: none; }
+  .sp-pad[data-ink] .sp-hint { display: none; }
+  .sp-tools { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem; margin-top: 0.5rem; font-size: 15px; color: var(--c-ink-2); }
+  .sp-clear { min-height: 44px; }
+  .sp-error { margin: 0.375rem 0 0; font-size: 15px; font-weight: 600; color: var(--pt-err-ink, #b42318); }
+  .sp-turn { margin: 0.375rem 0 0; font-size: 14.5px; color: var(--c-ink-2); }
+  @media (orientation: landscape), (min-width: 640px) { .sp-turn { display: none; } }
+</style>
+
+<script>
+  // The pad: strokes of whole-number points in a SIG_W × SIG_H box, the shape the server checks.
+  for (const root of document.querySelectorAll<HTMLElement>('[data-sp]')) {
+    const hidden = root.querySelector<HTMLInputElement>('[data-sp-strokes]')!;
+    const pad = root.querySelector<HTMLElement>('[data-sp-pad]')!;
+    const canvas = root.querySelector<HTMLCanvasElement>('[data-sp-canvas]')!;
+    const state = root.querySelector<HTMLElement>('[data-sp-state]')!;
+    const W = Number(canvas.dataset.w), H = Number(canvas.dataset.h);
+    let strokes: [number, number][][] = [];
+    try { const s = JSON.parse(hidden.value || '[]'); if (Array.isArray(s)) strokes = s; } catch { strokes = []; }
+    const ctx = canvas.getContext('2d')!;
+    const scale = () => canvas.width / W;
+    const line = (s: [number, number][]) => {
+      const k = scale();
+      ctx.beginPath();
+      ctx.moveTo(s[0][0] * k, s[0][1] * k);
+      if (s.length === 1) ctx.lineTo(s[0][0] * k + 0.1, s[0][1] * k);
+      for (let i = 1; i < s.length; i++) ctx.lineTo(s[i][0] * k, s[i][1] * k);
+      ctx.stroke();
+    };
+    const redraw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.lineWidth = 6 * scale();
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#1f2937';
+      strokes.forEach(line);
+    };
+    const size = () => {
+      const r = canvas.getBoundingClientRect();
+      if (!r.width) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      canvas.width = Math.round(r.width * dpr);
+      canvas.height = Math.round(r.height * dpr);
+      redraw();
+    };
+    const points = () => strokes.reduce((n, s) => n + s.length, 0);
+    const save = () => {
+      hidden.value = strokes.length ? JSON.stringify(strokes) : '';
+      if (strokes.length) pad.dataset.ink = ''; else delete pad.dataset.ink;
+      delete pad.dataset.bad;
+      state.textContent = strokes.length ? 'Signed. Clear it to sign again.' : 'Nothing signed yet.';
+      root.dispatchEvent(new CustomEvent('sp:change', { bubbles: true }));
+    };
+    const at = (e: PointerEvent): [number, number] => {
+      const r = canvas.getBoundingClientRect();
+      const x = Math.round(((e.clientX - r.left) / r.width) * W);
+      const y = Math.round(((e.clientY - r.top) / r.height) * H);
+      return [Math.max(0, Math.min(W, x)), Math.max(0, Math.min(H, y))];
+    };
+    let drawing: [number, number][] | null = null;
+    canvas.addEventListener('pointerdown', (e) => {
+      if (strokes.length >= 80 || points() >= 5800) return;
+      e.preventDefault();
+      canvas.setPointerCapture(e.pointerId);
+      drawing = [at(e)];
+      strokes.push(drawing);
+      redraw();
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!drawing) return;
+      e.preventDefault();
+      const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [e];
+      for (const ev of events.length ? events : [e]) {
+        const p = at(ev);
+        const last = drawing[drawing.length - 1];
+        if (Math.hypot(p[0] - last[0], p[1] - last[1]) >= 2 && points() < 5900) drawing.push(p);
+      }
+      redraw();
+    });
+    const end = () => { if (drawing) { drawing = null; save(); } };
+    canvas.addEventListener('pointerup', end);
+    canvas.addEventListener('pointercancel', end);
+    root.querySelector('[data-sp-clear]')!.addEventListener('click', () => { strokes = []; redraw(); save(); });
+    new ResizeObserver(() => size()).observe(canvas);
+  }
+</script>
