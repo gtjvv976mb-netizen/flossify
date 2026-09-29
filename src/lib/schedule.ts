@@ -20,6 +20,7 @@ import { withClinic } from './db';
 import { normalizePhone, PH_MOBILE, queueText } from './messages';
 import { AFTERCARE, aftercareText, kindForCatalog } from './aftercare';
 import { willRemind } from './availability';
+import { loadBlocks, type BlockRange } from './blocks';
 
 export type Appt = {
   id: string;
@@ -52,8 +53,13 @@ export type Range = {
   chairs: number;
   /** dow (0 = Sunday) → [openMin, closeMin], or null when the clinic is shut that day. */
   hours: Record<number, [number, number] | null>;
-  staff: { id: string; name: string; days: number[] }[];
+  /** Each dentist's weekdays here, and their own hours on the days that have them (040): dow → [fromMin, toMin];
+   *  a day in `days` with no entry is the clinic's hours. */
+  staff: { id: string; name: string; days: number[]; hours: Record<number, [number, number]> }[];
   catalog: { code: string; name: string; minutes: number }[];
+  /** Blocked time over the range (040): every range clinic_unavailable() gives but the weekly shut hours, which
+   *  `hours` already draws — lunch, a dentist's time not in, and the dated blocks (src/lib/blocks.ts). */
+  blocks: BlockRange[];
 };
 
 /** The statuses the desk may move a visit to — the Today page's set, copied, not forked. 'booked' is where a visit starts and is not a destination. */
@@ -154,8 +160,10 @@ export async function loadRange(clinicId: string, fromIso: string, toIso: string
     const { rows: hrs } = await tx.query<{ dow: number; open_min: number; close_min: number }>('select dow, open_min, close_min from clinic_hours order by dow');
     // Dentists are staff who sit here on some day of the week. The team page writes days for every role,
     // so the roles that treat are named; an owner is a dentist at every clinic the seed and sign-up create.
-    const { rows: staff } = await tx.query<{ id: string; name: string; days: number[] }>(
-      `select s.id, s.full_name as name, array_agg(ss.dow order by ss.dow) as days
+    // A dentist's own hours on a day (040) are from/to on that day's row; null is the clinic's hours.
+    const { rows: staff } = await tx.query<{ id: string; name: string; days: number[]; hours: Record<number, [number, number]> }>(
+      `select s.id, s.full_name as name, array_agg(ss.dow order by ss.dow) as days,
+              coalesce(jsonb_object_agg(ss.dow, jsonb_build_array(ss.from_min, ss.to_min)) filter (where ss.from_min is not null), '{}'::jsonb) as hours
          from staff s join staff_schedule ss on ss.staff_id = s.id
         where ss.clinic_id = $1 and s.disabled_at is null and s.role in ('owner', 'dentist', 'associate')
         group by s.id, s.full_name
@@ -165,8 +173,20 @@ export async function loadRange(clinicId: string, fromIso: string, toIso: string
       `select code, name, coalesce(minutes, 30)::int as minutes from procedure_catalog where active order by category nulls last, name`);
     const hours: Range['hours'] = { 0: null, 1: null, 2: null, 3: null, 4: null, 5: null, 6: null };
     for (const h of hrs) hours[h.dow] = [h.open_min, h.close_min];
-    return { appointments: appts.map(rowToAppt), chairs: me?.chairs ?? 1, hours, staff, catalog };
+    const blocks = await loadBlocks(tx, clinicId, from, to);
+    return { appointments: appts.map(rowToAppt), chairs: me?.chairs ?? 1, hours, staff, catalog, blocks };
   });
+}
+
+/** A dentist is a staff member with access to, or days at, this clinic, in a role that treats. Inside a clinic
+ *  transaction: /api/schedule refuses a visit for anyone else, and blocks.ts a dentist's time away. */
+export async function isDentistHere(tx: Tx, clinicId: string, dentistId: string): Promise<boolean> {
+  const { rowCount } = await tx.query(
+    `select 1 from staff s
+      where s.id = $1 and s.disabled_at is null and s.role in ('owner', 'dentist', 'associate')
+        and (exists (select 1 from staff_access a where a.staff_id = s.id and a.clinic_id = $2)
+          or exists (select 1 from staff_schedule ss where ss.staff_id = s.id and ss.clinic_id = $2))`, [dentistId, clinicId]);
+  return !!rowCount;
 }
 
 // ---------------------------------------------------------------------------
