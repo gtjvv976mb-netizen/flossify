@@ -190,9 +190,22 @@ export function initPanels(ctx: Ctx): Panels {
     save: $<HTMLButtonElement>('[data-vp-move-save]')!, saveWord: $('[data-vp-move-save-word]')!, moveClose: $<HTMLButtonElement>('[data-vp-move-close]')!,
     title: $('#visit [data-ws-title]')!, meta: $('#visit [data-ws-meta]')!,
     check: $('[data-vp-check]')!, checkTitle: $('[data-vp-check-title]')!, checkList: $('[data-vp-check-list]')!,
+    // Edit (p25): the move form's sibling, the visit's service, length, reason and note changed in place. Drawn only for
+    // schedule.edit (VisitPanel.astro), so `edit` may be null; the fields below are read only when it is not.
+    edit: $<HTMLFormElement>('[data-vp-edit]'), editHead: $('#vp-edit-h')!,
+    eService: $<HTMLSelectElement>('[data-vp-edit-service]')!, ePrice: $('[data-vp-edit-price]')!,
+    eMinutes: $<HTMLInputElement>('[data-vp-edit-minutes]')!, eEnds: $('[data-vp-edit-ends]')!,
+    eReason: $<HTMLInputElement>('[data-vp-edit-reason]')!,
+    eNotesBox: $('[data-vp-edit-notes-box]')!, eNotes: $<HTMLTextAreaElement>('[data-vp-edit-notes]')!,
+    eBookNote: $('[data-vp-edit-booknote]')!, eBookNoteText: $('[data-vp-edit-booknote-text]')!,
+    eConsent: $('[data-vp-edit-consent]')!, eConsentText: $('[data-vp-edit-consent-text]')!, eConsentSign: $<HTMLAnchorElement>('[data-vp-edit-consent-sign]')!,
+    eClose: $<HTMLButtonElement>('[data-vp-edit-close]')!,
   };
   const vMenu = menuOf(V.more);
   let current: string | null = null;
+  // The actions row's teal button (the next step, Place it or Charge) and the Edit button, as fillVisit drew them.
+  let teal: HTMLElement | null = null;
+  let editBtn: HTMLButtonElement | null = null;
   // Free times inside the move form (p24): the visit being moved is never in its own way; hidden while the form is folded.
   const vpFree = initFreeTimes(ctx, 'vp', { date: V.date, time: V.time, minutes: V.minutes, chair: V.chair, dentist: V.dentist, exclude: () => current, off: () => !!V.move.hidden });
   let busy = false;
@@ -214,6 +227,7 @@ export function initPanels(ctx: Ctx): Panels {
       else if (go?.href) { const a = el('a', 'vp-check-go', go.label); a.href = go.href; li.append(a); }
       else if (go) { const b = el('button', 'vp-check-go', go.label); b.type = 'button'; b.addEventListener('click', go.onClick!); li.append(b); }
       V.checkList.append(li);
+      return li;
     };
     if (!req && day === boot.today && !M.DONE.has(c.status)) {
       V.checkTitle.textContent = 'Before we start';
@@ -224,7 +238,9 @@ export function initPanels(ctx: Ctx): Panels {
       else line('ok', `Health history: asked ${M.dateText(c.healthAskedAt!)}`, { label: 'Still true?', href: rec('health') });
       if (c.bpOnDay) line('ok', 'Blood pressure: taken today');
       else line('warn', 'Blood pressure: not taken today', { label: 'Take it', href: rec('vitals', 'vitals') });
-      if (c.consentSigned) line('ok', 'Consent: signed on the tablet for this visit');
+      // What the signed consent covered, in the patient's own words on the tablet (p25); the whole of it in the title.
+      // The Edit form's amber line is what asks for a new signature when the treatment changes.
+      if (c.consentSigned) { const li = line('ok', `Consent: signed for ${M.clip(c.consentFor ?? 'this visit', 120)}`); if (c.consentFor) li.title = c.consentFor; }
       else line('warn', 'Consent: not signed for this visit', boot.canEdit ? { label: 'Sign on this tablet', href: signHref(c.patientId, c.id) } : undefined);
       const age = M.ageOf(c.birth, boot.today);
       if (age !== null && age < 18) line('plain', 'Under 18: a parent or guardian signs');
@@ -313,10 +329,12 @@ export function initPanels(ctx: Ctx): Panels {
     const chargeFirst = boot.finance && c.status === 'completed';
     V.actions.replaceChildren();
     V.more.replaceChildren();
+    teal = null; editBtn = null;
     if (req) {
       const b = btn('Place it', PRIMARY, 'calendar');
       b.addEventListener('click', () => toMove());
       V.actions.append(b);
+      teal = b;
     }
     for (const [to, word] of STEP) {
       if (!allowed.includes(to) || to !== primary) continue;
@@ -324,13 +342,19 @@ export function initPanels(ctx: Ctx): Panels {
       b.dataset.to = to;
       b.addEventListener('click', () => void setStatus(c.id, to, word));
       V.actions.append(b);
+      teal = b;
     }
     // Done, for the people who may see money: charge what was done at this visit — or, charged already, open the statement.
     if (chargeFirst) {
       if (c.statement) V.actions.append(linkBtn(`Statement ${c.statement.no}`, `${boot.links.finances}${c.statement.id}/`, QUIET, 'money'));
-      else V.actions.append(linkBtn(c.unbilled ? 'Charge this visit' : 'Charge', chargeHref(c.patientId, c.catalogId, c.id), PRIMARY, 'money'));
+      else { teal = linkBtn(c.unbilled ? 'Charge this visit' : 'Charge', chargeHref(c.patientId, c.catalogId, c.id), PRIMARY, 'money'); V.actions.append(teal); }
     }
     if (!M.DONE.has(c.status) && !req) { const b = btn('Move', QUIET, 'clock'); b.addEventListener('click', () => toMove()); V.actions.append(b); }
+    // Edit (p25): the service, length, reason and note in place — for schedule.edit, on a visit still to happen that
+    // has a time (never a request not placed yet, nor a visit brought in with its day only). Quiet, never teal.
+    if (boot.canSchedule && !M.DONE.has(c.status) && !req && !c.dateOnly) {
+      const b = btn('Edit', QUIET, 'pencil'); b.addEventListener('click', () => toEdit(c)); V.actions.append(b); editBtn = b;
+    }
     V.actions.append(linkBtn('Open record', recordHref(c.patientId, c.id), QUIET, 'file'));
 
     // More: the other steps, then charge and text, then Cancel (asked first).
@@ -373,17 +397,25 @@ export function initPanels(ctx: Ctx): Panels {
       ['Chair', c.chair === null ? (M.DONE.has(c.status) ? 'None' : 'No chair yet') : `Chair ${c.chair}`],
       [c.source === 'import' ? 'Brought in' : 'Booked', booked, c.publicRef ? `Booking ref ${c.publicRef}` : undefined],
       ['Moved', c.movedAt ? M.whenOf(c.movedAt) : null],
-      ['Notes', c.notes],
+      // The visit's own note ("Visit note"), not to be mistaken for the patient's desk note below.
+      ['Visit note', c.notes],
     ]);
 
     // The patient.
     const age = M.ageOf(p?.birth ?? c.birth, boot.today);
     who(V.who, c.patientName, c.patientId, [age === null ? null : `${age} years`, `Chart ${c.chartNo}`].filter(Boolean).join(' · '));
     alertChips(V.alerts, allergyOf(c), c.conditions ?? (p ? p.conditions.join(', ') : ''));
+    // The patient forms' own answer (p25): blue, information, never a status colour; the title says where it is from.
+    if (c.formNervous) {
+      const n = pill(c.formNervous === 'very' ? 'Very nervous about visits (from their form)' : 'A little nervous about visits (from their form)', 'blue');
+      n.title = 'From the patient forms';
+      V.alerts.append(n);
+    }
     const bal = p?.balance ?? null;
     const nextOther = p?.next && p.nextId !== c.id ? M.nearWhen(p.next, boot.today) : null;
     dl(V.patient, [
       ['Mobile', c.phone ? M.prettyPhone(c.phone) : 'None on file', bookersNumber(c) ? `${c.bookedFor}’s number: they booked it` : undefined],
+      ['Desk note', deskNoteNode(c)],
       ['Age', age === null ? 'No birth date on file' : null],
       ['HMO', c.patientHmo ?? p?.hmo ?? c.hmo ?? 'None on file',
         c.hmo && !(c.patientHmo ?? p?.hmo ?? c.hmo).startsWith(c.hmo) ? `This visit was booked under ${c.hmo}` : undefined],
@@ -392,8 +424,9 @@ export function initPanels(ctx: Ctx): Panels {
       ['Next visit', nextOther],
     ]);
 
-    // Move (or place): the visit's own values to start from. Folded until Move or Place it is pressed.
+    // Move (or place): the visit's own values to start from. Folded until Move or Place it is pressed; Edit too.
     V.move.hidden = true;
+    if (V.edit) V.edit.hidden = true;
     V.moveTitle.textContent = req ? 'Give it a time' : 'Move to a new time';
     moveNoteBase = req
       ? 'Pick a chair and a time. Until then it is not a booking and no reminder goes out.'
@@ -416,7 +449,31 @@ export function initPanels(ctx: Ctx): Panels {
       } else V.chair.value = '1';
     }
     vpNote();
+    tealFit();
     if (o.place) window.setTimeout(() => toMove(), 320);
+  }
+  /** The patient's desk note (Edit details on the record, less the import's own lines), with its line breaks; for
+   *  people who may edit records, Edit (or Add a note) opens the record's Edit details and comes back to this visit
+   *  (?open=details&dash=<visit>). Nobody else sees a row when there is no note. */
+  function deskNoteNode(c: Card): Node | null {
+    if (!c.deskNote && !boot.canEdit) return null;
+    const f = document.createDocumentFragment();
+    f.append(el('span', 'vp-desknote', c.deskNote ?? 'None yet'));
+    if (boot.canEdit) {
+      const a = link(c.deskNote ? 'Edit' : 'Add a note', `${recordHref(c.patientId)}?open=details&dash=${encodeURIComponent(c.id)}`);
+      a.className = 'vp-link';
+      f.append(' ', a);
+    }
+    return f;
+  }
+  /** One teal button in the panel in every state: while the Move or the Edit form is open its Save is the teal one,
+   *  and the step in the actions row (or Place it, or Charge) goes quiet until the form folds again. */
+  const editOpen = () => !!V.edit && !V.edit.hidden;
+  function tealFit() {
+    if (!teal) return;
+    const open = !V.move.hidden || editOpen();
+    teal.classList.toggle('ws-btn-primary', !open);
+    teal.classList.toggle('ws-btn-quiet', open);
   }
   /** The visit texts the number it was booked from; say so when that is someone else's (the patient's own differs). */
   function bookersNumber(c: Card): boolean {
@@ -424,13 +481,21 @@ export function initPanels(ctx: Ctx): Panels {
     return !!(c.bookedFor && c.phone && p && d(p.phone) !== d(c.phone));
   }
   function toMove() {
+    if (V.edit) V.edit.hidden = true;
     V.move.hidden = false;
+    tealFit();
     vpFree.update();
     V.moveHead.scrollIntoView({ block: 'start', behavior: 'smooth' });
     V.date.focus({ preventScroll: true });
   }
+  /** Fold the forms and draw the panel from what the board holds now: the live board does not refill it while a form
+   *  is open, so a change another desk made meanwhile shows the moment the form folds. */
+  function unfold() {
+    const c = current ? ctx.card(current) : undefined;
+    if (c) fillVisit(c); else { V.move.hidden = true; if (V.edit) V.edit.hidden = true; tealFit(); }
+  }
   V.moveClose.addEventListener('click', () => {
-    V.move.hidden = true;
+    unfold();
     V.actions.querySelector<HTMLElement>('.ws-btn-primary, button')?.focus();
   });
 
@@ -451,9 +516,9 @@ export function initPanels(ctx: Ctx): Panels {
     }
   });
 
-  /** One PATCH from the panel. `anyway`: what a press of Move (or Place) anyway does, offered beside the sentence when
+  /** One PATCH from the panel. `anyway`: what a press of Move (Place, Save) anyway does, offered beside the sentence when
    *  the server's refusal is blocked time (040); a clash (another visit there) never offers it. */
-  async function patch(body: Record<string, unknown>, o: { anyway?: () => void } = {}): Promise<{ card: Card; texted: boolean } | null> {
+  async function patch(body: Record<string, unknown>, o: { anyway?: () => void; anywayLabel?: string; anywayHook?: string } = {}): Promise<{ card: Card; texted: boolean; retold: number } | null> {
     if (busy) return null;
     busy = true; V.panel.setAttribute('aria-busy', 'true');
     vMenu.close();
@@ -465,7 +530,8 @@ export function initPanels(ctx: Ctx): Panels {
       hide(V.said);
       if (r.blocked && o.anyway) {
         const run = o.anyway;
-        callout(V.err, r.error, [document.createTextNode(' '), anywayBtn(V.saveWord.textContent === 'Place it' ? 'Place anyway' : 'Move anyway', 'data-vp-anyway', () => { hide(V.err); run(); })]);
+        const label = o.anywayLabel ?? (V.saveWord.textContent === 'Place it' ? 'Place anyway' : 'Move anyway');
+        callout(V.err, r.error, [document.createTextNode(' '), anywayBtn(label, o.anywayHook ?? 'data-vp-anyway', () => { hide(V.err); run(); })]);
       } else show(V.err, r.error);
       V.err.scrollIntoView({ block: 'nearest' });
       // Taken meanwhile by another desk (a clash, not blocked time): the board reads the book again, then the free
@@ -526,12 +592,138 @@ export function initPanels(ctx: Ctx): Panels {
     const c = r.card;
     const placed = was ? M.isRequest(was) && !M.isRequest(c) : false;
     const where = `${M.whenOf(c.startsAt)}${c.chair ? `, Chair ${c.chair}` : ''}${c.dentistName ? `, ${M.shortName(c.dentistName)}` : ''}`;
-    const sentence = `${placed ? 'Placed' : 'Moved'}: ${where}.${r.texted ? ' The new time is texted to them.' : ''}`;
+    // The same start, chair and dentist: only the length changed, which is an edit and not a move (p25: no moved_at).
+    const sameSpot = !!was && !placed && Date.parse(was.startsAt) === Date.parse(c.startsAt) && was.chair === c.chair && (was.dentistId ?? null) === (c.dentistId ?? null);
+    const sentence = sameSpot ? `Now ${M.whenOf(c.startsAt)} – ${M.timeOf(c.endsAt)}.`
+      : `${placed ? 'Placed' : 'Moved'}: ${where}.${r.texted ? ' The new time is texted to them.' : ''}`;
     if (current === c.id) fillVisit(c);
     show(V.said, sentence);
     V.said.scrollIntoView({ block: 'nearest' });
     const onScreen = document.querySelector(`.cal-card[data-id="${c.id}"]`);
     ctx.say(`${c.patientName}: ${sentence}`, onScreen ? undefined : { label: 'Show that day', ymd: M.manila(c.startsAt).ymd, id: c.id });
+  }
+
+  // ---------------------------------------------------------------- Edit: this visit in place (p25)
+  // The service, the length, the reason and the visit's note; the time, the chair, the dentist and the booking ref stay.
+  // What changed is all that is sent (the service and the reason always together: a reason that names a fee-guide
+  // service reads as that service, data.ts), and the server decides; its refusals come back in the panel's red line.
+  const oneLine = (v: string | null | undefined) => (v ?? '').replace(/\s+/g, ' ').trim();
+  const bookedOnline = (c: Card) => c.source === 'web' || c.source === 'request';
+  let editing: Card | null = null;
+  let editStart = { code: '', minutes: 0, reason: '', notes: '' };
+  // The reason follows the service while it still reads as the service's name (or was empty); typing in it stops that.
+  let editAuto = false;
+  function toEdit(from: Card) {
+    if (!V.edit) return;
+    const c = (current ? ctx.card(current) : undefined) ?? from;
+    editing = c;
+    V.move.hidden = true;
+    vpFree.hide();
+    hide(V.err);
+    // A service no longer in the fee guide stays choosable on the visit that has it, at the end, in words.
+    for (const o of V.eService.querySelectorAll('[data-vp-edit-extra]')) o.remove();
+    const code = c.catalogCode ?? '';
+    if (code && ![...V.eService.options].some((o) => o.value === code)) {
+      const o = new Option(`${c.service ?? code} · no longer in the fee guide`, code);
+      o.setAttribute('data-vp-edit-extra', '');
+      if (c.service) o.dataset.name = c.service;
+      V.eService.append(o);
+    }
+    V.eService.value = code;
+    const minutes = Math.max(5, Math.round((Date.parse(c.endsAt) - Date.parse(c.startsAt)) / 60_000));
+    V.eMinutes.value = String(minutes);
+    V.eReason.value = c.reason ?? '';
+    // Booked online: the note is the patient's own words, kept as they wrote them (no copy is kept anywhere else).
+    const online = bookedOnline(c);
+    V.eNotesBox.hidden = online;
+    V.eNotes.value = online ? '' : (c.notes ?? '');
+    V.eBookNote.hidden = !(online && c.notes);
+    V.eBookNoteText.textContent = online ? (c.notes ?? '') : '';
+    editStart = { code, minutes, reason: oneLine(c.reason), notes: online ? '' : oneLine(c.notes) };
+    editAuto = !c.reason || c.reason.trim().toLowerCase() === (c.service ?? '').trim().toLowerCase();
+    ePriceFit(); eEndsFit(); eConsentFit();
+    V.edit.hidden = false;
+    tealFit();
+    V.editHead.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    V.eService.focus({ preventScroll: true });
+  }
+  /** "Fee guide: ₱2,000 – ₱4,500." or "Not priced in the fee guide." (the booking panel's words) under Service. */
+  function ePriceFit() {
+    const code = V.eService.value;
+    const svc = code ? boot.catalog.find((k) => k.code === code) : undefined;
+    const price = svc ? svc.price : code && editing && code === editing.catalogCode ? editing.price : undefined;
+    V.ePrice.textContent = !code ? '' : price ? `Fee guide: ${M.priceLong(price)}.` : 'Not priced in the fee guide.';
+  }
+  /** "Ends at 10:15 am." under Minutes; past closing, when the clinic closes; and when the new length runs into blocked
+   *  time (040), its sentence and "Saving asks you to confirm." (the server asks again on save: Save anyway). */
+  function eEndsFit() {
+    const c = editing;
+    const m = Number(V.eMinutes.value);
+    if (!c || !Number.isInteger(m) || m < 5 || m > 480) { V.eEnds.textContent = ''; return; }
+    const at = M.manila(c.startsAt), end = at.min + m;
+    const open = M.hoursOf(boot.hours, M.dowOf(at.ymd));
+    // Only a new length is checked on save; a visit already kept in closed time is not asked again for its words.
+    const blk = m !== editStart.minutes ? M.blockAt(ctx.dayBlocks(at.ymd), boot.hours, { ymd: at.ymd, startMin: at.min, endMin: end, chair: c.chair, dentistId: c.dentistId }) : null;
+    const words = [`Ends at ${M.hm(end)}.`];
+    if (open && end > open[1] && blk?.kind !== 'shut') words.push(`The clinic closes at ${M.hm(open[1])}.`);
+    if (blk) words.push(blockSentence(blk), 'Saving asks you to confirm.');
+    V.eEnds.textContent = words.join(' ');
+  }
+  /** The consent signed on the tablet for this visit, when the service or the reason now differs from what it was. */
+  function eConsentFit() {
+    const c = editing;
+    const on = !!c?.consentSigned && (V.eService.value !== editStart.code || oneLine(V.eReason.value) !== editStart.reason);
+    V.eConsent.hidden = !on;
+    if (!on || !c) return;
+    V.eConsentText.textContent = `A consent was signed for this visit${c.consentFor ? ` for ${M.clip(c.consentFor, 120)}` : ''}. If the treatment is different, have them sign again.`;
+    V.eConsentSign.hidden = !boot.canEdit;
+    if (boot.canEdit) V.eConsentSign.href = signHref(c.patientId, c.id);
+  }
+  if (V.edit) { // the listeners, when the form is drawn
+    V.eService.addEventListener('change', () => {
+      const o = V.eService.selectedOptions[0];
+      if (V.eService.value) {
+        const mins = Number(o?.dataset.minutes);
+        if (Number.isInteger(mins) && mins >= 5) V.eMinutes.value = String(mins);
+        if (editAuto && o?.dataset.name) V.eReason.value = o.dataset.name;
+      } else if (editAuto) V.eReason.value = '';
+      ePriceFit(); eEndsFit(); eConsentFit();
+    });
+    V.eReason.addEventListener('input', () => { editAuto = false; eConsentFit(); });
+    V.eMinutes.addEventListener('input', () => eEndsFit());
+    V.eClose.addEventListener('click', () => { unfold(); editBtn?.focus(); });
+    V.edit.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const c = editing;
+      if (!current || !c) return;
+      const bad = (words: string) => { show(V.err, words); V.err.scrollIntoView({ block: 'nearest' }); };
+      const minutes = Number(V.eMinutes.value);
+      if (!Number.isInteger(minutes) || minutes < 5 || minutes > 480) return bad('Minutes is a whole number from 5 to 480.');
+      const reason = oneLine(V.eReason.value);
+      if (!reason && !V.eService.value) return bad('Say what the visit is for, or pick a service.');
+      const body: Record<string, unknown> = {};
+      if (V.eService.value !== editStart.code || reason !== editStart.reason) { body.catalogCode = V.eService.value || null; body.reason = V.eReason.value; }
+      if (minutes !== editStart.minutes) body.minutes = minutes;
+      if (!bookedOnline(c) && oneLine(V.eNotes.value) !== editStart.notes) body.notes = V.eNotes.value.trim() || null;
+      if (!Object.keys(body).length) {
+        unfold();
+        hide(V.err); show(V.said, 'Nothing changed.');
+        editBtn?.focus();
+        return;
+      }
+      void editSave({ id: current, ...body });
+    });
+  }
+  /** Save the Edit form; a new length into blocked time is refused with its sentence and Save anyway beside it. */
+  async function editSave(body: Record<string, unknown>) {
+    const r = await patch(body, { anyway: () => void editSave({ ...body, anyway: true }), anywayLabel: 'Save anyway', anywayHook: 'data-vp-edit-anyway' });
+    if (!r) return;
+    const c = r.card;
+    const mins = Math.round((Date.parse(c.endsAt) - Date.parse(c.startsAt)) / 60_000);
+    if (current === c.id) fillVisit(c);
+    show(V.said, `Saved: ${M.whatOf(c) || 'no reason given'}, ${mins} minutes.${r.retold > 0 ? ' The text still waiting to go out is rewritten to say it.' : ''}`);
+    V.said.scrollIntoView({ block: 'nearest' });
+    editBtn?.focus({ preventScroll: true });
   }
 
   // ================================================================ a new booking
@@ -957,7 +1149,12 @@ export function initPanels(ctx: Ctx): Panels {
 
   return {
     openVisit, openBook, openPatient, visitOpen: () => (V.panel.open ? current : null),
-    changed: (days) => { if (B.panel.open) bkFree.changed(days); if (V.panel.open) vpFree.changed(days); },
+    changed: (days) => {
+      if (B.panel.open) bkFree.changed(days);
+      if (V.panel.open) vpFree.changed(days);
+      // Blocked time read again: the Edit form's "Ends at" line says it; what was typed stays.
+      if (V.panel.open && editOpen() && editing && days.has(M.manila(editing.startsAt).ymd)) eEndsFit();
+    },
     openBlock, openBlockNew,
   };
 }
