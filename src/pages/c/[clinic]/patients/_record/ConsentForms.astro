@@ -29,8 +29,10 @@ interface Props {
   /** A treating dentist here with a PRC licence, and the patient an adult: may record that they cannot decide. */
   mayCapacity: boolean;
   capacity: { at: Date; dentistName: string; reason: string } | null;
+  /** Consent forms are offered on this server (none on a production server until reviewed): Prepare consent forms shows. */
+  canPrepare: boolean;
 }
-const { docs, slug, patientId, firstName, canEdit, mayExplain, mayCapacity, capacity } = Astro.props;
+const { docs, slug, patientId, firstName, canEdit, mayExplain, mayCapacity, capacity, canPrepare } = Astro.props;
 const base = `/c/${slug}/patients/${patientId}/consents/`;
 const TONE: Record<string, string> = { success: 'rp-ok', warn: 'rp-warn', alert: 'rp-alert', neutral: '', info: '' };
 const day = (d: Date) => new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(new Date(d));
@@ -39,16 +41,16 @@ const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.tee
 
 <Pane as="section" label="Consent forms" id="consent-forms">
   <Head icon="form" title="Consent forms" meta={docs.length ? (docs.length === 1 ? 'One form' : `${docs.length} forms`) : undefined}>
-    {canEdit && (
+    {canEdit && (canPrepare || mayCapacity) && (
       <span slot="actions" class="flex flex-wrap gap-2">
-        <a href={`/c/${slug}/patients/new/?patient=${patientId}`} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="plus" size={16} />Prepare consent forms</a>
+        {canPrepare && <a href={`/c/${slug}/patients/new/?patient=${patientId}`} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="plus" size={16} />Prepare consent forms</a>}
         {mayCapacity && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-capacity">Record that the patient cannot decide</button>}
       </span>
     )}
   </Head>
   {capacity && <p class="mb-3 text-[14.5px] text-ink-2">{capacity.dentistName} recorded on {day(capacity.at)} that {firstName} cannot decide now: “{capacity.reason}” A representative may sign on a clinic device for 30 days.</p>}
   {docs.length === 0 ? (
-    <p class="text-[14.5px] text-ink-2">No consent forms yet. Prepare them before a procedure: {firstName} reads and signs on the clinic’s tablet.</p>
+    <p class="text-[14.5px] text-ink-2">{canPrepare ? `No consent forms yet. Prepare them before a procedure: ${firstName} reads and signs on the clinic’s tablet.` : 'No consent forms yet. They open here once the clinic’s consent forms are reviewed.'}</p>
   ) : (
     <ul class="rs-list">
       {docs.map((d) => {

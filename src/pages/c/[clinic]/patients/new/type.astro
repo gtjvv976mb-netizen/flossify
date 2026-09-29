@@ -5,10 +5,15 @@
 // chooser (./index.astro: on their phone, at the clinic, or type it in) —
 // "Type it in yourself", for a phone call or a paper form.
 //
+// The chooser (./index.astro) sends the desk straight here, with its query,
+// when typing is the only way open — on a production server until the consent
+// forms are reviewed — and this page then says so in one quiet line.
+//
 // ?next=consents (the chooser's "At the clinic" while page 1 of the intake is
 // closed, and anyone who wants the consent forms next): Save lands on the
 // chooser for the new patient (./?patient=<id>&saved=new), where their consent
-// forms are prepared. The flag rides in a hidden field, so a refused save keeps it.
+// forms are prepared — or on the record, as without it, while no consent form
+// is open here. The flag rides in a hidden field, so a refused save keeps it.
 //
 // When forms patients sent are waiting (the QR poster's, and intakes sent and
 // not added yet), a line says so before anyone types the same person in again.
@@ -81,7 +86,7 @@ import { prettyPhone } from '../../../../../lib/messages';
 import { countNewForms } from '../../../../../lib/patient-forms';
 import { can } from '../../../../../lib/can';
 import { Refused } from '../../../../../lib/refused';
-import { countSentIntakes } from '../../../../../lib/intake';
+import { countSentIntakes, intakeGates } from '../../../../../lib/intake';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -111,7 +116,12 @@ const setup = await withClinic(clinic.id, async (tx) => ({
   dpo: ((await tx.query('select dpo_name from clinic_group where id = $1', [clinic.group_id])).rows[0]?.dpo_name ?? null) as string | null,
   nextChart: nextChartNos((await tx.query<{ chart_no: string }>('select chart_no from patient')).rows.map((r) => r.chart_no), 1)[0],
   // Forms patients sent from the QR code and nobody has added yet: said before the desk types one of them in again.
-  formsWaiting: (await countNewForms(tx)) + (await countSentIntakes(tx)),
+  formsWaiting: await countNewForms(tx),
+  // Intakes sent and not added yet (039), said on a line of their own.
+  intakesSent: await countSentIntakes(tx),
+  // Consent forms open on this server (none on a production server until they are reviewed): the chooser sends the desk
+  // straight here when typing is the only way, and this page says why in one quiet line.
+  formsOpen: (await intakeGates(tx)).templates.length > 0,
 }));
 
 // ---------------------------------------------------------------------------
@@ -273,7 +283,8 @@ if (Astro.request.method === 'POST' && setup.canEdit) {
         if ('dupes' in out) {
           dupes = out.dupes.map((p) => ({ id: p.id, name: [p.first_name, p.last_name, p.suffix].filter(Boolean).join(' '), chartNo: p.chart_no, phone: p.phone, birth: p.birth }));
         } else {
-          if (goNext) return Astro.redirect(`/c/${clinic.slug}/patients/new/?patient=${out.id}&saved=new`, 303);
+          // On to their consent forms only while forms are open here; otherwise the record, as without ?next.
+          if (goNext && setup.formsOpen) return Astro.redirect(`/c/${clinic.slug}/patients/new/?patient=${out.id}&saved=new`, 303);
           return Astro.redirect(`/c/${clinic.slug}/patients/${out.id}/?saved=new`, 303);
         }
       } catch (e) {
@@ -366,6 +377,14 @@ const formsHref = `/c/${clinic.slug}/patients/forms/`;
           <a href={formsHref} class="ws-empty-go">New patient forms <Icon name="arrow-right" size={16} /></a>
         </p>
       )}
+      {setup.intakesSent > 0 && (
+        <p class="fm-ways-waiting">
+          <Glyph name="form" size={18} />
+          <span>{setup.intakesSent === 1 ? 'One patient has' : `${setup.intakesSent} patients have`} sent their details and consent forms and are not added yet.</span>
+          <a href={`/c/${clinic.slug}/patients/intake/`} class="ws-empty-go">Forms sent <Icon name="arrow-right" size={16} /></a>
+        </p>
+      )}
+      {!setup.formsOpen && <p class="mt-2.5 text-[14px] leading-snug text-ink-2" data-add-forms-closed>Patients can fill in and sign their own forms here once the clinic’s consent forms are reviewed.</p>}
     </Pane>
     <form method="post" action={here} class="grid gap-4 max-md:gap-3" data-add-form>
       <Csrf />

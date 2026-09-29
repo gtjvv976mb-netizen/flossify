@@ -10,7 +10,9 @@
 //     consent forms (./type/?next=consents).
 //   Type it in yourself — today's form, for a phone call or a paper form (./type/).
 // Continue posts to ../intake/ (intent=start: the one place an intake is
-// made) for the first two; the third goes to ./type/. Quiet ways on: import a
+// made) for the first two; the third goes to ./type/. When typing is the only
+// way open (no consent form offered: a production server until they are
+// reviewed), this page answers 303 straight to ./type/ with its query. Quiet ways on: import a
 // spreadsheet, the QR poster, and a patient on file (their record → Consent).
 //
 // ?patient=<id>: a patient on file — "How will <name> sign their consent
@@ -66,7 +68,8 @@ const data = await withClinic(clinic.id, async (tx) => ({
   canEdit: can(clinic, 'records.edit') && (await canEditRecords(tx, session.staffId, clinic.id)),
   gates: await intakeGates(tx),
   patient: patientParam && isUuid(patientParam) ? await patientOnFile(tx, patientParam) : null,
-  waiting: (await countNewForms(tx)) + (await countSentIntakes(tx)),
+  formsWaiting: await countNewForms(tx),
+  intakesSent: await countSentIntakes(tx),
 }));
 const { gates } = data;
 const patient = data.patient && !data.patient.archived ? data.patient : null;
@@ -88,6 +91,12 @@ const ways = [
   ...(patient ? [] : [{ value: 'type', icon: 'keyboard', title: 'Type it in yourself', pill: null, line: 'For a phone call or a paper form.', off: null }]),
 ] as const;
 const chosen = ways.find((w) => !w.off)?.value ?? null;
+// Typing is the only way open (no consent form offered here: a production server until they are reviewed): no
+// screen to choose on — straight to the typed form, with this address's query (it says there why, in one line).
+// Never for a patient on file (their consent forms have no typed way) and never for someone who may not add patients.
+if (data.canEdit && !patient && !missingPatient && ways.every((w) => w.off || w.value === 'type')) {
+  return Astro.redirect(`/c/${slug}/patients/new/type/${url.search}`, 303);
+}
 const recordHref = patient ? `/c/${slug}/patients/${patient.id}/` : null;
 const title = patient ? `Consent forms for ${patient.firstName}` : 'Add patient';
 const heading = patient ? `How will ${patient.firstName} sign their consent forms?` : 'How will they fill in their details and consent forms?';
@@ -148,10 +157,17 @@ const heading = patient ? `How will ${patient.firstName} sign their consent form
             ? 'The consent forms open here once a dentist and the clinic’s lawyer have read them. Until then, sign them on paper.'
             : 'The consent forms open here once a dentist and the clinic’s lawyer have read them. Until then, type patients in yourself.'} />
         )}
-        {data.waiting > 0 && !patient && (
+        {data.formsWaiting > 0 && !patient && (
           <p class="fm-ways-waiting m-0!">
             <Glyph name="form" size={18} />
-            <span>{data.waiting === 1 ? 'One patient has' : `${data.waiting} patients have`} sent their forms. Check they are not the one you are about to add.</span>
+            <span>{data.formsWaiting === 1 ? 'One patient has' : `${data.formsWaiting} patients have`} sent their forms from the QR code. Check they are not the one you are about to add.</span>
+            <a href={`/c/${slug}/patients/forms/`} class="ws-empty-go">New patient forms <Icon name="arrow-right" size={16} /></a>
+          </p>
+        )}
+        {data.intakesSent > 0 && !patient && (
+          <p class="fm-ways-waiting m-0!">
+            <Glyph name="form" size={18} />
+            <span>{data.intakesSent === 1 ? 'One patient has' : `${data.intakesSent} patients have`} sent their details and consent forms and are not added yet.</span>
             <a href={`/c/${slug}/patients/intake/`} class="ws-empty-go">Forms sent <Icon name="arrow-right" size={16} /></a>
           </p>
         )}
