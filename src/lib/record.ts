@@ -73,11 +73,13 @@ export interface PlanItem { id: string; loaId: string | null; name: string; fdi:
 export interface Done { id: string; visitId: string | null; name: string; code: string | null; category: string | null; fdi: number | null; surface: string | null; price: string; at: Date; dentist: string | null; note: string | null; fromPlan: boolean }
 export interface Note { id: string; visitId: string | null; visitOn: string; dentist: string | null; complaint: string | null; findings: string | null; diagnosis: string | null; treatment: string | null; plan: string | null; teeth: number[]; amends: string | null; by: string | null; at: Date }
 export interface RxItem { drug: string; strength: string; qty: string; sig: string }
-export interface Rx { id: string; visitId: string | null; at: Date; prescriber: string | null; prescriberId: string; prc: string | null; ptr: string | null; items: RxItem[]; notes: string | null }
+/** ptr / ptrYear: the copy of the prescriber's PTR taken when it was saved (041), never the live staff value. */
+export interface Rx { id: string; visitId: string | null; at: Date; prescriber: string | null; prescriberId: string; prc: string | null; ptr: string | null; ptrYear: number | null; items: RxItem[]; notes: string | null }
 export interface FileRow { id: string; visitId: string | null; kind: string; mime: string; bytes: number; takenAt: string | null; fdi: number | null; caption: string | null; by: string | null; at: Date; thumb: boolean }
 export interface Recall { id: string; dueOn: string; reason: string; by: string | null; at: Date; /** The Manila day the check-up text last went (036), or null. */ textedOn: string | null }
 export interface Lab { id: string; lab: string; description: string; shade: string | null; sentOn: string | null; dueOn: string | null; receivedOn: string | null; cost: string; status: string; note: string | null; at: Date }
-export interface Clinician { id: string; name: string; prc: string | null; ptr: string | null }
+/** ptr / ptrYear: the PTR on file now; rank / isOwner: their role's, for who may fix it (ptrFix on the record page). */
+export interface Clinician { id: string; name: string; prc: string | null; ptr: string | null; ptrYear: number | null; rank: number | null; isOwner: boolean }
 export interface CatalogItem { id: string; name: string; price: string; max: string | null; from: boolean; tooth: boolean; category: string | null }
 
 export interface Clinical { plan: PlanItem[]; done: Done[]; notes: Note[]; rx: Rx[]; files: FileRow[]; recall: Recall | null; labs: Lab[]; clinicians: Clinician[]; catalog: CatalogItem[] }
@@ -92,7 +94,7 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
     tx.query(`select n.*, to_char(n.visit_on, 'YYYY-MM-DD') as day, d.full_name as dentist, c.full_name as by_name
                 from clinical_note n left join staff d on d.id = n.dentist_id left join staff c on c.id = n.created_by
                where n.patient_id = $1 order by n.visit_on desc, n.created_at desc limit 300`, [patientId]),
-    tx.query(`select r.id, r.appointment_id, r.issued_at, r.items, r.notes, r.prescriber_id, s.full_name, s.prc_licence, s.ptr_number
+    tx.query(`select r.id, r.appointment_id, r.issued_at, r.items, r.notes, r.prescriber_id, s.full_name, s.prc_licence, r.ptr_number, r.ptr_year
                 from prescription r left join staff s on s.id = r.prescriber_id where r.patient_id = $1 order by r.issued_at desc limit 200`, [patientId]),
     tx.query(`select a.id, a.appointment_id, a.kind, a.mime, a.bytes, to_char(a.taken_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as taken, a.fdi, a.caption, s.full_name as by_name, a.created_at, a.storage_key
                 from attachment a left join staff s on s.id = a.uploaded_by where a.patient_id = $1 and a.removed_at is null order by coalesce(a.taken_at, a.created_at) desc limit 500`, [patientId]),
@@ -100,7 +102,8 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
                 from recall r left join staff s on s.id = r.created_by where r.patient_id = $1 and r.completed_at is null order by r.due_on limit 1`, [patientId]),
     tx.query(`select l.*, to_char(l.sent_on, 'YYYY-MM-DD') as sent, to_char(l.due_on, 'YYYY-MM-DD') as due, to_char(l.received_on, 'YYYY-MM-DD') as received
                 from lab_order l where l.patient_id = $1 order by (l.status = 'fitted'), l.created_at desc limit 100`, [patientId]),
-    tx.query(`select s.id, s.full_name, s.prc_licence, s.ptr_number from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $1
+    tx.query(`select s.id, s.full_name, s.prc_licence, s.ptr_number, s.ptr_year, cr.rank, cr.is_owner
+                from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $1 left join clinic_role cr on cr.id = s.role_id
                where s.disabled_at is null and s.role in ('owner', 'dentist', 'associate') order by s.full_name`, [clinicId]),
     tx.query(`select id, name, default_price, price_max, price_from, tooth_scoped, category from procedure_catalog where active order by category nulls last, name`),
   ]);
@@ -108,11 +111,11 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
     plan: plan.rows.map((r) => ({ id: r.id, loaId: r.loa_id ?? null, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, phase: r.phase, status: r.status, note: r.note, createdAt: r.created_at, decidedAt: r.decided_at, by: r.by_name })),
     done: done.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, name: r.name, code: r.code ?? null, category: r.category ?? null, fdi: r.fdi, surface: r.surface, price: r.price, at: r.performed_at, dentist: r.dentist, note: r.clinical_note, fromPlan: r.from_plan })),
     notes: notes.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, visitOn: r.day, dentist: r.dentist, complaint: r.complaint, findings: r.findings, diagnosis: r.diagnosis, treatment: r.treatment, plan: r.plan, teeth: r.teeth ?? [], amends: r.amends_id, by: r.by_name, at: r.created_at })),
-    rx: rx.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, at: r.issued_at, prescriber: r.full_name, prescriberId: r.prescriber_id, prc: r.prc_licence, ptr: r.ptr_number, items: Array.isArray(r.items) ? r.items : [], notes: r.notes })),
+    rx: rx.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, at: r.issued_at, prescriber: r.full_name, prescriberId: r.prescriber_id, prc: r.prc_licence, ptr: r.ptr_number, ptrYear: r.ptr_year ?? null, items: Array.isArray(r.items) ? r.items : [], notes: r.notes })),
     files: files.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, kind: r.kind, mime: r.mime, bytes: Number(r.bytes), takenAt: r.taken, fdi: r.fdi, caption: r.caption, by: r.by_name, at: r.created_at, thumb: String(r.storage_key).includes('|thumb') })),
     recall: recall.rows[0] ? { id: recall.rows[0].id, dueOn: recall.rows[0].due, reason: recall.rows[0].reason, by: recall.rows[0].by_name, at: recall.rows[0].created_at, textedOn: recall.rows[0].texted ?? null } : null,
     labs: labs.rows.map((r) => ({ id: r.id, lab: r.lab_name, description: r.description, shade: r.shade, sentOn: r.sent, dueOn: r.due, receivedOn: r.received, cost: r.cost, status: r.status, note: r.note, at: r.created_at })),
-    clinicians: clinicians.rows.map((r) => ({ id: r.id, name: r.full_name, prc: r.prc_licence, ptr: r.ptr_number })),
+    clinicians: clinicians.rows.map((r) => ({ id: r.id, name: r.full_name, prc: r.prc_licence, ptr: r.ptr_number, ptrYear: r.ptr_year ?? null, rank: r.rank ?? null, isOwner: !!r.is_owner })),
     catalog: catalog.rows.map((r) => ({ id: r.id, name: r.name, price: r.default_price, max: r.price_max, from: r.price_from, tooth: r.tooth_scoped, category: r.category })),
   };
 }
@@ -164,7 +167,7 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
   if (!here) return 'none';
   if (!(await canEditRecords(tx, c.staffId, c.clinicId))) return fail('Your role cannot change records at this branch. Ask the owner.');
   const clinician = async (id: string) => UUID.test(id) ? (await tx.query(
-    `select s.id, s.full_name, s.prc_licence from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $2
+    `select s.id, s.full_name, s.prc_licence, s.ptr_number, s.ptr_year from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $2
       where s.id = $1 and s.disabled_at is null and s.role in ('owner', 'dentist', 'associate')`, [id, c.clinicId])).rows[0] : undefined;
   const catalogItem = async (id: string) => UUID.test(id) ? (await tx.query('select id, name, default_price from procedure_catalog where id = $1', [id])).rows[0] : undefined;
 
@@ -271,9 +274,11 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       }
       if (!items.length) return fail('Write at least one medicine.');
       const notes = text(form.get('notes'), 500);
+      // The paper takes a copy of the prescriber's PTR as it is on file now, in this transaction (041); no PTR state refuses.
       const { rows: [r] } = await tx.query(
-        `insert into prescription (clinic_id, patient_id, prescriber_id, items, notes, appointment_id) values ($1, $2, $3, $4::jsonb, $5, $6) returning id`,
-        [c.clinicId, c.patientId, prescriber.id, JSON.stringify(items), notes || null, await visitOf(tx, form, c.patientId)]);
+        `insert into prescription (clinic_id, patient_id, prescriber_id, items, notes, appointment_id, ptr_number, ptr_year)
+         values ($1, $2, $3, $4::jsonb, $5, $6, $7, $8) returning id`,
+        [c.clinicId, c.patientId, prescriber.id, JSON.stringify(items), notes || null, await visitOf(tx, form, c.patientId), prescriber.ptr_number ?? null, prescriber.ptr_year ?? null]);
       await audit(tx, c, 'record.rx_add', 'prescription', r.id);
       return { ok: true, section, saved: `rx:${r.id}` };
     }

@@ -1,7 +1,9 @@
 ---
 // Letters the dentist signs: a dental certificate (school, work, an excused absence), a referral to a
 // specialist, and a request for medical clearance to the patient's physician. Each prints on the clinic's
-// paper with the dentist's PRC licence (./letters/<id>/ beside this record) and is never rewritten; a
+// paper with the dentist's PRC licence and PTR (./letters/<id>/ beside this record) and is never rewritten
+// — the PTR is the copy taken when the letter is saved (041), and the panel says under the signer when the
+// PTR on file needs attention today, never refusing for it (src/lib/ptr.ts); a
 // clearance request waits for the physician's reply, which the desk writes in ("Physician replied").
 // Shown in the Prescriptions section ("Rx & letters").
 import Pane from '../../../../../components/ws/Pane.astro';
@@ -13,15 +15,19 @@ import Csrf from '../../../../../components/Csrf.astro';
 import Head from '../_ui/Head.astro';
 import Callout from '../_ui/Callout.astro';
 import Glyph from '../_ui/Glyph.astro';
+import PtrWords from './PtrWords.astro';
 import { LETTER_KIND, ANSWER, type Letter } from '../../../../../lib/record-extra';
 import type { Clinician, RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
+import { ptrState, ptrWords, ptrSavedTitle, PTR_AMBER, type PtrFix } from '../../../../../lib/ptr';
 
 interface Props {
   letters: Letter[]; clinicians: Clinician[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null;
   today: string; firstName: string; printBase: string; lastVisit: string | null; conditions: string[];
+  /** Where each clinician's PTR is fixed, or null (the record page works it out). */
+  ptrFix: Record<string, PtrFix | null>;
 }
-const { letters, clinicians, canEdit, action, meId, problem, saved, today, firstName, printBase, lastVisit, conditions } = Astro.props;
+const { letters, clinicians, canEdit, action, meId, problem, saved, today, firstName, printBase, lastVisit, conditions, ptrFix } = Astro.props;
 const v = problem?.intent === 'letter-add' ? problem.values : ({} as Record<string, string>);
 const kind = (v.kind as Letter['kind']) || 'certificate';
 const av = problem?.intent === 'letter-answer' ? problem.values : ({} as Record<string, string>);
@@ -30,6 +36,17 @@ const made = justMade ? letters.find((l) => l.id === justMade) : null;
 const meSigns = clinicians.some((x) => x.id === meId && x.prc);
 const waiting = letters.filter((l) => l.kind === 'clearance' && !l.answer);
 const help = 'text-[13px] leading-snug text-ink-2';
+// The signer the select draws chosen, and the PTR note for each clinician with a PRC licence whose PTR on file
+// needs a word today (as in the prescription panel).
+const selectedId = v.dentist ?? (meSigns ? meId : '');
+const ptrNotes = clinicians.filter((x) => x.prc).map((x) => ({
+  id: x.id,
+  words: ptrWords(ptrState({ number: x.ptr, year: x.ptrYear }, today), { number: x.ptr, year: x.ptrYear }, today, { self: x.id === meId, name: x.name }),
+})).filter((n) => n.words);
+const shownNote = ptrNotes.find((n) => n.id === selectedId);
+// The saved letter's own copy, against the day it was issued.
+const madePtr = made ? { number: made.ptr, year: made.ptrYear } : null;
+const madeState = made && madePtr ? ptrState(madePtr, made.issuedOn) : null;
 const summary = (l: Letter) =>
   l.kind === 'certificate' ? [l.seenOn && `Seen ${dateText(l.seenOn)}`, l.purpose, l.restDays ? `${l.restDays} ${l.restDays === 1 ? 'day' : 'days'} of rest` : null].filter(Boolean).join(' · ')
   : [l.toRole, l.toName, l.kind === 'clearance' ? l.treatment : l.diagnosis].filter(Boolean).join(' · ');
@@ -41,10 +58,13 @@ const summary = (l: Letter) =>
       <p><a href={`${printBase}${made.id}/`} class="font-semibold underline underline-offset-2" target="_blank" rel="noopener">Print it</a> on the clinic’s paper, signed by {made.dentist}.</p>
     </Callout>
   )}
+  {made && madePtr && madeState && PTR_AMBER.includes(madeState) && (
+    <PtrWords mode="saved" noun="letter" title={ptrSavedTitle(madeState, madePtr)} fix={ptrFix[made.dentistId] ?? null} />
+  )}
   {saved === 'answered' && <Callout tone="success" text="The physician’s reply is on the record." />}
   <Pane as="section" label="Certificates and letters" id="letters">
     <Head icon="form" title="Certificates and letters" meta={letters.length ? `${letters.length} written` : undefined} />
-    <p class="-mt-2 mb-4 text-[14px] text-ink-2">Printed on the clinic’s paper with the dentist’s PRC licence. A letter is never changed once saved.</p>
+    <p class="-mt-2 mb-4 text-[14px] text-ink-2">Printed on the clinic’s paper with the dentist’s PRC licence and the PTR on file. A letter is never changed once saved.</p>
     {canEdit && (
       <div class="lt-kinds">
         <button type="button" class="lt-kind" data-ws-open="rec-letter-add" data-letter-kind="certificate"><Glyph name="form" size={20} /><span><strong>Dental certificate</strong><span>For school or work</span></span></button>
@@ -91,12 +111,22 @@ const summary = (l: Letter) =>
       <form method="post" action={`${action}#letters`} class="grid gap-4" data-letter-form data-kind={kind}>
         <Csrf /><input type="hidden" name="intent" value="letter-add" />
         <input type="hidden" name="kind" value={kind} data-letter-kind-input />
-        <label class="field"><span class="meta">Signed by</span>
-          <select name="dentist" required>
-            <option value="">Choose the dentist…</option>
-            {clinicians.map((x) => <option value={x.id} disabled={!x.prc} selected={(v.dentist ?? (meSigns ? meId : '')) === x.id}>{x.name}{x.prc ? ` · PRC ${x.prc}` : ' · no PRC licence on file'}</option>)}
-          </select>
-        </label>
+        <div>
+          <label class="field"><span class="meta">Signed by</span>
+            <select name="dentist" required data-lt-signer aria-describedby={shownNote ? `lt-ptr-${shownNote.id}` : undefined}>
+              <option value="">Choose the dentist…</option>
+              {clinicians.map((x) => <option value={x.id} disabled={!x.prc} selected={selectedId === x.id}>{x.name}{x.prc ? ` · PRC ${x.prc}` : ' · no PRC licence on file'}</option>)}
+            </select>
+          </label>
+          {/* After the label, never in it. Only the chosen person's note shows. */}
+          <div aria-live="polite">
+            {ptrNotes.map((n) => (
+              <div id={`lt-ptr-${n.id}`} data-lt-ptr-for={n.id} class="mt-2" hidden={n.id !== selectedId}>
+                <PtrWords mode="note" noun="letter" words={n.words} fix={ptrFix[n.id] ?? null} />
+              </div>
+            ))}
+          </div>
+        </div>
         <div class="grid gap-4 sm:grid-cols-2" data-for="referral clearance">
           <label class="field"><span class="meta" data-label-referral="Specialist" data-label-clearance="Physician">To</span><input name="to_role" value={v.to_role ?? ''} maxlength="120" autocomplete="off" list="lt-roles" placeholder="e.g. Oral surgeon" data-placeholder-clearance="Attending physician" /></label>
           <label class="field"><span class="meta">Their name <span class="font-normal">(optional)</span></span><input name="to_name" value={v.to_name ?? ''} maxlength="120" autocomplete="off" placeholder="e.g. Dr. Ramon Santos" /></label>
@@ -168,6 +198,15 @@ const summary = (l: Letter) =>
     const k = ((e as CustomEvent).detail?.opener as HTMLElement | null)?.dataset.letterKind;
     if (k) setKind(k);
   });
+  // The PTR note follows the signer chosen (the signer does not change with the letter kind).
+  const ltSel = document.querySelector<HTMLSelectElement>('[data-lt-signer]');
+  const ltNotes = document.querySelectorAll<HTMLElement>('[data-lt-ptr-for]');
+  const ltSync = () => {
+    let shown: HTMLElement | null = null;
+    ltNotes.forEach((n) => { n.hidden = n.dataset.ltPtrFor !== ltSel?.value; if (!n.hidden) shown = n; });
+    if (shown) ltSel?.setAttribute('aria-describedby', (shown as HTMLElement).id); else ltSel?.removeAttribute('aria-describedby');
+  };
+  ltSel?.addEventListener('change', ltSync); ltSync();
   const answer = document.getElementById('rec-letter-answer');
   answer?.addEventListener('ws:panel-open', (e) => {
     if ((e as CustomEvent).detail?.auto) return;

@@ -36,8 +36,9 @@ export { bpWords, pulseWords, type BpLevel, type BpWords } from './record-extra-
 
 // --- shapes ------------------------------------------------------------------------------------------
 export interface Vital { id: string; visitId: string | null; at: Date; sys: number | null; dia: number | null; pulse: number | null; note: string | null; by: string | null }
+/** ptr / ptrYear: the copy of the signer's PTR taken when the letter was saved (041), never the live staff value. */
 export interface Letter {
-  id: string; kind: 'certificate' | 'referral' | 'clearance'; dentist: string; dentistId: string; prc: string | null; issuedOn: string; seenOn: string | null;
+  id: string; kind: 'certificate' | 'referral' | 'clearance'; dentist: string; dentistId: string; prc: string | null; ptr: string | null; ptrYear: number | null; issuedOn: string; seenOn: string | null;
   toName: string | null; toRole: string | null; purpose: string | null; diagnosis: string | null; treatment: string | null; restDays: number | null; body: string | null;
   answer: string | null; answerNote: string | null; answeredOn: string | null; at: Date; by: string | null;
 }
@@ -86,6 +87,7 @@ export function planState(p: Omit<PayPlan, 'dueNow' | 'behind' | 'missed' | 'nex
 export async function loadExtra(tx: Tx, patientId: string, hmoNames: Map<string, string>, today = manilaToday()): Promise<Extra> {
   const [vitals, letters, loas, items, plans, adj, payors] = await Promise.all([
     tx.query(`select v.*, s.full_name from vital_sign v left join staff s on s.id = v.taken_by where v.patient_id = $1 order by v.taken_at desc limit 30`, [patientId]),
+    // The PTR comes from l.* (the letter's copy): never add d.ptr_number here, node-pg keeps the last column of a name.
     tx.query(`select l.*, to_char(l.issued_on, 'YYYY-MM-DD') as issued, to_char(l.seen_on, 'YYYY-MM-DD') as seen, to_char(l.answered_on, 'YYYY-MM-DD') as answered,
                      d.full_name as dentist, d.prc_licence, c.full_name as by_name
                 from clinical_letter l join staff d on d.id = l.dentist_id left join staff c on c.id = l.created_by
@@ -103,7 +105,7 @@ export async function loadExtra(tx: Tx, patientId: string, hmoNames: Map<string,
   return {
     vitals: vitals.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, at: r.taken_at, sys: r.systolic, dia: r.diastolic, pulse: r.pulse, note: r.note, by: r.full_name })),
     letters: letters.rows.map((r) => ({
-      id: r.id, kind: r.kind, dentist: r.dentist, dentistId: r.dentist_id, prc: r.prc_licence, issuedOn: r.issued, seenOn: r.seen, toName: r.to_name, toRole: r.to_role,
+      id: r.id, kind: r.kind, dentist: r.dentist, dentistId: r.dentist_id, prc: r.prc_licence, ptr: r.ptr_number ?? null, ptrYear: r.ptr_year ?? null, issuedOn: r.issued, seenOn: r.seen, toName: r.to_name, toRole: r.to_role,
       purpose: r.purpose, diagnosis: r.diagnosis, treatment: r.treatment, restDays: r.rest_days, body: r.body, answer: r.answer, answerNote: r.answer_note, answeredOn: r.answered,
       at: r.created_at, by: r.by_name,
     })),
@@ -174,7 +176,7 @@ export async function extraAction(tx: Tx, c: ExtraCtx, intent: string, form: For
       if (!['certificate', 'referral', 'clearance'].includes(kind)) return fail('Choose which letter to write.');
       const dentistId = String(form.get('dentist') ?? '');
       const d = UUID.test(dentistId) ? (await tx.query(
-        `select s.id, s.full_name, s.prc_licence from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $2
+        `select s.id, s.full_name, s.prc_licence, s.ptr_number, s.ptr_year from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $2
           where s.id = $1 and s.disabled_at is null and s.role in ('owner', 'dentist', 'associate')`, [dentistId, c.clinicId])).rows[0] : undefined;
       if (!d) return fail('Choose the dentist who signs it.');
       if (!d.prc_licence) return fail(`${d.full_name} has no PRC licence number on file. Add it on their page in Clinic settings first.`);
@@ -195,11 +197,12 @@ export async function extraAction(tx: Tx, c: ExtraCtx, intent: string, form: For
       if (kind === 'referral' && !f.diagnosis) return fail('Write why you are referring the patient.');
       if (kind === 'clearance' && !f.treatment) return fail('Write the treatment you plan, like “Extraction of 36 under local anaesthesia”.');
       if (kind === 'clearance' && !f.diagnosis) return fail('Write the condition you need clearance for, like “Hypertension” or “Diabetes”.');
+      // The letter takes a copy of the signer's PTR as it is on file now, in this transaction (041); no PTR state refuses.
       const { rows: [l] } = await tx.query(
-        `insert into clinical_letter (clinic_id, patient_id, kind, dentist_id, issued_on, seen_on, to_name, to_role, purpose, diagnosis, treatment, rest_days, body, created_by)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning id`,
+        `insert into clinical_letter (clinic_id, patient_id, kind, dentist_id, issued_on, seen_on, to_name, to_role, purpose, diagnosis, treatment, rest_days, body, created_by, ptr_number, ptr_year)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) returning id`,
         [c.clinicId, c.patientId, kind, d.id, today, seen, f.toName || null, f.toRole || (kind === 'clearance' ? 'Attending physician' : null), f.purpose || null,
-         f.diagnosis || null, f.treatment || null, kind === 'certificate' ? restRaw ?? 0 : null, f.body || null, c.staffId]);
+         f.diagnosis || null, f.treatment || null, kind === 'certificate' ? restRaw ?? 0 : null, f.body || null, c.staffId, d.ptr_number ?? null, d.ptr_year ?? null]);
       await audit(tx, c, `record.letter_${kind}`, 'clinical_letter', l.id);
       return { ok: true, section, saved: `letter:${l.id}` };
     }
