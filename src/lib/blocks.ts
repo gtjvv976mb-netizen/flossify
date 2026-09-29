@@ -47,7 +47,7 @@ const PRIORITY_SQL = `array_position(array['closed', 'shut', 'lunch', 'leave', '
 
 /** Visits that can still be dealt with: booked or confirmed, ahead, with a real time (not brought in with its day
  *  only, not a web request the desk has not placed). */
-const VISIT_AHEAD_SQL = `a.status in ('booked', 'confirmed') and a.starts_at > now() and not a.date_only
+export const VISIT_AHEAD_SQL = `a.status in ('booked', 'confirmed') and a.starts_at > now() and not a.date_only
   and not (a.source = 'request' and a.moved_at is null)`;
 
 /** How far ahead closed time is looked for (clinic_unavailable reads 400 days at most). */

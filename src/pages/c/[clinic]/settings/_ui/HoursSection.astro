@@ -1,6 +1,8 @@
 ---
-// Opening hours: seven days, each closed or open from one time to another.
-// Open times on the booking page are cut from these; a closed day offers nothing.
+// Opening hours: seven days, each closed or open from one time to another, and lunch on each open day (040),
+// blank on a day with no break. Open times on the booking page are cut from these; a closed day, lunch and the
+// closed days in the next section offer nothing. "Same lunch every open day" is a convenience the script adds
+// (hidden without it): it copies the first filled lunch into every open day where it fits, and says which it skipped.
 import Pane from '../../../../../components/ws/Pane.astro';
 import Icon from '../../../../../components/ws/Icon.astro';
 import Csrf from '../../../../../components/Csrf.astro';
@@ -12,7 +14,7 @@ interface Props {
   base: string;
   days: HoursValues;
   problems: string[];
-  notes: { tone: 'ok' | 'alert' | 'warn'; text: string }[];
+  notes: { tone: 'ok' | 'alert' | 'warn'; text: string; href?: string; link?: string }[];
   on: boolean;
 }
 const { base, days, problems, notes, on } = Astro.props;
@@ -23,10 +25,12 @@ const { base, days, problems, notes, on } = Astro.props;
   <Csrf />
   <input type="hidden" name="form" value="hours" />
   <Pane id="hours" icon="clock" title="Opening hours" class="set-sec">
-    <p class="set-intro">Patients can book only while you are open.</p>
+    <p class="set-intro">Patients can book only while you are open. Lunch and closed days are never offered to them. <a href="#closed" class="set-link set-intro-link">Closed days and time off<Icon name="arrow-right" size={16} class="set-arrow" /></a></p>
     {(notes.length > 0 || problems.length > 0) && (
       <div class="set-notes mt-5">
-        {notes.map((n) => <Note tone={n.tone} text={n.text} />)}
+        {notes.map((n) => (
+          <Note tone={n.tone} text={n.text}>{n.href && <a href={n.href} class="set-link set-note-link">{n.link}<Icon name="arrow-right" size={16} class="set-arrow" /></a>}</Note>
+        ))}
         {problems.length > 0 && <Note tone="alert" title="Nothing was saved yet. Please fix:" items={problems} refused />}
       </div>
     )}
@@ -34,20 +38,32 @@ const { base, days, problems, notes, on } = Astro.props;
     <div class="set-hours-head" aria-hidden="true">
       <span class="meta">Day</span><span></span><span class="meta">Opens</span><span class="meta">Closes</span>
     </div>
+    <p class="set-help set-hours-blank">Leave lunch blank on a day with no break.</p>
     <div class="set-hours">
       {DOWS.map((dow) => {
         const d = days[dow];
         return (
-          <div class="set-hours-row" data-day-row data-closed={d.closed ? '' : undefined}>
+          <div class="set-hours-row" data-day-row data-dow={dow} data-closed={d.closed ? '' : undefined}>
             <span class="set-hours-day">{DAY_LONG[dow]}</span>
             <label class="check set-check"><input type="checkbox" name={`closed[${dow}]`} checked={d.closed} data-day-closed /><span>Closed</span></label>
             <div class="set-hours-times">
-              <label class="field"><span class="meta sm:sr-only">Opens<span class="sr-only"> on {DAY_LONG[dow]}</span></span><input type="time" name={`open[${dow}]`} value={d.open} step="900" /></label>
-              <label class="field"><span class="meta sm:sr-only">Closes<span class="sr-only"> on {DAY_LONG[dow]}</span></span><input type="time" name={`close[${dow}]`} value={d.close} step="900" /></label>
+              <label class="field"><span class="meta sm:sr-only">Opens<span class="sr-only"> on {DAY_LONG[dow]}</span></span><input type="time" name={`open[${dow}]`} value={d.open} step="900" data-day-open /></label>
+              <label class="field"><span class="meta sm:sr-only">Closes<span class="sr-only"> on {DAY_LONG[dow]}</span></span><input type="time" name={`close[${dow}]`} value={d.close} step="900" data-day-close /></label>
+            </div>
+            <div class="set-hours-lunch" data-set-lunch>
+              <span class="set-hours-lunch-word" aria-hidden="true">Lunch</span>
+              <div class="set-hours-times">
+                <label class="field"><span class="meta sm:sr-only">Lunch starts<span class="sr-only"> on {DAY_LONG[dow]}</span></span><input type="time" name={`lunch_from[${dow}]`} value={d.lunchFrom} step="900" data-lunch-from /></label>
+                <label class="field"><span class="meta sm:sr-only">Lunch ends<span class="sr-only"> on {DAY_LONG[dow]}</span></span><input type="time" name={`lunch_to[${dow}]`} value={d.lunchTo} step="900" data-lunch-to /></label>
+              </div>
             </div>
           </div>
         );
       })}
+    </div>
+    <div class="set-lunch-copy">
+      <button type="button" class="ws-btn ws-btn-quiet" data-lunch-copy hidden><Icon name="clock" />Same lunch every open day</button>
+      <p class="set-lunch-said" data-lunch-said role="status"></p>
     </div>
     </div>
     <div class="set-foot">
@@ -57,3 +73,40 @@ const { base, days, problems, notes, on } = Astro.props;
   </Pane>
 </form>
 </div>
+
+<script>
+  // Same lunch every open day: the first open day with a whole lunch is copied into every other open day where
+  // it starts after opening and ends before closing (the rule the save checks, 040's clinic_hours_break_ok);
+  // days it does not fit keep what they had, and the line under the button names them.
+  const copy = document.querySelector<HTMLButtonElement>('[data-lunch-copy]');
+  const said = document.querySelector<HTMLElement>('[data-lunch-said]');
+  const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const min = (v: string) => { const m = /^(\d{1,2}):(\d{2})/.exec(v); return m ? +m[1] * 60 + +m[2] : null; };
+  const hm = (n: number) => { const h = Math.floor(n / 60) % 24; return `${h % 12 || 12}:${String(n % 60).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`; };
+  const span = (a: number, b: number) => { const x = hm(a), y = hm(b); return x.slice(-2) === y.slice(-2) ? `${x.slice(0, -3)}–${y}` : `${x}–${y}`; };
+  const or = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}`);
+  if (copy && said) {
+    copy.hidden = false;
+    copy.addEventListener('click', () => {
+      const rows = [...document.querySelectorAll<HTMLElement>('[data-day-row]')].filter((r) => !r.querySelector<HTMLInputElement>('[data-day-closed]')?.checked);
+      const field = (r: HTMLElement, hook: string) => r.querySelector<HTMLInputElement>(`[${hook}]`)!;
+      const source = rows.find((r) => min(field(r, 'data-lunch-from').value) !== null && min(field(r, 'data-lunch-to').value) !== null);
+      if (!source) { said.textContent = 'Fill in one day’s lunch first, then press this.'; return; }
+      const from = field(source, 'data-lunch-from').value, to = field(source, 'data-lunch-to').value;
+      const a = min(from)!, b = min(to)!;
+      let n = 0;
+      const skipped: string[] = [];
+      for (const r of rows) {
+        if (r === source) continue;
+        const op = min(field(r, 'data-day-open').value), cl = min(field(r, 'data-day-close').value);
+        if (op === null || cl === null || !(a > op && b < cl && b > a)) { skipped.push(DAY[Number(r.dataset.dow)]); continue; }
+        for (const [hook, v] of [['data-lunch-from', from], ['data-lunch-to', to]] as const) {
+          const f = field(r, hook);
+          if (f.value !== v) { f.value = v; f.dispatchEvent(new Event('change', { bubbles: true })); }
+        }
+        n++;
+      }
+      said.textContent = `Copied to ${n} ${n === 1 ? 'day' : 'days'}.${skipped.length ? ` Not ${or(skipped)}: ${span(a, b)} is outside ${skipped.length === 1 ? 'its' : 'their'} hours.` : ''}`;
+    });
+  }
+</script>

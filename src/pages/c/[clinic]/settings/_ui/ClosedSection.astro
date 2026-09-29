@@ -1,0 +1,119 @@
+---
+// Closed days and time off (040): every dated block ahead, whichever screen added it, soonest first, each with
+// a quiet Remove; and Add closed days, the section's one teal action — the clinic closed, or a dentist away,
+// for whole days. Both are plain forms that work with scripts off (form=closed-add, form=closed-remove, each
+// with <Csrf />). A few hours, or a chair out of use, are blocked from the calendar's Block time. A refused
+// add comes back here with what was typed; the words are src/lib/blocks.ts's.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Note from './Note.astro';
+import { blockListed } from '../../../../../lib/block-words';
+import type { BlockRange } from '../../../../../lib/blocks';
+import type { ClosedValues } from '../_lib/closed-days';
+
+interface Props {
+  base: string;
+  blocks: BlockRange[];
+  dentists: { id: string; name: string }[];
+  v: ClosedValues;
+  problems: string[];
+  /** Which form the problems are about: the add form's come back beside it, a remove's above the list. */
+  problemsFor: 'closed-add' | 'closed-remove' | null;
+  notes: { tone: 'ok' | 'alert' | 'warn'; text: string; href?: string; link?: string }[];
+  on: boolean;
+}
+const { base, blocks, dentists, v, problems, problemsFor, notes, on } = Astro.props;
+const meta = blocks.length ? `${blocks.length} ahead` : 'None ahead';
+// "28 Sep": the day it was added, in Manila.
+const addedOn = (iso: string | null) => {
+  if (!iso) return '';
+  const p = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', timeZone: 'Asia/Manila' }).formatToParts(new Date(iso));
+  return `${p.find((x) => x.type === 'day')?.value} ${p.find((x) => x.type === 'month')?.value}`;
+};
+const subLine = (b: BlockRange) => {
+  const by = b.byName ? `added by ${b.byName}${b.createdAt ? `, ${addedOn(b.createdAt)}` : ''}` : '';
+  const line = [b.note, by].filter(Boolean).join(' · ');
+  return line ? line[0].toUpperCase() + line.slice(1) : '';
+};
+---
+
+<div class="set-panel" data-set-panel="closed" data-on={on ? '' : undefined}>
+<Pane id="closed" icon="calendar" title="Closed days and time off" meta={meta} pad="none" class="set-sec">
+  <div class="px-6 pt-4 max-md:px-4">
+    <p class="set-intro mt-0">Days the clinic is closed and days a dentist is away. Patients cannot book them, and the calendar shows them. Philippine holidays are not added for you: Holy Week and Eid move every year, so add the days your clinic closes.</p>
+    {(notes.length > 0 || (problems.length > 0 && problemsFor === 'closed-remove')) && (
+      <div class="set-notes mt-4">
+        {notes.map((n) => (
+          <Note tone={n.tone} text={n.text}>{n.href && <a href={n.href} class="set-link set-note-link">{n.link}<Icon name="arrow-right" size={16} class="set-arrow" /></a>}</Note>
+        ))}
+        {problems.length > 0 && problemsFor === 'closed-remove' && <Note tone="alert" text={problems[0]} refused />}
+      </div>
+    )}
+  </div>
+  {blocks.length ? (
+    <ul class="set-list mt-3 border-t border-[var(--ws-hair)]" aria-label="Closed days ahead" data-blocks-list>
+      {blocks.map((b) => {
+        const l = blockListed({ kind: b.kind, startsAt: b.startsAt, endsAt: b.endsAt, dentistName: b.dentistName, chair: b.chair, note: b.note });
+        const sub = subLine(b);
+        return (
+          <li>
+            <div class="set-row set-row-plain" data-block-row={b.id}>
+              <span class="min-w-0">
+                <span class="set-row-name">{l.title}</span><span class="set-block-when"> · {l.when}</span>
+                {sub && <span class="set-row-sub set-block-sub">{sub}</span>}
+              </span>
+              <span class="set-row-end">
+                <form method="post" action={base}>
+                  <Csrf />
+                  <input type="hidden" name="form" value="closed-remove" />
+                  <input type="hidden" name="id" value={b.id} />
+                  <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm set-block-remove">Remove<span class="sr-only">: {l.title}, {l.when}</span></button>
+                </form>
+              </span>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  ) : (
+    <p class="set-blocks-none" data-blocks-list>Nothing ahead. Add a holiday, a closure or a dentist’s leave below; block a few hours from the calendar.</p>
+  )}
+
+  <form method="post" action={base} data-set-form="closed" class="set-block-add min-w-0">
+    <Csrf />
+    <input type="hidden" name="form" value="closed-add" />
+    <h3 class="set-sub set-sub-first" id="closed-add"><Icon name="plus" />Add closed days</h3>
+    {problems.length > 0 && problemsFor === 'closed-add' && <div class="set-notes mt-4"><Note tone="alert" title="Nothing was added yet. Please fix:" items={problems} refused /></div>}
+    <div class="mt-4 grid gap-5">
+      <fieldset>
+        <legend class="meta">What</legend>
+        <div class="set-pills mt-2">
+          <label class="chip-radio set-choice"><input type="radio" name="kind" value="closed" checked={v.kind === 'closed'} data-closed-kind /><span>The clinic is closed</span></label>
+          <label class="chip-radio set-choice"><input type="radio" name="kind" value="leave" checked={v.kind === 'leave'} data-closed-kind /><span>A dentist is away</span></label>
+        </div>
+      </fieldset>
+      <label class="field sm:max-w-[22rem]">
+        <span class="meta">Dentist (when a dentist is away)</span>
+        <select name="dentist">
+          <option value="" selected={!v.dentist}>Choose a dentist</option>
+          {dentists.map((d) => <option value={d.id} selected={v.dentist === d.id}>{d.name}</option>)}
+        </select>
+      </label>
+      <div class="set-block-dates">
+        <label class="field"><span class="meta">From</span><input type="date" name="from" value={v.from} /></label>
+        <label class="field"><span class="meta">Until</span><input type="date" name="until" value={v.until} aria-describedby="closed-until-hint" /><span id="closed-until-hint" class="set-help">Blank is one day</span></label>
+      </div>
+      <label class="field">
+        <span class="meta">Note (optional)</span>
+        <input name="note" value={v.note} maxlength="200" aria-describedby="closed-note-hint" />
+        <span id="closed-note-hint" class="set-help">For the team; patients never see it.</span>
+      </label>
+    </div>
+    <div class="set-foot">
+      <button type="submit" class="ws-btn ws-btn-primary"><Icon name="plus" />Add closed days</button>
+      <span class="set-dirty-note" data-set-dirty-note hidden>Not saved yet</span>
+    </div>
+  </form>
+</Pane>
+</div>

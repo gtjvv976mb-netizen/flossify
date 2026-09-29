@@ -184,6 +184,45 @@
 .set-hours-day { font-size: 15px; font-weight: 600; transition: color 160ms ease; }
 .set-hours-row[data-closed] .set-hours-day { color: var(--c-muted); font-weight: 500; }
 .set .set-hours .field input:disabled { opacity: 0.55; background: var(--ws-subtle); box-shadow: none; cursor: not-allowed; }
+/* Lunch (040): a second line in each day's row, its two times under Opens and Closes; muted on a closed day,
+   whose times the page's script disables with the rest of the row. On a phone the fields' own labels say it. */
+.set-hours-lunch { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.375rem; }
+.set-hours-lunch-word { display: none; font-size: 14px; font-weight: 500; color: var(--c-ink-2); }
+.set-hours-row[data-closed] .set-hours-lunch-word { color: var(--c-muted); }
+@container set (min-width: 36rem) {
+  .set-hours-lunch { grid-template-columns: subgrid; column-gap: 1rem; align-items: center; }
+  .set-hours-lunch-word { display: block; grid-column: 2; }
+  .set-hours-lunch .set-hours-times { grid-column: 3 / span 2; }
+}
+.set-hours-blank { margin: 0 0 0.25rem; color: var(--c-ink-2); }
+.set-lunch-copy { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-top: 1rem; }
+.set-lunch-said { font-size: 14px; line-height: 1.5; color: var(--c-ink-2); }
+.set-lunch-said:empty { display: none; }
+/* A link inside a callout takes the callout's own ink (the pale tint under it is that ink's). */
+.set-note .set-note-link { min-height: 44px; color: inherit; text-decoration-color: currentColor; }
+
+/* Closed days (040): the blocks ahead as rows, each with a quiet Remove, then the Add form below a hairline. */
+.set-block-when { font-size: 15px; font-weight: 500; color: var(--c-ink-2); }
+.set-block-sub { color: var(--c-ink-2); }
+.set-blocks-none { margin-top: 0.75rem; padding: 1rem 1.5rem; border-top: 1px solid var(--ws-hair); font-size: 15px; line-height: 1.5; color: var(--c-ink-2); }
+.set-block-add { padding: 1.5rem; border-top: 1px solid var(--ws-hair); }
+.set-block-add .set-sub { scroll-margin-top: calc(var(--set-top, 4.5rem) + 1rem); }
+.set-block-dates { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); max-width: 30rem; }
+@media (max-width: 767px) { .set-blocks-none, .set-block-add { padding-inline: 1rem; } }
+
+/* A person's hours on their days here (040): seven rows, "Monday [from] – [to]"; a day not ticked is muted. */
+.set-days-hours { margin-top: 0; }
+.set-dh { display: grid; gap: 0.25rem; }
+.set-dh-row { display: grid; grid-template-columns: 7rem minmax(0, 9.5rem) auto minmax(0, 9.5rem); align-items: center; gap: 0.5rem; transition: opacity 160ms ease; }
+.set-dh-day { font-size: 15px; font-weight: 500; color: var(--c-ink); }
+.set-dh-dash { color: var(--c-ink-2); }
+.set-dh-row[data-off] .set-dh-day { color: var(--c-ink-2); font-weight: 400; }
+.set-dh-row[data-off] input { opacity: 0.55; }
+.set-dh-help { margin-top: 0.5rem; color: var(--c-ink-2); }
+@media (max-width: 479px) {
+  .set-dh-row { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+  .set-dh-day { grid-column: 1 / -1; margin-top: 0.25rem; }
+}
 
 /* A list that runs edge to edge in its card: a row per thing, the whole row the link or the button. */
 .set-list { display: grid; }

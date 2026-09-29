@@ -6,7 +6,8 @@
 // own, each with one teal main action:
 //
 //   Clinic profile      _lib/profile.ts   (the listing switch, the clinic, how it works, HMOs; TIN under More)
-//   Opening hours       _lib/profile.ts
+//   Opening hours       _lib/profile.ts   (lunch on each day, 040)
+//   Closed days         _lib/closed-days.ts (the clinic closed, a dentist away; the blocks ahead, 040)
 //   Services & prices   _lib/fees.ts      (Edit prices and Add service in side panels)
 //   People              _lib/people.ts    (Add person in a side panel; each person has a page, people/<id>/)
 //   Photos              _lib/photos.ts
@@ -40,6 +41,7 @@ import Empty from '../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../components/ws/SidePanel.astro';
 import ProfileSection from './_ui/ProfileSection.astro';
 import HoursSection from './_ui/HoursSection.astro';
+import ClosedSection from './_ui/ClosedSection.astro';
 import FeesSection from './_ui/FeesSection.astro';
 import PeopleSection from './_ui/PeopleSection.astro';
 import PhotosSection from './_ui/PhotosSection.astro';
@@ -49,7 +51,9 @@ import './_ui/settings.css';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
 import { SECTIONS, isSection, daysText, type SectionId } from './_lib/common';
-import { loadClinic, saveClinic, savedProfile, savedHours, heldText, type ClinicRefused } from './_lib/profile';
+import { loadClinic, saveClinic, savedProfile, savedHours, heldText, closedText, type ClinicRefused } from './_lib/profile';
+import { closedDaysAction, loadClosedDays, dentistsHere, emptyClosed, type ClosedRefused } from './_lib/closed-days';
+import { blockDone } from '../../../../lib/block-words';
 import { loadFees, saveFees, addFee, emptyAdd, type FeesRefused } from './_lib/fees';
 import { listPeople, addPerson, addedText, emptyPerson, emailOn, type AddRefused } from './_lib/people';
 import { photoKeys, photoAction, MAX_PHOTOS, type PhotosRefused } from './_lib/photos';
@@ -66,7 +70,7 @@ const { clinic, session, branches } = ws;
 // Each section is for the people whose role may change it (src/lib/can.ts); the page is for anyone who
 // may change at least one. By default that is the owner and the admin, who may change all of them.
 const may: Record<SectionId, boolean> = {
-  profile: can(ws, 'settings.edit'), hours: can(ws, 'settings.edit'), fees: can(ws, 'settings.edit'),
+  profile: can(ws, 'settings.edit'), hours: can(ws, 'settings.edit'), closed: can(ws, 'settings.edit'), fees: can(ws, 'settings.edit'),
   people: can(ws, 'people.manage'), roles: can(ws, 'roles.manage'), photos: can(ws, 'settings.edit'), privacy: can(ws, 'settings.edit'), plan: can(ws, 'plan.pay'),
 };
 const canSetUp = Object.values(may).some(Boolean);
@@ -75,14 +79,15 @@ const base = `/c/${clinic.slug}/settings/`;
 const q = Astro.url.searchParams;
 
 // --- a post: which form, then its handler ---------------------------------------------
-type Which = 'profile' | 'hours' | 'legacy' | 'fees' | 'fee-add' | 'person-add' | 'role' | 'photos' | 'privacy';
-const SECTION_OF: Record<Which, SectionId> = { profile: 'profile', hours: 'hours', legacy: 'profile', fees: 'fees', 'fee-add': 'fees', 'person-add': 'people', role: 'roles', photos: 'photos', privacy: 'privacy' };
+type Which = 'profile' | 'hours' | 'legacy' | 'fees' | 'fee-add' | 'person-add' | 'role' | 'photos' | 'privacy' | 'closed-add' | 'closed-remove';
+const SECTION_OF: Record<Which, SectionId> = { profile: 'profile', hours: 'hours', legacy: 'profile', fees: 'fees', 'fee-add': 'fees', 'person-add': 'people', role: 'roles', photos: 'photos', privacy: 'privacy', 'closed-add': 'closed', 'closed-remove': 'closed' };
 let clinicRefused: ClinicRefused | null = null;
 let feesRefused: FeesRefused | null = null;
 let addRefused: AddRefused | null = null;
 let photosRefused: PhotosRefused | null = null;
 let privacyRefused: PrivacyRefused | null = null;
 let rolesRefused: RolesRefused | null = null;
+let closedRefused: ClosedRefused | null = null;
 
 if (Astro.request.method === 'POST') {
   if (!canSetUp) return Astro.redirect(base, 303);
@@ -91,7 +96,7 @@ if (Astro.request.method === 'POST') {
   // old address (?from=); else the old one-page form, which posted profile and hours together.
   const from = q.get('from') ?? '';
   const named = String(form.get('form') ?? '');
-  const which: Which = (['profile', 'hours', 'fees', 'fee-add', 'person-add', 'role', 'photos', 'privacy'] as const).find((w) => w === named)
+  const which: Which = (['profile', 'hours', 'fees', 'fee-add', 'person-add', 'role', 'photos', 'privacy', 'closed-add', 'closed-remove'] as const).find((w) => w === named)
     ?? (from === 'fees' ? (form.get('do') === 'add' ? 'fee-add' : 'fees')
       : from === 'team' ? 'person-add'
       : from === 'photos' ? 'photos'
@@ -117,6 +122,9 @@ if (Astro.request.method === 'POST') {
   } else if (which === 'role') {
     const r = await rolesAction({ clinic, staffId: session.staffId, base, form });
     out = r; if (!(r instanceof Response)) rolesRefused = r;
+  } else if (which === 'closed-add' || which === 'closed-remove') {
+    const r = await closedDaysAction(who);
+    out = r; if (!(r instanceof Response)) closedRefused = r;
   } else if (which === 'photos') {
     const r = await photoAction(who);
     out = r; if (!(r instanceof Response)) photosRefused = r;
@@ -128,25 +136,46 @@ if (Astro.request.method === 'POST') {
 }
 
 // --- what the page shows -------------------------------------------------------------------
-const [data, fees, people, keys, privacy, plan, roles] = canSetUp
+const [data, fees, people, keys, privacy, plan, roles, closedDays, dentists] = canSetUp
   ? await Promise.all([
       loadClinic(clinic.id), loadFees(clinic.id), listPeople(clinic.id), photoKeys(clinic.id),
       loadPrivacy(clinic.id, clinic.group_id), loadPlan({ groupId: clinic.group_id, q }), listRoles(clinic.group_id),
+      may.closed ? loadClosedDays(clinic.id) : Promise.resolve([]), may.closed ? dentistsHere(clinic.id) : Promise.resolve([]),
     ])
-  : [null, null, null, null, null, null, null];
+  : [null, null, null, null, null, null, null, null, null];
 // The roles this person may hand out on Add member, and the one it starts on: a dentist, else the lowest.
 const offered = roles ? giveable(clinic, roles) : [];
 const startRole = (offered.find((r) => r.base === 'dentist') ?? offered[offered.length - 1])?.id ?? '';
 
-type N = { tone: 'ok' | 'alert' | 'warn'; text: string };
-const notes: Record<SectionId, N[]> = { profile: [], hours: [], fees: [], people: [], roles: [], photos: [], privacy: [], plan: [] };
+type N = { tone: 'ok' | 'alert' | 'warn'; text: string; href?: string; link?: string };
+const notes: Record<SectionId, N[]> = { profile: [], hours: [], closed: [], fees: [], people: [], roles: [], photos: [], privacy: [], plan: [] };
+const callsLink = { href: `/c/${clinic.slug}/calls/#closed-time`, link: 'Open Calls' };
 const stale = q.get('stale');
 if (isSection(stale) && stale !== 'plan') notes[stale].push({ tone: 'alert', text: CSRF_MESSAGE });
 if (data && Astro.request.method === 'GET') {
   const saved = q.get('saved');
   const held = q.get('held') === '1';
   // ?saved=1 is what the one-page form said before sections; it was the profile.
-  if (saved === 'profile' || saved === 'hours' || saved === '1') notes[saved === 'hours' ? 'hours' : 'profile'].push(held ? { tone: 'warn', text: heldText(data) } : { tone: 'ok', text: 'Saved.' });
+  if (saved === 'profile' || saved === 'hours' || saved === '1') {
+    const into = saved === 'hours' ? 'hours' : 'profile';
+    // An hours save that put visits ahead into closed time (040) says how many, and where they are listed.
+    const closed = Number(q.get('closed'));
+    if (held) notes[into].push({ tone: 'warn', text: heldText(data) });
+    if (Number.isInteger(closed) && closed > 0) notes[into].push({ tone: 'warn', text: closedText(closed), ...callsLink });
+    else if (!held) notes[into].push({ tone: 'ok', text: 'Saved.' });
+  }
+  if (saved === 'closed') {
+    const done = q.get('block');
+    if (done === 'removed') notes.closed.push({ tone: 'ok', text: 'Removed. Patients can book that time again.' });
+    if (done === 'added') {
+      const b = closedDays?.find((x) => x.id === q.get('id'));
+      notes.closed.push({ tone: 'ok', text: b ? blockDone(b, Date.now(), 'Added') : 'Added.' });
+      const n = Number(q.get('inside'));
+      if (Number.isInteger(n) && n > 0) notes.closed.push({ tone: 'warn', ...callsLink, text: n === 1
+        ? '1 visit is already booked in that time. Nothing was changed for it, and its reminder text still goes out. It is on the call list.'
+        : `${n} visits are already booked in that time. Nothing was changed for them, and their reminder texts still go out. They are on the call list.` });
+    }
+  }
   if (saved === 'fees') notes.fees.push({ tone: 'ok', text: 'Saved.' });
   if (q.get('added') === 'fee') notes.fees.push({ tone: 'ok', text: 'Added. It is offered and on your page from now.' });
   if (saved === 'privacy') notes.privacy.push({ tone: 'ok', text: 'Saved.' });
@@ -170,6 +199,7 @@ const active = people ? people.filter((p) => !p.disabled_at).length : 0;
 const STATUS: Record<SectionId, { text: string; tone?: 'warn' | 'alert' }> = !data ? {} as never : {
   profile: data.c.listed ? { text: 'Listed on Find a clinic' } : { text: 'Not listed yet', tone: 'warn' },
   hours: openDays.length ? { text: daysText(openDays) } : { text: 'No hours yet', tone: 'warn' },
+  closed: { text: closedDays!.length ? `${closedDays!.length} ahead` : 'None ahead' },
   fees: { text: `${fees!.filter((r) => r.active).length} offered` },
   people: { text: `${active} ${active === 1 ? 'person' : 'people'}` },
   roles: { text: `${roles!.length} roles` },
@@ -182,7 +212,7 @@ const STATUS: Record<SectionId, { text: string; tone?: 'warn' | 'alert' }> = !da
 const fromSection = (q.get('stale') ?? q.get('saved') ?? '') as string;
 const noticeFor: SectionId | null = q.get('person') === 'added' ? 'people' : q.get('role') ? 'roles' : q.get('added') === 'fee' ? 'fees' : q.get('photos') ? 'photos'
   : (q.has('paid') || q.has('unpaid') || q.has('pay')) ? 'plan' : null;
-const wanted: SectionId = clinicRefused ? clinicRefused.part : feesRefused ? 'fees' : addRefused ? 'people' : rolesRefused ? 'roles' : photosRefused ? 'photos' : privacyRefused ? 'privacy'
+const wanted: SectionId = clinicRefused ? clinicRefused.part : closedRefused ? 'closed' : feesRefused ? 'fees' : addRefused ? 'people' : rolesRefused ? 'roles' : photosRefused ? 'photos' : privacyRefused ? 'privacy'
   : isSection(fromSection) ? fromSection : noticeFor ?? 'profile';
 const firstOn: SectionId = may[wanted] ? wanted : (shown[0]?.id ?? 'profile');
 ---
@@ -244,6 +274,12 @@ const firstOn: SectionId = may[wanted] ? wanted : (shown[0]?.id ?? 'profile');
             days={clinicRefused?.hours ?? savedHours(data)}
             problems={clinicRefused?.part === 'hours' ? clinicRefused.problems : []}
             notes={notes.hours}
+          />}
+          {may.closed && <ClosedSection
+            base={base} blocks={closedDays!} dentists={dentists!} on={firstOn === 'closed'}
+            v={closedRefused?.values ?? emptyClosed()}
+            problems={closedRefused?.problems ?? []} problemsFor={closedRefused?.form ?? null}
+            notes={notes.closed}
           />}
           {may.fees && <FeesSection
             base={base} clinicName={clinic.name} rows={fees!} on={firstOn === 'fees'}
@@ -517,7 +553,7 @@ const firstOn: SectionId = may[wanted] ? wanted : (shown[0]?.id ?? 'profile');
     // One-shot notices: the line stays on screen, the address loses it, so a reload does not say it again.
     const url = new URL(location.href);
     let changed = false;
-    for (const k of ['saved', 'held', 'added', 'stale', 'person', 'via', 'id', 'photos', 'n', 'from']) if (url.searchParams.has(k)) { url.searchParams.delete(k); changed = true; }
+    for (const k of ['saved', 'held', 'added', 'stale', 'person', 'via', 'id', 'photos', 'n', 'from', 'closed', 'block', 'inside']) if (url.searchParams.has(k)) { url.searchParams.delete(k); changed = true; }
     if (changed) history.replaceState(history.state, '', url.pathname + (url.search ? url.search : '') + url.hash);
   }
 </script>

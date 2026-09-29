@@ -41,6 +41,8 @@ export interface ShellLinks {
   messages: string;
   claims: string;
   newBooking: string;
+  /** The Dashboard's Block time panel (040): a closed day, a dentist away, a chair out of use. */
+  newBlock: string;
   newCharge: string;
   requests: string;
   /** null until the page exists: the link is left out. */
@@ -61,6 +63,7 @@ export function shellLinks(slug: string): ShellLinks {
     messages: `${b}/messages/`,
     claims: `${b}/claims/`,
     newBooking: LANDED.dashboard ? `${b}/?new=booking` : `${b}/schedule/`,
+    newBlock: `${b}/?new=block`,
     newCharge: `${b}/billing/new/`,
     requests: LANDED.dashboard ? `${b}/#requests` : `${b}/#web-title`,
     addPatient: LANDED.addPatient ? `${b}/patients/new/` : null,

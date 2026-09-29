@@ -336,6 +336,14 @@ const BarTitle = heading ? 'h1' : 'p';
                     <span class="ws-menu-words">Web requests to place<span class="ws-menu-hint">Patients waiting for the desk to give a time</span></span>
                     {inbox && <span class="ws-count" data-zero={inbox.requests ? undefined : ''}>{inbox.requests}</span>}
                   </a>
+                  {/* Visits in closed time (040), for people who may change the schedule: only when there are some. */}
+                  {inbox && !!inbox.closed && (
+                    <a class="ws-menu-item" href={`/c/${clinic.slug}/calls/#closed-time`}>
+                      <span class="ws-menu-icon" data-tint="amber"><Icon name="calendar" /></span>
+                      <span class="ws-menu-words">In closed time, next 2 weeks<span class="ws-menu-hint">Visits booked when the clinic is not open; move them or call</span></span>
+                      <span class="ws-count">{inbox.closed}</span>
+                    </a>
+                  )}
                   {inbox && inbox.forms !== null && (
                     <a class="ws-menu-item" href={`/c/${clinic.slug}/patients/forms/`}>
                       <span class="ws-menu-icon" data-tint="teal"><Icon name="file" /></span>
@@ -359,6 +367,12 @@ const BarTitle = heading ? 'h1' : 'p';
                     <span class="ws-menu-icon" data-tint="teal"><Icon name="calendar" /></span>
                     <span class="ws-menu-words">New booking<span class="ws-menu-hint">{LANDED.dashboard ? 'A time on the calendar, for a patient' : 'On the Schedule: day and week, by chair or dentist'}</span></span>
                   </a>
+                  {can(access, 'schedule.edit') && (
+                    <a class="ws-menu-item" href={links.newBlock}>
+                      <span class="ws-menu-icon"><Icon name="clock" /></span>
+                      <span class="ws-menu-words">Block time<span class="ws-menu-hint">A closed day, a dentist away, a chair out of use</span></span>
+                    </a>
+                  )}
                   {links.addPatient && (
                     <a class="ws-menu-item" href={links.addPatient}>
                       <span class="ws-menu-icon" data-tint="blue"><Icon name="patients" /></span>
