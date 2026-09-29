@@ -466,11 +466,19 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
                 ptr_number = case when $17::boolean then $15::text else ptr_number end,
                 ptr_year   = case when $17::boolean then $16::smallint else ptr_year end
           where id = $1
+            and (not $17::boolean or (ptr_number is not distinct from $18::text and ptr_year is not distinct from $19::smallint))
           returning token_version`,
         // The mobile is written only when it changed, so a number on file as '0917 555 2003' is left as it was;
-        // the PTR likewise, so a PTR the dentist saved on My page after this form was drawn stays.
+        // the PTR likewise, so a PTR the dentist saved on My page after this form was drawn stays. A new PTR is
+        // written only if the row still holds the one read above: My page saving at the same moment is a
+        // conflict to say, never a lost write (as My page's own write is conditional).
         [t.id, next.name, next.email, changed.phone ? next.phone : t.phone, next.role, next.prc, next.specialty, next.slug, practices, signOut, prcReset, prcNote, next.username, next.roleId,
-         ptr.number, ptr.year, changed.ptr]);
+         ptr.number, ptr.year, changed.ptr, ptrOnFile.number, ptrOnFile.year]);
+      if (!rows.length) {
+        const now = (await pool.query('select ptr_number, ptr_year from staff where id = $1', [t.id])).rows[0];
+        const v = { number: now?.ptr_number ?? null, year: now?.ptr_year ?? null };
+        return fail(ptrConflictText(self ? null : t.full_name, v), Object.assign(edit, ptrDrawn(v, today)));
+      }
       tv = rows[0].token_version;
     } catch (e) {
       // Two edits at once can both pass the checks above; the database's own unique keys have the last word.

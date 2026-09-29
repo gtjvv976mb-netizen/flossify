@@ -12,7 +12,10 @@
 //             for finance roles only — the balance (patient_balance(), the
 //             one balance definition)
 //
-// A card is the schedule's Appt plus extras (model.ts). The Appt half uses the
+// A card is the schedule's Appt plus extras (model.ts). Since p25 the extras also carry the patient's desk note
+// (patient.notes less the lines the import writes by itself: deskNoteOf in src/lib/import.ts, which is server-only
+// like this file, so the note is worked out here and never in the browser), the latest added patient form's answer
+// to "nervous about visits", and what every consent signed on the tablet for the visit covered. The Appt half uses the
 // same expressions as APPT_SELECT in src/lib/schedule.ts, so a visit reads the
 // same here as on every /api/schedule answer; /api/schedule adds the extras to
 // its own answers with extrasFor() below.
@@ -28,6 +31,7 @@ import { withClinic } from '../../../lib/db';
 import { rowToAppt, type Appt } from '../../../lib/schedule';
 import { hmoById } from '../../../data/directory';
 import { loadBlocks, type BlockRange } from '../../../lib/blocks';
+import { deskNoteOf } from '../../../lib/import';
 import type { Card, Extras, Price, Pt, Service, StaffDay } from './model';
 
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
@@ -61,9 +65,13 @@ const BASE = `a.id, a.patient_id, concat_ws(' ', p.first_name, nullif(p.last_nam
        mh.allergies`;
 // The extras (model.ts Extras): the service and its price, who booked, the patient's alerts — and, since 036,
 // what the desk and the chair need at the moment of decision: whether the history was asked and when, blood
-// pressure on the visit's day, a consent signed for this visit, a lab case or a medical clearance still out,
+// pressure on the visit's day, a consent signed for this visit (visit_treatment_consented, 039: the tablet's signing or an
+// agreed general consent form), a lab case or a medical clearance still out,
 // treatments done at the visit with no statement line yet, the visit's statement, the open recall, and the
-// patient's next visit after this one. Each is one small subselect; a day has a few dozen cards.
+// patient's next visit after this one. And since p25: the patient's desk note, the latest added patient form's answer
+// to "nervous about visits" ('little' or 'very'; nothing for 'no'), and the treatment each consent signed for this
+// visit covered, joined with "; " (visit_consent_visit's index). Each is one small subselect; a day has a few dozen
+// cards.
 const MANILA_DAY = (col: string) => `(${col} at time zone 'Asia/Manila')::date`;
 const EXTRA = `coalesce(pc.id, pr.id) as catalog_id, coalesce(pc.name, pr.name) as service, coalesce(pc.code, pr.code) as catalog_code, coalesce(pc.category, pr.category) as catalog_category,
        coalesce(pc.default_price, pr.default_price) as price_min, coalesce(pc.price_max, pr.price_max) as price_max,
@@ -73,7 +81,7 @@ const EXTRA = `coalesce(pc.id, pr.id) as catalog_id, coalesce(pc.name, pr.name) 
        ${PATIENT_HMO} as patient_hmo, nullif(nullif(btrim(p.last_name), '—'), '') as last_name,
        mh.answered_at as health_asked_at,
        exists (select 1 from vital_sign v where v.patient_id = p.id and ${MANILA_DAY('v.taken_at')} = ${MANILA_DAY('a.starts_at')}) as bp_on_day,
-       exists (select 1 from visit_consent vc where vc.appointment_id = a.id) as consent_signed,
+       visit_treatment_consented(a.id) as consent_signed,
        exists (select 1 from lab_order lo where lo.patient_id = p.id and lo.status in ('ordered', 'sent')) as lab_pending,
        exists (select 1 from clinical_letter cl where cl.patient_id = p.id and cl.kind = 'clearance' and cl.answer is null) as clearance_waiting,
        (select count(*) from procedure_done d
@@ -83,7 +91,13 @@ const EXTRA = `coalesce(pc.id, pr.id) as catalog_id, coalesce(pc.name, pr.name) 
        st.id as statement_id, st.series_prefix as statement_prefix, st.number as statement_number, st.status as statement_status,
        (select to_char(r.due_on, 'YYYY-MM-DD') from recall r where r.patient_id = p.id and r.completed_at is null order by r.due_on limit 1) as recall_due,
        (select min(x.starts_at) from appointment x
-         where x.patient_id = p.id and x.id <> a.id and x.starts_at > a.ends_at and x.status not in ('cancelled', 'no_show', 'completed')) as next_visit_at`;
+         where x.patient_id = p.id and x.id <> a.id and x.starts_at > a.ends_at and x.status not in ('cancelled', 'no_show', 'completed')) as next_visit_at,
+       p.notes as desk_note,
+       (select case when f.answers->>'nervous' in ('little', 'very') then f.answers->>'nervous' end
+          from patient_form f where f.patient_id = p.id and f.status = 'added'
+         order by f.submitted_at desc limit 1) as form_nervous,
+       (select string_agg(replace(btrim(vc.treatment), E'\\n', '; '), '; ' order by vc.signed_at)
+          from visit_consent vc where vc.appointment_id = a.id) as consent_for`;
 const FROM = `
   from appointment a
   join patient p on p.id = a.patient_id
@@ -136,6 +150,9 @@ function extrasOf(r: Row): Extras {
     statement: r.statement_id ? { id: r.statement_id as string, no: `${r.statement_prefix}-${String(r.statement_number).padStart(6, '0')}`, status: r.statement_status as string } : null,
     recallDue: (r.recall_due as string | null) ?? null,
     nextVisitAt: iso(r.next_visit_at),
+    deskNote: deskNoteOf((r.desk_note as string | null) ?? null),
+    formNervous: r.form_nervous === 'little' || r.form_nervous === 'very' ? r.form_nervous : null,
+    consentFor: (r.consent_for as string | null) || null,
   };
 }
 /** A visit and its extras as one card. A visit brought in from old records may name a dentist who is not on

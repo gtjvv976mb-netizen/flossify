@@ -140,6 +140,13 @@ export function initPatients(ctx: Ctx): PatientsList {
     when.append(el('b', '', time));
     if (what) when.append(` · ${what}`);
     main.append(when);
+    // The patient's desk note (p25), one line in ink-2 cut off with "…"; the whole note in the title. No pill.
+    if (c.deskNote) {
+      const n = el('span', 'pt-desknote');
+      n.title = c.deskNote;
+      n.append(icon('note', 14), el('span', 'pt-desknote-text', c.deskNote));
+      main.append(n);
+    }
     main.append(el('span', 'pt-sub', p.phone ? M.prettyPhone(p.phone) : 'No mobile on file'));
     if (p.allergies.length || p.conditions.length || p.isNew) {
       const marks = el('span', 'pt-marks');
@@ -176,6 +183,7 @@ export function initPatients(ctx: Ctx): PatientsList {
     const label = [p.name, age !== null ? `${age} years` : '', p.chart, `today ${time === 'Today' ? '' : time}`.trim(), what, status,
       wait !== null ? `waiting ${wait} minutes` : '', M.noNextVisit(c) ? 'no next visit' : '',
       p.phone ?? 'no mobile', p.allergies.length ? `allergy: ${p.allergies.join(', ')}` : '', p.conditions.length ? `alerts: ${p.conditions.join(', ')}` : '',
+      c.deskNote ? `note: ${M.clip(c.deskNote, 120)}` : '',
       p.isNew ? 'new' : '', boot.finance && (p.balance ?? 0) > 0 ? `owes ${M.pesoBal(p.balance ?? 0)}` : ''].filter(Boolean).join(', ');
     b.setAttribute('aria-label', label);
     wrap.append(b, side);

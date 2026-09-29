@@ -71,8 +71,17 @@ export interface Extras {
   recallDue: string | null;
   /** The patient's next visit after this one, ISO, or null. */
   nextVisitAt: string | null;
+  /** The patient's own desk note (Edit details), less the lines the import writes by itself (deskNoteOf, p25). */
+  deskNote: string | null;
+  /** The latest patient form added to the record answered "nervous about visits": a little, or very. */
+  formNervous: 'little' | 'very' | null;
+  /** What every consent signed on the tablet for this visit covered, joined with "; ", or null. */
+  consentFor: string | null;
 }
 export type Card = Appt & Extras;
+
+/** Cut to n characters with "…" (the panel, the card and the list say a long note this way; the title keeps it whole). */
+export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n).trimEnd()}…` : s);
 
 /** How long a patient has waited since arrival, in whole minutes; null unless they are here and not yet seated. */
 export function waitMinutes(c: Pick<Card, 'status' | 'arrivedAt'>, now = Date.now()): number | null {
