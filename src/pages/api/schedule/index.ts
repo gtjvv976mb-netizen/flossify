@@ -5,12 +5,18 @@
 //                                                  → 201 { appointment }   a new visit, status 'booked', source 'staff'
 //                                                    status 'arrived' is a walk-in (036): checked in as it is booked, through the
 //                                                    same state machine, and no confirmation text — they are standing at the desk
-//   PATCH { clinic, id, startsAt?, minutes?, chair?, dentistId?, status?, reason?, notes? }
-//                                                  → 200 { appointment }   a move, a status change, or both
+//   PATCH { clinic, id, startsAt?, minutes?, chair?, dentistId?, status?, reason?, notes?, catalogCode? }
+//                                                  → 200 { appointment, texted, retold }   a move, an edit, a status change
+//     catalogCode: a fee-guide code, or null | '' for no fee-guide service; the Edit form sends it together with reason.
+//     reason: a non-empty reason is saved as sent; an empty one takes the service's name, and is refused without a service.
+//     A new start, chair or dentist is a move; a new length alone is an edit; edits are refused on visits in DONE; a visit
+//     booked online keeps the patient's note. retold: queued texts withdrawn to be written again (retellTexts). Texts:
+//     only a new start drops waiting texts (every text names the start); a new dentist withdraws the reminders the next
+//     pass writes again (they name the dentist); a new reason does the same and replaces a waiting confirmation one for one.
 //   Blocked time (040), additions only: GET's Range also carries `blocks` (lunch, a dentist's time not in, the
 //   dated blocks: src/lib/blocks.ts) and each staff[] entry `hours` (dow → [fromMin, toMin], their own hours).
-//   A POST, or a PATCH that moves, into closed time is a soft stop: 409 { error: <one sentence>, blocked: true,
-//   kind } (src/lib/block-words.ts), and the same body with anyway: true books it and marks it kept
+//   A POST, or a PATCH that moves or resizes, into closed time is a soft stop: 409 { error: <one sentence>,
+//   blocked: true, kind } (src/lib/block-words.ts), and the same body with anyway: true books it and marks it kept
 //   (blocked_ok_at, audit appointment.anyway). A walk-in (status 'arrived') is never asked, and is marked the
 //   same way. A clash is still a hard 409 with no anyway, and it is checked first. A status-only or words-only
 //   PATCH never looks at blocks. /api/schedule/blocks adds and removes dated blocks.
@@ -42,7 +48,7 @@ import { can } from '../../../lib/can';
 import { withClinic, type Tx } from '../../../lib/db';
 import { csrfHeaderOk, CSRF_MESSAGE } from '../../../lib/csrf';
 import { queueText, normalizePhone, PH_MOBILE } from '../../../lib/messages';
-import { loadRange, findClash, applyStatus, dropStaleTexts, readAppt, canText, scheduleTexts, isDentistHere, ALLOWED, DONE, WORDS, type Appt } from '../../../lib/schedule';
+import { loadRange, findClash, applyStatus, dropStaleTexts, retellTexts, readAppt, canText, scheduleTexts, isDentistHere, ALLOWED, DONE, WORDS, type Appt } from '../../../lib/schedule';
 import { findBlock } from '../../../lib/blocks';
 import { json, refuse, answer, gate, body, isoDate, chairOf, idOf, text, clinicRow, checkChair } from '../../../lib/schedule-api';
 import { extrasFor, mergeExtras, withExtras } from '../../../components/ws/cal/data';
@@ -198,7 +204,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 };
 
 // ---------------------------------------------------------------------------
-// PATCH — move a visit, change its status, or edit its words
+// PATCH — move a visit, edit it in place, change its status
 // ---------------------------------------------------------------------------
 export const PATCH: APIRoute = async ({ request, cookies }) => {
   try {
@@ -218,13 +224,19 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
     const wantDentist = has('dentistId') ? idOf(b.dentistId, 'The dentist') : undefined;
     const wantReason = has('reason') ? text(b.reason, REASON_MAX) : undefined;
     const wantNotes = has('notes') ? text(b.notes, NOTES_MAX) : undefined;
+    // A fee-guide code, or null for "No fee-guide service" (the Edit form sends it with the reason).
+    const wantCatalog = has('catalogCode') ? text(b.catalogCode, 60) : undefined;
     const anyway = b.anyway === true;
 
     const saved = await withClinic(clinic.id, async (tx) => {
-      let texted = false;
+      let texted = false, retold = 0;
       const c = await clinicRow(tx, clinic.id);
-      const { rows: [cur] } = await tx.query<{ patient_id: string; starts_at: Date; ends_at: Date; chair: number | null; dentist_id: string | null; status: string; public_ref: string | null; phone: string | null }>(
-        `select a.patient_id, a.starts_at, a.ends_at, a.chair, a.dentist_id, a.status, a.public_ref, coalesce(nullif(a.booked_by_phone, ''), p.phone) as phone
+      const { rows: [cur] } = await tx.query<{
+        patient_id: string; starts_at: Date; ends_at: Date; chair: number | null; dentist_id: string | null; status: string; public_ref: string | null; phone: string | null;
+        reason: string | null; notes: string | null; catalog_id: string | null; source: string; moved_at: Date | null;
+      }>(
+        `select a.patient_id, a.starts_at, a.ends_at, a.chair, a.dentist_id, a.status, a.public_ref, coalesce(nullif(a.booked_by_phone, ''), p.phone) as phone,
+                a.reason, a.notes, a.catalog_id, a.source, a.moved_at
            from appointment a join patient p on p.id = a.patient_id where a.id = $1 for update of a`, [id]);
       if (!cur) throw refuse(400, 'That visit is not on this book.');
 
@@ -233,14 +245,42 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
       const endsAt = new Date(startsAt.getTime() + minutes * 60_000);
       const chair = wantChair === undefined ? cur.chair : wantChair;
       const dentistId = wantDentist === undefined ? cur.dentist_id : wantDentist;
-      const timeChanged = startsAt.getTime() !== new Date(cur.starts_at).getTime() || endsAt.getTime() !== new Date(cur.ends_at).getTime();
-      const moved = timeChanged || chair !== cur.chair || dentistId !== cur.dentist_id;
+      const startChanged = +startsAt !== +new Date(cur.starts_at);
+      const endChanged = +endsAt !== +new Date(cur.ends_at);
+      const dentistChanged = dentistId !== cur.dentist_id;
+      const moved = startChanged || chair !== cur.chair || dentistChanged;
+      const resized = endChanged && !moved;          // a length alone never stamps moved_at (018: that would place a request)
+      const unplaced = cur.source === 'request' && cur.moved_at === null;
+      const online = cur.source === 'web' || cur.source === 'request';
+
+      // The service and the reason. A reason that was sent and is not empty is final; the service's name fills in
+      // only when the reason was sent empty, or when a caller sends catalogCode alone.
+      let svc: { id: string; name: string } | null | undefined = undefined;
+      if (wantCatalog === null) svc = null;
+      else if (wantCatalog !== undefined) {
+        const row = (await tx.query<{ id: string; name: string; active: boolean }>('select id, name, active from procedure_catalog where code = $1', [wantCatalog])).rows[0];
+        // A retired service stays acceptable on the visit that already has it, so a reason-only edit there still saves.
+        if (!row || (!row.active && row.id !== cur.catalog_id)) throw refuse(400, 'That service is not in the fee guide any more. Pick another.');
+        svc = { id: row.id, name: row.name };
+      }
+      const catalogChanged = svc !== undefined && (svc?.id ?? null) !== cur.catalog_id;
+      const sentReason = has('reason') ? wantReason : undefined;          // text(): null when sent empty
+      const newReason = sentReason ?? (svc && (catalogChanged || sentReason === null) ? svc.name : null);
+      if (sentReason === null && newReason === null) throw refuse(400, 'Say what the visit is for, or pick a service.');
+      const reasonChanged = newReason !== null && newReason !== cur.reason;
+      const notesChanged = wantNotes !== undefined && (wantNotes ?? null) !== (cur.notes ?? null);
+      const edited = catalogChanged || reasonChanged || notesChanged || resized;
+
+      // Refused before anything is written.
+      if (edited && DONE.has(cur.status)) throw refuse(400, `That visit is marked ${WORDS[cur.status] ?? cur.status}. Its service, length and note stay as they were.`);
+      if ((catalogChanged || reasonChanged || resized) && unplaced && !moved) throw refuse(400, 'Place the request first: give it a chair or a new time. Then change what it is for.');
+      if (notesChanged && online) throw refuse(400, 'A visit booked online keeps the note the patient wrote with it. Put the desk’s words in the patient’s desk note.');
 
       if (moved) {
         // A visit that has left the book keeps its history; it does not get a new time.
         if (DONE.has(cur.status)) throw refuse(400, `That visit is marked ${WORDS[cur.status] ?? cur.status}. Book a new visit instead.`);
         checkChair(chair, c);
-        if (dentistId !== cur.dentist_id) await checkDentist(tx, clinic.id, dentistId);
+        if (dentistChanged) await checkDentist(tx, clinic.id, dentistId);
         const clash = await findClash(tx, clinic.id, { id, startsAt, endsAt, chair, dentistId });
         if (clash) throw refuse(409, clash);
         // A move into closed time asks first (Move anyway, Place anyway); a move out of it clears the kept mark.
@@ -249,22 +289,51 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
         await tx.query('update appointment set starts_at = $2, ends_at = $3, chair = $4, dentist_id = $5, moved_at = now(), blocked_ok_at = case when $6::boolean then now() else null end where id = $1', [id, startsAt, endsAt, chair, dentistId, !!blk]);
         await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.move', 'appointment', $3)`, [clinic.id, session.staffId, id]);
         if (blk) await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.anyway', 'appointment', $3)`, [clinic.id, session.staffId, id]);
-        // A new time for a visit still ahead, and a number to reach: tell them — after
-        // dropping the texts that still name the old time, so nobody gets both.
-        if (timeChanged) await dropStaleTexts(tx, id);
-        if (startsAt.getTime() !== new Date(cur.starts_at).getTime() && startsAt.getTime() > Date.now() && canText(cur.phone)) {
+        // Every text names the start, so a new start drops what is waiting (and texts the new time, below); reminders
+        // also name the dentist, so a new dentist alone has them written again. A new chair or length drops nothing.
+        if (startChanged) await dropStaleTexts(tx, id);
+        else if (dentistChanged) retold += (await retellTexts(tx, id, { confirmations: false })).reminders;
+        if (startChanged && startsAt.getTime() > Date.now() && canText(cur.phone)) {
           texted = (await queueText(tx, { clinicId: clinic.id, to: cur.phone!, body: scheduleTexts.moved(c.name, startsAt, cur.public_ref, c.phone), kind: 'confirmation', patientId: cur.patient_id, appointmentId: id, staffId: session.staffId })) !== null;
         }
       }
 
-      if (wantReason !== undefined || wantNotes !== undefined) {
-        await tx.query('update appointment set reason = coalesce($2, reason), notes = case when $4 then $3 else notes end where id = $1',
-          [id, wantReason ?? null, wantNotes ?? null, wantNotes !== undefined]);
-        if (!moved) await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.edit', 'appointment', $3)`, [clinic.id, session.staffId, id]);
+      if (resized) {
+        // A new length at the same start, chair and dentist: the clash rule and the soft stop, and no text (texts
+        // name the start, never the end).
+        const clash = await findClash(tx, clinic.id, { id, startsAt, endsAt, chair, dentistId });
+        if (clash) throw refuse(409, clash);
+        const blk = await findBlock(tx, clinic.id, { id, startsAt, endsAt, chair, dentistId });
+        if (blk && !anyway) throw refuse(409, blk.sentence, { blocked: true, kind: blk.kind });
+        await tx.query('update appointment set ends_at = $2, blocked_ok_at = case when $3::boolean then now() else null end where id = $1', [id, endsAt, !!blk]);
+        if (blk) await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.anyway', 'appointment', $3)`, [clinic.id, session.staffId, id]);
+      }
+
+      if (catalogChanged || reasonChanged || notesChanged) {
+        await tx.query(
+          `update appointment set catalog_id = case when $5 then $4::uuid else catalog_id end,
+                  reason = coalesce($2, reason), notes = case when $6 then $3 else notes end where id = $1`,
+          [id, reasonChanged ? newReason : null, wantNotes ?? null, svc?.id ?? null, catalogChanged, notesChanged]);
+      }
+      if (edited && !moved) await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'appointment.edit', 'appointment', $3)`, [clinic.id, session.staffId, id]);
+
+      if (reasonChanged) {
+        // Texts still waiting that name the old reason: the reminders the next pass writes again are withdrawn, and a
+        // waiting confirmation is replaced one for one. Nothing extra is sent.
+        const t = await retellTexts(tx, id, { confirmations: true });
+        retold += t.reminders + t.confirmations;
+        if (t.confirmations > 0 && startsAt.getTime() > Date.now() && canText(cur.phone)) {
+          texted = (await queueText(tx, { clinicId: clinic.id, to: cur.phone!, kind: 'confirmation',
+            body: scheduleTexts.confirmation(c.name, newReason, startsAt, cur.public_ref, c.phone),
+            patientId: cur.patient_id, appointmentId: id, staffId: session.staffId })) !== null;
+        }
       }
 
       if (status !== null && status !== cur.status) await applyStatus(tx, clinic.id, session.staffId, id, status, cur.status);
-      return { appointment: await withExtras(tx, await mustRead(tx, id)), texted };
+      const card = await withExtras(tx, await mustRead(tx, id));
+      // "No fee-guide service" while the reason still names one: data.ts would read the service back from the words.
+      if (svc === null && card.catalogId) throw refuse(400, `“${card.reason}” is the fee guide’s ${card.service}, so the visit reads as ${card.service}. Pick ${card.service} as the service, or word the reason another way.`);
+      return { appointment: card, texted, retold };
     });
     return json(saved);
   } catch (e) { return answer(e); }

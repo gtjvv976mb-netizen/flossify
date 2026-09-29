@@ -84,6 +84,37 @@ export async function dropStaleTexts(tx: Tx, id: string): Promise<void> {
     `update message_log set dedupe_key = null where appointment_id = $1 and kind = 'reminder' and dedupe_key is not null`, [id]);
 }
 
+/** A visit's words changed while its start did not: queued texts that name the old words. Reminders ('reminder:<id>',
+ *  'remind48:<id>', both kind 'reminder') are withdrawn with their keys cleared ONLY when the worker's next reminder
+ *  pass (sms_enqueue_reminders, every 10 minutes) will write them again: the same conditions as that function (036),
+ *  and before 23:45 Manila, after which the pass reads a new "tomorrow". Any other waiting reminder, such as one held
+ *  overnight for the morning of the visit, keeps its old words: old words beat no reminder. With `confirmations`, a
+ *  confirmation-kind text still waiting (a desk or web confirmation, or a "moved" text) is withdrawn and counted: the
+ *  caller queues one confirmation in its place. Sent texts keep their keys, so nothing goes out twice. Rows the worker
+ *  has claimed ('sending') are left. Keep the reminder conditions in step with sms_enqueue_reminders. */
+export async function retellTexts(tx: Tx, id: string, o: { confirmations: boolean }): Promise<{ reminders: number; confirmations: number }> {
+  const { rows } = await tx.query<{ kind: string; n: number }>(
+    `with v as (
+       select a.id, a.status, a.source, a.moved_at, c.remind_48h,
+              coalesce(nullif(a.booked_by_phone, ''), p.phone) is not null as has_phone,
+              (a.starts_at at time zone 'Asia/Manila')::date - (now() at time zone 'Asia/Manila')::date as days_out,
+              (now() at time zone 'Asia/Manila')::time < time '23:45' as before_late
+         from appointment a join patient p on p.id = a.patient_id join clinic c on c.id = a.clinic_id
+        where a.id = $1),
+     gone as (
+       update message_log m set status = 'cancelled', dedupe_key = null
+         from v
+        where m.appointment_id = v.id and m.direction = 'out' and m.status = 'queued'
+          and ((m.kind = 'confirmation' and $2)
+            or (m.kind = 'reminder' and v.before_late and v.has_phone and not (v.source = 'request' and v.moved_at is null)
+                and ((m.dedupe_key = 'reminder:' || v.id and v.days_out = 1 and v.status in ('booked', 'confirmed'))
+                  or (m.dedupe_key = 'remind48:' || v.id and v.days_out = 2 and v.status = 'booked' and v.remind_48h))))
+       returning m.kind)
+     select kind, count(*)::int as n from gone group by kind`, [id, o.confirmations]);
+  const n = (k: string) => rows.find((r) => r.kind === k)?.n ?? 0;
+  return { reminders: n('reminder'), confirmations: n('confirmation') };
+}
+
 /** A visit that has left the book: it holds no chair, and nothing more happens to it. */
 export const DONE = new Set(['cancelled', 'no_show', 'completed']);
 
