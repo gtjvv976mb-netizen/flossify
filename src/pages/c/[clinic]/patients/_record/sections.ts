@@ -1,6 +1,6 @@
 // The record's sections, grouped and colour-coded so a person always knows where they are: the same hue on
 // the section's button in the record's index, its banner, its cards' top edge and icons, and its lines on
-// the Timeline. Five groups, each a hue the workspace already has in both themes — teal for the patient,
+// the Treatment record. Five groups, each a hue the workspace already has in both themes — teal for the patient,
 // rose for health, blue for clinical work, violet for documents, green for money — and never amber or red,
 // which keep their meanings ("needs attention", "blocked"). Colour is never alone: every button, banner
 // and card also says its group and name in words.
@@ -19,7 +19,7 @@ export const GROUPS: { name: string; hue: Hue }[] = [
 
 export const SECTION_META: Record<string, SectionMeta> = {
   overview: { group: 'Patient', hue: 'teal', icon: 'user', blurb: 'Who they are, the next check-up, and each part of the record in short.' },
-  timeline: { group: 'Patient', hue: 'teal', icon: 'history', blurb: 'Every visit, newest first. Open one to see all of it.' },
+  'treatment-record': { group: 'Patient', hue: 'teal', icon: 'history', blurb: 'Every treatment by date: the tooth, the procedure and the dentist, as on the paper treatment record.' },
   visits: { group: 'Patient', hue: 'teal', icon: 'calendar', blurb: 'Every booking and visit, past and coming.' },
   health: { group: 'Health', hue: 'rose', icon: 'heart', blurb: 'Blood pressure, allergies, conditions and medicines. Check before treatment.' },
   chart: { group: 'Clinical', hue: 'blue', icon: 'tooth', blurb: 'The teeth as they are. Every change saves as you make it.' },

@@ -1,0 +1,126 @@
+---
+// The Treatment record: the ledger of page 4 of the PDA dental chart — Date · Tooth no./s · Procedure ·
+// Dentist/s · Amount charged · Amount paid · Balance · Next appt. — oldest first, one row per treatment,
+// charge and payment (src/lib/treatment-record.ts builds it; the print page draws the same one). A date
+// opens the whole visit in its side panel (./VisitPanels.astro): the consent and signature, the notes, the
+// prescriptions, the payments. The money columns are drawn only for people who may bill.
+//
+// A real table where the section is wide (from 54rem inside it); below that, each day is a card with
+// labelled lines (the container query in record.css). With more than 14 days, the script folds all but the
+// last 10 behind "Show N earlier days" (the hidden attribute, never a class); with scripts off, every day shows.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Empty from '../../../../../components/ws/Empty.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Head from '../_ui/Head.astro';
+import Glyph from '../_ui/Glyph.astro';
+import { dateText } from '../../../../../lib/health';
+import { balanceWords, amountWords, type Ledger } from '../../../../../lib/treatment-record';
+import { pesos } from '../../../../../lib/invoices';
+
+interface Props { ledger: Ledger; money: boolean; today: string; printHref: string; name: string }
+const { ledger, money, today, printHref, name } = Astro.props;
+const { days } = ledger;
+const FOLD_OVER = 14, KEEP = 10;
+const folded = days.length > FOLD_OVER ? days.length - KEEP : 0;
+const balanceNote = !money ? null
+  : ledger.balance === 'mismatch' ? `The running balance did not match the balance on file (${pesos(ledger.onFile < 0n ? -ledger.onFile : ledger.onFile)}${ledger.onFile < 0n ? ' credit' : ''}). Check Money.`
+  : ledger.balance === 'too-many' ? `Too many entries to count a balance here; the balance now is ${balanceWords(ledger.onFile)} (Money).`
+  : 'Balance is what the patient owes at the end of that day: charges less payments, less what an HMO or PhilHealth is still expected to pay. It is the same count as the Balance at the top. Void statements and voided payments are not counted; they stay in Money.';
+---
+
+<Pane as="section" label="Treatment record" id="treatment-record" pad="none">
+  <div class="trec-head">
+    <Head icon="history" title="Treatment record" meta={ledger.count ? (ledger.count === 1 ? 'One treatment' : `${ledger.count} treatments`) : undefined}>
+      <a slot="actions" href={printHref} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>
+    </Head>
+    <p class="trec-intro">{money
+      ? 'One line for each treatment, charge and payment, oldest first, as on the paper treatment record. Press a date to see the whole visit: the consent and signature, the dentist’s notes, prescriptions and payments.'
+      : 'One line for each treatment, oldest first, as on the paper treatment record. Press a date to see the whole visit: the consent and signature, the dentist’s notes and prescriptions.'}</p>
+  </div>
+  {days.length === 0 ? <div class="trec-pad"><Empty icon="clock" text="No treatment recorded yet." /></div> : (
+    <>
+      {folded > 0 && <div class="trec-pad"><button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-trec-more hidden>Show {folded === 1 ? 'one earlier day' : `${folded} earlier days`}</button></div>}
+      <div class="trec-wrap">
+        <table class="trec" data-money={money ? '' : undefined} tabindex="-1" data-trec-table data-trec-fold={folded || undefined}>
+          <caption class="sr-only">Treatment record of {name}, oldest first. Teeth in FDI numbers.</caption>
+          <thead>
+            <tr>
+              <th scope="col" class="meta trec-c-date">Date</th>
+              <th scope="col" class="meta trec-c-tooth"><span aria-hidden="true">Tooth no./s</span><span class="sr-only">Tooth numbers</span></th>
+              <th scope="col" class="meta trec-c-proc">Procedure</th>
+              <th scope="col" class="meta trec-c-who"><span aria-hidden="true">Dentist/s</span><span class="sr-only">Dentist</span></th>
+              {money && <th scope="col" class="meta trec-c-amt">Amount charged</th>}
+              {money && <th scope="col" class="meta trec-c-amt">Amount paid</th>}
+              {money && <th scope="col" class="meta trec-c-amt">Balance</th>}
+              <th scope="col" class="meta trec-c-next"><span aria-hidden="true">Next appt.</span><span class="sr-only">Next appointment</span></th>
+            </tr>
+          </thead>
+          {days.map((d, di) => (
+            <tbody data-trec-day data-trec-early={di < folded ? '' : undefined}>
+              {d.rows.map((r, ri) => {
+                const lastRow = ri === d.rows.length - 1;
+                return (
+                  <tr data-kind={r.kind} data-quiet={r.quiet ? '' : undefined}>
+                    {ri === 0 && (
+                      <th scope="rowgroup" rowspan={d.rows.length} class="trec-date-cell">
+                        {d.open.length ? (
+                          <>
+                            <button type="button" class="trec-date" data-ws-open={`rec-visit-${d.open[0].key}`} aria-haspopup="dialog">
+                              <span>{d.day === today && <><span class="trec-nw">Today ·</span>{' '}</>}<span class="trec-nw">{dateText(d.day)}</span></span><span class="sr-only">, see the whole visit</span>
+                              <span class="trec-date-go" aria-hidden="true">See the whole visit <Icon name="chevron-right" size={14} /></span>
+                            </button>
+                            {d.open.slice(1).map((o) => <button type="button" class="trec-also" data-ws-open={`rec-visit-${o.key}`} aria-haspopup="dialog">Also {o.time || 'another visit'}<span class="sr-only">: see that visit</span></button>)}
+                          </>
+                        ) : <span class="trec-date-plain">{d.day === today && <><span class="trec-nw">Today ·</span>{' '}</>}<span class="trec-nw">{dateText(d.day)}</span></span>}
+                      </th>
+                    )}
+                    <td class="trec-c-tooth" data-none={r.teeth.length ? undefined : ''}>
+                      <span class="meta trec-l">Tooth no./s</span>
+                      <span class="trec-teeth">{r.teeth.map((t) => <span class="rp rp-tooth"><Glyph name="tooth" size={13} /><span class="sr-only">Tooth </span>{t}</span>)}</span>
+                    </td>
+                    <td class="trec-c-proc">
+                      <span class="trec-words">{r.status && <Chip status={r.status} />}{r.words && <span>{r.words}</span>}</span>
+                      {r.detail && <span class="trec-detail">{r.detail}</span>}
+                    </td>
+                    <td class="trec-c-who" data-none={r.dentist ? undefined : ''}><span class="meta trec-l">Dentist</span>{r.dentist}</td>
+                    {money && <td class="trec-c-amt" data-none={r.charged === null ? '' : undefined}><span class="meta trec-l">Amount charged</span>{r.charged !== null && amountWords(r.charged)}</td>}
+                    {money && <td class="trec-c-amt trec-paid" data-none={r.paid === null ? '' : undefined}><span class="meta trec-l">Amount paid</span>{r.paid !== null && pesos(r.paid)}</td>}
+                    {money && <td class="trec-c-amt trec-bal" data-foot={lastRow ? '' : undefined} data-none={r.balance === null ? '' : undefined}><span class="meta trec-l">Balance</span>{r.balance !== null && balanceWords(r.balance)}</td>}
+                    <td class="trec-c-next" data-foot={lastRow ? '' : undefined} data-none={r.next ? undefined : ''}>
+                      <span class="meta trec-l">Next appt.</span>
+                      {r.next && (r.next.visitKey
+                        ? <button type="button" class="trec-next" data-ws-open={`rec-visit-${r.next.visitKey}`} aria-haspopup="dialog" aria-label={`Next appointment ${r.next.text}: see the visit`}>{r.next.text}</button>
+                        : <span>{r.next.text}</span>)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          ))}
+        </table>
+      </div>
+      <div class="trec-foot">
+        {balanceNote && <p>{balanceNote}</p>}
+        <p>Teeth in FDI numbers.{ledger.capped && ' Only the newest 300 treatments and visits are listed.'}</p>
+      </div>
+    </>
+  )}
+</Pane>
+
+<script>
+  // Fold the older days behind one button (more than 14 days: the last 10 stay). The hidden attribute only.
+  document.querySelectorAll<HTMLTableElement>('[data-trec-table][data-trec-fold]').forEach((table) => {
+    const early = [...table.querySelectorAll<HTMLElement>('tbody[data-trec-early]')];
+    const more = table.closest('section')?.querySelector<HTMLButtonElement>('[data-trec-more]');
+    if (!more || !early.length) return;
+    early.forEach((b) => { b.hidden = true; });
+    more.hidden = false;
+    more.addEventListener('click', () => {
+      early.forEach((b) => { b.hidden = false; });
+      more.closest('.trec-pad')?.remove();
+      const first = early[0]?.querySelector<HTMLElement>('.trec-date');
+      (first ?? table).focus();
+    });
+  });
+</script>

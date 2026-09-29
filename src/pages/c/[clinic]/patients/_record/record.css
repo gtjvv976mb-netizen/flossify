@@ -1,7 +1,7 @@
-/* The clinical record's sections (033): Timeline, Treatment, Notes, Prescriptions, Files, and the next
+/* The clinical record's sections (033): the Treatment record, Treatment, Notes, Prescriptions, Files, and the next
    check-up on the Overview. Soft template (docs/workspace-redesign.md): white rounded cards, slate words,
    one teal action, tinted chips that always carry words. Every rule starts with a class only these
-   sections use (.tl-, .tx-, .nt-, .rx-, .fl-, .rc-), unlayered like patients.css. Dark mode comes from the
+   sections use (.trec-, .tl-filter, .tx-, .nt-, .rx-, .fl-, .rc-), unlayered like patients.css. Dark mode comes from the
    workspace tokens, so nothing here names a colour of its own. */
 
 /* --- a quick-add row at the head of a section: the section's own button, and a line saying what it is -- */
@@ -9,7 +9,7 @@
 .rec-lead p { max-width: 62ch; font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
 .rec-lead .ws-btn { min-height: 44px; }
 
-/* --- Timeline ------------------------------------------------------------------------------------ */
+/* --- filter pills (Files) ------------------------------------------------------------------------------------ */
 .tl-filters { display: flex; flex-wrap: wrap; gap: 0.375rem; }
 .tl-filter {
   display: inline-flex; align-items: center; gap: 0.375rem; min-height: 44px; padding: 0 0.875rem;
@@ -21,36 +21,6 @@
 .tl-filter[aria-pressed="true"] { border-color: var(--ws-teal); background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
 .tl-filter:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
 .tl-filter .tl-n { font-weight: 500; font-variant-numeric: tabular-nums; opacity: 0.85; }
-.tl-day { position: relative; padding-left: 1.75rem; }
-.tl-day + .tl-day { margin-top: 1.25rem; }
-.tl-day::before { content: ""; position: absolute; left: 0.6875rem; top: 1.75rem; bottom: -1.25rem; width: 2px; border-radius: 2px; background: var(--ws-hair); }
-.tl-day:last-child::before { bottom: 0; }
-.tl-date { position: relative; margin-left: -1.75rem; padding-left: 1.75rem; font-size: 14px; font-weight: 700; color: var(--c-ink); }
-.tl-date::before { content: ""; position: absolute; left: 0.375rem; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 999px; background: var(--ws-teal-fill); box-shadow: 0 0 0 3px var(--ws-teal-tint); }
-.tl-list { display: grid; gap: 0.5rem; margin-top: 0.625rem; }
-.tl-item {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 0.25rem 0.75rem;
-  padding: 0.75rem 0.875rem; border: 1px solid var(--ws-hair); border-radius: 12px; background: var(--c-surface);
-}
-.tl-item[hidden] { display: none; }
-.tl-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--ws-subtle); color: var(--c-ink-2); }
-.tl-item[data-kind="visit"] .tl-icon, .tl-item[data-kind="consent"] .tl-icon { background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
-.tl-item[data-kind="treatment"] .tl-icon { background: var(--ws-green-tint); color: var(--ws-green-ink); }
-.tl-item[data-kind="health"] .tl-icon { background: var(--ws-red-tint); color: var(--ws-red-ink); }
-.tl-item[data-kind="note"] .tl-icon, .tl-item[data-kind="file"] .tl-icon { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
-.tl-item[data-kind="money"] .tl-icon { background: var(--ws-amber-tint); color: var(--ws-amber-ink); }
-.tl-title { font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--c-ink); }
-.tl-detail { margin-top: 0.125rem; font-size: 14px; line-height: 1.5; color: var(--c-ink-2); overflow-wrap: anywhere; }
-.tl-by { margin-top: 0.125rem; font-size: 13px; color: var(--c-ink-2); }
-.tl-time { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--c-ink-2); white-space: nowrap; }
-.tl-go { grid-column: 2 / -1; justify-self: start; display: inline-flex; align-items: center; min-height: 44px; margin: -0.5rem 0 -0.625rem; font-size: 13.5px; font-weight: 600; color: var(--ws-teal-ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.tl-go:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; border-radius: 6px; }
-.tl-item[data-tone="muted"] .tl-title { color: var(--c-ink-2); font-weight: 500; }
-@media (max-width: 639px) {
-  .tl-item { grid-template-columns: auto minmax(0, 1fr); }
-  .tl-time { grid-column: 2; justify-self: start; }
-  .tl-go { grid-column: 2; }
-}
 
 /* --- Treatment: the plan, what was done, lab cases ---------------------------------------------------- */
 .tx-phase + .tx-phase { margin-top: 1rem; }
@@ -207,7 +177,7 @@
 .rec-nav-item[aria-selected="true"] .rec-nav-icon { background: var(--c-surface); }
 .rec-nav-item[aria-selected="true"] .rec-nav-count { background: var(--c-surface); color: var(--hue-ink); }
 @media (min-width: 1200px) {
-  .rec-body { grid-template-columns: 13.75rem minmax(0, 1fr); align-items: start; }
+  .rec-body { grid-template-columns: 14.25rem minmax(0, 1fr); align-items: start; }
   .rec-nav { position: sticky; top: 5.5rem; max-height: calc(100vh - 6.5rem); overflow-y: auto; padding: 0.75rem; border: 1px solid var(--ws-hair); border-radius: 16px; background: var(--c-surface); }
   .rec-nav-list { flex-direction: column; gap: 0.125rem; overflow: visible; padding: 0; margin: 0; }
   .rec-nav-group { display: flex; align-items: center; gap: 0.4rem; margin: 0.75rem 0.5rem 0.25rem; font-size: 12.5px; font-weight: 700; color: var(--hue-ink); }
@@ -235,20 +205,6 @@
 [data-rec-panel] .ws-pane { border-top: 3px solid var(--hue-bar, var(--ws-hair)); }
 [data-rec-panel] .ws-pane-icon { background: var(--hue-tint); color: var(--hue-ink); }
 @media (max-width: 767px) { .rec-banner { padding: 0.875rem 1rem; } .rec-banner-title { font-size: 18px; } }
-
-/* The Timeline's lines in the same colours as the sections they belong to. */
-.tl-item[data-kind="visit"] .tl-icon, .tl-item[data-kind="record"] .tl-icon { background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
-.tl-item[data-kind="health"] .tl-icon { background: var(--ws-rose-tint); color: var(--ws-rose-ink); }
-.tl-item[data-kind="treatment"] .tl-icon, .tl-item[data-kind="chart"] .tl-icon, .tl-item[data-kind="file"] .tl-icon { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
-.tl-item[data-kind="note"] .tl-icon { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
-.tl-item[data-kind="consent"] .tl-icon, .tl-item[data-kind="message"] .tl-icon { background: var(--ws-violet-tint); color: var(--ws-violet-ink); }
-.tl-item[data-kind="money"] .tl-icon { background: var(--ws-green-tint); color: var(--ws-green-ink); }
-.tl-item { border-left: 3px solid transparent; }
-.tl-item[data-kind="visit"], .tl-item[data-kind="record"] { border-left-color: var(--ws-teal); }
-.tl-item[data-kind="health"] { border-left-color: var(--ws-rose-ink); }
-.tl-item[data-kind="treatment"], .tl-item[data-kind="chart"], .tl-item[data-kind="file"], .tl-item[data-kind="note"] { border-left-color: var(--ws-blue); }
-.tl-item[data-kind="consent"], .tl-item[data-kind="message"] { border-left-color: var(--ws-violet-ink); }
-.tl-item[data-kind="money"] { border-left-color: var(--ws-green); }
 
 /* --- details as pills and tiles (the owner: "make each specific detail more visible … their own pill") -----
    .rp a detail pill (a tooth, a person, a day, an amount, an allergy); .rk the label of a part, as a small
@@ -331,45 +287,13 @@ button.rf { display: grid; min-height: 44px; }
 @media (max-width: 639px) { .rf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rf dd { font-size: 15px; } }
 .rk { justify-self: start; }
 
-/* --- visits on the Timeline, and the visit's side panel (./VisitPanels.astro) --------------------------
-   A visit is a card that is one button: the time and status, the dentist and what was done, the consent
-   (with a small copy of the signature) and the money, each its own pill. The panel is a stack of small
-   cards, each in its section's colour. The signature is always dark ink on a white slip, like paper. */
-.rp-hue-blue { border-color: transparent; background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
-.vx-card {
-  display: grid; gap: 0.625rem; width: 100%; padding: 0.875rem 1rem; text-align: left; cursor: pointer;
-  border: 1px solid var(--ws-hair); border-left: 4px solid var(--ws-teal); border-radius: 12px; background: var(--c-surface);
-  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
-}
-.vx-card:hover { border-color: var(--ws-teal); box-shadow: 0 1px 2px rgb(16 24 40 / 0.06); }
-.vx-card:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
-.vx-card[data-status="cancelled"], .vx-card[data-status="no_show"] { border-left-color: var(--ws-hair); }
-.vx-card[data-status="day"] { border-left-color: var(--ws-blue); }
-[data-tl-item][hidden] { display: none; }
-.vx-card-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; }
-.vx-card-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
-.vx-card[data-status="day"] .vx-card-icon { background: var(--ws-blue-tint); color: var(--ws-blue-ink); }
-.vx-card-title { display: grid; min-width: 0; }
-.vx-card-name { font-size: 16px; font-weight: 700; line-height: 1.35; color: var(--c-ink); overflow-wrap: anywhere; }
-.vx-card-time { font-size: 13.5px; font-weight: 500; color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
-.vx-card-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
-.vx-card-row:empty { display: none; }
-.vx-card-go { display: inline-flex; align-items: center; gap: 0.25rem; justify-self: start; font-size: 14px; font-weight: 600; color: var(--ws-teal-ink); }
-.vx-card:hover .vx-card-go { text-decoration: underline; text-underline-offset: 3px; }
-.vx-card-sig { padding-right: 0.25rem; }
-@media (max-width: 479px) {
-  .vx-card-top { grid-template-columns: auto minmax(0, 1fr); }
-  .vx-card-top > :last-child { grid-column: 2; justify-self: start; }
-}
-
+/* --- the visit's side panel (./VisitPanels.astro), opened from a date on the Treatment record ---------------
+   A stack of small cards, each in its section's colour. The signature is always dark ink on a white slip, like paper. */
 .sig { display: block; border: 1px solid #d0d5dd; border-radius: 12px; background: #fff; color: #1f2937; }
 .sig svg { display: block; width: 100%; height: auto; max-height: 220px; }
 .sig-ink { fill: none; stroke: currentColor; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
 .sig-line { stroke: #98a2b3; stroke-width: 2; stroke-dasharray: 10 8; }
 .sig-none { display: block; padding: 1rem; font-size: 14px; color: #475467; }
-.sig-mini { display: inline-block; width: 64px; height: 26px; margin-left: 0.125rem; border-radius: 6px; border-color: transparent; }
-.sig-mini svg { width: 64px; height: 26px; }
-.sig-mini .sig-ink { stroke-width: 14; }
 
 .vx-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .vx-actions .ws-btn { min-height: 44px; }
@@ -449,4 +373,75 @@ button.rf { display: grid; min-height: 44px; }
   .vs-acts { grid-column: 1 / -1; justify-content: flex-start; }
   .vs-acts .ws-btn { flex: 1 1 auto; }
   .vs-also .vs-who { margin-left: 0; }
+}
+
+/* --- The Treatment record (./TreatmentRecord.astro): the PDA's ledger, oldest first ---------------------------
+   A real table where the section is 54rem or wider (eight columns fit at 1440, not at 1366); below that each
+   day is a card with labelled lines. The date and the next appointment are teal-ink links (buttons that open
+   the visit); amount paid is money-in green with its heading; a missed or cancelled visit says so in a chip,
+   its words in ink-2. Folded days use the hidden attribute, so a display rule on tbody must not beat it. The
+   wrapper scrolls sideways only if a row's amounts ever outgrow the table (the page itself never does). */
+.trec-head { padding: 1.25rem 1.5rem 0; }
+.trec-intro { margin-top: -0.5rem; padding-bottom: 1rem; max-width: 72ch; font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
+.trec-pad { padding: 0 1.5rem 1rem; }
+.trec-foot { display: grid; gap: 0.25rem; padding: 0.875rem 1.5rem 1.25rem; border-top: 1px solid var(--ws-hair); font-size: 13.5px; line-height: 1.5; color: var(--c-ink-2); }
+.trec-wrap { container-type: inline-size; container-name: trec; overflow-x: auto; }
+.trec { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; line-height: 1.45; color: var(--c-ink); }
+.trec:focus { outline: none; }
+.trec thead th { padding: 0.5rem 0.625rem; border-block: 1px solid var(--ws-hair); background: var(--ws-subtle); font-weight: 500; vertical-align: bottom; white-space: normal; }
+.trec td, .trec th[scope="rowgroup"] { padding: 0.5rem 0.625rem; vertical-align: top; border-bottom: 1px solid var(--ws-hair); }
+.trec thead th:first-child, .trec th[scope="rowgroup"] { padding-left: 1.5rem; }
+.trec tr > :last-child { padding-right: 1.25rem; }
+.trec tbody[hidden] { display: none; }
+.trec tbody + tbody { border-top: 2px solid var(--ws-hair); }
+.trec th[scope="rowgroup"] { font-weight: 600; text-align: left; background: var(--c-surface); }
+.trec-nw { white-space: nowrap; }
+.trec-c-amt { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Room for the words: the procedure and the dentist take their share first, the dates and amounts what they need. */
+.trec thead .trec-c-proc { width: 27%; }
+.trec thead .trec-c-who { width: 15%; }
+.trec thead .trec-c-amt { text-align: right; }
+.trec-paid { color: var(--ws-green-ink); font-weight: 600; }
+.trec-bal { font-weight: 600; }
+.trec-l { display: none; }
+.trec-words { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; font-weight: 600; overflow-wrap: anywhere; }
+.trec tr[data-quiet] .trec-words, .trec tr[data-kind="payor"] .trec-words { color: var(--c-ink-2); font-weight: 500; }
+.trec-detail { display: block; margin-top: 0.125rem; font-size: 13px; line-height: 1.45; color: var(--c-ink-2); overflow-wrap: anywhere; }
+.trec-teeth { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.trec-c-tooth .rp { white-space: nowrap; }
+.trec-date, .trec-also, .trec-next {
+  display: inline-flex; align-items: center; gap: 0.375rem; min-height: 44px; text-align: left; cursor: pointer;
+  color: var(--ws-teal-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px;
+}
+.trec-date { margin-block: -0.625rem; }
+.trec-also, .trec-next { margin-block: -0.625rem; font-size: 13.5px; }
+.trec-next { white-space: nowrap; }
+.trec-also { display: flex; }
+.trec-date:focus-visible, .trec-also:focus-visible, .trec-next:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; border-radius: 6px; }
+.trec-date-go { display: none; }
+.trec-date-plain { display: inline-block; padding-block: 0.125rem; }
+@container trec (width < 54rem) {
+  .trec, .trec tbody, .trec tr, .trec td, .trec th[scope="rowgroup"] { display: block; }
+  .trec tbody[hidden] { display: none; }
+  .trec thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .trec { padding: 0 1rem 1rem; }
+  .trec tbody { margin-top: 0.75rem; border: 1px solid var(--ws-hair); border-radius: 12px; background: var(--c-surface); overflow: hidden; }
+  .trec tbody + tbody { border-top-width: 1px; }
+  .trec tr { display: flex; flex-direction: column; gap: 0.375rem; padding: 0.75rem 0.875rem; border-bottom: 1px solid var(--ws-hair); }
+  .trec tr:last-child { border-bottom: 0; }
+  .trec tr > :last-child, .trec th[scope="rowgroup"] { padding-right: 0; }
+  .trec td { padding: 0; border: 0; }
+  .trec th[scope="rowgroup"] { order: -3; margin: -0.75rem -0.875rem 0.25rem; padding: 0 0.875rem; border-bottom: 1px solid var(--ws-hair); background: var(--ws-subtle); white-space: normal; }
+  .trec-date { margin-block: 0; flex-wrap: wrap; }
+  .trec-date-go { display: inline-flex; align-items: center; gap: 0.125rem; font-size: 13.5px; }
+  .trec-also { margin-block: -0.25rem 0.25rem; }
+  .trec-c-proc { order: -2; }
+  .trec-c-tooth, .trec-c-who { order: -1; }
+  .trec-c-tooth .trec-l, .trec-c-who .trec-l { display: none; }
+  .trec td.trec-c-amt, .trec td.trec-c-next { display: flex; justify-content: space-between; align-items: center; gap: 1rem; text-align: right; }
+  .trec td[data-none] { display: none; }
+  .trec-c-amt .trec-l, .trec-c-next .trec-l { display: inline; color: var(--c-ink-2); font-weight: 500; }
+  .trec-next { margin-block: -0.5rem; }
+  .trec td[data-foot] { padding-top: 0.375rem; border-top: 1px solid var(--ws-hair); }
+  .trec td[data-foot] ~ td[data-foot] { padding-top: 0; border-top: 0; }
 }

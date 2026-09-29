@@ -1,7 +1,7 @@
 ---
 // The consent to examination and treatment, signed by the patient's own hand on the clinic's tablet (035).
 //
-// Opened from a visit (the Timeline's panel, "Sign consent on this tablet"). Two steps on one page, so the
+// Opened from a visit (the visit's panel, "Sign consent on this tablet"). Two steps on one page, so the
 // tablet can go from the desk to the patient without anything loading:
 //   1. For the clinic: tick the treatment the dentist explained (the plan's open lines), write anything
 //      else, choose the dentist — then "Hand the tablet to <name>".
@@ -12,7 +12,7 @@
 //      everything again inside the transaction and writes the visit_consent row and an audit line.
 // A refused post comes back on step 2 with what was typed and the signature redrawn. A saved one shows
 // only "Thank you — please hand the tablet back", so the next thing the patient sees is not the record;
-// the desk's button goes back to the record with the visit open (?visit=<id>: today's visit shows its This visit strip, a later one opens on the Timeline).
+// the desk's button goes back to the record with the visit open (?visit=<id>: today's visit shows its This visit strip, a later one opens on Visits).
 //
 // Its own page, not the workspace shell: no sidebar for a patient to wander into. Behind requireWorkspace
 // like every /c/ page, read and written inside withClinic (row-level security), never cached.

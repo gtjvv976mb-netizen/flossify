@@ -68,7 +68,7 @@ export function initPanels(ctx: Ctx): Panels {
   const hide = (p: HTMLElement) => { p.hidden = true; p.replaceChildren(); };
   const allergyOf = (c: Card): string => { const raw = c.allergies as unknown; return Array.isArray(raw) ? (raw as string[]).join(', ') : (raw as string | null) ?? ''; };
   const pt = (id: string): Pt | undefined => ctx.patients.byId.get(id);
-  // The record; with a visit, the record opens on that visit (today's: the chairside strip; a past one: its Timeline card).
+  // The record; with a visit, the record opens on that visit (today's: the chairside strip; a past one: its date on the Treatment record).
   const recordHref = (id: string, visitId?: string | null) => `${boot.links.record}${id}/${visitId ? `?visit=${encodeURIComponent(visitId)}` : ''}`;
   // The consent, signed by the patient on this tablet for one visit (035).
   const signHref = (patientId: string, visitId: string) => `${boot.links.record}${patientId}/sign/${encodeURIComponent(visitId)}/`;

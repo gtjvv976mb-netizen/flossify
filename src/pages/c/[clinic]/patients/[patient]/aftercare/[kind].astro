@@ -31,7 +31,7 @@ const langParam = q.get('lang');
 const lang: 'en' | 'fil' | 'both' = langParam === 'en' || langParam === 'fil' ? langParam : 'both';
 const visitParam = q.get('visit');
 const visit = visitParam && UUID.test(visitParam) ? visitParam : null;
-const back = visit ? `/c/${clinic.slug}/patients/${patientId}/?visit=${visit}#timeline` : `/c/${clinic.slug}/patients/${patientId}/#timeline`;
+const back = visit ? `/c/${clinic.slug}/patients/${patientId}/?visit=${visit}#treatment-record` : `/c/${clinic.slug}/patients/${patientId}/#treatment-record`;
 const langHref = (l: 'en' | 'fil' | 'both') => `?lang=${l}${visit ? `&visit=${visit}` : ''}`;
 
 const data = await withClinic(clinic.id, async (tx) => {

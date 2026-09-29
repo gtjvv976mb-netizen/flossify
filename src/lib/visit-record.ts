@@ -1,5 +1,5 @@
-// The Timeline's visits: everything that happened at one visit, gathered in one place, so a line on the
-// Timeline opens the whole visit — when, the dentist, the chair, why they came, the consent they signed
+// The visits: everything that happened at one visit, gathered in one place, so a date on the Treatment
+// record (src/lib/treatment-record.ts) opens the whole visit — when, the dentist, the chair, why they came, the consent they signed
 // (with the signature), what was done to which tooth, the notes, prescriptions and letters, blood pressure,
 // X-rays and photos, what it cost and what was paid, and the texts about it.
 //
@@ -8,7 +8,7 @@
 // visit belongs to that visit (the one that had started by then, if there were two). Treatment, notes,
 // prescriptions or a statement on a day with no visit on the book make a visit of their own ("At the
 // clinic"), because work was done; blood pressure, files, letters and payments join a visit on their day
-// when there is one and otherwise stay on the Timeline as lines of their own. A payment goes with its
+// when there is one and otherwise stay in their own sections. A payment goes with its
 // statement's visit whatever day it came in.
 //
 // Money is filled in only for people who may see amounts (the page passes `money`).
@@ -69,8 +69,9 @@ export interface Visit {
   /** Every tooth the visit touched: treated, written about, or what the visit was booked for. */
   teeth: number[];
   future: boolean;
-  /** The Timeline's lines this visit holds ("done:<id>" …), so they are not listed twice. */
-  refs: string[];
+  /** When the visit was booked (appointment.created_at), or null for a day with nothing on the book: the Treatment
+   *  record's Next appt. is the appointment set by the end of a visit's day. */
+  bookedAt: Date | null;
 }
 
 /** Today's visit as the record's This visit strip sees it (036): the row, its status and what it was charged. */
@@ -85,7 +86,7 @@ export const sourceWords = (s: string | null) => (s ? SOURCE[s] ?? null : null);
 /** Every visit, newest first, each with everything that belongs to it. */
 export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extra, consents: VisitConsent[], money: boolean): Promise<Visit[]> {
   const [appts, agreed, texts, stmts, lines, pays] = await Promise.all([
-    tx.query(`select a.id, a.starts_at, a.ends_at, a.status, a.reason, a.source, a.public_ref, a.date_only, a.teeth, a.chair, a.arrived_at, a.seated_at,
+    tx.query(`select a.id, a.starts_at, a.ends_at, a.status, a.reason, a.source, a.public_ref, a.date_only, a.teeth, a.chair, a.arrived_at, a.seated_at, a.created_at,
                      coalesce(s.full_name, a.dentist_name) as dentist, b.full_name as booked_by
                 from appointment a left join staff s on s.id = a.dentist_id left join staff b on b.id = a.created_by
                where a.patient_id = $1 order by a.starts_at desc limit 300`, [patientId]),
@@ -106,13 +107,13 @@ export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extr
   const blank = (key: string, day: string, at: Date): Visit => ({
     key, id: null, day, at, end: null, dateOnly: false, status: null, reason: null, dentist: null, chair: null, source: null, ref: null, bookedBy: null,
     arrivedAt: null, seatedAt: null, asked: [], procs: [], notes: [], rx: [], letters: [], vitals: [], files: [], adjustments: [], consents: [], agreed: [], texts: [],
-    money: null, teeth: [], future: false, refs: [],
+    money: null, teeth: [], future: false, bookedAt: null,
   });
   for (const a of appts.rows) {
     const v = blank(a.id, dayKey(a.starts_at), a.starts_at);
     Object.assign(v, {
       id: a.id, end: a.ends_at, dateOnly: a.date_only, status: a.status, reason: a.reason, dentist: a.dentist, chair: a.chair, source: a.source,
-      ref: a.public_ref, bookedBy: a.booked_by, arrivedAt: a.arrived_at, seatedAt: a.seated_at, asked: a.teeth ?? [], future: +a.starts_at > +now, refs: [`visit:${a.id}`],
+      ref: a.public_ref, bookedBy: a.booked_by, arrivedAt: a.arrived_at, seatedAt: a.seated_at, asked: a.teeth ?? [], future: +a.starts_at > +now, bookedAt: a.created_at ?? null,
     });
     visits.set(a.id, v);
   }
@@ -128,9 +129,9 @@ export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extr
   };
   const place = (id: string | null | undefined, at: Date, day: string, make: boolean) => (id && visits.get(id)) || onDay(at, day, make);
 
-  for (const d of c.done) { const v = place(d.visitId, d.at, dayKey(d.at), true)!; v.procs.push(d); v.refs.push(`done:${d.id}`); }
-  for (const n of c.notes) { const v = place(n.visitId, n.at, n.visitOn, true)!; v.notes.push(n); v.refs.push(`note:${n.id}`); }
-  for (const r of c.rx) { const v = place(r.visitId, r.at, dayKey(r.at), true)!; v.rx.push(r); v.refs.push(`rx:${r.id}`); }
+  for (const d of c.done) { const v = place(d.visitId, d.at, dayKey(d.at), true)!; v.procs.push(d); }
+  for (const n of c.notes) { const v = place(n.visitId, n.at, n.visitOn, true)!; v.notes.push(n); }
+  for (const r of c.rx) { const v = place(r.visitId, r.at, dayKey(r.at), true)!; v.rx.push(r); }
 
   const stmtVisit = new Map<string, Visit>();
   const stmtNo = new Map<string, string>();
@@ -142,7 +143,6 @@ export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extr
     const no = statementNo(s.series_prefix, s.number);
     stmtVisit.set(s.id, v); stmtNo.set(s.id, no);
     moneyOf(v).statements.push({ id: s.id, no, total: s.total, status: s.status, lines: linesOf.get(s.id) ?? [], payor: s.payor_name, payorShare: Number(s.payor_share) > 0 ? s.payor_share : null });
-    v.refs.push(`stmt:${s.id}`);
   }
   const paidBy = new Map<Visit, bigint>();
   for (const y of pays.rows) {
@@ -150,7 +150,6 @@ export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extr
     if (!v) continue;
     moneyOf(v).payments.push({ id: y.id, amount: y.amount, method: methodLabel(y.method), paidOn: y.paid_on, voided: !!y.voided_at, birRef: y.bir_ref, by: y.full_name, statementNo: y.invoice_id ? stmtNo.get(y.invoice_id) ?? null : null });
     if (!y.voided_at) paidBy.set(v, (paidBy.get(v) ?? 0n) + fromDb(y.amount));
-    v.refs.push(`pay:${y.id}`);
   }
   // What the visit came to: the same rule as patient_balance() (022), one statement at a time.
   for (const v of visits.values()) {
@@ -178,20 +177,20 @@ export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extr
   for (const k of consents) { const v = visits.get(k.visitId); if (v) v.consents.push(k); }
   for (const k of agreed.rows) {
     const v = visits.get(k.appointment_id);
-    if (v) { v.agreed.push({ title: k.title, how: CHANNEL[k.channel] ?? k.channel, by: k.given_by_name, at: k.given_at }); v.refs.push(`pc:${k.id}`); }
+    if (v) { v.agreed.push({ title: k.title, how: CHANNEL[k.channel] ?? k.channel, by: k.given_by_name, at: k.given_at }); }
   }
   for (const m of texts.rows) {
     const v = visits.get(m.appointment_id);
-    if (v) { v.texts.push({ word: m.direction === 'in' ? 'Reply from the patient' : TEXT_WORD[m.kind] ?? 'Text', at: m.created_at, failed: m.status === 'failed', incoming: m.direction === 'in' }); v.refs.push(`msg:${m.id}`); }
+    if (v) { v.texts.push({ word: m.direction === 'in' ? 'Reply from the patient' : TEXT_WORD[m.kind] ?? 'Text', at: m.created_at, failed: m.status === 'failed', incoming: m.direction === 'in' }); }
   }
-  for (const s of x.vitals) { const v = place(s.visitId, s.at, dayKey(s.at), false); if (v) { v.vitals.push(s); v.refs.push(`vital:${s.id}`); } }
-  for (const l of x.letters) { const v = onDay(l.at, l.issuedOn ?? dayKey(l.at), false); if (v) { v.letters.push(l); v.refs.push(`letter:${l.id}`); } }
+  for (const s of x.vitals) { const v = place(s.visitId, s.at, dayKey(s.at), false); if (v) { v.vitals.push(s); } }
+  for (const l of x.letters) { const v = onDay(l.at, l.issuedOn ?? dayKey(l.at), false); if (v) { v.letters.push(l); } }
   for (const p of x.plans) for (const a of p.adjustments) {
     const at = new Date(`${a.on}T12:00:00+08:00`);
     const v = onDay(at, a.on ?? dayKey(at), false);
-    if (v) { v.adjustments.push({ id: a.id, note: a.note, by: a.by }); v.refs.push(`adj:${a.id}`); }
+    if (v) { v.adjustments.push({ id: a.id, note: a.note, by: a.by }); }
   }
-  for (const f of c.files) { const v = place(f.visitId, f.at, f.takenAt ?? dayKey(f.at), false); if (v) { v.files.push(f); v.refs.push(`file:${f.id}`); } }
+  for (const f of c.files) { const v = place(f.visitId, f.at, f.takenAt ?? dayKey(f.at), false); if (v) { v.files.push(f); } }
 
   for (const v of visits.values()) {
     const t = new Set<number>([...v.procs.map((p) => p.fdi).filter((n): n is number => !!n), ...v.notes.flatMap((n) => n.teeth), ...v.asked, ...v.files.map((f) => f.fdi).filter((n): n is number => !!n)]);

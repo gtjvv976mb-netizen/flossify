@@ -1,0 +1,209 @@
+---
+// The Treatment record on paper: page 4 of the PDA dental chart as the clinic prints it — the clinic's name,
+// address and number at the head, "Treatment record", the patient's Name · Age · Sex · Chart no., then the
+// same ledger the record shows (src/lib/treatment-record.ts builds both, so they never differ), every day,
+// oldest first. A4 portrait, black on white; the column heads repeat on every page. The bar at the top (the
+// way back, one teal Print) does not print. The money columns, the balance note and the not-a-BIR-receipt line
+// are printed only for people who may bill (finance.bill). Behind requireWorkspace; everything is read inside
+// withClinic, so another clinic's patient is a 404. Printing is written to the audit log.
+export const prerender = false;
+
+import '../../../../../styles/global.css';
+import { requireWorkspace } from '../../../../../lib/workspace';
+import { withClinic } from '../../../../../lib/db';
+import { can } from '../../../../../lib/can';
+import { ageOn, ageText, dateText, manilaToday } from '../../../../../lib/health';
+import { prettyPhone } from '../../../../../lib/messages';
+import { loadClinical } from '../../../../../lib/record';
+import { loadExtra } from '../../../../../lib/record-extra';
+import { loadVisits } from '../../../../../lib/visit-record';
+import { buildLedger, loadLedgerMoney, loadRecallsSet, balanceWords, amountWords } from '../../../../../lib/treatment-record';
+import { pesos, NOT_BIR } from '../../../../../lib/invoices';
+import { hmos } from '../../../../../data/directory';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session } = ws;
+const money = can(clinic, 'finance.bill');
+const patientId = Astro.params.patient ?? '';
+if (!UUID.test(patientId)) return new Response(null, { status: 404 });
+const back = `/c/${clinic.slug}/patients/${patientId}/#treatment-record`;
+const HMO_NAMES = new Map(hmos.map((h) => [h.id, h.name]));
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const p = (await tx.query(
+    `select p.id, p.chart_no, p.first_name, p.middle_name, p.last_name, p.suffix, p.sex, to_char(p.birth_date, 'YYYY-MM-DD') as birth, patient_balance(p.id) as balance
+       from patient p where p.id = $1 and p.archived_at is null`, [patientId])).rows[0];
+  if (!p) return null;
+  const c = (await tx.query('select name, address_line, barangay, city, province, phone from clinic where id = $1', [clinic.id])).rows[0];
+  const clinical = await loadClinical(tx, clinic.id, p.id);
+  const extra = await loadExtra(tx, p.id, HMO_NAMES);
+  const visits = await loadVisits(tx, p.id, clinical, extra, [], money);
+  const ledger = buildLedger({ visits, clinical, extra, recalls: await loadRecallsSet(tx, p.id), money: money ? await loadLedgerMoney(tx, p.id) : null, onFile: p.balance, patientId: p.id });
+  await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'record.treatment_record_print', 'patient', $3)`, [clinic.id, session.staffId, p.id]);
+  return { p, c, ledger };
+});
+if (!data) return new Response(null, { status: 404 });
+const { p, c, ledger } = data;
+const name = [p.first_name, p.middle_name, p.last_name === '—' ? null : p.last_name, p.suffix].filter(Boolean).join(' ');
+const age = p.birth ? ageOn(p.birth, manilaToday()) : null;
+const SEX: Record<string, string> = { female: 'Female', male: 'Male', other: 'Other' };
+const clinicAddress = [c.address_line, c.barangay, c.city, c.province]
+  .filter((part, i, all) => part && !all.slice(0, i).some((prev) => prev && String(prev).toLowerCase().includes(String(part).toLowerCase())))
+  .join(', ');
+const printed = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date());
+const balanceNote = !money ? null
+  : ledger.balance === 'ok' ? 'Balance is what the patient owes at the end of that day: charges less payments, less what an HMO or PhilHealth is still expected to pay. Void statements and voided payments are not counted.'
+  : ledger.balance === 'too-many' ? `Too many entries to count a running balance here. The balance now is ${balanceWords(ledger.onFile)}.`
+  : `The running balance could not be shown; the balance on file is ${balanceWords(ledger.onFile)}.`;
+const pageCss = `
+@page { size: A4 portrait; margin: 12mm; }
+@media print {
+  html:root:not([data-never]):not([data-never-2]) { --c-ink: #000; --c-ink-2: #1f1f1f; color-scheme: light; }
+  body { background: #fff !important; }
+  .tr-sheet { border: 0 !important; border-radius: 0 !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; max-width: none !important; }
+  .tr-scroll { overflow: visible !important; }
+}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Treatment record · {p.first_name} {p.last_name === '—' ? '' : p.last_name} — {clinic.name}</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script is:inline>
+      try { const t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }
+    </script>
+    <style is:inline set:html={pageCss}></style>
+    <style>
+      .px-body {
+        --px-bg: #f3f5f8; --px-bar: #ffffff; --px-hair: #e6e9ee; --px-ink: #1f2937; --px-teal-ink: #0d706d; --px-teal-fill: #0e7471; --px-teal-fill-hover: #0b5f5d; --px-hover: rgb(16 24 40 / 0.035);
+        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: var(--px-bg); min-height: 100vh;
+      }
+      @media screen and (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); }
+      }
+      @media screen {
+        :root[data-theme="dark"] .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); }
+      }
+      .px-body h1 { font-family: inherit; }
+      .px-bar { background: var(--px-bar); border-bottom: 1px solid var(--px-hair); color: var(--px-ink); }
+      .px-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem 0.75rem; max-width: 1280px; margin-inline: auto; padding: 0.75rem 1.25rem; }
+      .px-back { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 44px; margin-right: auto; padding: 0 0.5rem; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--px-teal-ink); }
+      .px-back:hover { background: var(--px-hover); }
+      .px-print { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 1.125rem; border-radius: 10px; background: var(--px-teal-fill); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+      .px-print:hover { background: var(--px-teal-fill-hover); }
+      .px-body :focus-visible { outline: 2px solid #14908f; outline-offset: 2px; }
+      /* The paper: white with dark words in both themes, as it prints. */
+      .tr-sheet { max-width: 210mm; margin: 2rem auto; padding: 12mm; background: #fff; color: #1f2937; border: 1px solid #e6e9ee; border-radius: 12px; box-shadow: 0 1px 2px rgb(16 24 40 / 0.05); color-scheme: light; }
+      .tr-head { text-align: center; padding-bottom: 3mm; border-bottom: 1.5px solid #1f2937; }
+      .tr-clinic { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+      .tr-small { font-size: 12px; line-height: 1.5; color: #344054; }
+      .tr-title { margin-top: 4mm; text-align: center; font-size: 15px; font-weight: 700; letter-spacing: 0.02em; }
+      .tr-pt { display: flex; flex-wrap: wrap; gap: 1mm 7mm; margin: 3mm 0 4mm; font-size: 12.5px; }
+      .tr-pt b { font-weight: 600; }
+      .tr-scroll { overflow-x: auto; }
+      /* Fixed columns in the paper's proportions, so eight fit across A4 portrait (186 mm inside the margins). */
+      .tr-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 9pt; line-height: 1.35; color: #111827; overflow-wrap: anywhere; }
+      @media screen { .tr-table { min-width: 640px; } }
+      .tr-table thead { display: table-header-group; }
+      .tr-table th { padding: 1.4mm 1.4mm; border: 0.6pt solid #667085; background: #f2f4f7; font-weight: 600; text-align: left; vertical-align: bottom; overflow-wrap: normal; }
+      .tr-table td { padding: 1.2mm 1.4mm; border: 0.6pt solid #98a2b3; vertical-align: top; }
+      .tr-table tr { break-inside: avoid; }
+      .tr-num { text-align: right !important; font-variant-numeric: tabular-nums; }
+      td.tr-num { white-space: nowrap; overflow-wrap: normal; }
+      .tr-date { font-weight: 600; overflow-wrap: normal; }
+      .tr-detail { display: block; font-size: 8pt; color: #344054; }
+      .tr-status { font-style: italic; }
+      .tr-foot { margin-top: 4mm; display: grid; gap: 1mm; font-size: 9pt; line-height: 1.45; color: #344054; }
+      @media (max-width: 600px) { .tr-sheet { margin: 1rem; padding: 5mm; } }
+    </style>
+  </head>
+  <body class="px-body">
+    <div class="px-bar print:hidden">
+      <div class="px-bar-row">
+        <a href={back} class="px-back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 6.5L9 12l5.5 5.5" /></svg>
+          Back to {p.first_name}’s record
+        </a>
+        <button type="button" class="px-print" data-print>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V4h10v5" /><rect x="3.5" y="9" width="17" height="7.5" rx="2" /><path d="M7 14h10v6H7z" /></svg>
+          Print
+        </button>
+      </div>
+    </div>
+    <main>
+      <article class="tr-sheet" aria-label="Treatment record">
+        <header class="tr-head">
+          <p class="tr-clinic">{c.name}</p>
+          {clinicAddress && <p class="tr-small">{clinicAddress}</p>}
+          {c.phone && <p class="tr-small">{prettyPhone(c.phone)}</p>}
+        </header>
+        <h1 class="tr-title">Treatment record</h1>
+        <p class="tr-pt">
+          <span><b>Name:</b> {name}</span>
+          <span><b>Age:</b> {age !== null ? ageText(age) : '____'}</span>
+          <span><b>Sex:</b> {p.sex && SEX[p.sex] ? SEX[p.sex] : '____'}</span>
+          <span><b>Chart no.:</b> {p.chart_no}</span>
+        </p>
+        <div class="tr-scroll">
+          <table class="tr-table">
+            {money ? (
+              <colgroup><col style="width: 11.5%" /><col style="width: 7.5%" /><col style="width: 24%" /><col style="width: 14.5%" /><col style="width: 11%" /><col style="width: 10.5%" /><col style="width: 11%" /><col style="width: 10%" /></colgroup>
+            ) : (
+              <colgroup><col style="width: 12%" /><col style="width: 9%" /><col style="width: 44%" /><col style="width: 21%" /><col style="width: 14%" /></colgroup>
+            )}
+            <thead>
+              <tr>
+                <th scope="col">Date</th>
+                <th scope="col">Tooth no./s</th>
+                <th scope="col">Procedure</th>
+                <th scope="col">Dentist/s</th>
+                {money && <th scope="col" class="tr-num">Amount charged</th>}
+                {money && <th scope="col" class="tr-num">Amount paid</th>}
+                {money && <th scope="col" class="tr-num">Balance</th>}
+                <th scope="col">Next appt.</th>
+              </tr>
+            </thead>
+            {ledger.days.length === 0 ? (
+              <tbody><tr><td colspan={money ? 8 : 5}>No treatment recorded yet.</td></tr></tbody>
+            ) : ledger.days.map((d) => (
+              <tbody>
+                {d.rows.map((r, ri) => (
+                  <tr>
+                    <td class="tr-date">{ri === 0 ? dateText(d.day) : ''}</td>
+                    <td>{r.teeth.join(', ')}</td>
+                    <td>
+                      {r.status && <span class="tr-status">{({ no_show: 'Did not come', cancelled: 'Cancelled', booked: 'Booked', confirmed: 'Confirmed', arrived: 'Arrived', in_lobby: 'Waiting', in_chair: 'In the chair' } as Record<string, string>)[r.status] ?? r.status}{r.words ? ' · ' : ''}</span>}
+                      {r.words}
+                      {r.detail && <span class="tr-detail">{r.detail}</span>}
+                    </td>
+                    <td>{r.dentist ?? ''}</td>
+                    {money && <td class="tr-num">{r.charged !== null ? amountWords(r.charged) : ''}</td>}
+                    {money && <td class="tr-num">{r.paid !== null ? pesos(r.paid) : ''}</td>}
+                    {money && <td class="tr-num">{r.balance !== null ? balanceWords(r.balance) : ''}</td>}
+                    <td>{r.next?.text ?? ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            ))}
+          </table>
+        </div>
+        <footer class="tr-foot">
+          <p>Teeth in FDI numbers.{ledger.capped && ' Only the newest 300 treatments and visits are listed.'}</p>
+          {balanceNote && <p>{balanceNote}</p>}
+          {money && <p>{NOT_BIR}</p>}
+          <p>Printed {printed} by {session.name}.</p>
+        </footer>
+      </article>
+    </main>
+    <script>
+      document.querySelector('[data-print]')?.addEventListener('click', () => window.print());
+    </script>
+  </body>
+</html>

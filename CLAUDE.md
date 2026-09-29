@@ -818,12 +818,12 @@ and marked *Easiest*.
   the forms' answers and printouts, records and health histories must not
   stay in a shared clinic computer's cache after sign-out.
 
-## The clinical record (033) — Timeline, Treatment, Notes, Prescriptions, Files, next check-up
+## The clinical record (033) — Treatment record, Treatment, Notes, Prescriptions, Files, next check-up
 
-The patient record (`patients/[patient].astro`) has twelve sections: Overview · Timeline (visits, 035) · Health · Chart ·
+The patient record (`patients/[patient].astro`) has twelve sections: Overview · Treatment record (the PDA ledger, below) · Health · Chart ·
 Treatment · Notes · Rx & letters · Files · Visits · Money · Consent · Texts. Built from standard dental
 practice — the real SwiftCare admin record the owner linked was **not** opened (another clinic's patient
-data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical`, `loadTimeline`,
+data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical`, `loadChartChanges`,
 `recordAction`, `readRecordFile`); the sections are `patients/_record/*.astro` + `record.css`.
 
 - **Every write is one post** with an `intent` in `RECORD_INTENTS`, checked by `canEditRecords` in the same
@@ -843,16 +843,16 @@ data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical
   `patients/<id>/files/<file>/` behind `requireWorkspace` + RLS (no-store; views and downloads audited).
   The public `/uploads/` route cannot reach them. Remove hides a file (`removed_at`), never deletes it.
 - **Next check-up** (recall) sits on the Overview: 3/6/12 months in one tap, or a day.
-- The Timeline is built around the visits (035, below); what happened between visits stays as small lines
-  with "Open" to their section (money only for people who may bill).
+- The Treatment record (below) is the PDA's ledger, built from the visits (035); the chart's own history
+  (who charted which teeth, when) is under Chart, "Changes to the chart" (`loadChartChanges`).
 - **Colour-coded by group** (the owner asked that encoders never lose their place): `_record/sections.ts`
-  puts each section in a group with one hue — Patient teal (Overview, Timeline, Visits), Health rose,
+  puts each section in a group with one hue — Patient teal (Overview, Treatment record, Visits), Health rose,
   Clinical blue (Chart, Treatment, Notes, Files), Documents violet (Rx & letters, Consent, Texts),
   Billing green (Money); never amber or red, which keep their meanings. The hue is on the section's
   button in the record's index (`RecordNav.astro`: a sticky column from 1200px, a sideways row below it;
   still the shell's in-place tabs, `rec-rec-<id>-tab`, with up/down arrows when `aria-orientation` is
   vertical), its banner (`Banner.astro`: group, name, one line), its cards' top edge and icons (`.hue-*`
-  classes in record.css) and its lines on the Timeline. Colour is never alone: the words say the group
+  classes in record.css). Colour is never alone: the words say the group
   too. Measured: no line under 4.5:1 in the index or banners, light and dark.
 - **Every detail is its own pill or tile** (the owner: "make each specific detail more visible … their
   own pill"): `.rp` pills (a tooth `rp-tooth` blue, a person `Who.astro` with initials, a day, an amount
@@ -890,31 +890,29 @@ or out of range, clearance needed/waiting/cleared, an LOA waiting, a plan behind
 - `ws:panel-open` now carries `auto: true` when the server drew a panel open (a refused post): a page
   must not refill that form from the first matching opener (`src/components/ws/shell.ts`).
 
-## The Timeline's visits and the signed consent (035)
+## The visit panel and the signed consent (035)
 
-The owner: the Timeline is "the full details of the patient's visit" — a visit is clickable and pops out
-the doctor, the consent form, the signature (the patient signs on an iPad), the procedure, the tooth, the
-time and the amount paid.
+The owner asked for "the full details of the patient's visit" — a visit is clickable and pops out the
+doctor, the consent form, the signature (the patient signs on an iPad), the procedure, the tooth, the time
+and the amount paid. (It was drawn as the Timeline's cards; the Timeline is now the Treatment record, below.)
 
-- **A visit is a card, and the card is one button** (`_record/Timeline.astro`): time, status, dentist,
-  what was done and to which tooth, "Consent signed" with a small copy of the signature, Paid / Owes.
-  It opens a side panel (`_record/VisitPanels.astro`, rendered outside the sections so Visits' "See the
-  whole visit" and Consent's "See the visit" open it too): the visit, consent and signature, treatment
-  done, the dentist's notes, BP, Rx and letters (Print), payment (charged, paid, HMO share, still owed,
-  each statement's lines, each payment), files, texts. Chips: Everything · Visits · Between visits.
+- **A visit opens in a side panel** (`_record/VisitPanels.astro`, rendered outside the sections) from its
+  date on the Treatment record, Visits' "See the whole visit" and Consent's "See the visit": the visit,
+  consent and signature, treatment done, the dentist's notes, BP, Rx and letters (Print), payment
+  (charged, paid, HMO share, still owed, each statement's lines, each payment), files, texts.
 - **What belongs to a visit** is `loadVisits()` in `src/lib/visit-record.ts`: its `appointment_id`, else
   the Manila day (the visit that had started by then). Treatment, notes, prescriptions or a statement
   on a day with nothing booked make an "At the clinic" day of their own; BP, files, letters and payments
   only join an existing one; a payment follows its statement. The per-visit balance is
-  `patient_balance()`'s rule, statement by statement. Every Timeline line has a `ref`
-  (`done:<id>`, `pay:<id>` …) so a line a visit holds is not listed twice.
+  `patient_balance()`'s rule, statement by statement. `Visit.bookedAt` (the appointment's `created_at`)
+  is what the Treatment record's Next appt. reads.
 - **The consent is signed by hand on the clinic's tablet** at `/c/<slug>/patients/<id>/sign/<visit>/`, its
   own page (no workspace sidebar for a patient to wander into): step 1 for the clinic (tick the plan's
   open lines the dentist explained, anything else, the dentist), "Hand the tablet to <name>", step 2 for
   the patient (the treatment, `TREATMENT_CONSENT`'s words in force, who signs — only a parent or guardian,
   with relation, when the birth date says under 18 — name, finger signature, one tick). Saved, it shows
   only "Thank you — please hand the tablet back"; the desk's button returns to the record with the visit
-  open (`?visit=<id>#timeline`). Offered for a visit going ahead today or later, or one the patient is
+  open (`?visit=<id>`). Offered for a visit going ahead today or later, or one the patient is
   at now (`canSign`); never for a cancelled, missed or past visit.
 - **`visit_consent` (035) is insert-only for the app** (select, insert; measured: update and delete are
   refused) and a trigger checks the visit is this patient's at this clinic and the version is a
@@ -923,6 +921,42 @@ time and the amount paid.
 - **The signature is strokes, never an image**: `[[x, y], …]` lines of whole numbers in a 1000 × 400 box
   (`readStrokes`: ≤ 80 strokes, ≤ 6000 points, enough ink to be a signature), drawn back as one SVG path
   (`_record/Signature.astro`) in dark ink on a white slip in both themes, like paper.
+
+## The Treatment record — page 4 of the PDA dental chart
+
+The owner: "rename the timeline to "Treatment record" and make it as such". The record's second section is
+the Philippine treatment record ledger — Date · Tooth no./s · Procedure · Dentist/s · Amount charged ·
+Amount paid · Balance · Next appt. — oldest first, one row per treatment, charge and payment.
+`src/lib/treatment-record.ts` builds it (`buildLedger`, `loadLedgerMoney`, `loadRecallsSet`) for both
+`_record/TreatmentRecord.astro` and the paper at `patients/<id>/treatment-record/` (A4 portrait, the heads
+repeat, black on white; audit `record.treatment_record_print`), so the screen and the paper never differ.
+
+- **Clinical rows come from `loadVisits()`'s placement**, so the ledger and the visit panel agree. A visit
+  with nothing done is still a row (did not come, not marked yet, cancelled with something in it); a
+  statement alone is not a visit. A date opens that visit's panel; "Also <time>" a second visit that day.
+- **Only statements are charges** (a treatment's price is a fee-guide estimate). Every line of a counted
+  statement (issued, partly paid, paid) appears exactly once: on its treatment's row when linked by
+  `procedure_id` and issued that day (or on the visit's row for a one-line statement naming the visit, whose
+  line then names the procedure — "Consultation"), else as a charge row on the statement's day ("done
+  <day>"). Never matched by description. Discounts, the HMO or PhilHealth part and payments are rows; a
+  payment dated before its statement sits on the statement's day ("paid <day>").
+- **Balance is `patient_balance()`'s rule** through `sumsOf()`, on the last row of each day money moved.
+  The last one must equal `patient_balance()`; if not, no balance shows, the section says so and the server
+  logs the patient id (`treatment-record balance mismatch`, no name). Void statements and voided payments
+  are not counted; they stay in Money. The money columns and rows need `finance.bill`, on screen and paper.
+- **Next appt.** (on a day with a visit): the next appointment booked by the end of that day, else a
+  check-up set that day, else a braces adjustment's next date.
+- A table where the section is 54rem or wider (fits at 1440, not at 1366 with a wide system font); below
+  that each day is a card with labelled lines (`@container trec`). Over 14 days, all but the last 10 fold
+  behind "Show N earlier days" (the hidden attribute; `.trec tbody[hidden]` is declared, since a display
+  rule on tbody beats it). An old `#timeline` link lands here and the address is rewritten to
+  `#treatment-record`; `?visit=<id>` opens on the Treatment record when the visit is on it, else on Visits.
+- Measured: the last balance equals `patient_balance()` for every dev patient and a crafted one (a part
+  payment finished later, a senior discount, an HMO share part-paid by the HMO, a statement two days after
+  its treatment, a payment dated before its statement, a void statement, a voided payment, a consultation
+  charged by one line, money on account); every word ≥ 4.5:1 light and dark at 1440 and 390; no target
+  under 44px; no sideways scroll at 1440 · 1366 · 1280 · 1200 · 1024 · 390; the paper fits A4 with no cell
+  overflowing; a dentist without `finance.bill` sees no peso sign on screen or paper.
 - Measured: every line on the cards, the panel, Consent's list and both signing steps ≥ 4.5:1 light and
   dark at 1440 and 390; no target under 44px on the signing page; no sideways scroll at 390.
 
@@ -950,17 +984,17 @@ patient"). One migration, 036; the pieces in the order of a visit:
   order a visit runs, pills for what is done, "All done" when nothing is. Every chairside form it opens — a
   reading, a note, a treatment (and a plan item's Mark done), a prescription, files, the health form — carries a
   hidden `visit`, read by `visitOf()` in `record.ts` (this patient's, not cancelled, else null) and written to
-  `appointment_id` (036 added it to `prescription`, `vital_sign` and `attachment`), so the Timeline places it
-  under the visit instead of matching it by the day (`visit-record.ts` still falls back to the day for old rows).
+  `appointment_id` (036 added it to `prescription`, `vital_sign` and `attachment`), so the visit panel and the
+  Treatment record place it under the visit instead of matching it by the day (`visit-record.ts` still falls back to the day for old rows).
   "No change" is `intent=health-checked` → `recheckHealth()`: a copy of the latest answers under the person who
   asked (audit `health.checked`), so "last checked" is today; a history over a year old is an amber chip on the
   head. `?open=vitals|note|rx|done|file` opens that panel as the page loads (its section shown behind it); a
   post from the strip comes back with `?visit=` kept, so the strip is still there. A signing comes back to
-  `?visit=<id>` (no hash): today's visit shows the strip, a later one opens on the Timeline.
+  `?visit=<id>` (no hash): today's visit shows the strip, a later one opens on Visits.
 - **Checkout.** `finances/new/?visit=<id>` pre-fills every treatment recorded at the visit (stamped, or that day
   with no visit named) that no non-void statement charges yet, at the price the dentist wrote, the tooth in the
   words; the statement stores `appointment_id` and each line `procedure_id` (`LineIn.procedureId`,
-  `ChargeIn.visitId`, checked to be the patient's own), so the panel's `unbilled` count and the Timeline's Paid
+  `ChargeIn.visitId`, checked to be the patient's own), so the panel's `unbilled` count and the visit panel's Paid
   are right and nothing is charged twice: `createStatement` takes a per-patient advisory lock (`charge:<patient>`)
   and refuses a treatment already on a non-void statement, naming it. A recorded price of 0 is left blank for the
   desk; one outside the fee guide's range is pre-filled as a line of its own, so the save is never refused on a line
@@ -1110,7 +1144,9 @@ src/pages/c/[clinic]/account/  My page (details, password, my schedule)
 src/data/migrations/026, 027   patient import (past visits, paper consent), operator aggregates (counts only)
 src/data/migrations/028        patient forms: forms keys, submissions, the treatment consent version, consent channel 'form'
 src/data/migrations/035        visit_consent: the consent signed by hand on the clinic's tablet, per visit
-src/lib/visit-record.ts, visit-consent.ts  the Timeline's visits (everything per visit); signing, strokes → SVG
+src/lib/visit-record.ts, visit-consent.ts  the visits (everything per visit); signing, strokes → SVG
+src/lib/treatment-record.ts    the Treatment record (the PDA ledger): rows, charges, the running balance, next appt.
+src/pages/c/[clinic]/patients/[patient]/treatment-record.astro  the Treatment record on A4 paper
 src/pages/c/[clinic]/patients/[patient]/sign/  the tablet signing page (clinic step, patient step, thank you)
 src/pages/f/[key].astro        patients: the patient forms from the QR code on a clinic's desk (five steps, no account)
 src/lib/patient-forms.ts       forms key, public submit, the "New patient forms" queue, adding a form to the records

@@ -1,9 +1,10 @@
 ---
 // One patient's record, in the workspace (the Patients tab lit): a head
 // of the facts that decide the next step — name, age, mobile, HMO, alerts,
-// balance (finance roles), next and last visit, consent — then seven
-// sections switched in place: Overview · Health · Chart · Visits · Money ·
-// Consent · Texts (docs/workspace-redesign.md, "Patients"). The section is in
+// balance (finance roles), next and last visit, consent — then the
+// sections switched in place: Overview · Treatment record · Health · Chart ·
+// Treatment · Notes · Rx & letters · Files · Visits · Money · Consent · Texts
+// (docs/workspace-redesign.md, "Patients"). The section is in
 // the address (#health, #chart, …), so a reload, a post that comes back and
 // a link all land on it. Money is shown only to people who may bill here
 // (canBill in src/lib/invoices.ts), like the Finances tab.
@@ -95,7 +96,7 @@ import Glyph from './_ui/Glyph.astro';
 import './_ui/patients.css';
 import './_forms/forms.css';
 import './_record/record.css';
-import Timeline from './_record/Timeline.astro';
+import TreatmentRecord from './_record/TreatmentRecord.astro';
 import VisitPanels from './_record/VisitPanels.astro';
 import Signature from './_record/Signature.astro';
 import Treatment from './_record/Treatment.astro';
@@ -130,10 +131,11 @@ import { CONDITION_LABEL, surfaceSummary, type ToothCondition, type ToothMark, t
 import { patientForms, getForm, compareWithRecord, useFormDetail, healthLists, answerText, FIELDS, TAKEABLE, type FormConsentState } from '../../../../lib/patient-forms';
 import { signedText } from './_forms/words';
 import { can } from '../../../../lib/can';
-import { loadClinical, loadTimeline, recordAction, RECORD_INTENTS, RX_ROWS, type Outcome, type RecordProblem, type RxItem } from '../../../../lib/record';
-import { loadExtra, extraAction, extraEvents, bpWords, EXTRA_INTENTS, EXTRA_ANCHOR } from '../../../../lib/record-extra';
+import { loadClinical, loadChartChanges, recordAction, RECORD_INTENTS, RX_ROWS, type Outcome, type RecordProblem, type RxItem } from '../../../../lib/record';
+import { loadExtra, extraAction, bpWords, EXTRA_INTENTS, EXTRA_ANCHOR } from '../../../../lib/record-extra';
 import { loadVisitConsents } from '../../../../lib/visit-consent';
 import { loadVisits, type StripVisit } from '../../../../lib/visit-record';
+import { buildLedger, loadLedgerMoney, loadRecallsSet } from '../../../../lib/treatment-record';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -366,14 +368,15 @@ const data = await withClinic(clinic.id, async (tx) => {
   // What the form says that the record does not: different, or a mobile or email the desk did not take.
   const cmp = added && added.addedAs === 'existing' ? await compareWithRecord(tx, added.values, p.id) : null;
   const addedDiffers = cmp ? [...cmp.differs, ...cmp.proposed] : [];
-  // The clinical record (033) and the Timeline, which reads everything above once more in one list.
+  // The clinical record (033), each visit with everything from it (its panel), the consents signed on the tablet, and
+  // the Treatment record built from them (src/lib/treatment-record.ts; money read only for people who may bill).
   const clinical = await loadClinical(tx, clinic.id, p.id);
   const extra = await loadExtra(tx, p.id, HMO_NAMES);
-  const timeline = [...(await loadTimeline(tx, p.id, clinical, money)), ...extraEvents(extra, money)].sort((a, b) => +new Date(b.at) - +new Date(a.at));
-  // Each visit with everything from it (the Timeline's cards and their panels), and the consents signed on the tablet.
   const signed = await loadVisitConsents(tx, p.id);
   const fullVisits = await loadVisits(tx, p.id, clinical, extra, signed, money);
-  return { clinical, extra, timeline, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
+  const ledger = buildLedger({ visits: fullVisits, clinical, extra, recalls: await loadRecallsSet(tx, p.id), money: money ? await loadLedgerMoney(tx, p.id) : null, onFile: p.balance, patientId: p.id });
+  const chartChanges = await loadChartChanges(tx, p.id);
+  return { clinical, extra, ledger, chartChanges, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
 });
 if (!data) return notFound();
 const { me, p: patient, visits, health, canEdit } = data;
@@ -426,7 +429,8 @@ const SOURCE: Record<string, string> = { web: 'Web', request: 'Web request', sta
 
 // --- this visit (036) ---------------------------------------------------------
 // ?visit=<id>: a visit to open — today's, and the record shows its This visit strip above the sections;
-// another day's, and the Timeline opens with that visit's panel (back from signing a consent for a later visit).
+// another day's, and the Treatment record opens with that visit's panel (a future visit, or a cancelled one that holds
+// nothing, opens over Visits instead, which lists it).
 const openVisit = q.get('visit') && UUID.test(q.get('visit')!) ? q.get('visit') : null;
 const going = (s: string) => s !== 'cancelled' && s !== 'no_show';
 const todays = visits.filter((v) => !v.date_only && going(v.status) && manilaDay(v.starts_at) === today);
@@ -516,7 +520,7 @@ const loaWaiting = ext.loas.filter((a) => a.status === 'requested').length;
 const planOpen = clin.plan.filter((i) => i.status === 'planned' || i.status === 'accepted');
 const SECTIONS = [
   { id: 'overview', label: 'Overview' },
-  { id: 'timeline', label: 'Timeline' },
+  { id: 'treatment-record', label: 'Treatment record' },
   { id: 'health', label: 'Health' },
   { id: 'chart', label: 'Chart' },
   { id: 'treatment', label: 'Treatment', count: planOpen.length || null },
@@ -562,8 +566,8 @@ const recordSaved = (s: string | null) => {
     vitals: 'health', letter: 'rx', answered: 'rx', loa: 'treatment', payplan: 'treatment', adjusted: 'treatment' } as Record<string, string>)[w] ?? null;
 };
 // The section showing first: where a post came back to, the section of what was just saved, the section of a
-// panel to open, the Timeline for another day's visit (?visit=), else the Overview.
-const current = backTo ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? (openNow ? OPEN_PANEL[openNow] : openVisit && !thisVisit ? 'timeline' : 'overview');
+// panel to open, the Treatment record (or Visits) for another day's visit (?visit=), else the Overview.
+const current = backTo ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? (openNow ? OPEN_PANEL[openNow] : openVisit && !thisVisit ? (data.ledger.openKeys.has(openVisit) ? 'treatment-record' : 'visits') : 'overview');
 // The privacy notice, for the strip: agreed and in force, or what is missing.
 const privacyState = { ok: !data.notice || (!!consentNow && !guardianNeeded), words: guardianNeeded ? 'Privacy notice: a parent or guardian must agree for a patient under 18' : 'Privacy notice: not agreed yet' };
 // A health history over a year old is asked again (the head says so; the strip offers "No change").
@@ -764,7 +768,7 @@ const recHere = here;
   <RecordNav items={SECTIONS.map((x) => ({ id: x.id, label: x.label, count: 'count' in x ? x.count : null }))} current={current} name={shortName} />
   <div class="rec-main">
 
-  {/* Every visit's panel, outside the sections so it opens from the Timeline and from Visits alike. */}
+  {/* Every visit's panel, outside the sections so it opens from the Treatment record's dates and from Visits alike. */}
   <VisitPanels visits={data.fullVisits} slug={clinic.slug} patientId={patient.id} canEdit={canEdit} money={money} open={thisVisit && openVisit === thisVisit.id ? null : openVisit} today={today} firstName={patient.first_name} />
 
   {/* Today's visit, above the sections: what is still to do at it and what is done (036). */}
@@ -879,10 +883,10 @@ const recHere = here;
     </div>
   </div>
 
-  <!-- Timeline -->
-  <div id="rec-timeline" role="tabpanel" aria-labelledby="rec-rec-timeline-tab" hidden={current !== 'timeline'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-teal" data-rec-panel="timeline">
-    <Banner id="timeline" label={SECTION_LABEL.timeline} />
-    <Timeline events={data.timeline} sections={SECTIONS.map((x) => x.id)} visits={data.fullVisits} money={money} canEdit={canEdit} today={today} />
+  <!-- Treatment record -->
+  <div id="rec-treatment-record" role="tabpanel" aria-labelledby="rec-rec-treatment-record-tab" hidden={current !== 'treatment-record'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-teal" data-rec-panel="treatment-record">
+    <Banner id="treatment-record" label={SECTION_LABEL['treatment-record']} />
+    <TreatmentRecord ledger={data.ledger} money={money} today={today} printHref={`${here}treatment-record/`} name={shortName} />
   </div>
 
   <!-- Health -->
@@ -1004,6 +1008,20 @@ const recHere = here;
             ))}
           </ul>
         </>
+      )}
+      {/* The chart's history (tooth_state, grouped by the minute and the person), newest first. */}
+      {data.chartChanges.length > 0 && (
+        <details class="pt-more mt-5 border-t border-[var(--ws-hair)] pt-2">
+          <summary>Changes to the chart ({data.chartChanges.length}) <Icon name="chevron" size={16} class="pt-chev" /></summary>
+          <ol class="pt-list mt-1">
+            {data.chartChanges.map((ch) => (
+              <li class="!block">
+                <p class="text-[14.5px] font-semibold">{when(new Date(ch.at))}{ch.by ? ` · ${ch.by}` : ''}</p>
+                <p class="mt-0.5 text-[14px] text-ink-2">{ch.n === 1 ? 'One change' : `${ch.n} changes`} · {ch.teeth.includes(',') ? `teeth ${ch.teeth}` : `tooth ${ch.teeth}`}</p>
+              </li>
+            ))}
+          </ol>
+        </details>
       )}
     </Pane>
   </div>
@@ -1142,7 +1160,7 @@ const recHere = here;
     </Pane>
     <Pane as="section" label="Signed at visits" id="visit-consents">
       <Head icon="pen" title="Signed at visits" meta={data.signed.length === 1 ? 'One consent' : `${data.signed.length} consents`} />
-      <p class="-mt-2 mb-3 text-[14px] text-ink-2">The consent to examination and treatment, signed on the clinic’s tablet for a visit: what the dentist explained, and the signature. Open a visit on the Timeline, or in Visits, to have one signed.</p>
+      <p class="-mt-2 mb-3 text-[14px] text-ink-2">The consent to examination and treatment, signed on the clinic’s tablet for a visit: what the dentist explained, and the signature. Open a visit from its date on the Treatment record, or in Visits, to have one signed.</p>
       {data.signed.length === 0 ? <p class="text-[14.5px] text-ink-2">None signed on the tablet yet.</p> : (
         <ul class="rs-list">
           {data.signed.map((k) => {
@@ -1282,8 +1300,10 @@ const recHere = here;
     return true;
   };
   const fromHash = () => {
-    const id = decodeURIComponent(location.hash.slice(1));
+    let id = decodeURIComponent(location.hash.slice(1));
     if (!id) return;
+    // The Timeline became the Treatment record: an old #timeline link lands there, and the address says so.
+    if (id === 'timeline') { id = 'treatment-record'; history.replaceState(null, '', `${location.pathname}${location.search}#${id}`); }
     const target = document.getElementById(id);
     const name = panelOf(target) ?? id.replace(/^rec-/, '');
     if (show(name) && target && !target.matches('[data-rec-panel]')) requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
