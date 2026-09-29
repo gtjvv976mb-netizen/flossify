@@ -626,7 +626,10 @@ export function initPanels(ctx: Ctx): Panels {
     B.minutes.value = '30';
     const by = o.by ?? 'chair';
     B.chair.value = by === 'chair' && o.col ? o.col : '';
-    fillDentists(B.dentist, ymd, by === 'dentist' && o.col !== undefined ? o.col : ctx.filter());
+    // A clinic with one dentist on its calendar books with her, as its web booking does (p32): unless the desk
+    // tapped a dentist's column or "No dentist", or the calendar is filtered to someone. The desk can still change it.
+    const soloId = boot.staff.length === 1 ? boot.staff[0].id : '';
+    fillDentists(B.dentist, ymd, by === 'dentist' && o.col !== undefined ? o.col : (ctx.filter() || soloId));
     const p = o.patientId ? ctx.patients.byId.get(o.patientId) : undefined;
     if (p) choose(p);
     bkFree.update();
