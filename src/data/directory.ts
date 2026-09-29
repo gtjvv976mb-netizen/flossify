@@ -116,8 +116,9 @@ export interface Dentist {
   specialty: Specialty | null;
   practices: string[];
   since: number;
-  /** Where they are, and which weekdays (0 = Sunday). */
-  clinics: { slug: string; days: number[] }[];
+  /** Where they are, and which weekdays (0 = Sunday). `hours`: their own hours on a day that has them,
+   *  in hours ({2: [13, 18]} = Tuesday 1–6 pm); a day without is the clinic's hours (040). */
+  clinics: { slug: string; days: number[]; hours?: Record<number, [number, number]> }[];
   about: string;
 }
 

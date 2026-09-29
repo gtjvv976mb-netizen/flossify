@@ -14,6 +14,15 @@
 // A request names a day and a part of it. It is refused, in plain words, for a
 // day the clinic is closed, a part of the day outside its hours, or a part of
 // today less than an hour away, since the text would name a time nobody can keep.
+// Blocked time (040) counts too: a closure the clinic added, its lunch, and, with
+// a dentist chosen, the time that dentist is not in ("not in" whether on leave or
+// not their day: the public side never tells the two apart). The placeholder never
+// lands in any of it.
+//
+// A live booking is re-checked by slotStillOpen, the same rule (slotOpen) that made
+// the offer: lunch, closures, the dentist's hours and leave, chairs out of use,
+// chairs taken, and dentists left for the visits booked with no dentist. The desk's
+// "anyway" (/api/schedule) does not exist here: this route never reads it.
 //
 // The texts are one-way (Semaphore sends from a sender name; a reply reaches
 // nobody), so no text asks for one. They say what happens and whom to call.
@@ -27,9 +36,10 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { randomBytes } from 'node:crypto';
 import { withClinic } from '../../../lib/db';
-import { loadListing, openSlots, slotIso } from '../../../lib/directory-db';
-import { findClash, whenText } from '../../../lib/schedule';
-import { manilaNow, fmtHour, willRemind, type Now } from '../../../lib/availability';
+import { pool } from '../../../lib/db';
+import { loadListing, openSlots, slotIso, slotStillOpen, publicBlocked, toClosures, type DbListing } from '../../../lib/directory-db';
+import { whenText, shortName } from '../../../lib/schedule';
+import { manilaNow, fmtHour, willRemind, openIntervals, dayPieces, type Now } from '../../../lib/availability';
 import type { Hours } from '../../../data/directory';
 import { hit, clientIp, waitText, LIMITS } from '../../../lib/throttle';
 
@@ -66,23 +76,61 @@ const hasHours = (hours: Hours) => Object.values(hours).some(Boolean);
 /**
  * Where a request's placeholder goes on its day, in minutes after midnight, or
  * why the patient must pick again: inside the part of the day, inside the
- * clinic's hours that day, and, for today, an hour or more from now. Otherwise
- * the text would name a day or a part of it the patient cannot come. A clinic
- * with no hours on file is taken as open.
+ * clinic's hours that day, outside the clinic's closures and lunch that day
+ * (`clinicCuts`) and, with a dentist chosen (`who`, "Dr. Cariño"), outside the
+ * time that dentist is not in (`dentistCuts`), and, for today, an hour or more
+ * from now. Otherwise the text would name a day or a part of it the patient
+ * cannot come. A clinic with no hours on file is taken as open. The placeholder
+ * is the first 30 minutes at or after the part's hour that fit, else the last
+ * before it; with no cuts every sentence and placement is what it was before.
  */
-function placeRequest(hours: Hours, day: { ymd: string; dow: number }, part: (typeof PART)[string], now: Now): { mins: number } | { error: string } {
+function placeRequest(hours: Hours, day: { ymd: string; dow: number }, part: (typeof PART)[string], now: Now,
+  clinicCuts: [number, number][] = [], dentistCuts: [number, number][] = [], who: string | null = null): { mins: number } | { error: string } {
   const h = hours[day.dow];
   if (hasHours(hours) && !h) return { error: `The clinic is closed on ${DAY_NAME[day.dow]}s. Pick another day.` };
   const open = h ? Math.round(h[0] * 60) : 0, close = h ? Math.round(h[1] * 60) : 24 * 60;
+  const on = dayText(noon(day.ymd));
+  const cuts = who ? [...clinicCuts, ...dentistCuts] : clinicCuts;
+  // Where in a part of the day a placeholder can start: every open stretch once the cuts are out, from `from` on.
+  const windows = (p: (typeof PART)[string], cs: [number, number][], from = 0) => openIntervals([open, close], cs)
+    .map(([a, b]) => ({ lo: Math.max(up30(Math.max(p.from, a)), from), hi: Math.min(p.to, b) - SLOT_MIN }))
+    .filter((x) => x.lo <= x.hi);
+  if (!openIntervals([open, close], clinicCuts).length) return { error: `The clinic is closed on ${on}. Pick another day.` };
+  if (who && !openIntervals([open, close], cuts).length) return { error: `${who} is not in on ${on}. Pick another day, or any dentist.` };
   const span = (p: (typeof PART)[string]) => ({ lo: up30(Math.max(p.from, open)), hi: Math.min(p.to, close) - SLOT_MIN });
   const w = span(part);
   if (w.lo > w.hi) return { error: `The clinic is open ${fmtHour(h![0])} to ${fmtHour(h![1])} on ${DAY_NAME[day.dow]}s. Pick another time of day.` };
+  if (!windows(part, clinicCuts).length) return { error: `The clinic is closed then on ${on}. Pick another time of day.` };
+  if (who && !windows(part, cuts).length) return { error: `${who} is not in then on ${on}. Pick another time of day, or any dentist.` };
   const earliest = day.ymd === now.ymd ? up30(now.mins + LEAD_MIN) : 0;
-  if (Math.max(w.lo, earliest) > w.hi) {
-    const later = Object.values(PART).some((p) => { const x = span(p); return Math.max(x.lo, earliest) <= x.hi; });
+  const fits = windows(part, cuts, earliest);
+  if (!fits.length) {
+    const later = Object.values(PART).some((p) => windows(p, cuts, earliest).length > 0);
     return { error: later ? `Too late for today's ${part.words}. Pick a later time of day, or another day.` : `It is too late to ask for today. Pick another day.` };
   }
-  return { mins: Math.min(Math.max(part.hour * 60, w.lo, earliest), w.hi) };
+  const want = part.hour * 60, after = fits.find((x) => x.hi >= want);
+  return { mins: after ? Math.max(want, after.lo) : fits[fits.length - 1].hi };
+}
+/** The clinic's closures and lunch on one Manila day, and a listed dentist's time away that day, in minutes. */
+async function cutsOn(l: DbListing, ymd: string, dentist: string | null) {
+  const from = new Date(`${ymd}T00:00:00+08:00`), to = new Date(from.getTime() + 86_400_000);
+  const rs = await publicBlocked(pool, l.id, from, to);
+  const clinic = toClosures(rs, from, to).map((c) => [c.from, c.to] as [number, number]);
+  const away = dentist ? rs.filter((r) => r.kind === 'away' && r.dentist === dentist)
+    .flatMap((r) => dayPieces(Math.max(r.s, from.getTime()), Math.min(r.e, to.getTime()))).map((p) => [p.from, p.to] as [number, number]) : [];
+  return { clinic, away };
+}
+/** The days in [from, from + n) the clinic's closures shut wholly (n ≤ 8, so one short read). */
+async function closedWholly(l: DbListing, from: string, n: number): Promise<string[]> {
+  if (n <= 0) return [];
+  const a = new Date(`${from}T00:00:00+08:00`), b = new Date(a.getTime() + n * 86_400_000);
+  const cl = toClosures(await publicBlocked(pool, l.id, a, b), a, b);
+  const known = hasHours(l.hours), out: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const d = addDays(from, i), h = known ? l.hours[d.dow] : [0, 24] as [number, number];
+    if (h && !openIntervals([h[0] * 60, h[1] * 60], cl.filter((c) => c.ymd === d.ymd).map((c) => [c.from, c.to] as [number, number])).length) out.push(d.ymd);
+  }
+  return out;
 }
 /**
  * What a request's text tells the patient to do if the clinic stays quiet. Never
@@ -94,15 +142,16 @@ function placeRequest(hours: Hours, day: { ymd: string; dow: number }, part: (ty
  * - Otherwise when it next opens, later today or on the visit day itself (a
  *   closed day was refused): "To set it sooner, call … on Sat from 9 am."
  * With no hours on file: the day before, when there is one, and no hour.
+ * A day a closure shuts wholly (`closedDays`) is not open.
  */
-function requestFallback(hours: Hours, visit: string, call: string, now: Now): string {
+function requestFallback(hours: Hours, visit: string, call: string, now: Now, closedDays: Set<string> = new Set()): string {
   const known = hasHours(hours);
   for (let i = 1; i <= 7; i++) {
     const d = addDays(visit, -i);
     if (d.ymd <= now.ymd) break;
-    if (!known || hours[d.dow]) return `No word by ${dayText(noon(d.ymd))}? Call ${call}.`;
+    if ((!known || hours[d.dow]) && !closedDays.has(d.ymd)) return `No word by ${dayText(noon(d.ymd))}? Call ${call}.`;
   }
-  const today = hours[now.day], onVisit = hours[addDays(visit, 0).dow];
+  const today = closedDays.has(now.ymd) ? null : hours[now.day], onVisit = hours[addDays(visit, 0).dow];
   if (today && now.mins >= today[0] * 60 && now.mins < today[1] * 60 - 30) return `To set it now, call ${call}.`;
   if (today && now.mins < today[0] * 60) return `To set it sooner, call ${call} today from ${fmtHour(today[0])}.`;
   if (onVisit && visit > now.ymd) return `To set it sooner, call ${call} on ${weekday(noon(visit))} from ${fmtHour(onVisit[0])}.`;
@@ -146,7 +195,8 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     if (reqDay < now.ymd) return json({ error: 'That day has passed. Pick today or a later day.' }, 400);
     const want = String(b.reqTime ?? '');
     part = Object.hasOwn(PART, want) ? PART[want] : PART.Morning;
-    const placed = placeRequest(l.hours, addDays(reqDay, 0), part, now);
+    const cuts = await cutsOn(l, reqDay, dentist?.slug ?? null);
+    const placed = placeRequest(l.hours, addDays(reqDay, 0), part, now, cuts.clinic, cuts.away, dentist ? shortName(dentist.name) : null);
     if ('error' in placed) return json({ error: placed.error }, 400);
     reqMins = placed.mins;
   }
@@ -174,7 +224,16 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   // A request is not reminded until the desk places it (019), so its text promises no reminder.
   const reminder = source === 'web' && willRemind(startsAt);
   const call = l.phone?.trim() || 'the clinic';
-  const fallback = source === 'request' ? requestFallback(l.hours, reqDay, call, now) : null;
+  let fallback: string | null = null;
+  if (source === 'request') {
+    // The days the fallback may name, a closure shutting any of them wholly: the week before the visit, and today.
+    const weekBefore = addDays(reqDay, -7).ymd > now.ymd ? addDays(reqDay, -7).ymd : now.ymd;
+    const closedDays = new Set([
+      ...await closedWholly(l, weekBefore, Math.round((Date.parse(reqDay) - Date.parse(weekBefore)) / 86_400_000)),
+      ...(weekBefore > now.ymd ? await closedWholly(l, now.ymd, 1) : []),
+    ]);
+    fallback = requestFallback(l.hours, reqDay, call, now, closedDays);
+  }
   const [first, ...rest] = patientName.split(/\s+/);
   const last = rest.join(' ') || '—';
   const phoneKey = digits(phone).slice(-10);
@@ -186,21 +245,10 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     await tx.query('select pg_advisory_xact_lock(hashtext($1))', [l.id]);
 
     // The slot, re-read now that nobody else can be inserting. openSlots ran before the
-    // transaction and only narrowed the offer; this is what actually holds the chair.
-    if (l.workspace) {
-      const { rows: dentRow } = dentist ? await tx.query('select id from staff where slug = $1', [dentist.slug]) : { rows: [] as any[] };
-      if (dentist) {
-        const clash = await findClash(tx, l.id, { startsAt, endsAt, chair: null, dentistId: dentRow[0]?.id ?? null });
-        if (clash) return { gone: true as const };
-      } else {
-        // No dentist asked for: the clinic can take as many at once as it has chairs.
-        const { rows: busy } = await tx.query<{ n: number }>(
-          `select count(*)::int as n from appointment a
-            where a.status not in ('cancelled', 'no_show', 'completed')
-              and a.starts_at < $2 and a.ends_at > $1`, [startsAt, endsAt]);
-        if (busy[0].n >= l.chairs) return { gone: true as const };
-      }
-    }
+    // transaction and only narrowed the offer; this is what actually holds the chair: the
+    // same rule, on this transaction's reads (lunch, closures, the dentist's time, chairs
+    // out of use, chairs taken, dentists left for visits booked with no dentist).
+    if (l.workspace && !(await slotStillOpen(tx, l, { dentist: dentist?.slug ?? null, startsAt, endsAt }))) return { gone: true as const };
 
     // Five a day from one number at this clinic, counted on bookings that exist — a slot
     // that was already gone costs the person nothing.
