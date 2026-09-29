@@ -14,9 +14,9 @@ import ClinicRoom from './ClinicRoom.astro';
 import './patient.css';
 import './clinic-glass.css';
 import { priceText, hmoById, CATEGORY_LABEL } from '../../../data/directory';
-import { hoursRows } from '../../../lib/availability';
+import { hoursRows, closedDaysText, dentistDaysText } from '../../../lib/availability';
 import { publicPhoto } from '../../../lib/uploads';
-import type { DbListing } from '../../../lib/directory-db';
+import { closuresFor, type DbListing } from '../../../lib/directory-db';
 import lqip from '../../../data/lqip.json';
 const blur = (k: string) => lqip[k as keyof typeof lqip];
 
@@ -24,16 +24,20 @@ interface Props { l: DbListing; site?: boolean }
 const { l, site = false } = Astro.props;
 const dentists = l.dentistProfiles;
 const fees = l.fees;
-const rows = hoursRows(l.hours);
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const daysAt = (slug: string, d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === slug)?.days.map((n) => DAYS[n]).join(' · ') ?? '';
+// A day's hours and its lunch each stay on one line; a narrow card breaks between them ("9 am – 6 pm ·" / "lunch 12 pm – 1 pm").
+const rows = hoursRows(l.hours, l.lunch);
+// The clinic's closures and lunch for the next 31 days (040): the status pill's script reads them, and the
+// hours card lists the closed days. Times only: never a note, never why.
+const closures = await closuresFor(l);
+const closedAhead = closedDaysText(closures, l.hours);
+const daysAt = (slug: string, d: (typeof dentists)[number]) => { const c = d.clinics.find((x) => x.slug === slug); return c ? dentistDaysText(c.days, c.hours) : ''; };
 // The clinic's own map link when they pasted one in Settings; a search on the address otherwise.
 const directions = l.mapsUrl ?? `https://www.google.com/maps/search/${encodeURIComponent(l.address)}`;
 ---
 
 <ClinicRoom keys={l.photoKeys} clinicId={l.id} />
 
-<main id="main" class="pt-main cl-glass cl-clinic" data-hours={JSON.stringify(l.hours)} data-slug={l.slug} data-workspace={l.workspace ? '1' : '0'}>
+<main id="main" class="pt-main cl-glass cl-clinic" data-hours={JSON.stringify(l.hours)} data-closures={JSON.stringify(closures)} data-slug={l.slug} data-workspace={l.workspace ? '1' : '0'}>
   <!-- The clinic: the way back, who it is, whether it is open now, the one main action; its own photos beside -->
   <section class="ws-pane ws-glass pt-card cl-pane cl-head cl-clinic-head" aria-labelledby="clinic-title">
     <div class="min-w-0">
@@ -129,10 +133,18 @@ const directions = l.mapsUrl ?? `https://www.google.com/maps/search/${encodeURIC
         <table class="pt-table" data-hours-table>
           <tbody>
             {rows.map((r) => (
-              <tr data-day={r.day}><th class="text-left font-medium">{r.name}</th><td class="text-ink-2">{r.text}</td></tr>
+              <tr data-day={r.day}><th class="text-left font-medium">{r.name}</th><td class="text-ink-2">{r.text.split(' · ').map((part, i) => <>{i > 0 && '\u00a0· '}<span class="whitespace-nowrap">{part}</span></>)}</td></tr>
             ))}
           </tbody>
         </table>
+        {closedAhead.length > 0 && (
+          <>
+            <h3 class="mt-2 border-t border-hair pt-2.5 text-[14.5px] leading-[1.4] font-semibold text-ink">Closed days ahead</h3>
+            <ul class="mt-1 grid gap-1 text-[14.5px] leading-[1.4] text-ink-2" data-closed-list>
+              {closedAhead.map((t) => <li>{t}</li>)}
+            </ul>
+          </>
+        )}
       </Pane>
 
       <!-- Coverage -->
@@ -169,7 +181,7 @@ const directions = l.mapsUrl ?? `https://www.google.com/maps/search/${encodeURIC
   import { statusFor, manilaNow } from '../../../lib/availability';
   const main = document.querySelector('main')!;
   const now = manilaNow();
-  const st = statusFor(JSON.parse(main.dataset.hours!), now);
+  const st = statusFor(JSON.parse(main.dataset.hours!), now, JSON.parse(main.dataset.closures || '[]'));
   const pill = main.querySelector<HTMLElement>('[data-status]')!;
   pill.dataset.state = st.state;
   main.querySelector('[data-status-text]')!.textContent = st.text;

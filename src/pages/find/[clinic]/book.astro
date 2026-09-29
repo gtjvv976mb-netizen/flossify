@@ -10,7 +10,9 @@ import ClinicRoom from '../_ui/ClinicRoom.astro';
 import '../_ui/patient.css';
 import '../_ui/clinic-glass.css';
 import { priceText, symptoms, hmoById } from '../../../data/directory';
-import { loadListing } from '../../../lib/directory-db';
+import { loadListing, closuresFor, dentistsAway } from '../../../lib/directory-db';
+import { closedOnText, dentistDaysText } from '../../../lib/availability';
+import { shortName } from '../../../lib/schedule';
 
 // Five screens, no account. Reason → dentist → when → who → confirm. Every
 // screen can be reached with Tab and answered with Enter; nothing is hidden
@@ -21,8 +23,13 @@ const l = await loadListing(Astro.params.clinic!);
 if (!l) return new Response('No such clinic', { status: 404 });
 const dentists = l.dentistProfiles;
 const fees = l.fees;
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
+// Blocked time (040). Each dentist's days with their own hours ("Tue 1–6 pm · Thu"), and the days in the next
+// 30 they are normally in and wholly away; for a request, the clinic's closed days ahead under Preferred day.
+// Times and days only: never a note, never leave told from a day off.
+const away = await dentistsAway(l);
+const closedOn = l.workspace ? '' : closedOnText(await closuresFor(l), l.hours);
+const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.slug);
 ---
 
 
@@ -35,7 +42,7 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
   <main id="main" class="pt-main cl-glass cl-book"
     data-slug={l.slug} data-name={l.name} data-phone={l.phone} data-workspace={l.workspace ? '1' : '0'}
     data-hours={JSON.stringify(l.hours)}
-    data-dentists={JSON.stringify(dentists.map((d) => ({ slug: d.slug, name: d.name, days: d.clinics.find((c) => c.slug === l.slug)?.days ?? [] })))}
+    data-dentists={JSON.stringify(dentists.map((d) => ({ slug: d.slug, name: d.name, short: shortName(d.name), days: at(d)?.days ?? [], hours: at(d)?.hours ?? {}, away: away[d.slug] ?? [] })))}
     data-services={JSON.stringify(fees.map((f) => ({ id: f.id, name: f.name, minutes: f.minutes, price: priceText(f) })))}
   >
     <!-- The heading, in its own small card: the way back, the clinic, what this page does -->
@@ -91,7 +98,7 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
           <div class="cl-picks" role="radiogroup" aria-label="Dentist">
             <label class="row-radio pt-pick"><input type="radio" name="dentist" value="" checked /><span><span class="pt-pick-icon"><Icon name="patients" /></span><span class="pt-pick-words"><strong class="font-semibold">Any available dentist</strong><span class="cl-pick-line">Soonest slot at the clinic</span></span><span class="pt-tick" aria-hidden="true"></span></span></label>
             {dentists.map((d) => (
-              <label class="row-radio pt-pick"><input type="radio" name="dentist" value={d.slug} /><span><Avatar name={d.name} /><span class="pt-pick-words"><strong class="font-semibold">{d.name}</strong><span class="cl-pick-line">{d.specialty ?? d.practices.slice(0, 2).join(', ')} · {d.clinics.find((c) => c.slug === l.slug)?.days.map((n) => DAYS[n]).join(' · ')} · {d.prcCheckedOn ? <span class="font-medium text-accent">PRC checked</span> : <span>PRC check pending</span>}</span></span><span class="pt-tick" aria-hidden="true"></span></span></label>
+              <label class="row-radio pt-pick"><input type="radio" name="dentist" value={d.slug} /><span><Avatar name={d.name} /><span class="pt-pick-words"><strong class="font-semibold">{d.name}</strong><span class="cl-pick-line">{d.specialty ?? d.practices.slice(0, 2).join(', ')} · {dentistDaysText(at(d)?.days ?? [], at(d)?.hours)} · {d.prcCheckedOn ? <span class="font-medium text-accent">PRC checked</span> : <span>PRC check pending</span>}</span></span><span class="pt-tick" aria-hidden="true"></span></span></label>
             ))}
           </div>
         </fieldset>
@@ -105,10 +112,13 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
           <div class="cl-slot-area" data-slot-area>
             {l.workspace
               ? <div class="pt-days" data-slot-days></div>
-              : <div class="cl-fields">
-                  <label class="field"><span class="meta">Preferred day</span><input type="date" name="reqDate" required /></label>
-                  <label class="field"><span class="meta">Time of day</span><select name="reqTime"><option>Morning</option><option>Midday</option><option>Afternoon</option></select></label>
-                </div>}
+              : <>
+                  <div class="cl-fields">
+                    <label class="field"><span class="meta">Preferred day</span><input type="date" name="reqDate" required aria-describedby="closed-days" /></label>
+                    <label class="field"><span class="meta">Time of day</span><select name="reqTime"><option>Morning</option><option>Midday</option><option>Afternoon</option></select></label>
+                  </div>
+                  <p class="cl-slot-note" id="closed-days" data-closed-days data-closed-base={closedOn} hidden={!closedOn}>{closedOn}</p>
+                </>}
           </div>
           <input type="hidden" name="slot" />
           <button type="button" class="btn btn-quiet cl-slot-more" data-slot-more hidden><Icon name="chevron" />Show more days</button>
@@ -191,13 +201,13 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
   </main>
 
   <script>
-    import { manilaNow } from '../../../lib/availability';
+    import { manilaNow, dayLabel, dentistDaysText } from '../../../lib/availability';
     import { svgFor } from '../../../components/ws/icons';
 
     const main = document.querySelector('main')!;
     const ws = main.dataset.workspace === '1';
     const slug = main.dataset.slug!, clinicName = main.dataset.name!;
-    const dentists = JSON.parse(main.dataset.dentists!) as { slug: string; name: string; days: number[] }[];
+    const dentists = JSON.parse(main.dataset.dentists!) as { slug: string; name: string; short: string; days: number[]; hours: Record<number, [number, number]>; away: string[] }[];
     const services = JSON.parse(main.dataset.services!) as { id: string; name: string; minutes: number; price: string }[];
     const form = main.querySelector<HTMLFormElement>('[data-wizard]')!;
     // A request can't be for a day that has passed (the API refuses it too): the picker starts at today, Manila time.
@@ -254,7 +264,7 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
           <div class="pt-slots">${ss.map((s) => `<label class="slot-radio"><input type="radio" name="slotpick" value="${esc(s.at)}" data-label="${esc(s.dayLabel)}, ${esc(s.label)}"><span>${esc(s.label)}</span></label>`).join('')}</div>
         </div>`).join('') || `<p class="ws-empty">${svgFor('info', 20).replace('class="ws-icon"', 'class="ws-icon ws-empty-icon"')}<span class="ws-empty-text">Nothing open in the next two weeks for that choice. Try “any dentist”, or call the clinic.</span></p>`;
       more.hidden = days.length <= shownDays;
-      note.textContent = d ? `${d.name} is in on ${d.days.map((n) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][n]).join(', ')}.` : `${lastSlots.length} open slots in the next two weeks.`;
+      note.textContent = d ? `${d.name} is in on ${dentistDaysText(d.days, d.hours, ', ')}.` : `${lastSlots.length} open slots in the next two weeks.`;
       // A slot passed in from the search page is preselected if it is still free.
       // (A link written before the time was encoded reads its "+08:00" as " 08:00": put the plus back.)
       const pre = new URLSearchParams(location.search).get('slot')?.replace(' ', '+');
@@ -268,6 +278,19 @@ const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
       catch { slotDays.innerHTML = '<p class="pt-error">Could not reach the schedule. Try again, or call the clinic.</p>'; }
     }
     more.addEventListener('click', () => { shownDays += 4; paintSlots(); });
+
+    // A request: the clinic's closed days ahead under Preferred day, and the chosen dentist's days away
+    // on days they are normally in ("not in", whether leave or not: the public side never tells).
+    const closedDays = $('[data-closed-days]') as HTMLElement | null;
+    function paintClosedDays() {
+      if (!closedDays) return;
+      const d = dentists.find((x) => x.slug === val('dentist'));
+      const words = [closedDays.dataset.closedBase ?? '', d && d.away.length ? `${d.short} is not in on: ${d.away.map(dayLabel).join(', ')}.` : ''].filter(Boolean).join(' ');
+      closedDays.textContent = words;
+      closedDays.hidden = !words;
+    }
+    form.addEventListener('change', (e) => { if ((e.target as HTMLInputElement).name === 'dentist') paintClosedDays(); });
+    paintClosedDays();
     form.addEventListener('change', (e) => { const n = (e.target as HTMLInputElement).name; if (n === 'dentist' || n === 'reason') { shownDays = 4; refreshSlots(); } });
     refreshSlots();
 
