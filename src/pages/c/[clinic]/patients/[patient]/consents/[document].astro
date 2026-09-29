@@ -1,0 +1,319 @@
+---
+// One consent form on the record (039; the intake spec §7): what was shown and
+// decided, drawn from the stored snapshot (ConsentDocument, record mode) — never
+// from today's words — with the signature, who signed and as whom, the facts
+// ("Signed on the clinic's tablet 10:42 · open 2 min 10 s before deciding"),
+// the dentist's confirmation, any staff confirmation or withdrawal, every
+// earlier signing, and the fingerprints checked again in the database
+// ("Unchanged since it was stored", or a red callout).
+//
+// What can be done here, each one post (csrfOk, the staff's save limit, one
+// withClinic() transaction; refused → drawn again with what was typed):
+//   explain       Explain and confirm (the form's named dentist only; teal for them until done)
+//   confirm       I saw this signed / I checked the papers (not the person who signed)
+//   withdraw      the patient takes their agreement back: who told us, how, a note
+//   paper_print   print it for signing on paper (explained first where it must be)
+//   paper         record the paper signing, with its scan (a file uploaded after the print)
+//   cancel        remove a form nobody signed
+// Sign on this tablet posts to the intake (../../intake/, intent=start). Viewing
+// is audited consent.view. Anyone who may open the record reads it; the writes
+// need records.edit (canEditRecords in the transaction).
+export const prerender = false;
+
+import ClinicLayout from '../../../../../../layouts/Clinic.astro';
+import Csrf from '../../../../../../components/Csrf.astro';
+import Pane from '../../../../../../components/ws/Pane.astro';
+import Icon from '../../../../../../components/ws/Icon.astro';
+import SidePanel from '../../../../../../components/ws/SidePanel.astro';
+import ConsentDocument from '../../../../../../components/consent/ConsentDocument.astro';
+import Head from '../../_ui/Head.astro';
+import Callout from '../../_ui/Callout.astro';
+import Glyph from '../../_ui/Glyph.astro';
+import Signature from '../../_record/Signature.astro';
+import Who from '../../_record/Who.astro';
+import ExplainForm from '../../intake/_ui/ExplainForm.astro';
+import '../../_ui/patients.css';
+import '../../_record/record.css';
+import '../../intake/intake.css';
+import { requireWorkspace } from '../../../../../../lib/workspace';
+import { withClinic } from '../../../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../../../lib/csrf';
+import { hit, LIMITS } from '../../../../../../lib/throttle';
+import { canEditRecords, manilaToday, ageOn, isMinor, dateText } from '../../../../../../lib/health';
+import { can } from '../../../../../../lib/can';
+import { Refused } from '../../../../../../lib/refused';
+import { renderDocument, EXPLAINED_LANGS, signerChoices, type SignerChoice } from '../../../../../../lib/consent-library';
+import {
+  loadConsentDocument, snapshotDoc, signingCheck, attestDocument, confirmSigning, withdrawConsent, printForPaper, recordPaperSigning, cancelDocument,
+  mayAttest, clinicFace, contextFor, plannedLanguage, bornLine, signerWords, STATE_WORDS, WITHDRAW_HOW, type RecordSigning,
+} from '../../../../../../lib/consent-docs';
+import { rawFromFields, rawFromForm, feeChips, timeWords } from '../../../../../../lib/intake';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const patientId = Astro.params.patient ?? '';
+const docId = Astro.params.document ?? '';
+if (!UUID.test(patientId) || !UUID.test(docId)) return new Response(null, { status: 404 });
+const base = `/c/${clinic.slug}/patients/${patientId}/`;
+const here = `${base}consents/${docId}/`;
+const q = Astro.url.searchParams;
+
+let problems: string[] = [];
+let posted: FormData | null = null;
+let postedIntent = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(`${here}?stale=1`, 303);
+  const s = (k: string) => { const v = form.get(k); return v === null ? null : String(v); };
+  try {
+    const rate = await hit('record:s:' + session.staffId, ...LIMITS.chart.staff);
+    if (!rate.allowed) throw new Refused('Too many saves at once. Wait a moment and try again.');
+    const next = await withClinic(clinic.id, async (tx) => {
+      const a = { clinicId: clinic.id, staffId: session.staffId, docId };
+      const doc = await loadConsentDocument(tx, docId);
+      if (!doc || doc.patientId !== patientId) throw new Refused('That form is not on this record.');
+      switch (intent) {
+        case 'explain':
+          await attestDocument(tx, { ...a, rev: Number(form.get('doc_rev')), raw: rawFromForm(form, `d.${docId}.`), lang: s('explained_lang'), langOther: s('explained_other'), interpreter: s('interpreter'), assent: s('assent') });
+          return '?saved=explained';
+        case 'confirm':
+          await confirmSigning(tx, { clinicId: clinic.id, staffId: session.staffId, signingId: s('signing') ?? '', attachmentId: s('file'), note: s('note') });
+          return '?saved=confirmed';
+        case 'withdraw':
+          await withdrawConsent(tx, { ...a, toldBy: s('told_by') ?? '', how: s('how') ?? '', note: s('note') });
+          return '?saved=withdrawn';
+        case 'paper_print':
+          await printForPaper(tx, a);
+          return 'print/?paper=1';
+        case 'paper':
+          await recordPaperSigning(tx, { ...a, raw: rawFromForm(form, ''), signedOn: s('signed_on') ?? '', attachmentId: s('file') ?? '', clinic: await clinicFace(tx, clinic.id) });
+          return '?saved=paper';
+        case 'cancel':
+          await cancelDocument(tx, a);
+          return 'removed';
+        default: throw new Refused('That did not say what to do.');
+      }
+    });
+    if (next === 'removed') return Astro.redirect(`${base}?saved=consent-removed#consent`, 303);
+    return Astro.redirect(`${here}${next}`, 303);
+  } catch (e) {
+    if (!(e instanceof Refused)) throw e;
+    problems = e.reasons;
+    posted = form;
+    postedIntent = intent;
+    Astro.response.status = 422;
+  }
+}
+
+const today = manilaToday();
+const data = await withClinic(clinic.id, async (tx) => {
+  const doc = await loadConsentDocument(tx, docId);
+  if (!doc || doc.patientId !== patientId) return null;
+  const p = (await tx.query<{ first_name: string; middle_name: string | null; last_name: string; suffix: string | null; chart_no: string; birth: string | null }>(
+    `select first_name, middle_name, last_name, suffix, chart_no, to_char(birth_date, 'YYYY-MM-DD') as birth from patient where id = $1`, [patientId])).rows[0];
+  const checks = new Map<string, Awaited<ReturnType<typeof signingCheck>>>();
+  for (const s of doc.signings) checks.set(s.id, await signingCheck(tx, s));
+  const canEdit = can(clinic, 'records.edit') && (await canEditRecords(tx, session.staffId, clinic.id));
+  const mayExplain = canEdit && (await mayAttest(tx, clinic.id, session.staffId, doc.dentistId));
+  const face = await clinicFace(tx, clinic.id);
+  const files = canEdit ? (await tx.query<{ id: string; kind: string; caption: string | null; created_at: Date; mime: string }>(
+    `select id, kind, caption, created_at, mime from attachment where patient_id = $1 and removed_at is null order by created_at desc limit 50`, [patientId])).rows : [];
+  const chips = doc.template ? await feeChips(tx, doc.template, Array.isArray(doc.fields.teeth) ? (doc.fields.teeth as number[]).length : 1) : [];
+  const area = (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null;
+  await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'consent.view', 'consent_document', $3)`, [clinic.id, session.staffId, doc.id]);
+  return { doc, p, checks, canEdit, mayExplain, face, files, chips, area };
+});
+if (!data) return new Response(null, { status: 404 });
+const { doc, p, checks, canEdit, mayExplain, face, files } = data;
+const t = doc.template;
+const name = [p.first_name, p.middle_name, p.last_name, p.suffix].filter(Boolean).join(' ');
+const age = p.birth ? ageOn(p.birth, today) : null;
+const minor = p.birth ? isMinor(p.birth, today) : null;
+const latest = doc.latest;
+const snap = latest ? snapshotDoc(latest) : null;
+const planned = plannedLanguage(doc);
+const live = t ? renderDocument(t, doc.fields, contextFor(t, { clinic: face, patientName: name, birth: p.birth, minor, dentist: doc.dentistName ? { name: doc.dentistName, prc: doc.dentistPrc } : null, attested: doc.attestation, planned })) : null;
+const st = STATE_WORDS[doc.state];
+const explaining = mayExplain && t?.attest && !doc.attestation && !latest && !doc.paperPrintedAt && (q.get('explain') === '1' || postedIntent === 'explain');
+const openIntake = doc.intakeStatus === 'preparing' || doc.intakeStatus === 'out';
+const canResign = canEdit && !openIntake && doc.inForce && ['to_sign', 'refused', 'no_photos', 'withdrawn'].includes(doc.state) && (!t?.attest || !!doc.attestation);
+const CHANNEL: Record<string, string> = { phone: 'on the patient’s phone', tablet: 'on the clinic’s tablet', desk: 'on a clinic device', paper: 'on paper' };
+const hm = (d: Date) => timeWords(d);
+const dur = (a: Date | null, b: Date) => {
+  if (!a) return null;
+  const s = Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 1000));
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+};
+const facts = (s: RecordSigning) => [
+  s.channel === 'paper' ? `Signed on paper ${s.signedOn ? dateText(s.signedOn) : ''}, recorded by ${s.recordedByName ?? 'the clinic'}` : `${s.decision === 'agreed' ? 'Signed' : 'Decided'} ${CHANNEL[s.channel]} ${dateText(new Date(s.signedAt).toISOString().slice(0, 10))}, ${hm(s.signedAt)}`,
+  s.method === 'mark' ? 'by mark' : null,
+  s.channel !== 'paper' && dur(s.openedAt, s.decidedAt) ? `open ${dur(s.openedAt, s.decidedAt)} before deciding` : null,
+  s.linkByName ? `link made by ${s.linkByName}` : null,
+].filter(Boolean).join(' · ');
+const saved = q.get('saved');
+const SAVED: Record<string, string> = { explained: 'Confirmed. The form can be signed now.', confirmed: 'Confirmed under your sign-in.', withdrawn: 'Withdrawn. The record shows it; the signed form is kept.', paper: 'The paper signing is recorded with its scan.' };
+const needsConfirm = latest && latest.needsConfirm && !latest.confirmation ? latest : null;
+const paperFiles = doc.paperPrintedAt ? files.filter((f) => new Date(f.created_at) >= new Date(doc.paperPrintedAt!)) : [];
+const choices: SignerChoice[] = minor === null ? [] : signerChoices(minor, 'clinic');
+const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title={doc.title} section="patients" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  <a href={`${base}#consent`} class="rec-back ws-glass m-0! w-fit px-3!"><Icon name="chevron-left" />Back to {p.first_name}’s record</a>
+  {q.get('stale') === '1' && <Callout tone="alert" text={CSRF_MESSAGE} />}
+  {q.get('refused') && <Callout tone="alert" text="The forms could not be started for signing: this form is in forms being filled in, signed already, or has newer words." />}
+  {saved && SAVED[saved] && <Callout tone="success" text={SAVED[saved]} />}
+  {problems.length > 0 && <Callout tone="alert" focus class="focus:outline-none" data-ik-problems title={`Nothing was saved. ${problems.length === 1 ? 'One thing' : `${problems.length} things`} to fix:`} items={problems} />}
+
+  <Pane as="section" label="Where it stands" pad="tight">
+    <div class="ik-who">
+      <span class="ik-who-name">{doc.title}</span>
+      <span class="ik-ref">{doc.ref}</span>
+      <span class:list={['ik-tag']} data-tone={st.tone}>{st.words}{latest && doc.state !== 'to_sign' ? ` ${dateText(new Date(latest.signedAt).toISOString().slice(0, 10))}` : ''}</span>
+      <span class="ik-row-meta">{name} · {p.chart_no}</span>
+    </div>
+    <p class="ik-actions mt-3">
+      {latest && <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}print/`}><Glyph name="print" size={16} />Print</a>}
+      {canResign && (
+        <form method="post" action={`/c/${clinic.slug}/patients/intake/`}>
+          <Csrf /><input type="hidden" name="intent" value="start" /><input type="hidden" name="way" value="clinic" /><input type="hidden" name="from" value="document" />
+          <input type="hidden" name="patient" value={patientId} /><input type="hidden" name="document" value={doc.id} />
+          <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="tablet" size={16} />Sign on this tablet</button>
+        </form>
+      )}
+      {canEdit && doc.state === 'to_sign' && !latest && !openIntake && (!t?.attest || doc.attestation) && (
+        <form method="post" action={here}><Csrf /><input type="hidden" name="intent" value="paper_print" /><button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />{doc.paperPrintedAt ? 'Print for signing again' : 'Print for signing on paper'}</button></form>
+      )}
+      {canEdit && doc.paperPrintedAt && doc.state === 'to_sign' && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="cd-paper">Record a paper signing</button>}
+      {needsConfirm && canEdit && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="cd-confirm">{needsConfirm.needsConfirm === 'witness' ? 'I saw this signed' : 'I checked the papers'}</button>}
+      {canEdit && (doc.state === 'agreed' || doc.state === 'to_confirm') && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="cd-withdraw">Withdraw</button>}
+      {canEdit && !latest && !openIntake && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="cd-cancel">Remove</button>}
+    </p>
+    {openIntake && <p class="ik-help mt-2">In forms being filled in now ({doc.intakeRef}).</p>}
+    {t?.attest && !doc.attestation && !latest && (
+      <p class="mt-3">{mayExplain ? (
+        !explaining && <a class="ws-btn ws-btn-primary" href={`${here}?explain=1`}><Icon name="check" />Explain and confirm</a>
+      ) : <span class="ik-help">Not explained yet. Only {doc.dentistName ?? 'the dentist named on the form'} can confirm it. To change who explains, remove the form and prepare it again.</span>}</p>
+    )}
+  </Pane>
+
+  {explaining && t && live ? (
+    <ExplainForm action={here} doc={doc} t={t} rendered={live} raw={posted && postedIntent === 'explain' ? rawFromForm(posted, `d.${doc.id}.`) : rawFromFields(t, doc.fields)}
+      posted={postedIntent === 'explain' ? posted : null} firstName={p.first_name} age={age} minor={minor} forLine={bornLine(p.birth, today)} planned={planned} chips={data.chips} cancelHref={here} />
+  ) : latest && snap ? (
+    <>
+    <Pane as="section" label="What was signed">
+      <Head icon="pen" title={latest.decision === 'agreed' ? 'What they agreed to' : 'What they decided'} meta="As it was shown and decided, from the stored copy" />
+      <ConsentDocument mode="record" doc={snap} version={doc.versionId} ref={doc.ref} forLine={bornLine(snap.patient?.birth ?? null, snap.date)} signedFor={latest.signedAs === 'guardian' ? signerWords({ name: latest.signedByName, as: latest.signedAs, relation: latest.relation }) : null} />
+      <div class="ik-sep grid gap-3">
+        <p class="rp-row"><span class="rp">{snap.decision === 'agreed' ? 'I agree' : 'I do not agree'}</span>{snap.read && <span class="rp">{snap.read.en}</span>}{snap.explained_in && <span class="rp">Explained in {snap.explained_in}</span>}</p>
+        {snap.meaning && <p class="text-[16px] font-semibold">{snap.meaning}</p>}
+        <div class="grid gap-2 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] items-start">
+          {latest.strokes ? <Signature strokes={latest.strokes} name={latest.signedByName} /> : <span class="sig"><span class="sig-none">{latest.channel === 'paper' ? 'On paper: see the scan in Files' : 'No signature: an unsigned “No, thank you”'}</span></span>}
+          <div class="grid gap-1.5">
+            <p class="rp-row"><Who name={signerWords({ name: latest.signedByName, as: latest.signedAs, relation: latest.relation, method: latest.method })} />{latest.authority && latest.authority !== 'parent' && <span class="rp">{({ court_guardian: 'Court-appointed guardian', substitute: 'Substitute parental authority', written: 'Authorised in writing by a parent', representative: 'Representative' } as Record<string, string>)[latest.authority]}</span>}</p>
+            <p class="text-[14.5px] text-ink-2">{facts(latest)}</p>
+            {doc.attestation && <p class="text-[14.5px] text-ink-2">Confirmed and explained in {doc.attestation.lang} by {doc.attestation.dentistName}, PRC {doc.attestation.dentistPrc}, {dateText(new Date(doc.attestation.at).toISOString().slice(0, 10))}, {hm(doc.attestation.at)}{doc.attestation.interpreter ? ` · interpreter ${doc.attestation.interpreter}` : ''}{doc.attestation.assent ? ` · the patient ${doc.attestation.assent === 'not_asked' ? 'was not asked' : doc.attestation.assent}` : ''}</p>}
+            {latest.confirmation && <p class="text-[14.5px] text-ink-2">{latest.confirmation.kind === 'witness' ? 'Witnessed' : 'Papers checked'} by {latest.confirmation.staffName}, {hm(latest.confirmation.at)}</p>}
+            {latest.needsConfirm && !latest.confirmation && <p class="rp-row"><span class="rp rp-warn">To confirm: {latest.needsConfirm === 'witness' ? 'a staff member who saw the mark made' : 'a staff member checks the papers'}</span></p>}
+            {latest.withdrawal && <p class="rp-row"><span class="rp rp-alert">Withdrawn {dateText(new Date(latest.withdrawal.at).toISOString().slice(0, 10))}: told by {latest.withdrawal.toldBy}, {WITHDRAW_HOW.find((h) => h.value === latest.withdrawal!.how)?.label.toLocaleLowerCase('en')}, recorded by {latest.withdrawal.byName}</span></p>}
+          </div>
+        </div>
+      </div>
+    </Pane>
+    <Pane as="section" label="Fingerprints">
+      <Head icon="shield" title="Fingerprints" />
+      {(() => { const c = checks.get(latest.id); return c?.ok
+        ? <p class="flex items-center gap-2 text-[15px] font-semibold text-[var(--ws-green-ink)]"><Icon name="check" />Unchanged since it was stored</p>
+        : <Callout tone="alert" role="alert" text="This copy does not match what was stored. Do not use it as the original." />; })()}
+      <dl class="mt-3 grid gap-1 text-[14px] text-ink-2">
+        <div><dt class="inline font-semibold">Seal: </dt><dd class="inline ik-ref">{checks.get(latest.id)?.short}</dd></div>
+        <div><dt class="inline font-semibold">Words: </dt><dd class="inline ik-ref break-all">{latest.snapshotSha256}</dd></div>
+        {latest.chainSeq !== null && <div><dt class="inline font-semibold">Chain no.: </dt><dd class="inline ik-ref">{latest.chainSeq}</dd></div>}
+      </dl>
+      {doc.signings.length > 1 && <p class="ik-help mt-3">Signed {doc.signings.length} times; the latest counts, and every one is kept.</p>}
+    </Pane>
+    </>
+  ) : live && t ? (
+    <Pane as="section" label="The form">
+      <Head icon="form" title="Not signed yet" meta={doc.attestation ? `Explained by ${doc.attestation.dentistName}` : undefined} />
+      <ConsentDocument mode="preview" doc={live} version={doc.versionId} ref={doc.ref} forLine={bornLine(p.birth, today)} plannedLang={planned} />
+    </Pane>
+  ) : (
+    <Pane as="div" label="Words"><Callout tone="warn" role="note" text="The words of this form are not on this server." /></Pane>
+  )}
+
+  {canEdit && needsConfirm && (
+    <SidePanel id="cd-confirm" title={needsConfirm.needsConfirm === 'witness' ? 'I saw this signed' : 'I checked the papers'} meta={doc.ref} open={postedIntent === 'confirm'}>
+      <form method="post" action={here} class="grid gap-4">
+        <Csrf /><input type="hidden" name="intent" value="confirm" /><input type="hidden" name="signing" value={needsConfirm.id} />
+        <p class="text-[15px] text-ink-2">{needsConfirm.needsConfirm === 'witness' ? `You saw ${needsConfirm.signedByName} make their mark. You confirm it under your own sign-in.` : `You checked ${needsConfirm.signedByName}’s authority: the court order, the papers for the ground, or the parent’s letter, in ${p.first_name}’s Files.`}</p>
+        {needsConfirm.needsConfirm === 'authority' && (
+          <label class="field"><span class="meta">The file that shows it</span>
+            <select name="file" required><option value="">Choose a file</option>{files.map((f) => <option value={f.id} selected={val('file') === f.id}>{f.caption ?? f.kind} · {dateText(new Date(f.created_at).toISOString().slice(0, 10))}</option>)}</select>
+          </label>
+        )}
+        <label class="field"><span class="meta">A note (optional)</span><input name="note" value={val('note')} maxlength="200" autocomplete="off" /></label>
+        <div class="ik-actions"><button type="submit" class="ws-btn ws-btn-primary">Confirm</button><button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Not now</button></div>
+      </form>
+    </SidePanel>
+  )}
+  {canEdit && (doc.state === 'agreed' || doc.state === 'to_confirm') && (
+    <SidePanel id="cd-withdraw" title="Withdraw this consent" meta={doc.ref} open={postedIntent === 'withdraw'}>
+      <form method="post" action={here} class="grid gap-4">
+        <Csrf /><input type="hidden" name="intent" value="withdraw" />
+        <label class="field"><span class="meta">Who told the clinic</span><input name="told_by" value={val('told_by')} maxlength="120" autocomplete="off" required /></label>
+        <fieldset class="ik-q"><legend>How</legend><div class="ik-q-row">{WITHDRAW_HOW.map((h) => <label class="chip-radio"><input type="radio" name="how" value={h.value} checked={val('how') === h.value} /><span>{h.label}</span></label>)}</div></fieldset>
+        <label class="field"><span class="meta">A note (optional)</span><input name="note" value={val('note')} maxlength="200" autocomplete="off" /></label>
+        <p class="ik-help">The signed form is kept. Treatment it covered asks first from now on.</p>
+        <div class="ik-actions"><button type="submit" class="ws-btn ws-btn-primary">Withdraw</button><button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Keep it</button></div>
+      </form>
+    </SidePanel>
+  )}
+  {canEdit && !latest && !openIntake && (
+    <SidePanel id="cd-cancel" title="Remove this form?" meta={doc.ref} open={postedIntent === 'cancel'}>
+      <p class="ik-lede">Nobody signed it. It goes from the record’s list; to sign it after all, prepare it again.</p>
+      <form method="post" action={here} class="ik-actions mt-4"><Csrf /><input type="hidden" name="intent" value="cancel" /><button type="submit" class="ws-btn ws-btn-primary">Remove</button><button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Keep it</button></form>
+    </SidePanel>
+  )}
+  {canEdit && doc.paperPrintedAt && doc.state === 'to_sign' && t && (
+    <SidePanel id="cd-paper" title="Record a paper signing" meta={doc.ref} wide open={postedIntent === 'paper'}>
+      <form method="post" action={here} class="grid gap-4">
+        <Csrf /><input type="hidden" name="intent" value="paper" />
+        <p class="ik-help">Copy what the signed paper says. Upload its scan in Files first; it must be uploaded after the form was printed ({dateText(new Date(doc.paperPrintedAt).toISOString().slice(0, 10))}).</p>
+        <label class="field"><span class="meta">The scan</span>
+          <select name="file" required><option value="">Choose the scan</option>{paperFiles.map((f) => <option value={f.id} selected={val('file') === f.id}>{f.caption ?? f.kind} · {dateText(new Date(f.created_at).toISOString().slice(0, 10))}</option>)}</select>
+        </label>
+        <label class="field max-w-xs"><span class="meta">The day on the paper</span><input type="date" name="signed_on" value={val('signed_on', today)} max={today} /></label>
+        <fieldset class="ik-q"><legend>What they decided</legend><div class="ik-q-row">
+          <label class="chip-radio"><input type="radio" name="decision" value="agree" checked={val('decision') === 'agree'} /><span>{t.refuseUnsigned ? 'Yes, with these choices' : 'Agreed'}</span></label>
+          <label class="chip-radio"><input type="radio" name="decision" value="refuse" checked={val('decision') === 'refuse'} /><span>{t.refuseUnsigned ? 'No, thank you' : 'Did not agree'}</span></label>
+        </div></fieldset>
+        {t.ticks.length > 0 && <fieldset class="ik-q"><legend>Ticked on the paper</legend>{t.ticks.map((k) => <label class="check"><input type="checkbox" name={`tick_${k.id}`} value="1" checked={val(`tick_${k.id}`) === '1'} /><span>{k.line.en.map((r) => (typeof r === 'string' ? r : '…')).join('')}</span></label>)}</fieldset>}
+        {t.sections.some((x) => x.initials) && t.sections.filter((x) => x.initials).map((x) => <label class="field max-w-xs"><span class="meta">Initials by “{x.head.en}”</span><input name={`initials_${x.id}`} value={val(`initials_${x.id}`)} maxlength="6" autocomplete="off" /></label>)}
+        {t.attest && <fieldset class="ik-q"><legend>Explained in</legend><div class="ik-q-row">{EXPLAINED_LANGS.map((c) => <label class="chip-radio"><input type="radio" name="explained_lang" value={c.value} checked={val('explained_lang', doc.attestation?.lang ?? '') === c.value} /><span>{c.label}</span></label>)}</div><label class="field max-w-sm"><span class="meta">Another language</span><input name="explained_other" value={val('explained_other')} maxlength="40" /></label></fieldset>}
+        <fieldset class="ik-q"><legend>Who read it</legend><div class="ik-q-row">
+          <label class="chip-radio"><input type="radio" name="read" value="self" checked={val('read', 'self') === 'self'} /><span>They read it themself</span></label>
+          <label class="chip-radio"><input type="radio" name="read" value="to" checked={val('read') === 'to'} /><span>It was read to them</span></label>
+        </div><label class="field max-w-sm"><span class="meta">Read to them by</span><input name="read_by" value={val('read_by')} maxlength="60" /></label></fieldset>
+        <fieldset class="ik-q"><legend>Who signed</legend><div class="ik-q-row">{choices.map((c) => <label class="chip-radio"><input type="radio" name="signer_as" value={c} checked={val('signer_as') === c} /><span>{({ patient: 'The patient', mark: 'The patient, by mark', parent: 'A parent', court_guardian: 'A court-appointed guardian', substitute: 'Substitute parental authority', written: 'Authorised in writing by a parent', representative: 'A representative' } as Record<string, string>)[c]}</span></label>)}</div>
+          <div class="grid gap-3 sm:grid-cols-2 mt-2">
+            <label class="field"><span class="meta">Their name (not the patient)</span><input name="signer_name" value={val('signer_name')} maxlength="120" /></label>
+            <label class="field"><span class="meta">Who they are to the patient</span><input name="signer_relation" value={val('signer_relation')} maxlength="60" /></label>
+            {minor && <label class="field"><span class="meta">Substitute authority: why the parents cannot sign</span><select name="signer_ground"><option value="">Not a substitute</option>{(['died', 'absent', 'unfit'] as const).map((g) => <option value={g} selected={val('signer_ground') === g}>The parents {t.words.grounds[g]}</option>)}</select></label>}
+            {minor && <label class="field"><span class="meta">Substitute authority: who they are</span><select name="signer_who"><option value="">Not a substitute</option>{(['grandparent', 'sibling_21', 'custodian_21'] as const).map((w) => <option value={w} selected={val('signer_who') === w}>{t.words.who[w]}</option>)}</select></label>}
+            {minor && <label class="check sm:col-span-2"><input type="checkbox" name="signer_over21" value="1" checked={val('signer_over21') === '1'} /><span>They are 21 or older</span></label>}
+          </div>
+        </fieldset>
+        <div class="ik-actions"><button type="submit" class="ws-btn ws-btn-primary">Record the paper signing</button><button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Not now</button></div>
+      </form>
+    </SidePanel>
+  )}
+</ClinicLayout>
+
+<script>
+  document.querySelector<HTMLElement>('[data-ik-problems]')?.focus();
+</script>

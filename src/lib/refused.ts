@@ -5,10 +5,11 @@
 // to fix:"). The intake (intake.ts) and the consent documents (consent-docs.ts)
 // always throw it; they never return a refusal.
 //
-// Four pages still keep a copy of their own, moved here as each is next
-// touched: src/pages/api/recall.ts, src/pages/c/[clinic]/calls/index.astro,
-// src/pages/c/[clinic]/patients/new.astro and
-// src/pages/c/[clinic]/patients/[patient].astro.
+// Add patient typed in (src/pages/c/[clinic]/patients/new/type.astro) and the
+// patient record (src/pages/c/[clinic]/patients/[patient].astro, its outcome as
+// the detail) use this one. Two pages still keep a copy of their own, moved
+// here as each is next touched: src/pages/api/recall.ts and
+// src/pages/c/[clinic]/calls/index.astro.
 //
 // The sentences are for the person at the page: plain words, never an answer
 // a patient typed (a refusal may reach a log as an error's message: it is only

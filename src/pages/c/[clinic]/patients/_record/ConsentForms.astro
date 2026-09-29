@@ -1,0 +1,105 @@
+---
+// The record's consent forms (039): every form prepared for this patient,
+// newest first — its title and teeth, where it stands (a pill with words:
+// Signed · Did not agree · No photos · To sign · To confirm · Withdrawn), who
+// signed and a small copy of the signature, and who explains it — each with
+// Open (its page: src/pages/c/[clinic]/patients/[patient]/consents/[document].astro)
+// and Print. A form still to sign also has, for someone who can edit records,
+// Explain and confirm (its named dentist only), Sign on this tablet, and Print
+// for signing on paper. The head has Prepare consent forms and, for a treating
+// dentist, Record that the patient cannot decide.
+import Pane from '../../../../../components/ws/Pane.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Head from '../_ui/Head.astro';
+import Glyph from '../_ui/Glyph.astro';
+import Signature from './Signature.astro';
+import Who from './Who.astro';
+import { STATE_WORDS, signerWords, CAPACITY_MAX, type RecordDoc } from '../../../../../lib/consent-docs';
+
+interface Props {
+  docs: RecordDoc[];
+  slug: string;
+  patientId: string;
+  firstName: string;
+  canEdit: boolean;
+  /** The form ids the person signed in may explain and confirm (its named dentist, with a PRC licence). */
+  mayExplain: ReadonlySet<string>;
+  /** A treating dentist here with a PRC licence, and the patient an adult: may record that they cannot decide. */
+  mayCapacity: boolean;
+  capacity: { at: Date; dentistName: string; reason: string } | null;
+}
+const { docs, slug, patientId, firstName, canEdit, mayExplain, mayCapacity, capacity } = Astro.props;
+const base = `/c/${slug}/patients/${patientId}/consents/`;
+const TONE: Record<string, string> = { success: 'rp-ok', warn: 'rp-warn', alert: 'rp-alert', neutral: '', info: '' };
+const day = (d: Date) => new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(new Date(d));
+const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.teeth as number[]) : Array.isArray(d.fields.area) ? (d.fields.area as number[]) : []);
+---
+
+<Pane as="section" label="Consent forms" id="consent-forms">
+  <Head icon="form" title="Consent forms" meta={docs.length ? (docs.length === 1 ? 'One form' : `${docs.length} forms`) : undefined}>
+    {canEdit && (
+      <span slot="actions" class="flex flex-wrap gap-2">
+        <a href={`/c/${slug}/patients/new/?patient=${patientId}`} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="plus" size={16} />Prepare consent forms</a>
+        {mayCapacity && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-capacity">Record that the patient cannot decide</button>}
+      </span>
+    )}
+  </Head>
+  {capacity && <p class="mb-3 text-[14.5px] text-ink-2">{capacity.dentistName} recorded on {day(capacity.at)} that {firstName} cannot decide now: “{capacity.reason}” A representative may sign on a clinic device for 30 days.</p>}
+  {docs.length === 0 ? (
+    <p class="text-[14.5px] text-ink-2">No consent forms yet. Prepare them before a procedure: {firstName} reads and signs on the clinic’s tablet.</p>
+  ) : (
+    <ul class="rs-list">
+      {docs.map((d) => {
+        const st = STATE_WORDS[d.state];
+        const s = d.latest;
+        const teeth = teethOf(d);
+        const toSign = d.state === 'to_sign' || d.state === 'refused' || d.state === 'withdrawn' || d.state === 'no_photos';
+        const openIntake = d.intakeStatus === 'preparing' || d.intakeStatus === 'out';
+        return (
+          <li class="rs-item vx-signed-row">
+            {s && s.strokes ? <Signature strokes={s.strokes} name={s.signedByName} /> : <span class="sig"><span class="sig-none">{s ? (s.channel === 'paper' ? 'Signed on paper' : 'Not signed') : 'Not signed yet'}</span></span>}
+            <div class="min-w-0 grid gap-1.5">
+              <p class="rs-what">{d.title}</p>
+              <p class="rp-row">
+                <span class:list={['rp', TONE[st.tone]]}>{st.words}{s && d.state !== 'to_sign' ? ` ${day(s.signedAt)}` : ''}</span>
+                {teeth.map((n) => <span class="rp rp-tooth">Tooth {n}</span>)}
+                {s && <Who name={signerWords({ name: s.signedByName, as: s.signedAs, relation: s.relation, method: s.method })} />}
+                {!d.attestation && d.template?.attest && d.state === 'to_sign' && <span class="rp">Waiting for {d.dentistName ?? 'the dentist'} to explain</span>}
+                {openIntake && <span class="rp">In forms {d.intakeRef} now</span>}
+              </p>
+              {d.attestation && <p class="text-[14px] text-ink-2">Explained by {d.attestation.dentistName}, PRC {d.attestation.dentistPrc}, in {d.attestation.lang}</p>}
+              <p class="flex flex-wrap gap-2">
+                <a href={`${base}${d.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open</a>
+                {s && <a href={`${base}${d.id}/print/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>}
+                {canEdit && toSign && !openIntake && mayExplain.has(d.id) && !d.attestation && d.state === 'to_sign' && <a href={`${base}${d.id}/?explain=1`} class="ws-btn ws-btn-quiet ws-btn-sm">Explain and confirm</a>}
+                {canEdit && toSign && !openIntake && d.inForce && (!d.template?.attest || d.attestation) && (
+                  <form method="post" action={`/c/${slug}/patients/intake/`}>
+                    <Csrf /><input type="hidden" name="intent" value="start" /><input type="hidden" name="way" value="clinic" /><input type="hidden" name="from" value="document" />
+                    <input type="hidden" name="patient" value={patientId} /><input type="hidden" name="document" value={d.id} />
+                    <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="tablet" size={16} />Sign on this tablet</button>
+                  </form>
+                )}
+                {canEdit && d.state === 'to_sign' && !s && !openIntake && (!d.template?.attest || d.attestation) && (
+                  <form method="post" action={`${base}${d.id}/`}><Csrf /><input type="hidden" name="intent" value="paper_print" /><button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print for signing on paper</button></form>
+                )}
+              </p>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  )}
+</Pane>
+
+{mayCapacity && (
+  <SidePanel id="rec-capacity" title="The patient cannot decide now" meta={firstName}>
+    <form method="post" action={base} class="grid gap-4">
+      <Csrf /><input type="hidden" name="intent" value="capacity" />
+      <p class="text-[15px] text-ink-2">Record it only when {firstName} cannot understand or decide about treatment now. For 30 days a representative (a court-appointed guardian, or a relative with authority) may sign for them, on a clinic device.</p>
+      <label class="field"><span class="meta">Why they cannot decide now</span><textarea name="reason" rows="3" maxlength={CAPACITY_MAX} required></textarea></label>
+      <div class="flex flex-wrap gap-2"><button type="submit" class="ws-btn ws-btn-primary">Record it</button><button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Not now</button></div>
+    </form>
+  </SidePanel>
+)}

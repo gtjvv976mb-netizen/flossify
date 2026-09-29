@@ -1,0 +1,234 @@
+---
+// One consent form on A4 paper (039; the intake spec §3.6). Drawn from the
+// latest signing's stored snapshot — never from today's words — so a reprint
+// is what was signed; with ?paper=1 (after "Print for signing on paper"), the
+// form not signed yet, with empty boxes and signature lines. Black on white;
+// "CF-7K2FQ · extraction-2026-10" bottom left and "Page x of y" bottom right on
+// every page. The clinic's name, address and phone come from the snapshot (no
+// logo, no letterhead of our own); the chart number from the record, labelled
+// so. The check runs in the database: "Unchanged since it was stored", or a red
+// line that prints too. Audit consent.print (consent.paper_print was written
+// when the paper was asked for). The bar at the top (the way back, one teal
+// Print) does not print.
+export const prerender = false;
+
+import '../../../../../../../styles/global.css';
+import ConsentDocument from '../../../../../../../components/consent/ConsentDocument.astro';
+import { requireWorkspace } from '../../../../../../../lib/workspace';
+import { withClinic } from '../../../../../../../lib/db';
+import { manilaToday, isMinor, dateText, ageOn } from '../../../../../../../lib/health';
+import { prettyPhone } from '../../../../../../../lib/messages';
+import { renderDocument, type Rendered } from '../../../../../../../lib/consent-library';
+import { loadConsentDocument, snapshotDoc, signingCheck, clinicFace, contextFor, plannedLanguage, signerWords, type RecordSigning } from '../../../../../../../lib/consent-docs';
+import { timeWords } from '../../../../../../../lib/intake';
+import { SIG_W, SIG_H, strokesPath } from '../../../../../../../lib/visit-consent';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session } = ws;
+const patientId = Astro.params.patient ?? '';
+const docId = Astro.params.document ?? '';
+if (!UUID.test(patientId) || !UUID.test(docId)) return new Response(null, { status: 404 });
+const paper = Astro.url.searchParams.get('paper') === '1';
+const back = `/c/${clinic.slug}/patients/${patientId}/consents/${docId}/`;
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const doc = await loadConsentDocument(tx, docId);
+  if (!doc || doc.patientId !== patientId || !doc.template) return null;
+  const p = (await tx.query<{ first_name: string; middle_name: string | null; last_name: string; suffix: string | null; chart_no: string; birth: string | null }>(
+    `select first_name, middle_name, last_name, suffix, chart_no, to_char(birth_date, 'YYYY-MM-DD') as birth from patient where id = $1`, [patientId])).rows[0];
+  const latest = paper ? null : doc.latest;
+  const check = latest ? await signingCheck(tx, latest) : null;
+  const face = await clinicFace(tx, clinic.id);
+  await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'consent.print', 'consent_document', $3)`, [clinic.id, session.staffId, doc.id]);
+  return { doc, p, latest, check, face };
+});
+if (!data) return new Response(null, { status: 404 });
+const { doc, p, latest, check, face } = data;
+if (!latest && !paper) return Astro.redirect(back, 303);
+const t = doc.template!;
+const name = [p.first_name, p.middle_name, p.last_name, p.suffix].filter(Boolean).join(' ');
+const today = manilaToday();
+// What prints: the stored snapshot, or (paper) the form as it stands, unsigned.
+const r: Rendered | null = latest ? (snapshotDoc(latest) as Rendered | null) : renderDocument(t, doc.fields, contextFor(t, {
+  clinic: face, patientName: name, birth: p.birth, minor: p.birth ? isMinor(p.birth, today) : null,
+  dentist: doc.dentistName ? { name: doc.dentistName, prc: doc.dentistPrc } : null, attested: doc.attestation, planned: plannedLanguage(doc),
+}));
+if (!r) return new Response(null, { status: 500 });
+const fil = r.langs.includes('fil');
+const age = r.patient.birth ? ageOn(r.patient.birth, r.date) : null;
+const CHANNEL: Record<string, string> = { phone: 'on the patient’s phone', tablet: 'on the clinic’s tablet', desk: 'on a clinic device', paper: 'on paper' };
+const AUTH: Record<string, string> = { parent: 'Parent', court_guardian: 'Court-appointed guardian', substitute: 'Substitute parental authority', written: 'Authorised in writing by a parent', representative: 'Representative' };
+const dur = (a: Date | null, b: Date) => { if (!a) return null; const s = Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`; };
+const at = (d: Date) => `${dateText(new Date(d).toISOString().slice(0, 10))}, ${timeWords(d)}`;
+const how = (s: RecordSigning) => s.channel === 'paper'
+  ? `Signed on paper ${s.signedOn ? dateText(s.signedOn) : ''}, recorded by ${s.recordedByName ?? 'the clinic'}; the scan is in the patient’s files`
+  : `Signed ${at(s.signedAt)}, Manila, ${CHANNEL[s.channel]}${s.method === 'mark' && s.confirmation ? `, by mark, witnessed by ${s.confirmation.staffName} ${timeWords(s.confirmation.at)}` : s.method === 'mark' ? ', by mark (not confirmed by a witness yet)' : ''}`;
+const minorOf = (b: string | null) => (b ? isMinor(b, today) : false);
+const answers = Object.entries(r.answers ?? {}).filter(([, v]) => v !== null && !(Array.isArray(v) && !v.length));
+const pageCss = `
+@page { size: A4; margin: 16mm 16mm 20mm;
+  @bottom-left { content: "${doc.ref} · ${doc.versionId}"; font: 8pt 'IBM Plex Mono', ui-monospace, monospace; color: #000; }
+  @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt ui-sans-serif, system-ui, sans-serif; color: #000; }
+}
+@media print {
+  html:root { --c-ink: #000; --c-ink-2: #1f1f1f; --c-surface: #fff; --c-bg-soft: #fff; --c-line: #000; --ws-blue-tint: #fff; --ws-green-tint: #fff; color-scheme: light; }
+  body { background: #fff !important; }
+  .cf-sheet { border: 0 !important; border-radius: 0 !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; max-width: none !important; }
+}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{r.title.en} · {name} — {clinic.name}</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script is:inline>
+      try { const t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }
+    </script>
+    <style is:inline set:html={pageCss}></style>
+    <style>
+      .px-body {
+        --px-bg: #f3f5f8; --px-bar: #ffffff; --px-hair: #e6e9ee; --px-ink: #1f2937; --px-teal-ink: #0d706d; --px-teal-fill: #0e7471; --px-teal-fill-hover: #0b5f5d; --px-hover: rgb(16 24 40 / 0.035);
+        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: var(--px-bg); min-height: 100vh;
+      }
+      @media screen and (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); }
+      }
+      @media screen {
+        :root[data-theme="dark"] .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); }
+      }
+      .px-bar { background: var(--px-bar); border-bottom: 1px solid var(--px-hair); color: var(--px-ink); }
+      .px-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem 0.75rem; max-width: 1280px; margin-inline: auto; padding: 0.75rem 1.25rem; }
+      .px-back { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 44px; margin-right: auto; padding: 0 0.5rem; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--px-teal-ink); }
+      .px-back:hover { background: var(--px-hover); }
+      .px-print { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 1.125rem; border-radius: 10px; background: var(--px-teal-fill); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+      .px-print:hover { background: var(--px-teal-fill-hover); }
+      .px-body :focus-visible { outline: 2px solid #14908f; outline-offset: 2px; }
+      /* The paper: white with dark words in both themes, as it prints. */
+      .cf-sheet {
+        --c-ink: #111827; --c-ink-2: #344054; --c-surface: #fff; --c-bg-soft: #f2f4f7; --c-line: #98a2b3; --ws-blue-tint: #f2f4f7; --ws-green-tint: #f2f4f7;
+        max-width: 210mm; margin: 2rem auto; padding: 16mm; background: #fff; color: #111827; border: 1px solid #e6e9ee; border-radius: 12px; color-scheme: light;
+        font-size: 10.5pt; line-height: 1.45;
+      }
+      .cf-head { text-align: center; padding-bottom: 3mm; border-bottom: 1.5px solid #111827; }
+      .cf-clinic { font-size: 14pt; font-weight: 700; }
+      .cf-small { font-size: 9pt; color: #344054; }
+      .cf-sheet .cd { font-size: 10.5pt; max-width: none; }
+      .cf-sheet .cd-title { font-size: 16pt; }
+      .cf-sheet .cd-title-fil { font-size: 12pt; }
+      .cf-sheet .cd-fil { font-size: 10pt; }
+      .cf-sheet .cd-sec h4, .cf-sheet .cd-sec h3 { font-size: 11.5pt; }
+      .cf-box { margin-top: 4mm; padding: 3mm 4mm; border: 0.8pt solid #111827; border-radius: 2mm; }
+      .cf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 6mm; font-size: 9.5pt; }
+      .cf-grid b { font-weight: 600; }
+      .cf-sign { break-inside: avoid; margin-top: 5mm; padding-top: 3mm; border-top: 0.8pt solid #111827; }
+      .cf-sig { width: 70mm; border: 0.6pt solid #98a2b3; border-radius: 2mm; background: #fff; }
+      .cf-sig svg { display: block; width: 100%; height: auto; }
+      .cf-sig .ink { fill: none; stroke: #000; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+      .cf-sig .line { stroke: #98a2b3; stroke-width: 2; stroke-dasharray: 10 8; }
+      .cf-line { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; margin-top: 10mm; font-size: 9pt; }
+      .cf-line > div { border-top: 0.8pt solid #111827; padding-top: 1mm; }
+      .cf-box-empty { display: inline-block; width: 4mm; height: 4mm; border: 0.8pt solid #000; vertical-align: -0.6mm; margin-right: 2mm; }
+      .cf-ok { margin-top: 3mm; font-weight: 700; color: #065f46; }
+      .cf-bad { margin-top: 3mm; padding: 2mm 3mm; border: 1pt solid #b42318; color: #b42318; font-weight: 700; }
+      .cf-foot { margin-top: 5mm; font-size: 8pt; line-height: 1.5; color: #344054; overflow-wrap: anywhere; }
+      .cf-mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+      .cf-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+      .cf-table td, .cf-table th { border: 0.6pt solid #98a2b3; padding: 1mm 2mm; text-align: left; }
+      @media (max-width: 600px) { .cf-sheet { margin: 1rem; padding: 6mm; } }
+    </style>
+  </head>
+  <body class="px-body">
+    <div class="px-bar print:hidden">
+      <div class="px-bar-row">
+        <a href={back} class="px-back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 6.5L9 12l5.5 5.5" /></svg>
+          Back to the form
+        </a>
+        <button type="button" class="px-print" data-print>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V4h10v5" /><rect x="3.5" y="9" width="17" height="7.5" rx="2" /><path d="M7 14h10v6H7z" /></svg>
+          Print
+        </button>
+      </div>
+    </div>
+    <main>
+      <article class="cf-sheet" aria-label={r.title.en}>
+        <header class="cf-head">
+          <p class="cf-clinic">{r.clinic.name}</p>
+          {r.clinic.address && <p class="cf-small">{r.clinic.address}</p>}
+          {r.clinic.phone && <p class="cf-small">{prettyPhone(r.clinic.phone)}</p>}
+          <p class="cf-small cf-mono">{doc.ref} · {doc.versionId} · {fil ? 'English and Filipino' : 'English'}</p>
+        </header>
+
+        <div class="cf-box cf-grid">
+          <span><b>Patient:</b> {r.patient.name}</span>
+          <span><b>Born:</b> {r.patient.birth ? `${dateText(r.patient.birth)}${age !== null ? ` (${age})` : ''}` : '________'}</span>
+          <span><b>Chart no. (from the record):</b> {p.chart_no}</span>
+          <span><b>Date:</b> {latest ? dateText(r.date) : '________'}</span>
+          {latest && <span><b>Signed by:</b> {signerWords({ name: latest.signedByName, as: latest.signedAs, relation: latest.relation, method: latest.method })}{latest.authority ? ` · ${AUTH[latest.authority]}` : ''}{latest.authorityGround && r.signer?.ground ? ` · the parents ${t.words.grounds[r.signer.ground]}` : ''}</span>}
+          {r.dentist && <span><b>Explained by:</b> Dr {r.dentist.name}{r.dentist.prc ? `, PRC ${r.dentist.prc}` : ''}{r.attested ? `, in ${r.attested.lang}` : ''}{r.attested?.interpreter ? `, interpreter ${r.attested.interpreter}` : ''}</span>}
+          {latest && r.read && <span><b>Read:</b> {r.read.en}</span>}
+        </div>
+
+        <div class="mt-4">
+          <ConsentDocument mode="record" doc={r} version={doc.versionId} ref={doc.ref} />
+        </div>
+
+        {answers.length > 0 && (
+          <table class="cf-table mt-3"><tbody>{answers.map(([k, v]) => {
+            const f = t.patientFields.find((x) => x.name === k);
+            return <tr><th scope="row">{f?.label.en ?? k}</th><td>{Array.isArray(v) ? v.join(', ') : v === 'yes' ? 'Yes' : v === 'no' ? 'No' : v === 'unsure' ? 'Not sure' : String(v)}</td></tr>;
+          })}</tbody></table>
+        )}
+
+        <section class="cf-sign" aria-label="Decision and signature">
+          {latest ? (
+            <>
+            <p>{r.decision === 'agreed' ? '☑' : '☐'} {r.decision_words.agree.en} &nbsp; {r.decision === 'refused' ? '☑' : '☐'} {r.decision_words.refuse.en}</p>
+            {r.meaning && <p class="mt-2 font-semibold">{r.meaning}</p>}
+            <div class="mt-3 flex flex-wrap items-end gap-6">
+              {latest.strokes ? (
+                <span class="cf-sig"><svg viewBox={`0 0 ${SIG_W} ${SIG_H}`} role="img" aria-label={`Signature of ${latest.signedByName}`}><line x1="40" y1={SIG_H - 70} x2={SIG_W - 40} y2={SIG_H - 70} class="line" /><path d={strokesPath(latest.strokes)} class="ink" /></svg></span>
+              ) : <span class="cf-small">{latest.channel === 'paper' ? 'Signed on paper: the scan is in the patient’s files.' : 'No signature: an unsigned “No, thank you”.'}</span>}
+              <span class="cf-small"><b>{signerWords({ name: latest.signedByName, as: latest.signedAs, relation: latest.relation, method: latest.method })}</b><br />{how(latest)}<br />Seal <span class="cf-mono">{check?.short}</span></span>
+            </div>
+            {r.attested && r.dentist && <p class="cf-small mt-3">Confirmed and explained in {r.attested.lang} by Dr {r.dentist.name}{r.dentist.prc ? `, PRC ${r.dentist.prc}` : ''}, {at(new Date(r.attested.at))}{r.attested.assent ? `; the patient (7 to 17) ${r.attested.assent === 'not_asked' ? 'was not asked' : r.attested.assent}` : ''}.</p>}
+            {latest.withdrawal && <p class="cf-small mt-2"><b>Withdrawn</b> {at(latest.withdrawal.at)}: told by {latest.withdrawal.toldBy}, recorded by {latest.withdrawal.byName}.</p>}
+            {check?.ok ? <p class="cf-ok">Unchanged since it was stored</p> : <p class="cf-bad" role="alert">This copy does not match what was stored. Do not use it as the original.</p>}
+            </>
+          ) : (
+            <>
+            <p><span class="cf-box-empty"></span>{r.decision_words.agree.en}</p>
+            <p class="mt-1"><span class="cf-box-empty"></span>{r.decision_words.refuse.en}</p>
+            {r.ticks.length > 0 && <div class="mt-3">{r.ticks.map((k) => <p class="mt-1"><span class="cf-box-empty"></span>{k.text.en}</p>)}</div>}
+            <div class="cf-line">
+              <div>Signature of the {minorOf(p.birth) ? 'parent or legal guardian' : 'patient'} · name</div>
+              <div>Relation and authority (if not the patient)</div>
+              <div>Dentist: {r.dentist ? `Dr ${r.dentist.name}${r.dentist.prc ? `, PRC ${r.dentist.prc}` : ''}` : ''}</div>
+              <div>Date and time</div>
+            </div>
+            </>
+          )}
+        </section>
+
+        {latest && (
+          <footer class="cf-foot">
+            <p>{[latest.linkByName && `Link made by ${latest.linkByName}`, latest.openedAt && `page opened ${timeWords(latest.openedAt)}`, `decided ${timeWords(latest.decidedAt)}${dur(latest.openedAt, latest.decidedAt) ? ` (open ${dur(latest.openedAt, latest.decidedAt)} before deciding)` : ''}`, `stored ${timeWords(latest.signedAt)}`].filter(Boolean).join(' · ')}</p>
+            <p>Words: <span class="cf-mono">{latest.snapshotSha256}</span></p>
+            <p>Seal: <span class="cf-mono">{latest.sealSha256}</span>{latest.chainSeq !== null && <> · Chain no. {latest.chainSeq}</>}</p>
+          </footer>
+        )}
+      </article>
+    </main>
+    <script>
+      document.querySelector('[data-print]')?.addEventListener('click', () => window.print());
+    </script>
+  </body>
+</html>
+
