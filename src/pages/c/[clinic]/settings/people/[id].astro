@@ -3,7 +3,7 @@
 // owner, dentist or staff member at this branch, in one place — who they are
 // and how to reach them, their PRC licence and where its check stands, their
 // PTR (the owner or an admin sets it in Edit details; the dentist can set it
-// on My page too), the days they sit here, finance access, their sign-in (a new invitation or
+// on My page too), the days they sit here and, for a dentist, their hours on those days (040), finance access, their sign-in (a new invitation or
 // reset code, disable, enable), and, for someone who sees patients, their
 // coming appointments here (read only; the calendar is where they change).
 //
@@ -33,10 +33,10 @@ import '../_ui/settings.css';
 import { requireWorkspace } from '../../../../../lib/workspace';
 import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
 import { USERNAME_MAX } from '../../../../../lib/username';
-import { DAYS, ago, clinician, dateText, daysText, prcState, signsPapers, treats } from '../_lib/common';
+import { DAYS, DAY_LONG, ago, clinician, dateText, daysText, prcState, signsPapers, spanShort, treats } from '../_lib/common';
 import {
-  member, daysOf, upcomingFor, personAction, personNotice, accountState, reachable, emailOn, prettyPhone,
-  SPECIALTIES, EMAIL_MAX, type ActionRefused, type EditValues,
+  member, scheduleOf, upcomingFor, personAction, personNotice, accountState, reachable, emailOn, prettyPhone,
+  SPECIALTIES, EMAIL_MAX, type ActionRefused, type EditValues, type DaysValues,
 } from '../_lib/people';
 import { can } from '../../../../../lib/can';
 import { listRoles, giveable, mayManage } from '../../../../../lib/roles';
@@ -74,9 +74,23 @@ if (Astro.request.method === 'POST' && t) {
 }
 
 const q = Astro.url.searchParams;
-const [days, upcoming] = t && allowed
-  ? await Promise.all([daysOf(clinic.id, t.id), treats(t.role) ? upcomingFor(clinic.id, t.id) : Promise.resolve(null)])
-  : [[] as number[], null];
+const [sched, upcoming] = t && allowed
+  ? await Promise.all([scheduleOf(clinic.id, t.id), treats(t.role) ? upcomingFor(clinic.id, t.id) : Promise.resolve(null)])
+  : [[] as { dow: number; from_min: number | null; to_min: number | null }[], null];
+const days = sched.map((r) => r.dow);
+// Their own hours on a day here (040), for someone who treats: blank is the clinic's hours that day.
+const hm = (m: number | null) => (m === null ? '' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+const withHours = sched.filter((r) => r.from_min !== null && r.to_min !== null);
+const dv: DaysValues = refused?.days ?? {
+  dows: days,
+  from: Object.fromEntries(sched.map((r) => [r.dow, hm(r.from_min)])),
+  to: Object.fromEntries(sched.map((r) => [r.dow, hm(r.to_min)])),
+};
+const hoursOpen = withHours.length > 0 || !!refused?.days;
+// "Tue, Thu · Tue 1–6 pm": the days, then each day that has hours of its own.
+const daysMeta = withHours.length
+  ? `${daysText(days)} · ${withHours.map((r) => `${DAYS.find(([n]) => n === r.dow)![1]} ${spanShort(r.from_min!, r.to_min!)}`).join(', ')}`
+  : daysText(days);
 const notice = t && allowed && !refused ? personNotice(q, t, session.staffId) : '';
 const doneTo = q.get('done') === 'schedule' ? 'days' : q.get('done') === 'finance' ? 'finance' : ['invite', 'reset', 'password', 'disable', 'enable'].includes(q.get('done') ?? '') ? 'signin' : 'head';
 // Where a refused action's sentence goes: the pane it came from. A refused edit comes back in its panel.
@@ -161,7 +175,7 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
             <Upcoming rows={upcoming.rows} total={upcoming.total} slug={clinic.slug} title="Coming appointments" emptyText={`Nothing booked for ${self ? 'you' : first} at ${clinic.name} yet.`} />
           )}
 
-          <Pane id="days" icon="calendar" title="Days at this branch" meta={daysText(days)} class="set-sec">
+          <Pane id="days" icon="calendar" title="Days at this branch" meta={mayEdit ? daysText(days) : daysMeta} class="set-sec">
             <p class="set-intro mb-4">
               {treats(t.role) ? 'The days patients can book them here.' : 'The days they work here.'}
             </p>
@@ -175,10 +189,30 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
                   <legend class="sr-only">Days {t.full_name} is at {clinic.name}</legend>
                   <div class="set-days">
                     {DAYS.map(([n, label]) => (
-                      <label class="set-day"><input type="checkbox" name="dow" value={n} checked={days.includes(n)} /><span>{label}</span></label>
+                      <label class="set-day"><input type="checkbox" name="dow" value={n} checked={dv.dows.includes(n)} data-days-dow /><span>{label}</span></label>
                     ))}
                   </div>
                 </fieldset>
+                {treats(t.role) && (
+                  <details class="set-more set-days-hours" data-days-hours open={hoursOpen}>
+                    <summary>
+                      <Icon name="clock" />
+                      <span>Hours on those days <span class="set-more-hint">Blank means the clinic’s hours.</span></span>
+                      <Icon name="chevron" />
+                    </summary>
+                    <div class="set-more-body set-dh">
+                      {DAYS.map(([n]) => (
+                        <div class="set-dh-row" data-days-hours-row={n} data-off={dv.dows.includes(n) ? undefined : ''}>
+                          <span class="set-dh-day" aria-hidden="true">{DAY_LONG[n]}</span>
+                          <label class="field"><span class="sr-only">{DAY_LONG[n]}: in from</span><input type="time" name={`from[${n}]`} value={dv.from[n] ?? ''} step="900" /></label>
+                          <span class="set-dh-dash" aria-hidden="true">–</span>
+                          <label class="field"><span class="sr-only">{DAY_LONG[n]}: in until</span><input type="time" name={`to[${n}]`} value={dv.to[n] ?? ''} step="900" /></label>
+                        </div>
+                      ))}
+                      <p class="set-help set-dh-help">Only the days ticked above are saved.</p>
+                    </div>
+                  </details>
+                )}
                 <div><button type="submit" class="ws-btn ws-btn-quiet"><Icon name="check" />Save days</button></div>
               </form>
             ) : (
@@ -399,9 +433,15 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
   const refused = [...document.querySelectorAll<HTMLElement>('[data-set-refused]')].find((n) => !n.closest('dialog'));
   if (refused) { refused.closest<HTMLElement>('.set-sec')?.scrollIntoView({ block: 'start' }); refused.focus({ preventScroll: true }); }
   else if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' });
+  // Hours on those days (040): a day not ticked above is muted (the save reads only the ticked days).
+  for (const box of document.querySelectorAll<HTMLInputElement>('[data-days-dow]')) {
+    box.addEventListener('change', () => {
+      document.querySelector<HTMLElement>(`[data-days-hours-row="${box.value}"]`)?.toggleAttribute('data-off', !box.checked);
+    });
+  }
   // One-shot notices leave the address, so a reload does not say them again.
   const url = new URL(location.href);
   let changed = false;
-  for (const k of ['done', 'via', 'email', 'role', 'prc', 'profile', 'resend']) if (url.searchParams.has(k)) { url.searchParams.delete(k); changed = true; }
+  for (const k of ['done', 'via', 'email', 'role', 'prc', 'profile', 'resend', 'closed']) if (url.searchParams.has(k)) { url.searchParams.delete(k); changed = true; }
   if (changed) history.replaceState(history.state, '', url.pathname + url.search + url.hash);
 </script>

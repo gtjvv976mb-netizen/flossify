@@ -51,6 +51,12 @@
 //     (src/lib/ptr.ts).
 //   - Every changed field is one audit_log row (staff.name, staff.email,
 //     staff.phone, staff.role, staff.prc, staff.specialty, staff.ptr).
+//
+// Days at this branch, and a dentist's own hours on them (040: staff_schedule from_min/to_min, blank for the
+// clinic's hours). The save takes the book's lock (the one bookings take), reads which of this person's visits
+// ahead were in closed time before, writes, and puts back on Calls → In closed time only those it newly put
+// outside their hours (reopenNewlyClosed, src/lib/blocks.ts); the sentence after the save counts them. It never
+// touches the PTR, as the edit never touches the days.
 import type { AstroCookies } from 'astro';
 import { setSession, hashPassword, passwordProblem, type Session } from '../../../../../lib/auth';
 import { mayManage, mayGive, staffRoleFor, type Manager, type Role } from '../../../../../lib/roles';
@@ -59,7 +65,8 @@ import { pool, withClinic, type Tx } from '../../../../../lib/db';
 import { issueCode } from '../../../../../lib/codes';
 import { queueText, queueEmail, texts, emails, codePageFor, normalizePhone, prettyPhone, PH_MOBILE } from '../../../../../lib/messages';
 import { emailEnabled, normalizeEmail, EMAIL_ADDRESS, EMAIL_MAX } from '../../../../../lib/email';
-import { UUID, clinician, treats } from './common';
+import { UUID, clinician, treats, DAYS, DAY_LONG } from './common';
+import { closedIds, reopenNewlyClosed } from '../../../../../lib/blocks';
 import { readPtr, ptrDrawn, ptrConflictText } from '../../../../../lib/ptr';
 import { manilaToday } from '../../../../../lib/health';
 import { normalizeUsername, usernameProblem } from '../../../../../lib/username';
@@ -109,6 +116,14 @@ export async function member(clinicId: string, id: string): Promise<Person | und
 
 export const daysOf = (clinicId: string, staffId: string) =>
   withClinic(clinicId, async (tx) => (await tx.query('select dow from staff_schedule where staff_id = $1 and clinic_id = $2 order by dow', [staffId, clinicId])).rows.map((r) => r.dow as number));
+
+/** Their days here and, on each, their own hours (040): from/to in minutes, null for the clinic's hours that day. */
+export const scheduleOf = (clinicId: string, staffId: string) =>
+  withClinic(clinicId, async (tx) => (await tx.query<{ dow: number; from_min: number | null; to_min: number | null }>(
+    'select dow, from_min, to_min from staff_schedule where staff_id = $1 and clinic_id = $2 order by dow', [staffId, clinicId])).rows);
+
+/** The days-and-hours form as typed: the ticked days, and each day's from/to as HH:MM (blank = the clinic's hours). */
+export interface DaysValues { dows: number[]; from: Record<number, string>; to: Record<number, string> }
 
 // --- upcoming appointments -----------------------------------------------------------
 
@@ -287,7 +302,7 @@ export interface EditValues {
   /** The PTR fields as drawn, and what the form was drawn with (hidden), so a stale form keeps a PTR saved meanwhile. */
   ptr: string; ptrYear: string; ptrSeen: string; ptrYearSeen: string;
 }
-export interface ActionRefused { error: string; action: string; edit?: EditValues }
+export interface ActionRefused { error: string; action: string; edit?: EditValues; /** A refused days save, as typed. */ days?: DaysValues }
 
 /** Everything the person page's forms do. `here` is the person's page. */
 export async function personAction(ctx: Ctx & { here: string }, t: Person, form: FormData): Promise<Response | ActionRefused> {
@@ -510,12 +525,33 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
   if (action === 'schedule') {
     if (!self && !manages) return fail(BELOW);
     const days = dows(form);
-    await withClinic(clinic.id, async (tx) => {
+    // Their hours on each ticked day (040): both ends or neither (neither = the clinic's hours), the end after the start.
+    const typed: DaysValues = { dows: days, from: {}, to: {} };
+    for (const [d] of DAYS) { typed.from[d] = String(form.get(`from[${d}]`) ?? '').trim(); typed.to[d] = String(form.get(`to[${d}]`) ?? '').trim(); }
+    const hours = new Map<number, [number, number] | null>();
+    for (const [d] of DAYS) {
+      if (!days.includes(d)) continue;
+      const f = typed.from[d], u = typed.to[d];
+      if (!f && !u) { hours.set(d, null); continue; }
+      const a = toMin(f), b = toMin(u);
+      if (a === null || b === null) return { error: `${DAY_LONG[d]}’s hours need a start and an end, or leave both blank.`, action, days: typed };
+      if (b <= a) return { error: `${DAY_LONG[d]}’s hours end before they start.`, action, days: typed };
+      hours.set(d, [a, b]);
+    }
+    // One writer on the book at a time (the lock bookings take), and only this person's visits that the save puts
+    // outside their hours go back on Calls → In closed time (src/lib/blocks.ts).
+    const newly = await withClinic(clinic.id, async (tx) => {
+      await tx.query('select pg_advisory_xact_lock(hashtext($1))', [clinic.id]);
+      const before = await closedIds(tx, clinic.id, { dentistId: t.id });
       await tx.query('delete from staff_schedule where staff_id = $1 and clinic_id = $2', [t.id, clinic.id]);
-      for (const d of days) await tx.query('insert into staff_schedule (staff_id, clinic_id, dow) values ($1, $2, $3)', [t.id, clinic.id, d]);
+      for (const d of days) {
+        const h = hours.get(d) ?? null;
+        await tx.query('insert into staff_schedule (staff_id, clinic_id, dow, from_min, to_min) values ($1, $2, $3, $4, $5)', [t.id, clinic.id, d, h?.[0] ?? null, h?.[1] ?? null]);
+      }
       await audit(ctx, tx, 'staff.schedule', t.id);
+      return (await reopenNewlyClosed(tx, clinic.id, before, { dentistId: t.id })).length;
     });
-    return see(`${here}?done=schedule#days`);
+    return see(`${here}?done=schedule${newly ? `&closed=${newly}` : ''}#days`);
   }
   if (action === 'finance') {
     if (!isOwner) return fail('Only an owner can change who sees finance.');
@@ -552,11 +588,25 @@ export function personNotice(q: URLSearchParams, p: Person, myId: string): strin
     same: `Nothing changed in ${who}’s details.`,
     disable: `${who} can no longer sign in.`,
     enable: `${who} can sign in again.`,
-    schedule: `Saved ${who}’s days.`,
+    schedule: `Saved ${who}’s days.${closedWords(Number(q.get('closed')))}`,
     password: `Saved. Tell ${who} the new password: they choose their own when they next sign in, and every device they were signed in on is signed out.`,
     finance: `Saved what ${who} can see.`,
   };
   return NOTICES[q.get('done') ?? ''] ?? '';
+}
+
+/** After a days save put this person's visits ahead outside their hours: " 1 visit ahead is now outside their hours: …". */
+function closedWords(n: number): string {
+  if (!Number.isInteger(n) || n < 1) return '';
+  return n === 1 ? ' 1 visit ahead is now outside their hours: it is on the call list.' : ` ${n} visits ahead are now outside their hours: they are on the call list.`;
+}
+
+/** "13:00" → 780; null for anything that is not a time of day. */
+function toMin(s: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s);
+  if (!m) return null;
+  const n = +m[1] * 60 + +m[2];
+  return +m[1] < 24 && +m[2] < 60 ? n : null;
 }
 
 /** Where their sign-in stands, in words and a chip tone. */

@@ -13,6 +13,7 @@ export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 export const SECTIONS = [
   { id: 'profile', label: 'Clinic profile', icon: 'clinic' },
   { id: 'hours', label: 'Opening hours', icon: 'clock' },
+  { id: 'closed', label: 'Closed days', icon: 'calendar' },
   { id: 'fees', label: 'Services & prices', icon: 'money' },
   { id: 'people', label: 'People', icon: 'patients' },
   { id: 'roles', label: 'Roles', icon: 'shield' },
@@ -49,6 +50,14 @@ export function daysText(dows: number[]): string {
     else runs.push([n]);
   }
   return runs.map((r) => (r.length >= 3 ? `${name(r[0])}–${name(r[r.length - 1])}` : r.map(name).join(', '))).join(', ');
+}
+
+/** A stretch of a day in minutes, said short, as the public pages say hours: 780, 1080 → "1–6 pm"; 540, 720 →
+ *  "9 am–12 pm"; 570, 780 → "9:30 am–1 pm". */
+export function spanShort(a: number, b: number): string {
+  const t = (m: number) => { const h = Math.floor(m / 60) % 24, mm = m % 60; return { n: `${h % 12 || 12}${mm ? `:${String(mm).padStart(2, '0')}` : ''}`, ap: h >= 12 ? 'pm' : 'am' }; };
+  const x = t(a), y = t(b);
+  return x.ap === y.ap ? `${x.n}–${y.n} ${y.ap}` : `${x.n} ${x.ap}–${y.n} ${y.ap}`;
 }
 
 const dayFmt = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' });

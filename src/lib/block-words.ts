@@ -168,7 +168,21 @@ export function whyWords(r: RangeLike): string {
   }
 }
 
-/** The line after a block is saved: "Blocked: the clinic is closed Thu 2 Apr – Sun 5 Apr." (no note: the panel shows it). */
-export function blockDone(r: RangeLike, now: Date | number = Date.now()): string {
-  return `Blocked: ${sentence(r, +now, false).replace(/^The /, 'the ')}`;
+/** The line after a block is saved: "Blocked: the clinic is closed Thu 2 Apr – Sun 5 Apr." (no note: the panel shows it).
+ *  Settings → Closed days says "Added: …" (`word`). */
+export function blockDone(r: RangeLike, now: Date | number = Date.now(), word = 'Blocked'): string {
+  return `${word}: ${sentence(r, +now, false).replace(/^The /, 'the ')}`;
+}
+
+/** A dated block in a list (Settings → Closed days): its title and when, whole: "Clinic closed" · "Thu 2 Apr – Sun 5 Apr",
+ *  "Dr. Cariño away" · "Mon 5 Oct", "Chair 2 out of use" · "Fri 9 Oct, 9:00 am–12:00 pm". */
+export function blockListed(r: RangeLike): { title: string; when: string } {
+  const title = r.kind === 'closed' ? 'Clinic closed' : r.kind === 'leave' ? `${whoOf(r)} away` : r.kind === 'chair_out' ? `Chair ${r.chair ?? ''} out of use` : whyWords(r);
+  const s = Date.parse(r.startsAt), e = Date.parse(r.endsAt), a = local(s), b = local(e);
+  const last = b.min === 0 ? b.day - 1 : b.day;
+  let when: string;
+  if (a.min === 0 && b.min === 0) when = last <= a.day ? dayWords(a.day) : `${dayWords(a.day)} – ${dayWords(last)}`;
+  else if (a.day === last) when = `${dayWords(a.day)}, ${a.min === 0 ? `until ${hm(b.min)}` : b.min === 0 ? `from ${hm(a.min)}` : span(a.min, b.min)}`;
+  else when = `${a.min === 0 ? dayWords(a.day) : `${dayWords(a.day)}, ${hm(a.min)}`} – ${b.min === 0 ? dayWords(last) : `${dayWords(b.day)}, ${hm(b.min)}`}`;
+  return { title, when };
 }

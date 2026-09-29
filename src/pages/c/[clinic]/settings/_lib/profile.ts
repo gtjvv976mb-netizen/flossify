@@ -10,7 +10,14 @@
 //
 // A form drawn before Settings became one page posts profile and hours
 // together with no `form` field; saveClinic() takes both parts at once for it.
+//
+// Lunch (040) is a break on the day's row (clinic_hours.break_from_min/to_min), blank on a day with none.
+// Saving the hours can put visits already booked into closed time (a new lunch, a later opening, a day
+// closed): the save takes the book's lock (the one bookings take), reads which visits ahead were in closed
+// time before, writes, and puts only the visits it newly put there back on Calls → In closed time
+// (reopenNewlyClosed, src/lib/blocks.ts); the note after the save counts them. Nothing is texted or moved.
 import { withClinic } from '../../../../../lib/db';
+import { closedIds, reopenNewlyClosed } from '../../../../../lib/blocks';
 import { hmos } from '../../../../../data/directory';
 import { AREAS, placeOf } from '../../../../../lib/slug';
 import { parseTin, tinParts } from '../../../../../lib/invoices';
@@ -25,7 +32,7 @@ export const DOWS = DAYS.map(([n]) => n as number);
 const toMin = (s: string): number | null => { const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s); if (!m) return null; const n = +m[1] * 60 + +m[2]; return n >= 0 && n <= 1440 ? n : null; };
 const toTime = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 
-export interface DayRow { closed: boolean; open: string; close: string }
+export interface DayRow { closed: boolean; open: string; close: string; lunchFrom: string; lunchTo: string }
 export interface ProfileValues {
   name: string; area: string; address_line: string; phone: string; email: string; maps_url: string; about: string;
   chairs: number; walk_ins: boolean; philhealth_dental: boolean; booking_mode: string;
@@ -35,7 +42,7 @@ export interface ProfileValues {
 }
 export type HoursValues = Record<number, DayRow>;
 
-type Hours = { dow: number; open_min: number; close_min: number }[];
+type Hours = { dow: number; open_min: number; close_min: number; break_from_min: number | null; break_to_min: number | null }[];
 
 export interface ClinicData {
   c: {
@@ -58,7 +65,7 @@ export async function loadClinic(clinicId: string): Promise<ClinicData> {
       `select name, area, address_line, city, province, phone, email, maps_url, about, chairs, walk_ins, philhealth_dental, booking_mode, listed,
               photo_keys, slug::text as slug, tin, bir_branch_code, remind_48h, recall_texts
          from clinic where id = $1`, [clinicId])).rows[0],
-    hours: (await tx.query('select dow, open_min, close_min from clinic_hours order by dow')).rows,
+    hours: (await tx.query('select dow, open_min, close_min, break_from_min, break_to_min from clinic_hours order by dow')).rows,
     hmoIds: (await tx.query('select hmo_id from clinic_hmo order by hmo_id')).rows.map((r) => r.hmo_id as string),
     dentist: (await tx.query(
       `select exists (select 1 from staff_schedule ss join staff s on s.id = ss.staff_id
@@ -90,7 +97,10 @@ export function savedProfile(d: ClinicData): ProfileValues {
 export function savedHours(d: ClinicData): HoursValues {
   return Object.fromEntries(DOWS.map((dow) => {
     const h = d.hours.find((r) => r.dow === dow);
-    return [dow, h ? { closed: false, open: toTime(h.open_min), close: toTime(h.close_min) } : { closed: true, open: '09:00', close: '17:00' }];
+    return [dow, h
+      ? { closed: false, open: toTime(h.open_min), close: toTime(h.close_min),
+          lunchFrom: h.break_from_min === null ? '' : toTime(h.break_from_min), lunchTo: h.break_to_min === null ? '' : toTime(h.break_to_min) }
+      : { closed: true, open: '09:00', close: '17:00', lunchFrom: '', lunchTo: '' }];
   }));
 }
 
@@ -141,14 +151,21 @@ export async function saveClinic(
   const hours: Hours = [];
   if (parts.hours) {
     h = {};
-    for (const dow of DOWS) h[dow] = { closed: form.get(`closed[${dow}]`) === 'on', open: s(`open[${dow}]`), close: s(`close[${dow}]`) };
+    for (const dow of DOWS) h[dow] = { closed: form.get(`closed[${dow}]`) === 'on', open: s(`open[${dow}]`), close: s(`close[${dow}]`), lunchFrom: s(`lunch_from[${dow}]`), lunchTo: s(`lunch_to[${dow}]`) };
     for (const dow of DOWS) {
       const d = h[dow];
-      if (d.closed) continue;
+      if (d.closed) continue; // a closed day's lunch is ignored
       const op = toMin(d.open), cl = toMin(d.close);
       if (op === null || cl === null) { problems.push(`${DAY_LONG[dow]} needs an opening and a closing time, or tick closed.`); continue; }
       if (cl <= op) { problems.push(`${DAY_LONG[dow]} closes before it opens.`); continue; }
-      hours.push({ dow, open_min: op, close_min: cl });
+      // Lunch: both ends or neither, the end after the start, inside the day (clinic_hours_break_pair and _ok, 040).
+      const lf = d.lunchFrom ? toMin(d.lunchFrom) : null, lt = d.lunchTo ? toMin(d.lunchTo) : null;
+      if ((d.lunchFrom || d.lunchTo) && (lf === null || lt === null)) { problems.push(`${DAY_LONG[dow]}’s lunch needs a start and an end, or leave both blank.`); continue; }
+      if (lf !== null && lt !== null) {
+        if (lt <= lf) { problems.push(`${DAY_LONG[dow]}’s lunch ends before it starts.`); continue; }
+        if (lf <= op || lt >= cl) { problems.push(`${DAY_LONG[dow]}’s lunch has to start after opening and end before closing.`); continue; }
+      }
+      hours.push({ dow, open_min: op, close_min: cl, break_from_min: lf, break_to_min: lt });
     }
   }
 
@@ -162,7 +179,13 @@ export async function saveClinic(
   const listed = wanted && okToList;
   const held = (wanted || data.c.listed) && !okToList;
 
-  await withClinic(o.clinicId, async (tx) => {
+  const newly = await withClinic(o.clinicId, async (tx) => {
+    // The hours change what is closed time: one writer at a time on the book, and the visits in closed time before.
+    let before: string[] = [];
+    if (parts.hours) {
+      await tx.query('select pg_advisory_xact_lock(hashtext($1))', [o.clinicId]);
+      before = await closedIds(tx, o.clinicId);
+    }
     if (p) {
       const place = placeOf(p.area);
       await tx.query(
@@ -178,13 +201,24 @@ export async function saveClinic(
     }
     if (parts.hours) {
       await tx.query('delete from clinic_hours where clinic_id = $1', [o.clinicId]);
-      for (const r of hours) await tx.query('insert into clinic_hours (clinic_id, dow, open_min, close_min) values ($1, $2, $3, $4)', [o.clinicId, r.dow, r.open_min, r.close_min]);
+      for (const r of hours) {
+        await tx.query('insert into clinic_hours (clinic_id, dow, open_min, close_min, break_from_min, break_to_min) values ($1, $2, $3, $4, $5, $6)',
+          [o.clinicId, r.dow, r.open_min, r.close_min, r.break_from_min, r.break_to_min]);
+      }
     }
     await tx.query('update clinic set listed = $2 where id = $1', [o.clinicId, listed]);
     await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'clinic.settings', 'clinic', $1)`, [o.clinicId, o.staffId]);
+    return parts.hours ? (await reopenNewlyClosed(tx, o.clinicId, before)).length : 0;
   });
   const part = parts.profile ? 'profile' : 'hours';
-  return new Response(null, { status: 303, headers: { location: `${o.base}?saved=${part}${held ? '&held=1' : ''}#${part}` } });
+  return new Response(null, { status: 303, headers: { location: `${o.base}?saved=${part}${held ? '&held=1' : ''}${newly ? `&closed=${newly}` : ''}#${part}` } });
+}
+
+/** After an hours save put visits ahead into closed time: the warn note, and where Calls lists them. */
+export function closedText(n: number): string {
+  return n === 1
+    ? 'Saved. 1 visit ahead is now in closed time. It is on the call list: move it or call the patient.'
+    : `Saved. ${n} visits ahead are now in closed time. They are on the call list: move them or call the patients.`;
 }
 
 /** "Saved. The listing switch stayed off: the clinic still needs opening hours." */
