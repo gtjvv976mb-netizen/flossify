@@ -1,0 +1,107 @@
+---
+// New clinical note and Add an addendum: the Notes section's side panel, rendered outside the record's sections so
+// the chart's palette can open it over the Chart section (a <dialog> in a hidden section is not drawn). Its other
+// openers (New note, Add an addendum, the More menu, the This visit strip) bring Notes forward behind it.
+//
+// The teeth are a ToothPick of checkboxes (tick every tooth the note is about; the typed box adds more). A new note
+// opens with the teeth of today's treatments ticked (the This visit strip's visit, and today's with no visit named:
+// defaultTeeth); an addendum with none; from a tooth, with only that tooth, and then it posts back=chart so the
+// save lands on the chart. Every other opener clears that. A refused post keeps what was ticked.
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Callout from '../_ui/Callout.astro';
+import ToothPick from '../_ui/ToothPick.astro';
+import type { Clinical, RecordProblem } from '../../../../../lib/record';
+
+/** visitId: today's visit (036) — a new note is written against it. openNow: the page opens the panel as it loads
+ *  (?open=note). defaultTeeth: the teeth of today's treatments. */
+interface Props { c: Clinical; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; today: string; firstName: string; visitId?: string | null; openNow?: boolean; defaultTeeth: number[] }
+const { c, canEdit, action, meId, problem, today, firstName, visitId = null, openNow = false, defaultTeeth } = Astro.props;
+
+const meClinician = c.clinicians.some((x) => x.id === meId);
+const refused = problem?.intent === 'note-add';
+const v = refused ? problem!.values : ({} as Record<string, string>);
+const back = v.back === 'chart' ? 'chart' : '';
+---
+
+{canEdit && (
+  <SidePanel id="rec-note-add" title={v.amends ? 'Add an addendum' : 'New clinical note'} meta={firstName} wide open={refused || openNow}>
+    {refused && <Callout tone="alert" class="mb-4" text={`${problem!.text} Nothing was saved.`} />}
+    <p class="mb-4 text-[14px] text-ink-2" data-note-lead>{v.amends ? 'An addendum is saved under the note it corrects. The note itself stays as it was written.' : 'Fill in what applies; every part is optional, but write at least one. It is saved under your name and cannot be changed afterwards.'}</p>
+    <form method="post" action={`${action}#${back === 'chart' ? 'chart' : 'notes'}`} class="grid gap-4" data-note-default-teeth={defaultTeeth.join(' ')}>
+      <Csrf /><input type="hidden" name="intent" value="note-add" />
+      {visitId && <input type="hidden" name="visit" value={visitId} />}
+      <input type="hidden" name="amends" value={v.amends ?? ''} data-note-amends />
+      <input type="hidden" name="back" value={back} data-pick-back />
+      <input type="hidden" name="pick" value={back === 'chart' ? v.pick ?? '' : ''} data-pick-tooth />
+      <div class="grid gap-4 sm:grid-cols-3">
+        <label class="field"><span class="meta">Visit day</span><input type="date" name="visit_on" value={v.visit_on ?? today} max={today} required /></label>
+        <label class="field sm:col-span-2"><span class="meta">Dentist</span>
+          <select name="dentist">
+            <option value="">—</option>
+            {c.clinicians.map((x) => <option value={x.id} selected={(v.dentist ?? (meClinician ? meId : '')) === x.id}>{x.name}</option>)}
+          </select>
+        </label>
+      </div>
+      <ToothPick id="tp-note" name="teeth" label="Teeth (FDI)" multiple help="FDI numbers. Tick every tooth the note is about." value={refused ? (v.teeth ?? '') : defaultTeeth.join(' ')} typed={v.teeth_typed} />
+      <label class="field"><span class="meta">Why they came</span><textarea name="complaint" rows="2" maxlength="2000" placeholder="In the patient’s words, e.g. “pain on the lower left when drinking cold”">{v.complaint ?? ''}</textarea></label>
+      <label class="field"><span class="meta">What was found</span><textarea name="findings" rows="3" maxlength="4000" placeholder="Examination, tests, X-rays">{v.findings ?? ''}</textarea></label>
+      <label class="field"><span class="meta">Diagnosis</span><textarea name="diagnosis" rows="2" maxlength="2000">{v.diagnosis ?? ''}</textarea></label>
+      <label class="field"><span class="meta">What was done</span><textarea name="treatment" rows="3" maxlength="4000" placeholder="Anaesthetic, procedure, materials">{v.treatment ?? ''}</textarea></label>
+      <label class="field"><span class="meta">Next steps</span><textarea name="plan" rows="2" maxlength="2000" placeholder="Advice given, next visit">{v.plan ?? ''}</textarea></label>
+      <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save note</button>
+    </form>
+  </SidePanel>
+)}
+
+<script>
+  import { setTeeth, readTeeth } from '../_ui/toothpick';
+  import { aimForm, focusBack } from './pickpanel';
+
+  // One panel for a new note and an addendum: the button that opened it says which.
+  const panel = document.getElementById('rec-note-add');
+  const form = panel?.querySelector<HTMLFormElement>('form');
+  const tp = form?.querySelector<HTMLElement>('[data-tp]');
+  const back = form?.querySelector<HTMLInputElement>('[data-pick-back]');
+  const pickTooth = form?.querySelector<HTMLInputElement>('[data-pick-tooth]');
+  panel?.addEventListener('ws:panel-open', (e) => {
+    const { opener, auto } = ((e as CustomEvent).detail ?? {}) as { opener?: HTMLElement | null; auto?: boolean };
+    if (auto) {
+      // A refused post (or ?open=note): the form holds what was posted, or today's teeth.
+      if (back?.value === 'chart' && tp) panel.dataset.pickFdi = pickTooth?.value || String(readTeeth(tp)[0] ?? '');
+      if (form && back) aimForm(form, back.value, 'notes');
+      return;
+    }
+    if (opener && opener.dataset.amends !== undefined) {
+      const id = opener.dataset.amends ?? '';
+      const input = panel.querySelector<HTMLInputElement>('[data-note-amends]');
+      if (input) input.value = id;
+      const title = panel.querySelector('[data-ws-title]') ?? panel.querySelector('.ws-panel-title');
+      if (title) title.textContent = id ? 'Add an addendum' : 'New clinical note';
+      const lead = panel.querySelector('[data-note-lead]');
+      if (lead) lead.textContent = id
+        ? `This is saved under the note of ${opener.dataset.amendsDay}. That note stays as it was written.`
+        : 'Fill in what applies; every part is optional, but write at least one. It is saved under your name and cannot be changed afterwards.';
+    }
+    if (!form || !tp || !back) return;
+    // The teeth: none for an addendum, the tooth for a note from the chart, today's treatments for any other.
+    const pickFdi = opener?.dataset.pickFdi;
+    if (opener?.dataset.amends) {
+      setTeeth(tp, []);
+      back.value = '';
+      delete panel.dataset.pickFdi;
+    } else if (pickFdi) {
+      setTeeth(tp, [Number(pickFdi)]);
+      back.value = 'chart';
+      panel.dataset.pickFdi = pickFdi;
+    } else {
+      setTeeth(tp, (form.dataset.noteDefaultTeeth ?? '').split(' ').filter(Boolean).map(Number));
+      back.value = '';
+      delete panel.dataset.pickFdi;
+    }
+    if (pickTooth) pickTooth.value = back.value === 'chart' ? pickFdi ?? '' : '';
+    aimForm(form, back.value, 'notes');
+  });
+  panel?.addEventListener('ws:panel-close', () => focusBack('rec-note-add', back?.value ?? '', panel.dataset.pickFdi));
+</script>
