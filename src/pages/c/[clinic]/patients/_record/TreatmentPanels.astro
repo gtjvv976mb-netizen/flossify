@@ -8,7 +8,15 @@
 // pickedTooth() in src/lib/record.ts. Opened from a tooth (the palette's data-pick-open buttons), the panel starts
 // on that tooth and posts back=chart, so the save lands on the chart; any other opener clears that. The surfaces
 // the palette had ticked are only a suggestion, ticked while the fee-guide item works on surfaces (a filling or a
-// sealant: data-fee-surfaces) and not once the person has touched the toggles.
+// sealant: data-fee-surfaces, from the item's chart effect) and not once the person has touched the toggles.
+//
+// Record a treatment also offers to chart what it records (p01 step 2): under the tooth, a line, never ticked when
+// drawn — "Chart 26 MO as filled. Now: caries MO on the chart." — when the fee-guide item, tooth and surfaces make an
+// offer against the tooth as this page's chart draws it (src/lib/chart-offer.ts, the same rules as the server).
+// Ticked, the chart is updated in the same save; unticked, the page lands on the follow-up offer. Anything else
+// (uncovered, other, no surfaces, a baby tooth, a change waiting on this device) is one sentence and no box; and
+// then the box and its hidden fields are disabled, so nothing about the chart is posted. Each new offer starts
+// unticked. With scripts off the line stays hidden and disabled.
 //
 // Record a treatment starts with the picked tooth's open plan items, each a one-tap Mark done form — the same
 // post as Treatment's own Mark done (intent plan-status, to=done, the visit, the dentist) — so work already on
@@ -24,8 +32,9 @@ import type { Loa } from '../../../../../lib/record-extra';
 
 /** visitId: today's visit (036) — a treatment recorded or marked done is written against it. openNow: the page opens
  *  Record a treatment as it loads (?open=done). */
-interface Props { c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; today: string; firstName: string; visitId?: string | null; openNow?: boolean }
-const { c, loas = [], canEdit, action, meId, problem, today, firstName, visitId = null, openNow = false } = Astro.props;
+/** chartSid: this page's sign-in (chartSession), posted with a ticked chart line so the write is bound to it. */
+interface Props { c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; today: string; firstName: string; visitId?: string | null; openNow?: boolean; chartSid: string }
+const { c, loas = [], canEdit, action, meId, problem, today, firstName, visitId = null, openNow = false, chartSid } = Astro.props;
 
 const peso = (n: number | string) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 const meClinician = c.clinicians.some((x) => x.id === meId);
@@ -35,7 +44,7 @@ const pv = v('plan-add'), dv = v('done-add');
 const help = 'text-[13px] leading-snug text-ink-2';
 // The fee guide by category, for the pickers. A filling or a sealant works on surfaces: the chart's are carried over for it.
 const cats = [...new Set(c.catalog.map((x) => x.category ?? 'Other'))];
-const SURFACE_WORK = new Set(['restoration', 'sealant']);
+const SURFACE_WORK = new Set(['filled', 'sealant']);
 // Open plan items on a tooth: the Mark done list of Record a treatment.
 const onTeeth = c.plan.filter((i) => (i.status === 'planned' || i.status === 'accepted') && i.fdi);
 const loaAsk = (loaId: string | null) => {
@@ -59,7 +68,7 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
         <label class="field"><span class="meta">From your fee guide</span>
           <select name="catalog_id" data-fee-pick>
             <option value="">Choose a treatment…</option>
-            {cats.map((cat) => <optgroup label={cat}>{c.catalog.filter((x) => (x.category ?? 'Other') === cat).map((x) => <option value={x.id} data-price={x.price} data-fee-surfaces={SURFACE_WORK.has(x.code) ? '' : undefined} selected={pv.catalog_id === x.id}>{x.name} · {peso(x.price)}{x.from ? '+' : ''}</option>)}</optgroup>)}
+            {cats.map((cat) => <optgroup label={cat}>{c.catalog.filter((x) => (x.category ?? 'Other') === cat).map((x) => <option value={x.id} data-price={x.price} data-chart-effect={x.effect ?? ''} data-fee-surfaces={SURFACE_WORK.has(x.effect ?? '') ? '' : undefined} selected={pv.catalog_id === x.id}>{x.name} · {peso(x.price)}{x.from ? '+' : ''}</option>)}</optgroup>)}
           </select>
         </label>
         <label class="field"><span class="meta">Or type it</span><input name="name" value={pv.name ?? ''} maxlength="160" autocomplete="off" placeholder="e.g. Composite filling" /><span class={help}>Leave empty to use the fee guide’s name.</span></label>
@@ -107,11 +116,20 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
         <label class="field"><span class="meta">From your fee guide</span>
           <select name="catalog_id" data-fee-pick>
             <option value="">Choose a treatment…</option>
-            {cats.map((cat) => <optgroup label={cat}>{c.catalog.filter((x) => (x.category ?? 'Other') === cat).map((x) => <option value={x.id} data-price={x.price} data-fee-surfaces={SURFACE_WORK.has(x.code) ? '' : undefined} selected={dv.catalog_id === x.id}>{x.name}</option>)}</optgroup>)}
+            {cats.map((cat) => <optgroup label={cat}>{c.catalog.filter((x) => (x.category ?? 'Other') === cat).map((x) => <option value={x.id} data-price={x.price} data-chart-effect={x.effect ?? ''} data-fee-surfaces={SURFACE_WORK.has(x.effect ?? '') ? '' : undefined} selected={dv.catalog_id === x.id}>{x.name}</option>)}</optgroup>)}
           </select>
         </label>
         <label class="field"><span class="meta">Or type it</span><input name="name" value={dv.name ?? ''} maxlength="160" autocomplete="off" /></label>
         <ToothPick id="tp-done" name="fdi" label="Tooth (FDI)" noneLabel="Whole mouth" help={toothTip} value={planRefused ? String(refusedFdi ?? '') : dv.fdi} typed={dv.fdi_typed} surfaces={dv.surface ?? ''} />
+        {/* The chart line (filled in by the script; hidden, disabled and never ticked as drawn). */}
+        <div class="tp-chart-line" data-chart-line hidden>
+          <label class="tp-chart-tick"><input type="checkbox" name="chart" value="1" disabled data-chart-line-tick /><span data-chart-line-words></span></label>
+          <p class="text-[13px] leading-snug text-ink-2" data-chart-line-now></p>
+          <input type="hidden" name="chart_from" value="" disabled data-chart-line-from />
+          <input type="hidden" name="chart_base" value="" disabled data-chart-line-base />
+          <input type="hidden" name="sid" value={chartSid} disabled data-chart-line-sid />
+        </div>
+        <p data-chart-line-point hidden class="text-[13.5px] leading-snug text-ink-2"></p>
         <div class="grid grid-cols-2 gap-4">
           <label class="field"><span class="meta">Day</span><input type="date" name="on" value={dv.on ?? today} max={today} /></label>
           <label class="field"><span class="meta">Price (₱)</span><input name="price" value={dv.price ?? ''} inputmode="decimal" maxlength="14" autocomplete="off" data-fee-price /></label>
@@ -130,8 +148,22 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
 )}
 
 <script>
-  import { readTeeth, setTeeth, setSurfaces } from '../_ui/toothpick';
+  import { readTeeth, readSurfaces, setTeeth, setSurfaces } from '../_ui/toothpick';
   import { aimForm, focusBack } from './pickpanel';
+  import { chartOffer, markKey, offerWords, type LiveMark } from '../../../../../lib/chart-offer';
+  import type { Surface, ToothCondition } from '../../../../../data/demo';
+
+  /** The tooth as this page's chart draws it now (its own repaints included), and whether a change to it waits on
+   *  this device. */
+  function chartTooth(fdi: number): { live: LiveMark | null; waiting: boolean; base: string } | null {
+    const b = document.querySelector<HTMLElement>(`[data-odontogram] button[data-tooth][data-fdi="${fdi}"]`);
+    if (!b) return null;
+    const surf = b.dataset.surfaceCondition, whole = b.dataset.state;
+    const live: LiveMark | null = surf
+      ? { condition: surf as ToothCondition, surfaces: [...b.querySelectorAll<HTMLElement>('.pip[data-on]')].map((p) => p.dataset.surface as Surface) }
+      : whole && whole !== 'sound' ? { condition: whole as ToothCondition, surfaces: [] } : null;
+    return { live, waiting: b.hasAttribute('data-waiting'), base: b.closest<HTMLElement>('[data-odontogram]')?.dataset.renderedAt ?? '' };
+  }
 
   // The fee guide fills in the price (the person can still change it for this patient).
   document.querySelectorAll<HTMLFormElement>('[data-fee-form]').forEach((f) => {
@@ -178,6 +210,47 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
       plan.hidden = !any;
     };
 
+    // The chart line (Record a treatment only): the offer for what is picked, against the tooth as the chart shows it.
+    const line = form.querySelector<HTMLElement>('[data-chart-line]');
+    const tick = form.querySelector<HTMLInputElement>('[data-chart-line-tick]');
+    const point = form.querySelector<HTMLElement>('[data-chart-line-point]');
+    let lastOffer = '';
+    const chartLine = () => {
+      if (!line || !tick || !point) return;
+      const fields = [tick, ...line.querySelectorAll<HTMLInputElement>('input[type=hidden]')];
+      const opt = pick?.selectedOptions[0];
+      const effect = opt?.dataset.chartEffect || null;
+      const name = (form.querySelector<HTMLInputElement>('input[name=name]')?.value.trim() || opt?.text || 'treatment');
+      const fdi = readTeeth(tp)[0] ?? null;
+      const onChart = fdi !== null ? chartTooth(fdi) : null;
+      const o = chartOffer(effect, fdi, readSurfaces(tp), onChart?.live ?? null);
+      const words = offerWords(o, name);
+      let say = '';
+      if ((o.kind === 'apply' || o.kind === 'point') && onChart?.waiting) say = `${o.fdi} has a change waiting on this device. Chart it on the chart once it has synced.`;
+      else if (o.kind === 'apply' && onChart && words) {
+        const [what, now] = words.line.split('. Now: ');
+        line.querySelector('[data-chart-line-words]')!.textContent = what;
+        line.querySelector('[data-chart-line-now]')!.textContent = `Now: ${now.replace(/\.$/, '')} on the chart.`;
+        line.querySelector<HTMLInputElement>('[data-chart-line-from]')!.value = markKey(onChart.live);
+        line.querySelector<HTMLInputElement>('[data-chart-line-base]')!.value = onChart.base;
+        const key = `${o.fdi}|${o.to.condition}|${o.to.surfaces.join(',')}|${markKey(onChart.live)}`;
+        if (key !== lastOffer) tick.checked = false;
+        lastOffer = key;
+        fields.forEach((f) => { f.disabled = false; });
+        line.hidden = false;
+        point.hidden = true;
+        return;
+      } else if ((o.kind === 'point' || o.kind === 'baby') && words) say = words.line;
+      // Not an offer: nothing about the chart is posted.
+      tick.checked = false;
+      fields.forEach((f) => { f.disabled = true; });
+      line.hidden = true;
+      lastOffer = '';
+      point.textContent = say;
+      point.hidden = !say;
+    };
+    form.querySelector<HTMLInputElement>('input[name=name]')?.addEventListener('input', chartLine);
+
     dialog.addEventListener('ws:panel-open', (e) => {
       const { opener, auto } = (e as CustomEvent).detail ?? {};
       if (auto) {
@@ -187,6 +260,7 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
         if (t) dialog.dataset.pickFdi = t;
         aimForm(form, back.value, home);
         showPlan();
+        chartLine();
         return;
       }
       const from = opener instanceof HTMLElement && opener.dataset.pickFdi ? opener : null;
@@ -209,9 +283,10 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
       aimForm(form, back.value, home);
       suggest();
       showPlan();
+      chartLine();
     });
-    pick?.addEventListener('change', suggest);
-    tp.addEventListener('tp:change', showPlan);
+    pick?.addEventListener('change', () => { suggest(); chartLine(); });
+    tp.addEventListener('tp:change', () => { showPlan(); chartLine(); });
     dialog.addEventListener('ws:panel-close', () => focusBack(id, back.value, dialog.dataset.pickFdi));
   }
 </script>

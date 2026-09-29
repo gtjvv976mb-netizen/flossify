@@ -1,0 +1,115 @@
+---
+// The chart after a treatment (p01 step 2): always an offer, applied only by the dentist's tap. After Mark done or
+// Record a treatment, the record lands here (id="chart-offer", ?treated=<procedure_done id>) at the top of the section
+// the post came back to — Treatment, or the Chart when it came from the chart — under that section's saved line.
+//
+//   offer        "Update the chart?" — "Chart 26 MO as filled. Now: caries MO." — one quiet Update the chart (a post
+//                of hidden fields only: intent chart-apply, the treatment, what the tooth showed, when, this page's
+//                sign-in) and Leave the chart as it is, which changes nothing.
+//   applied      "Chart updated: 26 MO filled." (in Treatment, with Open the chart).
+//   point        uncovered, other, no-surfaces: the sentence, and Open 26 on the chart (the palette on that tooth).
+//   changed      above the fresh offer: the tooth changed since the page showed it, who and when; nothing written.
+//   ended        above the fresh offer: the page belonged to a sign-in that has ended; nothing written.
+//   offline      the button hides, and one line says the update needs the connection.
+//   refused      the red sentence alone (a treatment not on this record, the rate limit). Nothing written.
+//
+// What the offer is and its words: src/lib/chart-offer.ts; reading and writing the tooth: src/lib/chart-write.ts
+// (the write re-checks everything under the chart's lock). The page draws this only for people who may edit records.
+import Glyph from '../_ui/Glyph.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Callout from '../_ui/Callout.astro';
+import { CONDITION_LABEL, surfaceSummary } from '../../../../../data/demo';
+import { markKey, offerWords } from '../../../../../lib/chart-offer';
+import type { OfferState } from '../../../../../lib/chart-write';
+import type { RecordProblem } from '../../../../../lib/record';
+import { dateText } from '../../../../../lib/health';
+
+interface Props {
+  state: OfferState | null; skip: 'changed' | 'ended' | null; problem: RecordProblem | null;
+  action: string; sid: string; visitId: string | null; back: 'chart' | 'treatment'; leaveHref: string; inChart: boolean;
+}
+const { state, skip, problem, action, sid, visitId, back, leaveHref, inChart } = Astro.props;
+
+const dayOf = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+const clock = (d: Date) => new Intl.DateTimeFormat('en-PH', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(d).toLowerCase();
+/** "10:05 am" today, "28 Sep 2026, 10:05 am" another day, in Manila. */
+const at = (d: Date) => (dayOf(d) === dayOf(new Date()) ? clock(d) : `${dateText(dayOf(d))}, ${clock(d)}`);
+
+const offer = state?.offer ?? null;
+const words = state && offer ? offerWords(offer, state.treatment) : null;
+const kind = problem ? 'problem'
+  : state?.applied ? 'applied'
+  : offer?.kind === 'apply' ? 'offer'
+  : offer?.kind === 'point' ? 'point'
+  : null;
+const fdi = state?.fdi ?? null;
+const appliedWords = state?.applied && state.now && fdi
+  ? `Chart updated: ${fdi}${surfaceSummary(fdi, state.now.surfaces) ? ` ${surfaceSummary(fdi, state.now.surfaces)}` : ''} ${CONDITION_LABEL[state.now.condition].toLowerCase()}.`
+  : '';
+const skipWords = skip === 'ended'
+  ? 'This page belonged to a sign-in that has ended, so the chart was not changed. Below is the chart as it is now.'
+  : skip === 'changed' && fdi
+    ? `${fdi} changed since this page showed it${state?.last ? `: ${state.last.by ?? 'someone else'} charted it at ${at(state.last.at)}` : ''}. The chart was not changed.`
+    : null;
+const link = 'inline-flex min-h-[44px] items-center px-1 font-semibold underline underline-offset-2';
+---
+
+<div id="chart-offer" class="grid gap-3" data-chart-offer>
+  {kind === 'problem' ? (
+    <Callout tone="alert" text={problem!.text} />
+  ) : (
+    <>
+      {skipWords && <Callout tone="warn" text={skipWords} />}
+      {kind === 'applied' && (
+        <Callout tone="success" text={appliedWords}>
+          {!inChart && <button type="button" class="ws-btn ws-btn-quiet mt-3" data-rec-go="chart"><Glyph name="tooth" size={18} />Open the chart</button>}
+        </Callout>
+      )}
+      {kind === 'offer' && state && words && (
+        <Callout tone="info" title={words.title} text={words.line}>
+          <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <form method="post" action={`${action}?treated=${state.treatedId}${back === 'chart' ? '&back=chart' : ''}#chart-offer`} data-chart-offer-form>
+              <Csrf />
+              <input type="hidden" name="intent" value="chart-apply" />
+              <input type="hidden" name="treated" value={state.treatedId} />
+              <input type="hidden" name="from" value={markKey(state.now)} />
+              <input type="hidden" name="base" value={state.base} />
+              <input type="hidden" name="sid" value={sid} />
+              <input type="hidden" name="back" value={back} />
+              {visitId && <input type="hidden" name="visit" value={visitId} />}
+              <button class="ws-btn ws-btn-quiet"><Glyph name="tooth" size={18} />Update the chart</button>
+            </form>
+            <a href={leaveHref} class={link} data-chart-offer-leave>Leave the chart as it is</a>
+          </div>
+          <p class="mt-2" data-chart-offer-offline hidden>Updating the chart needs the connection.</p>
+        </Callout>
+      )}
+      {kind === 'point' && fdi && words && (
+        <Callout tone="warn" text={words.line}>
+          <button type="button" class="ws-btn ws-btn-quiet mt-3" data-chart-open={fdi}><Glyph name="tooth" size={18} />Open {fdi} on the chart</button>
+        </Callout>
+      )}
+    </>
+  )}
+</div>
+
+<script>
+  // Open <tooth> on the chart: the Chart section, then the palette on that tooth.
+  document.querySelectorAll<HTMLButtonElement>('[data-chart-open]').forEach((b) => b.addEventListener('click', () => {
+    document.getElementById('rec-rec-chart-tab')?.click();
+    const t = document.querySelector<HTMLButtonElement>(`[data-odontogram] button[data-tooth][data-fdi="${b.dataset.chartOpen}"]`);
+    t?.scrollIntoView({ block: 'center' });
+    t?.click();
+  }));
+  // Offline, or the service worker's kept copy of this page: no Update the chart, one line instead. The form posts
+  // hidden fields only, so a post that fails in a brownout loses nothing typed.
+  const box = document.querySelector<HTMLElement>('[data-chart-offer]');
+  const form = box?.querySelector<HTMLFormElement>('[data-chart-offer-form]');
+  const away = box?.querySelector<HTMLElement>('[data-chart-offer-offline]');
+  const sync = () => {
+    const off = navigator.onLine === false || !!document.documentElement.dataset.offlineCopy;
+    if (form) form.hidden = off;
+    if (away) away.hidden = !off;
+  };
+  if (form) { addEventListener('online', sync); addEventListener('offline', sync); sync(); }
+</script>

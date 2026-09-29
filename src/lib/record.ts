@@ -17,6 +17,8 @@ import { join } from 'node:path';
 import type { Tx } from './db';
 import { canEditRecords, manilaToday, oneLine } from './health';
 import { UPLOAD_DIR } from './uploads';
+import { calloutWorthy } from './chart-offer';
+import { chartFromRecord, offerFor } from './chart-write';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -89,8 +91,10 @@ export interface Recall { id: string; dueOn: string; reason: string; by: string 
 export interface Lab { id: string; lab: string; description: string; shade: string | null; sentOn: string | null; dueOn: string | null; receivedOn: string | null; cost: string; status: string; note: string | null; at: Date }
 /** ptr / ptrYear: the PTR on file now; rank / isOwner: their role's, for who may fix it (ptrFix on the record page). */
 export interface Clinician { id: string; name: string; prc: string | null; ptr: string | null; ptrYear: number | null; rank: number | null; isOwner: boolean }
-/** code: the fee guide's code (restoration, sealant …): the picker carries the chart's surfaces over only for work on surfaces. */
-export interface CatalogItem { id: string; code: string; name: string; price: string; max: string | null; from: boolean; tooth: boolean; category: string | null }
+/** code: the fee guide's code. effect: what it leaves on the chart (procedure_catalog.chart_effect, 042: filled, sealant,
+ *  root_canal, crown, missing, veneer; null for none): the picker carries the chart's surfaces over for filled and
+ *  sealant only, and Record a treatment offers to chart it. */
+export interface CatalogItem { id: string; code: string; effect: string | null; name: string; price: string; max: string | null; from: boolean; tooth: boolean; category: string | null }
 
 export interface Clinical { plan: PlanItem[]; done: Done[]; notes: Note[]; rx: Rx[]; files: FileRow[]; recall: Recall | null; labs: Lab[]; clinicians: Clinician[]; catalog: CatalogItem[] }
 
@@ -115,7 +119,7 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
     tx.query(`select s.id, s.full_name, s.prc_licence, s.ptr_number, s.ptr_year, cr.rank, cr.is_owner
                 from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $1 left join clinic_role cr on cr.id = s.role_id
                where s.disabled_at is null and s.role in ('owner', 'dentist', 'associate') order by s.full_name`, [clinicId]),
-    tx.query(`select id, code, name, default_price, price_max, price_from, tooth_scoped, category from procedure_catalog where active order by category nulls last, name`),
+    tx.query(`select id, code, chart_effect, name, default_price, price_max, price_from, tooth_scoped, category from procedure_catalog where active order by category nulls last, name`),
   ]);
   return {
     plan: plan.rows.map((r) => ({ id: r.id, loaId: r.loa_id ?? null, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, phase: r.phase, status: r.status, note: r.note, createdAt: r.created_at, decidedAt: r.decided_at, by: r.by_name })),
@@ -126,7 +130,7 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
     recall: recall.rows[0] ? { id: recall.rows[0].id, dueOn: recall.rows[0].due, reason: recall.rows[0].reason, by: recall.rows[0].by_name, at: recall.rows[0].created_at, textedOn: recall.rows[0].texted ?? null } : null,
     labs: labs.rows.map((r) => ({ id: r.id, lab: r.lab_name, description: r.description, shade: r.shade, sentOn: r.sent, dueOn: r.due, receivedOn: r.received, cost: r.cost, status: r.status, note: r.note, at: r.created_at })),
     clinicians: clinicians.rows.map((r) => ({ id: r.id, name: r.full_name, prc: r.prc_licence, ptr: r.ptr_number, ptrYear: r.ptr_year ?? null, rank: r.rank ?? null, isOwner: !!r.is_owner })),
-    catalog: catalog.rows.map((r) => ({ id: r.id, code: r.code, name: r.name, price: r.default_price, max: r.price_max, from: r.price_from, tooth: r.tooth_scoped, category: r.category })),
+    catalog: catalog.rows.map((r) => ({ id: r.id, code: r.code, effect: r.chart_effect ?? null, name: r.name, price: r.default_price, max: r.price_max, from: r.price_from, tooth: r.tooth_scoped, category: r.category })),
   };
 }
 
@@ -142,12 +146,15 @@ export async function loadChartChanges(tx: Tx, patientId: string): Promise<Chart
 }
 
 // --- writing -----------------------------------------------------------------------------------
-export interface Ctx { clinicId: string; staffId: string; patientId: string }
-/** What a post did: where to go back to, or what was wrong (with what was typed, to show again). */
-export type Outcome = { ok: true; section: string; saved: string } | { ok: false; section: string; problem: string; values: Record<string, string> };
+/** sid: the tag of the sign-in the page was drawn under (chartSession(session)); the chart writes need it (p01 step 2). */
+export interface Ctx { clinicId: string; staffId: string; patientId: string; sid?: string }
+/** What a post did: where to go back to, or what was wrong (with what was typed, to show again). qs: more for the
+ *  address it lands on (treated=<procedure_done id> for the chart's offer, chartskip=changed|ended). */
+export type Outcome = { ok: true; section: string; saved: string; qs?: Record<string, string> } | { ok: false; section: string; problem: string; values: Record<string, string> };
 const SECTION_OF: Record<string, string> = {
   'plan-add': 'treatment', 'plan-status': 'treatment', 'plan-remove': 'treatment', 'done-add': 'treatment', 'lab-add': 'treatment', 'lab-next': 'treatment',
   'note-add': 'notes', 'rx-add': 'rx', 'file-add': 'files', 'file-remove': 'files', 'recall-set': 'overview', 'recall-done': 'overview', 'recall-clear': 'overview',
+  'chart-apply': 'chart',
 };
 export const RECORD_INTENTS = new Set(Object.keys(SECTION_OF));
 
@@ -224,7 +231,19 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
          values ($1, $2, $3, $4, $5, $6, $7, $8, case when $9::date = (now() at time zone 'Asia/Manila')::date then now() else ($9::date + time '12:00') at time zone 'Asia/Manila' end, $10, $11, $12) returning id`,
         [c.clinicId, c.patientId, cat?.id ?? null, name, fdi, surface, price, dentist.id, on, note || null, c.staffId, await visitOf(tx, form, c.patientId)]);
       await audit(tx, c, 'record.done_add', 'procedure_done', d.id);
-      return done('done');
+      // The chart (p01 step 2): the line in Record a treatment, ticked by the person, charts it in this same save under the
+      // chart's rules; the treatment is saved whatever that answers. Unticked (or not offered), the page lands on the
+      // follow-up offer when there is one worth a word.
+      const chartTo = String(form.get('chart_from') ?? '');
+      if (form.get('chart') === '1' && chartTo) {
+        const r = await chartFromRecord(tx, { clinicId: c.clinicId, staffId: c.staffId, patientId: c.patientId, sid: c.sid ?? '' },
+          { treated: d.id, from: chartTo, base: form.get('chart_base'), sid: String(form.get('sid') ?? '') });
+        if (r.kind === 'applied' || r.kind === 'changed' || r.kind === 'ended') {
+          return { ok: true, section, saved: 'done', qs: { treated: d.id, ...(r.kind === 'changed' || r.kind === 'ended' ? { chartskip: r.kind } : {}) } };
+        }
+      }
+      const o = await offerFor(tx, c.patientId, d.id);
+      return { ok: true, section, saved: 'done', qs: o && calloutWorthy(o.offer) ? { treated: d.id } : undefined };
     }
     case 'plan-status': {
       const id = String(form.get('item') ?? '');
@@ -250,7 +269,22 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
                           and not exists (select 1 from treatment_plan_item where loa_id = $1 and status in ('planned', 'accepted'))`, [it.loa_id]);
       }
       await audit(tx, c, `record.plan_${to}`, 'treatment_plan_item', id);
+      // Marked done: the follow-up offer to chart it, when there is one worth a word (p01 step 2).
+      if (doneId) {
+        const o = await offerFor(tx, c.patientId, doneId);
+        return { ok: true, section, saved: 'plan-done', qs: o && calloutWorthy(o.offer) ? { treated: doneId } : undefined };
+      }
       return done(`plan-${to}`);
+    }
+    case 'chart-apply': {
+      // Update the chart (the offer's button): only on a page drawn under this sign-in, and only when the tooth still
+      // shows what the person was shown (src/lib/chart-write.ts). canEditRecords ran above, in this transaction.
+      const id = String(form.get('treated') ?? '');
+      if (!UUID.test(id)) return fail('Choose the treatment to chart.');
+      const r = await chartFromRecord(tx, { clinicId: c.clinicId, staffId: c.staffId, patientId: c.patientId, sid: c.sid ?? '' },
+        { treated: id, from: String(form.get('from') ?? ''), base: form.get('base'), sid: String(form.get('sid') ?? '') });
+      if (r.kind === 'missing') return fail('That treatment is not on this record any more. Nothing was changed.');
+      return { ok: true, section, saved: 'charted', qs: { treated: id, ...(r.kind === 'changed' || r.kind === 'ended' ? { chartskip: r.kind } : {}) } };
     }
     case 'plan-remove': {
       const id = String(form.get('item') ?? '');

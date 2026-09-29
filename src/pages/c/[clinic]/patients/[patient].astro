@@ -106,6 +106,7 @@ import './_record/record.css';
 import TreatmentRecord from './_record/TreatmentRecord.astro';
 import VisitPanels from './_record/VisitPanels.astro';
 import TreatmentPanels from './_record/TreatmentPanels.astro';
+import ChartOffer from './_record/ChartOffer.astro';
 import NotePanel from './_record/NotePanel.astro';
 import Signature from './_record/Signature.astro';
 import Treatment from './_record/Treatment.astro';
@@ -147,6 +148,9 @@ import { loadExtra, extraAction, bpWords, EXTRA_INTENTS, EXTRA_ANCHOR } from '..
 import { loadVisitConsents } from '../../../../lib/visit-consent';
 import { loadVisits, type StripVisit } from '../../../../lib/visit-record';
 import { buildLedger, loadLedgerMoney, loadRecallsSet } from '../../../../lib/treatment-record';
+import { offerFor } from '../../../../lib/chart-write';
+import { calloutWorthy } from '../../../../lib/chart-offer';
+import { chartSession } from '../../../api/chart';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -161,6 +165,8 @@ if (!UUID.test(patientId)) return notFound();
 const here = `/c/${clinic.slug}/patients/${patientId}/`;
 const HMO_NAMES = new Map(hmos.map((h) => [h.id, h.name]));
 const q = Astro.url.searchParams;
+// The tag of this sign-in (the chart's own): a chart write from the record is made only from a page drawn under it (p01 step 2).
+const chartSid = chartSession(session);
 
 // What a post left behind for the page to show.
 let healthProblems: string[] = [];
@@ -298,14 +304,15 @@ if (Astro.request.method === 'POST') {
       : await withClinic(clinic.id, async (tx) => {
           const o = EXTRA_INTENTS.has(intent)
             ? await extraAction(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, canBill: money, hmoNames: HMO_NAMES }, intent, form)
-            : await recordAction(tx, { clinicId: clinic.id, staffId: session.staffId, patientId }, intent, form);
+            : await recordAction(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, sid: chartSid }, intent, form);
           if (o !== 'none' && !o.ok) throw new Refused(o);
           return o;
         }).catch((e) => { if (e instanceof Refused) return e.outcome; throw e; });
     if (outcome === 'none') return notFound();
     if (outcome.ok) {
-      const qs = [`saved=${encodeURIComponent(outcome.saved)}`, postedBack === 'chart' ? 'back=chart' : ''].filter(Boolean).join('&');
-      const hash = postedBack === 'chart' ? 'chart' : ANCHOR[intent] ?? EXTRA_ANCHOR[intent] ?? outcome.section;
+      // A treatment the chart could show lands on its offer (treated=…, #chart-offer), in the section the post came from.
+      const qs = [`saved=${encodeURIComponent(outcome.saved)}`, ...Object.entries(outcome.qs ?? {}).map(([k, v]) => `${k}=${encodeURIComponent(v)}`), postedBack === 'chart' ? 'back=chart' : ''].filter(Boolean).join('&');
+      const hash = outcome.qs?.treated ? 'chart-offer' : postedBack === 'chart' ? 'chart' : ANCHOR[intent] ?? EXTRA_ANCHOR[intent] ?? outcome.section;
       return Astro.redirect(to(qs, hash), 303);
     }
     // Refused (the rate limit too): back to the section the form was posted from.
@@ -404,7 +411,10 @@ const data = await withClinic(clinic.id, async (tx) => {
   const fullVisits = await loadVisits(tx, p.id, clinical, extra, signed, money);
   const ledger = buildLedger({ visits: fullVisits, clinical, extra, recalls: await loadRecallsSet(tx, p.id), money: money ? await loadLedgerMoney(tx, p.id) : null, onFile: p.balance, patientId: p.id });
   const chartChanges = await loadChartChanges(tx, p.id);
-  return { clinical, extra, ledger, chartChanges, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
+  // ?treated=<procedure_done id>: the chart's offer for that treatment, as the chart is now (read only; the write re-checks).
+  const treatedQ = q.get('treated');
+  const offerState = canEdit && treatedQ && UUID.test(treatedQ) ? await offerFor(tx, p.id, treatedQ) : null;
+  return { offerState, clinical, extra, ledger, chartChanges, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
 });
 if (!data) return notFound();
 const { me, p: patient, visits, health, canEdit } = data;
@@ -620,13 +630,26 @@ const usedLabel = used ? ({ phone: 'mobile', email: 'email', address_line: 'addr
 const recordSaved = (s: string | null) => {
   const w = (s ?? '').split(/[-:]/)[0];
   return ({ plan: 'treatment', done: 'treatment', lab: 'treatment', note: 'notes', addendum: 'notes', rx: 'rx', file: 'files', files: 'files', recall: 'overview',
-    vitals: 'health', letter: 'rx', answered: 'rx', loa: 'treatment', payplan: 'treatment', adjusted: 'treatment' } as Record<string, string>)[w] ?? null;
+    vitals: 'health', letter: 'rx', answered: 'rx', loa: 'treatment', payplan: 'treatment', adjusted: 'treatment', charted: 'treatment' } as Record<string, string>)[w] ?? null;
 };
 // The section showing first: where a post came back to, the section of what was just saved, the section of a
 // panel to open, the Treatment record (or Visits) for another day's visit (?visit=), else the Overview.
 // ?back=chart: a save from a panel the chart's palette opened lands on the Chart.
 const fromChart = q.get('back') === 'chart';
+// The chart's offer after a treatment (p01 step 2): its state, a write that was skipped (the tooth changed, or the page's
+// sign-in ended), or a refused Update the chart. Drawn at the top of the section the post came back to, only.
+const offerState = data.offerState;
+const chartSkip = q.get('chartskip') === 'changed' || q.get('chartskip') === 'ended' ? (q.get('chartskip') as 'changed' | 'ended') : null;
+const offerProblem = recordProblem?.intent === 'chart-apply' ? recordProblem : null;
+const showOffer = canEdit && (!!offerProblem || !!chartSkip || !!(offerState && (offerState.applied || calloutWorthy(offerState.offer))));
 const current = backTo ?? (fromChart ? 'chart' : null) ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? (openNow ? OPEN_PANEL[openNow] : openVisit && !thisVisit ? (data.ledger.openKeys.has(openVisit) ? 'treatment-record' : 'visits') : 'overview');
+// "Leave the chart as it is": the same address without the offer (and without the saved line it came with).
+const leaveOffer = (section: string) => {
+  const u = new URLSearchParams(q);
+  for (const k of ['treated', 'chartskip', 'saved']) u.delete(k);
+  const rest = u.toString();
+  return `${here}${rest ? `?${rest}` : ''}#${section}`;
+};
 // The privacy notice, for the strip: agreed and in force, or what is missing.
 const privacyState = { ok: !data.notice || (!!consentNow && !guardianNeeded), words: guardianNeeded ? 'Privacy notice: a parent or guardian must agree for a patient under 18' : 'Privacy notice: not agreed yet' };
 // A health history over a year old is asked again (the head says so; the strip offers "No change").
@@ -830,7 +853,7 @@ const recHere = here;
   {/* Every visit's panel, outside the sections so it opens from the Treatment record's dates and from Visits alike. */}
   <VisitPanels visits={data.fullVisits} slug={clinic.slug} patientId={patient.id} canEdit={canEdit} money={money} open={thisVisit && openVisit === thisVisit.id ? null : openVisit} today={today} firstName={patient.first_name} />
   {/* Add to plan, Record a treatment and the note, outside the sections too, so the chart's palette can open them over the Chart. */}
-  {canEdit && <TreatmentPanels c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'done'} />}
+  {canEdit && <TreatmentPanels c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'done'} chartSid={chartSid} />}
   {canEdit && <NotePanel c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'note'} defaultTeeth={noteTeeth} />}
 
   {/* Today's visit, above the sections: what is still to do at it and what is done (036). */}
@@ -1041,6 +1064,7 @@ const recHere = here;
   <div id="rec-chart" role="tabpanel" aria-labelledby="rec-rec-chart-tab" hidden={current !== 'chart'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="chart">
     <Banner id="chart" label={SECTION_LABEL.chart} />
     {fromChart && saved && CHART_SAVED[saved] && <Callout tone="success" text={CHART_SAVED[saved]} />}
+    {showOffer && current === 'chart' && <ChartOffer state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="chart" leaveHref={leaveOffer('chart')} inChart />}
     <Pane as="section" label="Chart" id="chart" class="pt-chart-pane">
       <Head icon="tooth" title="Chart" />
       <p class="-mt-2 mb-4 text-[14px] text-muted">Every change is saved as you make it, under your name.</p>
@@ -1094,7 +1118,9 @@ const recHere = here;
   <!-- Treatment -->
   <div id="rec-treatment" role="tabpanel" aria-labelledby="rec-rec-treatment-tab" hidden={current !== 'treatment'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="treatment">
     <Banner id="treatment" label={SECTION_LABEL.treatment} />
-    <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} />
+    <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null}>
+      {showOffer && current === 'treatment' && <ChartOffer slot="offer" state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="treatment" leaveHref={leaveOffer('treatment')} inChart={false} />}
+    </Treatment>
     <div class="mt-4 grid gap-4 max-md:mt-3 max-md:gap-3">
       <Loas loas={ext.loas} plan={clin.plan} payors={ext.hmoPayors} hmoName={patient.hmo_name} memberNo={patient.hmo_member_no} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} settingsHref={`/c/${clinic.slug}/settings/`} />
       <PayPlans plans={ext.plans} canEdit={canEdit} canBill={money} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} financesBase={links.finances} />
