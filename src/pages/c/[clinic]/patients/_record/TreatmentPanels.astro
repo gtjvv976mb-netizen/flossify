@@ -1,0 +1,217 @@
+---
+// Add to plan and Record a treatment: the two side panels of Treatment, rendered outside the record's sections
+// (as VisitPanels is) so the chart's palette can open them over the Chart section — a <dialog> inside a section
+// with the `hidden` attribute is not drawn. Their openers elsewhere (Treatment's buttons, the More menu, the This
+// visit strip) still bring Treatment forward behind them (data-rec-show).
+//
+// The tooth is a ToothPick (FDI tiles, baby teeth, the typed box, the surface toggles); the server reads it with
+// pickedTooth() in src/lib/record.ts. Opened from a tooth (the palette's data-pick-open buttons), the panel starts
+// on that tooth and posts back=chart, so the save lands on the chart; any other opener clears that. The surfaces
+// the palette had ticked are only a suggestion, ticked while the fee-guide item works on surfaces (a filling or a
+// sealant: data-fee-surfaces) and not once the person has touched the toggles.
+//
+// Record a treatment starts with the picked tooth's open plan items, each a one-tap Mark done form — the same
+// post as Treatment's own Mark done (intent plan-status, to=done, the visit, the dentist) — so work already on
+// the plan is never recorded twice. An item whose LOA is waiting or expired asks first (Treatment's submit
+// listener, document-wide).
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Callout from '../_ui/Callout.astro';
+import ToothPick from '../_ui/ToothPick.astro';
+import type { Clinical, RecordProblem } from '../../../../../lib/record';
+import type { Loa } from '../../../../../lib/record-extra';
+
+/** visitId: today's visit (036) — a treatment recorded or marked done is written against it. openNow: the page opens
+ *  Record a treatment as it loads (?open=done). */
+interface Props { c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; today: string; firstName: string; visitId?: string | null; openNow?: boolean }
+const { c, loas = [], canEdit, action, meId, problem, today, firstName, visitId = null, openNow = false } = Astro.props;
+
+const peso = (n: number | string) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+const meClinician = c.clinicians.some((x) => x.id === meId);
+const loaOf = (id: string | null) => (id ? loas.find((a) => a.id === id) ?? null : null);
+const v = (intent: string) => (problem?.intent === intent ? problem.values : {} as Record<string, string>);
+const pv = v('plan-add'), dv = v('done-add');
+const help = 'text-[13px] leading-snug text-ink-2';
+// The fee guide by category, for the pickers. A filling or a sealant works on surfaces: the chart's are carried over for it.
+const cats = [...new Set(c.catalog.map((x) => x.category ?? 'Other'))];
+const SURFACE_WORK = new Set(['restoration', 'sealant']);
+// Open plan items on a tooth: the Mark done list of Record a treatment.
+const onTeeth = c.plan.filter((i) => (i.status === 'planned' || i.status === 'accepted') && i.fdi);
+const loaAsk = (loaId: string | null) => {
+  const a = loaOf(loaId);
+  return a && (a.status === 'requested' || a.expired) ? `${a.payor} has not approved this yet (no valid LOA). Mark it done anyway? The HMO may not pay for it.` : undefined;
+};
+// A Mark done from the panel that was refused, from the chart: the panel comes back open on that item's tooth.
+const planRefused = problem?.intent === 'plan-status' && problem.values.back === 'chart' ? problem : null;
+const refusedFdi = planRefused ? c.plan.find((i) => i.id === planRefused.values.item)?.fdi ?? null : null;
+const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
+---
+
+{canEdit && (
+  <>
+    <SidePanel id="rec-plan-add" title="Add to plan" meta={firstName} open={problem?.intent === 'plan-add'}>
+      {problem?.intent === 'plan-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was added.`} />}
+      <form method="post" action={`${action}#${pv.back === 'chart' ? 'chart' : 'treatment'}`} class="grid gap-4" data-fee-form data-pick-form data-pick-home="treatment">
+        <Csrf /><input type="hidden" name="intent" value="plan-add" />
+        <input type="hidden" name="back" value={pv.back === 'chart' ? 'chart' : ''} data-pick-back />
+        <input type="hidden" name="pick" value={pv.back === 'chart' ? pv.pick ?? '' : ''} data-pick-tooth />
+        <label class="field"><span class="meta">From your fee guide</span>
+          <select name="catalog_id" data-fee-pick>
+            <option value="">Choose a treatment…</option>
+            {cats.map((cat) => <optgroup label={cat}>{c.catalog.filter((x) => (x.category ?? 'Other') === cat).map((x) => <option value={x.id} data-price={x.price} data-fee-surfaces={SURFACE_WORK.has(x.code) ? '' : undefined} selected={pv.catalog_id === x.id}>{x.name} · {peso(x.price)}{x.from ? '+' : ''}</option>)}</optgroup>)}
+          </select>
+        </label>
+        <label class="field"><span class="meta">Or type it</span><input name="name" value={pv.name ?? ''} maxlength="160" autocomplete="off" placeholder="e.g. Composite filling" /><span class={help}>Leave empty to use the fee guide’s name.</span></label>
+        <ToothPick id="tp-plan" name="fdi" label="Tooth (FDI)" noneLabel="Whole mouth" help={toothTip} value={pv.fdi} typed={pv.fdi_typed} surfaces={pv.surface ?? ''} />
+        <div class="grid grid-cols-2 gap-4">
+          <label class="field"><span class="meta">Price (₱)</span><input name="price" value={pv.price ?? ''} inputmode="decimal" maxlength="14" autocomplete="off" data-fee-price /><span class={help}>Filled in from the fee guide; change it for this patient.</span></label>
+          <label class="field"><span class="meta">Phase</span>
+            <select name="phase">{[1, 2, 3, 4, 5].map((n) => <option value={n} selected={String(n) === (pv.phase ?? '1')}>{n === 1 ? '1 · first' : n}</option>)}</select>
+            <span class={help}>What comes first: pain and infection, then the rest.</span>
+          </label>
+        </div>
+        <label class="field"><span class="meta">Note <span class="font-normal">(optional)</span></span><input name="note" value={pv.note ?? ''} maxlength="500" autocomplete="off" placeholder="e.g. after the extraction heals" /></label>
+        <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="plus" />Add to plan</button>
+      </form>
+    </SidePanel>
+
+    <SidePanel id="rec-done-add" title="Record a treatment" meta={firstName} open={problem?.intent === 'done-add' || !!planRefused || openNow}>
+      {problem?.intent === 'done-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was recorded.`} />}
+      {planRefused && <Callout tone="alert" class="mb-4" text={planRefused.text} />}
+      {/* The picked tooth's open plan items, each one tap (shown by the script for the tooth picked). */}
+      <div class="mb-5 grid gap-2.5" data-pick-plan data-pick-served-fdi={refusedFdi ?? undefined} hidden>
+        <p class="text-[14.5px] font-semibold">On the plan for <span data-pick-plan-tooth>{refusedFdi ?? ''}</span>:</p>
+        {onTeeth.map((i) => (
+          <form method="post" action={`${action}#treatment`} class="flex flex-wrap items-center gap-2" data-plan-fdi={i.fdi} data-confirm={loaAsk(i.loaId)} hidden>
+            <Csrf /><input type="hidden" name="intent" value="plan-status" /><input type="hidden" name="item" value={i.id} /><input type="hidden" name="to" value="done" />
+            {visitId && <input type="hidden" name="visit" value={visitId} />}
+            <input type="hidden" name="back" value="" data-pick-plan-back />
+            {meClinician ? <input type="hidden" name="dentist" value={meId} /> : (
+              <select name="dentist" class="tx-who" required aria-label={`Who did ${i.name}`}>
+                <option value="">Done by…</option>
+                {c.clinicians.map((x) => <option value={x.id}>{x.name}</option>)}
+              </select>
+            )}
+            <button class="ws-btn ws-btn-quiet" aria-label={`Mark done: ${i.name}, tooth ${i.fdi}${i.surface ? ` ${i.surface}` : ''}`}><Icon name="check" />Mark done: {i.name}{i.surface ? ` ${i.surface}` : ''}</button>
+          </form>
+        ))}
+        <p class="text-[14px] text-ink-2">Or record other work on <span data-pick-plan-tooth>{refusedFdi ?? ''}</span> below.</p>
+      </div>
+      <p class="mb-4 text-[14px] text-ink-2">For work that was not on the plan. Something on the plan? Use its Mark done instead.</p>
+      <form method="post" action={`${action}#${dv.back === 'chart' ? 'chart' : 'treatment-done'}`} class="grid gap-4" data-fee-form data-pick-form data-pick-home="treatment-done">
+        <Csrf /><input type="hidden" name="intent" value="done-add" />
+        {visitId && <input type="hidden" name="visit" value={visitId} />}
+        <input type="hidden" name="back" value={dv.back === 'chart' || planRefused ? 'chart' : ''} data-pick-back />
+        <input type="hidden" name="pick" value={planRefused ? String(refusedFdi ?? '') : dv.back === 'chart' ? dv.pick ?? '' : ''} data-pick-tooth />
+        <label class="field"><span class="meta">From your fee guide</span>
+          <select name="catalog_id" data-fee-pick>
+            <option value="">Choose a treatment…</option>
+            {cats.map((cat) => <optgroup label={cat}>{c.catalog.filter((x) => (x.category ?? 'Other') === cat).map((x) => <option value={x.id} data-price={x.price} data-fee-surfaces={SURFACE_WORK.has(x.code) ? '' : undefined} selected={dv.catalog_id === x.id}>{x.name}</option>)}</optgroup>)}
+          </select>
+        </label>
+        <label class="field"><span class="meta">Or type it</span><input name="name" value={dv.name ?? ''} maxlength="160" autocomplete="off" /></label>
+        <ToothPick id="tp-done" name="fdi" label="Tooth (FDI)" noneLabel="Whole mouth" help={toothTip} value={planRefused ? String(refusedFdi ?? '') : dv.fdi} typed={dv.fdi_typed} surfaces={dv.surface ?? ''} />
+        <div class="grid grid-cols-2 gap-4">
+          <label class="field"><span class="meta">Day</span><input type="date" name="on" value={dv.on ?? today} max={today} /></label>
+          <label class="field"><span class="meta">Price (₱)</span><input name="price" value={dv.price ?? ''} inputmode="decimal" maxlength="14" autocomplete="off" data-fee-price /></label>
+        </div>
+        <label class="field"><span class="meta">Done by</span>
+          <select name="dentist" required>
+            <option value="">Choose the dentist…</option>
+            {c.clinicians.map((x) => <option value={x.id} selected={(dv.dentist ?? (meClinician ? meId : '')) === x.id}>{x.name}</option>)}
+          </select>
+        </label>
+        <label class="field"><span class="meta">Note <span class="font-normal">(optional)</span></span><textarea name="note" rows="3" maxlength="2000">{dv.note ?? ''}</textarea></label>
+        <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Record it</button>
+      </form>
+    </SidePanel>
+  </>
+)}
+
+<script>
+  import { readTeeth, setTeeth, setSurfaces } from '../_ui/toothpick';
+  import { aimForm, focusBack } from './pickpanel';
+
+  // The fee guide fills in the price (the person can still change it for this patient).
+  document.querySelectorAll<HTMLFormElement>('[data-fee-form]').forEach((f) => {
+    const pick = f.querySelector<HTMLSelectElement>('[data-fee-pick]');
+    const price = f.querySelector<HTMLInputElement>('[data-fee-price]');
+    pick?.addEventListener('change', () => {
+      const p = pick.selectedOptions[0]?.dataset.price;
+      if (price && p !== undefined) price.value = String(Number(p));
+    });
+  });
+
+  for (const id of ['rec-plan-add', 'rec-done-add']) {
+    const dialog = document.getElementById(id) as HTMLDialogElement | null;
+    const form = dialog?.querySelector<HTMLFormElement>('form[data-pick-form]');
+    const tp = form?.querySelector<HTMLElement>('[data-tp]');
+    const back = form?.querySelector<HTMLInputElement>('[data-pick-back]');
+    // The tooth the palette opened the panel on (posted, not read by the server), so a refused post still knows it.
+    const pickTooth = form?.querySelector<HTMLInputElement>('[data-pick-tooth]');
+    if (!dialog || !form || !tp || !back) continue;
+    const pick = form.querySelector<HTMLSelectElement>('[data-fee-pick]');
+    const plan = dialog.querySelector<HTMLElement>('[data-pick-plan]');
+    const home = form.dataset.pickHome ?? 'treatment';
+
+    // The surfaces the palette had ticked, while the fee-guide item works on surfaces, until the person touches them.
+    const suggest = () => {
+      if (!dialog.dataset.pickSurfaces || 'tpSurfacesTouched' in tp.dataset) return;
+      const opt = pick?.selectedOptions[0];
+      setSurfaces(tp, opt && 'feeSurfaces' in opt.dataset ? dialog.dataset.pickSurfaces : '');
+    };
+    // The picked tooth's open plan items, each its own Mark done form (Record a treatment only).
+    const showPlan = () => {
+      if (!plan) return;
+      const fdi = readTeeth(tp)[0];
+      let any = false;
+      plan.querySelectorAll<HTMLFormElement>('form[data-plan-fdi]').forEach((f) => {
+        const on = fdi !== undefined && f.dataset.planFdi === String(fdi);
+        f.hidden = !on;
+        if (on) any = true;
+        const b = f.querySelector<HTMLInputElement>('[data-pick-plan-back]');
+        if (b) b.value = back.value;
+        aimForm(f, back.value, 'treatment');
+      });
+      plan.querySelectorAll<HTMLElement>('[data-pick-plan-tooth]').forEach((s) => { s.textContent = fdi !== undefined ? String(fdi) : ''; });
+      plan.hidden = !any;
+    };
+
+    dialog.addEventListener('ws:panel-open', (e) => {
+      const { opener, auto } = (e as CustomEvent).detail ?? {};
+      if (auto) {
+        // A refused post: the form already holds what was posted.
+        const served = plan?.dataset.pickServedFdi;
+        const t = served || pickTooth?.value || String(readTeeth(tp)[0] ?? '');
+        if (t) dialog.dataset.pickFdi = t;
+        aimForm(form, back.value, home);
+        showPlan();
+        return;
+      }
+      const from = opener instanceof HTMLElement && opener.dataset.pickFdi ? opener : null;
+      delete tp.dataset.tpSurfacesTouched;
+      if (from) {
+        setTeeth(tp, [Number(from.dataset.pickFdi)]);
+        setSurfaces(tp, '');
+        dialog.dataset.pickFdi = from.dataset.pickFdi!;
+        dialog.dataset.pickSurfaces = from.dataset.pickSurfaces ?? '';
+        back.value = 'chart';
+        if (pickTooth) pickTooth.value = from.dataset.pickFdi!;
+      } else {
+        // After a pick: start clean, and keep anything else typed. Only the palette sends a panel back to the chart.
+        if ('pickFdi' in dialog.dataset) { setTeeth(tp, []); setSurfaces(tp, ''); }
+        delete dialog.dataset.pickFdi;
+        delete dialog.dataset.pickSurfaces;
+        back.value = '';
+        if (pickTooth) pickTooth.value = '';
+      }
+      aimForm(form, back.value, home);
+      suggest();
+      showPlan();
+    });
+    pick?.addEventListener('change', suggest);
+    tp.addEventListener('tp:change', showPlan);
+    dialog.addEventListener('ws:panel-close', () => focusBack(id, back.value, dialog.dataset.pickFdi));
+  }
+</script>

@@ -33,7 +33,16 @@ export function teethFrom(v: unknown): number[] {
   return out;
 }
 const toothOf = (v: FormDataEntryValue | null) => { const t = teethFrom(v); return t.length ? t[0] : null; };
-const surfaceOf = (v: FormDataEntryValue | null) => { const s = String(v ?? '').toUpperCase().replace(/[^A-Z]/g, ''); return s && SURFACE.test(s) ? s : null; };
+/** "MO", "M O", "MMO" → "MO": letters only, each once, then checked. */
+const surfaceOf = (v: FormDataEntryValue | null) => { const s = [...new Set(String(v ?? '').toUpperCase().replace(/[^A-Z]/g, ''))].join(''); return s && SURFACE.test(s) ? s : null; };
+/** The tooth a ToothPick posted. The typed box wins when the radios hold nothing; both holding a tooth,
+ *  and different, is a clash (scripts off). An older page posts `fdi` as text; it reads the same. */
+function pickedTooth(form: FormData): { raw: string; fdi: number | null; clash: string | null } {
+  const typed = String(form.get('fdi_typed') ?? '').trim(), picked = String(form.get('fdi') ?? '').trim();
+  const raw = typed || picked, fdi = toothOf(raw);
+  const clash = typed && picked && fdi && toothOf(picked) !== fdi ? `${picked} is picked and ${typed} is typed. Keep one of them.` : null;
+  return { raw, fdi, clash };
+}
 /** "1,500", "₱1500.50" → centavos-safe string for numeric(12,2), or null when it is not an amount. */
 export function amountOf(v: unknown): string | null {
   const s = String(v ?? '').replace(/[₱,\s]/g, '');
@@ -80,7 +89,8 @@ export interface Recall { id: string; dueOn: string; reason: string; by: string 
 export interface Lab { id: string; lab: string; description: string; shade: string | null; sentOn: string | null; dueOn: string | null; receivedOn: string | null; cost: string; status: string; note: string | null; at: Date }
 /** ptr / ptrYear: the PTR on file now; rank / isOwner: their role's, for who may fix it (ptrFix on the record page). */
 export interface Clinician { id: string; name: string; prc: string | null; ptr: string | null; ptrYear: number | null; rank: number | null; isOwner: boolean }
-export interface CatalogItem { id: string; name: string; price: string; max: string | null; from: boolean; tooth: boolean; category: string | null }
+/** code: the fee guide's code (restoration, sealant …): the picker carries the chart's surfaces over only for work on surfaces. */
+export interface CatalogItem { id: string; code: string; name: string; price: string; max: string | null; from: boolean; tooth: boolean; category: string | null }
 
 export interface Clinical { plan: PlanItem[]; done: Done[]; notes: Note[]; rx: Rx[]; files: FileRow[]; recall: Recall | null; labs: Lab[]; clinicians: Clinician[]; catalog: CatalogItem[] }
 
@@ -105,7 +115,7 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
     tx.query(`select s.id, s.full_name, s.prc_licence, s.ptr_number, s.ptr_year, cr.rank, cr.is_owner
                 from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $1 left join clinic_role cr on cr.id = s.role_id
                where s.disabled_at is null and s.role in ('owner', 'dentist', 'associate') order by s.full_name`, [clinicId]),
-    tx.query(`select id, name, default_price, price_max, price_from, tooth_scoped, category from procedure_catalog where active order by category nulls last, name`),
+    tx.query(`select id, code, name, default_price, price_max, price_from, tooth_scoped, category from procedure_catalog where active order by category nulls last, name`),
   ]);
   return {
     plan: plan.rows.map((r) => ({ id: r.id, loaId: r.loa_id ?? null, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, phase: r.phase, status: r.status, note: r.note, createdAt: r.created_at, decidedAt: r.decided_at, by: r.by_name })),
@@ -116,7 +126,7 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
     recall: recall.rows[0] ? { id: recall.rows[0].id, dueOn: recall.rows[0].due, reason: recall.rows[0].reason, by: recall.rows[0].by_name, at: recall.rows[0].created_at, textedOn: recall.rows[0].texted ?? null } : null,
     labs: labs.rows.map((r) => ({ id: r.id, lab: r.lab_name, description: r.description, shade: r.shade, sentOn: r.sent, dueOn: r.due, receivedOn: r.received, cost: r.cost, status: r.status, note: r.note, at: r.created_at })),
     clinicians: clinicians.rows.map((r) => ({ id: r.id, name: r.full_name, prc: r.prc_licence, ptr: r.ptr_number, ptrYear: r.ptr_year ?? null, rank: r.rank ?? null, isOwner: !!r.is_owner })),
-    catalog: catalog.rows.map((r) => ({ id: r.id, name: r.name, price: r.default_price, max: r.price_max, from: r.price_from, tooth: r.tooth_scoped, category: r.category })),
+    catalog: catalog.rows.map((r) => ({ id: r.id, code: r.code, name: r.name, price: r.default_price, max: r.price_max, from: r.price_from, tooth: r.tooth_scoped, category: r.category })),
   };
 }
 
@@ -160,7 +170,13 @@ export async function visitOf(tx: Tx, form: FormData, patientId: string): Promis
 /** One post from the record page. The patient must exist here (RLS) and the person may edit records. */
 export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormData): Promise<Outcome | 'none'> {
   const section = SECTION_OF[intent] ?? 'overview';
-  const values = Object.fromEntries([...form.entries()].filter(([k, v]) => typeof v === 'string' && !['_csrf', 'intent'].includes(k)).map(([k, v]) => [k, String(v)])) as Record<string, string>;
+  // What was posted, to draw again on a refusal. The tooth picker posts several `teeth` (a note) and `surface`
+  // (M, O, D …) entries: they are kept together, space-separated, not just the last one.
+  const values: Record<string, string> = {};
+  for (const [k, v] of form.entries()) {
+    if (typeof v !== 'string' || k === '_csrf' || k === 'intent') continue;
+    values[k] = (k === 'teeth' || k === 'surface') && k in values ? `${values[k]} ${v}` : v;
+  }
   const fail = (problem: string): Outcome => ({ ok: false, section, problem, values });
   const done = (saved: string): Outcome => ({ ok: true, section, saved });
   const here = (await tx.query('select id from patient where id = $1 and archived_at is null', [c.patientId])).rows[0];
@@ -177,11 +193,12 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       const name = line(form.get('name'), 160) || cat?.name || '';
       if (!name) return fail('Choose a treatment from your fee guide, or type one.');
       if (name.length > 160) return fail('Keep the treatment’s name to 160 characters.');
-      const typedTooth = String(form.get('fdi') ?? '').trim();
-      const fdi = toothOf(form.get('fdi'));
+      const { raw: typedTooth, fdi, clash } = pickedTooth(form);
       if (typedTooth && !fdi) return fail('That is not a tooth number. Use the FDI numbers on the chart: 11 to 48, or 51 to 85 for baby teeth.');
-      const typedSurface = String(form.get('surface') ?? '').trim();
-      const surface = surfaceOf(form.get('surface'));
+      if (clash) return fail(clash);
+      // The picker's toggles post one `surface` each (M, O …); an older page posts them as one text ("MOD").
+      const typedSurface = form.getAll('surface').map(String).join('').trim();
+      const surface = surfaceOf(typedSurface);
       if (typedSurface && !surface) return fail('Surfaces are letters: M, O, D, B, L (or I, F, P), up to five, like “MOD”.');
       const price = amountOf(form.get('price') || (cat ? cat.default_price : ''));
       if (price === null) return fail('Write the price as a number, like 1500 or 1,500.00.');
@@ -255,7 +272,9 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       const { rows: [n] } = await tx.query(
         `insert into clinical_note (clinic_id, patient_id, visit_on, dentist_id, complaint, findings, diagnosis, treatment, plan, teeth, amends_id, created_by, appointment_id)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
-        [c.clinicId, c.patientId, on, dentist?.id ?? null, fields.complaint || null, fields.findings || null, fields.diagnosis || null, fields.treatment || null, fields.plan || null, teethFrom(form.get('teeth')), amends || null, c.staffId, await visitOf(tx, form, c.patientId)]);
+        // Ticked teeth (several `teeth`) and typed ones (`teeth_typed`, or an older page's `teeth` text) together: they cannot clash.
+        [c.clinicId, c.patientId, on, dentist?.id ?? null, fields.complaint || null, fields.findings || null, fields.diagnosis || null, fields.treatment || null, fields.plan || null,
+         teethFrom([...form.getAll('teeth'), form.get('teeth_typed') ?? ''].map(String).join(' ')), amends || null, c.staffId, await visitOf(tx, form, c.patientId)]);
       await audit(tx, c, amends ? 'record.note_addendum' : 'record.note_add', 'clinical_note', n.id);
       return done(amends ? 'addendum' : 'note');
     }
@@ -288,9 +307,9 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       if (files.length > 10) return fail('Add up to 10 files at a time.');
       const kind = String(form.get('kind') ?? '');
       if (!Object.hasOwn(FILE_KINDS, kind)) return fail('Say what the file is: an X-ray, a photo or a document.');
-      const typedTooth = String(form.get('fdi') ?? '').trim();
-      const fdi = toothOf(form.get('fdi'));
+      const { raw: typedTooth, fdi, clash } = pickedTooth(form);
       if (typedTooth && !fdi) return fail('That is not a tooth number. Use the FDI numbers on the chart, or leave it empty.');
+      if (clash) return fail(clash);
       const taken = dayOf(form.get('taken_on'));
       if (taken && taken > manilaToday()) return fail('The day it was taken cannot be in the future.');
       const caption = line(form.get('caption'), 200);

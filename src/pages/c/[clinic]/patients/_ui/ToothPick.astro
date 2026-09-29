@@ -1,0 +1,122 @@
+---
+// The tooth picker (p01): the permanent teeth as four labelled blocks of FDI tiles, in the chart's order
+// (18→11, 21→28, 48→41, 31→38 in the page, for a screen reader and the arrow keys). From 400px the blocks sit
+// two to a row and the upper-left and lower-right fold the other way, so 11|21 and 41|31 meet in the middle, as
+// looking into the open mouth; narrower, they stack one per row. Baby teeth (51–85) behind a quiet toggle;
+// "Whole mouth" / "No tooth" as the first choice of a single pick; a typed box under the grid ("Or type the tooth
+// number (FDI)"), which the server reads too, so the picker works with scripts off. Plan and done add a row of
+// five surface toggles (M O D B L; I on an anterior).
+//
+// One tooth (plan, done, files): radio buttons named `fdi`, one group across the permanent tiles, the baby tiles
+// and the pill. Several (a note): checkboxes named `teeth`. The typed box is `<name>_typed`. The chosen state is
+// the sibling pattern (input:checked + .tp-face), never :has(). The behaviour is ./toothpick.ts; the look is
+// patients.css, "The tooth picker (.tp-)".
+import { SURFACE_LABEL } from '../../../../../data/demo';
+
+interface Props {
+  /** 'tp-plan' | 'tp-done' | 'tp-note' | 'tp-file': unique per page. */
+  id: string;
+  name: 'fdi' | 'teeth';
+  /** Checkboxes (a note's teeth). */
+  multiple?: boolean;
+  /** What is picked: "36", or "16 17" for a note. */
+  value?: string;
+  /** What was typed in the box (a refused post). */
+  typed?: string;
+  label: string;
+  optional?: boolean;
+  help?: string;
+  /** The first choice of a single pick: 'Whole mouth' | 'No tooth'. */
+  noneLabel?: string;
+  /** Present (even '') → the surface row, ticked with these letters. */
+  surfaces?: string | null;
+}
+const { id, name, multiple = false, value = '', typed = '', label, optional = false, help, noneLabel = 'Whole mouth', surfaces = null } = Astro.props;
+
+const FDI = new Set([
+  ...[1, 2, 3, 4].flatMap((q) => [1, 2, 3, 4, 5, 6, 7, 8].map((n) => q * 10 + n)),
+  ...[5, 6, 7, 8].flatMap((q) => [1, 2, 3, 4, 5].map((n) => q * 10 + n)),
+]);
+const teethIn = (s: string) => [...String(s ?? '').matchAll(/\d{2}/g)].map((m) => Number(m[0])).filter((n) => FDI.has(n));
+const picked = new Set(multiple ? teethIn(value) : teethIn(value).slice(0, 1));
+const one = [...picked][0] ?? teethIn(typed)[0];
+const anterior = !multiple && one !== undefined && one % 10 <= 3;
+const QUADS = [
+  { name: 'Upper right', teeth: [18, 17, 16, 15, 14, 13, 12, 11], fold: false },
+  { name: 'Upper left', teeth: [21, 22, 23, 24, 25, 26, 27, 28], fold: true },
+  { name: 'Lower right', teeth: [48, 47, 46, 45, 44, 43, 42, 41], fold: true },
+  { name: 'Lower left', teeth: [31, 32, 33, 34, 35, 36, 37, 38], fold: false },
+];
+const BABY = [
+  { name: 'Upper right, baby', teeth: [55, 54, 53, 52, 51] },
+  { name: 'Upper left, baby', teeth: [61, 62, 63, 64, 65] },
+  { name: 'Lower right, baby', teeth: [85, 84, 83, 82, 81] },
+  { name: 'Lower left, baby', teeth: [71, 72, 73, 74, 75] },
+];
+const type = multiple ? 'checkbox' : 'radio';
+const letters = (surfaces ?? '').toUpperCase();
+const SURF = [
+  { v: 'M', word: SURFACE_LABEL.mesial },
+  { v: anterior ? 'I' : 'O', word: anterior ? 'Incisal' : SURFACE_LABEL.occlusal, occlusal: true },
+  { v: 'D', word: SURFACE_LABEL.distal },
+  { v: 'B', word: SURFACE_LABEL.buccal },
+  { v: 'L', word: SURFACE_LABEL.lingual },
+];
+const surfOn = (s: { v: string; occlusal?: boolean }) => (s.occlusal ? /[OI]/.test(letters) : letters.includes(s.v));
+---
+
+<fieldset class="tp" id={id} data-tp data-tp-name={name} data-tp-multiple={multiple ? '' : undefined}>
+  <legend class="tp-legend">{label}{optional && <span class="tp-optional"> (optional)</span>}</legend>
+  {help && <p class="tp-help">{help}</p>}
+  <div class="tp-mouth" data-tp-set="permanent">
+    {QUADS.map((q) => (
+      <div class="tp-q" role="group" aria-label={q.name} data-tp-fold={q.fold ? '' : undefined}>
+        <span class="tp-q-name" aria-hidden="true">{q.name}</span>
+        <div class="tp-grid">
+          {q.teeth.map((t) => (
+            <label class="tp-t"><input type={type} class="sr-only" name={name} value={t} checked={picked.has(t)} /><span class="tp-face">{t}</span></label>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+  <button type="button" class="ws-btn ws-btn-quiet tp-baby-toggle" data-tp-baby-toggle aria-expanded="true" aria-controls={`${id}-baby`} hidden>Baby teeth</button>
+  <div id={`${id}-baby`} class="tp-mouth" data-tp-set="baby" data-tp-baby>
+    {BABY.map((q) => (
+      <div class="tp-q" role="group" aria-label={q.name}>
+        <span class="tp-q-name" aria-hidden="true">{q.name}</span>
+        <div class="tp-grid">
+          {q.teeth.map((t) => (
+            <label class="tp-t"><input type={type} class="sr-only" name={name} value={t} checked={picked.has(t)} /><span class="tp-face">{t}</span></label>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+  {!multiple && (
+    <label class="tp-none"><input type="radio" class="sr-only" name={name} value="" checked={picked.size === 0} /><span class="tp-pill">{noneLabel}</span></label>
+  )}
+  <label class="field tp-typed">
+    <span class="meta">{multiple ? 'Or type the tooth numbers (FDI)' : 'Or type the tooth number (FDI)'}</span>
+    <input name={`${name}_typed`} value={typed} data-tp-typed inputmode="numeric" autocomplete="off" maxlength={multiple ? 60 : 2} placeholder={multiple ? 'e.g. 16 17' : 'e.g. 36'} />
+  </label>
+  {surfaces !== null && (
+    <fieldset class="tp-surf" data-tp-surfaces>
+      <legend class="tp-legend">Surfaces</legend>
+      <div class="tp-grid">
+        {SURF.map((s) => (
+          <label class="tp-t">
+            <input type="checkbox" class="sr-only" name="surface" value={s.v} checked={surfOn(s)} data-tp-occlusal={s.occlusal ? '' : undefined} />
+            <span class="tp-face" aria-hidden="true">{s.v}</span>
+            <span class="sr-only">{s.word}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )}
+</fieldset>
+
+<script>
+  import { initToothPick } from './toothpick';
+  document.querySelectorAll<HTMLElement>('[data-tp]').forEach(initToothPick);
+</script>
