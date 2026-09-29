@@ -122,7 +122,7 @@
   .pt-tiles .ws-tile-icon { display: none; }
 }
 /* A section reached by its address (#health, #money) lands under the sticky top, not behind it. */
-[data-rec-panel], [data-rec-panel] .ws-pane { scroll-margin-top: 5.5rem; }
+[data-rec-panel], [data-rec-panel] .ws-pane, [data-chart-offer] { scroll-margin-top: 5.5rem; }
 .rec-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 @media (max-width: 767px) {
   .rec-actions { width: 100%; }
@@ -299,3 +299,8 @@
 .tp-help { margin: 0; font-size: 13px; line-height: 1.4; color: var(--c-ink-2); }
 /* The palette in the record: never taller than the screen. */
 .pt-chart [data-palette] { max-height: calc(100dvh - 16px); overflow-y: auto; }
+/* Record a treatment's chart line (p01 step 2): a quiet inset, the box a full-height row, never ticked as drawn. */
+.tp-chart-line { display: grid; gap: 0.125rem; padding: 0.375rem 0.875rem 0.75rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
+.tp-chart-line[hidden] { display: none; }
+.tp-chart-tick { display: flex; align-items: center; gap: 0.625rem; min-height: 44px; font-size: 15px; font-weight: 600; color: var(--c-ink); cursor: pointer; }
+.tp-chart-tick input { flex: none; width: 20px; height: 20px; accent-color: var(--ws-teal-fill); }

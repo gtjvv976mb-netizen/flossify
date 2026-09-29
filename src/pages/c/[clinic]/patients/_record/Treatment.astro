@@ -4,7 +4,8 @@
 // done under the dentist, so the plan and the list below never disagree. Every form is a side panel; every
 // button is one post (recordAction in src/lib/record.ts), and a refused post comes back with its sentence.
 // Add to plan and Record a treatment are TreatmentPanels.astro, outside the record's sections, so the chart's
-// palette can open them too; the lab case panel stays here.
+// palette can open them too; the lab case panel stays here. The record page puts the chart's offer (ChartOffer.astro) in the `offer`
+// slot, under the saved line, when a treatment saved here could be charted.
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
@@ -48,6 +49,8 @@ const help = 'text-[13px] leading-snug text-ink-2';
 <div class="grid gap-4 max-md:gap-3">
   {saved && SAVED[saved] && <Callout tone="success" text={SAVED[saved]} />}
   {inline && <Callout tone="alert" text={inline} />}
+  {/* The chart's offer after a treatment was recorded or marked done here (_record/ChartOffer.astro, p01 step 2). */}
+  <slot name="offer" />
 
   <Pane as="section" label="Treatment plan" id="treatment">
     <Head icon="plan" title="Treatment plan" meta={open.length ? `${open.length} to do` : 'Nothing to do'} />
