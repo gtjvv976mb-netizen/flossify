@@ -65,7 +65,8 @@ const BASE = `a.id, a.patient_id, concat_ws(' ', p.first_name, nullif(p.last_nam
        mh.allergies`;
 // The extras (model.ts Extras): the service and its price, who booked, the patient's alerts — and, since 036,
 // what the desk and the chair need at the moment of decision: whether the history was asked and when, blood
-// pressure on the visit's day, a consent signed for this visit, a lab case or a medical clearance still out,
+// pressure on the visit's day, a consent signed for this visit (visit_treatment_consented, 039: the tablet's signing or an
+// agreed general consent form), a lab case or a medical clearance still out,
 // treatments done at the visit with no statement line yet, the visit's statement, the open recall, and the
 // patient's next visit after this one. And since p25: the patient's desk note, the latest added patient form's answer
 // to "nervous about visits" ('little' or 'very'; nothing for 'no'), and the treatment each consent signed for this
@@ -80,7 +81,7 @@ const EXTRA = `coalesce(pc.id, pr.id) as catalog_id, coalesce(pc.name, pr.name) 
        ${PATIENT_HMO} as patient_hmo, nullif(nullif(btrim(p.last_name), '—'), '') as last_name,
        mh.answered_at as health_asked_at,
        exists (select 1 from vital_sign v where v.patient_id = p.id and ${MANILA_DAY('v.taken_at')} = ${MANILA_DAY('a.starts_at')}) as bp_on_day,
-       exists (select 1 from visit_consent vc where vc.appointment_id = a.id) as consent_signed,
+       visit_treatment_consented(a.id) as consent_signed,
        exists (select 1 from lab_order lo where lo.patient_id = p.id and lo.status in ('ordered', 'sent')) as lab_pending,
        exists (select 1 from clinical_letter cl where cl.patient_id = p.id and cl.kind = 'clearance' and cl.answer is null) as clearance_waiting,
        (select count(*) from procedure_done d
