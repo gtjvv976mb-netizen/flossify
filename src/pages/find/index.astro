@@ -189,7 +189,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
             <div class="pt-side-slots" data-slots>
               {l.workspace
                 ? (slots.length
-                    ? slots.map((sl) => <a class="slot" href={`/find/${l.slug}/book/?slot=${encodeURIComponent(slotIso(sl))}`}><span class="meta">{sl.dayLabel}</span>{sl.label}</a>)
+                    ? slots.map((sl) => <a class="slot" href={`/find/${l.slug}/book/?slot=${encodeURIComponent(slotIso(sl))}`} data-slot-link><span class="meta">{sl.dayLabel}</span>{sl.label}</a>)
                     : <span class="pt-side-note">Nothing open in the next two weeks — call the clinic.</span>)
                 : <span class="pt-side-note">Not on the live schedule yet. Send a request and the clinic confirms the time with you.</span>}
             </div>
@@ -323,6 +323,18 @@ const cards = await Promise.all(listings.map(async (l) => ({
       const n = setCount(); moreCount.hidden = n === 0; moreCount.textContent = `${n} set`;
       if (empty) empty.hidden = shown.length > 0;
       writeUrl();
+      results.forEach(carry);
+    }
+
+    // A tapped time carries what she chose here, in this page's own names, so the booking opens on that reason.
+    function carry(li: HTMLElement) {
+      for (const a of $$<HTMLAnchorElement>('[data-slot-link], [data-book]', li)) {
+        const u = new URL(a.href);
+        u.searchParams.delete('service'); u.searchParams.delete('symptom');
+        if (state.service) u.searchParams.set('service', state.service);
+        else if (state.symptom) u.searchParams.set('symptom', state.symptom);
+        a.href = u.pathname + u.search;
+      }
     }
 
     // On a phone the pills are one row that scrolls sideways: a fade on the side where more wait, and

@@ -204,6 +204,24 @@ export function slotsFor(slug: string, hours: Hours, opts: { days?: number; dent
   return out;
 }
 
+export interface SlotWords { at: string; date: string; mins: number; label: string; dayLabel: string }
+/**
+ * A slot's words from its time as the booking links write it ("2026-09-24T09:30:00+08:00"), labelled the
+ * way slotsFor labels one: "Today", "Tomorrow" or "Wed 24 Sep", and "9:30 am". Manila's date and clock,
+ * whatever the device's zone. A past time is still given words (the page says it has passed).
+ * Null for anything that is not a slot time.
+ */
+export function slotWords(iso: string, now: Now = manilaNow()): SlotWords | null {
+  const m = /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):([0-5]\d):00\+08:00$/.exec(iso);
+  if (!m) return null;
+  const d = addDays(m[1], 0);
+  if (d.ymd !== m[1]) return null;                       // 2026-02-31 rolls into March
+  const utc = (ymd: string) => { const [y, mo, da] = ymd.split('-').map(Number); return Date.UTC(y, mo - 1, da); };
+  const diff = Math.round((utc(m[1]) - utc(now.ymd)) / 86_400_000);
+  const mins = +m[2] * 60 + +m[3];
+  return { at: iso, date: d.ymd, mins, label: fmtHour(mins / 60), dayLabel: diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.label };
+}
+
 /** The week, Monday first: "9 am – 6 pm", with " · lunch 12 pm – 1 pm" on a day that has one (hours, as DbListing.lunch). */
 export const hoursRows = (hours: Hours, lunch: Record<number, [number, number]> = {}) =>
   [1, 2, 3, 4, 5, 6, 0].map((d) => ({ day: d, name: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d], text: hours[d] ? `${fmtHour(hours[d]![0])} – ${fmtHour(hours[d]![1])}${lunch[d] ? ` · lunch ${fmtHour(lunch[d][0])} – ${fmtHour(lunch[d][1])}` : ''}` : 'By appointment' }));

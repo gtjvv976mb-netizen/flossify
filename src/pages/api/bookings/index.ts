@@ -22,7 +22,9 @@
 // A live booking is re-checked by slotStillOpen, the same rule (slotOpen) that made
 // the offer: lunch, closures, the dentist's hours and leave, chairs out of use,
 // chairs taken, and dentists left for the visits booked with no dentist. The desk's
-// "anyway" (/api/schedule) does not exist here: this route never reads it.
+// "anyway" (/api/schedule) does not exist here: this route never reads it. At a
+// clinic whose public page lists one dentist, a booking for any dentist is hers
+// (soloDentist, p32), live or request: the offer, the re-check and the row name her.
 //
 // The texts are one-way (Semaphore sends from a sender name; a reply reaches
 // nobody), so no text asks for one. They say what happens and whom to call.
@@ -37,7 +39,7 @@ import type { APIRoute } from 'astro';
 import { randomBytes } from 'node:crypto';
 import { withClinic } from '../../../lib/db';
 import { pool } from '../../../lib/db';
-import { loadListing, openSlots, slotIso, slotStillOpen, publicBlocked, toClosures, type DbListing } from '../../../lib/directory-db';
+import { loadListing, openSlots, slotIso, slotStillOpen, publicBlocked, toClosures, soloDentist, type DbListing } from '../../../lib/directory-db';
 import { whenText, shortName } from '../../../lib/schedule';
 import { manilaNow, fmtHour, willRemind, openIntervals, dayPieces, type Now } from '../../../lib/availability';
 import type { Hours } from '../../../data/directory';
@@ -83,9 +85,11 @@ const hasHours = (hours: Hours) => Object.values(hours).some(Boolean);
  * cannot come. A clinic with no hours on file is taken as open. The placeholder
  * is the first 30 minutes at or after the part's hour that fit, else the last
  * before it; with no cuts every sentence and placement is what it was before.
+ * At a one-dentist clinic the dentist was not chosen but `pinned` (soloDentist):
+ * there is no "any dentist" to offer, so her sentences end at "Pick another day.".
  */
 function placeRequest(hours: Hours, day: { ymd: string; dow: number }, part: (typeof PART)[string], now: Now,
-  clinicCuts: [number, number][] = [], dentistCuts: [number, number][] = [], who: string | null = null): { mins: number } | { error: string } {
+  clinicCuts: [number, number][] = [], dentistCuts: [number, number][] = [], who: string | null = null, pinned = false): { mins: number } | { error: string } {
   const h = hours[day.dow];
   if (hasHours(hours) && !h) return { error: `The clinic is closed on ${DAY_NAME[day.dow]}s. Pick another day.` };
   const open = h ? Math.round(h[0] * 60) : 0, close = h ? Math.round(h[1] * 60) : 24 * 60;
@@ -96,12 +100,13 @@ function placeRequest(hours: Hours, day: { ymd: string; dow: number }, part: (ty
     .map(([a, b]) => ({ lo: Math.max(up30(Math.max(p.from, a)), from), hi: Math.min(p.to, b) - SLOT_MIN }))
     .filter((x) => x.lo <= x.hi);
   if (!openIntervals([open, close], clinicCuts).length) return { error: `The clinic is closed on ${on}. Pick another day.` };
-  if (who && !openIntervals([open, close], cuts).length) return { error: `${who} is not in on ${on}. Pick another day, or any dentist.` };
+  const orAny = pinned ? '' : ', or any dentist';
+  if (who && !openIntervals([open, close], cuts).length) return { error: `${who} is not in on ${on}. Pick another day${orAny}.` };
   const span = (p: (typeof PART)[string]) => ({ lo: up30(Math.max(p.from, open)), hi: Math.min(p.to, close) - SLOT_MIN });
   const w = span(part);
   if (w.lo > w.hi) return { error: `The clinic is open ${fmtHour(h![0])} to ${fmtHour(h![1])} on ${DAY_NAME[day.dow]}s. Pick another time of day.` };
   if (!windows(part, clinicCuts).length) return { error: `The clinic is closed then on ${on}. Pick another time of day.` };
-  if (who && !windows(part, cuts).length) return { error: `${who} is not in then on ${on}. Pick another time of day, or any dentist.` };
+  if (who && !windows(part, cuts).length) return { error: `${who} is not in then on ${on}. Pick another time of day${orAny}.` };
   const earliest = day.ymd === now.ymd ? up30(now.mins + LEAD_MIN) : 0;
   const fits = windows(part, cuts, earliest);
   if (!fits.length) {
@@ -178,8 +183,12 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   if (!PHONE.test(digits(phone).replace(/^63/, '+63'))) return json({ error: 'A Philippine mobile number, like 0917 000 0000.' }, 400);
   if (b.consent !== true) return json({ error: 'Tick the consent box.' }, 400);
   const service = l.fees.find((f) => f.id === b.service) ?? l.fees.find((f) => f.id === 'consultation') ?? l.fees[0];
-  const dentist = b.dentist ? l.dentistProfiles.find((d) => d.slug === b.dentist) : null;
-  if (b.dentist && !dentist) return json({ error: 'That dentist is not at this clinic.' }, 400);
+  const asked = b.dentist ? l.dentistProfiles.find((d) => d.slug === b.dentist) : null;
+  if (b.dentist && !asked) return json({ error: 'That dentist is not at this clinic.' }, 400);
+  // A booking for any dentist at a one-dentist clinic is a booking with her (openSlots' rule), request or live:
+  // the offer, the re-check (slotStillOpen on her slug) and the row all name her.
+  const solo = soloDentist(l);
+  const dentist = asked ?? (solo ? l.dentistProfiles.find((d) => d.slug === solo)! : null);
   const forOther = b.who === 'other';
   const patientName = forOther ? String(b.patientName ?? '').trim() : name;
   if (!patientName) return json({ error: 'Whose visit is it?' }, 400);
@@ -196,7 +205,9 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     const want = String(b.reqTime ?? '');
     part = Object.hasOwn(PART, want) ? PART[want] : PART.Morning;
     const cuts = await cutsOn(l, reqDay, dentist?.slug ?? null);
-    const placed = placeRequest(l.hours, addDays(reqDay, 0), part, now, cuts.clinic, cuts.away, dentist ? shortName(dentist.name) : null);
+    // She was chosen: "Dr. Cariño". She was the only one: her whole name, and no "or any dentist".
+    const pinned = !!dentist && dentist.slug === solo;
+    const placed = placeRequest(l.hours, addDays(reqDay, 0), part, now, cuts.clinic, cuts.away, dentist ? (pinned ? dentist.name : shortName(dentist.name)) : null, pinned);
     if ('error' in placed) return json({ error: placed.error }, 400);
     reqMins = placed.mins;
   }

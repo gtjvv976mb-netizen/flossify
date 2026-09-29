@@ -342,6 +342,18 @@
    nothing of them can be laid out over the room. */
 .cl-glass .pt-more:not([open]) > :not(summary) { display: none; }
 .cl-glass .cl-callout { gap: 0.625rem; margin-top: 0.75rem; padding: 0.625rem 0.875rem; font-size: 14.5px; line-height: 1.45; }
+/* The time tapped on Find a clinic, held at the top of the wizard card: on the glass, never on the bare room.
+   Blue while it holds; amber with its alert icon and a sentence when it no longer fits. */
+.cl-glass .cl-strip { flex-wrap: wrap; align-items: center; margin-top: 0.625rem; }
+.cl-glass .cl-strip > .ws-icon { align-self: flex-start; margin-top: 3px; }
+.cl-glass .cl-strip:not([data-tone="warn"]) > .cl-strip-warn,
+.cl-glass .cl-strip[data-tone="warn"] > .cl-strip-ok { display: none; }
+.cl-glass .cl-strip-body { flex: 1 1 14rem; min-width: 0; }
+.cl-glass .cl-strip-line { margin: 0; }
+.cl-glass .cl-strip-line strong { font-weight: 600; }
+.cl-glass .cl-strip-alts { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.5rem; }
+.cl-glass .cl-strip-alts .slot { cursor: pointer; font-family: inherit; }
+.cl-glass .cl-strip-change { flex: none; margin-left: auto; }
 .cl-glass .cl-picks { display: grid; gap: 0.375rem; margin-top: 0.75rem; }
 .cl-glass .row-radio > span { padding: 0.5625rem 0.875rem; }
 .cl-glass .pt-pick > span { gap: 0.75rem; }
