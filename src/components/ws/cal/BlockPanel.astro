@@ -64,7 +64,7 @@ const KINDS = [
       <span class="bk-hint" id="bl-note-hint">Patients never see it; they see only that the time is not open.</span>
     </label>
     <p class="bk-hint">Visits already booked in that time stay as they are; you will see them listed.</p>
-    {hoursHref && <p class="bk-hint" data-bl-settings>Lunch and a dentist’s regular hours are set in <a href={hoursHref}>Clinic settings</a>.</p>}
+    {hoursHref && <p class="bk-hint" data-bl-settings>Lunch and a dentist’s regular hours are set in <a href={hoursHref} class="bl-settings-link">Clinic settings</a>.</p>}
     <div class="flex flex-wrap gap-2">
       <button type="submit" class="ws-btn ws-btn-primary" data-bl-save><Icon name="check" /><span data-bl-save-word>Block this time</span></button>
       <button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Cancel</button>
