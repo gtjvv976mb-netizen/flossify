@@ -477,6 +477,7 @@ const formsHref = `/c/${clinic.slug}/patients/forms/`;
             <label class="field sm:col-span-2 lg:col-span-4">
               <span class="meta">Other notes</span>
               <textarea name="notes" rows="2" maxlength={NOTES_MAX}>{val('notes')}</textarea>
+              <span class={help}>The desk sees this beside the patient’s visits on the Dashboard. Keep health details in Health.</span>
             </label>
           </div>
         </details>
