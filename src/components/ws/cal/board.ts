@@ -50,6 +50,12 @@ export interface Ctx {
   card: (id: string) => Card | undefined;
   /** Cards on a given Manila day that the page has (for "next free"), or null when that day is not loaded. */
   dayCards: (ymd: string) => Card[] | null;
+  /** The 8 days from Manila day `ymd` (the GET's limit), cancelled left out: kept 60 s; `fresh` asks the server
+   *  whatever is kept. null = could not be reached. */
+  rangeCards: (ymd: string, o?: { fresh?: boolean }) => Promise<Card[] | null>;
+  /** Run the live board's refresh now, after any refresh in flight: today and the range on screen are read again,
+   *  and every change is absorbed and drawn. */
+  reload: () => Promise<void>;
   staffById: Map<string, StaffDay>;
   say: (text: string, go?: { label: string; ymd: string; id?: string }) => void;
   fail: (text: string) => void;
@@ -174,6 +180,30 @@ function start(boot: Boot) {
     const list = await fetchRaw(r.from, r.to);
     if (list) { cache.set(key, list); if (cache.size > 12) cache.delete(cache.keys().next().value as string); }
     return list;
+  }
+  // The free times (free.ts): eight days from a day, apart from the view's cache, kept 60 s, four ranges at most.
+  // A read already on its way is shared rather than asked twice; absorb() empties both, since a change may be in them.
+  const ahead = new Map<string, { at: number; list: Card[] }>();
+  const aheadWait = new Map<string, Promise<Card[] | null>>();
+  let aheadGen = 0;
+  function rangeCards(ymd: string, o: { fresh?: boolean } = {}): Promise<Card[] | null> {
+    const hit = ahead.get(ymd);
+    if (!o.fresh && hit && Date.now() - hit.at < 60_000) return Promise.resolve(hit.list);
+    const waiting = aheadWait.get(ymd);
+    if (!o.fresh && waiting) return waiting;
+    const gen = aheadGen, from = M.startMs(ymd);
+    const p = fetchRaw(from, from + 8 * M.DAY_MS).then((got) => {
+      if (aheadWait.get(ymd) === p) aheadWait.delete(ymd);
+      if (!got) return null;
+      const list = got.filter((c) => c.status !== 'cancelled');
+      if (gen === aheadGen) {
+        ahead.delete(ymd); ahead.set(ymd, { at: Date.now(), list });
+        while (ahead.size > 4) ahead.delete(ahead.keys().next().value as string);
+      }
+      return list;
+    });
+    aheadWait.set(ymd, p);
+    return p;
   }
 
   // --- the messages under the bar -----------------------------------------------------------------
@@ -537,43 +567,56 @@ function start(boot: Boot) {
   // are fetched again, and any visit that changed on another screen — the front desk pressed Arrived, the
   // tablet pressed Done — is absorbed and flashed, so the desk PC and the operatory tablet agree without a
   // reload. Not while a card is being dragged; the open visit panel is refilled unless its move form is open.
+  // A refresh can be awaited (reload: after a refused booking, before the free times read the book again), and it
+  // tells the panels which Manila days changed, so an open block of free times over one of them is drawn again.
   const LIVE_KEYS: (keyof Card)[] = ['status', 'chair', 'startsAt', 'endsAt', 'dentistId', 'arrivedAt', 'seatedAt', 'reason', 'notes',
     'healthAskedAt', 'bpOnDay', 'consentSigned', 'labPending', 'clearanceWaiting', 'unbilled', 'recallDue', 'nextVisitAt'];
   const differs = (a: Card, b: Card) => LIVE_KEYS.some((k) => a[k] !== b[k])
     || (a.statement?.id ?? null) !== (b.statement?.id ?? null) || (a.statement?.status ?? null) !== (b.statement?.status ?? null);
   const liveLine = $('[data-cal-live]');
-  let refreshing = false;
-  async function refresh() {
-    if (refreshing || S.dragging || document.visibilityState !== 'visible' || navigator.onLine === false) return;
-    refreshing = true;
-    try {
-      const ranges = [rangeOf(boot.today, 'day')];
-      const shown = rangeOf(S.date, S.view);
-      if (shown.from !== ranges[0].from || shown.to !== ranges[0].to) ranges.push(shown);
-      for (const rg of ranges) {
-        const got = await fetchRaw(rg.from, rg.to);
-        if (!got) return;
-        cache.set(`${rg.from}|${rg.to}`, got);
-        const seen = new Set<string>();
-        const moveOpen = !!document.querySelector('dialog[open] [data-vp-move]:not([hidden])');
-        for (const c of got) {
-          seen.add(c.id);
-          const old = S.cards.get(c.id) ?? S.today.get(c.id) ?? S.lane.get(c.id);
-          if (old && !differs(old, c)) continue;
-          absorb(c);
-          if (old && old.status !== c.status) {
-            flash(c.id);
-            if (liveLine) liveLine.textContent = `${c.patientName}: ${M.statusWord(c.status).toLowerCase()}, ${M.timeOf(new Date().toISOString())}`;
+  let inflight: Promise<void> | null = null;
+  function refresh(force = false): Promise<void> {
+    if (inflight) return inflight;
+    if (S.dragging || navigator.onLine === false || (!force && document.visibilityState !== 'visible')) return Promise.resolve();
+    const days = new Set<string>();
+    const dayOf = (c: Card) => M.manila(c.startsAt).ymd;
+    inflight = (async () => {
+      try {
+        const ranges = [rangeOf(boot.today, 'day')];
+        const shown = rangeOf(S.date, S.view);
+        if (shown.from !== ranges[0].from || shown.to !== ranges[0].to) ranges.push(shown);
+        for (const rg of ranges) {
+          const got = await fetchRaw(rg.from, rg.to);
+          if (!got) return;
+          cache.set(`${rg.from}|${rg.to}`, got);
+          const seen = new Set<string>();
+          const moveOpen = !!document.querySelector('dialog[open] [data-vp-move]:not([hidden])');
+          for (const c of got) {
+            seen.add(c.id);
+            const old = S.cards.get(c.id) ?? S.today.get(c.id) ?? S.lane.get(c.id);
+            if (old && !differs(old, c)) continue;
+            days.add(dayOf(c));
+            if (old) days.add(dayOf(old));
+            absorb(c);
+            if (old && old.status !== c.status) {
+              flash(c.id);
+              if (liveLine) liveLine.textContent = `${c.patientName}: ${M.statusWord(c.status).toLowerCase()}, ${M.timeOf(new Date().toISOString())}`;
+            }
+            if (panels.visitOpen() === c.id && !moveOpen) panels.openVisit(c.id, null);
           }
-          if (panels.visitOpen() === c.id && !moveOpen) panels.openVisit(c.id, null);
+          // A visit no longer in the range (cancelled, or moved to another day) leaves the board.
+          for (const old of [...S.cards.values(), ...S.today.values()]) {
+            if (!seen.has(old.id) && !M.isRequest(old) && Date.parse(old.startsAt) < rg.to && Date.parse(old.endsAt) > rg.from) { days.add(dayOf(old)); absorb({ ...old, status: 'cancelled' }); }
+          }
         }
-        // A visit no longer in the range (cancelled, or moved to another day) leaves the board.
-        for (const old of [...S.cards.values(), ...S.today.values()]) {
-          if (!seen.has(old.id) && !M.isRequest(old) && Date.parse(old.startsAt) < rg.to && Date.parse(old.endsAt) > rg.from) absorb({ ...old, status: 'cancelled' });
-        }
+      } finally {
+        inflight = null;
+        if (days.size) panels.changed(days);
       }
-    } finally { refreshing = false; }
+    })();
+    return inflight;
   }
+  async function reload() { if (inflight) await inflight.catch(() => undefined); await refresh(true).catch(() => undefined); }
   window.setInterval(() => void refresh(), 30_000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void refresh(); });
   window.addEventListener('online', () => void refresh());
@@ -829,6 +872,7 @@ function start(boot: Boot) {
     if (isTodayCard(c)) S.today.set(c.id, c); else S.today.delete(c.id);
     if (inLane(c)) S.lane.set(c.id, c); else S.lane.delete(c.id);
     cache.clear();
+    ahead.clear(); aheadWait.clear(); aheadGen++;
     patients?.absorb(c);
     if (!S.dragging) renderAll();
   }
@@ -1126,6 +1170,7 @@ function start(boot: Boot) {
       if (s < r.from || s >= r.to) return null;
       return [...S.cards.values()].filter((c) => Date.parse(c.startsAt) >= s && Date.parse(c.startsAt) < s + M.DAY_MS);
     },
+    rangeCards, reload,
     staffById, say, fail, show, flash, filter,
     setWhose: (whose) => { void go(whose === 'mine' ? { dentist: '', by: 'dentist' } : { dentist: 'all' }); },
     url: () => calUrl(),

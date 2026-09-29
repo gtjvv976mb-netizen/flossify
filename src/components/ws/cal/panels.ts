@@ -21,6 +21,7 @@ import type { Card } from './model';
 import type { Ctx } from './board';
 import type { Pt } from './patients';
 import { AFTERCARE, kindForCatalog } from '../../../lib/aftercare';
+import { initFreeTimes } from './free';
 
 export interface Panels {
   openVisit: (id: string, opener: Element | null, o?: { place?: boolean }) => void;
@@ -28,6 +29,8 @@ export interface Panels {
   openPatient: (id: string, opener: Element | null) => void;
   /** The visit whose panel is open right now, or null (the live board refills it when that visit changes). */
   visitOpen: () => string | null;
+  /** The live board absorbed changes on these Manila days: an open panel's free times over one of them are drawn again. */
+  changed: (days: Set<string>) => void;
 }
 
 /** The words on each status button; the order is the order they appear in. */
@@ -123,6 +126,9 @@ export function initPanels(ctx: Ctx): Panels {
     select.replaceChildren(...opts);
     select.value = keep;
   }
+  /** The chosen dentist's name as the select shows it, before " · not in on Tue": kept when the day changes, so a
+   *  dentist not on this branch's schedule keeps their name rather than turning into "Dentist". */
+  const keptName = (s: HTMLSelectElement) => s.selectedOptions[0]?.text.split(' · ')[0] || null;
   const QUIET = 'ws-btn ws-btn-quiet ws-btn-sm', PRIMARY = 'ws-btn ws-btn-primary ws-btn-sm';
   const btn = (label: string, cls = QUIET, ic?: IconName) => { const b = el('button', cls); b.type = 'button'; if (ic) b.append(icon(ic)); b.append(label); return b; };
   const linkBtn = (label: string, href: string, cls = QUIET, ic?: IconName) => { const a = el('a', cls); a.href = href; if (ic) a.append(icon(ic)); a.append(label); return a; };
@@ -162,6 +168,8 @@ export function initPanels(ctx: Ctx): Panels {
   };
   const vMenu = menuOf(V.more);
   let current: string | null = null;
+  // Free times inside the move form (p24): the visit being moved is never in its own way; hidden while the form is folded.
+  const vpFree = initFreeTimes(ctx, 'vp', { date: V.date, time: V.time, minutes: V.minutes, chair: V.chair, dentist: V.dentist, exclude: () => current, off: () => !!V.move.hidden });
   let busy = false;
   const STMT_WORD: Record<string, string> = { issued: 'not paid yet', partly_paid: 'part paid', paid: 'paid' };
 
@@ -391,6 +399,7 @@ export function initPanels(ctx: Ctx): Panels {
   }
   function toMove() {
     V.move.hidden = false;
+    vpFree.update();
     V.moveHead.scrollIntoView({ block: 'start', behavior: 'smooth' });
     V.date.focus({ preventScroll: true });
   }
@@ -424,7 +433,12 @@ export function initPanels(ctx: Ctx): Panels {
     const r = await ctx.call('PATCH', body);
     busy = false; V.panel.removeAttribute('aria-busy');
     for (const b of V.panel.querySelectorAll<HTMLButtonElement>('button')) b.disabled = false;
-    if (!r.ok) { hide(V.said); show(V.err, r.error); V.err.scrollIntoView({ block: 'nearest' }); return null; }
+    if (!r.ok) {
+      hide(V.said); show(V.err, r.error); V.err.scrollIntoView({ block: 'nearest' });
+      // Taken meanwhile by another desk: the board reads the book again, then the free times do (not from what is kept).
+      if (r.status === 409 && !V.move.hidden) void ctx.reload().then(() => vpFree.update({ fresh: true }));
+      return null;
+    }
     hide(V.err);
     ctx.absorb(r.card);
     ctx.flash(r.card.id);
@@ -454,9 +468,12 @@ export function initPanels(ctx: Ctx): Panels {
   }
   let moveNoteBase = '';
   V.date.addEventListener('change', () => {
-    fillDentists(V.dentist, V.date.value || boot.today, V.dentist.value);
+    fillDentists(V.dentist, V.date.value || boot.today, V.dentist.value, keptName(V.dentist));
     V.moveNote.textContent = closedNote(V.date.value, moveNoteBase);
+    vpFree.update();
   });
+  for (const x of [V.minutes, V.dentist, V.chair]) x.addEventListener('change', () => vpFree.update());
+  V.time.addEventListener('input', () => vpFree.mark());
   V.move.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!current) return;
@@ -487,19 +504,22 @@ export function initPanels(ctx: Ctx): Panels {
     newBox: $('[data-bk-new]')!, name: $<HTMLInputElement>('[data-bk-name]')!, phone: $<HTMLInputElement>('[data-bk-phone]')!,
     service: $<HTMLSelectElement>('[data-bk-service]')!, price: $('[data-bk-price]')!, reason: $<HTMLInputElement>('[data-bk-reason]')!,
     date: $<HTMLInputElement>('[data-bk-date]')!, time: $<HTMLInputElement>('[data-bk-time]')!, minutes: $<HTMLInputElement>('[data-bk-minutes]')!,
-    chair: $<HTMLSelectElement>('[data-bk-chair]')!, free: $('[data-bk-free]')!, dentist: $<HTMLSelectElement>('[data-bk-dentist]')!,
+    chair: $<HTMLSelectElement>('[data-bk-chair]')!, dentist: $<HTMLSelectElement>('[data-bk-dentist]')!,
     notes: $<HTMLTextAreaElement>('[data-bk-notes]')!, save: $<HTMLButtonElement>('[data-bk-save]')!, saveWord: $('[data-bk-save-word]')!,
     face: $('[data-bk-chosen-face]')!, more: $<HTMLDetailsElement>('[data-bk-more]')!,
     now: $<HTMLInputElement>('[data-bk-now]')!, textNote: $('[data-bk-text]')!,
   };
   let patientId = '';
   let autoReason = false;
+  // Free times under Chair · Dentist (p24), in place of "Next free half hour". Hidden, and nothing fetched, while
+  // "Here now" is ticked: a walk-in is booked now.
+  const bkFree = initFreeTimes(ctx, 'bk', { date: B.date, time: B.time, minutes: B.minutes, chair: B.chair, dentist: B.dentist, exclude: () => null, off: () => B.now.checked });
   const TEXT_NOTE = 'A booking still ahead is texted to the patient when they have a mobile on file.';
   // "Here now": today, the next five minutes, the first free chair — and checked in the moment it is saved (036).
   B.now.addEventListener('change', () => {
-    if (!B.now.checked) { B.textNote.textContent = TEXT_NOTE; freeHint(); return; }
+    if (!B.now.checked) { B.textNote.textContent = TEXT_NOTE; bkFree.update(); return; }
     B.date.value = boot.today;
-    fillDentists(B.dentist, boot.today, B.dentist.value);
+    fillDentists(B.dentist, boot.today, B.dentist.value, keptName(B.dentist));
     B.time.value = M.hhmm(Math.min(23 * 60 + 55, Math.ceil(M.manila(Date.now()).min / 5) * 5));
     if (!B.chair.value) {
       const day = ctx.dayCards(boot.today), open = M.hoursOf(boot.hours, M.dowOf(boot.today));
@@ -507,7 +527,7 @@ export function initPanels(ctx: Ctx): Panels {
       if (f) B.chair.value = String(f.chair);
     }
     B.textNote.textContent = 'A walk-in is checked in as soon as it is saved. No confirmation text: they are here.';
-    freeHint();
+    bkFree.hide();
   });
 
   function choose(p: { id: string; name: string; chart: string; phone: string | null }) {
@@ -579,26 +599,13 @@ export function initPanels(ctx: Ctx): Panels {
     if (!o || !o.value) return;
     if (o.dataset.minutes) B.minutes.value = o.dataset.minutes;
     if (!B.reason.value.trim() || autoReason) { B.reason.value = o.dataset.name ?? o.text; autoReason = true; }
-    freeHint();
+    bkFree.update();
   }
   B.service.addEventListener('change', servicePicked);
   B.reason.addEventListener('input', () => { autoReason = false; });
-  B.date.addEventListener('change', () => { fillDentists(B.dentist, B.date.value || boot.today, B.dentist.value); freeHint(); });
-  B.minutes.addEventListener('change', freeHint);
-
-  /** "Next free: Chair 2 at 10:30 am", from the day on screen, as a one-press fill. */
-  function freeHint() {
-    B.free.replaceChildren();
-    const ymd = B.date.value;
-    const day = M.realDay(ymd) ? ctx.dayCards(ymd) : null;
-    const open = M.realDay(ymd) ? M.hoursOf(boot.hours, M.dowOf(ymd)) : null;
-    if (!day || !open) return;
-    const f = M.nextFree(day, open, M.startMs(ymd), ymd === boot.today, boot.chairs);
-    if (!f) { B.free.textContent = ymd === boot.today ? 'No free half hour left today on any chair.' : 'No free half hour on this day.'; return; }
-    const b = el('button', '', `Chair ${f.chair} at ${M.hm(f.min)}`); b.type = 'button';
-    b.addEventListener('click', () => { B.chair.value = String(f.chair); B.time.value = M.hhmm(f.min); B.time.focus(); });
-    B.free.append('Next free half hour: ', b);
-  }
+  B.date.addEventListener('change', () => { fillDentists(B.dentist, B.date.value || boot.today, B.dentist.value, keptName(B.dentist)); bkFree.update(); });
+  for (const x of [B.minutes, B.dentist, B.chair]) x.addEventListener('change', () => bkFree.update());
+  B.time.addEventListener('input', () => bkFree.mark());
 
   function openBook(o: { ymd?: string; min?: number; col?: string; by?: 'chair' | 'dentist'; patientId?: string }, opener: Element | null) {
     // A role without scheduling looks at the calendar; the sentence says why nothing opens.
@@ -622,7 +629,7 @@ export function initPanels(ctx: Ctx): Panels {
     fillDentists(B.dentist, ymd, by === 'dentist' && o.col !== undefined ? o.col : ctx.filter());
     const p = o.patientId ? ctx.patients.byId.get(o.patientId) : undefined;
     if (p) choose(p);
-    freeHint();
+    bkFree.update();
     swap('visit', () => swap('patient', () => {
       ws().openPanel('book', opener);
       window.setTimeout(() => (p ? B.service : B.search).focus(), 60);
@@ -654,7 +661,13 @@ export function initPanels(ctx: Ctx): Panels {
     B.save.disabled = true; B.saveWord.textContent = 'Saving…';
     const r = await ctx.call('POST', body);
     B.save.disabled = false; B.saveWord.textContent = 'Save booking';
-    if (!r.ok) { show(B.err, r.error); B.err.scrollIntoView({ block: 'nearest' }); return; }
+    if (!r.ok) {
+      show(B.err, r.error); B.err.scrollIntoView({ block: 'nearest' });
+      // Taken meanwhile by another desk: the board reads the book again (their visit appears behind the panel), then
+      // the free times read the chosen day again, so the time refused is no longer offered.
+      if (r.status === 409) void ctx.reload().then(() => bkFree.update({ fresh: true }));
+      return;
+    }
     const c = r.card;
     // The new card takes the focus once the panel has gone (the page behind a modal cannot hold it).
     B.panel.addEventListener('close', () => {
@@ -709,5 +722,8 @@ export function initPanels(ctx: Ctx): Panels {
     swap('visit', () => swap('book', () => ws().openPanel('patient', opener)));
   }
 
-  return { openVisit, openBook, openPatient, visitOpen: () => (V.panel.open ? current : null) };
+  return {
+    openVisit, openBook, openPatient, visitOpen: () => (V.panel.open ? current : null),
+    changed: (days) => { if (B.panel.open) bkFree.changed(days); if (V.panel.open) vpFree.changed(days); },
+  };
 }

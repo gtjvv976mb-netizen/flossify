@@ -9,13 +9,16 @@
 // likely takes next (Arrived, In the chair, Done; Confirm for a later day;
 // Place it for a web request; Charge once it is done, for the people who may
 // see money), Move and Open record beside it, and every other step behind
-// More. The move form stays folded until Move (or Place it) is pressed.
+// More. The move form stays folded until Move (or Place it) is pressed; under
+// its fields, the free times for that length on that day (p24, free.ts), the
+// visit's own time among them while it is still free.
 //
 // The status steps follow the server's state machine (NEXT_STATUS in
 // src/lib/schedule.ts, passed to the page), never a list of their own.
 import SidePanel from '../SidePanel.astro';
 import Menu from '../Menu.astro';
 import Icon from '../Icon.astro';
+import FreeTimes from './FreeTimes.astro';
 
 interface Props { chairs: number }
 const { chairs } = Astro.props;
@@ -79,6 +82,7 @@ const { chairs } = Astro.props;
       <label class="field"><span class="meta">Minutes</span><input type="number" min="5" max="480" step="5" inputmode="numeric" data-vp-minutes required /></label>
       <label class="field vp-wide"><span class="meta">Dentist</span><select data-vp-dentist><option value="">Any dentist</option></select></label>
     </div>
+    <FreeTimes hook="vp" />
     <div class="flex flex-wrap gap-2">
       <button type="submit" class="ws-btn ws-btn-primary" data-vp-move-save><Icon name="check" /><span data-vp-move-save-word>Save new time</span></button>
       <button type="button" class="ws-btn ws-btn-quiet" data-vp-move-close>Not now</button>

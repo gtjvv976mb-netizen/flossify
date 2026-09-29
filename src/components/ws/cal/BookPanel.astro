@@ -7,6 +7,8 @@
 // Very simple: the patient, the service, the day and time, the chair and the
 // dentist; the length (filled in from the service), the reason and a note are
 // folded under "More details" — opened by itself when one of them needs a word.
+// Under Chair · Dentist, the free times for that length on that day (p24,
+// free.ts): a tap fills Time and Chair; nothing is saved until Save booking.
 //
 // The patient comes from the Dashboard's own list (every patient, already on
 // the page, so the answer is instant) and, when nothing there matches, from
@@ -15,6 +17,7 @@
 // Saving is one POST to /api/schedule, which refuses a clash with one sentence.
 import SidePanel from '../SidePanel.astro';
 import Icon from '../Icon.astro';
+import FreeTimes from './FreeTimes.astro';
 import type { Service } from './model';
 import { priceShort } from './model';
 
@@ -74,7 +77,7 @@ const { chairs, catalog, date, addPatient } = Astro.props;
       </label>
       <label class="field"><span class="meta">Dentist</span><select data-bk-dentist><option value="">Any dentist</option></select></label>
     </div>
-    <p class="bk-hint bk-free" data-bk-free></p>
+    <FreeTimes hook="bk" />
 
     <details class="bk-more" data-bk-more>
       <summary class="bk-more-head"><Icon name="chevron" size={16} class="bk-more-chev" />More details <span class="bk-more-hint">length, reason, a note</span></summary>

@@ -213,7 +213,7 @@ export function bounds(spans: Spanned[], open: [number, number] | null): [number
 export type Col = { key: string; label: string; sub: string | null };
 /** A dentist's column on a day they do not work: "not in on Saturdays" when this branch's schedule has them on
  *  other days, "not on this branch's schedule" when it has them on none. */
-const DAYS = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
+export const DAYS = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
 const offWord = (s: StaffDay | undefined, dow: number) => (s ? `not in on ${DAYS[dow]}` : 'not on this branch’s schedule');
 /** Chair 1…n, then "No chair yet" when a visit has none; or the dentists in that day, then anyone with a
  *  visit that day anyway, then No dentist. A visit is never dropped for want of a column. With one dentist
@@ -241,18 +241,150 @@ export const colOf = (by: 'chair' | 'dentist', a: Card) => (by === 'chair' ? (a.
 /** A visit that has left the book: it holds no chair, and nothing more happens to it. */
 export const DONE = new Set(['completed', 'no_show', 'cancelled']);
 
-/** The first half hour a chair is free from now (or from opening, on another day), lowest chair first. */
-export function nextFree(list: Card[], open: [number, number] | null, dayStart: number, isToday: boolean, chairs: number, now = Date.now()): { chair: number; min: number } | null {
+/** Minutes a chair is kept free after each visit in the desk's SUGGESTED times. 0 until the owner sets a clinic
+ *  turnover (docs/clinic-operations.md §1 suggests 8–12; the p07 verdict leaves it to the owner). On the quarter-hour
+ *  grid a buffer of n leaves n to n+14 minutes. Suggestions only: findClash never refuses on it. */
+export const TURNOVER_MIN = 0;
+
+/** What stands in a start's way, in minutes after the day's midnight.
+ *  chair:   a number = that chair; 'any' = a visit on no chair yet, which still needs one; 'all' = every chair
+ *           (blocked time, 040); null = no chair (a dentist's own block).
+ *  dentist: an id = that dentist; 'any' = an Any-dentist visit, which still needs one of the day's dentists;
+ *           'all' = every dentist (blocked time); null = no dentist (a chair's own block).
+ *  Visits (holdsOf) are only ever a number/id or 'any'; 'all' and null are for 040's rows. */
+export interface Hold { s: number; e: number; chair: number | 'any' | 'all' | null; dentist: string | 'any' | 'all' | null }
+export type Slotted = Pick<Card, 'id' | 'status' | 'chair' | 'dentistId' | 'startsAt' | 'endsAt'>;
+/** The visits that still hold their time (findClash's HOLDS_SLOT: not completed, no-show or cancelled), less the one being moved. */
+export function holdsOf(list: Slotted[], dayStart: number, excludeId?: string | null): Hold[] {
+  return list.filter((a) => !DONE.has(a.status) && a.id !== excludeId).map((a) => ({
+    s: (Date.parse(a.startsAt) - dayStart) / 60_000, e: (Date.parse(a.endsAt) - dayStart) / 60_000,
+    chair: a.chair ?? 'any', dentist: a.dentistId ?? 'any',
+  }));
+}
+
+export interface FreeAsk {
+  open: [number, number] | null;
+  /** Minutes after midnight to look from (the caller rounds it). */
+  from: number;
+  minutes: number;
+  chairs: number;
+  /** The dentist chosen; '' or absent = any dentist. */
+  dentistId?: string;
+  /** The dentists in that weekday (staff_schedule). With Any dentist a start needs one of them free; with `pool`, each
+   *  overlapping Any-dentist visit takes one of them. Empty/absent = no dentist check. */
+  anyOf?: string[];
+  /** Count visits on no chair yet against the free chairs, and Any-dentist visits against the day's dentists
+   *  (suggestions: true; nextFree: false, its old answer). */
+  pool?: boolean;
+  /** The chair the form holds: taken at a start when it is free there. */
+  preferChair?: number | null;
+  /** Minutes a chair is kept after each visit (0 = nextFree's rule). Blocked time is never padded. */
+  turnover?: number;
+  /** How many starts to return (default 1; Infinity = every free start that day). */
+  limit?: number;
+}
+export interface FreeStart { min: number; chair: number }
+
+/** The chair a visit of `a.minutes` could take at minute `t`, or null when the clinic could not honour it. */
+export function freeAt(holds: Hold[], a: FreeAsk, t: number): number | null {
+  if (!a.open || t < a.open[0] || t + a.minutes > a.open[1]) return null;
+  const turn = a.turnover ?? 0, end = t + a.minutes;
+  const on = (h: Hold, pad: number) => h.s < end + pad && h.e + pad > t;
+  if (holds.some((h) => (h.chair === 'all' || h.dentist === 'all') && on(h, 0))) return null;
+  const free: number[] = [];
+  for (let c = 1; c <= a.chairs; c++) if (!holds.some((h) => h.chair === c && on(h, turn))) free.push(c);
+  const unplaced = a.pool ? holds.filter((h) => h.chair === 'any' && on(h, turn)).length : 0;
+  if (free.length - unplaced < 1) return null;
+  const busy = (d: string) => holds.some((h) => h.dentist === d && on(h, 0));
+  if (a.dentistId && busy(a.dentistId)) return null;
+  const pool = a.anyOf ?? [];
+  if (pool.length && (!a.dentistId || pool.includes(a.dentistId))) {
+    const anyVisits = a.pool ? holds.filter((h) => h.dentist === 'any' && on(h, 0)).length : 0;
+    if (pool.filter((d) => !busy(d)).length - anyVisits < 1) return null;
+  }
+  const want = a.preferChair ?? null;
+  return want !== null && free.includes(want) ? want : free[0];
+}
+
+/** Free starts in time order: from `from`, then every quarter hour, while the visit still ends by closing. */
+export function freeStarts(holds: Hold[], a: FreeAsk): FreeStart[] {
+  if (!a.open) return [];
+  const limit = a.limit ?? 1, out: FreeStart[] = [];
+  for (let t = Math.max(a.open[0], a.from); t + a.minutes <= a.open[1] && out.length < limit; t = Math.floor(t / 15) * 15 + 15) {
+    const chair = freeAt(holds, a, t);
+    if (chair !== null) out.push({ min: t, chair });
+  }
+  return out;
+}
+
+/** How far apart the chips sit inside one free stretch: the length, at least an hour, and at least a quarter of what
+ *  is left of the day rounded up to the half hour, so a light day shows its morning and its afternoon. */
+export const chipGap = (minutes: number, from: number, close: number, limit: number) =>
+  Math.ceil(Math.max(minutes, 60, Math.ceil((close - from) / limit / 30) * 30) / 15) * 15;
+
+/** The day's chips, at most `limit`, in time order: `at` (the form's own time, when free), then the candidates after
+ *  it, then the ones before it, earliest first. A candidate is the first start of every hole (starts 15 minutes
+ *  apart), and inside a hole the next start at least `gap` after the last candidate. */
+export function pickStarts(starts: FreeStart[], o: { at: FreeStart | null; limit: number; gap: number }): FreeStart[] {
+  const cand: FreeStart[] = [];
+  let prev = -Infinity, last = -Infinity;
+  for (const s of starts) {
+    if (s.min - prev > 15 || s.min >= last + o.gap) { cand.push(s); last = s.min; }
+    prev = s.min;
+  }
+  const pick: FreeStart[] = o.at ? [o.at] : [];
+  const pivot = o.at ? o.at.min : -Infinity;
+  for (const s of [...cand.filter((c) => c.min > pivot), ...cand.filter((c) => c.min < pivot)]) {
+    if (pick.length >= o.limit) break;
+    pick.push(s);
+  }
+  return pick.sort((x, y) => x.min - y.min);
+}
+
+/** The first half hour a chair is free from now (or from opening, on another day), lowest chair first.
+ *  Unchanged answers: renderCount's line and the walk-in's chair read it (no pool, no turnover). `extra` is for
+ *  holds that are not visits (blocked time, 040), in the same minutes; none today, so the answer is the old one. */
+export function nextFree(list: Card[], open: [number, number] | null, dayStart: number, isToday: boolean, chairs: number, now = Date.now(), extra: Hold[] = []): { chair: number; min: number } | null {
   if (!open) return null;
   const from = isToday ? Math.ceil((now - dayStart) / 60_000 / 15) * 15 : open[0];
-  let best: { chair: number; min: number } | null = null;
-  for (let c = 1; c <= chairs; c++) {
-    const busy = list.filter((a) => a.chair === c && !DONE.has(a.status)).map((a) => [(Date.parse(a.startsAt) - dayStart) / 60_000, (Date.parse(a.endsAt) - dayStart) / 60_000] as const).sort((x, y) => x[0] - y[0]);
-    let t = Math.max(open[0], from);
-    for (let i = 0; i < busy.length; i++) { const [s, e] = busy[i]; if (s < t + 30 && e > t) { t = Math.ceil(e / 15) * 15; i = -1; } }
-    if (t + 30 <= open[1] && (!best || t < best.min)) best = { chair: c, min: t };
+  return freeStarts([...holdsOf(list, dayStart), ...extra], { open, from, minutes: 30, chairs })[0] ?? null;
+}
+
+/** "Next free with Dr. Cariño": on each of the next days the dentist is in, the first free start at or after `at`
+ *  (the form's clock time), else that day's first free start; at most `max` days. `extra(ymd)` adds holds that are
+ *  not visits for that day (blocked time, 040); none today. */
+export function freeDays(list: Slotted[], o: {
+  after: string; today: string; nowMin: number; days: number; hours: Record<number, [number, number] | null>;
+  dentist: StaffDay; staff: StaffDay[]; at: number | null; minutes: number; chairs: number;
+  preferChair?: number | null; excludeId?: string | null; turnover: number; max: number;
+  extra?: (ymd: string) => Hold[];
+}): { ymd: string; min: number; chair: number }[] {
+  const first = o.after >= o.today ? addDays(o.after, 1) : o.today;
+  const out: { ymd: string; min: number; chair: number }[] = [];
+  for (let i = 0; i < o.days && out.length < o.max; i++) {
+    const ymd = addDays(first, i), dow = dowOf(ymd), open = hoursOf(o.hours, dow);
+    if (!open || !o.dentist.days.includes(dow)) continue;
+    const from = Math.ceil((ymd === o.today ? Math.max(open[0], o.nowMin) : open[0]) / 15) * 15;
+    const holds = [...holdsOf(list, startMs(ymd), o.excludeId), ...(o.extra?.(ymd) ?? [])];
+    const ask: FreeAsk = { open, from, minutes: o.minutes, chairs: o.chairs, dentistId: o.dentist.id, pool: true,
+      anyOf: o.staff.filter((s) => s.days.includes(dow)).map((s) => s.id), preferChair: o.preferChair, turnover: o.turnover };
+    const f = (o.at !== null && o.at > from ? freeStarts(holds, { ...ask, from: o.at })[0] : undefined) ?? freeStarts(holds, ask)[0];
+    if (f) out.push({ ymd, ...f });
   }
-  return best;
+  return out;
+}
+
+const DAY3 = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** A dentist's days in words, runs of three or more joined: "Mon–Sat", "Tue, Thu", "Mon, Wed, Fri". */
+export function daysText(days: number[]): string {
+  const d = [...new Set(days)].filter((x) => x >= 0 && x <= 6).sort((a, b) => a - b), out: string[] = [];
+  for (let i = 0; i < d.length; ) {
+    let j = i;
+    while (j + 1 < d.length && d[j + 1] === d[j] + 1) j++;
+    if (j - i >= 2) out.push(`${DAY3[d[i]]}–${DAY3[d[j]]}`); else for (let k = i; k <= j; k++) out.push(DAY3[d[k]]);
+    i = j + 1;
+  }
+  return out.join(', ');
 }
 
 // --- words ------------------------------------------------------------------------
