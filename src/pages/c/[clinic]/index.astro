@@ -383,7 +383,7 @@ const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
     </Pane>
   </div>
 
-  <VisitPanel chairs={data.clinic.chairs} />
+  <VisitPanel chairs={data.clinic.chairs} catalog={data.catalog} canSchedule={canSchedule} />
   <BookPanel chairs={data.clinic.chairs} catalog={data.catalog} date={date} addPatient={canEdit ? `/c/${clinic.slug}/patients/new/` : null} />
   <PatientPanel />
   <BlockPanel chairs={data.clinic.chairs} staff={data.staff} canSchedule={canSchedule} hoursHref={canSettings ? boot.links.hours : null} />

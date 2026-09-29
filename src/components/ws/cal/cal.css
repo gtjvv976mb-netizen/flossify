@@ -312,6 +312,8 @@ button.cal-colhead { container-type: inline-size; }
 /* An allergy or an alert: a small red warning sign before the name (the label and the panel say what). */
 .cal-mark { display: inline-flex; flex: none; color: var(--ws-red-ink); }
 .cal-card[data-status="no_show"] .cal-mark { color: var(--ws-red-ink); }
+/* The patient's desk note (p25): a line icon in the card's own secondary ink, never a status colour. */
+.cal-desknote { display: inline-flex; flex: none; color: var(--sub); }
 .cal-card-line { line-height: 16px; }
 /* Whole lines only (board.ts counts them from the card's height): two lines are the time and the name, three
    add the service (and the dentist or chair after it), four add who booked it. */
@@ -429,6 +431,10 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
 .pt-when { font-size: 14px; line-height: 1.4; color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
 .pt-when b { font-weight: 600; color: var(--c-ink); }
 .pt-sub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; line-height: 1.4; color: var(--c-muted); font-variant-numeric: tabular-nums; }
+/* The patient's desk note (p25) under the time and service: one line in ink-2, cut off with "…"; the title has it whole. */
+.pt-desknote { display: flex; align-items: center; gap: 0.3rem; min-width: 0; font-size: 13.5px; line-height: 1.4; color: var(--c-ink-2); }
+.pt-desknote > svg { flex: none; }
+.pt-desknote-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .pt-marks { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
 /* An allergy the patient typed on the forms can be long: its pill wraps inside its tint (still a pill at
    one line) instead of pushing the list or the panel past a phone's width. */
@@ -469,8 +475,10 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
 .vp-dl dd { min-width: 0; overflow-wrap: anywhere; }
 .vp-dl dd .vp-sub { display: block; font-size: 13.5px; color: var(--c-ink-2); }
 .vp-dl .ws-chip { min-height: 1.5rem; }
-.vp-link { display: inline-flex; align-items: center; min-height: 44px; margin-block: -0.625rem; font-weight: 600; color: var(--ws-teal-ink); text-align: left; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; cursor: pointer; }
+.vp-link { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; margin-block: -0.625rem; font-weight: 600; color: var(--ws-teal-ink); text-align: left; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; cursor: pointer; }
 .vp-link:hover { text-decoration-color: currentColor; }
+/* The desk note in the visit panel, and a web booking's own note in the Edit form: the line breaks as typed. */
+.vp-desknote { white-space: pre-line; }
 .vp-alerts { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.75rem; }
 .vp-alerts:empty { display: none; }
 #visit .vp-alerts { margin-top: 0.75rem; }

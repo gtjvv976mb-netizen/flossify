@@ -45,7 +45,7 @@ export interface Boot {
 }
 /** A refusal carries the server's sentence; `blocked` (with its range's `kind`) is the soft stop of blocked time (040):
  *  the same call with anyway: true books it. A clash is a 409 without it, and has no anyway. */
-export type Reply = { ok: true; card: Card; texted: boolean } | { ok: false; error: string; status?: number; blocked?: boolean; kind?: string };
+export type Reply = { ok: true; card: Card; texted: boolean; retold: number } | { ok: false; error: string; status?: number; blocked?: boolean; kind?: string };
 /** A range of days as the server answers it: the visits (cancelled left out by the caller) and the blocked time. */
 export type Book = { cards: Card[]; blocks: BlockRange[] };
 
@@ -177,7 +177,8 @@ function start(boot: Boot) {
       });
       let data: any = null;
       try { data = await res.json(); } catch { /* no body */ }
-      if (res.ok && data?.appointment) return { ok: true, card: data.appointment as Card, texted: data.texted === true };
+      // retold: texts still waiting that were withdrawn to be written again with the new reason (p25's edit).
+      if (res.ok && data?.appointment) return { ok: true, card: data.appointment as Card, texted: data.texted === true, retold: Number(data?.retold) || 0 };
       if (res.status === 401) return { ok: false, status: 401, error: 'Your sign-in has ended. Sign in again, then try that once more.' };
       return {
         ok: false, status: res.status, error: typeof data?.error === 'string' && data.error ? data.error : OFFLINE,
@@ -352,6 +353,14 @@ function start(boot: Boot) {
       mark.append(icon('alert', 13));
       who.append(mark);
     }
+    // The patient's desk note (p25): a small line icon in the card's own secondary ink, never a status colour; the
+    // note itself in the title and the label.
+    if (c.deskNote) {
+      const n = el('span', 'cal-desknote');
+      n.title = `Desk note: ${M.clip(c.deskNote, 200)}`;
+      n.append(icon('note', 13));
+      who.append(n);
+    }
     // The name and the chart no. share a one-line box that wraps: a chart no. with no room goes, whole, to the
     // hidden second line; a name with no room ellipsises. The alert mark stands outside it and never pushes the name off.
     const nm = el('span', 'cal-card-nm');
@@ -402,6 +411,7 @@ function start(boot: Boot) {
       serviceOf(c), price && `fee guide ${price}`,
       c.dentistName ?? 'any dentist', c.chair === null ? 'no chair' : `chair ${c.chair}`,
       word, waited !== null && `waiting ${waited} minutes`, allergy && `allergy: ${allergy}`, c.conditions && `alert: ${c.conditions}`, M.sourceLine(c),
+      c.deskNote && `desk note: ${M.clip(c.deskNote, 120)}`,
     ].filter(Boolean).join(', ');
     b.setAttribute('aria-label', label);
     return b;
@@ -643,13 +653,14 @@ function start(boot: Boot) {
   // Every 30 s while this tab is visible, today's visits (and the range on screen, when that is another day)
   // are fetched again, and any visit that changed on another screen — the front desk pressed Arrived, the
   // tablet pressed Done — is absorbed and flashed, so the desk PC and the operatory tablet agree without a
-  // reload. Not while a card is being dragged; the open visit panel is refilled unless its move form is open.
+  // reload. Not while a card is being dragged; the open visit panel is refilled unless its Move or Edit form is open.
   // A refresh can be awaited (reload: after a refused booking, before the free times read the book again), and it
   // tells the panels which Manila days changed, so an open block of free times over one of them is drawn again.
   // Blocked time is read with the visits (040): when the set of blocks changes (another screen added or removed one),
   // the grid is drawn again and the days those blocks touch are among the days reported.
   const LIVE_KEYS: (keyof Card)[] = ['status', 'chair', 'startsAt', 'endsAt', 'dentistId', 'arrivedAt', 'seatedAt', 'reason', 'notes',
-    'healthAskedAt', 'bpOnDay', 'consentSigned', 'labPending', 'clearanceWaiting', 'unbilled', 'recallDue', 'nextVisitAt'];
+    'healthAskedAt', 'bpOnDay', 'consentSigned', 'labPending', 'clearanceWaiting', 'unbilled', 'recallDue', 'nextVisitAt',
+    'catalogId', 'deskNote', 'formNervous', 'consentFor'];
   const differs = (a: Card, b: Card) => LIVE_KEYS.some((k) => a[k] !== b[k])
     || (a.statement?.id ?? null) !== (b.statement?.id ?? null) || (a.statement?.status ?? null) !== (b.statement?.status ?? null);
   const liveLine = $('[data-cal-live]');
@@ -685,7 +696,8 @@ function start(boot: Boot) {
           if (isToday) S.todayBlocks = book.blocks;
           const got = book.cards;
           const seen = new Set<string>();
-          const moveOpen = !!document.querySelector('dialog[open] [data-vp-move]:not([hidden])');
+          // Never under an open Move or Edit form: what the desk typed stays (the card behind it is still redrawn).
+          const formOpen = !!document.querySelector('dialog[open] :is([data-vp-move], [data-vp-edit]):not([hidden])');
           for (const c of got) {
             seen.add(c.id);
             const old = S.cards.get(c.id) ?? S.today.get(c.id) ?? S.lane.get(c.id);
@@ -697,7 +709,7 @@ function start(boot: Boot) {
               flash(c.id);
               if (liveLine) liveLine.textContent = `${c.patientName}: ${M.statusWord(c.status).toLowerCase()}, ${M.timeOf(new Date().toISOString())}`;
             }
-            if (panels.visitOpen() === c.id && !moveOpen) panels.openVisit(c.id, null);
+            if (panels.visitOpen() === c.id && !formOpen) panels.openVisit(c.id, null);
           }
           // A visit no longer in the range (cancelled, or moved to another day) leaves the board.
           for (const old of [...S.cards.values(), ...S.today.values()]) {
