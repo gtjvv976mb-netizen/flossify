@@ -32,6 +32,9 @@
 //   row-level security decides what exists. Rows are locked before they are
 //   changed (the form, the patient), and a new patient takes the clinic's lock
 //   (lockClinic) like Add patient, for the chart number.
+// - What adding writes (the patient row, the filling-in of a patient on file,
+//   the health version, a consent row) is src/lib/patient-add.ts, shared with
+//   the patient intake (039); this file decides when, and marks the form.
 // - Adding a form to a patient on file fills only what is empty on the
 //   record and never changes a name; what differs is returned for the page to
 //   show ("kept"), and the desk can take one detail at a time from the form
@@ -47,15 +50,20 @@ import { randomBytes, randomInt } from 'node:crypto';
 import { publicRead, withClinic, type Tx } from './db';
 import { hit, LIMITS, waitText, ipBucket } from './throttle';
 import { isProduction } from './env';
-import { lockClinic, nextChartNos, nameKey } from './import';
+import { lockClinic, nameKey } from './import';
 import { canEditRecords, isMinor, type HealthAnswers } from './health';
 import { prettyPhone } from './messages';
 import {
-  KEY_ALPHABET, KEY_LENGTH, MAX_POST_BYTES, PUBLIC_ORIGIN, TREATMENT_CONSENT, FIELDS, cleanKey, formsUrl, formsShort, formName, healthLists, hmoName,
-  stepAnswers, answerText, type PatientFormValues, type SignedAs,
+  KEY_ALPHABET, KEY_LENGTH, MAX_POST_BYTES, PUBLIC_ORIGIN, TREATMENT_CONSENT, cleanKey, formsUrl, formsShort, formName,
+  type PatientFormValues, type SignedAs,
 } from './patient-forms-def';
+import {
+  audit, digits10, insertPatientFromAnswers, fillPatientFromAnswers, writeHealthFromAnswers, writeConsentRow, planFill, detailCols, sameText,
+  FILLABLE, TAKEABLE, type AnswerSource, type ConsentOutcome, type KeptDetail,
+} from './patient-add';
 
 export * from './patient-forms-def';
+export { TAKEABLE, type ConsentOutcome, type KeptDetail } from './patient-add';
 
 // ---------------------------------------------------------------------------
 // Tokens
@@ -350,7 +358,6 @@ export interface FormRow {
 }
 
 type Candidate = { id: string; chart_no: string; first_name: string; last_name: string; suffix: string | null; birth: string | null; phone: string | null };
-const digits10 = (s: string | null) => (s ?? '').replace(/\D/g, '').slice(-10);
 
 /** Candidates on file for several forms at once: the same last ten digits of a mobile, or the same birth date. */
 async function candidates(tx: Tx, forms: { phone: string; birth: string }[]): Promise<Candidate[]> {
@@ -483,26 +490,10 @@ async function lockForm(tx: Tx, formId: string): Promise<Locked | null> {
        from patient_form where id = $1 and status in ('new', 'dismissed') for update`, [formId])).rows[0] ?? null;
 }
 
-const audit = (tx: Tx, clinicId: string, staffId: string, action: string, entity: string, id: string) =>
-  tx.query('insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, $3, $4, $5)', [clinicId, staffId, action, entity, id]);
-
 const manilaDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 
-/** What goes into the health version's `answers`: the rest of the form, and which form it was. */
-function historyAnswers(f: Locked, birthChange: { from: string | null; to: string } | null): Record<string, unknown> {
-  const v = f.answers;
-  return {
-    form: { id: f.id, ref: f.ref, version: v.v, submitted_at: f.submitted_at },
-    health: stepAnswers(v, 'health'),
-    teeth: stepAnswers(v, 'teeth'),
-    cards: stepAnswers(v, 'cards'),
-    emergency: { name: v.emergency_name, relation: v.emergency_relation, mobile: v.emergency_mobile },
-    facebook: v.facebook, civil_status: v.civil_status,
-    ...(birthChange ? { birth_date: birthChange } : {}),
-  };
-}
-
-export type ConsentOutcome = 'saved' | 'already' | 'minor';
+/** The form as where the answers came from (patient-add.ts). */
+const sourceOf = (f: Locked): AnswerSource => ({ kind: 'form', id: f.id, ref: f.ref, version: f.answers.v, sentAt: f.submitted_at });
 
 /**
  * The two consents from the form, as patient_consent rows (channel 'form',
@@ -517,17 +508,10 @@ async function writeConsents(tx: Tx, a: { clinicId: string; staffId: string; pat
   Promise<{ privacy: ConsentOutcome; treatment: ConsentOutcome }> {
   const signedDay = manilaDay(new Date(a.f.submitted_at));
   if (a.f.signed_as === 'patient' && isMinor(a.birthOnFile, signedDay)) return { privacy: 'minor', treatment: 'minor' };
-  const one = async (version: string): Promise<ConsentOutcome> => {
-    const had = (await tx.query<{ agreed_as: string | null }>(
-      'select agreed_as from patient_consent where patient_id = $1 and version_id = $2', [a.patientId, version])).rows;
-    const addsGuardian = a.f.signed_as === 'guardian' && !had.some((r) => r.agreed_as === 'guardian');
-    if (had.length && !addsGuardian) return 'already';
-    await tx.query(
-      `insert into patient_consent (clinic_id, patient_id, version_id, given_at, channel, given_by_name, recorded_by, agreed_as, form_id)
-       values ($1, $2, $3, $4, 'form', $5, $6, $7, $8)`,
-      [a.clinicId, a.patientId, version, a.f.submitted_at, a.f.signed_by_name, a.staffId, a.f.signed_as, a.f.id]);
-    return 'saved';
-  };
+  const one = (version: string): Promise<ConsentOutcome> => writeConsentRow(tx, {
+    clinicId: a.clinicId, staffId: a.staffId, patientId: a.patientId, versionId: version, givenAt: a.f.submitted_at,
+    byName: a.f.signed_by_name, as: a.f.signed_as, source: { kind: 'form', id: a.f.id },
+  });
   const out = { privacy: await one(a.f.privacy_version), treatment: await one(a.f.treatment_version) };
   if (out.privacy === 'saved' || out.treatment === 'saved') await audit(tx, a.clinicId, a.staffId, 'consent.form', 'patient', a.patientId);
   return out;
@@ -560,24 +544,8 @@ export async function addAsNewPatient(tx: Tx, a: { clinicId: string; staffId: st
   const seen = new Set(a.seen ?? []);
   if (matches.some((m) => !seen.has(m.id))) return { kind: 'matches', matches };
 
-  const chartNo = nextChartNos((await tx.query<{ chart_no: string }>('select chart_no from patient')).rows.map((r) => r.chart_no), 1)[0];
-  const minorForm = v.guardian_name !== null;
-  const patientId = (await tx.query<{ id: string }>(
-    `insert into patient (clinic_id, chart_no, first_name, middle_name, last_name, suffix, birth_date, sex, phone, email, address_line, city, province, occupation,
-                          guardian_name, guardian_relation, guardian_phone, hmo_name, hmo_member_no, emergency_name, emergency_relation, emergency_phone, created_by)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
-     returning id`,
-    [a.clinicId, chartNo, v.first_name, v.middle_name, v.last_name, v.suffix, v.birth_date, v.sex, v.mobile, v.email, v.address, v.city, v.province, v.occupation,
-      minorForm ? v.guardian_name : null, minorForm ? v.guardian_relation : null, minorForm ? v.guardian_mobile : null,
-      hmoName(v), v.hmo ? v.hmo_card_no : null, v.emergency_name, v.emergency_relation, v.emergency_mobile, a.staffId])).rows[0].id;
-  await audit(tx, a.clinicId, a.staffId, 'patient.create', 'patient', patientId);
-
-  const lists = healthLists(v);
-  await tx.query(
-    `insert into medical_history (clinic_id, patient_id, answered_at, answered_by, recorded_by, allergies, conditions, medications, note, answers, form_id)
-     values ($1, $2, now(), 'patient', null, $3, $4, $5, null, $6, $7)`,
-    [a.clinicId, patientId, lists.allergies, lists.conditions, lists.medications, JSON.stringify(historyAnswers(f, null)), f.id]);
-  await audit(tx, a.clinicId, a.staffId, 'health.update', 'patient', patientId);
+  const { patientId, chartNo } = await insertPatientFromAnswers(tx, { clinicId: a.clinicId, staffId: a.staffId, values: v });
+  await writeHealthFromAnswers(tx, { clinicId: a.clinicId, staffId: a.staffId, patientId, values: v, source: sourceOf(f), merge: false });
 
   const consents = await writeConsents(tx, { clinicId: a.clinicId, staffId: a.staffId, patientId, f, birthOnFile: v.birth_date });
   await tx.query(
@@ -585,9 +553,6 @@ export async function addAsNewPatient(tx: Tx, a: { clinicId: string; staffId: st
   await audit(tx, a.clinicId, a.staffId, 'forms.add', 'patient_form', f.id);
   return { kind: 'added', patientId, chartNo, consents };
 }
-
-/** A detail on the record that the form says differently: kept as it was on file. */
-export interface KeptDetail { field: string; label: string; onFile: string; onForm: string }
 
 export type AddToResult =
   | {
@@ -609,55 +574,6 @@ export type AddToResult =
   | { kind: 'no-patient' }
   | { kind: 'not-allowed' };
 
-// The record's columns a form can fill, the form's value for each, and how to show it. `ask`: filled only
-// when the desk ticks it, having checked the person at the desk (a mobile finds visits on /me/; an email
-// gets receipts). `take: false`: never copied one at a time from the record page (a birth date changes
-// through the health history, which records the change).
-const FILLABLE: { col: string; label: string; from: (v: PatientFormValues) => string | null; show?: (s: string) => string; ask?: true; take?: false }[] = [
-  { col: 'middle_name', label: 'Middle name', from: (v) => v.middle_name },
-  { col: 'suffix', label: 'Suffix', from: (v) => v.suffix },
-  { col: 'birth_date', label: 'Birth date', from: (v) => v.birth_date, show: (s) => answerText(FIELDS.birth_date, s) ?? s, take: false },
-  { col: 'sex', label: 'Sex', from: (v) => v.sex, show: (s) => answerText(FIELDS.sex, s) ?? s },
-  { col: 'phone', label: 'Mobile', from: (v) => v.mobile, show: prettyPhone, ask: true },
-  { col: 'email', label: 'Email', from: (v) => v.email, ask: true },
-  { col: 'address_line', label: 'Address', from: (v) => v.address },
-  { col: 'city', label: 'City', from: (v) => v.city },
-  { col: 'province', label: 'Province', from: (v) => v.province },
-  { col: 'occupation', label: 'Occupation', from: (v) => v.occupation },
-  { col: 'emergency_name', label: 'Emergency contact', from: (v) => v.emergency_name },
-  { col: 'emergency_relation', label: 'Emergency contact’s relation', from: (v) => v.emergency_relation },
-  { col: 'emergency_phone', label: 'Emergency contact’s number', from: (v) => v.emergency_mobile, show: prettyPhone },
-  { col: 'guardian_name', label: 'Parent or guardian', from: (v) => v.guardian_name },
-  { col: 'guardian_relation', label: 'Parent or guardian’s relation', from: (v) => v.guardian_relation },
-  { col: 'guardian_phone', label: 'Parent or guardian’s mobile', from: (v) => v.guardian_mobile, show: prettyPhone },
-  { col: 'hmo_name', label: 'HMO', from: (v) => hmoName(v) },
-  { col: 'hmo_member_no', label: 'HMO card no.', from: (v) => (v.hmo ? v.hmo_card_no : null) },
-];
-
-const sameText = (a: string, b: string) => a.normalize('NFKC').trim().toLocaleLowerCase('en') === b.normalize('NFKC').trim().toLocaleLowerCase('en');
-const detailCols = () => FILLABLE.map((x) => x.col === 'birth_date' ? `to_char(birth_date, 'YYYY-MM-DD') as birth_date` : `${x.col}::text as ${x.col}`).join(', ');
-
-/** What the form would do to the record, by the FILLABLE rule. `use`: the asked-for fields the desk ticked. */
-function planFill(p: Record<string, string | null>, v: PatientFormValues, use: ReadonlySet<string>) {
-  const fill: Record<string, string> = {};
-  const fills: string[] = [];
-  const differs: KeptDetail[] = [];
-  const proposed: KeptDetail[] = [];
-  for (const x of FILLABLE) {
-    const want = x.from(v);
-    if (!want) continue;
-    const have = p[x.col];
-    const shown = (s: string) => (x.show ? x.show(s) : s);
-    if (have === null || have === '') {
-      if (x.ask && !use.has(x.col)) proposed.push({ field: x.col, label: x.label, onFile: '', onForm: shown(want) });
-      else { fill[x.col] = want; fills.push(x.label); }
-    } else if (!sameText(have, want) && !(x.col === 'phone' && digits10(have) === digits10(want))) {
-      differs.push({ field: x.col, label: x.label, onFile: shown(have), onForm: shown(want) });
-    }
-  }
-  return { fill, fills, differs, proposed };
-}
-
 /**
  * What "Add to <patient>" would do with these answers, read without writing
  * (the same rule as addToPatient: FILLABLE): the labels it would fill (empty
@@ -675,9 +591,6 @@ export async function compareWithRecord(tx: Tx, v: PatientFormValues, patientId:
   const { fills, differs, proposed } = planFill(p, v, new Set());
   return { fills, differs, proposed };
 }
-
-/** The fields the record page may take from an added form one at a time (useFormDetail): every FILLABLE but the birth date. */
-export const TAKEABLE: ReadonlySet<string> = new Set(FILLABLE.filter((x) => x.take !== false).map((x) => x.col));
 
 /**
  * "Add to <patient on file>". Fills what is empty on the record from the
@@ -698,39 +611,13 @@ export async function addToPatient(tx: Tx, a: { clinicId: string; staffId: strin
   await lockClinic(tx, a.clinicId);
   const f = await lockForm(tx, a.formId);
   if (!f) return { kind: 'gone' };
-  // Row-level security: another clinic's patient is simply not found.
-  const p = (await tx.query<Record<string, string | null>>(
-    `select id, ${detailCols()} from patient where id = $1 and archived_at is null for update`, [a.patientId])).rows[0];
-  if (!p) return { kind: 'no-patient' };
   const v = f.answers;
-
-  const use = new Set((a.use ?? []).filter((c) => FILLABLE.some((x) => x.col === c && x.ask)));
-  const { fill, fills: filled, differs: kept, proposed } = planFill(p, v, use);
-  const cols = Object.keys(fill);
-  if (cols.length) {
-    await tx.query(
-      `update patient set ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')}, updated_at = now() where id = $1`,
-      [a.patientId, ...cols.map((c) => fill[c])]);
-    await audit(tx, a.clinicId, a.staffId, 'patient.update', 'patient', a.patientId);
-  }
-  const birthOnFile = fill.birth_date ?? p.birth_date ?? null;
-
-  // The latest version on file, whoever wrote it and whenever: what it lists stays unless the form lists it too.
-  const latest = (await tx.query<HealthAnswers>(
-    `select allergies, conditions, medications, note from medical_history where patient_id = $1 order by answered_at desc, id desc limit 1`, [a.patientId])).rows[0] ?? null;
-  const lists = healthLists(v);
-  const low = (s: string) => s.toLocaleLowerCase('en');
-  const notIn = (had: string[] | null | undefined, now: string[]) => (had ?? []).filter((x) => !now.some((y) => low(y) === low(x)));
-  const allergiesKept = notIn(latest?.allergies, lists.allergies);
-  const conditionsKept = notIn(latest?.conditions, lists.conditions);
-  const medicationsKept = notIn(latest?.medications, lists.medications);
-  await tx.query(
-    `insert into medical_history (clinic_id, patient_id, answered_at, answered_by, recorded_by, allergies, conditions, medications, note, answers, form_id)
-     values ($1, $2, now(), 'patient', null, $3, $4, $5, $6, $7, $8)`,
-    [a.clinicId, a.patientId, [...lists.allergies, ...allergiesKept], [...lists.conditions, ...conditionsKept], [...lists.medications, ...medicationsKept],
-      latest?.note ?? null, JSON.stringify(historyAnswers(f, fill.birth_date ? { from: null, to: fill.birth_date } : null)), f.id]);
-  await audit(tx, a.clinicId, a.staffId, 'health.update', 'patient', a.patientId);
-  if (fill.birth_date) await audit(tx, a.clinicId, a.staffId, 'patient.birth_date', 'patient', a.patientId);
+  const filledIn = await fillPatientFromAnswers(tx, { clinicId: a.clinicId, staffId: a.staffId, patientId: a.patientId, values: v, use: a.use });
+  if (!filledIn) return { kind: 'no-patient' };
+  const { fill, filled, kept, proposed, birthOnFile } = filledIn;
+  const { allergiesKept, conditionsKept, medicationsKept } = await writeHealthFromAnswers(tx, {
+    clinicId: a.clinicId, staffId: a.staffId, patientId: a.patientId, values: v, source: sourceOf(f), merge: true, birthChange: fill.birth_date ?? null,
+  });
 
   const consents = await writeConsents(tx, { clinicId: a.clinicId, staffId: a.staffId, patientId: a.patientId, f, birthOnFile });
   await tx.query(
