@@ -28,6 +28,8 @@ export const isSection = (s: string | null): s is SectionId => SECTIONS.some((x)
 export const clinician = (role: string) => role === 'dentist' || role === 'associate';
 /** Sees patients of their own: the roles the schedule gives a column. */
 export const treats = (role: string) => role === 'owner' || clinician(role);
+/** Signs prescriptions and letters: a dentist or associate, or anyone with a PRC licence on file (an owner-dentist). */
+export const signsPapers = (p: { role: string; prc_licence: string | null }) => clinician(p.role) || !!p.prc_licence;
 
 /** The week as a clinic says it, Monday first. dow: 0 = Sunday. */
 export const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']] as const;

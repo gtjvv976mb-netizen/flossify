@@ -1,6 +1,8 @@
 ---
 // Prescriptions: written here, printed on the clinic's paper (./rx/<id>/ beside this record) with the
-// prescriber's PRC licence and PTR number. Up to six medicines, each with how to take it. The medicine box
+// prescriber's PRC licence and PTR number. The PTR is the copy taken when the prescription is saved (041):
+// the panel says, under the prescriber, when the PTR on file needs attention today (src/lib/ptr.ts), and
+// never refuses for it; its fix link opens in a new tab. Up to six medicines, each with how to take it. The medicine box
 // suggests names only — never a dose: the dentist writes the strength and the directions every time.
 // Generic names come first, as the Generics Act (RA 6675) asks.
 import Pane from '../../../../../components/ws/Pane.astro';
@@ -11,12 +13,15 @@ import Csrf from '../../../../../components/Csrf.astro';
 import Head from '../_ui/Head.astro';
 import Callout from '../_ui/Callout.astro';
 import Glyph from '../_ui/Glyph.astro';
+import PtrWords from './PtrWords.astro';
 import { RX_ROWS, type Clinical, type RecordProblem, type RxItem } from '../../../../../lib/record';
-import { when } from '../../../../../lib/health';
+import { when, manilaToday } from '../../../../../lib/health';
+import { ptrState, ptrWords, ptrSavedTitle, ptrLine, PTR_AMBER, type PtrFix } from '../../../../../lib/ptr';
 
-/** visitId: today's visit (036) — a new prescription is written against it. openNow: the page opens the panel as it loads (?open=rx). */
-interface Props { c: Clinical; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; firstName: string; printBase: string; allergies: string[]; typedRows?: RxItem[]; visitId?: string | null; openNow?: boolean }
-const { c, canEdit, action, meId, problem, saved, firstName, printBase, allergies, typedRows = [], visitId = null, openNow = false } = Astro.props;
+/** visitId: today's visit (036) — a new prescription is written against it. openNow: the page opens the panel as it loads (?open=rx).
+ *  today: the Manila day (the PTR note compares with it); ptrFix: where each clinician's PTR is fixed, or null (the record page). */
+interface Props { c: Clinical; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; firstName: string; printBase: string; allergies: string[]; typedRows?: RxItem[]; visitId?: string | null; openNow?: boolean; today: string; ptrFix: Record<string, PtrFix | null> }
+const { c, canEdit, action, meId, problem, saved, firstName, printBase, allergies, typedRows = [], visitId = null, openNow = false, today, ptrFix } = Astro.props;
 
 // Names only, the ones a dental clinic writes most. No strengths or doses.
 const DRUGS = ['Amoxicillin', 'Co-amoxiclav (amoxicillin + clavulanic acid)', 'Clindamycin', 'Azithromycin', 'Metronidazole', 'Cefalexin',
@@ -29,6 +34,18 @@ const lastTyped = v ? typedRows.reduce((n, r, i) => (r.drug || r.strength || r.q
 const shownRows = Math.min(RX_ROWS, Math.max(2, lastTyped));
 const justSaved = saved?.startsWith('rx:') ? saved.slice(3) : null;
 const help = 'text-[13px] leading-snug text-ink-2';
+// The prescriber the select draws chosen, and the PTR note for each clinician with a PRC licence whose PTR on
+// file needs a word today (none for ok; a clinician with no PRC is blocked by the PRC already).
+const selectedId = v?.prescriber ?? (meRx ? meId : '');
+const ptrNotes = c.clinicians.filter((x) => x.prc).map((x) => ({
+  id: x.id,
+  words: ptrWords(ptrState({ number: x.ptr, year: x.ptrYear }, today), { number: x.ptr, year: x.ptrYear }, today, { self: x.id === meId, name: x.name }),
+})).filter((n) => n.words);
+const shownNote = ptrNotes.find((n) => n.id === selectedId);
+// The saved prescription's own copy, against the day it was written.
+const savedRx = justSaved ? c.rx.find((r) => r.id === justSaved) : null;
+const savedPtr = savedRx ? { number: savedRx.ptr, year: savedRx.ptrYear } : null;
+const savedState = savedRx && savedPtr ? ptrState(savedPtr, manilaToday(new Date(savedRx.at))) : null;
 ---
 
 <div class="grid gap-4 max-md:gap-3">
@@ -37,10 +54,13 @@ const help = 'text-[13px] leading-snug text-ink-2';
       <p><a href={`${printBase}${justSaved}/`} class="font-semibold underline underline-offset-2" target="_blank" rel="noopener">Print it for {firstName}</a> on the clinic’s paper, with the prescriber’s licence numbers.</p>
     </Callout>
   )}
+  {savedRx && savedPtr && savedState && PTR_AMBER.includes(savedState) && (
+    <PtrWords mode="saved" noun="prescription" title={ptrSavedTitle(savedState, savedPtr)} fix={ptrFix[savedRx.prescriberId] ?? null} />
+  )}
   <Pane as="section" label="Prescriptions" id="rx">
     <Head icon="pill" title="Prescriptions" meta={c.rx.length ? `${c.rx.length} written` : undefined} />
     <div class="rec-lead -mt-2 mb-4">
-      <p>Medicines prescribed to {firstName}, ready to print with the dentist’s PRC licence and PTR numbers.</p>
+      <p>Medicines prescribed to {firstName}, printed with the dentist’s PRC licence and the PTR on file.</p>
       {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-rx-add"><Icon name="plus" />New prescription</button>}
     </div>
     {c.rx.length === 0 ? <Empty icon="file" text="No prescriptions yet." /> : (
@@ -49,7 +69,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
           <article class="rx-card" aria-label={`Prescription of ${when(new Date(r.at))}`}>
             <header class="nt-head">
               <p class="nt-day">{when(new Date(r.at))}</p>
-              <p class="nt-who">{r.prescriber}{r.prc ? ` · PRC ${r.prc}` : ''}</p>
+              <p class="nt-who">{r.prescriber}{r.prc ? ` · PRC ${r.prc}` : ''}{r.ptr ? ` · PTR ${ptrLine({ number: r.ptr, year: r.ptrYear })}` : ''}</p>
             </header>
             <ol class="rx-items">
               {r.items.map((it) => <li><p class="rp-row"><strong class="rx-drug-name">{it.drug}</strong>{it.strength && <span class="rp">{it.strength}</span>}{it.qty && <span class="rp">#{it.qty}</span>}</p><p class="rx-sig-line"><span class="rk">Take</span> {it.sig}</p></li>)}
@@ -73,13 +93,23 @@ const help = 'text-[13px] leading-snug text-ink-2';
     <form method="post" action={`${action}#rx`} class="grid gap-4" data-rx-form>
       <Csrf /><input type="hidden" name="intent" value="rx-add" />
       {visitId && <input type="hidden" name="visit" value={visitId} />}
-      <label class="field"><span class="meta">Prescribed by</span>
-        <select name="prescriber" required>
-          <option value="">Choose the dentist…</option>
-          {c.clinicians.map((x) => <option value={x.id} selected={(v?.prescriber ?? (meRx ? meId : '')) === x.id} disabled={!x.prc}>{x.name}{x.prc ? ` · PRC ${x.prc}` : ' · no PRC licence on file'}</option>)}
-        </select>
-        <span class={help}>The printout carries their PRC licence and PTR numbers.</span>
-      </label>
+      <div>
+        <label class="field"><span class="meta">Prescribed by</span>
+          <select name="prescriber" required data-rx-prescriber aria-describedby={shownNote ? `rx-ptr-${shownNote.id}` : undefined}>
+            <option value="">Choose the dentist…</option>
+            {c.clinicians.map((x) => <option value={x.id} selected={selectedId === x.id} disabled={!x.prc}>{x.name}{x.prc ? ` · PRC ${x.prc}` : ' · no PRC licence on file'}</option>)}
+          </select>
+          <span class={help}>The printout carries their PRC licence and the PTR on file when it is saved.</span>
+        </label>
+        {/* After the label, never in it: a tap on the note must not open the picker. Only the chosen person's shows. */}
+        <div aria-live="polite">
+          {ptrNotes.map((n) => (
+            <div id={`rx-ptr-${n.id}`} data-rx-ptr-for={n.id} class="mt-2" hidden={n.id !== selectedId}>
+              <PtrWords mode="note" noun="prescription" words={n.words} fix={ptrFix[n.id] ?? null} />
+            </div>
+          ))}
+        </div>
+      </div>
       <fieldset class="min-w-0">
         <legend class="mb-2 text-[14px] font-medium text-ink-2">Medicines <span class="font-normal">· generic name first</span></legend>
         {rows.map((r) => (
@@ -108,4 +138,13 @@ const help = 'text-[13px] leading-snug text-ink-2';
     next.querySelector('input')?.focus();
     if (!document.querySelector('[data-rx-line][hidden]')) more.hidden = true;
   });
+  // The PTR note follows the prescriber chosen; the select is described by the visible one only.
+  const rxSel = document.querySelector<HTMLSelectElement>('[data-rx-prescriber]');
+  const rxNotes = document.querySelectorAll<HTMLElement>('[data-rx-ptr-for]');
+  const rxSync = () => {
+    let shown: HTMLElement | null = null;
+    rxNotes.forEach((n) => { n.hidden = n.dataset.rxPtrFor !== rxSel?.value; if (!n.hidden) shown = n; });
+    if (shown) rxSel?.setAttribute('aria-describedby', (shown as HTMLElement).id); else rxSel?.removeAttribute('aria-describedby');
+  };
+  rxSel?.addEventListener('change', rxSync); rxSync();
 </script>

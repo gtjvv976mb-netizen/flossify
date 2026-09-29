@@ -131,6 +131,8 @@ import { CONDITION_LABEL, surfaceSummary, type ToothCondition, type ToothMark, t
 import { patientForms, getForm, compareWithRecord, useFormDetail, healthLists, answerText, FIELDS, TAKEABLE, type FormConsentState } from '../../../../lib/patient-forms';
 import { signedText } from './_forms/words';
 import { can } from '../../../../lib/can';
+import { mayManage } from '../../../../lib/roles';
+import type { PtrFix } from '../../../../lib/ptr';
 import { loadClinical, loadChartChanges, recordAction, RECORD_INTENTS, RX_ROWS, type Outcome, type RecordProblem, type RxItem } from '../../../../lib/record';
 import { loadExtra, extraAction, bpWords, EXTRA_INTENTS, EXTRA_ANCHOR } from '../../../../lib/record-extra';
 import { loadVisitConsents } from '../../../../lib/visit-consent';
@@ -498,6 +500,14 @@ const importHref = `/c/${clinic.slug}/patients/import/`;
 // --- sections ---------------------------------------------------------------
 const clin = data.clinical;
 const ext = data.extra;
+// Where each clinician's PTR is fixed (the prescription and letter panels' notes, 041): your own on My page; someone
+// else's on their page in Clinic settings when you may change their details there (people.manage and the rank rule
+// that draws Edit details on their page); otherwise nowhere you can reach, and the note says so in words.
+const ptrFix: Record<string, PtrFix | null> = Object.fromEntries(clin.clinicians.map((x) => [x.id,
+  x.id === session.staffId ? { self: true, href: `/c/${clinic.slug}/account/#ptr` }
+  : can(clinic, 'people.manage') && x.rank !== null && mayManage(clinic, { role_rank: x.rank, role_owner: x.isOwner }, false)
+    ? { self: false, href: `/c/${clinic.slug}/settings/people/${x.id}/#prc` }
+    : null]));
 // The head's safety chips (034): the latest blood pressure when it was taken today or is out of range, and
 // whether a physician's clearance is needed (a high reading in the last 30 days with no clearance since, a
 // request still waiting, or a physician who did not clear) — always words, never colour alone.
@@ -664,7 +674,7 @@ const recHere = here;
                 </button>
                 <button type="button" class="ws-menu-item" data-ws-open="rec-rx-add" data-rec-show="rx">
                   <span class="ws-menu-icon" data-tint="blue"><Glyph name="pill" /></span>
-                  <span class="ws-menu-words">Prescription<span class="ws-menu-hint">Ready to print, with PRC and PTR</span></span>
+                  <span class="ws-menu-words">Prescription<span class="ws-menu-hint">With the PRC and PTR on file</span></span>
                 </button>
                 <button type="button" class="ws-menu-item" data-ws-open="rec-vitals-add" data-rec-show="health">
                   <span class="ws-menu-icon" data-tint="red"><Glyph name="heart" /></span>
@@ -1045,9 +1055,9 @@ const recHere = here;
   <!-- Prescriptions -->
   <div id="rec-rx" role="tabpanel" aria-labelledby="rec-rec-rx-tab" hidden={current !== 'rx'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="rx">
     <Banner id="rx" label={SECTION_LABEL.rx} />
-    <Prescriptions c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} firstName={patient.first_name} printBase={`${here}rx/`} allergies={allergies} typedRows={rxTyped} visitId={thisVisit?.id ?? null} openNow={openNow === 'rx'} />
+    <Prescriptions c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} firstName={patient.first_name} printBase={`${here}rx/`} allergies={allergies} typedRows={rxTyped} visitId={thisVisit?.id ?? null} openNow={openNow === 'rx'} today={today} ptrFix={ptrFix} />
     <div class="mt-4 max-md:mt-3">
-      <Letters letters={ext.letters} clinicians={clin.clinicians} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} printBase={`${here}letters/`} lastVisit={lastVisit ? manilaDay(lastVisit.starts_at) : null} conditions={conditions} />
+      <Letters letters={ext.letters} clinicians={clin.clinicians} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} printBase={`${here}letters/`} lastVisit={lastVisit ? manilaDay(lastVisit.starts_at) : null} conditions={conditions} ptrFix={ptrFix} />
     </div>
   </div>
 

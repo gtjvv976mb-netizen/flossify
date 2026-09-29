@@ -1,8 +1,11 @@
 ---
 // A prescription on paper: the clinic's name, address and number at the head; the patient's name, age, sex
 // and address; the day; ℞ and each medicine with how to take it; at the foot the prescriber's name, PRC
-// licence and PTR numbers and a line to sign on — what a Philippine pharmacy looks for. A5, black on
-// white; the bar at the top (the way back, one teal Print) does not print. Printing is written to the audit
+// licence and PTR numbers and a line to sign on — what a Philippine pharmacy looks for. PRC is read live;
+// the PTR from the copy on the row (041), taken when it was saved, so a reprint in a later year still
+// carries the PTR it was written with, and a paper saved before 041 prints the blank line. When that copy
+// needs attention on the paper's own day (none, no year, last year's, a later year's), the bar says so
+// in one amber line. A5, black on white; the bar at the top (the way back, one teal Print) does not print. Printing is written to the audit
 // log like a view. Behind requireWorkspace; the prescription is read inside withClinic, so row-level
 // security decides whether it is this clinic's.
 export const prerender = false;
@@ -12,6 +15,7 @@ import { requireWorkspace } from '../../../../../../lib/workspace';
 import { withClinic } from '../../../../../../lib/db';
 import { ageOn, ageText, dateText, manilaToday } from '../../../../../../lib/health';
 import { prettyPhone } from '../../../../../../lib/messages';
+import { ptrLine, ptrPrintNote, ptrState } from '../../../../../../lib/ptr';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ws = await requireWorkspace(Astro);
@@ -24,7 +28,7 @@ const back = `/c/${clinic.slug}/patients/${patientId}/#rx`;
 const data = await withClinic(clinic.id, async (tx) => {
   const r = (await tx.query(
     `select r.id, r.items, r.notes, to_char(r.issued_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as day,
-            s.full_name, s.prc_licence, s.ptr_number,
+            s.full_name, s.prc_licence, r.ptr_number, r.ptr_year,
             p.first_name, p.middle_name, p.last_name, p.suffix, p.sex, to_char(p.birth_date, 'YYYY-MM-DD') as birth, p.address_line, p.city, p.province
        from prescription r join patient p on p.id = r.patient_id left join staff s on s.id = r.prescriber_id
       where r.id = $1 and r.patient_id = $2`, [rxId, patientId])).rows[0];
@@ -38,6 +42,9 @@ const { r, c } = data;
 const name = [r.first_name, r.middle_name, r.last_name, r.suffix].filter(Boolean).join(' ');
 const age = r.birth ? ageOn(r.birth, manilaToday()) : null;
 const SEX: Record<string, string> = { female: 'Female', male: 'Male' };
+// The row's copy, compared with the paper's own day, never with today.
+const ptr = { number: r.ptr_number ?? null, year: r.ptr_year ?? null };
+const note = ptrPrintNote(ptrState(ptr, r.day), ptr, r.day, 'prescription');
 const items: { drug: string; strength: string; qty: string; sig: string }[] = Array.isArray(r.items) ? r.items : [];
 const clinicAddress = [c.address_line, c.barangay, c.city, c.province]
   .filter((part, i, all) => part && !all.slice(0, i).some((prev) => prev && String(prev).toLowerCase().includes(String(part).toLowerCase())))
@@ -67,14 +74,15 @@ const pageCss = `
     <style>
       .px-body {
         --px-bg: #f3f5f8; --px-bar: #ffffff; --px-hair: #e6e9ee; --px-ink: #1f2937; --px-teal-ink: #0d706d; --px-teal-fill: #0e7471; --px-teal-fill-hover: #0b5f5d; --px-hover: rgb(16 24 40 / 0.035);
+        --px-warn-bg: #fff5e6; --px-warn-hair: #f3d9ad; --px-warn-ink: #8a4604;
         font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         background: var(--px-bg); min-height: 100vh;
       }
       @media screen and (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]) .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); }
+        :root:not([data-theme="light"]) .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); --px-warn-bg: #3b2f1a; --px-warn-hair: #5a4520; --px-warn-ink: #f3c47a; }
       }
       @media screen {
-        :root[data-theme="dark"] .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); }
+        :root[data-theme="dark"] .px-body { --px-bg: #15191e; --px-bar: #1d232a; --px-hair: #2a323b; --px-ink: #e7ebf0; --px-teal-ink: #7fdcd4; --px-hover: rgb(255 255 255 / 0.055); --px-warn-bg: #3b2f1a; --px-warn-hair: #5a4520; --px-warn-ink: #f3c47a; }
       }
       .px-body h1, .px-body h2 { font-family: inherit; }
       .px-bar { background: var(--px-bar); border-bottom: 1px solid var(--px-hair); color: var(--px-ink); }
@@ -84,6 +92,10 @@ const pageCss = `
       .px-print { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 1.125rem; border-radius: 10px; background: var(--px-teal-fill); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
       .px-print:hover { background: var(--px-teal-fill-hover); }
       .px-body :focus-visible { outline: 2px solid #14908f; outline-offset: 2px; }
+      /* The PTR note (041): amber, in the bar row's own box so it lines up with the back link and Print; never printed. */
+      .px-note-row { max-width: 1280px; margin-inline: auto; padding: 0 1.25rem 0.75rem; }
+      .px-note { display: flex; gap: 0.5rem; align-items: flex-start; padding: 0.625rem 0.875rem; border: 1px solid var(--px-warn-hair); border-radius: 10px; background: var(--px-warn-bg); color: var(--px-ink); font-size: 14.5px; line-height: 1.45; }
+      .px-note svg { flex: none; margin-top: 0.05rem; color: var(--px-warn-ink); }
       /* The paper: white with dark words in both themes, as it prints. */
       .rx-sheet { max-width: 148mm; min-height: 200mm; margin: 2rem auto; padding: 12mm; display: flex; flex-direction: column; background: #fff; color: #1f2937; border: 1px solid #e6e9ee; border-radius: 12px; box-shadow: 0 1px 2px rgb(16 24 40 / 0.05); color-scheme: light; }
       .rx-head { text-align: center; padding-bottom: 4mm; border-bottom: 1.5px solid #1f2937; }
@@ -114,6 +126,7 @@ const pageCss = `
           Print
         </button>
       </div>
+      {note && <div class="px-note-row"><p class="px-note" data-px-ptr-note><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 4.2L2.9 17.3A2 2 0 0 0 4.6 20.3h14.8a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z" /><path d="M12 9.5v4M12 17h.01" /></svg><span>{note}</span></p></div>}
     </div>
     <main>
       <article class="rx-sheet" aria-label="Prescription">
@@ -142,7 +155,7 @@ const pageCss = `
           <div class="rx-sign">
             <p class="rx-sign-line">{r.full_name ?? '____________________'}</p>
             <p>PRC Lic. No. {r.prc_licence ?? '__________'}</p>
-            <p>PTR No. {r.ptr_number ?? '__________'}</p>
+            <p>PTR No. {ptrLine(ptr) ?? '__________'}</p>
           </div>
         </footer>
       </article>
