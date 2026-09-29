@@ -19,6 +19,11 @@
 // for and nothing is charged twice. "Paid now" records the payment with the
 // statement in one transaction (a refused payment saves nothing).
 //
+// Drawn for a chosen patient (?patient= or ?visit=, a GET), a senior citizen or
+// PWD discount is filled in when the patient's latest statement had one, and
+// the page names that statement and asks for the card to be checked; an older
+// one is only named, and a birth date of 60 or more brings a hint (p25).
+//
 // The desk, the owner, the admin and anyone with finance access here may
 // charge (canBill). Prices from the fee guide stay inside the guide's range;
 // anything else is a line of its own. The page's script adds lines and keeps
@@ -52,8 +57,9 @@ import { prettyPhone } from '../../../../lib/messages';
 import { hmos, CATEGORY_LABEL, type Category } from '../../../../data/directory';
 import {
   feeGuide, payorOptions, priceRange, rangeText, saveStatement, recordPayment, parseMoney, discountOf, pesos, moneyField, fromDb,
-  DISCOUNTS, UUID, ID_NO_MAX, LINES_MAX, NOT_BIR, METHODS, PAYOR_METHODS, REF_LABEL, REF_MAX, type ChargeIn, type FeeRow,
+  DISCOUNTS, UUID, ID_NO_MAX, LINES_MAX, NOT_BIR, METHODS, PAYOR_METHODS, REF_LABEL, REF_MAX, lastDiscountFor, type ChargeIn, type FeeRow,
 } from '../../../../lib/invoices';
+import { ageOn, dateText, manilaToday } from '../../../../lib/health';
 import { can } from '../../../../lib/can';
 
 const ws = await requireWorkspace(Astro);
@@ -147,9 +153,25 @@ if (Astro.request.method === 'POST' && may) {
 // The patient already chosen: from the link (?patient=) or from a refused save.
 const chosen = may && UUID.test(draft.patientId)
   ? await withClinic(clinic.id, async (tx) => (await tx.query(
-      `select id, concat_ws(' ', first_name, nullif(last_name, '—')) as name, chart_no, phone from patient where id = $1 and archived_at is null`,
-      [draft.patientId])).rows[0] as { id: string; name: string; chart_no: string; phone: string | null } | undefined)
+      `select id, concat_ws(' ', first_name, nullif(last_name, '—')) as name, chart_no, phone, to_char(birth_date, 'YYYY-MM-DD') as birth
+         from patient where id = $1 and archived_at is null`,
+      [draft.patientId])).rows[0] as { id: string; name: string; chart_no: string; phone: string | null; birth: string | null } | undefined)
   : undefined;
+
+// A senior citizen or PWD discount, from the patient's own statements (p25), when the page is first drawn for a
+// chosen patient (the Dashboard's Charge, the record's charge links). Filled in only when their LATEST statement had
+// it, and then the page says from which statement and to check the card; an older one is only named. A birth date
+// of 60 or more only brings a hint. A refused save is drawn as it was posted, and a patient found by typing gets
+// nothing (the search answers through /api/patients, which must not carry ID numbers).
+let prefill: Awaited<ReturnType<typeof lastDiscountFor>> = null;
+let olderDiscount: Awaited<ReturnType<typeof lastDiscountFor>> = null;
+let seniorByAge = false;
+if (may && chosen && Astro.request.method === 'GET' && draft.discount === 'none') {
+  const past = await withClinic(clinic.id, (tx) => lastDiscountFor(tx, chosen.id));
+  if (past?.latest) { prefill = past; draft.discount = past.kind; draft.discountId = past.idNo; }
+  else if (past) olderDiscount = past;
+  seniorByAge = !prefill && !!chosen.birth && (ageOn(chosen.birth, manilaToday()) ?? 0) >= 60;
+}
 
 // The guide, grouped the way Clinic settings → Fee guide groups it.
 const groups = (Object.keys(CATEGORY_LABEL) as Category[])
@@ -282,10 +304,13 @@ const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the adm
                       ))}
                     </div>
                   </fieldset>
+                  {olderDiscount && <p class="fin-help fin-from" data-bill-discount-past>{olderDiscount.kind === 'senior' ? 'Senior citizen' : 'PWD'} discount on {olderDiscount.no} ({dateText(olderDiscount.issuedOn)}); none on the statements since. Ask for the ID.</p>}
+                  {seniorByAge && <p class="fin-help fin-from" data-bill-senior-hint>60 or over by the birth date on file: ask for the senior citizen (OSCA) ID.</p>}
                   <label class="field" data-bill-discount-id hidden={draft.discount !== 'senior' && draft.discount !== 'pwd'}>
                     <span class="meta">ID number</span>
                     <input name="discount_id" value={draft.discountId} maxlength={ID_NO_MAX} autocomplete="off" placeholder="OSCA or PWD ID no." />
-                    <span class={help}>Ask for the ID. Its number prints on the statement.</span>
+                    <span class={help} data-bill-discount-help hidden={!!prefill}>Ask for the ID. Its number prints on the statement.</span>
+                    {prefill && <span class="fin-help fin-from" data-bill-discount-from>Filled in from statement {prefill.no} ({dateText(prefill.issuedOn)}). Check the card: change it if the number is not the same.</span>}
                   </label>
                 </div>
                 {data.payors.length === 0 ? (
@@ -504,6 +529,25 @@ const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the adm
       recount();
     });
     form.addEventListener('input', recount);
+    // A discount filled in from the patient's latest statement (p25) belongs to that patient: Change patient takes it
+    // back off while the desk has not touched it (the choices or the ID). The older-discount line and the age hint
+    // are about the first patient, so they always go.
+    let prefilled = !!$('[data-bill-discount-from]');
+    form.addEventListener('change', (e) => { if ((e.target as HTMLElement).matches('[data-bill-discount]')) prefilled = false; });
+    idInput.addEventListener('input', () => { prefilled = false; });
+    $('[data-bill-change]')?.addEventListener('click', () => {
+      if (prefilled) {
+        const none = $$<HTMLInputElement>('[data-bill-discount]').find((r) => r.value === 'none');
+        if (none) none.checked = true;
+        idInput.value = ''; idBox.hidden = true; idInput.required = false;
+        const from = $('[data-bill-discount-from]'), helpLine = $('[data-bill-discount-help]');
+        if (from) from.hidden = true;
+        if (helpLine) helpLine.hidden = false;
+        prefilled = false;
+        recount();
+      }
+      for (const n of $$('[data-bill-discount-past], [data-bill-senior-hint]')) n.hidden = true;
+    });
 
     // --- totals -----------------------------------------------------------
     function recount() {

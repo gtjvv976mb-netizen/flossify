@@ -5,7 +5,8 @@
 export type IconName =
   | 'dashboard' | 'wallet' | 'settings' | 'patients' | 'calendar' | 'plus' | 'search' | 'inbox'
   | 'user' | 'logout' | 'check' | 'alert' | 'info' | 'clock' | 'money' | 'file' | 'upload' | 'download'
-  | 'chevron' | 'chevron-right' | 'chevron-left' | 'menu' | 'close' | 'message' | 'clinic' | 'arrow-right' | 'phone' | 'shield' | 'sun' | 'moon';
+  | 'chevron' | 'chevron-right' | 'chevron-left' | 'menu' | 'close' | 'message' | 'clinic' | 'arrow-right' | 'phone' | 'shield' | 'sun' | 'moon'
+  | 'note' | 'pencil';
 
 // Each entry is the inside of a 24×24 <svg>: paths, circles, rects.
 export const PATHS: Record<IconName, string> = {
@@ -51,6 +52,10 @@ export const PATHS: Record<IconName, string> = {
   // the theme switch: a sun for light, a crescent moon for dark
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/>',
   moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+  // a sheet with a folded corner and two lines: the patient's desk note
+  note: '<path d="M6 3.5h12A1.5 1.5 0 0 1 19.5 5v9.5l-6 6H6A1.5 1.5 0 0 1 4.5 19V5A1.5 1.5 0 0 1 6 3.5z"/><path d="M19.5 14.5H15a1.5 1.5 0 0 0-1.5 1.5v4.5M8 8.5h8M8 12h5"/>',
+  // a pencil: change something in place
+  pencil: '<path d="M4.5 19.5l1-4L15.8 5.2a2 2 0 0 1 2.8 0l.2.2a2 2 0 0 1 0 2.8L8.5 18.5z"/><path d="M13.5 7.5l3 3"/>',
 };
 
 /** The whole <svg> for a name, for markup built in the browser (decorative: aria-hidden). */

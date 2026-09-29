@@ -29,6 +29,8 @@
 }
 .fin-back:hover { color: var(--ws-teal-ink); background: var(--ws-hover); }
 .fin-help { font-size: 13.5px; line-height: 1.45; color: var(--c-muted); }
+/* A line that asks the desk to do something (check the card, ask for the ID): ink-2, never the muted grey. */
+.fin-from { color: var(--c-ink-2); }
 /* A name that is a link, in a stack of lines: its target is at least 44px tall (a band centred on
    it), while the name takes only its own line's room, one line or two. */
 .fin-hit { position: relative; }

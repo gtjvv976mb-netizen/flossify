@@ -123,6 +123,25 @@ export const STATUS: Record<string, { label: string; tone: string; dot: string }
 
 export const statementNo = (prefix: string, n: number | string) => `${prefix}-${String(n).padStart(6, '0')}`;
 
+/** The patient's latest statement (not void, not a draft) given a senior citizen or PWD discount, and whether it is
+ *  their latest statement of all. New charge fills the kind and ID in only when it is (`latest`); otherwise it names
+ *  it and fills in nothing. The desk still checks the card. `issuedOn` is YYYY-MM-DD in Manila. */
+export async function lastDiscountFor(tx: Tx, patientId: string):
+  Promise<{ kind: 'senior' | 'pwd'; idNo: string; no: string; issuedOn: string; latest: boolean } | null> {
+  const r = (await tx.query(
+    `with s as (
+       select i.discount_kind, btrim(i.discount_id_no) as discount_id_no, i.series_prefix, i.number,
+              to_char(i.issued_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as issued_on,
+              (i.discount_kind in ('senior', 'pwd') and nullif(btrim(i.discount_id_no), '') is not null) as discounted,
+              row_number() over (order by i.issued_at desc, i.number desc) as n
+         from invoice i
+        where i.patient_id = $1 and i.status not in ('void', 'draft'))
+     select discount_kind, discount_id_no, series_prefix, number, issued_on, n = 1 as latest
+       from s where discounted order by n limit 1`, [patientId])).rows[0];
+  if (!r) return null;
+  return { kind: r.discount_kind, idNo: r.discount_id_no, no: statementNo(r.series_prefix, r.number), issuedOn: r.issued_on, latest: r.latest === true };
+}
+
 // Who may charge and record payments is can(ws, 'finance.bill'), and who may void (with a reason)
 // can(ws, 'finance.void'): src/lib/can.ts. By default the desk, the owner and the admin bill — and anyone
 // the owner lets see money at the branch — and the owner and the admin void.
