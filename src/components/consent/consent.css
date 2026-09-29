@@ -1,0 +1,70 @@
+/* A consent form as the patient reads it (ConsentDocument.astro): on the
+   patient's pages (/f/i/<token>/, on paper-white glass), in the desk's preview
+   (a phone-wide box in a side panel) and on the record (drawn from the stored
+   snapshot). Typography and the document's own pieces only; the card behind it
+   is the page's. All cd-*; hooks are data-cd-*.
+
+   The layer order global.css declares, stated again so this file can never be
+   the first to name a layer. Tokens only, so both themes follow; Filipino
+   lines are ink-2 and never under 16px where a patient reads them. */
+@layer theme, base, components, utilities;
+
+@layer components {
+
+.cd { max-width: 68ch; font-size: 17px; line-height: 1.6; color: var(--c-ink); overflow-wrap: anywhere; }
+.cd[data-mode="preview"] { font-size: 15.5px; }
+.cd[data-mode="record"] { font-size: 16px; max-width: 72ch; }
+.cd p { margin: 0; }
+.cd > * + * { margin-top: 1.25rem; }
+
+.cd-part { font-size: 14px; font-weight: 600; color: var(--c-ink-2); }
+.cd-title { margin: 0.25rem 0 0; font-size: 22px; font-weight: 700; line-height: 1.3; color: var(--c-ink); letter-spacing: -0.005em; }
+.cd[data-mode="preview"] .cd-title { font-size: 19px; }
+.cd-title-fil { display: block; margin-top: 0.125rem; font-size: 16px; font-weight: 500; line-height: 1.4; color: var(--c-ink-2); }
+.cd-by { margin-top: 0.5rem !important; font-size: 15px; color: var(--c-ink-2); }
+.cd-ref { font-size: 14px; color: var(--c-ink-2); }
+.cd-mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.92em; }
+
+/* "For": who and what, as pills. */
+.cd-for { padding: 0.875rem 1rem; border: 1px solid var(--c-line); border-radius: 12px; background: var(--c-surface); }
+.cd-for-who { display: grid; gap: 0.125rem; }
+.cd-for-name { font-size: 17px; font-weight: 600; }
+.cd-for-line { font-size: 15px; color: var(--c-ink-2); }
+.cd-facts { display: flex; flex-wrap: wrap; gap: 0.375rem 0.5rem; margin: 0.625rem 0 0; padding: 0; list-style: none; }
+.cd-fact {
+  display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem; min-height: 30px; padding: 0.25rem 0.75rem; border-radius: 999px;
+  background: var(--c-bg-soft); color: var(--c-ink); font-size: 15px; line-height: 1.35;
+}
+.cd-fact-k { font-weight: 600; color: var(--c-ink-2); }
+.cd-fact[data-kind="teeth"] { background: var(--ws-blue-tint); }
+.cd-fact[data-kind="money"] { background: var(--ws-green-tint); }
+.cd-fact-tbc { font-size: 13.5px; color: var(--c-ink-2); }
+
+/* "In short": a blue-tint box, at most five points. */
+.cd-short { padding: 0.875rem 1rem; border: 1px solid color-mix(in srgb, var(--ws-blue) 22%, transparent); border-radius: 12px; background: var(--ws-blue-tint); }
+.cd-short-head { font-size: 16px; font-weight: 700; }
+.cd-short ul { margin: 0.375rem 0 0; padding-left: 1.25rem; list-style: disc; }
+.cd-short li + li { margin-top: 0.25rem; }
+
+.cd-sec :is(h2, h3, h4) { margin: 0 0 0.375rem; font-size: 18px; font-weight: 700; line-height: 1.35; color: var(--c-ink); }
+.cd[data-mode="preview"] .cd-sec :is(h2, h3, h4) { font-size: 16.5px; }
+.cd-sec ul { margin: 0; padding-left: 1.25rem; list-style: disc; }
+.cd-sec li + li, .cd-sec p + p { margin-top: 0.375rem; }
+.cd-fil { display: block; margin-top: 0.125rem; font-size: max(16px, 0.94em); color: var(--c-ink-2); }
+.cd[data-mode="preview"] .cd-fil { font-size: 15px; }
+
+/* Initials at the end of a risks section: right-aligned, the same letters in every box. */
+.cd-initials { display: flex; justify-content: flex-end; align-items: center; gap: 0.625rem; margin-top: 0.75rem; }
+.cd-initials-label { font-size: 15px; font-weight: 600; color: var(--c-ink-2); }
+.cd-initials input {
+  width: 6.5rem; min-height: 56px; padding: 0 0.75rem; border: 1.5px solid var(--ws-field-line-hover); border-radius: 10px; background: var(--c-surface);
+  color: var(--c-ink); font-size: 20px; font-weight: 600; letter-spacing: 0.08em; text-align: center; text-transform: none;
+}
+.cd-initials input:focus { outline: none; border-color: var(--ws-teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws-teal) 24%, transparent); }
+.cd-initials-done { font-size: 15px; color: var(--c-ink-2); }
+
+.cd-ticks { display: grid; gap: 0.375rem; margin: 0; padding: 0; list-style: none; }
+.cd-ticks li { display: flex; gap: 0.5rem; }
+.cd-mark { flex: none; font-weight: 700; color: var(--c-ink-2); }
+
+}

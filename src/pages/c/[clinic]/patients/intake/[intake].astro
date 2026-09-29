@@ -1,0 +1,853 @@
+---
+// One intake, the desk's steps (039; the intake spec §1.3–1.8, §1.10):
+//   ?step=consents  1 Who and which forms: the desk's two questions (a new
+//                   patient), the checklist with suggestions, Preview.
+//   ?step=clinic    2 The clinic's part: who explains, the language planned,
+//                   one card per form (desk fields; dentist fields proposed).
+//   ?step=check     3 Check: the pages in order, and the device — a clinic
+//                   tablet, this device (handed over: /auth/park/), or their
+//                   phone (phase 3). The teal button follows the device.
+//   ?step=out       4 Hand over: where the forms are, each part's state in
+//                   words, what needs the desk; Stop, another device, the
+//                   clinic's part. Refresh (the live panel is phase 3).
+//   ?step=add       Add to the records, once sent (a new patient the server
+//                   did not add at Send because someone on file looks alike).
+//   ?step=explain&doc=<id>  Explain and confirm: the named dentist confirms the
+//                   clinical part and records "I explained this".
+// Every post: csrfOk (a miss comes back with ?stale=1), the staff's save
+// limit, then one withClinic() transaction; a refusal (Refused, thrown) comes
+// back drawn with what was typed and "Nothing was saved. N things to fix:".
+// Only people who can add patients (can(ws, 'records.edit'); canEditRecords
+// in every transaction) see any of it. The live panel never shows a health
+// answer, the address, the mobile or a signature: desk screens face the
+// waiting room.
+export const prerender = false;
+
+import ClinicLayout from '../../../../../layouts/Clinic.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Pane from '../../../../../components/ws/Pane.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Avatar from '../../../../../components/ws/Avatar.astro';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
+import ConsentDocument from '../../../../../components/consent/ConsentDocument.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import Glyph from '../_ui/Glyph.astro';
+import ClinicFields from './_ui/ClinicFields.astro';
+import ExplainForm from './_ui/ExplainForm.astro';
+import '../_ui/patients.css';
+import './intake.css';
+import { requireWorkspace } from '../../../../../lib/workspace';
+import { withClinic } from '../../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
+import { hit, LIMITS } from '../../../../../lib/throttle';
+import { canEditRecords, dateText, manilaToday } from '../../../../../lib/health';
+import { can } from '../../../../../lib/can';
+import { Refused } from '../../../../../lib/refused';
+import { detailCols, planFill } from '../../../../../lib/patient-add';
+import { reviewOf, renderDocument, type Code, type Template } from '../../../../../lib/consent-library';
+import {
+  intakeGates, loadIntake, suggestConsents, saveChecklist, saveClinicPart, goLive, stopLink, cancelIntake, dismissIntake, renewDocuments,
+  setDeskAnswers, addIntake, intakeLookAlikes, listTablets, treatingDentists, defaultDentist, feeChips, minutesFor, intakeMinor, intakeAge,
+  intakeName, partTag, timeWords, rawFromFields, rawFromForm, isUuid, CAME_WITH, DISMISS_WHY, LABEL_MAX, DISMISS_NOTE_MAX, TABLET_FRESH_MS,
+  type DeskDoc, type DeskIntake,
+} from '../../../../../lib/intake';
+import { attestDocument, mayAttest, clinicFace, contextFor, plannedLanguage, bornLine } from '../../../../../lib/consent-docs';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const slug = clinic.slug;
+const base = `/c/${slug}/patients`;
+const intakeId = Astro.params.intake ?? '';
+const here = `${base}/intake/${intakeId}/`;
+const url = Astro.url;
+const STEPS = ['consents', 'clinic', 'check', 'out', 'add', 'explain', 'done'] as const;
+type Step = (typeof STEPS)[number];
+const asStep = (s: string | null): Step | null => (STEPS as readonly string[]).includes(s ?? '') ? (s as Step) : null;
+
+// ---------------------------------------------------------------------------
+// The post
+// ---------------------------------------------------------------------------
+let problems: string[] = [];
+let posted: FormData | null = null;
+let postedStep: Step | null = null;
+const INTENT_STEP: Record<string, Step> = {
+  consents: 'consents', clinic: 'clinic', golive: 'check', renew: 'check', stop: 'out', cancel: 'check', desk: 'out',
+  add_new: 'add', add_to: 'add', dismiss: 'add', explain: 'explain',
+};
+if (Astro.request.method === 'POST' && isUuid(intakeId)) {
+  const form = await Astro.request.formData();
+  const intent = String(form.get('intent') ?? '');
+  const back = asStep(String(form.get('step') ?? '')) ?? INTENT_STEP[intent] ?? 'consents';
+  const docParam = String(form.get('doc') ?? '');
+  const keep = back === 'explain' && isUuid(docParam) ? `&doc=${docParam}` : '';
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(`${here}?step=${back}${keep}&stale=1`, 303);
+  const rate = await hit('record:s:' + session.staffId, ...LIMITS.chart.staff);
+  const rev = Number(form.get('rev'));
+  const s = (k: string) => { const v = form.get(k); return v === null ? null : String(v); };
+  try {
+    if (!rate.allowed) throw new Refused('Too many saves at once. Wait a moment and try again.');
+    // A tablet goes through this page; this device goes to /auth/park/ (the script sends it there; without it, a confirm step does).
+    const device = s('device') ?? '';
+    if (intent === 'golive' && device === 'desk') return Astro.redirect(`${here}?step=check&handover=1`, 303);
+    const next = await withClinic(clinic.id, async (tx) => {
+      const gates = await intakeGates(tx);
+      const a = { clinicId: clinic.id, staffId: session.staffId, intakeId, rev };
+      switch (intent) {
+        case 'consents':
+          await saveChecklist(tx, { ...a, gates, codes: form.getAll('form').map(String), deskMinor: s('desk_minor'), cameWith: s('came_with'), label: s('label') });
+          return form.get('then') === 'handover' ? '?step=check' : '?step=clinic';
+        case 'clinic':
+          await saveClinicPart(tx, { ...a, dentistId: s('dentist'), explainedIn: s('explained_in'), explainedOther: s('explained_other'), raw: (id) => rawFromForm(form, `d.${id}.`) });
+          return '?step=check';
+        case 'golive': {
+          if (device === 'phone') { await goLive(tx, { ...a, gates, device: 'phone' }); return '?step=out'; }
+          const tablet = device.startsWith('tablet:') ? device.slice(7) : '';
+          if (!isUuid(tablet)) throw new Refused('Choose where the patient fills in the forms.');
+          await goLive(tx, { ...a, gates, device: 'tablet', tabletId: tablet });
+          return '?step=out';
+        }
+        case 'stop': await stopLink(tx, a); return '?step=check&stopped=1';
+        case 'cancel': await cancelIntake(tx, a); return 'list';
+        case 'renew': await renewDocuments(tx, { ...a, gates }); return '?step=check&renewed=1';
+        case 'desk': await setDeskAnswers(tx, { ...a, deskMinor: s('desk_minor'), cameWith: s('came_with'), label: s('label') }); return '?step=out';
+        case 'dismiss': await dismissIntake(tx, { ...a, why: s('why'), note: s('note') }); return 'list';
+        case 'add_new': { const r = await addIntake(tx, { ...a, as: 'new', seen: form.getAll('seen').map(String) }); return `record:${r.patientId}`; }
+        case 'add_to': { const r = await addIntake(tx, { ...a, as: 'existing', patientId: s('patient'), use: form.getAll('use').map(String) }); return `record:${r.patientId}`; }
+        case 'explain': {
+          if (!isUuid(docParam)) throw new Refused('Choose the form to confirm.');
+          await attestDocument(tx, { clinicId: clinic.id, staffId: session.staffId, docId: docParam, rev: Number(form.get('doc_rev')), raw: rawFromForm(form, `d.${docParam}.`),
+            lang: s('explained_lang'), langOther: s('explained_other'), interpreter: s('interpreter'), assent: s('assent') });
+          return '?step=check&explained=1';
+        }
+        default: throw new Refused('That did not say what to do. Try again.');
+      }
+    });
+    if (next === 'list') return Astro.redirect(`${base}/intake/`, 303);
+    if (next.startsWith('record:')) return Astro.redirect(`${base}/${next.slice(7)}/?saved=intake&intake=${intakeId}`, 303);
+    return Astro.redirect(`${here}${next}`, 303);
+  } catch (e) {
+    if (!(e instanceof Refused)) throw e;
+    problems = e.reasons;
+    posted = form;
+    postedStep = back;
+    Astro.response.status = 422;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// What the page draws
+// ---------------------------------------------------------------------------
+const today = manilaToday();
+const data = await withClinic(clinic.id, async (tx) => {
+  const canEdit = can(clinic, 'records.edit') && (await canEditRecords(tx, session.staffId, clinic.id));
+  const area = (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null;
+  if (!canEdit) return { canEdit, area, it: null } as const;
+  const it = await loadIntake(tx, intakeId);
+  if (!it) return { canEdit, area, it } as const;
+  const gates = await intakeGates(tx);
+  const face = await clinicFace(tx, clinic.id);
+  const dentists = await treatingDentists(tx, clinic.id);
+  const suggestions = await suggestConsents(tx, { patientId: it.patient?.id ?? null, visit: it.appointment, generalVersion: gates.templates.find((t) => t.code === 'general')?.version ?? null });
+  const tablets = await listTablets(tx);
+  // One query at a time on the transaction's connection.
+  const chips: Record<string, Awaited<ReturnType<typeof feeChips>>> = {};
+  const mayExplain: Record<string, boolean> = {};
+  for (const d of it.docs) {
+    if (d.template) chips[d.id] = await feeChips(tx, d.template, Array.isArray(d.fields.teeth) ? (d.fields.teeth as number[]).length : 1);
+    mayExplain[d.id] = await mayAttest(tx, clinic.id, session.staffId, d.dentistId);
+  }
+  // Screen F: people on file who may be them, and what adding to each would fill or keep.
+  let alike: Awaited<ReturnType<typeof intakeLookAlikes>> = [];
+  let compare: Record<string, ReturnType<typeof planFill>> = {};
+  if (it.status === 'sent' && it.target === 'new') {
+    alike = await intakeLookAlikes(tx, it);
+    if (alike.length) {
+      const rows = (await tx.query<Record<string, string | null>>(`select id, ${detailCols()} from patient where id = any($1::uuid[])`, [alike.map((m) => m.id)])).rows;
+      compare = Object.fromEntries(rows.map((r) => [r.id as string, planFill(r, it.answers as never, new Set())]));
+    }
+  }
+  const events = (await tx.query<{ kind: string; at: Date; detail: string | null }>(
+    `select kind, at, detail from intake_event where intake_id = $1 order by at desc limit 40`, [it.id])).rows;
+  return { canEdit, area, it, gates, face, dentists, suggestions, tablets, chips, mayExplain, alike, compare, events } as const;
+});
+
+const it = data.it;
+const stale = url.searchParams.get('stale') === '1';
+const defaultStep = (x: DeskIntake): Step => x.status === 'preparing' ? (x.docs.length || x.target === 'existing' ? (x.docs.length ? 'check' : 'consents') : 'consents')
+  : x.status === 'out' ? 'out' : x.status === 'sent' ? 'add' : 'done';
+let step: Step = postedStep ?? asStep(url.searchParams.get('step')) ?? (it ? defaultStep(it) : 'consents');
+// The steps only open while their status allows them.
+if (it) {
+  if (it.status === 'added' || it.status === 'cancelled') step = 'done';
+  else if (it.status === 'sent') step = 'add';
+  else if (step === 'add' || step === 'done') step = defaultStep(it);
+  else if (it.status === 'out' && step === 'consents') step = 'out';
+  else if (it.status === 'preparing' && step === 'out') step = 'check';
+}
+const handoverConfirm = step === 'check' && url.searchParams.get('handover') === '1';
+const val = (k: string, fallback = '') => (posted ? String(posted.get(k) ?? '') : fallback);
+const who = it ? intakeName(it) : '';
+const firstName = it ? (it.patient?.firstName ?? (typeof it.answers?.first_name === 'string' ? it.answers.first_name : null) ?? it.label ?? 'the patient') : '';
+const minor = it ? intakeMinor(it, today) : null;
+const age = it ? intakeAge(it, today) : null;
+const gates = 'gates' in data ? data.gates : null;
+const templates: Template[] = gates?.templates ?? [];
+const docsByCode = new Map((it?.docs ?? []).map((d) => [d.code, d]));
+
+// Step 1: what is ticked — the post, else the forms made, else the suggestions (and the general consent unless signed already).
+const sug = 'suggestions' in data ? data.suggestions : null;
+const ticked = new Set<string>(posted && postedStep === 'consents'
+  ? posted.getAll('form').map(String)
+  : (it?.docs.length ? it.docs.map((d) => d.code)
+    : templates.filter((t) => (t.code === 'general' ? !sug?.generalSigned : sug?.byCode[t.code]?.some((s) => s.tick))).map((t) => t.code)));
+const GROUPS: { key: Template['group']; title: string }[] = [
+  { key: 'general', title: 'Always included' }, { key: 'numbing', title: 'Numbing' }, { key: 'treatment', title: 'Treatment' }, { key: 'records', title: 'Records' },
+];
+const deskMinor = val('desk_minor', it?.deskMinor ?? '');
+const cameWith = val('came_with', it?.cameWith ?? '');
+const running = minutesFor([...ticked] as Code[], templates, it?.target === 'new');
+const parentsOnly = minor === true || deskMinor === 'yes';
+const nobodyToAgree = parentsOnly && (cameWith === 'other_adult' || cameWith === 'nobody');
+
+// Previews: the patient's page as it stands (or, for a form not made yet, as it would be made).
+const face = 'face' in data ? data.face : { name: clinic.name, address: null, phone: null };
+const patientName = it?.patient?.name ?? (typeof it?.answers?.first_name === 'string' ? [it.answers.first_name, it.answers.middle_name, it.answers.last_name, it.answers.suffix].filter(Boolean).join(' ') : (it?.label ?? 'The patient'));
+const birth = it?.patient?.birth ?? it?.page1Birth ?? null;
+const renderFor = (t: Template, d: DeskDoc | null) => renderDocument(t, d?.fields ?? {}, contextFor(t, {
+  clinic: face, patientName, birth, minor, dentist: d?.dentistName ? { name: d.dentistName, prc: d.dentistPrc } : null,
+  attested: d?.attestation ? { ...d.attestation, lang: d.attestation.explainedIn, dentistPrc: d.dentistPrc ?? '' } : null,
+  planned: d ? plannedLanguage(d) : null,
+}));
+const dentists = 'dentists' in data ? data.dentists : [];
+const chosenDentist = val('dentist', it?.docs.find((d) => d.dentistId && d.template?.attest)?.dentistId ?? defaultDentist(dentists, { visitDentist: it?.appointment?.dentistId ?? null, staffId: session.staffId })?.id ?? '');
+const firstProc = it?.docs.find((d) => d.template?.attest) ?? null;
+const langChosen = val('explained_in', firstProc?.explainedIn ?? 'en');
+const langOther = val('explained_other', firstProc?.explainedOther ?? '');
+const procedures = (it?.docs ?? []).filter((d) => d.template?.attest);
+const openDocs = (it?.docs ?? []).filter((d) => d.template && !d.attestation && !d.signing && !d.paperPrinted);
+const dentistNameOf = (id: string | null) => dentists.find((d) => d.id === id)?.name ?? null;
+
+// Check: the pages in order, and the device.
+const tablets = 'tablets' in data ? data.tablets : [];
+const now = Date.now();
+const seenWords = (d: Date | null) => {
+  if (!d) return 'not seen yet';
+  const s = Math.max(0, Math.round((now - new Date(d).getTime()) / 1000));
+  return s < 60 ? 'seen just now' : s < 3600 ? `seen ${Math.round(s / 60)} min ago` : `seen ${dateText(new Date(d).toISOString().slice(0, 10))}`;
+};
+const tabletOk = (t: (typeof tablets)[number]) => !!t.lastSeenAt && now - new Date(t.lastSeenAt).getTime() <= TABLET_FRESH_MS && (!t.busyWith || t.busyWith === it?.ref);
+const deviceChoice = val('device', tablets.find(tabletOk) ? `tablet:${tablets.find(tabletOk)!.id}` : 'desk');
+const stale_docs = (it?.docs ?? []).filter((d) => !d.inForce);
+const page1 = it?.target === 'new';
+const pageRows = [
+  ...(page1 ? [{ no: 1, title: 'Patient information', note: `About ${5} minutes · their details, health and the privacy notice`, change: null as string | null, tag: it?.page1DoneAt ? { words: 'Done', tone: 'success' as const } : null }] : []),
+  ...(it?.docs ?? []).map((d, i) => {
+    const t = d.template;
+    const facts = t ? renderFor(t, d).for.map((f) => f.text).join(' · ') : '';
+    const note = !t ? 'The words are not on this server.' : !t.attest ? 'ready to sign'
+      : d.attestation ? `ready to sign (confirmed ${timeWords(d.attestation.at)})` : `read now, signed after ${d.dentistName ?? 'the dentist'} explains`;
+    return { no: i + 1 + (page1 ? 1 : 0), title: t?.title.en ?? d.versionId, note: [facts, note].filter(Boolean).join(' · '), change: t?.attest || t?.clinicFields.length ? 'clinic' : 'consents', tag: it?.status !== 'preparing' ? partTag(d) : null, doc: d };
+  }),
+];
+
+// Out: the link's state, in words and a dot.
+const link = it?.link ?? null;
+const linkState = (() => {
+  if (!it || it.status !== 'out') return null;
+  if (!link) return { words: 'Stopped: nothing is on a device', tone: 'warn' as const };
+  const seen = link.lastSeenAt ?? link.claimedAt;
+  const ago = seen ? Math.round((now - new Date(seen).getTime()) / 1000) : null;
+  if (ago === null) return { words: 'Waiting to be opened', tone: 'info' as const };
+  if (ago > 20 * 60) return { words: 'Closed after 20 minutes idle: send it again', tone: 'warn' as const };
+  if (ago > 5 * 60) return { words: `Idle ${Math.round(ago / 60)} min`, tone: 'warn' as const };
+  return { words: ago < 60 ? `Active ${ago} s ago` : `Active ${Math.round(ago / 60)} min ago`, tone: 'success' as const };
+})();
+const where = link?.device === 'tablet' ? `on ${link.tabletName}` : link?.device === 'desk' ? 'on a device handed to them' : link?.device === 'phone' ? 'on their phone' : '';
+const ageClash = !!(it && it.page1Birth && it.deskMinor && ((it.deskMinor === 'no' && (age ?? 99) < 18) || (it.deskMinor === 'yes' && (age ?? 0) >= 18)));
+const questions = (it?.docs ?? []).filter((d) => d.page?.state === 'question' && !d.signing);
+const refusedDocs = (it?.docs ?? []).filter((d) => (d.page?.state === 'refused' || d.signing?.decision === 'refused') && d.code !== 'photos');
+
+// Add: the look-alikes; the strongest one teal when it is the same name and birth date, or the visit's own patient.
+const alike = 'alike' in data ? data.alike : [];
+const compare = 'compare' in data ? data.compare : {};
+const strong = alike.find((m) => m.visit || m.why.includes('name-birth')) ?? null;
+const sentName = it?.answers ? [it.answers.first_name, it.answers.middle_name, it.answers.last_name, it.answers.suffix].filter(Boolean).join(' ') : who;
+
+// Explain and confirm.
+const explainDoc = step === 'explain' ? (it?.docs.find((d) => d.id === (posted ? String(posted.get('doc')) : url.searchParams.get('doc'))) ?? null) : null;
+const mayExplain = 'mayExplain' in data ? data.mayExplain : {};
+const unreviewed = (t: Template) => !gates?.production && !reviewOf(t.version);
+const STEP_PILLS = [['consents', 'Who and which forms'], ['clinic', 'The clinic’s part'], ['check', 'Check'], ['out', 'Hand over']] as const;
+const stepIndex = STEP_PILLS.findIndex(([k]) => k === step);
+const rev = it?.rev ?? 0;
+const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' : step === 'explain' ? 'Explain and confirm' : step === 'done' ? 'Patient forms' : 'Add patient, step by step';
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug, name: clinic.name, area: data.area }} title={pageTitle} section="add-patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  <a href={`${base}/intake/`} class="rec-back ws-glass m-0! w-fit px-3!"><Icon name="chevron-left" />Patient forms in progress</a>
+  {stale && <Callout tone="alert" text={CSRF_MESSAGE} />}
+  {problems.length > 0 && (
+    <Callout tone="alert" focus class="focus:outline-none" data-ik-problems title={`Nothing was saved. ${problems.length === 1 ? 'One thing' : `${problems.length} things`} to fix:`} items={problems} />
+  )}
+
+  {!data.canEdit ? (
+    <Pane as="div" label="Not allowed"><Callout tone="alert" role="note" text="Your account cannot add patients at this branch. Ask the owner." /></Pane>
+  ) : !it ? (
+    <Pane as="div" label="Not here">
+      <Callout tone="warn" role="note" text="These forms are not here. They may have been added, dismissed or cleared after 24 hours." />
+      <p class="mt-3"><a href={`${base}/intake/`} class="ws-empty-go">Patient forms in progress <Icon name="arrow-right" size={16} /></a></p>
+    </Pane>
+  ) : (
+    <>
+    {/* Who it is for, and where it is. */}
+    <Pane as="section" label="Who these forms are for" pad="tight">
+      <div class="ik-who">
+        <Avatar name={who} />
+        <span class="ik-who-name">{who}</span>
+        <span class="ik-ref">{it.ref}</span>
+        {it.patient && <span class="ws-pill ws-tint-slate">{it.patient.chartNo}</span>}
+        {age !== null && <span class="ws-pill ws-tint-slate">{age} years old</span>}
+        {it.target === 'new' && <span class="ws-pill ws-tint-blue">New patient</span>}
+        {it.appointment && <span class="ws-pill ws-tint-slate">Visit {new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(new Date(it.appointment.startsAt))}</span>}
+      </div>
+      {STEP_PILLS.some(([k]) => k === step) && (
+        <ol class="imp-steps mt-3" aria-label="Steps">
+          {STEP_PILLS.map(([k, w], i) => (
+            <>
+              {i > 0 && <li class="imp-step-sep" aria-hidden="true"></li>}
+              <li class="imp-step" aria-current={k === step ? 'step' : undefined} data-done={i < stepIndex ? '' : undefined}><span class="imp-step-no">{i + 1}</span>{w}</li>
+            </>
+          ))}
+        </ol>
+      )}
+    </Pane>
+
+    {/* ------------------------------------------------------------ 1 Who and which forms */}
+    {step === 'consents' && (
+      <form method="post" action={here} class="grid gap-4" data-ik-consents>
+        <Csrf />
+        <input type="hidden" name="rev" value={rev} />
+        <input type="hidden" name="step" value="consents" />
+        {it.target === 'new' && (
+          <Pane as="section" label="About the patient">
+            <Head icon="user" title="About the patient" />
+            <div class="grid gap-4">
+              <label class="field max-w-md">
+                <span class="meta">First name to show under the code (optional)</span>
+                <input name="label" value={val('label', it.label ?? '')} maxlength={LABEL_MAX} autocomplete="off" autocapitalize="words" />
+                <span class="ik-help">So the desk knows whose forms these are. They type their full name themselves.</span>
+              </label>
+              <fieldset class="ik-q">
+                <legend>Under 18?</legend>
+                <div class="ik-q-row">
+                  {[['yes', 'Yes'], ['no', 'No'], ['unsure', 'Not sure']].map(([v, w]) => (
+                    <label class="chip-radio"><input type="radio" name="desk_minor" value={v} checked={deskMinor === v} required data-ik-minor /><span>{w}</span></label>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset class="ik-q" data-ik-came hidden={deskMinor === 'no' ? true : undefined}>
+                <legend>Who came with them?</legend>
+                <div class="ik-q-row">
+                  {CAME_WITH.map((c) => (
+                    <label class="chip-radio"><input type="radio" name="came_with" value={c.value} checked={cameWith === c.value} /><span>{c.label}</span></label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+          </Pane>
+        )}
+        <Pane as="section" label="Which forms">
+          <Head icon="form" title="Which forms" meta={it.target === 'new' ? 'Page 1 and the consent to treatment always come first' : undefined} />
+          {parentsOnly && <Callout tone="info" role="note" class="mb-3" text="Under 18: a parent or legal guardian signs every form." />}
+          {nobodyToAgree && <Callout tone="warn" role="note" class="mb-3" text="Only a parent or legal guardian can agree. Page 1 can be filled in; the privacy consent and the forms wait for them." />}
+          {templates.length === 0 && <Callout tone="info" role="note" text="No consent forms are open on this server yet." />}
+          {GROUPS.map((g) => {
+            const ts = templates.filter((t) => t.group === g.key);
+            if (!ts.length && !(g.key === 'general' && page1)) return null;
+            return (
+              <div class="ik-group">
+                <p class="ik-group-head">{g.title}</p>
+                <ul class="ik-forms">
+                  {g.key === 'general' && page1 && (
+                    <li class="ik-form">
+                      <span class="ik-form-main">
+                        <span class="ik-form-always"><Icon name="check" size={18} /></span>
+                        <span class="ik-form-words">
+                          <span class="ik-form-title">Patient information</span>
+                          <span class="ik-form-why">Their details, health history and the privacy notice · about 5 min</span>
+                        </span>
+                      </span>
+                    </li>
+                  )}
+                  {ts.map((t) => {
+                    const blockedMinor = t.minors === 'not_under_18' && parentsOnly;
+                    const s = sug?.byCode[t.code] ?? [];
+                    const oftenWith = sug?.often[t.code];
+                    const signedGeneral = t.code === 'general' ? sug?.generalSigned : null;
+                    return (
+                      <li class="ik-form">
+                        <label class="ik-form-main">
+                          <input type="checkbox" class="ik-form-check" name="form" value={t.code} checked={ticked.has(t.code) && !blockedMinor} disabled={blockedMinor} data-minutes={t.minutes} data-ik-form={t.code} data-adults-only={t.minors === 'not_under_18' ? '' : undefined} />
+                          <span class="ik-form-words">
+                            <span class="ik-form-title">{t.title.en}</span>
+                            {blockedMinor && <span class="ik-form-why">Not for under 18: the product label says so.</span>}
+                            {signedGeneral && <span class="ik-form-why">Signed {dateText(new Date(signedGeneral).toISOString().slice(0, 10))}. Tick it to sign again.</span>}
+                            {s.map((x) => <span class="ik-form-why">{x.why}</span>)}
+                            {(oftenWith || unreviewed(t) || t.code === 'photos') && (
+                              <span class="ik-form-tags">
+                                {oftenWith && <span class="ws-pill ws-tint-blue">Often needed with {templates.find((x) => x.code === oftenWith)?.title.en.toLocaleLowerCase('en')}</span>}
+                                {t.code === 'photos' && <span class="ws-pill ws-tint-slate">Optional: saying no never changes care</span>}
+                                {unreviewed(t) && <span class="ws-pill ws-tint-amber">Not reviewed</span>}
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                        <span class="ik-form-side">
+                          <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open={`ik-pv-${t.code}`}>Preview</button>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+          {gates?.production && <p class="ik-help mt-3">More forms open here as a dentist and the clinic’s lawyer review them.</p>}
+          <div class="ik-sep ik-running" aria-live="polite" data-ik-running>
+            <Icon name="clock" /><span data-ik-running-words>{running.parts === 1 ? '1 part' : `${running.parts} parts`} · about {running.minutes} minutes</span>
+          </div>
+          <div class="ik-actions mt-4">
+            <button type="submit" class="ws-btn ws-btn-primary">Continue <Icon name="arrow-right" /></button>
+            <button type="submit" name="then" value="handover" class="ws-btn ws-btn-quiet" data-ik-handover-now>Hand over now</button>
+            <input type="hidden" name="intent" value="consents" />
+          </div>
+          <p class="ik-help mt-2">Hand over now: the clinic’s part can be filled in while they read and fill in page 1.</p>
+        </Pane>
+      </form>
+    )}
+
+    {/* ------------------------------------------------------------ 2 The clinic's part */}
+    {step === 'clinic' && (
+      <form method="post" action={here} class="grid gap-4" data-ik-clinic>
+        <Csrf />
+        <input type="hidden" name="rev" value={rev} />
+        <input type="hidden" name="step" value="clinic" />
+        <input type="hidden" name="intent" value="clinic" />
+        {procedures.length > 0 && (
+          <Pane as="section" label="Who explains">
+            <Head icon="user" title="Who explains them" />
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="field">
+                <span class="meta">The dentist who explains</span>
+                <select name="dentist" required>
+                  {dentists.map((d) => <option value={d.id} selected={chosenDentist === d.id}>{d.name}{d.prc ? '' : ' (no PRC licence on file)'}</option>)}
+                </select>
+                {dentists.some((d) => !d.prc) && <span class="ik-help">A dentist needs a PRC licence on file to be named: <a href={`/c/${slug}/settings/#people`} class="underline">Clinic settings → People</a>.</span>}
+              </label>
+              <fieldset class="ik-q">
+                <legend>The language planned</legend>
+                <div class="ik-q-row">
+                  {[['en', 'English'], ['fil', 'Filipino'], ['other', 'Another']].map(([v, w]) => (
+                    <label class="chip-radio"><input type="radio" name="explained_in" value={v} checked={langChosen === v} /><span>{w}</span></label>
+                  ))}
+                </div>
+                <label class="field"><span class="meta">Another language</span><input name="explained_other" value={langOther} maxlength="40" autocomplete="off" /></label>
+                <span class="ik-help">The dentist records the language actually used when they explain.</span>
+              </fieldset>
+            </div>
+            {!face.address && <Callout tone="warn" role="note" class="mt-3" text="The clinic’s address is missing: the forms print without it. Add it in Clinic settings → Clinic profile." />}
+          </Pane>
+        )}
+        <Pane as="section" label="The forms" class="ik-cq">
+          <Head icon="form" title="The clinic’s part of each form" meta={openDocs.length ? undefined : 'Nothing to fill in'} />
+          {it.docs.length === 0 && <p class="ik-help">No forms chosen. <a class="underline" href={`${here}?step=consents`}>Choose the forms</a>.</p>}
+          {it.docs.map((d) => {
+            const t = d.template;
+            if (!t) return null;
+            const open = openDocs.includes(d);
+            const raw = posted && postedStep === 'clinic' ? rawFromForm(posted, `d.${d.id}.`) : rawFromFields(t, d.fields);
+            const laterChosen = t.clinicFields.some((f) => f.kind === 'money' && (raw[`${f.name}_kind`] === 'later'));
+            return (
+              <div class="ik-card">
+                <div class="ik-card-head">
+                  <span class="ik-card-title">{t.title.en}</span>
+                  <span class="ik-actions">
+                    {open && t.attest && data.mayExplain?.[d.id] && <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}?step=explain&doc=${d.id}`}>Explain and confirm</a>}
+                    <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open={`ik-pv-${t.code}`}>See it as the patient will</button>
+                  </span>
+                </div>
+                {!open ? (
+                  <p class="ik-frozen"><Icon name="check" size={18} />{d.attestation ? `Confirmed by ${d.attestation.dentistName} at ${timeWords(d.attestation.at)}: the details are fixed.` : 'Signed or printed: the details are fixed.'}</p>
+                ) : t.clinicFields.length === 0 ? (
+                  <p class="ik-help">Nothing for the clinic to fill in.</p>
+                ) : (
+                  <ClinicFields t={t} prefix={`d.${d.id}.`} raw={raw} dentistName={dentistNameOf(chosenDentist) ?? d.dentistName} minor={minor} chips={data.chips?.[d.id] ?? []} />
+                )}
+                {open && laterChosen && <Callout tone="warn" role="note" class="mt-3" text="Estimate left to the dentist: the form says they tell the patient the cost before starting." />}
+              </div>
+            );
+          })}
+          <div class="ik-actions mt-4">
+            <button type="submit" class="ws-btn ws-btn-primary">Continue <Icon name="arrow-right" /></button>
+            <a class="ws-btn ws-btn-quiet" href={`${here}?step=consents`}>Back to the forms</a>
+          </div>
+        </Pane>
+      </form>
+    )}
+
+    {/* ------------------------------------------------------------ 3 Check */}
+    {step === 'check' && (
+      <>
+      {url.searchParams.get('explained') === '1' && <Callout tone="success" text="Confirmed. The form can be signed now." />}
+      {url.searchParams.get('stopped') === '1' && <Callout tone="success" text="Stopped. What they saved is kept; send the forms again when ready." />}
+      {url.searchParams.get('renewed') === '1' && <Callout tone="success" text="Renewed: the new words are in the forms. The dentist explains and confirms them again." />}
+      {stale_docs.length > 0 && (
+        <Callout tone="warn" role="note" title={`The clinic has newer words for ${stale_docs.map((d) => d.template?.title.en ?? d.versionId).join(', ')}.`}>
+          <form method="post" action={here} class="mt-2">
+            <Csrf /><input type="hidden" name="rev" value={rev} /><input type="hidden" name="intent" value="renew" /><input type="hidden" name="step" value="check" />
+            <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm">Renew the form</button>
+          </form>
+        </Callout>
+      )}
+      <Pane as="section" label="The pages in order">
+        <Head icon="form" title="The pages in order" meta={`${minutesFor(it.docs.map((d) => d.code), templates, page1).minutes} minutes or so`} />
+        <ol class="ik-pages">
+          {pageRows.map((r) => (
+            <li class="ik-page">
+              <span class="ik-page-no" aria-hidden="true">{r.no}</span>
+              <span class="ik-page-words">
+                <span class="ik-page-title"><span class="sr-only">Page {r.no}: </span>{r.title}</span>
+                <span class="ik-page-note">{r.note}</span>
+              </span>
+              {r.tag && <span class="ik-tag" data-tone={r.tag.tone}>{r.tag.words}</span>}
+              {'doc' in r && r.doc?.template?.attest && !r.doc.attestation && data.mayExplain?.[r.doc.id] && <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}?step=explain&doc=${r.doc.id}`}>Explain and confirm</a>}
+              {r.change && it.status === 'preparing' && <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}?step=${r.change}`}>Change</a>}
+            </li>
+          ))}
+        </ol>
+        {it.docs.length === 0 && !page1 && <p class="ik-help">No forms chosen. <a class="underline" href={`${here}?step=consents`}>Choose the forms</a>.</p>}
+      </Pane>
+
+      {handoverConfirm ? (
+        <Pane as="section" label="Hand this device over">
+          <Head icon="tablet" title={`Hand this device to ${firstName}`} />
+          <form method="post" action="/auth/park/" class="grid gap-3" data-ik-park>
+            <Csrf />
+            <input type="hidden" name="clinic" value={slug} />
+            <input type="hidden" name="intake" value={it.id} />
+            <input type="hidden" name="rev" value={rev} />
+            <p class="ik-lede">This signs you out here. This device opens the clinic’s pages again only after you sign in.</p>
+            <div class="ik-actions">
+              <button type="submit" class="ws-btn ws-btn-primary"><Glyph name="tablet" />Hand this device to {firstName}</button>
+              <a class="ws-btn ws-btn-quiet" href={`${here}?step=check`}>Choose another device</a>
+            </div>
+          </form>
+        </Pane>
+      ) : (
+        <Pane as="section" label="Where they fill it in">
+          <Head icon="tablet" title="Where they fill it in" />
+          <form method="post" action={here} class="grid gap-4" data-ik-device-form data-park="/auth/park/">
+            <Csrf />
+            <input type="hidden" name="rev" value={rev} />
+            <input type="hidden" name="intent" value="golive" />
+            <input type="hidden" name="step" value="check" />
+            <input type="hidden" name="clinic" value={slug} />
+            <input type="hidden" name="intake" value={it.id} />
+            <fieldset class="ik-ways">
+              <legend class="sr-only">Where they fill it in</legend>
+              <label class="ik-way">
+                <input type="radio" name="device" value="phone" disabled={!gates?.phoneOpen} checked={deviceChoice === 'phone'} data-ik-device data-label="Show the QR code" />
+                <span class="ik-way-box">
+                  <span class="ik-way-icon"><Glyph name="phone" /></span>
+                  <span class="ik-way-words"><span class="ik-way-title">Their phone</span><span class="ik-way-line">{gates?.phoneOpen ? 'A QR code only they can use.' : 'Not open on this server yet.'}</span></span>
+                </span>
+              </label>
+              {tablets.map((t) => (
+                <label class="ik-way">
+                  <input type="radio" name="device" value={`tablet:${t.id}`} disabled={!tabletOk(t)} checked={deviceChoice === `tablet:${t.id}`} data-ik-device data-label={`Send to ${t.name}`} />
+                  <span class="ik-way-box">
+                    <span class="ik-way-icon"><Glyph name="tablet" /></span>
+                    <span class="ik-way-words">
+                      <span class="ik-way-title">{t.name}</span>
+                      <span class="ik-way-line">{t.busyWith && t.busyWith !== it.ref ? `Showing other forms (${t.busyWith})` : tabletOk(t) ? `Ready · ${seenWords(t.lastSeenAt)}` : `Not ready: ${seenWords(t.lastSeenAt)}. Open it on “Ready for the next patient”.`}</span>
+                    </span>
+                  </span>
+                </label>
+              ))}
+              <label class="ik-way">
+                <input type="radio" name="device" value="desk" checked={deviceChoice === 'desk'} data-ik-device data-label={`Hand this device to ${firstName}`} data-park />
+                <span class="ik-way-box">
+                  <span class="ik-way-icon"><Glyph name="keyboard" /></span>
+                  <span class="ik-way-words"><span class="ik-way-title">This device</span><span class="ik-way-line">Hand it to them. You sign in again to take it back.</span></span>
+                </span>
+              </label>
+            </fieldset>
+            {tablets.length === 0 && can(clinic, 'settings.edit') && <p class="ik-help">No clinic tablets yet. <a class="underline" href={`/c/${slug}/settings/#tablets`}>Make a device a clinic tablet</a> in Clinic settings.</p>}
+            <p class="ik-help" data-ik-park-line hidden={deviceChoice !== 'desk' ? true : undefined}>This device opens the clinic’s pages again only after you sign in.</p>
+            <div class="ik-actions">
+              <button type="submit" class="ws-btn ws-btn-primary" data-ik-go>{deviceChoice === 'desk' ? `Hand this device to ${firstName}` : deviceChoice.startsWith('tablet:') ? `Send to ${tablets.find((t) => `tablet:${t.id}` === deviceChoice)?.name ?? 'the tablet'}` : 'Hand over'}</button>
+              {it.status === 'preparing' && <a class="ws-btn ws-btn-quiet" href={`${here}?step=${procedures.length ? 'clinic' : 'consents'}`}>Back</a>}
+              {it.status === 'out' && <a class="ws-btn ws-btn-quiet" href={`${here}?step=out`}>Back to where they are</a>}
+            </div>
+          </form>
+        </Pane>
+      )}
+      <Pane as="section" label="Stop these forms" pad="tight">
+        <div class="ik-actions">
+          <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="ik-cancel"><Icon name="close" size={16} />Stop and throw these forms away</button>
+        </div>
+      </Pane>
+      </>
+    )}
+
+    {/* ------------------------------------------------------------ 4 Hand over: where they are */}
+    {step === 'out' && (
+      <>
+      <Pane as="section" label="Where the forms are">
+        <Head icon="tablet" title={`${who} · ${where || 'not on a device'}`} />
+        {linkState && <p class="ik-actions"><span class="ik-tag" data-tone={linkState.tone}>{linkState.words}</span><a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}?step=out`}><Glyph name="renew" size={16} />Refresh</a></p>}
+        <p class="sr-only" aria-live="polite" data-ik-live></p>
+        <ol class="ik-pages mt-3">
+          {page1 && <li class="ik-page"><span class="ik-page-no" aria-hidden="true">1</span><span class="ik-page-words"><span class="ik-page-title">Patient information</span></span>
+            <span class="ik-tag" data-tone={it.page1DoneAt ? 'success' : it.answers ? 'info' : 'neutral'}>{it.page1DoneAt ? (it.privacyAs === 'none' ? 'Done · privacy not agreed yet' : 'Done') : it.answers ? 'Filling in' : 'Not started'}</span></li>}
+          {it.docs.map((d, i) => { const tag = partTag(d); return (
+            <li class="ik-page"><span class="ik-page-no" aria-hidden="true">{i + 1 + (page1 ? 1 : 0)}</span>
+              <span class="ik-page-words"><span class="ik-page-title">{d.template?.title.en ?? d.versionId}</span>
+                {d.template?.attest && !d.attestation && <span class="ik-page-note">Signed after {d.dentistName ?? 'the dentist'} explains</span>}</span>
+              <span class="ik-tag" data-tone={tag.tone}>{tag.words}</span>
+              {d.template?.attest && !d.attestation && data.mayExplain?.[d.id] && <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}?step=explain&doc=${d.id}`}>Explain and confirm</a>}
+            </li>); })}
+        </ol>
+      </Pane>
+      {(ageClash || questions.length > 0 || refusedDocs.length > 0) && (
+        <Pane as="section" label="Needs the desk">
+          <Head icon="alert" title="Needs the desk" />
+          <div class="grid gap-3">
+            {ageClash && (
+              <Callout tone="warn" role="note" title={`Page 1 says born ${it.page1Birth!.slice(0, 4)}; you said ${it.deskMinor === 'no' ? 'not under 18' : 'under 18'}.`} text="They cannot go on until one of you changes it. Check with them.">
+                <form method="post" action={here} class="mt-2">
+                  <Csrf /><input type="hidden" name="rev" value={rev} /><input type="hidden" name="intent" value="desk" /><input type="hidden" name="step" value="out" />
+                  <input type="hidden" name="desk_minor" value={it.deskMinor === 'no' ? 'yes' : 'no'} />
+                  <input type="hidden" name="came_with" value={it.cameWith ?? (it.deskMinor === 'no' ? 'parent' : '')} />
+                  <input type="hidden" name="label" value={it.label ?? ''} />
+                  <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm">Change my answer to “{it.deskMinor === 'no' ? 'under 18' : 'not under 18'}”</button>
+                </form>
+              </Callout>
+            )}
+            {questions.map((d) => <Callout tone="warn" role="note" text={`${firstName} has a question about ${d.template?.title.en ?? 'a form'}.`} />)}
+            {refusedDocs.map((d) => <Callout tone="alert" role="note" text={`Did not agree to ${d.template?.title.en ?? 'a form'}: the dentist should talk to them.`} />)}
+          </div>
+        </Pane>
+      )}
+      <Pane as="section" label="Change where they are" pad="tight">
+        <div class="ik-actions">
+          <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}?step=check`}><Glyph name="tablet" size={16} />Use another device</a>
+          {procedures.length > 0 && <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}?step=clinic`}><Icon name="pencil" size={16} />Change the clinic’s part</a>}
+          <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="ik-stop"><Icon name="close" size={16} />Stop</button>
+        </div>
+      </Pane>
+      </>
+    )}
+
+    {/* ------------------------------------------------------------ Add to the records */}
+    {step === 'add' && (
+      <>
+      <Pane as="section" label="Sent">
+        <Head icon="form" title={`${sentName} sent everything${it.sentAt ? ` at ${timeWords(it.sentAt)}` : ''}`} meta={it.answers?.birth_date ? `Born ${dateText(String(it.answers.birth_date))}` : undefined} />
+        <ol class="ik-pages">
+          {page1 && <li class="ik-page"><span class="ik-page-no" aria-hidden="true">1</span><span class="ik-page-words"><span class="ik-page-title">Patient information</span></span>
+            <span class="ik-tag" data-tone={it.privacyAs === 'none' ? 'warn' : 'success'}>{it.privacyAs === 'none' ? 'Done · privacy not agreed' : 'Done'}</span></li>}
+          {it.docs.map((d, i) => { const tag = partTag(d); return (
+            <li class="ik-page"><span class="ik-page-no" aria-hidden="true">{i + 1 + (page1 ? 1 : 0)}</span><span class="ik-page-words"><span class="ik-page-title">{d.template?.title.en ?? d.versionId}</span></span><span class="ik-tag" data-tone={tag.tone}>{tag.words}</span></li>); })}
+        </ol>
+        {it.privacyAs === 'none' && <Callout tone="warn" role="note" class="mt-3" text="Nobody who could agree to the privacy notice was there. Record the desk consent on their record when a parent or guardian comes." />}
+      </Pane>
+      <Pane as="section" label="Add to the records">
+        <Head icon="patients" title={alike.length ? 'Is this someone on file?' : 'Add to the records'} />
+        {alike.length > 0 ? (
+          <>
+          <p class="ik-lede">Families often share a mobile. Check each before adding them as new.</p>
+          <ul class="ik-list mt-2">
+            {alike.map((m) => (
+              <li class="ik-alike">
+                <span class="ik-alike-main">
+                  <Avatar name={m.name} />
+                  <span class="grid min-w-0">
+                    <span class="font-semibold">{m.name}</span>
+                    <span class="ik-row-meta">{[m.chartNo, m.birth ? `born ${dateText(m.birth)}` : null, m.phone].filter(Boolean).join(' · ')}</span>
+                    <span class="ik-row-meta">{m.visit ? 'The patient of the visit these forms were started from' : m.why.includes('name-birth') && m.why.includes('mobile') ? 'Same name, birth date and mobile' : m.why.includes('name-birth') ? 'Same name and birth date' : 'Same mobile (often a relative)'}</span>
+                  </span>
+                </span>
+                <button type="button" class:list={['ws-btn ws-btn-sm', m.id === strong?.id ? 'ws-btn-primary' : 'ws-btn-quiet']} data-ws-open={`ik-add-${m.id}`}>Add to {m.name.split(' ')[0]}’s record</button>
+              </li>
+            ))}
+          </ul>
+          </>
+        ) : <p class="ik-lede">Nobody on file looks like them.</p>}
+        <form method="post" action={here} class="ik-sep ik-actions">
+          <Csrf /><input type="hidden" name="rev" value={rev} /><input type="hidden" name="intent" value="add_new" /><input type="hidden" name="step" value="add" />
+          {alike.map((m) => <input type="hidden" name="seen" value={m.id} />)}
+          <button type="submit" class:list={['ws-btn', strong ? 'ws-btn-quiet' : 'ws-btn-primary']}><Icon name="plus" />Add as a new patient</button>
+          <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="ik-dismiss">Dismiss</button>
+        </form>
+      </Pane>
+      </>
+    )}
+
+    {/* ------------------------------------------------------------ Done */}
+    {step === 'done' && (
+      <Pane as="section" label="These forms">
+        <Head icon="form" title={it.status === 'added' ? `Added${it.decidedByName ? ` by ${it.decidedByName}` : ''}${it.decidedAt ? ` at ${timeWords(it.decidedAt)}` : ''}` : 'Stopped'} />
+        {it.status === 'added' && it.patient ? (
+          <p><a class="ws-empty-go" href={`${base}/${it.patient.id}/#consent`}>{it.patient.name}’s record <Icon name="arrow-right" size={16} /></a></p>
+        ) : <p class="ik-lede">{it.cancelReason ?? 'Nothing from these forms went on a record.'}</p>}
+      </Pane>
+    )}
+
+    {/* ------------------------------------------------------------ Explain and confirm */}
+    {step === 'explain' && (
+      !explainDoc || !explainDoc.template?.attest ? (
+        <Pane as="div" label="Not found"><Callout tone="warn" role="note" text="That form is not in these forms, or is not explained by a dentist." /></Pane>
+      ) : explainDoc.attestation ? (
+        <Pane as="div" label="Confirmed"><Callout tone="success" text={`Confirmed by ${explainDoc.attestation.dentistName} at ${timeWords(explainDoc.attestation.at)}.`} /><p class="mt-3"><a class="ws-empty-go" href={`${here}?step=check`}>Back to the forms <Icon name="arrow-right" size={16} /></a></p></Pane>
+      ) : !mayExplain[explainDoc.id] ? (
+        <Pane as="div" label="Only the named dentist">
+          <Callout tone="info" role="note" text={`Only ${explainDoc.dentistName ?? 'the dentist named on the form'} can confirm this. To change who explains, remove the form and prepare it again.`} />
+        </Pane>
+      ) : (
+        <ExplainForm action={here} hidden={{ step: 'explain' }} doc={explainDoc} t={explainDoc.template} rendered={renderFor(explainDoc.template, explainDoc)}
+          raw={posted && postedStep === 'explain' ? rawFromForm(posted, `d.${explainDoc.id}.`) : rawFromFields(explainDoc.template, explainDoc.fields)}
+          posted={postedStep === 'explain' ? posted : null} firstName={firstName} age={age} minor={minor} forLine={bornLine(birth)} planned={plannedLanguage(explainDoc)}
+          chips={data.chips?.[explainDoc.id] ?? []} cancelHref={`${here}?step=${it.status === 'out' ? 'out' : 'check'}`} />
+      )
+    )}
+
+    {/* Previews of every form, as the patient will see it. */}
+    {(step === 'consents' || step === 'clinic') && templates.map((t) => {
+      const d = docsByCode.get(t.code) ?? null;
+      return (
+        <SidePanel id={`ik-pv-${t.code}`} title={t.title.en} meta="As the patient will see it">
+          <div class="ik-preview"><ConsentDocument mode="preview" doc={renderFor(t, d)} version={t.version} ref={d?.ref} forLine={bornLine(birth)} plannedLang={d ? plannedLanguage(d) : null} /></div>
+        </SidePanel>
+      );
+    })}
+    {step === 'out' && (
+      <SidePanel id="ik-stop" title="Stop these forms?" meta={it.ref}>
+        <p class="ik-lede">The device shows “These forms were stopped”. What they saved is kept, and you can send the forms again.</p>
+        <form method="post" action={here} class="ik-actions mt-4">
+          <Csrf /><input type="hidden" name="rev" value={rev} /><input type="hidden" name="intent" value="stop" /><input type="hidden" name="step" value="out" />
+          <button type="submit" class="ws-btn ws-btn-primary">Stop</button>
+          <button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Keep going</button>
+        </form>
+      </SidePanel>
+    )}
+    {step === 'check' && (
+      <SidePanel id="ik-cancel" title="Stop and throw these forms away?" meta={it.ref}>
+        <p class="ik-lede">Nothing from them goes on a record. Forms nobody signed are removed.</p>
+        <form method="post" action={here} class="ik-actions mt-4">
+          <Csrf /><input type="hidden" name="rev" value={rev} /><input type="hidden" name="intent" value="cancel" /><input type="hidden" name="step" value="check" />
+          <button type="submit" class="ws-btn ws-btn-primary">Throw them away</button>
+          <button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Keep them</button>
+        </form>
+      </SidePanel>
+    )}
+    {step === 'add' && (
+      <>
+      <SidePanel id="ik-dismiss" title="Dismiss these forms?" meta={it.ref} open={postedStep === 'add' && posted?.get('intent') === 'dismiss'}>
+        <form method="post" action={here} class="grid gap-4">
+          <Csrf /><input type="hidden" name="rev" value={rev} /><input type="hidden" name="intent" value="dismiss" /><input type="hidden" name="step" value="add" />
+          <fieldset class="ik-q">
+            <legend>Why?</legend>
+            <div class="ik-q-row">{DISMISS_WHY.map((w) => <label class="chip-radio"><input type="radio" name="why" value={w.value} checked={val('why') === w.value} /><span>{w.label}</span></label>)}</div>
+          </fieldset>
+          <label class="field"><span class="meta">A few words (optional)</span><input name="note" value={val('note')} maxlength={DISMISS_NOTE_MAX} autocomplete="off" /></label>
+          <p class="ik-help">Dismissed forms go at the next clean-up. Nothing goes on a record.</p>
+          <div class="ik-actions"><button type="submit" class="ws-btn ws-btn-primary">Dismiss</button><button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Keep them</button></div>
+        </form>
+      </SidePanel>
+      {alike.map((m) => {
+        const c = compare[m.id];
+        return (
+          <SidePanel id={`ik-add-${m.id}`} title={`Add to ${m.name}’s record?`} meta={m.chartNo} open={postedStep === 'add' && posted?.get('intent') === 'add_to' && posted?.get('patient') === m.id}>
+            <form method="post" action={here} class="grid gap-4">
+              <Csrf /><input type="hidden" name="rev" value={rev} /><input type="hidden" name="intent" value="add_to" /><input type="hidden" name="step" value="add" />
+              <input type="hidden" name="patient" value={m.id} />
+              <p class="ik-lede">Only details their record does not have are filled in. A name is never changed. Their health answers become a new version, and the signed forms go on the record.</p>
+              {c && c.fills.length > 0 && <p class="ik-help"><strong>Filled in:</strong> {c.fills.join(', ')}.</p>}
+              {c && c.proposed.length > 0 && (
+                <fieldset class="ik-q">
+                  <legend>Also take (tick to use)</legend>
+                  {c.proposed.map((p) => <label class="check"><input type="checkbox" name="use" value={p.field} /><span>{p.label}: {p.onForm}</span></label>)}
+                </fieldset>
+              )}
+              {c && c.differs.length > 0 && (
+                <div>
+                  <p class="ik-help"><strong>The forms say otherwise (the record keeps its own):</strong></p>
+                  <ul class="ik-kept">{c.differs.map((k) => <li><span class="ik-row-meta">{k.label}:</span> <span>on file {k.onFile}</span> · <span>on the forms {k.onForm}</span></li>)}</ul>
+                </div>
+              )}
+              <div class="ik-actions"><button type="submit" class="ws-btn ws-btn-primary">Add to {m.name.split(' ')[0]}’s record</button><button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Not them</button></div>
+            </form>
+          </SidePanel>
+        );
+      })}
+      </>
+    )}
+    </>
+  )}
+</ClinicLayout>
+
+<script>
+  // A refused save: bring it into view.
+  document.querySelector<HTMLElement>('[data-ik-problems]')?.focus();
+
+  // Step 1: "Who came with them?" only when the answer to Under 18 is not No; the running line follows the ticks.
+  const minorRadios = document.querySelectorAll<HTMLInputElement>('[data-ik-minor]');
+  const came = document.querySelector<HTMLElement>('[data-ik-came]');
+  // Under 18 (Yes): whitening is not for them, and it goes unticked at once; the server refuses it anyway.
+  minorRadios.forEach((r) => r.addEventListener('change', () => {
+    if (came) came.hidden = r.checked && r.value === 'no';
+    document.querySelectorAll<HTMLInputElement>('[data-adults-only]').forEach((b) => { b.disabled = r.checked && r.value === 'yes'; if (b.disabled) b.checked = false; });
+    recount();
+  }));
+  const running = document.querySelector<HTMLElement>('[data-ik-running-words]');
+  const boxes = document.querySelectorAll<HTMLInputElement>('[data-ik-form]');
+  const page1 = document.querySelector('[data-ik-consents] .ik-form-always') !== null;
+  function recount() {
+    let parts = page1 ? 1 : 0, minutes = page1 ? 5 : 0;
+    boxes.forEach((b) => { if (b.checked) { parts++; minutes += Number(b.dataset.minutes) || 0; } });
+    minutes += 1;
+    if (running) running.textContent = `${parts === 1 ? '1 part' : `${parts} parts`} · about ${minutes} minutes`;
+  }
+  boxes.forEach((b) => b.addEventListener('change', recount));
+
+  // Step 2: a fee-guide chip fills the amount.
+  document.querySelectorAll<HTMLButtonElement>('[data-ik-chip]').forEach((chip) => chip.addEventListener('click', () => {
+    const box = chip.closest<HTMLElement>('[data-ik-money]');
+    if (!box) return;
+    const kind = box.querySelector<HTMLInputElement>(`[data-ik-money-kind][value="${chip.dataset.kind}"]`);
+    if (kind) kind.checked = true;
+    const from = box.querySelector<HTMLInputElement>('[data-ik-money-from]'), to = box.querySelector<HTMLInputElement>('[data-ik-money-to]');
+    if (from) from.value = Number(chip.dataset.from).toLocaleString('en-PH');
+    if (to) to.value = chip.dataset.to ? Number(chip.dataset.to).toLocaleString('en-PH') : '';
+  }));
+
+  // Check: the teal button follows the device; this device posts to /auth/park/ (it signs the desk out).
+  const deviceForm = document.querySelector<HTMLFormElement>('[data-ik-device-form]');
+  if (deviceForm) {
+    const go = deviceForm.querySelector<HTMLButtonElement>('[data-ik-go]');
+    const line = deviceForm.querySelector<HTMLElement>('[data-ik-park-line]');
+    const own = deviceForm.getAttribute('action') ?? '';
+    const sync = () => {
+      const on = deviceForm.querySelector<HTMLInputElement>('[data-ik-device]:checked');
+      if (go && on?.dataset.label) go.textContent = on.dataset.label;
+      const park = !!on && on.hasAttribute('data-park');
+      deviceForm.action = park ? (deviceForm.dataset.park ?? own) : own;
+      if (line) line.hidden = !park;
+    };
+    deviceForm.addEventListener('change', sync);
+    sync();
+  }
+</script>
