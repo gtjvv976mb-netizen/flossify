@@ -51,6 +51,13 @@ export const LIMITS = {
   // `miss` is forms links that do not exist, per address: past it, links that do not exist wait
   // (load, not secrecy — a key is ~49 bits), while a real poster's link still opens.
   forms: { ip: [40, 60 * 60], phone: [8, 24 * 60 * 60], key: [300, 24 * 60 * 60], miss: [200, 60 * 60] },
+  // The intake (039: src/lib/intake.ts, intake-public.ts). `make`: links a staff member makes
+  // (intake:m:<staff>); `link`: posts and pings on one intake (intake:l:<intake>); `ip`: public posts per
+  // clinic and address (intake:ip:<clinic>:<ipBucket>; per clinic, because a carrier's CGNAT address
+  // carries many clinics' patients; pings are not counted); `poll`: the desk's live panel
+  // (intake:poll:<staff>); `tablet`: a clinic tablet's waiting screen (intake:t:<tablet secret hash>).
+  // Unknown links count forms:miss:<ipBucket>, as the forms' do; a real, live link is never refused by it.
+  intake: { make: [60, 60 * 60], link: [900, 60 * 60], ip: [600, 60 * 60], poll: [120, 60], tablet: [1200, 60 * 60] },
 } as const satisfies Record<string, Record<string, readonly [number, number]>>;
 
 /** The caller's address. Behind a proxy that sets X-Forwarded-For, set TRUST_PROXY=1;

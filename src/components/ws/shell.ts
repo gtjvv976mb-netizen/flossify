@@ -515,3 +515,36 @@ document.addEventListener('keydown', (e) => {
 });
 
 export {};
+
+// --- a device handed to a patient -------------------------------------------
+// When this device is handed to a patient (/auth/park/, the intake), the desk is signed out and the
+// patient's page says so on the 'flossify-offline' channel ({ parked: true }). Every workspace tab
+// still open covers itself at once: nothing of a record stays on screen, and every link and API
+// answers as signed out anyway. Only a full sign-in (/auth/unlock/) takes the device back.
+function coverForPatient() {
+  if (document.querySelector('[data-ws-parked]')) return;
+  for (const child of [...document.body.children]) (child as HTMLElement).inert = true;
+  const veil = el('div');
+  veil.setAttribute('data-ws-parked', '');
+  veil.setAttribute('role', 'alertdialog');
+  veil.setAttribute('aria-modal', 'true');
+  veil.setAttribute('aria-labelledby', 'ws-parked-title');
+  Object.assign(veil.style, { position: 'fixed', inset: '0', zIndex: '1000', display: 'grid', placeItems: 'center', padding: '1rem', background: 'var(--c-bg)' });
+  const card = el('div');
+  Object.assign(card.style, { maxWidth: '26rem', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--ws-hair)', background: 'var(--c-surface)', color: 'var(--c-ink)' });
+  const h = el('h2', undefined, 'This device was handed to a patient.');
+  h.id = 'ws-parked-title';
+  Object.assign(h.style, { margin: '0', fontSize: '20px', fontWeight: '700' });
+  const p = el('p', undefined, 'You are signed out here. Sign in to go back.');
+  Object.assign(p.style, { margin: '0.5rem 0 1rem', fontSize: '16px', color: 'var(--c-ink-2)' });
+  const a = el('a', 'ws-btn ws-btn-quiet', 'Sign in');
+  a.setAttribute('href', '/auth/unlock/');
+  card.append(h, p, a);
+  veil.append(card);
+  document.body.append(veil);
+  a.focus();
+}
+if (typeof BroadcastChannel !== 'undefined') {
+  const parked = new BroadcastChannel('flossify-offline');
+  parked.addEventListener('message', (ev) => { if (ev.data && typeof ev.data === 'object' && ev.data.parked === true) coverForPatient(); });
+}

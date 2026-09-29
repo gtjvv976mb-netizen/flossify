@@ -1,0 +1,89 @@
+---
+// Sign in again after handing this device to a patient (the intake, 039; the
+// spec §1.7(b)). The patient's thank-you has a quiet "For the clinic" that
+// leads here. It is the clinic's own door — the staff entrance's card, the
+// username form (SignInForm), its rules and rate limits (login:u:<clinic>:<login>
+// and login:ip:) and auth_event — with the username of whoever handed it over
+// filled in. Anyone at that clinic may sign in here as themself; nothing is
+// opened by the fl_park hint itself (src/lib/park.ts), which only names the
+// clinic, the username and the intake to go back to. "Sign in another way" is
+// the email door. On success: login.ok, audit device.unlock, the hint cleared,
+// and back to the intake.
+export const prerender = false;
+
+import StaffEntrance from '../../components/StaffEntrance.astro';
+import SignInForm from '../../components/entry/SignInForm.astro';
+import Icon from '../../components/ws/Icon.astro';
+import { clinicDoor, authenticateAt, setSession, authEvent, SESSION_HOURS, type Device } from '../../lib/auth';
+import { rememberClinic } from '../../lib/clinic-door';
+import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
+import { hit, refund, clientIp, waitText, LIMITS } from '../../lib/throttle';
+import { pool, withClinic } from '../../lib/db';
+import { readPark, clearPark } from '../../lib/park';
+import { audit } from '../../lib/patient-add';
+
+const park = readPark(Astro.cookies);
+// No hint (it ran out, or was deleted): the ordinary sign-in.
+if (!park) return Astro.redirect('/auth/login/', 303);
+const door = await clinicDoor(park.c);
+if (!door) { clearPark(Astro.cookies); return Astro.redirect('/auth/login/?any=1', 303); }
+const back = `/c/${door.slug}/patients/intake/${park.i}/`;
+
+let error = '';
+let errorOn: 'password' | 'login' | null = null;
+let device: Device = 'shared';
+// The username of whoever handed it over, to save typing; anyone may change it.
+let login = (await pool.query<{ username: string | null }>('select username from staff where id = $1', [park.s])).rows[0]?.username ?? '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  login = String(form.get('login') ?? '').trim().toLowerCase().slice(0, 120);
+  const password = String(form.get('password') ?? '');
+  device = form.get('device') === 'own' ? 'own' : 'shared';
+  const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
+  const key = `login:u:${door.slug}:${login}`;
+  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+  else if (!login) { error = 'Write your username.'; errorOn = 'login'; }
+  else {
+    const [byName, byIp] = await Promise.all([hit(key, ...LIMITS.login.email), hit(`login:ip:${ip}`, ...LIMITS.login.ip)]);
+    if (!byName.allowed || !byIp.allowed) {
+      error = `Too many sign-in attempts. ${waitText(Math.max(byName.retryAfter, byIp.retryAfter))} Or ask your clinic owner to reset your password.`;
+      await authEvent('login.locked', { email: `${login}@${door.slug}`, ip, ua });
+    } else {
+      const who = await authenticateAt(door, login, password);
+      if (!who) {
+        error = `That username and password don’t match anyone at ${door.name}.`;
+        errorOn = 'password';
+        await authEvent('login.fail', { email: `${login}@${door.slug}`, ip, ua });
+      } else {
+        setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: door.id, name: who.name, role: who.role, tv: who.tv }, SESSION_HOURS[device]);
+        await refund(key);
+        await authEvent('login.ok', { email: `${login}@${door.slug}`, staffId: who.staffId, ip, ua });
+        await withClinic(door.id, (tx) => audit(tx, door.id, who.staffId, 'device.unlock', 'intake', park.i)).catch(() => {});
+        clearPark(Astro.cookies);
+        rememberClinic(Astro.cookies, door.slug);
+        return Astro.redirect(back, 303);
+      }
+    }
+  }
+}
+---
+
+<StaffEntrance title={`Sign in — ${door.name}`} description={`Staff sign-in for ${door.name}.`} door={{ id: door.id, name: door.name, slug: door.slug, cover: door.photo_key, listed: door.listed }}>
+  <h1 class="entry-title">
+    <span class="block">This device was handed to a patient.</span>
+    <span class="entry-sub">Sign in to go back.</span>
+  </h1>
+
+  <SignInForm who="username" value={login} error={error} errorOn={errorOn} device={device} remember={`flossify:staff-login:${door.slug}`} />
+
+  <ul class="entry-ways" aria-label="Other ways in">
+    <li>
+      <a href="/auth/login/?any=1" class="entry-way">
+        <span class="entry-way-icon"><Icon name="clinic" /></span>
+        <span class="entry-way-words"><span class="entry-way-title">Sign in another way</span> <span class="entry-way-hint">With your email.</span></span>
+        <Icon name="chevron-right" class="entry-way-go" />
+      </a>
+    </li>
+  </ul>
+</StaffEntrance>
