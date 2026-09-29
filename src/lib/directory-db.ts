@@ -105,6 +105,9 @@ export async function publicBusy(q: Queryable, clinicId: string, from: Date, to:
   return rows.map((r: any) => ({ dentist: (r.dentist_slug as string | null) ?? null, named: !!r.named, s: ms(r.starts_at), e: ms(r.ends_at) }));
 }
 
+/** The clinic's one dentist, when its public page lists exactly one: there, "any dentist" is her (p32). */
+export const soloDentist = (l: DbListing): string | null => l.dentistProfiles.length === 1 ? l.dentistProfiles[0].slug : null;
+
 /** The slot's start and end in epoch ms, from a Manila date and minutes. */
 const slotMs = (ymd: string, mins: number) => manilaMidnight(ymd).getTime() + mins * 60_000;
 
@@ -112,7 +115,11 @@ const slotMs = (ymd: string, mins: number) => manilaMidnight(ymd).getTime() + mi
  * Real open slots for a clinic: its hours, the dentist's days, the service's
  * chair time, minus lunch, closures, the chosen dentist's hours and leave,
  * chairs out of use, and what is already booked (slotOpen). Read through
- * functions that return times and slugs only, never who.
+ * functions that return times and slugs only, never who. At a clinic whose
+ * public page lists one dentist, any dentist is her (soloDentist): her days,
+ * her visits and the visits with no dentist are hers, and the chairs still
+ * count. The /find/ cards, /api/availability and the booking's re-check all
+ * come through here, so a time tapped on a card is the time the booking checks.
  */
 export async function openSlots(l: DbListing, opts: { dentist?: string | null; minutes?: number; days?: number; limit?: number; now?: Now } = {}): Promise<Slot[]> {
   const now = opts.now ?? manilaNow();
@@ -120,7 +127,7 @@ export async function openSlots(l: DbListing, opts: { dentist?: string | null; m
   const from = manilaMidnight(now.ymd);
   const to = new Date(from.getTime() + (days + 1) * DAY_MS);
   const [busy, blocked] = await Promise.all([publicBusy(pool, l.id, from, to), publicBlocked(pool, l.id, from, to)]);
-  const dentist = opts.dentist ?? null;
+  const dentist = opts.dentist || soloDentist(l);
   const dentistDays = dentist ? l.dentistProfiles.find((d) => d.slug === dentist)?.clinics[0].days : undefined;
   const dentists = l.dentistProfiles.map((d) => d.slug);
   const isTaken = (ymd: string, start: number, end: number) =>

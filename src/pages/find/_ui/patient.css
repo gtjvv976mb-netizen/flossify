@@ -1,4 +1,4 @@
-/* The patient side — Find a clinic, a clinic's page, its five-step booking, a dentist's profile and
+/* The patient side — Find a clinic, a clinic's page, its booking, a dentist's profile and
    coverage — in the soft template (docs/workspace-redesign.md, "The whole site, soft"): the pages
    stand on the slate ground in bright white rounded cards (the workspace's <Pane>), with line icons
    beside the section titles, round initial avatars for dentists, the clinic's initials badge, soft
@@ -225,10 +225,12 @@
 .pt-table :is(th, td):last-child { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* --- the booking -------------------------------------------------------------------------------- */
-/* The stepper: five numbered circles joined by a line, the word under each. Ahead: an outlined
+/* The stepper: numbered circles joined by a line, the word under each, as many as the flow has (the
+   booking three to five, the patient forms five), sharing the row equally. Ahead: an outlined
    circle; now: teal with a white figure; done: a teal check on the pale tint (global.css draws the
-   circles, .wiz-step); the line up to where you are is teal. */
-.pt-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+   circles, .wiz-step); the line up to where you are is teal. A step out of the flow is hidden. */
+.pt-steps { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 0; padding: 0; list-style: none; }
+.pt-steps .wiz-step[hidden] { display: none; }
 .pt-steps .wiz-step { position: relative; align-items: center; gap: 0.5rem; margin: 0; padding: 0 0.125rem; border-bottom: 0; text-align: center; }
 .pt-steps .wiz-step .sec-no { align-self: center; font-size: 14px; }
 .pt-steps .wiz-step::before {

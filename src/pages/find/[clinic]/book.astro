@@ -10,30 +10,48 @@ import ClinicRoom from '../_ui/ClinicRoom.astro';
 import '../_ui/patient.css';
 import '../_ui/clinic-glass.css';
 import { priceText, symptoms, hmoById } from '../../../data/directory';
-import { loadListing, closuresFor, dentistsAway } from '../../../lib/directory-db';
-import { closedOnText, dentistDaysText } from '../../../lib/availability';
+import { loadListing, closuresFor, dentistsAway, soloDentist } from '../../../lib/directory-db';
+import { closedOnText, dentistDaysText, slotWords, dayLabel } from '../../../lib/availability';
 import { shortName } from '../../../lib/schedule';
 
-// Five screens, no account. Reason → dentist → when → who → confirm. Every
-// screen can be reached with Tab and answered with Enter; nothing is hidden
-// behind a hover. The slots are the clinic's real ones (GET /api/availability)
-// and the booking is a row in the clinic's schedule (POST /api/bookings),
+// Three to five screens, no account. Reason → (dentist, where there is a choice) → when (skipped while a
+// time tapped on Find a clinic still fits) → who → confirm. Every screen can be reached with Tab and
+// answered with Enter; nothing is hidden behind a hover. The slots are the clinic's real ones
+// (GET /api/availability) and the booking is a row in the clinic's schedule (POST /api/bookings),
 // re-checked inside the same transaction so two people cannot take one chair.
 const l = await loadListing(Astro.params.clinic!);
 if (!l) return new Response('No such clinic', { status: 404 });
 const dentists = l.dentistProfiles;
 const fees = l.fees;
-const steps = ['Reason', 'Dentist', 'When', 'Who', 'Confirm'];
+type Step = 'reason' | 'dentist' | 'when' | 'who' | 'confirm';
+const STEP_WORDS: Record<Step, string> = { reason: 'Reason', dentist: 'Dentist', when: 'When', who: 'Who', confirm: 'Confirm' };
+// A Dentist step only where there is a choice. At a clinic whose page lists one dentist, any dentist is her
+// (soloDentist): the booking carries her slug, and the server pins her anyway.
+const chooseDentist = dentists.length > 1;
+const solo = dentists.find((d) => d.slug === soloDentist(l)) ?? null;
+// A time tapped on /find/. A link written before the time was encoded reads "+08:00" as " 08:00": put the plus back.
+const tapped = l.workspace ? slotWords((Astro.url.searchParams.get('slot') ?? '').replace(' ', '+')) : null;
+// The reason, in /find/'s own names. A service wins over a symptom; urgent symptoms are not bookable here.
+const wantSvc = Astro.url.searchParams.get('service') ?? '', wantSym = Astro.url.searchParams.get('symptom') ?? '';
+const preSvc = fees.some((f) => f.id === wantSvc) ? wantSvc : '';
+const bookable = symptoms.filter((s) => s.urgency !== 'urgent');
+const preSym = !preSvc && bookable.some((s) => s.id === wantSym) ? wantSym : '';
+const steps = (['reason', 'dentist', 'when', 'who', 'confirm'] as Step[]).filter((s) => s !== 'dentist' || chooseDentist);
+const firstPaint = steps.filter((s) => s !== 'when' || !tapped);
+const whoFirst = solo ? ` · with ${solo.name}` : chooseDentist ? ' · any dentist' : '';
 // Blocked time (040). Each dentist's days with their own hours ("Tue 1–6 pm · Thu"), and the days in the next
-// 30 they are normally in and wholly away; for a request, the clinic's closed days ahead under Preferred day.
-// Times and days only: never a note, never leave told from a day off.
+// 30 they are normally in and wholly away; under When, the clinic's closed days ahead. Times and days only:
+// never a note, never leave told from a day off. With no Dentist step (one dentist), her days away are said
+// from the start, with her whole name, since nobody chose her.
 const away = await dentistsAway(l);
-const closedOn = l.workspace ? '' : closedOnText(await closuresFor(l), l.hours);
+const closedOn = closedOnText(await closuresFor(l), l.hours);
 const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.slug);
+const soloAway = solo && away[solo.slug]?.length ? `${solo.name} is not in on: ${away[solo.slug].map(dayLabel).join(', ')}.` : '';
+const closedFirst = [closedOn, soloAway].filter(Boolean).join(' ');
 ---
 
 
-<Base title={`Book at ${l.name} — Flossify`} description={`${l.workspace ? 'Book' : 'Request'} a dental visit at ${l.name} in five short steps. No account: your name, a mobile number, and ${l.workspace ? 'a real open slot' : 'the day that suits you'}.`}>
+<Base title={`Book at ${l.name} — Flossify`} description={`${l.workspace ? 'Book' : 'Request'} a dental visit at ${l.name} in a few short steps. No account: your name, a mobile number, and ${l.workspace ? 'a real open slot' : 'the day that suits you'}.`}>
   <PatientHeader current="find" />
 
   <!-- The room behind the page: this clinic's own cover photo, or a soft blur when it has none. Decorative. -->
@@ -44,6 +62,7 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
     data-hours={JSON.stringify(l.hours)}
     data-dentists={JSON.stringify(dentists.map((d) => ({ slug: d.slug, name: d.name, short: shortName(d.name), days: at(d)?.days ?? [], hours: at(d)?.hours ?? {}, away: away[d.slug] ?? [] })))}
     data-services={JSON.stringify(fees.map((f) => ({ id: f.id, name: f.name, minutes: f.minutes, price: priceText(f) })))}
+    data-tapped={tapped ? JSON.stringify(tapped) : undefined}
   >
     <!-- The heading, in its own small card: the way back, the clinic, what this page does -->
     <header class="cl-pane cl-head">
@@ -61,40 +80,59 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
     <div class="ws-pane ws-glass pt-card cl-pane cl-wizard">
       <!-- Progress -->
       <ol class="pt-steps" data-progress aria-label="Steps">
-        {steps.map((s, i) => (
-          <li class="wiz-step" data-step-mark={i} aria-current={i === 0 ? 'step' : undefined}>
-            <span class="sec-no">{i + 1}</span>
-            <span>{s}</span>
+        {steps.map((s) => (
+          <li class="wiz-step" data-step-mark={s} hidden={s === 'when' && !!tapped} aria-current={s === 'reason' ? 'step' : undefined}>
+            <span class="sec-no">{firstPaint.indexOf(s) + 1 || ''}</span>
+            <span>{STEP_WORDS[s]}</span>
             <span class="sr-only" data-step-sr></span>
           </li>
         ))}
       </ol>
 
+      <!-- The time tapped on Find a clinic, held on the glass card: blue while it fits; amber, with a sentence and
+           the two nearest free times, when it does not. Never sticky, never on the bare room. -->
+      {tapped && (
+        <div class="ws-callout cl-callout cl-strip" data-slot-strip>
+          <Icon name="calendar" class="cl-strip-ok" /><Icon name="alert" class="cl-strip-warn" />
+          <div class="cl-strip-body">
+            <p class="cl-strip-line" aria-live="polite">
+              <span data-strip-held>Your time: <strong data-strip-when>{tapped.dayLabel}, {tapped.label}</strong><span data-strip-who>{whoFirst}</span></span>
+              <span data-strip-say hidden></span>
+            </p>
+            <div class="cl-strip-alts" data-strip-alts hidden></div>
+          </div>
+          <button type="button" class="btn btn-quiet cl-strip-change" data-strip-change>Change</button>
+        </div>
+      )}
+
       <form class="cl-form" data-wizard novalidate>
-        <!-- 1 Reason -->
-        <fieldset class="wiz" data-step="0">
+        {solo && <input type="hidden" name="dentist" value={solo.slug} />}
+
+        <!-- Reason -->
+        <fieldset class="wiz" data-step="reason">
           <legend class="pt-legend" tabindex="-1">What is the visit for?</legend>
           <p class="pt-help">Pick what is closest. “Not sure” is a fine answer — the dentist will look.</p>
           <div class="cl-choices" role="radiogroup" aria-label="Reason">
-            <label class="chip-radio"><input type="radio" name="reason" value="consultation" checked /><span>Not sure — a check-up</span></label>
-            {symptoms.filter((s) => s.urgency !== 'urgent').map((s) => {
+            <label class="chip-radio"><input type="radio" name="reason" value="consultation" checked={!preSvc && !preSym} /><span>Not sure — a check-up</span></label>
+            {bookable.map((s) => {
               const svc = s.services.find((id) => fees.some((f) => f.id === id)) ?? 'consultation';
-              return <label class="chip-radio"><input type="radio" name="reason" value={svc} data-label={s.label} /><span>{s.label}</span></label>;
+              return <label class="chip-radio"><input type="radio" name="reason" value={svc} data-label={s.label} checked={s.id === preSym} /><span>{s.label}</span></label>;
             })}
           </div>
-          <details class="pt-more">
+          <details class="pt-more" open={!!preSvc}>
             <summary><span>Or choose the service directly</span><Icon name="chevron" size={16} /></summary>
             <div class="cl-choices">
-              {fees.map((f) => <label class="chip-radio"><input type="radio" name="reason" value={f.id} data-label={f.name} /><span>{f.name}<span class="pt-price">{priceText(f)}</span></span></label>)}
+              {fees.map((f) => <label class="chip-radio"><input type="radio" name="reason" value={f.id} data-label={f.name} checked={f.id === preSvc} /><span>{f.name}<span class="pt-price">{priceText(f)}</span></span></label>)}
             </div>
           </details>
           <p class="ws-callout cl-callout"><Icon name="money" /><span data-reason-price></span></p>
         </fieldset>
 
-        <!-- 2 Dentist -->
-        <fieldset class="wiz" data-step="1" hidden>
+        <!-- Dentist: only where there is a choice -->
+        {chooseDentist && (
+        <fieldset class="wiz" data-step="dentist" hidden>
           <legend class="pt-legend" tabindex="-1">Any dentist, or someone in particular?</legend>
-          <p class="pt-help">Choosing one limits the days you can pick.</p>
+          <p class="pt-help">{tapped ? '“Any available dentist” keeps the time you tapped. Choosing someone checks they are free then.' : 'Choosing one limits the days you can pick.'}</p>
           <div class="cl-picks" role="radiogroup" aria-label="Dentist">
             <label class="row-radio pt-pick"><input type="radio" name="dentist" value="" checked /><span><span class="pt-pick-icon"><Icon name="patients" /></span><span class="pt-pick-words"><strong class="font-semibold">Any available dentist</strong><span class="cl-pick-line">Soonest slot at the clinic</span></span><span class="pt-tick" aria-hidden="true"></span></span></label>
             {dentists.map((d) => (
@@ -102,9 +140,10 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
             ))}
           </div>
         </fieldset>
+        )}
 
-        <!-- 3 When -->
-        <fieldset class="wiz" data-step="2" hidden>
+        <!-- When -->
+        <fieldset class="wiz" data-step="when" hidden>
           <legend class="pt-legend" tabindex="-1">{l.workspace ? 'When?' : 'When would suit you?'}</legend>
           {l.workspace
             ? <p class="pt-help">These are the clinic’s real open slots for the next two weeks, in Baguio time. Tap one.</p>
@@ -117,16 +156,17 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
                     <label class="field"><span class="meta">Preferred day</span><input type="date" name="reqDate" required aria-describedby="closed-days" /></label>
                     <label class="field"><span class="meta">Time of day</span><select name="reqTime"><option>Morning</option><option>Midday</option><option>Afternoon</option></select></label>
                   </div>
-                  <p class="cl-slot-note" id="closed-days" data-closed-days data-closed-base={closedOn} hidden={!closedOn}>{closedOn}</p>
+                  <p class="cl-slot-note" id="closed-days" data-closed-days data-closed-base={closedOn} hidden={!closedFirst}>{closedFirst}</p>
                 </>}
           </div>
-          <input type="hidden" name="slot" />
           <button type="button" class="btn btn-quiet cl-slot-more" data-slot-more hidden><Icon name="chevron" />Show more days</button>
           <p class="cl-slot-note" data-slot-note></p>
+          {l.workspace && <p class="cl-slot-note" data-closed-days data-closed-base={closedOn} hidden={!closedFirst}>{closedFirst}</p>}
+          {l.workspace && !tapped && <p class="ws-callout cl-callout" data-tone="warn" data-slot-lost hidden><Icon name="alert" /><span data-slot-lost-words></span></p>}
         </fieldset>
 
-        <!-- 4 Who -->
-        <fieldset class="wiz" data-step="3" hidden>
+        <!-- Who -->
+        <fieldset class="wiz" data-step="who" hidden>
           <legend class="pt-legend" tabindex="-1">Who is the visit for?</legend>
           <div class="cl-choices" role="radiogroup" aria-label="For whom">
             <label class="chip-radio"><input type="radio" name="who" value="me" checked /><span>Me</span></label>
@@ -146,8 +186,8 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
           </div>
         </fieldset>
 
-        <!-- 5 Confirm -->
-        <fieldset class="wiz" data-step="4" hidden>
+        <!-- Confirm -->
+        <fieldset class="wiz" data-step="confirm" hidden>
           <legend class="pt-legend" tabindex="-1">Check and confirm</legend>
           <dl class="pt-summary" data-summary></dl>
           <p class="ws-callout cl-callout">
@@ -201,8 +241,18 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
   </main>
 
   <script>
-    import { manilaNow, dayLabel, dentistDaysText } from '../../../lib/availability';
+    import { manilaNow, dayLabel, dentistDaysText, slotWords } from '../../../lib/availability';
     import { svgFor } from '../../../components/ws/icons';
+
+    // Steps by name, and only the ones in her flow: Dentist only where there is a choice, When skipped while a
+    // time tapped on Find a clinic still fits. The page holds one time (`chosen`): the When radios, the strip's
+    // nearest-free buttons and the 409 path write it, and Confirm books it.
+    type Step = 'reason' | 'dentist' | 'when' | 'who' | 'confirm';
+    type SlotW = { at: string; date: string; mins: number; label: string; dayLabel: string };
+    const ORDER: Step[] = ['reason', 'dentist', 'when', 'who', 'confirm'];
+    const LIMIT = 200;
+    const CARD_MIN = 30;                         // the length a /find/ card checks a time for (slotsFor's default)
+    const WAIT_MS = 6000;                        // the longest Continue waits for an answer before carrying on
 
     const main = document.querySelector('main')!;
     const ws = main.dataset.workspace === '1';
@@ -214,8 +264,6 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
     const reqDateInput = form.querySelector<HTMLInputElement>('input[name=reqDate]');
     if (reqDateInput) reqDateInput.min = manilaNow().ymd;
     const $ = <T extends Element = HTMLElement>(s: string, r: ParentNode = main) => r.querySelector(s) as T;
-    const steps = Array.from(form.querySelectorAll<HTMLFieldSetElement>('[data-step]'));
-    const marks = Array.from(main.querySelectorAll<HTMLElement>('[data-step-mark]'));
     const back = $('[data-back]') as HTMLButtonElement, next = $('[data-next]') as HTMLButtonElement, err = $('[data-error]');
     // The main button's words live in their own span, so its icon stays: an arrow while there is a
     // next step, a check on the last one, none while it is working.
@@ -227,74 +275,190 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
     };
     // Anything a person typed, or a stored booking, goes into markup escaped.
     const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-    let at = 0;
-
     const val = (n: string) => (form.elements.namedItem(n) as RadioNodeList | HTMLInputElement | null)?.value ?? '';
     const chosenLabel = (n: string) => { const el = form.querySelector<HTMLInputElement>(`input[name="${n}"]:checked`); return el?.dataset.label ?? el?.nextElementSibling?.textContent?.trim() ?? ''; };
     const service = () => services.find((s) => s.id === val('reason')) ?? services[0];
+    // The dentist the booking is for: the one she chose, or, at a one-dentist clinic, her (the hidden field).
+    const dentistNow = () => dentists.find((x) => x.slug === val('dentist')) ?? null;
+    // "Consultation" → "consultation", mid-sentence; "TMJ splint" stays as it is (the rule the texts use).
+    const lower = (s: string) => /^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s;
 
-    // Step 1: the price follows the reason.
+    const panes = new Map(Array.from(form.querySelectorAll<HTMLFieldSetElement>('fieldset[data-step]')).map((f) => [f.dataset.step as Step, f]));
+    const marks = new Map(Array.from(main.querySelectorAll<HTMLElement>('[data-step-mark]')).map((m) => [m.dataset.stepMark as Step, m]));
+    const chooseDentist = panes.has('dentist');
+    const solo = !chooseDentist && dentists.length === 1 ? dentists[0] : null;
+    const phone = main.dataset.phone ?? '';
+    const tel = (p: string) => p.replace(/[^\d+]/g, '');
+    const tapped: SlotW | null = main.dataset.tapped ? JSON.parse(main.dataset.tapped) : null;
+    const strip = $('[data-slot-strip]') as HTMLElement | null;          // null in the plain flow
+    const change = $('[data-strip-change]') as HTMLButtonElement | null; // null in the plain flow
+    const altsBox = $('[data-strip-alts]') as HTMLElement | null;
+    let chosen: SlotW | null = tapped;
+    let verdict: 'fits' | 'gone' | 'unknown' = 'unknown';
+    let whenOpen = !tapped;                      // sticky: Change, a 409, or having been on When
+    let at: Step = 'reason';
+    const done = new Set<Step>();                // the steps she has completed with Continue
+    let seq = 0;                                 // only the newest availability answer is painted
+    let pending: Promise<void> | null = null;    // the newest availability request, while it is out
+    const flow = (): Step[] => ORDER.filter((s) => panes.has(s) && (s !== 'when' || whenOpen || verdict === 'gone' || at === 'when'));
+    // Words go into the page only when they differ, so the live line is never re-announced unchanged.
+    const put = (el: HTMLElement, words: string) => { if (el.textContent !== words) el.textContent = words; };
+    const shown = (el: HTMLElement, on: boolean) => { if (el.hidden === on) el.hidden = !on; };
+
+    // Reason: the price follows the choice.
     const reasonPrice = $('[data-reason-price]');
     const paintReason = () => { const s = service(); reasonPrice.textContent = `${s.name}: ${s.price}. About ${s.minutes} minutes in the chair.`; };
-    form.addEventListener('change', (e) => { if ((e.target as HTMLInputElement).name === 'reason') paintReason(); });
-    paintReason();
 
-    // Step 3: the clinic's real open slots, grouped by day, for the chosen dentist and the chair time the service needs.
+    // When: the clinic's real open slots, grouped by day, for the chosen dentist and the chair time the service needs.
     const slotDays = $('[data-slot-days]') as HTMLElement | null;
     const more = $('[data-slot-more]') as HTMLButtonElement, note = $('[data-slot-note]');
+    const lost = $('[data-slot-lost]') as HTMLElement | null, lostWords = $('[data-slot-lost-words]') as HTMLElement | null;
     let shownDays = 4;
-    let lastSlots: { at: string; date: string; label: string; dayLabel: string }[] = [];
-    async function fetchSlots() {
+    let lastSlots: SlotW[] = [];
+    async function fetchSlots(): Promise<SlotW[]> {
       const d = val('dentist');
       const q = new URLSearchParams({ clinic: slug, minutes: String(service().minutes), days: '14' });
       if (d) q.set('dentist', d);
+      q.set('limit', String(LIMIT));
       const r = await fetch(`/api/availability?${q}`, { headers: { accept: 'application/json' } });
       if (!r.ok) throw new Error('availability');
-      lastSlots = (await r.json()).slots;
+      return (await r.json()).slots;
+    }
+    // Whether the held time is in the newest answer. Past the 200-slot cap it is not known, and never called gone.
+    function judge(): typeof verdict {
+      if (!chosen) return 'unknown';
+      const hit = lastSlots.find((s) => s.at === chosen!.at);
+      if (hit) { chosen = hit; return 'fits'; }
+      if (lastSlots.length >= LIMIT && chosen.at > lastSlots[lastSlots.length - 1].at) return 'unknown';
+      return 'gone';
     }
     function paintSlots() {
       if (!ws || !slotDays) return;
-      const d = dentists.find((x) => x.slug === val('dentist'));
-      const byDay = new Map<string, typeof lastSlots>();
+      const d = dentistNow();
+      const byDay = new Map<string, SlotW[]>();
       for (const s of lastSlots) (byDay.get(s.date) ?? byDay.set(s.date, []).get(s.date)!).push(s);
       const days = Array.from(byDay.entries());
+      // The held time is always among the days shown, so her pick survives "Show more days" and every repaint.
+      const di = chosen ? days.findIndex(([, ss]) => ss.some((s) => s.at === chosen!.at)) : -1;
+      if (di >= shownDays) shownDays = Math.ceil((di + 1) / 4) * 4;
+      const empty = chooseDentist && d
+        ? `Nothing open with ${d.name} in the next two weeks. Try any dentist, or call the clinic.`
+        : 'Nothing open in the next two weeks for this visit. Call the clinic to ask about a time.';
       slotDays.innerHTML = days.slice(0, shownDays).map(([, ss]) => `
         <div class="pt-day" role="group" aria-label="${esc(ss[0].dayLabel)}">
           <p class="pt-day-label">${esc(ss[0].dayLabel)}</p>
-          <div class="pt-slots">${ss.map((s) => `<label class="slot-radio"><input type="radio" name="slotpick" value="${esc(s.at)}" data-label="${esc(s.dayLabel)}, ${esc(s.label)}"><span>${esc(s.label)}</span></label>`).join('')}</div>
-        </div>`).join('') || `<p class="ws-empty">${svgFor('info', 20).replace('class="ws-icon"', 'class="ws-icon ws-empty-icon"')}<span class="ws-empty-text">Nothing open in the next two weeks for that choice. Try “any dentist”, or call the clinic.</span></p>`;
+          <div class="pt-slots">${ss.map((s) => `<label class="slot-radio"><input type="radio" name="slotpick" value="${esc(s.at)}"${s.at === chosen?.at ? ' checked' : ''}><span>${esc(s.label)}</span></label>`).join('')}</div>
+        </div>`).join('') || `<p class="ws-empty">${svgFor('info', 20).replace('class="ws-icon"', 'class="ws-icon ws-empty-icon"')}<span class="ws-empty-text">${esc(empty)}</span></p>${phone ? `<a class="btn btn-quiet" href="tel:${esc(tel(phone))}" data-slot-call>${svgFor('phone')}Call ${esc(phone)}</a>` : ''}`;
       more.hidden = days.length <= shownDays;
       note.textContent = d ? `${d.name} is in on ${dentistDaysText(d.days, d.hours, ', ')}.` : `${lastSlots.length} open slots in the next two weeks.`;
-      // A slot passed in from the search page is preselected if it is still free.
-      // (A link written before the time was encoded reads its "+08:00" as " 08:00": put the plus back.)
-      const pre = new URLSearchParams(location.search).get('slot')?.replace(' ', '+');
-      const hit = pre && slotDays.querySelector<HTMLInputElement>(`input[value="${CSS.escape(pre)}"]`);
-      if (hit) hit.checked = true;
     }
-    async function refreshSlots() {
-      if (!ws || !slotDays) return;
+    function refreshSlots(): Promise<void> {
+      if (!ws || !slotDays) return Promise.resolve();
+      const mine = ++seq;
       slotDays.innerHTML = '<p class="pt-wait">Checking the schedule…</p>';
-      try { await fetchSlots(); paintSlots(); }
-      catch { slotDays.innerHTML = '<p class="pt-error">Could not reach the schedule. Try again, or call the clinic.</p>'; }
+      const p = (async () => {
+        try { const s = await fetchSlots(); if (mine !== seq) return; lastSlots = s; verdict = judge(); paintSlots(); }
+        catch { if (mine !== seq) return; verdict = 'unknown'; slotDays.innerHTML = '<p class="pt-error">Could not reach the schedule. Try again, or call the clinic.</p>'; }
+        paintStrip(); paintMarks();
+      })();
+      pending = p; void p.finally(() => { if (pending === p) pending = null; });
+      return p;
+    }
+    // Waits for the newest answer (and any newer one started meanwhile), at most WAIT_MS in all.
+    async function settle(): Promise<void> {
+      const until = Date.now() + WAIT_MS;
+      while (pending && Date.now() < until) await Promise.race([pending, new Promise((r) => setTimeout(r, until - Date.now()))]);
     }
     more.addEventListener('click', () => { shownDays += 4; paintSlots(); });
 
-    // A request: the clinic's closed days ahead under Preferred day, and the chosen dentist's days away
-    // on days they are normally in ("not in", whether leave or not: the public side never tells).
+    // The held time in words, against Manila's clock now: "9:30 am today", "9:30 am on Wed 24 Sep".
+    const phrase = (w: SlotW) => { const x = slotWords(w.at) ?? w; return `${x.label} ${x.dayLabel === 'Today' ? 'today' : x.dayLabel === 'Tomorrow' ? 'tomorrow' : `on ${x.dayLabel}`}`; };
+    // Why the held time no longer fits, in one sentence, so colour is never the only signal.
+    function missWords(w: SlotW): string {
+      const now = manilaNow(), svc = service(), p = phrase(w);
+      if (w.date < now.ymd || (w.date === now.ymd && w.mins <= now.mins)) return `${p} has passed.`;
+      if (w.date === now.ymd && w.mins < now.mins + 60) return `${p} is too soon to book online.`;
+      const d = chooseDentist ? dentistNow() : null;
+      if (d) return `${d.name} is not free at ${p} for ${lower(svc.name)}, about ${svc.minutes} minutes.`;
+      if (svc.minutes > CARD_MIN) return `${p} has no room for ${lower(svc.name)}, about ${svc.minutes} minutes.`;
+      return `${p} is no longer free for ${lower(svc.name)}, about ${svc.minutes} minutes.`;
+    }
+    // The two free times closest to the held one, in time order.
+    const nearest = (iso: string): SlotW[] => {
+      const t = Date.parse(iso);
+      return lastSlots.filter((s) => s.at !== iso)
+        .sort((a, b) => Math.abs(Date.parse(a.at) - t) - Math.abs(Date.parse(b.at) - t) || Date.parse(a.at) - Date.parse(b.at))
+        .slice(0, 2).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    };
+    const whoWords = () => { if (solo) return ` · with ${solo.name}`; if (!chooseDentist) return ''; const d = dentistNow(); return d ? ` · with ${d.name}` : ' · any dentist'; };
+    function paintStrip() {
+      if (!strip || !altsBox) {
+        // The plain flow: a pick that no longer fits says so under the slots.
+        if (lost && lostWords) { const on = !!chosen && verdict === 'gone'; if (on) put(lostWords, `${missWords(chosen!)} Pick another time below.`); shown(lost, on); }
+        return;
+      }
+      const gone = !!chosen && verdict === 'gone';
+      if ((strip.dataset.tone === 'warn') !== gone) { if (gone) strip.dataset.tone = 'warn'; else delete strip.dataset.tone; }
+      shown($('[data-strip-held]', strip), !gone);
+      if (!gone && chosen) { put($('[data-strip-when]', strip), `${chosen.dayLabel}, ${chosen.label}`); put($('[data-strip-who]', strip), whoWords()); }
+      const alts = gone ? nearest(chosen!.at) : [];
+      if (gone) put($('[data-strip-say]', strip), `${missWords(chosen!)}${alts.length ? ' Nearest free:' : ' Nothing else is open in the next two weeks. Call the clinic.'}`);
+      shown($('[data-strip-say]', strip), gone);
+      const key = !gone ? '' : alts.length ? alts.map((a) => a.at).join('|') : phone ? 'call' : '';
+      if ((altsBox.dataset.stripKey ?? '') !== key) {
+        altsBox.dataset.stripKey = key;
+        altsBox.innerHTML = alts.length
+          ? alts.map((a) => `<button type="button" class="slot" data-strip-alt="${esc(a.at)}"><span class="meta">${esc(a.dayLabel)}</span>${esc(a.label)}</button>`).join('')
+          : key === 'call' ? `<a class="btn btn-quiet" href="tel:${esc(tel(phone))}" data-strip-call>${svgFor('phone')}Call ${esc(phone)}</a>` : '';
+      }
+      shown(altsBox, key !== '');
+      if (change) put(change, gone ? 'See all times' : 'Change');
+      if (at === 'confirm') summary();
+    }
+    function paintMarks() {
+      const f = flow(), here = f.indexOf(at);
+      for (const [k, m] of marks) {
+        const n = f.indexOf(k);
+        m.hidden = n < 0;
+        m.querySelector('.sec-no')!.textContent = n < 0 ? '' : String(n + 1);
+        // Passed only when she completed it; never When while the held time does not fit.
+        const passed = n >= 0 && n < here && done.has(k) && !(k === 'when' && verdict === 'gone');
+        m.toggleAttribute('data-passed', passed);
+        m.querySelector('[data-step-sr]')!.textContent = passed ? ', done' : '';
+        if (k === at) m.setAttribute('aria-current', 'step'); else m.removeAttribute('aria-current');
+      }
+      back.hidden = here <= 0;
+    }
+
+    // The closed days ahead under When, and the dentist's days away on days they are normally in ("not in",
+    // whether leave or not: the public side never tells). With no Dentist step, the one dentist, by her whole name.
     const closedDays = $('[data-closed-days]') as HTMLElement | null;
     function paintClosedDays() {
       if (!closedDays) return;
-      const d = dentists.find((x) => x.slug === val('dentist'));
-      const words = [closedDays.dataset.closedBase ?? '', d && d.away.length ? `${d.short} is not in on: ${d.away.map(dayLabel).join(', ')}.` : ''].filter(Boolean).join(' ');
-      closedDays.textContent = words;
-      closedDays.hidden = !words;
+      const d = dentistNow();
+      const words = [closedDays.dataset.closedBase ?? '', d && d.away.length ? `${solo ? d.name : d.short} is not in on: ${d.away.map(dayLabel).join(', ')}.` : ''].filter(Boolean).join(' ');
+      put(closedDays, words);
+      shown(closedDays, !!words);
     }
-    form.addEventListener('change', (e) => { if ((e.target as HTMLInputElement).name === 'dentist') paintClosedDays(); });
-    paintClosedDays();
-    form.addEventListener('change', (e) => { const n = (e.target as HTMLInputElement).name; if (n === 'dentist' || n === 'reason') { shownDays = 4; refreshSlots(); } });
-    refreshSlots();
 
-    // Step 4: someone else → a second name. (Whether the mobile is on file is
+    form.addEventListener('change', (e) => {
+      const t = e.target as HTMLInputElement;
+      if (t.name === 'reason') paintReason();
+      if (t.name === 'dentist') paintClosedDays();
+      if (t.name === 'reason' || t.name === 'dentist') { shownDays = 4; refreshSlots(); }
+      if (t.name === 'slotpick') { chosen = lastSlots.find((s) => s.at === t.value) ?? chosen; verdict = 'fits'; paintStrip(); paintMarks(); }
+    });
+    change?.addEventListener('click', () => { whenOpen = true; show('when'); });
+    altsBox?.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-strip-alt]');
+      const hit = b && lastSlots.find((s) => s.at === b.dataset.stripAlt);
+      if (!hit) return;
+      chosen = hit; verdict = 'fits';
+      paintSlots(); paintStrip(); paintMarks();
+      panes.get(at)?.querySelector<HTMLElement>('legend')?.focus({ preventScroll: true });
+    });
+
+    // Who: someone else → a second name. (Whether the mobile is on file is
     // decided on the server when the booking is made — never shown before.)
     const whoLabel = $('[data-name-label]'), patientField = $('[data-patient-name-field]');
     form.addEventListener('change', (e) => {
@@ -303,15 +467,18 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
     });
 
     // Validation per step, in plain words.
-    function validate(i: number): string {
-      if (i === 2) {
-        if (ws) { const pick = form.querySelector<HTMLInputElement>('input[name="slotpick"]:checked'); if (!pick) return 'Pick a slot.'; (form.elements.namedItem('slot') as HTMLInputElement).value = pick.value; }
-        else if (!val('reqDate')) return 'Pick a day.';
+    function validate(s: Step): string {
+      if (s === 'when') {
+        if (ws) {
+          const pick = form.querySelector<HTMLInputElement>('input[name="slotpick"]:checked');
+          if (!pick) return 'Pick a slot.';
+          chosen = lastSlots.find((x) => x.at === pick.value) ?? chosen; verdict = 'fits';
+        } else if (!val('reqDate')) return 'Pick a day.';
       }
-      if (i === 3) {
-        const name = form.elements.namedItem('name') as HTMLInputElement, phone = form.elements.namedItem('phone') as HTMLInputElement, consent = form.elements.namedItem('consent') as HTMLInputElement;
+      if (s === 'who') {
+        const name = form.elements.namedItem('name') as HTMLInputElement, phoneIn = form.elements.namedItem('phone') as HTMLInputElement, consent = form.elements.namedItem('consent') as HTMLInputElement;
         if (!name.value.trim()) { name.focus(); return 'We need a name.'; }
-        if (!phone.checkValidity()) { phone.focus(); return 'A Philippine mobile number, like 0917 000 0000.'; }
+        if (!phoneIn.checkValidity()) { phoneIn.focus(); return 'A Philippine mobile number, like 0917 000 0000.'; }
         if (val('who') === 'other' && !(form.elements.namedItem('patientName') as HTMLInputElement).value.trim()) return 'Whose visit is it?';
         if (!consent.checked) return 'Tick the box so we can use your details for this booking.';
       }
@@ -319,39 +486,45 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
     }
 
     function summary() {
-      const d = dentists.find((x) => x.slug === val('dentist'));
-      const when = ws ? chosenLabel('slotpick') : `${val('reqDate')}, ${val('reqTime').toLowerCase()} (to be confirmed)`;
+      const d = dentistNow();
+      const when = ws ? (chosen ? `${chosen.dayLabel}, ${chosen.label}` : '') : `${val('reqDate')}, ${val('reqTime').toLowerCase()} (to be confirmed)`;
       const who = val('who') === 'other' ? `${val('patientName')} (booked by ${val('name')})` : val('name');
-      const rows: [string, string][] = [
-        ['Clinic', clinicName], ['Visit', `${chosenLabel('reason') || service().name} · ${service().price}`],
-        ['Dentist', d?.name ?? 'Any available dentist'], ['When', when], ['Patient', who], ['Text to', val('phone')],
-        ['Card', (form.elements.namedItem('hmo') as HTMLSelectElement).selectedOptions[0]?.textContent ?? 'None'],
-      ];
+      const rows: [string, string][] = [['Clinic', clinicName], ['Visit', `${chosenLabel('reason') || service().name} · ${service().price}`]];
+      if (dentists.length > 0) rows.push(['Dentist', d?.name ?? 'Any available dentist']);
+      rows.push(['When', when], ['Patient', who], ['Text to', val('phone')], ['Card', (form.elements.namedItem('hmo') as HTMLSelectElement).selectedOptions[0]?.textContent ?? 'None']);
       if (val('notes')) rows.push(['Notes', val('notes')]);
       $('[data-summary]').innerHTML = rows.map(([k, v]) => `<div class="pt-sum-row"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
     }
 
     // The step's question takes the focus (not on the first paint), so Tab and Enter carry on from
     // there and a screen reader starts at the question; the smooth scroll below is the one that moves the page.
-    function show(i: number, focus = true) {
-      at = i;
-      steps.forEach((s, n) => { s.hidden = n !== i; });
-      marks.forEach((m, n) => {
-        m.toggleAttribute('data-passed', n < i); if (n === i) m.setAttribute('aria-current', 'step'); else m.removeAttribute('aria-current');
-        // A step done shows a check in place of its number; a screen reader hears it in words.
-        m.querySelector('[data-step-sr]')!.textContent = n < i ? ', done' : '';
-      });
-      back.hidden = i === 0;
-      if (i === steps.length - 1) setNext(ws ? 'Confirm booking' : 'Send request', 'ok'); else setNext('Continue', 'go');
+    function show(s: Step, focus = true) {
+      at = s;
+      if (s === 'when') whenOpen = true;
+      for (const [k, p] of panes) p.hidden = k !== s;
+      paintMarks();
+      if (change) change.hidden = s === 'when';
+      if (s === 'confirm') { setNext(ws ? 'Confirm booking' : 'Send request', 'ok'); summary(); } else setNext('Continue', 'go');
       err.textContent = '';
-      if (i === steps.length - 1) summary();
-      if (focus) steps[i].querySelector<HTMLElement>('legend')?.focus({ preventScroll: true });
+      if (focus) panes.get(s)?.querySelector<HTMLElement>('legend')?.focus({ preventScroll: true });
       main.scrollIntoView({ block: 'start', behavior: 'smooth' });
     }
-    back.addEventListener('click', () => show(Math.max(0, at - 1)));
-    next.addEventListener('click', () => {
+    back.addEventListener('click', () => { const f = flow(), i = f.indexOf(at); show(f[Math.max(0, i - 1)]); });
+    next.addEventListener('click', async () => {
       const e = validate(at); if (e) { err.textContent = e; return; }
-      if (at < steps.length - 1) show(at + 1); else finish();
+      done.add(at);
+      // A held time and When not yet in the flow: the step after Reason or Dentist depends on an answer still coming.
+      if (pending && chosen && !whenOpen && (at === 'reason' || at === 'dentist')) {
+        const from = at;
+        next.disabled = true; setNext('Checking…', 'none');
+        await settle();
+        next.disabled = false; setNext('Continue', 'go');
+        if (at !== from) return;                       // she went Back meanwhile
+      }
+      const f = flow(), i = f.indexOf(at);
+      // While the held time does not fit, Continue after When goes to When, never on to Confirm.
+      if (verdict === 'gone' && f.includes('when') && f.indexOf('when') < i) { show('when'); return; }
+      if (i < f.length - 1) show(f[i + 1]); else finish();
     });
     form.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') { e.preventDefault(); next.click(); } });
 
@@ -363,8 +536,8 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
 
     async function finish() {
       next.disabled = true; setNext(ws ? 'Booking…' : 'Sending…', 'none'); err.textContent = '';
-      const d = dentists.find((x) => x.slug === val('dentist'));
-      const payload = { clinic: slug, service: val('reason'), dentist: val('dentist') || null, at: val('slot'), reqDate: val('reqDate'), reqTime: val('reqTime'), who: val('who'), name: val('name'), patientName: val('patientName'), phone: val('phone'), hmo: val('hmo'), notes: val('notes'), consent: (form.elements.namedItem('consent') as HTMLInputElement).checked };
+      const d = dentistNow();
+      const payload = { clinic: slug, service: val('reason'), dentist: val('dentist') || null, at: ws ? chosen?.at ?? '' : '', reqDate: val('reqDate'), reqTime: val('reqTime'), who: val('who'), name: val('name'), patientName: val('patientName'), phone: val('phone'), hmo: val('hmo'), notes: val('notes'), consent: (form.elements.namedItem('consent') as HTMLInputElement).checked };
       let res: any;
       try {
         const r = await fetch('/api/bookings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
@@ -373,7 +546,7 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
         res = r.ok ? await r.json() : await r.json().catch(() => ({}));
         if (!r.ok) {
           next.disabled = false; setNext(ws ? 'Confirm booking' : 'Send request', 'ok');
-          if (r.status === 409) { show(2); refreshSlots(); }
+          if (r.status === 409) { whenOpen = true; show('when'); refreshSlots(); }
           err.textContent = res.error || 'Something went wrong. Try again.'; // after show(): it clears the error area
           return;
         }
@@ -382,10 +555,10 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
         next.disabled = false; setNext(ws ? 'Confirm booking' : 'Send request', 'ok'); return;
       }
       const ref = res.ref as string;
-      const booking = { ref, cancelToken: res.cancelToken, slug, clinic: clinicName, service: chosenLabel('reason') || service().name, dentist: d?.name ?? 'Any dentist', slot: ws ? val('slot') : `${val('reqDate')} ${val('reqTime')}`, label: ws ? chosenLabel('slotpick') : `${val('reqDate')}, ${val('reqTime')} (requested)`, name: val('who') === 'other' ? val('patientName') : val('name'), phone: val('phone'), status: ws ? 'booked' : 'requested', madeAt: Date.now(), returning: !!res.returning, chartNo: res.chartNo };
+      const booking = { ref, cancelToken: res.cancelToken, slug, clinic: clinicName, service: chosenLabel('reason') || service().name, dentist: d?.name ?? 'Any dentist', slot: ws ? chosen!.at : `${val('reqDate')} ${val('reqTime')}`, label: ws ? `${chosen!.dayLabel}, ${chosen!.label}` : `${val('reqDate')}, ${val('reqTime')} (requested)`, name: val('who') === 'other' ? val('patientName') : val('name'), phone: val('phone'), status: ws ? 'booked' : 'requested', madeAt: Date.now(), returning: !!res.returning, chartNo: res.chartNo };
       save([booking, ...load()]);
-      form.hidden = true; $('[data-progress]').hidden = true;
-      const done = $('[data-done-panel]'); done.hidden = false;
+      form.hidden = true; $('[data-progress]').hidden = true; if (strip) strip.hidden = true;
+      const donePanel = $('[data-done-panel]'); donePanel.hidden = false;
       main.scrollIntoView({ block: 'start', behavior: 'smooth' });
       $('[data-done-title]').textContent = ws ? `${booking.label}, ${clinicName}.` : `Request sent to ${clinicName}.`;
       // A visit today gets no reminder (the reminder pass only looks at tomorrow), so it is not promised one.
@@ -426,7 +599,6 @@ const at = (d: (typeof dentists)[number]) => d.clinics.find((c) => c.slug === l.
       const mine = load(); const sec = $('[data-mine]'); sec.hidden = mine.length === 0;
       $('[data-mine-list]').innerHTML = mine.map((b) => `<li class="pt-mine-row"><span class="min-w-0"><strong class="block font-semibold">${esc(b.clinic)}</strong><span class="block text-[14.5px] text-ink-2">${esc(b.service)} · ${esc(b.label)}</span></span><span class="flex flex-wrap items-center gap-2"><span class="ws-pill ${b.status === 'booked' ? 'ws-tint-teal' : 'ws-tint-amber'}">${b.status === 'booked' ? 'Booked' : b.status === 'requested' ? 'Requested' : esc(b.status)}</span><span class="pt-mine-ref">${esc(b.ref)}</span></span></li>`).join('');
     }
-    paintMine();
-    show(0, false);
+    paintReason(); refreshSlots(); paintMine(); paintStrip(); paintClosedDays(); show('reason', false);
   </script>
 </Base>
