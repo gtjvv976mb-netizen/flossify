@@ -353,6 +353,10 @@ if (input && box && pop) {
 // --- side panels --------------------------------------------------------------
 
 const openers = new WeakMap<HTMLDialogElement, Element | null>();
+// A panel can have several openers on a page, some inside a section that is not shown (the patient record's
+// hidden tabs, a folded list): the one to go back to is one the person can see.
+const shown = (e: Element) => e.getClientRects().length > 0;
+const openerOf = (id: string) => { const all = $$(`[data-ws-open="${id}"]`); return all.find(shown) ?? all[0] ?? null; };
 function openPanel(id: string, opener: Element | null = document.activeElement, auto = false) {
   const d = document.getElementById(id);
   if (!(d instanceof HTMLDialogElement) || d.open) return;
@@ -394,8 +398,9 @@ for (const d of $$<HTMLDialogElement>('dialog[data-ws-panel]')) {
   });
   d.addEventListener('close', () => {
     delete d.dataset.closing;
-    const back = openers.get(d);
-    if (back instanceof HTMLElement && back.isConnected) back.focus();
+    const kept = openers.get(d);
+    const back = kept instanceof HTMLElement && kept.isConnected && shown(kept) ? kept : openerOf(d.id);
+    if (back instanceof HTMLElement) back.focus();
     d.dispatchEvent(new CustomEvent('ws:panel-close'));
   });
 }
@@ -410,7 +415,7 @@ document.addEventListener('click', (e) => {
 window.ws = { openPanel, closePanel };
 // <SidePanel open>: a panel the server drew open (a refused form comes back inside it). `auto` in the
 // event says so: its form already holds what was posted, so a page does not fill it from the opener.
-for (const d of $$<HTMLDialogElement>('dialog[data-ws-panel][data-ws-open-now]')) openPanel(d.id, document.querySelector(`[data-ws-open="${d.id}"]`), true);
+for (const d of $$<HTMLDialogElement>('dialog[data-ws-panel][data-ws-open-now]')) openPanel(d.id, openerOf(d.id), true);
 
 // --- in-place tabs --------------------------------------------------------------
 

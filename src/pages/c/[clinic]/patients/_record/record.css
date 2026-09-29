@@ -414,9 +414,10 @@ button.rf { display: grid; min-height: 44px; }
   color: var(--ws-teal-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px;
 }
 .trec-date { margin-block: -0.625rem; }
-.trec-also, .trec-next { margin-block: -0.625rem; font-size: 13.5px; }
-.trec-next { white-space: nowrap; }
-.trec-also { display: flex; }
+.trec-next { margin-block: -0.625rem; font-size: 13.5px; flex-wrap: wrap; column-gap: 0.25rem; }
+.trec-next-tail { font-weight: 500; }
+/* A second visit that day sits under the date, clear of it: no negative margin, its own 44px. */
+.trec-also { display: flex; margin-top: 0.875rem; font-size: 13.5px; white-space: nowrap; }
 .trec-date:focus-visible, .trec-also:focus-visible, .trec-next:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; border-radius: 6px; }
 .trec-date-go { display: none; }
 .trec-date-plain { display: inline-block; padding-block: 0.125rem; }
@@ -434,7 +435,7 @@ button.rf { display: grid; min-height: 44px; }
   .trec th[scope="rowgroup"] { order: -3; margin: -0.75rem -0.875rem 0.25rem; padding: 0 0.875rem; border-bottom: 1px solid var(--ws-hair); background: var(--ws-subtle); white-space: normal; }
   .trec-date { margin-block: 0; flex-wrap: wrap; }
   .trec-date-go { display: inline-flex; align-items: center; gap: 0.125rem; font-size: 13.5px; }
-  .trec-also { margin-block: -0.25rem 0.25rem; }
+  .trec-also { margin-block: 0 0.25rem; }
   .trec-c-proc { order: -2; }
   .trec-c-tooth, .trec-c-who { order: -1; }
   .trec-c-tooth .trec-l, .trec-c-who .trec-l { display: none; }
@@ -443,5 +444,5 @@ button.rf { display: grid; min-height: 44px; }
   .trec-c-amt .trec-l, .trec-c-next .trec-l { display: inline; color: var(--c-ink-2); font-weight: 500; }
   .trec-next { margin-block: -0.5rem; }
   .trec td[data-foot] { padding-top: 0.375rem; border-top: 1px solid var(--ws-hair); }
-  .trec td[data-foot] ~ td[data-foot] { padding-top: 0; border-top: 0; }
+  .trec td[data-foot]:not([data-none]) ~ td[data-foot]:not([data-none]) { padding-top: 0; border-top: 0; }
 }

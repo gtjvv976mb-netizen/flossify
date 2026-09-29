@@ -70,28 +70,37 @@ export interface Ledger {
   openKeys: Set<string>;
 }
 
-interface StatementRow { id: string; appointment_id: string | null; issued_at: Date; series_prefix: string; number: string; total: string; discount: string; discount_kind: string | null; payor_name: string | null; payor_share: string; status: string }
+interface StatementRow { id: string; appointment_id: string | null; issued_at: Date | string; series_prefix: string; number: string; total: string; discount: string; discount_kind: string | null; payor_name: string | null; payor_share: string; status: string }
 interface LineRow { id: string; invoice_id: string; procedure_id: string | null; description: string; amount: string; line_no: number | null }
-interface PaymentRow { id: string; invoice_id: string | null; amount: string; method: string; paid_on: string | null; received_at: Date }
-export interface LedgerMoney { statements: StatementRow[]; lines: LineRow[]; payments: PaymentRow[]; complete: boolean }
+interface PaymentRow { id: string; invoice_id: string | null; amount: string; method: string; paid_on: string | null; received_at: Date | string }
+export interface LedgerMoney { statements: StatementRow[]; lines: LineRow[]; payments: PaymentRow[]; complete: boolean; balance: string }
 
-/** Every statement patient_balance() counts, their lines, and every payment it counts. Only for people who may bill. */
+/** Every statement patient_balance() counts, their lines, every payment it counts, and patient_balance() itself — in
+ *  ONE statement, so all of it is one snapshot: a payment committed while the record loads cannot make the ledger
+ *  disagree with the balance it is checked against. Money is text, never a JSON number. Only for people who may bill. */
 export async function loadLedgerMoney(tx: Tx, patientId: string): Promise<LedgerMoney> {
-  const [st, ln, py] = await Promise.all([
-    tx.query<StatementRow>(
-      `select i.id, i.appointment_id, i.issued_at, i.series_prefix, i.number, i.total, i.discount, i.discount_kind, i.payor_name, i.payor_share, i.status
-         from invoice i where i.patient_id = $1 and i.status in ('issued', 'partly_paid', 'paid') order by i.issued_at, i.number limit ${LIMIT + 1}`, [patientId]),
-    tx.query<LineRow>(
-      `select l.id, l.invoice_id, l.procedure_id, l.description, l.amount, l.line_no from invoice_line l join invoice i on i.id = l.invoice_id
-        where i.patient_id = $1 and i.status in ('issued', 'partly_paid', 'paid') order by l.line_no nulls last, l.id limit ${LIMIT + 1}`, [patientId]),
-    tx.query<PaymentRow>(
-      `select y.id, y.invoice_id, y.amount, y.method, to_char(y.paid_on, 'YYYY-MM-DD') as paid_on, y.received_at
-         from payment y left join invoice i on i.id = y.invoice_id
-        where y.patient_id = $1 and y.voided_at is null and (y.invoice_id is null or i.status in ('issued', 'partly_paid', 'paid'))
-        order by y.received_at limit ${LIMIT + 1}`, [patientId]),
-  ]);
-  const complete = st.rows.length <= LIMIT && ln.rows.length <= LIMIT && py.rows.length <= LIMIT;
-  return { statements: st.rows.slice(0, LIMIT), lines: ln.rows.slice(0, LIMIT), payments: py.rows.slice(0, LIMIT), complete };
+  const counted = `('issued', 'partly_paid', 'paid')`;
+  const { rows: [r] } = await tx.query<{ statements: StatementRow[]; lines: LineRow[]; payments: PaymentRow[]; balance: string }>(
+    `select
+       (select coalesce(json_agg(x order by x.ord), '[]'::json) from (
+          select row_number() over (order by i.issued_at, i.number) as ord, i.id, i.appointment_id, i.issued_at, i.series_prefix,
+                 i.number::text as number, i.total::text as total, i.discount::text as discount, i.discount_kind, i.payor_name,
+                 i.payor_share::text as payor_share, i.status
+            from invoice i where i.patient_id = $1 and i.status in ${counted} order by i.issued_at, i.number limit ${LIMIT + 1}) x) as statements,
+       (select coalesce(json_agg(x order by x.ord), '[]'::json) from (
+          select row_number() over (order by l.line_no nulls last, l.id) as ord, l.id, l.invoice_id, l.procedure_id, l.description,
+                 l.amount::text as amount, l.line_no
+            from invoice_line l join invoice i on i.id = l.invoice_id
+           where i.patient_id = $1 and i.status in ${counted} order by l.line_no nulls last, l.id limit ${LIMIT + 1}) x) as lines,
+       (select coalesce(json_agg(x order by x.ord), '[]'::json) from (
+          select row_number() over (order by y.received_at) as ord, y.id, y.invoice_id, y.amount::text as amount, y.method,
+                 to_char(y.paid_on, 'YYYY-MM-DD') as paid_on, y.received_at
+            from payment y left join invoice i on i.id = y.invoice_id
+           where y.patient_id = $1 and y.voided_at is null and (y.invoice_id is null or i.status in ${counted})
+           order by y.received_at limit ${LIMIT + 1}) x) as payments,
+       coalesce(patient_balance($1), 0)::text as balance`, [patientId]);
+  const complete = r.statements.length <= LIMIT && r.lines.length <= LIMIT && r.payments.length <= LIMIT;
+  return { statements: r.statements.slice(0, LIMIT), lines: r.lines.slice(0, LIMIT), payments: r.payments.slice(0, LIMIT), complete, balance: r.balance };
 }
 
 /** Recalls with the day each was set (033: recall.created_at), for Next appt. */
@@ -101,6 +110,8 @@ export async function loadRecallsSet(tx: Tx, patientId: string): Promise<{ due: 
   return rows.map((r) => ({ due: r.due, setOn: r.set_on }));
 }
 
+/** A visit under way or done: on the ledger even before its booked time. */
+const BEGUN = new Set(['arrived', 'in_lobby', 'in_chair', 'completed']);
 const tooth = (fdi: number | null, surface: string | null) => (fdi ? [`${fdi}${surface ? ` ${surface}` : ''}`] : []);
 const blank = (kind: RowKind, words: string): LedgerRow => ({ kind, teeth: [], words, detail: null, status: null, quiet: false, dentist: null, charged: null, paid: null, balance: null, next: null });
 const clip = (s: string | null | undefined, n: number) => (s ? (s.length > n ? `${s.slice(0, n).trimEnd()}…` : s) : null);
@@ -126,19 +137,22 @@ export interface BuildIn {
   recalls: { due: string; setOn: string }[];
   /** null when this person may not see money. */
   money: LedgerMoney | null;
-  /** patient_balance() as the database says it now. */
+  /** patient_balance() as the page read it; the check uses the money's own snapshot (LedgerMoney.balance) when there is money. */
   onFile: string | number | null;
   patientId: string;
 }
 
 export function buildLedger(i: BuildIn): Ledger {
   const { visits, clinical: c, extra: x, recalls } = i;
-  const onFile = fromDb(i.onFile ?? 0);
-  const past = visits.filter((v) => !v.future);
+  const onFile = fromDb((i.money ? i.money.balance : i.onFile) ?? 0);
+  // A visit is on the ledger once it has begun: its time has come, the patient is here or was seen (someone seated
+  // early, before the booked time), or something was done under it.
+  const begun = (v: Visit) => !v.future || v.procs.length > 0 || v.adjustments.length > 0 || BEGUN.has(v.status ?? '');
+  const past = visits.filter(begun);
   const today = dayKey(new Date());
-  // A visit whose day shows on the ledger opens its panel from the date: everything not in the future, except a
+  // A visit whose day shows on the ledger opens its panel from the date: every visit that has begun, except a
   // cancelled visit that holds nothing (it is not treatment; Visits lists it).
-  const openable = (v: Visit) => !v.future && !(v.status === 'cancelled' && holdsNothing(v));
+  const openable = (v: Visit) => begun(v) && !(v.status === 'cancelled' && holdsNothing(v));
 
   type Keyed = { row: LedgerRow; at: number; order: number };
   const byDay = new Map<string, { clinical: Keyed[]; money: Keyed[] }>();
@@ -166,6 +180,7 @@ export function buildLedger(i: BuildIn): Ledger {
   };
 
   // --- clinical rows ------------------------------------------------------------------------------------------
+  const procById = new Map(c.done.map((d) => [d.id, d]));
   const dentistOnDay = (day: string) => past.find((v) => v.day === day && v.dentist)?.dentist ?? null;
   let count = 0;
   for (const v of past) {
@@ -194,12 +209,13 @@ export function buildLedger(i: BuildIn): Ledger {
     else if (v.status === 'cancelled') { r.status = 'cancelled'; r.quiet = true; r.words = ''; r.detail = sentence(what); }
     else if (v.status === 'booked' || v.status === 'confirmed') { r.status = v.status; r.words = ''; r.detail = [v.day === today ? 'Not marked yet' : 'Not marked done or missed', v.reason].filter(Boolean).join(' · '); }
     else if (v.status) { r.status = v.status; r.words = ''; r.detail = v.reason; }
-    // A statement that names this visit, issued that day, with exactly one line: its charge sits on the visit row.
+    // A statement that names this visit, issued that day, with exactly one line that is not a recorded treatment's
+    // (a treatment's line belongs on the treatment's own row, wherever that is): its charge sits on the visit row.
     if (m && v.id) {
       const s = m.statements.find((s2) => s2.appointment_id === v.id && stmtDay.get(s2.id) === v.day && (linesOf.get(s2.id) ?? []).length === 1);
       const l = s ? linesOf.get(s.id)![0] : null;
       // The charged line names what was done (a consultation, an emergency visit): it is the procedure's words.
-      if (l && !used.has(l.id)) {
+      if (l && !used.has(l.id) && !(l.procedure_id && procById.has(l.procedure_id))) {
         r.charged = fromDb(l.amount); used.add(l.id);
         if (v.status === 'completed' || !v.status) { r.words = l.description; r.detail = [v.reason !== l.description ? v.reason : null, sentence(what)].filter(Boolean).join(' · ') || null; }
         else r.detail = [r.detail, `Charged: ${l.description}`].filter(Boolean).join(' · ');
@@ -218,7 +234,6 @@ export function buildLedger(i: BuildIn): Ledger {
   }
 
   // --- money rows ---------------------------------------------------------------------------------------------
-  const procById = new Map(c.done.map((d) => [d.id, d]));
   const payRowDay = new Map<string, string>();
   if (m) {
     let n = 0;
@@ -319,7 +334,7 @@ export function buildLedger(i: BuildIn): Ledger {
       if (nextVisit) {
         const tail = nextVisit.status === 'cancelled' ? ' · cancelled' : nextVisit.status === 'no_show' ? ' · did not come' : '';
         last.next = { text: `${dateText(nextVisit.day)}${tail}`, visitKey: nextVisit.key };
-        if (!nextVisit.future && openable(nextVisit)) openKeys.add(nextVisit.key);
+        if (openable(nextVisit)) openKeys.add(nextVisit.key);
       } else {
         const rc = recalls.filter((r) => r.setOn === day).sort((a, b) => (a.due < b.due ? -1 : 1))[0];
         const adj = x.plans.flatMap((p) => p.adjustments).find((a) => a.on === day && a.nextOn);

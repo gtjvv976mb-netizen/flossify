@@ -17,6 +17,7 @@ import Glyph from '../_ui/Glyph.astro';
 import { dateText } from '../../../../../lib/health';
 import { balanceWords, amountWords, type Ledger } from '../../../../../lib/treatment-record';
 import { pesos } from '../../../../../lib/invoices';
+import { VISIT_STATUS } from '../../../../../lib/visit-record';
 
 interface Props { ledger: Ledger; money: boolean; today: string; printHref: string; name: string }
 const { ledger, money, today, printHref, name } = Astro.props;
@@ -80,17 +81,17 @@ const balanceNote = !money ? null
                       <span class="trec-teeth">{r.teeth.map((t) => <span class="rp rp-tooth"><Glyph name="tooth" size={13} /><span class="sr-only">Tooth </span>{t}</span>)}</span>
                     </td>
                     <td class="trec-c-proc">
-                      <span class="trec-words">{r.status && <Chip status={r.status} />}{r.words && <span>{r.words}</span>}</span>
+                      <span class="trec-words">{r.status && <Chip status={r.status} label={VISIT_STATUS[r.status]?.label} />}{r.words && <span>{r.words}</span>}</span>
                       {r.detail && <span class="trec-detail">{r.detail}</span>}
                     </td>
                     <td class="trec-c-who" data-none={r.dentist ? undefined : ''}><span class="meta trec-l">Dentist</span>{r.dentist}</td>
                     {money && <td class="trec-c-amt" data-none={r.charged === null ? '' : undefined}><span class="meta trec-l">Amount charged</span>{r.charged !== null && amountWords(r.charged)}</td>}
                     {money && <td class="trec-c-amt trec-paid" data-none={r.paid === null ? '' : undefined}><span class="meta trec-l">Amount paid</span>{r.paid !== null && pesos(r.paid)}</td>}
-                    {money && <td class="trec-c-amt trec-bal" data-foot={lastRow ? '' : undefined} data-none={r.balance === null ? '' : undefined}><span class="meta trec-l">Balance</span>{r.balance !== null && balanceWords(r.balance)}</td>}
+                    {money && <td class="trec-c-amt trec-bal" data-foot={lastRow && r.balance !== null ? '' : undefined} data-none={r.balance === null ? '' : undefined}><span class="meta trec-l">Balance</span>{r.balance !== null && balanceWords(r.balance)}</td>}
                     <td class="trec-c-next" data-foot={lastRow ? '' : undefined} data-none={r.next ? undefined : ''}>
                       <span class="meta trec-l">Next appt.</span>
                       {r.next && (r.next.visitKey
-                        ? <button type="button" class="trec-next" data-ws-open={`rec-visit-${r.next.visitKey}`} aria-haspopup="dialog" aria-label={`Next appointment ${r.next.text}: see the visit`}>{r.next.text}</button>
+                        ? <button type="button" class="trec-next" data-ws-open={`rec-visit-${r.next.visitKey}`} aria-haspopup="dialog" aria-label={`Next appointment ${r.next.text}: see the visit`}>{r.next.text.split(' · ').map((part, pi) => <span class:list={[pi ? 'trec-next-tail' : 'trec-nw']}>{part}</span>)}</button>
                         : <span>{r.next.text}</span>)}
                     </td>
                   </tr>

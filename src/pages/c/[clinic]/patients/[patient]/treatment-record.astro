@@ -16,7 +16,8 @@ import { ageOn, ageText, dateText, manilaToday } from '../../../../../lib/health
 import { prettyPhone } from '../../../../../lib/messages';
 import { loadClinical } from '../../../../../lib/record';
 import { loadExtra } from '../../../../../lib/record-extra';
-import { loadVisits } from '../../../../../lib/visit-record';
+import { loadVisits, VISIT_STATUS } from '../../../../../lib/visit-record';
+import { loadVisitConsents } from '../../../../../lib/visit-consent';
 import { buildLedger, loadLedgerMoney, loadRecallsSet, balanceWords, amountWords } from '../../../../../lib/treatment-record';
 import { pesos, NOT_BIR } from '../../../../../lib/invoices';
 import { hmos } from '../../../../../data/directory';
@@ -39,7 +40,7 @@ const data = await withClinic(clinic.id, async (tx) => {
   const c = (await tx.query('select name, address_line, barangay, city, province, phone from clinic where id = $1', [clinic.id])).rows[0];
   const clinical = await loadClinical(tx, clinic.id, p.id);
   const extra = await loadExtra(tx, p.id, HMO_NAMES);
-  const visits = await loadVisits(tx, p.id, clinical, extra, [], money);
+  const visits = await loadVisits(tx, p.id, clinical, extra, await loadVisitConsents(tx, p.id), money);
   const ledger = buildLedger({ visits, clinical, extra, recalls: await loadRecallsSet(tx, p.id), money: money ? await loadLedgerMoney(tx, p.id) : null, onFile: p.balance, patientId: p.id });
   await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'record.treatment_record_print', 'patient', $3)`, [clinic.id, session.staffId, p.id]);
   return { p, c, ledger };
@@ -179,7 +180,7 @@ const pageCss = `
                     <td class="tr-date">{ri === 0 ? dateText(d.day) : ''}</td>
                     <td>{r.teeth.join(', ')}</td>
                     <td>
-                      {r.status && <span class="tr-status">{({ no_show: 'Did not come', cancelled: 'Cancelled', booked: 'Booked', confirmed: 'Confirmed', arrived: 'Arrived', in_lobby: 'Waiting', in_chair: 'In the chair' } as Record<string, string>)[r.status] ?? r.status}{r.words ? ' · ' : ''}</span>}
+                      {r.status && <span class="tr-status">{VISIT_STATUS[r.status]?.label ?? r.status}{r.words ? ' · ' : ''}</span>}
                       {r.words}
                       {r.detail && <span class="tr-detail">{r.detail}</span>}
                     </td>
