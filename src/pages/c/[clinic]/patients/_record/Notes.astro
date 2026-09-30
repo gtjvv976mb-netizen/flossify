@@ -3,7 +3,8 @@
 // diagnosis, what was done, what comes next — dated, with the dentist and the teeth. A signed note is
 // never edited (the database lets the app insert only): a correction is an addendum, shown under the
 // note it adds to, dated and signed in turn. The note's panel is NotePanel.astro, outside the record's tabs,
-// so the chart's palette and Add ▾ can open it too; what a save says is the page's saved line.
+// so the chart's palette and Add ▾ can open it too; what a save says is the page's saved line. New note is quiet: on
+// the Treatment record New prescription is one card below it, and a screen has one teal button at most.
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import Icon from '../../../../../components/ws/Icon.astro';
@@ -29,7 +30,7 @@ const orphans = c.notes.filter((n) => n.amends && !c.notes.some((r) => r.id === 
     <slot name="saved" />
     <div class="rec-lead -mt-2 mb-4">
       <p>What the dentist saw and did at each visit. A saved note cannot be changed; to correct one, add an addendum.</p>
-      {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-note-add" data-amends=""><Icon name="plus" />New note</button>}
+      {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-note-add" data-amends=""><Icon name="plus" />New note</button>}
     </div>
     {c.notes.length === 0 ? <Empty icon="file" text="No clinical notes yet." /> : (
       <div>

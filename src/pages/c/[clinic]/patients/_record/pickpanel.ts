@@ -21,18 +21,27 @@ export function aimForm(form: HTMLFormElement, back: string, home: string): void
 }
 
 /** On ws:panel-close. A panel from the chart gives focus back to its tooth (the palette button that opened it is not
- *  on screen any more). Otherwise, when focus did not land (its opener sits in a closed menu or a hidden section):
- *  the shown section's own button for this panel, else that section's tab. */
+ *  on screen any more); any other panel lands as landFocus() says. */
 export function focusBack(panelId: string, back: string, fdi: string | undefined): void {
   if (back === 'chart' && fdi) {
     const tooth = document.querySelector<HTMLElement>(`[data-odontogram] button[data-tooth][data-fdi="${fdi}"]`);
     if (tooth) { tooth.focus(); return; }
   }
-  const at = document.activeElement;
-  if (at && at !== document.body) return;
-  const shown = document.querySelector<HTMLElement>('[data-rec-panel]:not([hidden])');
-  if (!shown) return;
-  const own = [...shown.querySelectorAll<HTMLElement>(`[data-ws-open="${panelId}"]`)].find((e) => e.getClientRects().length > 0);
+  landFocus(panelId);
+}
+
+const onScreen = (e: Element | null): e is HTMLElement => e instanceof HTMLElement && e.getClientRects().length > 0;
+
+/** On ws:panel-close, for every panel of the record: when the shell could not give focus back (the button that opened
+ *  the panel sits in a closed menu or a hidden tab, or there was none: a panel the server drew open after a refused
+ *  post), focus goes to a button on screen that opens this panel, else Add ▾ when its list holds the panel, else the
+ *  tab in view. Never to <body>, where the next Tab would start from the top of the page. */
+export function landFocus(panelId: string): void {
+  if (document.activeElement !== document.body && onScreen(document.activeElement)) return;
+  const own = [...document.querySelectorAll(`[data-ws-open="${panelId}"]`)].find(onScreen);
   if (own) { own.focus(); return; }
-  document.getElementById(`rec-rec-${shown.dataset.recPanel}-tab`)?.focus();
+  const add = document.querySelector('.rec-add > button');
+  if (onScreen(add) && document.querySelector(`[data-rec-add-item][data-ws-open="${panelId}"]`)) { add.focus(); return; }
+  const shown = document.querySelector<HTMLElement>('[data-rec-panel]:not([hidden])');
+  if (shown) document.getElementById(`rec-rec-${shown.dataset.recPanel}-tab`)?.focus();
 }

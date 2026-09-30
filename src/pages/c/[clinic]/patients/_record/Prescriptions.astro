@@ -6,7 +6,8 @@
 // suggests names only — never a dose: the dentist writes the strength and the directions every time.
 // Generic names come first, as the Generics Act (RA 6675) asks. The panel (part="panels") is drawn outside the
 // tabs, so Today and Add ▾ open it over the tab in view; what a save says (Print it, and the PTR the paper took when
-// it needs a word) is the page's saved line (./SavedLine.astro).
+// it needs a word) is the page's saved line (./SavedLine.astro). New prescription is quiet, like New note above it: one
+// teal button on a screen at most.
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
@@ -52,7 +53,7 @@ const shownNote = ptrNotes.find((n) => n.id === selectedId);
     <slot name="saved" />
     <div class="rec-lead -mt-2 mb-4">
       <p>Medicines prescribed to {firstName}, printed with the dentist’s PRC licence and the PTR on file.</p>
-      {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-rx-add"><Icon name="plus" />New prescription</button>}
+      {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-rx-add"><Icon name="plus" />New prescription</button>}
     </div>
     {c.rx.length === 0 ? <Empty icon="file" text="No prescriptions yet." /> : (
       <div>

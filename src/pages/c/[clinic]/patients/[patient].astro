@@ -477,6 +477,9 @@ const minor = age !== null && age < 18;
 // The consent that counts for the notice in force, and whether a minor still needs a parent's or guardian's.
 const consentNow = consentInForce(data.notice?.id, data.consents);
 const guardianNeeded = minor && consentNow?.agreed_as !== 'guardian';
+// While the privacy consent is missing, Patient info draws DeskConsent's form with its teal Record consent under the
+// health form: the health form's Save is quiet then, so no screen holds two teal buttons.
+const consentAsked = !!data.notice && canEdit && (!consentNow || guardianNeeded);
 const latest = health.versions[0] ?? null;
 // The alert strip is what is saved; the form shows what was typed when a post came back.
 const allergies: string[] = latest?.allergies ?? [];
@@ -769,7 +772,8 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
         <p class="rec-facts min-w-0"><span class="rec-facts-in"><span><span class="pt-ref" title="Chart no."><span class="sr-only">Chart no. </span>{patient.chart_no}</span></span>{facts.map((f) => <span>{f}</span>)}</span></p>
       </div>
       <div class="rec-actions">
-        <a href={bookHref} class="ws-btn ws-btn-primary md:order-last"><Icon name="calendar" />New booking</a>
+        {/* Both quiet: a screen's one teal button is the tab's own (Patient info's Record consent, Chart & plan's Add to plan). */}
+        <a href={bookHref} class="ws-btn ws-btn-quiet md:order-last"><Icon name="calendar" />New booking</a>
         {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="details"><Icon name="user" />Edit details</button>}
       </div>
     </div>
@@ -1056,7 +1060,7 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
           </label>
 
           <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <button type="submit" class="ws-btn ws-btn-primary min-w-[9rem]" data-health-save><Icon name="check" />Save</button>
+            <button type="submit" class={`ws-btn ${consentAsked ? 'ws-btn-quiet' : 'ws-btn-primary'} min-w-[9rem]`} data-health-save><Icon name="check" />Save</button>
             <span class="ws-pill ws-tint-amber" data-health-dirty hidden={!posted}>Not saved yet</span>
             <span class="text-[13.5px] text-muted">Saved as a new version under your name. Earlier versions stay.</span>
           </div>
@@ -1357,7 +1361,7 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
 <script>
   import { ageOn, ageText, capitalise } from '../../../../lib/health';
   import { tabOf } from './_record/sections';
-  import { aimForm, currentTab } from './_record/pickpanel';
+  import { aimForm, currentTab, landFocus } from './_record/pickpanel';
 
   // --- the tabs: in the address, so a reload or a post lands where it was ---
   const list = document.querySelector<HTMLElement>('.rec-tabs');
@@ -1478,12 +1482,13 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
     if (room() < Math.min(addList.scrollHeight, 520) && barTop > stuckAt + 1) scrollBy({ top: barTop - stuckAt, behavior: 'instant' });
     addList.style.maxHeight = `${Math.max(160, room())}px`;
   }).observe(addList, { attributes: true, attributeFilter: ['hidden'] });
+  // A panel that could not give focus back (the server drew it open after a refused post, over a tab with no button
+  // for it) lands on a button on screen, Add ▾, or the tab in view: landFocus() in ./_record/pickpanel.ts.
   let fromAdd: Element | null = null;
   document.querySelectorAll<HTMLElement>('[data-rec-add-item]').forEach((b) => b.addEventListener('click', () => { fromAdd = document.getElementById(b.dataset.wsOpen ?? ''); }));
   document.querySelectorAll<HTMLDialogElement>('dialog[data-ws-panel]').forEach((d) => d.addEventListener('ws:panel-close', () => {
-    if (fromAdd !== d) return;
-    fromAdd = null;
-    addButton?.focus();
+    if (fromAdd === d) { fromAdd = null; addButton?.focus(); }
+    landFocus(d.id);
   }));
 
   // The chart speaks up: a copy of this page kept for a brownout opens on the Chart, and a

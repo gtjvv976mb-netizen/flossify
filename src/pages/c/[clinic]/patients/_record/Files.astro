@@ -4,7 +4,8 @@
 // get a small preview; every file opens from ./files/<id>/ beside this record, which only a signed-in member
 // of this branch can reach (never the public /uploads/ route). Remove hides a file from the record and keeps
 // it for the audit. On Chart & plan; the panel (part="panels") is drawn outside the tabs, so Today and Add ▾ open it
-// over the tab in view. What a save says is the page's saved line (./SavedLine.astro).
+// over the tab in view. What a save says is the page's saved line (./SavedLine.astro). Add files is quiet: Chart & plan's
+// teal button is the plan's Add to plan, and a screen has one at most.
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
@@ -43,7 +44,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
     {inline && <Callout tone="alert" class="mb-4" text={inline} />}
     <div class="rec-lead -mt-2 mb-4">
       <p>Only people who work at this branch can open them. Pictures and PDFs, up to 25 MB each.</p>
-      {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-file-add"><Icon name="upload" />Add files</button>}
+      {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-file-add"><Icon name="upload" />Add files</button>}
     </div>
     {c.files.length === 0 ? <Empty icon="file" text="No X-rays, photos or files yet." /> : (
       <>
