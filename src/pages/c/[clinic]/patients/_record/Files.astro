@@ -59,7 +59,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
                 <div class="fl-thumb" data-doc={f.thumb ? undefined : ''}>
                   {f.thumb ? <img src={`${fileBase}${f.id}/?thumb=1`} alt="" loading="lazy" decoding="async" /> : <Glyph name="file" size={36} />}
                 </div>
-                <a class="fl-open" href={`${fileBase}${f.id}/`} target="_blank" rel="noopener" aria-label={`Open ${label}${f.caption ? `: ${f.caption}` : ''}`}></a>
+                <a class="fl-open" href={`${fileBase}${f.id}/view/`} target="_blank" rel="noopener" aria-label={`Open ${label}${f.caption ? `: ${f.caption}` : ''}`}></a>
                 <div class="fl-body">
                   <p class="fl-kind"><span class="rk">{label}</span></p>
                   {f.caption && <p class="text-[14.5px] font-semibold text-ink break-words">{f.caption}</p>}

@@ -1,0 +1,36 @@
+---
+// The record's consent forms, patient-wide posts (039): "Record that the patient
+// cannot decide" (a capacity note: a treating dentist here with a PRC licence,
+// an adult patient; recordCapacity in src/lib/consent-docs.ts, audit
+// consent.capacity). A GET goes to the record's Consent section.
+export const prerender = false;
+
+import { requireWorkspace } from '../../../../../../lib/workspace';
+import { withClinic } from '../../../../../../lib/db';
+import { csrfOk } from '../../../../../../lib/csrf';
+import { hit, LIMITS } from '../../../../../../lib/throttle';
+import { Refused } from '../../../../../../lib/refused';
+import { recordCapacity } from '../../../../../../lib/consent-docs';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session } = ws;
+const patientId = Astro.params.patient ?? '';
+if (!/^[0-9a-f-]{36}$/i.test(patientId)) return new Response(null, { status: 404 });
+const record = `/c/${clinic.slug}/patients/${patientId}/`;
+if (Astro.request.method !== 'POST') return Astro.redirect(`${record}#consent`, 303);
+const form = await Astro.request.formData();
+if (!csrfOk(Astro.cookies, form)) return Astro.redirect(`${record}?stale=1#consent`, 303);
+if (form.get('intent') !== 'capacity') return Astro.redirect(`${record}#consent`, 303);
+const rate = await hit('record:s:' + session.staffId, ...LIMITS.chart.staff);
+let problem = rate.allowed ? '' : 'Too many saves at once. Wait a moment and try again.';
+if (!problem) {
+  try {
+    await withClinic(clinic.id, (tx) => recordCapacity(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, reason: String(form.get('reason') ?? '') }));
+  } catch (e) {
+    if (!(e instanceof Refused)) throw e;
+    problem = e.reasons.join(' ');
+  }
+}
+return Astro.redirect(problem ? `${record}?capacity=refused#consent` : `${record}?saved=capacity#consent`, 303);
+---

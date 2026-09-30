@@ -285,10 +285,33 @@ assert.equal(vx.attestation.attested_at, att.attested_at);
 const XI = { initials: 'RI' };
 assert.equal(await decide(X1, 1, 'agreed', pageOf(ME, XI), renderSnap(X1, 'agreed', ME, { ...att, attested_at: '2020-01-01T00:00:00.000Z' }, XI)), 'invalid', 'a snapshot of another confirmation');
 assert.equal(await decide(X1, 1, 'agreed', pageOf(ME, XI), renderSnap(X1, 'agreed', ME, att, XI)), 'saved');
-// Photos: "No, thank you" needs no signature.
-assert.equal(await call('intake_decide', [T1, DEV1, F1.id, 0, 'later', '{}', null]), 'invalid', 'photos have no "ask first"');
+// Photos: "Decide later" is kept unsigned (043: a minor's parent may not be there); "No, thank you" needs no signature.
+assert.equal(await call('intake_decide', [T1, DEV1, F1.id, 0, 'later', '{}', null]), 'saved', 'photos may be left for later (043)');
+assert.equal((await q1(`select state, strokes, snapshot from intake_page where intake_id = $1 and document_id = $2`, [I1.id, F1.id])).state, 'later');
 assert.equal(await decide(F1, 0, 'refused', pageOf(ME, { strokes: null }), renderSnap(F1, 'refused', ME, null)), 'saved');
-ok('decisions: a snapshot of another form, a name not the server’s, a mark on a phone, strokes outside the box, no signature, an old rev: refused as words; the general consent saved; the extraction "not_ready" until Dr Hazel (not Dr Ramon) confirms it, then read-only fields frozen (6 columns refused) and signed; photos refused without strokes');
+ok('decisions: a snapshot of another form, a name not the server’s, a mark on a phone, strokes outside the box, no signature, an old rev: refused as words; the general consent saved; the extraction "not_ready" until Dr Hazel (not Dr Ramon) confirms it, then read-only fields frozen (6 columns refused) and signed; photos left for later (043), then refused without strokes');
+
+// 6b. 043: which device a link was for, told only to that device; what the patient said while the age is not known
+{
+  assert.equal(await call('intake_device', [T1, DEV1]), 'phone');
+  assert.equal(await call('intake_device', [T1, DEV2]), null);
+  assert.equal(await call('intake_device', [token(), DEV1]), null);
+  assert.equal(await call('intake_device', ['not a token', DEV1]), null);
+  // The app may call it; nobody else (revoked from public).
+  assert.equal((await q1(`select has_function_privilege('public', 'intake_device(text, text)', 'execute') as p`)).p, false);
+  for (const [dm, need] of [['unsure', true], ['yes', true], [null, true], ['no', false]]) {
+    const In = await app1(`insert into intake (clinic_id, ref, target, form_version, created_by, desk_minor) values ($1, $2, 'new', 'intake-2026-10', $3, $4) returning id`, [A, refOf('IN', 4), OWNER, dm]);
+    const Xn = await doc(In.id, 'anaesthesia-2026-10', { dentist: HAZEL.id, fields: { area: 'tooth 36', technique: 'infiltration' } });
+    const ins = `insert into consent_attestation (clinic_id, document_id, dentist_id, dentist_name, dentist_prc, explained_in, assent, fields_sha256) values ($1, $2, $3, 'x', 'x', 'English', $4, $5) returning assent`;
+    if (need) {
+      await refused(ins, [A, Xn.id, HAZEL.id, null, '0'.repeat(64)], /say what the patient said/);
+      assert.equal((await app1(ins, [A, Xn.id, HAZEL.id, 'agreed', '0'.repeat(64)])).assent, 'agreed');
+    } else {
+      assert.equal((await app1(ins, [A, Xn.id, HAZEL.id, null, '0'.repeat(64)])).assent, null);
+    }
+  }
+  ok('043: intake_device names the link’s device for its own device only (not another device, a made-up token or a bad one); what the patient said is required while the age is not known unless the desk said 18 or over, and stored');
+}
 
 // 7. Send, and what it wrote: the fingerprints are the app’s own sums
 assert.equal(await call('intake_send', [T1, DEV1, 'short']), 'invalid');

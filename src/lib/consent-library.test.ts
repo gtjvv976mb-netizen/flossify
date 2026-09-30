@@ -12,6 +12,8 @@ import { TREATMENT_CONSENT, parseForm, parseScreen, valuesAsForm, FIELDS } from 
 import { INTAKE_DEF, INTAKE_FORM_VERSION, INTAKE_STEPS } from './intake-def.ts';
 
 const MIGRATION = new URL('../data/migrations/039_patient_intake.sql', import.meta.url);
+/** The migrations that pin the words, newest first: the newest that names a version sets its fingerprint. */
+const PINS = [new URL('../data/migrations/043_intake_fixes.sql', import.meta.url), MIGRATION];
 
 /** Every word a template shows, English and Filipino, as plain strings. */
 function words(t: Template): string[] {
@@ -25,14 +27,19 @@ function words(t: Template): string[] {
   return out;
 }
 
-test('the words are the ones 039 pinned: libraryHash equals each row’s body_sha256', () => {
-  const sql = readFileSync(MIGRATION, 'utf8');
+test('the words are the ones the migrations pinned: libraryHash equals each row’s body_sha256, as the newest migration sets it', () => {
+  const sqls = PINS.map((u) => readFileSync(u, 'utf8'));
   for (const t of Object.values(TEMPLATES)) {
     const h = libraryHash(t);
+    const pinned = sqls.map((sql) => new RegExp(`"${t.version}": "([0-9a-f]{64})"`).exec(sql)?.[1]).find(Boolean);
+    assert.equal(pinned, h, `${t.version}: the words changed since a migration pinned them. New words are a new version id and a new row (npm run consent:hash).`);
+  }
+  // 039 agrees with itself: each row it inserts or sets is the one its own check names.
+  const sql = readFileSync(MIGRATION, 'utf8');
+  for (const t of Object.values(TEMPLATES)) {
     const row = new RegExp(`'${t.version}',[^\\n]*'([0-9a-f]{64})'\\)`).exec(sql)?.[1]
       ?? new RegExp(`set body_sha256 = '([0-9a-f]{64})' where id = '${t.version}'`).exec(sql)?.[1];
-    assert.equal(row, h, `${t.version}: the words changed since 039 pinned them. New words are a new version id and a new row (npm run consent:hash).`);
-    assert.equal(new RegExp(`"${t.version}": "${h}"`).test(sql), true, `${t.version}: 039's own check names another fingerprint`);
+    assert.equal(new RegExp(`"${t.version}": "${row}"`).test(sql), true, `${t.version}: 039's own check names another fingerprint`);
   }
   assert.equal(Object.keys(TEMPLATES).length, 11);
 });
@@ -187,7 +194,11 @@ test('readPatientPart: ticks and initials to agree, none to ask first; stops; th
   assert.ok(readPatientPart(p, { decision: 'agree', read: 'self', signer_as: 'patient', use_specialist: 'no', use_social: 'no' }, pctx).errors.decision);
   assert.deepEqual(readPatientPart(p, { decision: 'agree', read: 'self', signer_as: 'patient', use_specialist: 'yes', use_social: 'no' }, pctx).errors, {});
   assert.deepEqual(readPatientPart(p, { decision: 'refuse', read: 'self', signer_as: 'patient' }, pctx).errors, {});
-  assert.ok(readPatientPart(p, { decision: 'later' }, pctx).errors.decision);
+  // "Decide later" on the photos too (043): unsigned, nothing else asked — a minor's parent may not be there.
+  const photosLater = readPatientPart(p, { decision: 'later' }, { ...pctx, minor: true });
+  assert.deepEqual(photosLater.errors, {});
+  assert.equal(photosLater.decision, 'later');
+  assert.equal(photosLater.signer, null);
 });
 
 test('renderDocument: to be confirmed until attested; the meaning sentence; Filipino only when shown', () => {
@@ -214,6 +225,33 @@ test('renderDocument: to be confirmed until attested; the meaning sentence; Fili
   assert.equal(renderDocument(t, { ...fields, teeth: [38] }, ctx).sections.some((s) => s.id === 'wisdom'), true);
   assert.equal(renderDocument(t, fields, ctx).sections.some((s) => s.id === 'wisdom' || s.id === 'sinus'), false);
   assert.equal(valueText(t.clinicFields[0], [36], 'tooth'), 'tooth 36');
+  // Refusing reads "as described above" too.
+  const refused = renderDocument(t, fields, { ...ctx, confirmed: true, decision: 'refused', signer: { name: 'Paolo Cruz', as: 'patient', method: 'sign', relation: null, authority: null, ground: null, note: null } });
+  assert.equal(meaningSentence(refused), 'By signing, I, Paolo Cruz, do not agree to the extraction of teeth 36 and 37 by Dr Ana Reyes as described above. 2 Oct 2026.');
+});
+
+test('the meaning sentence a parent signs reads for the general consent and the photos; an unsigned "No, thank you" has none', () => {
+  const mother = { name: 'Maria Santos', as: 'guardian' as const, method: 'sign' as const, relation: 'mother', authority: 'parent' as const, ground: null, note: null };
+  const ctx: RenderCtx = {
+    langs: ['en'], minor: true, confirmed: false, clinic: { name: 'C', address: null, phone: null }, patient: { name: 'Ana Santos', birth: '2014-01-02' },
+    dentist: null, attested: null, language: null, date: '2026-10-02',
+  };
+  const g = TEMPLATES['treatment-2026-09'];
+  assert.equal(meaningSentence(renderDocument(g, {}, { ...ctx, decision: 'agreed', signer: mother })),
+    'By signing, I, Maria Santos, mother of Ana Santos, agree for Ana Santos to be examined, and to have treatment once the dentist has explained it, as described above. 2 Oct 2026.');
+  assert.equal(meaningSentence(renderDocument(g, {}, { ...ctx, decision: 'refused', signer: mother })),
+    'By signing, I, Maria Santos, mother of Ana Santos, do not agree for Ana Santos to be examined, or to have treatment, as described above. 2 Oct 2026.');
+  const p = TEMPLATES['photos-2026-10'];
+  const fields: Fields = { uses: ['social'] };
+  assert.equal(meaningSentence(renderDocument(p, fields, { ...ctx, decision: 'agreed', signer: mother })),
+    'By signing, I, Maria Santos, mother of Ana Santos, agree to the choices on this form about the photos and records of Ana Santos. 2 Oct 2026.');
+  assert.equal(renderDocument(p, fields, { ...ctx, decision: 'refused', signer: mother, unsigned: true }).meaning, null);
+  for (const t of Object.values(TEMPLATES)) {
+    for (const d of ['agreed', 'refused'] as const) {
+      const m = meaningSentence(renderDocument(t, {}, { ...ctx, decision: d, signer: mother }));
+      assert.doesNotMatch(m, /to have be |to have the choices|about my /, `${t.version} ${d}: ${m}`);
+    }
+  }
 });
 
 test('consentsForCatalog: the fee guide’s procedures suggest forms', () => {

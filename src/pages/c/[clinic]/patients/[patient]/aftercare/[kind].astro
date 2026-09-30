@@ -11,6 +11,7 @@
 export const prerender = false;
 
 import '../../../../../../styles/global.css';
+import ParkedGuard from '../../../../../../components/ws/ParkedGuard.astro';
 import { requireWorkspace } from '../../../../../../lib/workspace';
 import { withClinic } from '../../../../../../lib/db';
 import { dateText, manilaToday } from '../../../../../../lib/health';
@@ -153,6 +154,7 @@ const pageCss = `
       .ac-foot { margin-top: auto; padding-top: 6mm; font-size: 12px; line-height: 1.5; color: #344054; }
       @media (max-width: 600px) { .ac-main { padding: 1rem; gap: 1rem; } .ac-sheet { padding: 6mm; min-height: 0; } }
     </style>
+    <ParkedGuard />
   </head>
   <body class="px-body">
     <div class="px-bar print:hidden">

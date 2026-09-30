@@ -248,8 +248,8 @@ export const WORDS: Words = {
   attest: W('I confirmed the details above, explained them to the patient (or parent or guardian) in {language}, answered their questions, and believe they understood.'),
   meaning_agree: W('By signing, I, {$signer}, agree to {$what}{$by} as described above.'),
   meaning_agree_for: W('By signing, I, {$signer}, {$relation} of {patient}, agree for {patient} to have {$what}{$by} as described above.'),
-  meaning_refuse: W('By signing, I, {$signer}, do not agree to {$what}{$by} described above.'),
-  meaning_refuse_for: W('By signing, I, {$signer}, {$relation} of {patient}, do not agree for {patient} to have {$what}{$by} described above.'),
+  meaning_refuse: W('By signing, I, {$signer}, do not agree to {$what}{$by} as described above.'),
+  meaning_refuse_for: W('By signing, I, {$signer}, {$relation} of {patient}, do not agree for {patient} to have {$what}{$by} as described above.'),
   meaning_by: W(' by Dr {dentist}'),
   grounds: { died: 'have died', absent: 'are absent and cannot be found', unfit: 'are unfit, or a court has ruled so' },
   who: { grandparent: 'surviving grandparent', sibling_21: 'oldest brother or sister, 21 or over', custodian_21: 'actual custodian (the person who looks after them), 21 or over' },
@@ -329,7 +329,12 @@ function generalFrom(version: string): Template {
     sections: g.points.map((p, i) => ({ id: `p${i + 1}`, head: { en: p.head }, role: p.head === 'Your rights' ? 'rights' : 'special', lines: [{ en: [p.body] }] })),
     ticks: [{ id: 'general', line: { en: [g.tick] } }],
     meaning: W('be examined, and to treatment once the dentist has explained it'),
-    words: WORDS,
+    // A parent or guardian agrees for the patient: the shared "to have {what}" does not read here.
+    words: {
+      ...WORDS,
+      meaning_agree_for: W('By signing, I, {$signer}, {$relation} of {patient}, agree for {patient} to be examined, and to have treatment once the dentist has explained it, as described above.'),
+      meaning_refuse_for: W('By signing, I, {$signer}, {$relation} of {patient}, do not agree for {patient} to be examined, or to have treatment, as described above.'),
+    },
   };
 }
 
@@ -1053,7 +1058,14 @@ const PHOTOS = base({
     ]),
   ],
   meaning: W('the choices on this form about my photos and records'),
-  words: { ...WORDS, agree: W('Yes, with these choices.'), refuse: W('No, thank you.') },
+  words: {
+    ...WORDS, agree: W('Yes, with these choices.'), refuse: W('No, thank you.'),
+    // The photos are the patient's own: a parent or guardian decides about theirs. (A "No, thank you" on a
+    // device is kept unsigned and has no sentence; one signed on paper has these.)
+    meaning_agree_for: W('By signing, I, {$signer}, {$relation} of {patient}, agree to the choices on this form about the photos and records of {patient}.'),
+    meaning_refuse: W('By signing, I, {$signer}, do not agree to any use of my photos and records beyond my care.'),
+    meaning_refuse_for: W('By signing, I, {$signer}, {$relation} of {patient}, do not agree to any use of the photos and records of {patient} beyond their care.'),
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -1384,8 +1396,8 @@ export function readPatientPart(t: Template, raw: RawPart, ctx: { minor: boolean
   const errors: Record<string, string> = {};
   const say = (name: string, text: string) => { if (!errors[name]) errors[name] = text; };
   const d = clean(first(raw, 'decision'));
-  const decision: Decision | null = d === 'agree' ? 'agreed' : d === 'refuse' ? 'refused' : d === 'later' && !t.refuseUnsigned ? 'later' : null;
-  if (!decision) say('decision', t.refuseUnsigned ? 'Choose “Yes, with these choices” or “No, thank you”.' : 'Say what you decide.');
+  const decision: Decision | null = d === 'agree' ? 'agreed' : d === 'refuse' ? 'refused' : d === 'later' ? 'later' : null;
+  if (!decision) say('decision', t.refuseUnsigned ? 'Choose “Yes, with these choices”, “No, thank you” or “Decide later”.' : 'Say what you decide.');
   const signing = decision === 'agreed' || decision === 'refused';
   const agreeing = decision === 'agreed';
 
@@ -1504,6 +1516,8 @@ export interface RenderCtx {
   signer?: Signer | null;
   read?: PatientPart['read'];
   explainedIn?: string | null;
+  /** A decision kept without a signature (the photos' "No, thank you"): no "By signing …" sentence. */
+  unsigned?: boolean;
   /** YYYY-MM-DD, Manila. */
   date: string;
 }
@@ -1590,8 +1604,9 @@ export function renderDocument(t: Template, fields: Readonly<Fields>, ctx: Rende
     explained_in: ctx.explainedIn ?? null, meaning: null, date: ctx.date,
   };
   // The meaning sentence, from the template's own words: what is agreed to, and by whom it is done
-  // (a procedure form's named dentist; not the general consent or the photos).
-  if (signer && (ctx.decision === 'agreed' || ctx.decision === 'refused')) {
+  // (a procedure form's named dentist; not the general consent or the photos). None for a decision kept
+  // without a signature.
+  if (signer && !ctx.unsigned && (ctx.decision === 'agreed' || ctx.decision === 'refused')) {
     const plain = (l: Line) => l.en.map((r) => runText(r)).join('');
     vars.what = plain(t.meaning);
     vars.by = ctx.dentist && t.attest ? plain(t.words.meaning_by) : '';

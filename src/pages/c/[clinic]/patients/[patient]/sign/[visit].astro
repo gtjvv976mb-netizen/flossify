@@ -19,6 +19,7 @@
 export const prerender = false;
 
 import '../../../../../../styles/global.css';
+import ParkedGuard from '../../../../../../components/ws/ParkedGuard.astro';
 import Csrf from '../../../../../../components/Csrf.astro';
 import { requireWorkspace } from '../../../../../../lib/workspace';
 import { withClinic } from '../../../../../../lib/db';
@@ -162,6 +163,7 @@ const onPatientStep = !!typed;
       .sg-body :focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
       [data-sg-step][hidden] { display: none; }
     </style>
+    <ParkedGuard />
   </head>
   <body class="sg-body">
     <header class="sg-bar">

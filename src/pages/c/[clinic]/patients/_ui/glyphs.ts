@@ -1,7 +1,7 @@
 // The patient pages' icons: the shell's set (src/components/ws/icons.ts) plus
 // the few the record needs and the shell does not have — a heart (Health), a
 // tooth (Chart), a shield with a tick (Consent) — and the patient forms' own
-// (a QR code, a printer, a link, a phone, a filled-in form, make a new one). Drawn the shell's way:
+// (a QR code, a printer, a link, a phone, a filled-in form, make a new one) and the intake's (a tablet, a keyboard). Drawn the shell's way:
 // the inside of a 24×24 <svg>, a 1.75 stroke, round ends, no fill.
 import { PATHS, type IconName } from '../../../../../components/ws/icons';
 
@@ -36,6 +36,10 @@ const OWN = {
   plan: '<rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5V3.5h6v1M9 13l2 2 4-4"/>',
   // a flask: a lab case
   lab: '<path d="M9.5 3.5h5M10.5 3.5v5.2L5.4 17.6A2 2 0 0 0 7.1 20.5h9.8a2 2 0 0 0 1.7-2.9L13.5 8.7V3.5"/><path d="M7.6 14.5h8.8"/>',
+  // a tablet: the clinic's own tablet, or this device handed to the patient (the intake)
+  tablet: '<rect x="4.5" y="3" width="15" height="18" rx="2.5"/><path d="M10.5 18h3"/>',
+  // a keyboard: the desk types it in
+  keyboard: '<rect x="3" y="6.5" width="18" height="11" rx="2.2"/><path d="M7 10.5h.01M10.3 10.5h.01M13.7 10.5h.01M17 10.5h.01M8 14h8"/>',
   // a calendar with a tick: the next check-up
   recall: '<rect x="4" y="5.5" width="16" height="14.5" rx="2.2"/><path d="M8 3.5v4M16 3.5v4M4 10h16M9.3 15l1.9 1.9 3.6-3.6"/>',
 } as const;

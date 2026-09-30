@@ -19,6 +19,7 @@ export const SECTIONS = [
   { id: 'roles', label: 'Roles', icon: 'shield' },
   { id: 'photos', label: 'Photos', icon: 'upload' },
   { id: 'privacy', label: 'Privacy', icon: 'check' },
+  { id: 'tablets', label: 'Clinic tablets', icon: 'phone' },
   { id: 'plan', label: 'Your Flossify plan', icon: 'file' },
 ] as const;
 export type SectionId = (typeof SECTIONS)[number]['id'];
