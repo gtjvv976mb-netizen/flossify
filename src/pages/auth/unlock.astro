@@ -7,8 +7,9 @@
 // filled in. Anyone at that clinic may sign in here as themself; nothing is
 // opened by the fl_park hint itself (src/lib/park.ts), which only names the
 // clinic, the username and the intake to go back to. "Sign in another way" is
-// the email door. On success: login.ok, audit device.unlock, the hint cleared,
-// and back to the intake.
+// the email door. On success: login.ok, audit device.unlock, the hand-over
+// ended (the intake's link on this device retires as stopped, endHandover, and
+// fl_idev goes: setSession clears it), the hint cleared, and back to the intake.
 export const prerender = false;
 
 import StaffEntrance from '../../components/StaffEntrance.astro';
@@ -21,6 +22,7 @@ import { hit, refund, clientIp, waitText, LIMITS } from '../../lib/throttle';
 import { pool, withClinic } from '../../lib/db';
 import { readPark, clearPark } from '../../lib/park';
 import { audit } from '../../lib/patient-add';
+import { endHandover } from '../../lib/intake';
 
 const park = readPark(Astro.cookies);
 // No hint (it ran out, or was deleted): the ordinary sign-in.
@@ -59,10 +61,14 @@ if (Astro.request.method === 'POST') {
         setSession(Astro.cookies, { staffId: who.staffId, groupId: who.groupId, clinicId: door.id, name: who.name, role: who.role, tv: who.tv }, SESSION_HOURS[device]);
         await refund(key);
         await authEvent('login.ok', { email: `${login}@${door.slug}`, staffId: who.staffId, ip, ua });
-        await withClinic(door.id, (tx) => audit(tx, door.id, who.staffId, 'device.unlock', 'intake', park.i)).catch(() => {});
+        // The patient's link on this device stops: nobody can go Back to their forms here.
+        const stopped = await withClinic(door.id, async (tx) => {
+          await audit(tx, door.id, who.staffId, 'device.unlock', 'intake', park.i);
+          return endHandover(tx, { clinicId: door.id, staffId: who.staffId, intakeId: park.i, why: 'unlocked' });
+        }).catch((e) => { console.error(`[intake] ending the hand-over at unlock failed: ${(e as { code?: string }).code ?? 'error'}`); return false; });
         clearPark(Astro.cookies);
         rememberClinic(Astro.cookies, door.slug);
-        return Astro.redirect(back, 303);
+        return Astro.redirect(stopped ? `${back}?step=check&stopped=1` : back, 303);
       }
     }
   }

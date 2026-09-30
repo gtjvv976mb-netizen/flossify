@@ -212,7 +212,7 @@ const NOTE_PARTS = [['complaint', 'Why they came'], ['findings', 'Findings'], ['
             <ul class="vx-files">
               {v.files.map((f) => (
                 <li>
-                  <a class="vx-file" href={`${base}/files/${f.id}/`} target="_blank" rel="noopener">
+                  <a class="vx-file" href={`${base}/files/${f.id}/view/`} target="_blank" rel="noopener">
                     {f.thumb ? <img src={`${base}/files/${f.id}/?thumb=1`} alt="" loading="lazy" width="96" height="72" /> : <span class="vx-file-icon"><Icon name="file" size={22} /></span>}
                     <span class="min-w-0"><strong>{FILE_KINDS[f.kind] ?? 'File'}</strong>{(f.caption || f.fdi) && <span>{[f.caption, f.fdi ? `tooth ${f.fdi}` : null].filter(Boolean).join(' · ')}</span>}</span>
                   </a>

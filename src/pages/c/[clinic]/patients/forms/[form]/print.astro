@@ -14,6 +14,7 @@
 export const prerender = false;
 
 import '../../../../../../styles/global.css';
+import ParkedGuard from '../../../../../../components/ws/ParkedGuard.astro';
 import { requireWorkspace } from '../../../../../../lib/workspace';
 import { withClinic } from '../../../../../../lib/db';
 import { canEditRecords, when, dateText, ageText } from '../../../../../../lib/health';
@@ -120,6 +121,7 @@ const signedAs = rec.signedAs === 'guardian' ? 'a parent or guardian, for the pa
       }
       @media (max-width: 640px) { .fp-sheet { margin: 1rem 0.5rem 2rem; padding: 18px 16px; } .fp-head { flex-direction: column; } .fp-sign { grid-template-columns: 1fr; } }
     </style>
+    <ParkedGuard />
   </head>
   <body class="fp-body">
     <div class="fp-bar">

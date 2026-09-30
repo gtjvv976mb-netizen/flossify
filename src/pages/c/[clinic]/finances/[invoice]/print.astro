@@ -27,6 +27,7 @@
 export const prerender = false;
 
 import '../../../../../styles/global.css';
+import ParkedGuard from '../../../../../components/ws/ParkedGuard.astro';
 import { requireWorkspace } from '../../../../../lib/workspace';
 import { OPENING_LINE } from '../../../../../lib/import';
 import { withClinic } from '../../../../../lib/db';
@@ -175,6 +176,7 @@ const pageCss = `
         .pr-paper { flex: 1 1 auto; }
       }
     </style>
+    <ParkedGuard />
   </head>
   <body data-paper={paper} class="pr-body">
     <div class="pr-bar print:hidden">

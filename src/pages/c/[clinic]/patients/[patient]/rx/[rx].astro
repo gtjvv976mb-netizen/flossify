@@ -11,6 +11,7 @@
 export const prerender = false;
 
 import '../../../../../../styles/global.css';
+import ParkedGuard from '../../../../../../components/ws/ParkedGuard.astro';
 import { requireWorkspace } from '../../../../../../lib/workspace';
 import { withClinic } from '../../../../../../lib/db';
 import { ageOn, ageText, dateText, manilaToday } from '../../../../../../lib/health';
@@ -113,6 +114,7 @@ const pageCss = `
       .rx-sign-line { border-top: 1px solid #1f2937; padding-top: 1.5mm; font-size: 14px; font-weight: 600; }
       @media (max-width: 600px) { .rx-sheet { margin: 1rem; padding: 6mm; min-height: 0; } }
     </style>
+    <ParkedGuard />
   </head>
   <body class="px-body">
     <div class="px-bar print:hidden">

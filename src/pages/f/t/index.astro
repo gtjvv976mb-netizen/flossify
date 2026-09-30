@@ -4,8 +4,12 @@ export const prerender = false;
 // "Ready for the next patient", the clinic's own room behind, its name and
 // nothing else. It asks /f/t/poll/ every 4 seconds; when the desk sends forms
 // to it, it opens them. It holds no staff session — only its own secret
-// (fl_ctab, set by Clinic settings → Clinic tablets). A device that is not a
-// clinic tablet (or was removed) says so, and how one is made.
+// (fl_ctab, set by /auth/tablet/ from Clinic settings → Clinic tablets): a
+// staff sign-in made on it since is ended here (and by the poll and the
+// patient's pages), with any hand-over secret, and the page drops the kept
+// copy of a record and tells every other tab that nobody is signed in here and
+// that patients hold this device. A device that is not a clinic tablet (or was
+// removed) says so, and how one is made.
 import Base from '../../../layouts/Base.astro';
 import Icon from '../../../components/ws/Icon.astro';
 import ClinicBadge from '../../find/_ui/ClinicBadge.astro';
@@ -13,8 +17,8 @@ import ClinicRoom from '../../find/_ui/ClinicRoom.astro';
 import '../../find/_ui/patient.css';
 import '../../find/_ui/clinic-glass.css';
 import '../_forms.css';
-import { hit, LIMITS } from '../../../lib/throttle';
-import { pollTablet, tabletProof } from '../../../lib/intake-public';
+import { hit, clientIp, LIMITS } from '../../../lib/throttle';
+import { pollTablet, tabletProof, endStaffOnTablet } from '../../../lib/intake-public';
 
 Astro.response.headers.set('Cache-Control', 'no-store');
 Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
@@ -23,6 +27,8 @@ Astro.response.headers.set('Referrer-Policy', 'same-origin');
 const proof = tabletProof(Astro.cookies);
 let p: Awaited<ReturnType<typeof pollTablet>> = { status: 'unknown', token: null, tablet: null, clinic: null };
 if (proof && (await hit(`intake:t:${proof}`, ...LIMITS.intake.tablet)).allowed) p = await pollTablet(proof);
+// A clinic tablet never holds a staff session.
+if (p.status === 'ready' || p.status === 'link') await endStaffOnTablet(Astro.cookies, { ip: clientIp(Astro), ua: Astro.request.headers.get('user-agent') }, { device: true });
 if (p.status === 'link' && p.token) return Astro.redirect(`/f/i/${p.token}/`, 303);
 if (p.status === 'unknown') Astro.response.status = 404;
 const made = Astro.url.searchParams.get('new') === '1';
@@ -53,8 +59,20 @@ const made = Astro.url.searchParams.get('new') === '1';
   </main>
 
   <script>
-    // Ask for work every 4 seconds; when the desk has sent forms, open them. Three misses in a row say so.
+    // A clinic tablet: the kept copy of a record goes, and every other tab hears that nobody is signed in here and
+    // that this device is in patients' hands (a workspace tab covers itself; a print or file tab goes to sign-in).
     const main = document.querySelector<HTMLElement>('main[data-ft]');
+    if (main) {
+      if ('caches' in window) caches.keys().then((keys) => keys.filter((k) => k.startsWith('flossify-record-')).forEach((k) => caches.delete(k))).catch(() => {});
+      if (typeof BroadcastChannel !== 'undefined') {
+        const ch = new BroadcastChannel('flossify-offline');
+        ch.postMessage({ parked: true, at: Date.now() });
+        ch.postMessage({ who: null, sid: null, at: Date.now() });
+        ch.close();
+      }
+    }
+
+    // Ask for work every 4 seconds; when the desk has sent forms, open them. Three misses in a row say so.
     const live = document.querySelector<HTMLElement>('[data-ft-live]');
     let misses = 0;
     const ask = async () => {

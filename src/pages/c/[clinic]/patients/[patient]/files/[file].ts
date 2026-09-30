@@ -2,6 +2,9 @@
 // (src/lib/record.ts). Behind the workspace gate like every clinic page, read inside withClinic so row-level
 // security decides whether the patient and the file are this clinic's; never cached (no-store, as every /c/
 // response). ?thumb=1 is the small preview the Files grid shows; ?download=1 saves it instead of opening it.
+// The record opens a file through ./view/ (a page around it that leaves the screen when the device is handed
+// to a patient); a PDF sits there in a frame, so a PDF may be framed by this site's own pages
+// (frame-ancestors 'self'), never by another's.
 // Opening or saving a whole file is written to the audit log (a preview is not: the grid shows many at once).
 export const prerender = false;
 
@@ -37,7 +40,8 @@ export const GET: APIRoute = async (ctx) => {
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
       // A picture opened on its own runs nothing (a PDF keeps the browser's own viewer, which a strict policy can block).
-      ...(f.mime.startsWith('image/') ? { 'content-security-policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'" } : {}),
+      ...(f.mime.startsWith('image/') ? { 'content-security-policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'" }
+        : { 'content-security-policy': "frame-ancestors 'self'", 'x-frame-options': 'SAMEORIGIN' }),
     },
   });
 };
