@@ -22,7 +22,11 @@
 //   changed it since; a page left open never puts back an old value.
 // - A birth date change is a version too: the answers carried over unchanged,
 //   plus {"birth_date": {"from", "to"}} in medical_history.answers, so every
-//   value the record ever had, and who set it, stays in the history.
+//   value the record ever had, and who set it, stays in the history. One made
+//   in Edit details (saveBirth), where nobody asks a health question, also
+//   carries "birth_only": true, and never counts as the history being asked:
+//   "last checked" is the newest version without it (readHealth's `asked`,
+//   ASKED_SQL for the Dashboard and the Patients list).
 // - A desk consent is for the notice in force when it is saved, read through
 //   current_consent_version() (012), never for an id the form made up.
 // - A desk consent says who agreed (agreed_as, 021): the patient, or a parent
@@ -87,6 +91,8 @@ export interface HealthVersion extends HealthAnswers {
   formSentAt: Date | null;
   /** Set when this version changed the birth date on file. */
   birthChange: BirthChange | null;
+  /** A birth date corrected in Edit details and nothing else: the answers copied, nobody asked (saveBirth). */
+  birthOnly: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -263,28 +269,42 @@ export const versionChanges = (prev: HealthAnswers | null, v: HealthVersion): st
 // ---------------------------------------------------------------------------
 type Row = {
   id: string; at: Date; by: string | null; allergies: string[] | null; conditions: string[] | null; medications: string[] | null; note: string | null;
-  birth_change: { from?: unknown; to?: unknown } | null; total: number; answered_by: string; form_ref: string | null; form_sent_at: Date | null;
+  birth_change: { from?: unknown; to?: unknown } | null; birth_only: boolean; total: number; answered_by: string; form_ref: string | null; form_sent_at: Date | null;
 };
+
+/** SQL, on a medical_history row `h`: a version where the health history was asked (every one but a birth date
+ *  corrected in Edit details, saveBirth). "Last asked" reads the newest row that passes it. */
+export const ASKED_SQL = `not (h.answers ? 'birth_only')`;
 const ymdOrNull = (v: unknown): string | null => (typeof v === 'string' && YMD.test(v) ? v : null);
 
 /** Newest first, up to `limit` versions, plus how many there are in all. */
-export async function readHealth(tx: Tx, patientId: string, limit = 12): Promise<{ versions: HealthVersion[]; total: number; older: HealthVersion | null }> {
+export async function readHealth(tx: Tx, patientId: string, limit = 12): Promise<{ versions: HealthVersion[]; total: number; older: HealthVersion | null; asked: HealthVersion | null }> {
   // One extra row, so the oldest one shown can still say what it changed.
-  const { rows } = await tx.query<Row>(
+  const read = (where: string, n: number) => tx.query<Row>(
     `select h.id, h.answered_at as at, s.full_name as by, h.allergies, h.conditions, h.medications, h.note,
-            h.answers -> 'birth_date' as birth_change, (count(*) over ())::int as total, h.answered_by, f.ref as form_ref, f.submitted_at as form_sent_at
+            h.answers -> 'birth_date' as birth_change, h.answers ? 'birth_only' as birth_only, (count(*) over ())::int as total,
+            h.answered_by, f.ref as form_ref, f.submitted_at as form_sent_at
        from medical_history h left join staff s on s.id = h.recorded_by left join patient_form f on f.id = h.form_id
-      where h.patient_id = $1
+      where h.patient_id = $1${where}
       order by h.answered_at desc, h.id desc
-      limit $2`, [patientId, limit + 1]);
-  const versions: HealthVersion[] = rows.map(({ total: _t, birth_change: b, answered_by: ab, form_ref: fr, form_sent_at: fs, ...v }) => ({
+      limit $2`, [patientId, n]);
+  const shape = ({ total: _t, birth_change: b, birth_only: bo, answered_by: ab, form_ref: fr, form_sent_at: fs, ...v }: Row): HealthVersion => ({
     ...v,
     birthChange: b && typeof b === 'object' ? { from: ymdOrNull(b.from), to: ymdOrNull(b.to) } : null,
+    birthOnly: bo === true,
     answeredBy: ab === 'patient' ? 'patient' : 'staff',
     formRef: fr ?? null,
     formSentAt: fs ?? null,
-  }));
-  return { versions: versions.slice(0, limit), total: rows[0]?.total ?? 0, older: versions[limit] ?? null };
+  });
+  const { rows } = await read('', limit + 1);
+  const versions = rows.map(shape);
+  // The newest version where the history was asked: among these, else read past them (a run of birth date corrections).
+  let asked = versions.find((v) => !v.birthOnly) ?? null;
+  if (!asked && versions.length > 0 && (rows[0]?.total ?? 0) > versions.length) {
+    const more = (await read(` and ${ASKED_SQL}`, 1)).rows[0];
+    asked = more ? shape(more) : null;
+  }
+  return { versions: versions.slice(0, limit), total: rows[0]?.total ?? 0, older: versions[limit] ?? null, asked };
 }
 
 /**
@@ -358,7 +378,8 @@ export async function saveHealth(tx: Tx, a: {
 /**
  * A birth date changed in Edit details (the patient record), kept exactly as the health form keeps one (saveHealth):
  * a new medical_history version that copies the latest answers, with the change written into its `answers` as
- * {"birth_date": {"from", "to"}}, the patient row updated, audit patient.birth_date. `birthWas` is the birth date the
+ * {"birth_date": {"from", "to"}, "birth_only": true} (so it never counts as the history being asked: the health
+ * history's "last checked" stays where it was), the patient row updated, audit patient.birth_date. `birthWas` is the birth date the
  * form was drawn with: a birth date this person did not touch is left as it is on file ('unchanged'), and one someone
  * else changed since the form was drawn writes nothing ('conflict', with the one on file now). The record runs it in
  * the transaction that saves the rest of the details, so a conflict takes back the whole save.
@@ -378,7 +399,7 @@ export async function saveBirth(tx: Tx, a: {
     `insert into medical_history (clinic_id, patient_id, answered_by, recorded_by, allergies, conditions, medications, note, answers)
      values ($1, $2, 'staff', $3, $4, $5, $6, $7, $8)`,
     [a.clinicId, a.patientId, a.staffId, latest?.allergies ?? null, latest?.conditions ?? null, latest?.medications ?? null, latest?.note ?? null,
-      JSON.stringify({ birth_date: { from: stored, to: a.birth } })]);
+      JSON.stringify({ birth_date: { from: stored, to: a.birth }, birth_only: true })]);
   await tx.query('update patient set birth_date = $2, updated_at = now() where id = $1', [a.patientId, a.birth]);
   await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'patient.birth_date', 'patient', $3)`,
     [a.clinicId, a.staffId, a.patientId]);
@@ -395,9 +416,11 @@ export async function saveBirth(tx: Tx, a: {
 export async function recheckHealth(tx: Tx, a: { clinicId: string; staffId: string; patientId: string }): Promise<'none' | 'today' | 'saved'> {
   const here = (await tx.query('select 1 from patient where id = $1 and archived_at is null', [a.patientId])).rowCount;
   if (!here) return 'none';
-  const latest = (await readHealth(tx, a.patientId, 1)).versions[0] ?? null;
-  if (!latest || !answered(latest)) return 'none';
-  if (manilaToday(new Date(latest.at)) === manilaToday()) return 'today';
+  // The answers of the newest version (a birth date corrected since copies them), dated by the last time anyone asked.
+  const { versions, asked } = await readHealth(tx, a.patientId, 1);
+  const latest = versions[0] ?? null;
+  if (!latest || !answered(latest) || !asked) return 'none';
+  if (manilaToday(new Date(asked.at)) === manilaToday()) return 'today';
   await tx.query(
     `insert into medical_history (clinic_id, patient_id, answered_by, recorded_by, allergies, conditions, medications, note, answers)
      values ($1, $2, 'staff', $3, $4, $5, $6, $7, '{}'::jsonb)`,

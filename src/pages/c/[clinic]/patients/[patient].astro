@@ -502,6 +502,9 @@ const guardianNeeded = minor && consentNow?.agreed_as !== 'guardian';
 // health form: the health form's Save is quiet then, so no screen holds two teal buttons.
 const consentAsked = !!data.notice && canEdit && (!consentNow || guardianNeeded);
 const latest = health.versions[0] ?? null;
+// When the health history was last asked: the newest version but a birth date corrected in Edit details (saveBirth),
+// which copies the answers and asks nothing. Its date is "last checked"; the answers are the latest's (the same).
+const askedV = health.asked;
 // The alert strip is what is saved; the form shows what was typed when a post came back.
 const allergies: string[] = latest?.allergies ?? [];
 const conditions: string[] = latest?.conditions ?? [];
@@ -702,7 +705,7 @@ const leaveOffer = (section: string) => {
 // The privacy notice, for the strip: agreed and in force, or what is missing.
 const privacyState = { ok: !data.notice || (!!consentNow && !guardianNeeded), words: guardianNeeded ? 'Privacy notice: a parent or guardian must agree for a patient under 18' : 'Privacy notice: not agreed yet' };
 // A health history over a year old is asked again (the head says so; the strip offers "No change").
-const staleHealth = !!latest && answered(latest) && Date.now() - +new Date(latest.at) > 365 * 864e5;
+const staleHealth = !!askedV && answered(askedV) && Date.now() - +new Date(askedV.at) > 365 * 864e5;
 // The counts on the tabs: Chart & plan counts what is still open on the plan.
 const tabCounts = planOpen.length ? { chart: { n: planOpen.length, words: planOpen.length === 1 ? 'one open on the plan' : `${planOpen.length} open on the plan` } } : {};
 
@@ -816,7 +819,7 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
       <div class="rec-alerts rec-todo mt-2">
         {loaWaiting > 0 && <button type="button" class="rec-chip-go" data-rec-go="treatment"><Chip tone="warn" icon="clock" label={loaWaiting === 1 ? 'Waiting for an HMO LOA' : `Waiting for ${loaWaiting} HMO LOAs`} /></button>}
         {behindPlans.map((x) => <button type="button" class="rec-chip-go" data-rec-go="treatment"><Chip tone="alert" icon="money" label={`${x.title}: behind ${x.missed === 1 ? 'one month' : `${x.missed} months`}`} /></button>)}
-        {staleHealth && <button type="button" class="rec-chip-go" data-rec-go="health"><Chip tone="warn" icon="clock" label={`Health history last checked ${day(new Date(latest!.at))}: ask again`} /></button>}
+        {staleHealth && <button type="button" class="rec-chip-go" data-rec-go="health"><Chip tone="warn" icon="clock" label={`Health history last checked ${day(new Date(askedV!.at))}: ask again`} /></button>}
       </div>
     )}
     {latest?.note && <Callout tone="alert" role="none" class="mt-3" title="Note for the dentist" text={latest.note} />}
@@ -889,7 +892,7 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
     {current === 'overview' && !savedIn && <SavedLine {...savedLineProps} />}
     {/* Today's visit: what is still to do at it and what is done (036). */}
     {thisVisit && (
-      <VisitStrip visit={thisVisit} c={clin} x={ext} signed={data.signed} health={latest} privacy={privacyState} minor={minor} laterVisitAt={laterVisitAt}
+      <VisitStrip visit={thisVisit} c={clin} x={ext} signed={data.signed} health={askedV} privacy={privacyState} minor={minor} laterVisitAt={laterVisitAt}
         canEdit={canEdit} money={money} today={today} firstName={patient.first_name} action={here} chargeHref={`${chargeHref}&visit=${thisVisit.id}`} printBase={`${here}rx/`}
         saved={saved} problem={stripProblem} />
     )}
@@ -947,7 +950,7 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
                 {latestBp && bpNow && <div class="rs-line"><span class="rk">Blood pressure</span>
                   <p class="rp-row"><span class:list={['rp', bpNow.tone === 'alert' ? 'rp-alert' : bpNow.tone === 'warn' ? 'rp-warn' : 'rp-ok']}>{latestBp.sys}/{latestBp.dia} · {bpNow.label.toLowerCase()}</span><span class="rp">{dateText(bpDay)}</span></p></div>}
               </div>
-              <p class="mt-2 text-[13px] text-ink-2">Updated {byLine(latest)}.</p>
+              <p class="mt-2 text-[13px] text-ink-2">Updated {byLine(askedV ?? latest)}.</p>
             </>
           ) : (
             <Empty icon="info" text="No health answers yet. Ask the patient before treatment." />
@@ -1040,7 +1043,7 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
       <Head icon="heart" title="Health" />
       <p class="-mt-2 text-[14px] text-muted">
         {!latest ? 'Nothing recorded yet. Ask the patient before treatment.'
-          : answered(latest) ? `Updated ${byLine(latest)}.`
+          : answered(latest) ? `Updated ${byLine(askedV ?? latest)}.`
           : `No health answers yet. Ask the patient before treatment. Last saved ${byLine(latest)}.`}
       </p>
 
@@ -1397,11 +1400,13 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
   const tabNamed = (name: string) => panelOf(document.getElementById(name)) ?? tabOf(name) ?? tabOf(name.replace(/^rec-/, ''));
 
   // The tab row sticks under the workspace's top bar; what is scrolled to (a tab, a card) lands just under the row.
-  // From 768px the row pins a copy of the head's safety line below itself while it is stuck and the head's line has
-  // left the screen (data-pinned; ./_record/RecordNav.astro). The copy is laid out all the time and takes no room in
-  // the page, so --rec-stick counts it always: whatever is scrolled to, focused or landed on lands below it, and it
-  // never covers a card, the chart's offer or a field. (The side panels and the chart's palette sit in the top layer,
-  // above the row.)
+  // From 768px the row pins a copy of the head's safety line on top of itself as soon as the head's line starts to go
+  // under the top bar (data-pinned; ./_record/RecordNav.astro), and then sticks lower by the copy's height (--rec-pin-h),
+  // so the copy stands right under the top bar, over the head, wherever the row is: a tab or a #card landed on just
+  // under the row has the allergies on screen above it. The copy is laid out all the time and takes no room in the
+  // page, so --rec-stick counts it always: whatever is scrolled to, focused or landed on lands below the row, and the
+  // copy never covers a card, the chart's offer or a field. (The side panels and the chart's palette sit in the top
+  // layer, above the row.)
   const pin = bar?.querySelector<HTMLElement>('[data-rec-pin]') ?? null;
   const pinHeight = () => Math.round(pin?.getBoundingClientRect().height ?? 0);
   const topHeight = () => Math.round(topBar?.getBoundingClientRect().height ?? 0);
@@ -1409,42 +1414,31 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
   const measure = () => {
     const top = topHeight();
     root.style.setProperty('--rec-top', `${top}px`);
+    root.style.setProperty('--rec-pin-h', `${pinHeight()}px`);
     root.style.setProperty('--rec-stick', `${top + Math.round(bar?.getBoundingClientRect().height ?? 0) + pinHeight()}px`);
     if (top !== watchedTop) watchPin(top);
   };
   /** Scroll only when needed: a tab's top hidden under the row (the page was scrolled down), or too low on the screen
-   *  to see (a phone); then it starts just under the row and the room its pinned copy takes. */
+   *  to see (a phone); then it starts just under the row and the room its pinned copy takes above it. */
   const reveal = (el: HTMLElement) => {
     const barBox = bar?.getBoundingClientRect();
     const top = el.getBoundingClientRect().top;
-    const covered = (barBox?.bottom ?? 0) + (bar?.hasAttribute('data-pinned') ? pinHeight() : 0);
-    if (top >= covered + 11 && top <= innerHeight - 96) return;
+    if (top >= (barBox?.bottom ?? 0) + 11 && top <= innerHeight - 96) return;
     scrollBy({ top: top - (topHeight() + (barBox?.height ?? 0) + pinHeight() + 12) });
   };
-  // Pinned while the row is stuck under the top bar and the head's safety line is off the screen: two observers under
-  // the top bar, one on the line, one on a mark over everything above the row's own place (RecordNav's data-rec-stuck:
-  // the row is stuck once it has left). Made again when the top bar's height changes.
+  // Pinned while any of the head's safety line is under the top bar: one observer under the top bar, on the line (whole
+  // on screen, or not; and if not, gone up, never down). Made again when the top bar's height changes.
   const safetyHead = document.querySelector<HTMLElement>('[data-rec-safety]');
-  const aboveRow = document.querySelector<HTMLElement>('[data-rec-stuck]');
-  let lineGone = false;
-  let stuck = false;
-  let watching: IntersectionObserver[] = [];
-  const pinNow = () => bar?.toggleAttribute('data-pinned', lineGone && stuck);
+  let watching: IntersectionObserver | null = null;
   function watchPin(top: number) {
     watchedTop = top;
-    watching.forEach((o) => o.disconnect());
-    watching = [];
-    if (!bar || !pin || !safetyHead || !aboveRow || !('IntersectionObserver' in window)) return;
-    const gone = (r: DOMRectReadOnly) => r.bottom <= top + 1;
-    const line = new IntersectionObserver(([e]) => { lineGone = !e.isIntersecting && gone(e.boundingClientRect); pinNow(); }, { rootMargin: `-${top}px 0px 0px 0px` });
-    const row = new IntersectionObserver(([e]) => {
-      stuck = !e.isIntersecting;
-      lineGone = gone(safetyHead.getBoundingClientRect());
-      pinNow();
-    }, { rootMargin: `-${top}px 0px 0px 0px` });
-    line.observe(safetyHead);
-    row.observe(aboveRow);
-    watching = [line, row];
+    watching?.disconnect();
+    watching = null;
+    if (!bar || !pin || !safetyHead || !('IntersectionObserver' in window)) return;
+    watching = new IntersectionObserver(([e]) => {
+      bar.toggleAttribute('data-pinned', e.intersectionRatio < 0.999 && e.boundingClientRect.top < top + 1);
+    }, { rootMargin: `-${top}px 0px 0px 0px`, threshold: [0, 0.999] });
+    watching.observe(safetyHead);
   }
   measure();
   if ('ResizeObserver' in window) { const ro = new ResizeObserver(measure); if (topBar) ro.observe(topBar); if (bar) ro.observe(bar); if (pin) ro.observe(pin); }
@@ -1550,7 +1544,8 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
     addList.style.maxHeight = '';
     const room = () => innerHeight - addList.getBoundingClientRect().top - 12;
     const barTop = bar?.getBoundingClientRect().top ?? 0;
-    const stuckAt = topBar?.getBoundingClientRect().height ?? 0;
+    // Where the row sticks: under the top bar, and under the safety line's copy once that shows (from 768px).
+    const stuckAt = topHeight() + pinHeight();
     if (room() < Math.min(addList.scrollHeight, 520) && barTop > stuckAt + 1) scrollBy({ top: barTop - stuckAt, behavior: 'instant' });
     addList.style.maxHeight = `${Math.max(160, room())}px`;
   }).observe(addList, { attributes: true, attributeFilter: ['hidden'] });

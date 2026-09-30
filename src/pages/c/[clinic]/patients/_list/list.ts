@@ -54,6 +54,7 @@ import type { Tx } from '../../../../../lib/db';
 import { withClinic } from '../../../../../lib/db';
 import { hmoById } from '../../../../../data/directory';
 import { isNewSql } from '../../../../../components/ws/cal/data';
+import { ASKED_SQL } from '../../../../../lib/health';
 
 export const FILTERS = ['all', 'today', 'new', 'due', 'quiet', 'balance', 'attention'] as const;
 export type Filter = (typeof FILTERS)[number];
@@ -209,6 +210,7 @@ async function readList(tx: Tx, clinicId: string, o: {
               (h.allergies is not null or h.conditions is not null or h.medications is not null
                or nullif(btrim(coalesce(h.note, '')), '') is not null) as answered
          from medical_history h join pt on pt.id = h.patient_id
+        where ${ASKED_SQL}
         order by h.patient_id, h.answered_at desc, h.id desc
      ), rc as (
        select distinct on (r.patient_id) r.patient_id, r.due_on, r.reason, r.last_sent_at

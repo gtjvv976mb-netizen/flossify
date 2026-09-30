@@ -28,6 +28,7 @@
 // consultation" is not Braces, and a visit with neither shows no price.
 import type { Tx } from '../../../lib/db';
 import { withClinic } from '../../../lib/db';
+import { ASKED_SQL } from '../../../lib/health';
 import { rowToAppt, type Appt } from '../../../lib/schedule';
 import { hmoById } from '../../../data/directory';
 import { loadBlocks, type BlockRange } from '../../../lib/blocks';
@@ -114,7 +115,7 @@ const FROM = `
      order by lower(r.t) = lower(x.name) desc, lower(r.t) = lower(x.code) desc, char_length(x.name) desc, x.name
      limit 1) pr on true
   left join lateral (
-    select h.allergies, h.conditions, h.answered_at from medical_history h where h.patient_id = p.id order by h.answered_at desc limit 1) mh on true
+    select h.allergies, h.conditions, h.answered_at from medical_history h where h.patient_id = p.id and ${ASKED_SQL} order by h.answered_at desc limit 1) mh on true
   left join lateral (
     select i.id, i.series_prefix, i.number, i.status from invoice i
      where i.appointment_id = a.id and i.status <> 'void' order by i.issued_at desc limit 1) st on true`;

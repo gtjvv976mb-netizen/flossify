@@ -14,9 +14,10 @@
 //
 // The safety line rides with the row (./SafetyLine.astro), so the allergies stay in view while the dentist charts:
 // below 768px as one line of words above the five columns, from the start; from 768px as a compact copy of the head's
-// line, a second line of the row that the page shows (data-pinned) once the row is stuck and the head's line has left
-// the screen. The copy stands below the row without taking room in the page (nothing under it moves as it comes and
-// goes); the page counts its height in --rec-stick, so whatever is scrolled to lands below it. The script under the
+// line, a line on top of the row that the page shows (data-pinned) as soon as the head's line starts to go under the
+// top bar. The copy takes no room in the page (nothing under it moves as it comes and goes): while it shows, the row
+// sticks lower by its height, so the copy stands right under the top bar, over the head it copies, and never over the
+// tab's content. The page counts its height in --rec-stick, so whatever is scrolled to lands below the row. The script under the
 // row keeps the row and its copy within 128px: what does not fit folds into "+N more alerts, at the top" (the note
 // first, the blood pressure last); an allergy never does.
 //
@@ -71,8 +72,6 @@ const groups: { title: string; items: Item[] }[] = canEdit ? [
 ] : [];
 ---
 
-{/* Everything above the row, invisible: the page's observer sees the row stick when this leaves the screen. */}
-<span class="rec-stuck-mark" aria-hidden="true" data-rec-stuck></span>
 <div class="rec-bar" data-rec-bar>
   <SafetyLine variant="line" items={safety} note={note} line={line} />
   <nav class="rec-nav" aria-label={`${name}’s record`}>
