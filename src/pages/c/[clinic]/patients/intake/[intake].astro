@@ -49,8 +49,8 @@ import { reviewOf, renderDocument, type Code, type Template } from '../../../../
 import {
   intakeGates, loadIntake, suggestConsents, saveChecklist, saveClinicPart, goLive, stopLink, cancelIntake, dismissIntake, renewDocuments,
   setDeskAnswers, addIntake, intakeLookAlikes, listTablets, treatingDentists, defaultDentist, feeChips, minutesFor, intakeMinor, intakeAge,
-  intakeName, partTag, timeWords, rawFromFields, rawFromForm, isUuid, CAME_WITH, DISMISS_WHY, LABEL_MAX, DISMISS_NOTE_MAX, TABLET_FRESH_MS,
-  type DeskDoc, type DeskIntake,
+  intakeName, partTag, timeWords, rawFromFields, rawFromForm, isUuid, CAME_WITH, DISMISS_WHY, LABEL_MAX, DISMISS_NOTE_MAX, TABLET_FRESH_MS, LIVE_REFUSED,
+  type DeskDoc, type DeskIntake, type LiveRefusal,
 } from '../../../../../lib/intake';
 import { attestDocument, mayAttest, clinicFace, contextFor, plannedLanguage, bornLine } from '../../../../../lib/consent-docs';
 
@@ -175,6 +175,9 @@ const data = await withClinic(clinic.id, async (tx) => {
 
 const it = data.it;
 const stale = url.searchParams.get('stale') === '1';
+// "Hand this device to …" refused at /auth/park/: why, in its own words (LIVE_REFUSED).
+const refusedCode = url.searchParams.get('refused');
+const handoverRefused = refusedCode && Object.hasOwn(LIVE_REFUSED, refusedCode) ? LIVE_REFUSED[refusedCode as LiveRefusal] : null;
 const defaultStep = (x: DeskIntake): Step => x.status === 'preparing' ? (x.docs.length || x.target === 'existing' ? (x.docs.length ? 'check' : 'consents') : 'consents')
   : x.status === 'out' ? 'out' : x.status === 'sent' ? 'add' : 'done';
 let step: Step = postedStep ?? asStep(url.searchParams.get('step')) ?? (it ? defaultStep(it) : 'consents');
@@ -288,6 +291,7 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug, name: clinic.name, area: data.area }} title={pageTitle} section="add-patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
   <a href={`${base}/intake/`} class="rec-back ws-glass m-0! w-fit px-3!"><Icon name="chevron-left" />Patient forms in progress</a>
   {stale && <Callout tone="alert" text={CSRF_MESSAGE} />}
+  {handoverRefused && step === 'check' && problems.length === 0 && <Callout tone="alert" focus class="focus:outline-none" data-ik-problems title="Nothing was handed over." text={handoverRefused} />}
   {problems.length > 0 && (
     <Callout tone="alert" focus class="focus:outline-none" data-ik-problems title={`Nothing was saved. ${problems.length === 1 ? 'One thing' : `${problems.length} things`} to fix:`} items={problems} />
   )}
@@ -309,7 +313,7 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
         <span class="ik-ref">{it.ref}</span>
         {it.patient && <span class="ws-pill ws-tint-slate">{it.patient.chartNo}</span>}
         {age !== null && <span class="ws-pill ws-tint-slate">{age} years old</span>}
-        {it.target === 'new' && <span class="ws-pill ws-tint-blue">New patient</span>}
+        {it.target === 'new' && who !== 'New patient' && <span class="ws-pill ws-tint-blue">New patient</span>}
         {it.appointment && <span class="ws-pill ws-tint-slate">Visit {new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(new Date(it.appointment.startsAt))}</span>}
       </div>
       {STEP_PILLS.some(([k]) => k === step) && (
@@ -359,7 +363,8 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
           </Pane>
         )}
         <Pane as="section" label="Which forms">
-          <Head icon="form" title="Which forms" meta={it.target === 'new' ? 'Page 1 and the consent to treatment always come first' : undefined} />
+          <Head icon="form" title="Which forms" />
+          {it.target === 'new' && <p class="ik-help -mt-2 mb-3">Page 1 and the consent to treatment always come first.</p>}
           {parentsOnly && <Callout tone="info" role="note" class="mb-3" text="Under 18: a parent or legal guardian signs every form." />}
           {nobodyToAgree && <Callout tone="warn" role="note" class="mb-3" text="Only a parent or legal guardian can agree. Page 1 can be filled in; the privacy consent and the forms wait for them." />}
           {templates.length === 0 && <Callout tone="info" role="note" text="No consent forms are open on this server yet." />}
@@ -745,7 +750,7 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
     )}
     {step === 'check' && (
       <SidePanel id="ik-cancel" title="Stop and throw these forms away?" meta={it.ref}>
-        <p class="ik-lede">Nothing from them goes on a record. Forms nobody signed are removed.</p>
+        <p class="ik-lede">Nothing from them goes on a record. Forms that were on the record before go back to it as they were; the others are removed.</p>
         <form method="post" action={here} class="ik-actions mt-4">
           <Csrf /><input type="hidden" name="rev" value={rev} /><input type="hidden" name="intent" value="cancel" /><input type="hidden" name="step" value="check" />
           <button type="submit" class="ws-btn ws-btn-primary">Throw them away</button>

@@ -2,7 +2,11 @@
 // One consent form on A4 paper (039; the intake spec §3.6). Drawn from the
 // latest signing's stored snapshot — never from today's words — so a reprint
 // is what was signed; with ?paper=1 (after "Print for signing on paper"), the
-// form not signed yet, with empty boxes and signature lines. Black on white;
+// form not signed yet, with empty boxes and signature lines, the initials boxes
+// and the patient's questions — exactly what "Record a paper signing" asks.
+// ?paper=1 opens only as printForPaper allows: someone who may edit records,
+// the form printed for signing, never signed, not in forms being filled in,
+// and explained first where it must be; otherwise back to the form. Black on white;
 // "CF-7K2FQ · extraction-2026-10" bottom left and "Page x of y" bottom right on
 // every page. The clinic's name, address and phone come from the snapshot (no
 // logo, no letterhead of our own); the chart number from the record, labelled
@@ -14,11 +18,13 @@ export const prerender = false;
 
 import '../../../../../../../styles/global.css';
 import ConsentDocument from '../../../../../../../components/consent/ConsentDocument.astro';
+import ParkedGuard from '../../../../../../../components/ws/ParkedGuard.astro';
 import { requireWorkspace } from '../../../../../../../lib/workspace';
 import { withClinic } from '../../../../../../../lib/db';
-import { manilaToday, isMinor, dateText, ageOn } from '../../../../../../../lib/health';
+import { manilaToday, isMinor, dateText, ageOn, canEditRecords } from '../../../../../../../lib/health';
+import { can } from '../../../../../../../lib/can';
 import { prettyPhone } from '../../../../../../../lib/messages';
-import { renderDocument, type Rendered } from '../../../../../../../lib/consent-library';
+import { renderDocument, holds, type Rendered, type PatientField } from '../../../../../../../lib/consent-library';
 import { loadConsentDocument, snapshotDoc, signingCheck, clinicFace, contextFor, plannedLanguage, signerWords, type RecordSigning } from '../../../../../../../lib/consent-docs';
 import { timeWords } from '../../../../../../../lib/intake';
 import { SIG_W, SIG_H, strokesPath } from '../../../../../../../lib/visit-consent';
@@ -36,6 +42,13 @@ const back = `/c/${clinic.slug}/patients/${patientId}/consents/${docId}/`;
 const data = await withClinic(clinic.id, async (tx) => {
   const doc = await loadConsentDocument(tx, docId);
   if (!doc || doc.patientId !== patientId || !doc.template) return null;
+  if (paper) {
+    // The blank paper form, only as "Print for signing on paper" allows it (printForPaper).
+    const canEdit = can(clinic, 'records.edit') && (await canEditRecords(tx, session.staffId, clinic.id));
+    const openIntake = doc.intakeStatus === 'preparing' || doc.intakeStatus === 'out';
+    const ready = canEdit && !!doc.paperPrintedAt && doc.state === 'to_sign' && doc.signings.length === 0 && !openIntake && (!doc.template.attest || !!doc.attestation);
+    if (!ready) return 'back' as const;
+  }
   const p = (await tx.query<{ first_name: string; middle_name: string | null; last_name: string; suffix: string | null; chart_no: string; birth: string | null }>(
     `select first_name, middle_name, last_name, suffix, chart_no, to_char(birth_date, 'YYYY-MM-DD') as birth from patient where id = $1`, [patientId])).rows[0];
   const latest = paper ? null : doc.latest;
@@ -45,6 +58,7 @@ const data = await withClinic(clinic.id, async (tx) => {
   return { doc, p, latest, check, face };
 });
 if (!data) return new Response(null, { status: 404 });
+if (data === 'back') return Astro.redirect(back, 303);
 const { doc, p, latest, check, face } = data;
 if (!latest && !paper) return Astro.redirect(back, 303);
 const t = doc.template!;
@@ -61,12 +75,17 @@ const age = r.patient.birth ? ageOn(r.patient.birth, r.date) : null;
 const CHANNEL: Record<string, string> = { phone: 'on the patient’s phone', tablet: 'on the clinic’s tablet', desk: 'on a clinic device', paper: 'on paper' };
 const AUTH: Record<string, string> = { parent: 'Parent', court_guardian: 'Court-appointed guardian', substitute: 'Substitute parental authority', written: 'Authorised in writing by a parent', representative: 'Representative' };
 const dur = (a: Date | null, b: Date) => { if (!a) return null; const s = Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`; };
-const at = (d: Date) => `${dateText(new Date(d).toISOString().slice(0, 10))}, ${timeWords(d)}`;
+// The day on Manila's calendar, beside Manila's time.
+const at = (d: Date) => `${dateText(manilaToday(new Date(d)))}, ${timeWords(d)}`;
 const how = (s: RecordSigning) => s.channel === 'paper'
   ? `Signed on paper ${s.signedOn ? dateText(s.signedOn) : ''}, recorded by ${s.recordedByName ?? 'the clinic'}; the scan is in the patient’s files`
   : `Signed ${at(s.signedAt)}, Manila, ${CHANNEL[s.channel]}${s.method === 'mark' && s.confirmation ? `, by mark, witnessed by ${s.confirmation.staffName} ${timeWords(s.confirmation.at)}` : s.method === 'mark' ? ', by mark (not confirmed by a witness yet)' : ''}`;
 const minorOf = (b: string | null) => (b ? isMinor(b, today) : false);
 const answers = Object.entries(r.answers ?? {}).filter(([, v]) => v !== null && !(Array.isArray(v) && !v.length));
+// On paper: the patient's questions this form asks them (the same ones the device asks), with boxes.
+const paperMinor = p.birth ? isMinor(p.birth, today) : null;
+const paperQuestions: readonly PatientField[] = latest ? [] : t.patientFields.filter((f) => holds(f.when, t, doc.fields, paperMinor));
+const optionsOf = (f: PatientField): string[] => f.kind === 'yesno' ? ['Yes', 'No'] : f.kind === 'yesnounsure' ? ['Yes', 'No', 'Not sure'] : (f.choices ?? []).map((c) => c.label);
 const pageCss = `
 @page { size: A4; margin: 16mm 16mm 20mm;
   @bottom-left { content: "${doc.ref} · ${doc.versionId}"; font: 8pt 'IBM Plex Mono', ui-monospace, monospace; color: #000; }
@@ -91,6 +110,7 @@ const pageCss = `
       try { const t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }
     </script>
     <style is:inline set:html={pageCss}></style>
+    <ParkedGuard />
     <style>
       .px-body {
         --px-bg: #f3f5f8; --px-bar: #ffffff; --px-hair: #e6e9ee; --px-ink: #1f2937; --px-teal-ink: #0d706d; --px-teal-fill: #0e7471; --px-teal-fill-hover: #0b5f5d; --px-hover: rgb(16 24 40 / 0.035);
@@ -135,6 +155,10 @@ const pageCss = `
       .cf-line { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; margin-top: 10mm; font-size: 9pt; }
       .cf-line > div { border-top: 0.8pt solid #111827; padding-top: 1mm; }
       .cf-box-empty { display: inline-block; width: 4mm; height: 4mm; border: 0.8pt solid #000; vertical-align: -0.6mm; margin-right: 2mm; }
+      .cf-questions { break-inside: avoid; margin-top: 4mm; }
+      .cf-q-head { font-size: 11.5pt; font-weight: 700; }
+      .cf-q { margin-top: 2mm; }
+      .cf-q-opts { display: flex; flex-wrap: wrap; gap: 1mm 8mm; margin-top: 1mm; }
       .cf-ok { margin-top: 3mm; font-weight: 700; color: #065f46; }
       .cf-bad { margin-top: 3mm; padding: 2mm 3mm; border: 1pt solid #b42318; color: #b42318; font-weight: 700; }
       .cf-foot { margin-top: 5mm; font-size: 8pt; line-height: 1.5; color: #344054; overflow-wrap: anywhere; }
@@ -177,8 +201,20 @@ const pageCss = `
         </div>
 
         <div class="mt-4">
-          <ConsentDocument mode="record" doc={r} version={doc.versionId} ref={doc.ref} />
+          <ConsentDocument mode="record" doc={r} version={doc.versionId} ref={doc.ref} paper={!latest} />
         </div>
+
+        {paperQuestions.length > 0 && (
+          <section class="cf-questions" aria-label="The patient’s answers">
+            <p class="cf-q-head">The patient’s answers</p>
+            {paperQuestions.map((f) => (
+              <div class="cf-q">
+                <p>{f.label.en}</p>
+                <p class="cf-q-opts">{optionsOf(f).map((w) => <span><span class="cf-box-empty"></span>{w}</span>)}</p>
+              </div>
+            ))}
+          </section>
+        )}
 
         {answers.length > 0 && (
           <table class="cf-table mt-3"><tbody>{answers.map(([k, v]) => {

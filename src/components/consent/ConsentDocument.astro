@@ -9,7 +9,9 @@
 //   preview  read-only, in a phone-wide box inside the desk's side panel (not an
 //            iframe: every page sends frame-ancestors 'none').
 //   record   read-only, from the snapshot: what was shown and decided, with the
-//            ticks and the initials as they were.
+//            ticks and the initials as they were. With `paper` (the form printed
+//            for signing on paper), an empty initials box after each section
+//            that asks for them, as the paper signing is recorded.
 // Filipino lines show only when the document's langs include 'fil' (a reviewed
 // translation on a production server) and carry lang="fil".
 import './consent.css';
@@ -30,18 +32,21 @@ interface Props {
   signedFor?: string | null;
   /** The language planned (before the dentist confirms). */
   plannedLang?: string | null;
+  /** Record mode, printed for signing on paper: empty initials boxes to fill in by hand. */
+  paper?: boolean;
   id?: string;
 }
-const { doc, mode, part, version, ref, initials = null, forLine = null, signedFor = null, plannedLang = null, id } = Astro.props;
+const { doc, mode, part, version, ref, initials = null, forLine = null, signedFor = null, plannedLang = null, paper = false, id } = Astro.props;
 const fil = doc.langs.includes('fil');
 // The patient's page has the form as its h1; on the desk and the record it sits under the page's own headings.
 const T = mode === 'patient' ? 'h1' : 'h3';
 const H = mode === 'patient' ? 'h2' : 'h4';
 const dentist = doc.dentist;
 // The words say "Dr {dentist}"; the name is kept without the title (contextFor in src/lib/consent-docs.ts).
+// Before the dentist confirms, it is a plan: who explains it, and the language planned.
 const explained = doc.attested
   ? `Explained by ${dentist ? `Dr ${dentist.name}` : 'the dentist'}${dentist?.prc ? ` · PRC ${dentist.prc}` : ''} · in ${doc.attested.lang}`
-  : dentist ? `Explained by Dr ${dentist.name}${dentist.prc ? ` · PRC ${dentist.prc}` : ''}${plannedLang ? ` · in ${plannedLang}` : ''}` : null;
+  : dentist ? `Dr ${dentist.name} explains it${dentist.prc ? ` · PRC ${dentist.prc}` : ''}${plannedLang ? ` · planned in ${plannedLang}` : ''}` : null;
 const shortHead = fil ? 'In short · Sa madaling salita' : 'In short';
 const inputsHere = mode === 'patient' && initials !== null;
 ---
@@ -97,6 +102,7 @@ const inputsHere = mode === 'patient' && initials !== null;
         </div>
       )}
       {s.initials && mode === 'record' && doc.initials && <p class="cd-initials"><span class="cd-initials-done">Initials: <strong>{doc.initials}</strong></span></p>}
+      {s.initials && mode === 'record' && paper && !doc.initials && <p class="cd-initials cd-initials-paper"><span>Initials</span><span class="cd-initials-blank" aria-hidden="true"></span></p>}
     </section>
   ))}
 

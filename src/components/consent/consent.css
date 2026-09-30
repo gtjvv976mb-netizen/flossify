@@ -62,6 +62,9 @@
 }
 .cd-initials input:focus { outline: none; border-color: var(--ws-teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws-teal) 24%, transparent); }
 .cd-initials-done { font-size: 15px; color: var(--c-ink-2); }
+/* The form printed for signing on paper: a box to write the initials in by hand. */
+.cd-initials-paper { font-size: 10pt; font-weight: 600; color: #111827; }
+.cd-initials-blank { display: inline-block; width: 22mm; height: 8mm; border: 0.8pt solid #111827; border-radius: 1mm; background: #fff; }
 
 .cd-ticks { display: grid; gap: 0.375rem; margin: 0; padding: 0; list-style: none; }
 .cd-ticks li { display: flex; gap: 0.5rem; }

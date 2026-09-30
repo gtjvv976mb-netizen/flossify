@@ -74,6 +74,7 @@ const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.tee
               {d.attestation && <p class="text-[14px] text-ink-2">Explained by {d.attestation.dentistName}, PRC {d.attestation.dentistPrc}, in {d.attestation.lang}</p>}
               <p class="flex flex-wrap gap-2">
                 <a href={`${base}${d.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open</a>
+                {canEdit && openIntake && d.intakeId && <a href={`/c/${slug}/patients/intake/${d.intakeId}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open forms {d.intakeRef}</a>}
                 {s && <a href={`${base}${d.id}/print/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>}
                 {canEdit && toSign && !openIntake && mayExplain.has(d.id) && !d.attestation && d.state === 'to_sign' && <a href={`${base}${d.id}/?explain=1`} class="ws-btn ws-btn-quiet ws-btn-sm">Explain and confirm</a>}
                 {canEdit && toSign && !openIntake && d.inForce && (!d.template?.attest || d.attestation) && (

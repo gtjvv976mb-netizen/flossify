@@ -100,7 +100,7 @@ const left = (created: Date) => {
 };
 const nameOf = (r: (typeof data.rows)[number]) => r.patient_first
   ? [r.patient_first, r.patient_last, r.patient_suffix].filter(Boolean).join(' ')
-  : intakeName({ patient: null, label: r.label, answers: r.answers, ref: r.ref });
+  : intakeName({ patient: null, label: r.label, answers: r.answers });
 const groups = [
   { key: 'sent', title: 'Sent: add to the records', empty: 'Nothing waiting to be added.', rows: data.rows.filter((r) => r.status === 'sent') },
   { key: 'out', title: 'Filling in now', empty: 'Nobody is filling in forms now.', rows: data.rows.filter((r) => r.status === 'out') },

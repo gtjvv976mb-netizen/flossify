@@ -53,8 +53,8 @@ import { readCappedForm, newNonce } from '../../../lib/patient-forms';
 import { parseScreen, parseForm, valuesAsForm, shown, isMinorOn, ageFrom, HONEYPOT_FIELD, NONCE_FIELD, PRIVACY_TICK, type FieldDef, type RawValues } from '../../../lib/patient-forms-def';
 import { INTAKE_DEF, INTAKE_STEPS, INTAKE_SCREENS, INTAKE_FIELD_SCREEN, PRIVACY_AS, type IntakeScreen } from '../../../lib/intake-def';
 import {
-  lookupIntake, deviceProof, patientOf, renderPage, faceOf, savePage1, markPage, decidePage, sendIntake, pingIntake, postAllowed,
-  INTAKE_WORDS, INTAKE_POST_MAX, type IntakeLook, type IntakePageView,
+  lookupIntake, deviceProofs, patientOf, renderPage, faceOf, savePage1, markPage, decidePage, sendIntake, pingIntake, postAllowed, endStaffOnTablet,
+  intakeWords, INTAKE_POST_MAX, type IntakeLook, type IntakePageView,
 } from '../../../lib/intake-public';
 import { EXPLAINED_LANGS, signerChoices, holds, type RawPart, type SignerChoice, type Signer, type Decision } from '../../../lib/consent-library';
 import { bornLine } from '../../../lib/consent-docs';
@@ -68,9 +68,18 @@ csrfToken(Astro.cookies);
 const token = String(Astro.params.token ?? '').toLowerCase();
 const self = `/f/i/${token}/`;
 const ip = clientIp(Astro);
-const proof = deviceProof(Astro.cookies);
-const device = proof?.hash ?? '';
+// This browser's proofs: its hand-over secret first, then a clinic tablet's (a stray hand-over secret on a
+// tablet must not hide the tablet's own links).
+const proofs = deviceProofs(Astro.cookies);
+let proof = proofs[0] ?? null;
 let look: IntakeLook = await lookupIntake(token, proof?.hash ?? null, ip);
+if (look.status === 'taken' && proofs[1]) {
+  const other = await lookupIntake(token, proofs[1].hash, ip);
+  if (other.status !== 'taken') { proof = proofs[1]; look = other; }
+}
+const device = proof?.hash ?? '';
+// A clinic tablet never holds a staff session: one made on it since is ended here.
+if (proof?.tablet && look.status !== 'unknown') await endStaffOnTablet(Astro.cookies, { ip, ua: Astro.request.headers.get('user-agent') });
 const today = manilaToday();
 
 type Screen = IntakeScreen | `c:${string}` | 'check' | 'done';
@@ -136,10 +145,24 @@ const rawAll = (form: FormData): RawPart => {
 // ---------------------------------------------------------------------------
 // The post
 // ---------------------------------------------------------------------------
+const form = posted ? await readCappedForm(Astro.request, INTAKE_POST_MAX) : null;
+// A ping keeps a link alive while its page is open, and tells the page when the link is no longer open
+// here (stopped, replaced, moved to another device, sent, timed out): the page then loads again and shows
+// that, so the last patient's page never stays on a clinic device. Always JSON.
+if (posted && form && String(form.get('intent') ?? '') === 'ping') {
+  const reply = (body: { ok: boolean | null; status?: string }, code = 200) =>
+    new Response(JSON.stringify(body), { status: code, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+  if (look.status !== 'open' || !device) return reply({ ok: false, status: look.status === 'open' ? 'taken' : look.status });
+  if (!csrfOk(Astro.cookies, form)) return reply({ ok: null, status: 'stale' }, 403);
+  const r = await postAllowed({ intakeId: look.intake!.id, clinicId: look.clinic!.id, ip, ping: true });
+  if (!r.ok) return reply({ ok: null, status: 'wait' }, 429);
+  const st = await pingIntake(token, device);
+  return reply({ ok: st === 'open', status: st });
+}
 if (posted && look.status === 'open' && device) {
-  const form = await readCappedForm(Astro.request, INTAKE_POST_MAX);
   const at = form ? String(form.get('at') ?? '') : '';
-  const intent = form ? String(form.get('intent') ?? '') : '';
+  // "Ask the desk" on a consent form sends the form's own fields with ask=1: nothing typed is lost.
+  const intent = form ? (form.get('ask') === '1' && String(form.get('at') ?? '').startsWith('c:') ? 'question' : String(form.get('intent') ?? '')) : '';
   if (!form) {
     Astro.response.status = 413;
     formNote = 'That was too much to send in one go, so nothing was saved. Please ask the desk.';
@@ -154,9 +177,6 @@ if (posted && look.status === 'open' && device) {
     if (!csrfOk(Astro.cookies, form)) {
       Astro.response.status = 403;
       formNote = `${CSRF_MESSAGE} Your answers are still here: check them and press the button again.`;
-    } else if (intent === 'ping') {
-      const r = await postAllowed({ intakeId: look.intake!.id, clinicId: look.clinic!.id, ip, ping: true });
-      return new Response(JSON.stringify({ ok: r.ok ? (await pingIntake(token, device)) === 'open' : false }), { status: r.ok ? 200 : 429, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
     } else if (intent === 'goto') {
       raw = {}; partRaw = {}; strokes = null;
     } else {
@@ -191,7 +211,8 @@ if (posted && look.status === 'open' && device) {
         if (intent === 'read' || intent === 'question') {
           const r = await markPage(token, device, p.id, rev, intent === 'read' ? 'read' : 'question');
           if (r === 'saved' && intent === 'read') return Astro.redirect(self, 303);
-          if (r === 'saved') { asked = true; raw = {}; partRaw = {}; }
+          // The desk is told; the page stays as it was typed (choices, ticks, the signature drawn).
+          if (r === 'saved') asked = true;
           else if (r === 'changed') { await reload(); formNote = 'The clinic changed this form while you were reading it. Here it is as it is now.'; Astro.response.status = 409; raw = {}; partRaw = {}; strokes = null; }
           else if (r !== 'invalid') await reload();
         } else if (rev !== p.rev) {
@@ -201,7 +222,7 @@ if (posted && look.status === 'open' && device) {
           if (r.status === 'saved') return Astro.redirect(self, 303);
           if ('errors' in r) { errors = r.errors; Astro.response.status = 422; }
           else if (r.status === 'not_ready') formNote = `You sign this after ${p.dentistName ?? 'the dentist'} has explained it to you.`;
-          else if (r.status === 'changed') { await reload(); formNote = 'The clinic updated this form. Please ask the desk.'; Astro.response.status = 409; }
+          else if (r.status === 'changed') { await reload(); formNote = 'The clinic updated this form. Please ask the desk.'; Astro.response.status = 409; raw = {}; partRaw = {}; strokes = null; }
           else if (r.status === 'order') { screen = null; formNote = 'Please fill in your details first.'; }
           else if (r.status === 'invalid') { formNote = 'This could not be saved as it is. Check who is signing, or ask the desk.'; Astro.response.status = 422; }
           else await reload();
@@ -213,6 +234,7 @@ if (posted && look.status === 'open' && device) {
           screen = 'done';
         } else if (r.status === 'unfinished') { screen = 'check'; formNote = 'Some parts are not finished yet. They are listed below.'; Astro.response.status = 409; }
         else if (r.status === 'changed') { screen = 'check'; formNote = 'The clinic updated one of the forms. Please ask the desk.'; Astro.response.status = 409; }
+        else if (r.status === 'invalid') { screen = 'check'; formNote = 'These forms could not be sent as they are. Nothing is lost: please ask the desk.'; Astro.response.status = 409; }
         else { await reload(); }
       }
     }
@@ -228,6 +250,15 @@ if (open && !done && !screen) screen = nextScreen();
 const clinic = look.clinic;
 const who = open ? patientOf(look) : null;
 const page = screen?.startsWith('c:') ? pages().find((p) => `c:${p.id}` === screen) ?? null : null;
+// A form decided before (and not changed since), opened again: "Keep my answer" goes on without signing again.
+const decidedBefore = !!page && !needs(page) && !!page.page && ['agreed', 'refused', 'later'].includes(page.page.state);
+// Back from a consent form: the form before it, or (a new patient's first form) page 1's privacy screen.
+const backTo: string | null = (() => {
+  if (!page) return null;
+  const n = pages().findIndex((p) => p.id === page.id);
+  if (n > 0) return `c:${pages()[n - 1].id}`;
+  return look.intake?.target === 'new' ? 'privacy' : null;
+})();
 // A form drawn for the first time is marked opened (the definer resets a page whose form changed since).
 if (open && page && !posted && (!page.page || !page.page.openedAt)) {
   const r = await markPage(token, device, page.id, page.rev, 'opened');
@@ -235,9 +266,12 @@ if (open && page && !posted && (!page.page || !page.page.openedAt)) {
 }
 const face = open && page?.template ? await faceOf(look) : null;
 const rendered = open && page?.template && face ? renderPage(look, page, face) : null;
-const onClinicDevice = look.device === 'tablet' || look.device === 'desk';
+// Which device this is, for its words: the link's (the view names it for this device's own link, open or not), else a tablet's proof.
+const deviceKind = look.device ?? (proof?.tablet ? 'tablet' : null);
+const onClinicDevice = deviceKind === 'tablet' || deviceKind === 'desk';
 const status = look.status;
-if (!open && status !== 'open' && !done) Astro.response.status = INTAKE_WORDS[status as Exclude<typeof status, 'open'>]?.code ?? 404;
+const words = status === 'open' ? null : intakeWords(status, deviceKind);
+if (!open && status !== 'open' && !done) Astro.response.status = words?.code ?? 404;
 if (status === 'wait') Astro.response.headers.set('Retry-After', String(look.retryAfter ?? 60));
 
 // Parts: page 1 (a new patient) and each form.
@@ -304,7 +338,7 @@ const partState = (p: IntakePageView) => {
   if (signedChanged) return { words: 'Sign again: the form changed', done: false };
   if (st === 'agreed') return { words: `Signed ${p.page?.decidedAt ? new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(new Date(p.page.decidedAt)).toLowerCase() : ''}`.trim(), done: true };
   if (st === 'refused') return { words: p.code === 'photos' ? 'No photos' : 'Did not agree', done: true };
-  if (st === 'later') return { words: 'Will ask the dentist', done: true };
+  if (st === 'later') return { words: p.code === 'photos' ? 'Decide later' : 'Will ask the dentist', done: true };
   if (st === 'read' && !p.signable) return { words: 'Read · signed after the dentist explains', done: true };
   return { words: 'Not finished', done: false };
 };
@@ -344,20 +378,23 @@ const fil = (s: { fil?: string }) => s.fil;
           {open && partWords && <p class="ip-part">{partWords}</p>}
         </div>
       </div>
-      {open && screen !== 'done' && page && (
-        <form method="post" action={self}>
-          <Csrf /><input type="hidden" name="at" value={screen} /><input type="hidden" name="intent" value="question" /><input type="hidden" name="rev" value={page.rev} />
-          <button type="submit" class="btn btn-quiet ip-ask"><Icon name="message" />Ask the desk</button>
-        </form>
+      {open && screen !== 'done' && page && t && rendered && (
+        // It sends the form below with ask=1, so what was chosen, ticked and signed so far stays on the page.
+        <button type="submit" form="ip-consent" name="ask" value="1" class="btn btn-quiet ip-ask"><Icon name="message" />Ask the desk</button>
       )}
     </header>
 
     {!open && !done && (
       <section class="ws-pane ws-glass pt-card cl-pane pf-done" aria-labelledby="ip-status-title">
-        <h1 class="pt-done-title pf-done-title" id="ip-status-title">{INTAKE_WORDS[status as Exclude<typeof status, 'open'>]?.title ?? 'These forms are not open'}</h1>
-        <p class="pf-done-lead">{status === 'wait' && look.message ? look.message : INTAKE_WORDS[status as Exclude<typeof status, 'open'>]?.lead}</p>
-        {clinic?.phone && status !== 'finished' && <div class="pf-done-actions"><a href={phoneHref(clinic.phone)} class="btn btn-quiet"><Icon name="phone" />Call {clinic.phone}</a></div>}
-        {status === 'finished' && proof && !proof.tablet && <p class="pf-done-text"><a href="/auth/unlock/" class="pt-link">For the clinic</a></p>}
+        <h1 class="pt-done-title pf-done-title" id="ip-status-title">{words?.title ?? 'These forms are not open'}</h1>
+        <p class="pf-done-lead">{status === 'wait' && look.message ? look.message : words?.lead}</p>
+        {((clinic?.phone && status !== 'finished' && !onClinicDevice) || deviceKind === 'desk') && (
+          <div class="pf-done-actions">
+            {clinic?.phone && status !== 'finished' && !onClinicDevice && <a href={phoneHref(clinic.phone)} class="btn btn-quiet"><Icon name="phone" />Call {clinic.phone}</a>}
+            {/* The desk's own device, handed over: the way back for the clinic, on every closed page. */}
+            {deviceKind === 'desk' && <a href="/auth/unlock/" class="btn btn-quiet"><Icon name="user" />For the clinic</a>}
+          </div>
+        )}
       </section>
     )}
 
@@ -373,7 +410,7 @@ const fil = (s: { fil?: string }) => s.fil;
           <p class="pf-intro"><Icon name="clock" /><span>{parts === 1 ? '1 part' : `${parts} short parts`}, about {5 + pages().reduce((n, p) => n + (p.template?.minutes ?? 2), 0)} minutes. Your answers go only to {clinic!.name}. Prefer paper? Ask the desk.</span></p>
         )}
         {ageClash() && stepDef.id === 'you' && <p class="ip-banner" data-tone="warn" role="alert"><Icon name="alert" /><span>Please ask the desk before going on: the date of birth and what the desk wrote do not agree.</span></p>}
-        <form class="cl-form pf-form" method="post" action={self} novalidate autocomplete="off" data-ip-page1 data-birth={birthNow ?? ''}>
+        <form class="cl-form pf-form" method="post" action={self} novalidate autocomplete="off" data-ip-page1 data-birth={birthNow ?? ''} data-today={today}>
           <Csrf />
           <input type="hidden" name="at" value={stepDef.id} />
           <input type="hidden" name="intent" value="page1" />
@@ -428,7 +465,7 @@ const fil = (s: { fil?: string }) => s.fil;
 
     {/* ---------------------------------------------------------------- a consent form */}
     {open && page && t && rendered && (
-      <form method="post" action={self} novalidate autocomplete="off" class="ip-paper" data-ip-consent data-signable={page.signable ? '' : undefined}>
+      <form method="post" action={self} novalidate autocomplete="off" class="ip-paper" id="ip-consent" data-ip-consent data-signable={page.signable ? '' : undefined}>
         <Csrf />
         <input type="hidden" name="at" value={screen} />
         <input type="hidden" name="rev" value={page.rev} />
@@ -453,6 +490,7 @@ const fil = (s: { fil?: string }) => s.fil;
         {!page.signable ? (
           <div class="ip-actions">
             <input type="hidden" name="intent" value="read" />
+            {backTo && <button type="submit" form="ip-back-c" class="btn btn-quiet"><Icon name="chevron-left" />Back</button>}
             <button type="submit" class="btn btn-primary">Continue <Icon name="arrow-right" /></button>
           </div>
         ) : (
@@ -517,6 +555,7 @@ const fil = (s: { fil?: string }) => s.fil;
                 <>
                 <label class="ip-choice"><input type="radio" name="decision" value="agree" checked={decisionChosen === 'agree'} data-ip-decision /><span><span class="ip-choice-words"><span class="ip-choice-title">Yes, with these choices</span><span class="ip-choice-note">Answer the questions above, then sign.</span></span></span></label>
                 <label class="ip-choice"><input type="radio" name="decision" value="refuse" checked={decisionChosen === 'refuse'} data-ip-decision data-unsigned /><span><span class="ip-choice-words"><span class="ip-choice-title">No, thank you</span><span class="ip-choice-note">No photos for publication. Saying no never changes your care.</span></span></span></label>
+                <label class="ip-choice"><input type="radio" name="decision" value="later" checked={decisionChosen === 'later'} data-ip-decision data-unsigned data-later /><span><span class="ip-choice-words"><span class="ip-choice-title">Decide later</span><span class="ip-choice-note">{who!.minor ? 'Nothing is signed now. A parent or legal guardian decides at the desk.' : 'Nothing is signed now. You can decide at the desk another time.'}</span></span></span></label>
                 </>
               ) : (
                 <>
@@ -538,7 +577,7 @@ const fil = (s: { fil?: string }) => s.fil;
               {choices.map((c) => (
                 <label class="ip-choice"><input type="radio" name="signer_as" value={c} checked={signerChosen === c} data-ip-signer={c} /><span><span class="ip-choice-words"><span class="ip-choice-title">{SIGNER_WORDS[c].title}</span>{SIGNER_WORDS[c].note && <span class="ip-choice-note">{SIGNER_WORDS[c].note}</span>}</span></span></label>
               ))}
-              {who!.minor && <p class="ip-hint">If nobody here is a parent or legal guardian, choose “I want to ask the dentist first”: only a parent or legal guardian can sign. If the parents do not agree with each other, the clinic stops and talks with both.</p>}
+              {who!.minor && <p class="ip-hint">If nobody here is a parent or legal guardian, choose “{t.refuseUnsigned ? 'Decide later' : 'I want to ask the dentist first'}”: only a parent or legal guardian can sign. If the parents do not agree with each other, the clinic stops and talks with both.</p>}
               {errors.signer_as && <p class="ip-err"><Icon name="alert" size={16} />{errors.signer_as}</p>}
             </fieldset>
             <div data-ip-self-name>
@@ -566,7 +605,7 @@ const fil = (s: { fil?: string }) => s.fil;
               <p class="ip-statement" data-ip-statement={c} hidden={signerChosen !== c ? true : undefined}>{lineText(l)}</p>
             ))}
             <p class="ip-meaning" aria-live="polite" data-ip-meaning>
-              {(['agree', 'refuse'] as const).flatMap((d) => [false, true].map((forThem) => (
+              {(t.refuseUnsigned ? ['agree'] as const : ['agree', 'refuse'] as const).flatMap((d) => [false, true].map((forThem) => (
                 <span data-ip-meaning-for={`${d}:${forThem ? 'them' : 'self'}`} hidden={!(d === (decisionChosen === 'refuse' ? 'refuse' : 'agree') && forThem === !['patient', 'mark', ''].includes(signerChosen)) ? true : undefined}>
                   {meaning(d === 'agree' ? 'agreed' : 'refused', forThem).map((x) => ('slot' in x ? <span data-ip-slot={x.slot}>{x.slot === 'name' ? (pv('signer_name') || 'your name') : (pv('signer_relation') || 'their parent')}</span> : x.text))}
                 </span>
@@ -578,16 +617,24 @@ const fil = (s: { fil?: string }) => s.fil;
           </div>
 
           <div class="ip-actions">
+            {backTo && <button type="submit" form="ip-back-c" class="btn btn-quiet"><Icon name="chevron-left" />Back</button>}
+            {/* A form already decided, opened again with Back or "View or change": going on leaves it as it is. */}
+            {decidedBefore && <a href={self} class="btn btn-quiet">Keep my answer</a>}
             <button type="submit" class="btn btn-primary" data-ip-go>Sign and continue <Icon name="arrow-right" /></button>
           </div>
           </>
         )}
       </form>
     )}
+    {open && page && t && rendered && backTo && (
+      <form method="post" action={self} id="ip-back-c" hidden>
+        <Csrf /><input type="hidden" name="at" value={backTo} /><input type="hidden" name="intent" value="goto" />
+      </form>
+    )}
 
     {/* ---------------------------------------------------------------- check and send */}
     {open && screen === 'check' && (
-      <div class="ws-pane ws-glass pt-card cl-pane pf-card">
+      <div class="ws-pane ws-glass pt-card cl-pane cl-wizard pf-card">
         <h1 class="pt-title">Check and send</h1>
         <p class="pt-help">Look over each part. When everything is right, send it to {clinic!.name}.</p>
         <ul class="ip-parts">
@@ -630,7 +677,7 @@ const fil = (s: { fil?: string }) => s.fil;
             <p class="pf-done-lead">Your forms are with {clinic.name}. Please tell the desk you are finished.</p>
           )}
         </div>
-        {look.device === 'desk' && <p class="pf-done-text"><a href="/auth/unlock/" class="pt-link">For the clinic</a></p>}
+        {look.device === 'desk' && <div class="pf-done-actions"><a href="/auth/unlock/" class="btn btn-quiet"><Icon name="user" />For the clinic</a></div>}
       </section>
     )}
   </main>
@@ -678,10 +725,12 @@ const fil = (s: { fil?: string }) => s.fil;
         return els[0].value || null;
       };
       const conditional = Array.from(p1.querySelectorAll<HTMLElement>('[data-show]')).map((el) => ({ el, s: JSON.parse(el.dataset.show!) as ShowIf }));
+      // Manila's day, as the server reads the answers by (never the device's UTC day).
+      const today = p1.dataset.today || undefined;
       const sync = () => {
         const birth = (get('birth_date') as string | null) ?? p1.dataset.birth ?? null;
-        const minor = isMinorOn(birth, new Date().toISOString().slice(0, 10));
-        const age = ageFrom(birth, new Date().toISOString().slice(0, 10));
+        const minor = isMinorOn(birth, today);
+        const age = ageFrom(birth, today);
         for (const { el, s } of conditional) el.toggleAttribute('data-off', !shown(s, get, minor, age));
       };
       p1.addEventListener('input', sync);
@@ -714,7 +763,7 @@ const fil = (s: { fil?: string }) => s.fil;
         const sub = $('[data-ip-substitute]'); if (sub) sub.hidden = signer !== 'substitute';
         $$('[data-ip-statement]').forEach((el) => { el.hidden = el.dataset.ipStatement !== signer; });
         const d = decision?.value === 'refuse' ? 'refuse' : 'agree';
-        $$('[data-ip-meaning-for]').forEach((el) => { el.hidden = later || !signer || el.dataset.ipMeaningFor !== `${d}:${forThem ? 'them' : 'self'}`; });
+        $$('[data-ip-meaning-for]').forEach((el) => { el.hidden = later || unsigned || !signer || el.dataset.ipMeaningFor !== `${d}:${forThem ? 'them' : 'self'}`; });
         $$('[data-ip-slot="name"]').forEach((el) => { el.textContent = name?.value.trim() || 'your name'; });
         $$('[data-ip-slot="relation"]').forEach((el) => { el.textContent = relation?.value.trim() || 'their parent'; });
         const stopped = $$<HTMLInputElement>('[data-stop]').some((i) => i.checked);
@@ -727,15 +776,25 @@ const fil = (s: { fil?: string }) => s.fil;
       sync();
     }
 
-    // Keep the link alive while the page is open and in view.
+    // Keep the link alive while the page is open and in view, and find out when it is no longer open here
+    // (the desk stopped it, sent it to another device, or it timed out): the page loads again and says so,
+    // so the last patient's page never stays on a clinic device. Every 12 seconds on a clinic device, every
+    // 2 minutes on a phone, and at once when the page comes back into view.
     const csrf = document.querySelector<HTMLInputElement>('input[name="_csrf"]')?.value;
     const at = document.querySelector<HTMLInputElement>('input[name="at"]')?.value;
     if (csrf && at && !main?.hasAttribute('data-ip-done')) {
-      setInterval(() => {
-        if (document.visibilityState !== 'visible') return;
-        const body = new URLSearchParams({ _csrf: csrf, intent: 'ping', at });
-        fetch(location.pathname, { method: 'POST', body, credentials: 'same-origin' }).catch(() => {});
-      }, 120_000);
+      const clinicDevice = main?.dataset.ipDevice === 'tablet' || main?.dataset.ipDevice === 'desk';
+      let leaving = false;
+      const ping = async () => {
+        if (document.visibilityState !== 'visible' || leaving) return;
+        try {
+          const r = await fetch(location.pathname, { method: 'POST', body: new URLSearchParams({ _csrf: csrf, intent: 'ping', at }), credentials: 'same-origin', cache: 'no-store' });
+          const b = await r.json();
+          if (b && b.ok === false) { leaving = true; root.classList.add('pf-leaving'); location.replace(location.pathname); }
+        } catch { /* the line is down: try again next time */ }
+      };
+      setInterval(ping, clinicDevice ? 12_000 : 120_000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') ping(); });
     }
   </script>
 </Base>

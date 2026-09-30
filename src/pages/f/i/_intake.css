@@ -103,6 +103,7 @@
 .ip .ip-notice-title { font-size: 16px; font-weight: 600; }
 .ip .ip-notice-text { margin-top: 0.25rem; font-size: 15px; line-height: 1.5; color: var(--c-ink-2); }
 .ip .ip-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; margin-top: 1.25rem; }
+.ip .ip-actions > .btn-quiet ~ .btn-primary { margin-left: auto; }
 @media (max-width: 479px) { .ip .ip-actions > .btn-primary { flex: 1 1 100%; justify-content: center; } }
 /* After the thank-you on a clinic device: the screen turns neutral (nothing of the patient stays on it). */
 .ip[data-ip-neutral] .ip-done-body { display: none; }

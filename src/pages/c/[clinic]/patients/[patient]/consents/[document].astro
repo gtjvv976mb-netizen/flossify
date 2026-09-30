@@ -42,7 +42,7 @@ import { hit, LIMITS } from '../../../../../../lib/throttle';
 import { canEditRecords, manilaToday, ageOn, isMinor, dateText } from '../../../../../../lib/health';
 import { can } from '../../../../../../lib/can';
 import { Refused } from '../../../../../../lib/refused';
-import { renderDocument, EXPLAINED_LANGS, signerChoices, type SignerChoice } from '../../../../../../lib/consent-library';
+import { renderDocument, holds, EXPLAINED_LANGS, signerChoices, type SignerChoice } from '../../../../../../lib/consent-library';
 import {
   loadConsentDocument, snapshotDoc, signingCheck, attestDocument, confirmSigning, withdrawConsent, printForPaper, recordPaperSigning, cancelDocument,
   mayAttest, clinicFace, contextFor, plannedLanguage, bornLine, signerWords, STATE_WORDS, WITHDRAW_HOW, type RecordSigning,
@@ -142,13 +142,15 @@ const openIntake = doc.intakeStatus === 'preparing' || doc.intakeStatus === 'out
 const canResign = canEdit && !openIntake && doc.inForce && ['to_sign', 'refused', 'no_photos', 'withdrawn'].includes(doc.state) && (!t?.attest || !!doc.attestation);
 const CHANNEL: Record<string, string> = { phone: 'on the patient’s phone', tablet: 'on the clinic’s tablet', desk: 'on a clinic device', paper: 'on paper' };
 const hm = (d: Date) => timeWords(d);
+/** The day on Manila's calendar ("29 Sep 2026"), beside Manila's times. */
+const day = (d: Date | string) => dateText(manilaToday(new Date(d)));
 const dur = (a: Date | null, b: Date) => {
   if (!a) return null;
   const s = Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 1000));
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
 };
 const facts = (s: RecordSigning) => [
-  s.channel === 'paper' ? `Signed on paper ${s.signedOn ? dateText(s.signedOn) : ''}, recorded by ${s.recordedByName ?? 'the clinic'}` : `${s.decision === 'agreed' ? 'Signed' : 'Decided'} ${CHANNEL[s.channel]} ${dateText(new Date(s.signedAt).toISOString().slice(0, 10))}, ${hm(s.signedAt)}`,
+  s.channel === 'paper' ? `Signed on paper ${s.signedOn ? dateText(s.signedOn) : ''}, recorded by ${s.recordedByName ?? 'the clinic'}` : `${s.decision === 'agreed' ? 'Signed' : 'Decided'} ${CHANNEL[s.channel]} ${day(s.signedAt)}, ${hm(s.signedAt)}`,
   s.method === 'mark' ? 'by mark' : null,
   s.channel !== 'paper' && dur(s.openedAt, s.decidedAt) ? `open ${dur(s.openedAt, s.decidedAt)} before deciding` : null,
   s.linkByName ? `link made by ${s.linkByName}` : null,
@@ -158,6 +160,9 @@ const SAVED: Record<string, string> = { explained: 'Confirmed. The form can be s
 const needsConfirm = latest && latest.needsConfirm && !latest.confirmation ? latest : null;
 const paperFiles = doc.paperPrintedAt ? files.filter((f) => new Date(f.created_at) >= new Date(doc.paperPrintedAt!)) : [];
 const choices: SignerChoice[] = minor === null ? [] : signerChoices(minor, 'clinic');
+// Record a paper signing asks exactly what the paper asked (print/?paper=1): the questions and the initials boxes this form shows.
+const paperQuestions = t && doc.paperPrintedAt ? t.patientFields.filter((f) => holds(f.when, t, doc.fields, minor)) : [];
+const paperInitials = t && doc.paperPrintedAt ? t.sections.filter((x) => x.initials && holds(x.when, t, doc.fields, minor)) : [];
 const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
 ---
 
@@ -172,7 +177,7 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
     <div class="ik-who">
       <span class="ik-who-name">{doc.title}</span>
       <span class="ik-ref">{doc.ref}</span>
-      <span class:list={['ik-tag']} data-tone={st.tone}>{st.words}{latest && doc.state !== 'to_sign' ? ` ${dateText(new Date(latest.signedAt).toISOString().slice(0, 10))}` : ''}</span>
+      <span class:list={['ik-tag']} data-tone={st.tone}>{st.words}{latest && doc.state !== 'to_sign' ? ` ${day(latest.signedAt)}` : ''}</span>
       <span class="ik-row-meta">{name} · {p.chart_no}</span>
     </div>
     <p class="ik-actions mt-3">
@@ -187,12 +192,13 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
       {canEdit && doc.state === 'to_sign' && !latest && !openIntake && (!t?.attest || doc.attestation) && (
         <form method="post" action={here}><Csrf /><input type="hidden" name="intent" value="paper_print" /><button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />{doc.paperPrintedAt ? 'Print for signing again' : 'Print for signing on paper'}</button></form>
       )}
-      {canEdit && doc.paperPrintedAt && doc.state === 'to_sign' && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="cd-paper">Record a paper signing</button>}
+      {canEdit && doc.paperPrintedAt && doc.state === 'to_sign' && !openIntake && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="cd-paper">Record a paper signing</button>}
       {needsConfirm && canEdit && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="cd-confirm">{needsConfirm.needsConfirm === 'witness' ? 'I saw this signed' : 'I checked the papers'}</button>}
       {canEdit && (doc.state === 'agreed' || doc.state === 'to_confirm') && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="cd-withdraw">Withdraw</button>}
       {canEdit && !latest && !openIntake && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="cd-cancel">Remove</button>}
+      {canEdit && openIntake && doc.intakeId && <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`/c/${clinic.slug}/patients/intake/${doc.intakeId}/`}>Open forms {doc.intakeRef}</a>}
     </p>
-    {openIntake && <p class="ik-help mt-2">In forms being filled in now ({doc.intakeRef}).</p>}
+    {openIntake && <p class="ik-help mt-2">In forms being filled in now ({doc.intakeRef}). Taking it out of those forms, or throwing them away, brings it back here as it was.</p>}
     {t?.attest && !doc.attestation && !latest && (
       <p class="mt-3">{mayExplain ? (
         !explaining && <a class="ws-btn ws-btn-primary" href={`${here}?explain=1`}><Icon name="check" />Explain and confirm</a>
@@ -216,10 +222,10 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
           <div class="grid gap-1.5">
             <p class="rp-row"><Who name={signerWords({ name: latest.signedByName, as: latest.signedAs, relation: latest.relation, method: latest.method })} />{latest.authority && latest.authority !== 'parent' && <span class="rp">{({ court_guardian: 'Court-appointed guardian', substitute: 'Substitute parental authority', written: 'Authorised in writing by a parent', representative: 'Representative' } as Record<string, string>)[latest.authority]}</span>}</p>
             <p class="text-[14.5px] text-ink-2">{facts(latest)}</p>
-            {doc.attestation && <p class="text-[14.5px] text-ink-2">Confirmed and explained in {doc.attestation.lang} by {doc.attestation.dentistName}, PRC {doc.attestation.dentistPrc}, {dateText(new Date(doc.attestation.at).toISOString().slice(0, 10))}, {hm(doc.attestation.at)}{doc.attestation.interpreter ? ` · interpreter ${doc.attestation.interpreter}` : ''}{doc.attestation.assent ? ` · the patient ${doc.attestation.assent === 'not_asked' ? 'was not asked' : doc.attestation.assent}` : ''}</p>}
+            {doc.attestation && <p class="text-[14.5px] text-ink-2">Confirmed and explained in {doc.attestation.lang} by {doc.attestation.dentistName}, PRC {doc.attestation.dentistPrc}, {day(doc.attestation.at)}, {hm(doc.attestation.at)}{doc.attestation.interpreter ? ` · interpreter ${doc.attestation.interpreter}` : ''}{doc.attestation.assent ? ` · the patient ${doc.attestation.assent === 'not_asked' ? 'was not asked' : doc.attestation.assent}` : ''}</p>}
             {latest.confirmation && <p class="text-[14.5px] text-ink-2">{latest.confirmation.kind === 'witness' ? 'Witnessed' : 'Papers checked'} by {latest.confirmation.staffName}, {hm(latest.confirmation.at)}</p>}
             {latest.needsConfirm && !latest.confirmation && <p class="rp-row"><span class="rp rp-warn">To confirm: {latest.needsConfirm === 'witness' ? 'a staff member who saw the mark made' : 'a staff member checks the papers'}</span></p>}
-            {latest.withdrawal && <p class="rp-row"><span class="rp rp-alert">Withdrawn {dateText(new Date(latest.withdrawal.at).toISOString().slice(0, 10))}: told by {latest.withdrawal.toldBy}, {WITHDRAW_HOW.find((h) => h.value === latest.withdrawal!.how)?.label.toLocaleLowerCase('en')}, recorded by {latest.withdrawal.byName}</span></p>}
+            {latest.withdrawal && <p class="rp-row"><span class="rp rp-alert">Withdrawn {day(latest.withdrawal.at)}: told by {latest.withdrawal.toldBy}, {WITHDRAW_HOW.find((h) => h.value === latest.withdrawal!.how)?.label.toLocaleLowerCase('en')}, recorded by {latest.withdrawal.byName}</span></p>}
           </div>
         </div>
       </div>
@@ -253,7 +259,7 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
         <p class="text-[15px] text-ink-2">{needsConfirm.needsConfirm === 'witness' ? `You saw ${needsConfirm.signedByName} make their mark. You confirm it under your own sign-in.` : `You checked ${needsConfirm.signedByName}’s authority: the court order, the papers for the ground, or the parent’s letter, in ${p.first_name}’s Files.`}</p>
         {needsConfirm.needsConfirm === 'authority' && (
           <label class="field"><span class="meta">The file that shows it</span>
-            <select name="file" required><option value="">Choose a file</option>{files.map((f) => <option value={f.id} selected={val('file') === f.id}>{f.caption ?? f.kind} · {dateText(new Date(f.created_at).toISOString().slice(0, 10))}</option>)}</select>
+            <select name="file" required><option value="">Choose a file</option>{files.map((f) => <option value={f.id} selected={val('file') === f.id}>{f.caption ?? f.kind} · {day(f.created_at)}</option>)}</select>
           </label>
         )}
         <label class="field"><span class="meta">A note (optional)</span><input name="note" value={val('note')} maxlength="200" autocomplete="off" /></label>
@@ -279,13 +285,13 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
       <form method="post" action={here} class="ik-actions mt-4"><Csrf /><input type="hidden" name="intent" value="cancel" /><button type="submit" class="ws-btn ws-btn-primary">Remove</button><button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Keep it</button></form>
     </SidePanel>
   )}
-  {canEdit && doc.paperPrintedAt && doc.state === 'to_sign' && t && (
+  {canEdit && doc.paperPrintedAt && doc.state === 'to_sign' && !openIntake && t && (
     <SidePanel id="cd-paper" title="Record a paper signing" meta={doc.ref} wide open={postedIntent === 'paper'}>
       <form method="post" action={here} class="grid gap-4">
         <Csrf /><input type="hidden" name="intent" value="paper" />
-        <p class="ik-help">Copy what the signed paper says. Upload its scan in Files first; it must be uploaded after the form was printed ({dateText(new Date(doc.paperPrintedAt).toISOString().slice(0, 10))}).</p>
+        <p class="ik-help">Copy what the signed paper says. Upload its scan in Files first; it must be uploaded after the form was printed ({day(doc.paperPrintedAt)}).</p>
         <label class="field"><span class="meta">The scan</span>
-          <select name="file" required><option value="">Choose the scan</option>{paperFiles.map((f) => <option value={f.id} selected={val('file') === f.id}>{f.caption ?? f.kind} · {dateText(new Date(f.created_at).toISOString().slice(0, 10))}</option>)}</select>
+          <select name="file" required><option value="">Choose the scan</option>{paperFiles.map((f) => <option value={f.id} selected={val('file') === f.id}>{f.caption ?? f.kind} · {day(f.created_at)}</option>)}</select>
         </label>
         <label class="field max-w-xs"><span class="meta">The day on the paper</span><input type="date" name="signed_on" value={val('signed_on', today)} max={today} /></label>
         <fieldset class="ik-q"><legend>What they decided</legend><div class="ik-q-row">
@@ -293,7 +299,14 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
           <label class="chip-radio"><input type="radio" name="decision" value="refuse" checked={val('decision') === 'refuse'} /><span>{t.refuseUnsigned ? 'No, thank you' : 'Did not agree'}</span></label>
         </div></fieldset>
         {t.ticks.length > 0 && <fieldset class="ik-q"><legend>Ticked on the paper</legend>{t.ticks.map((k) => <label class="check"><input type="checkbox" name={`tick_${k.id}`} value="1" checked={val(`tick_${k.id}`) === '1'} /><span>{k.line.en.map((r) => (typeof r === 'string' ? r : '…')).join('')}</span></label>)}</fieldset>}
-        {t.sections.some((x) => x.initials) && t.sections.filter((x) => x.initials).map((x) => <label class="field max-w-xs"><span class="meta">Initials by “{x.head.en}”</span><input name={`initials_${x.id}`} value={val(`initials_${x.id}`)} maxlength="6" autocomplete="off" /></label>)}
+        {paperQuestions.length > 0 && paperQuestions.map((f) => (
+          <fieldset class="ik-q"><legend>{f.label.en}</legend><div class="ik-q-row">
+            {(f.kind === 'yesno' ? [['yes', 'Yes'], ['no', 'No']] : f.kind === 'yesnounsure' ? [['yes', 'Yes'], ['no', 'No'], ['unsure', 'Not sure']] : (f.choices ?? []).map((c) => [c.value, c.label])).map(([v, w]) => (
+              <label class="chip-radio"><input type={f.kind === 'choices' ? 'checkbox' : 'radio'} name={f.name} value={v} checked={f.kind === 'choices' ? (posted?.getAll(f.name).map(String) ?? []).includes(v) : val(f.name) === v} /><span>{w}</span></label>
+            ))}
+          </div></fieldset>
+        ))}
+        {paperInitials.map((x) => <label class="field max-w-xs"><span class="meta">Initials by “{x.head.en}”</span><input name={`initials_${x.id}`} value={val(`initials_${x.id}`)} maxlength="6" autocomplete="off" /></label>)}
         {t.attest && <fieldset class="ik-q"><legend>Explained in</legend><div class="ik-q-row">{EXPLAINED_LANGS.map((c) => <label class="chip-radio"><input type="radio" name="explained_lang" value={c.value} checked={val('explained_lang', doc.attestation?.lang ?? '') === c.value} /><span>{c.label}</span></label>)}</div><label class="field max-w-sm"><span class="meta">Another language</span><input name="explained_other" value={val('explained_other')} maxlength="40" /></label></fieldset>}
         <fieldset class="ik-q"><legend>Who read it</legend><div class="ik-q-row">
           <label class="chip-radio"><input type="radio" name="read" value="self" checked={val('read', 'self') === 'self'} /><span>They read it themself</span></label>
