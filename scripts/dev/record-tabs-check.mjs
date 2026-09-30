@@ -3,23 +3,31 @@
 // on the wrong tab, or on nothing, without a word — so this fails, naming the value and where it came from.
 //
 //   npm run test:record-tabs     (node --experimental-strip-types --import ./scripts/ts-register.mjs scripts/dev/record-tabs-check.mjs)
+//   npm run test:record-tabs -- --list     (also every name found, with where it was read)
 //
 // What it reads:
 //   - the maps themselves: ANCHOR, EXTRA_ANCHOR, both SECTION_OF (record.ts, record-extra.ts), SAVED_TO, SAVED_WORD,
 //     OPEN_PANEL, the old sections (SECTION_META), every `back` a form may carry (backOf);
-//   - every saved word record.ts and record-extra.ts return, and every ?saved= the record page and the pages
-//     around it redirect with (read from the source);
-//   - landingSection() over every combination of a post's section, back=chart, a saved word, a panel to open and a
-//     ?visit= (today's, another day's on the Treatment record, another day's that is not, none);
-//   - every #hash into the record: the list in the spec (§5) and every one the source links to — record URLs in
-//     any page, the record's own forms and redirects, data-rec-go / data-rec-show, the Dashboard's visit panel;
-//   - every ?open= the source links to, which must be a panel the page opens (OPEN_PANEL).
+//   - the source, through a small lexer (below), so an address is read however it is written: every #hash an address
+//     of the record carries, in any page (`${action}#${back === 'chart' ? 'chart' : 'notes'}`, a query holding quotes
+//     before the hash, `patientHref(id) + '#money'`, `action.replace(/#.*$/, '') + '#consent-paper'`); every hash a
+//     script sets (`u.hash = …`, followed into aimForm()'s calls and data-pick-home); every ?saved= and ?open= such an
+//     address carries; every data-rec-go / data-rec-show; every section the page's `backTo` can hold;
+//   - landingSection() over every combination of a post's section (every value `backTo` can take, read from the page),
+//     back=chart, a saved word, a panel to open and a ?visit= (today's, another day's on the Treatment record, another
+//     day's that is not, none);
+//   - the inbound hashes the spec lists (§5).
+// It is closed to what it cannot read: in the record's own files (the page, _record/, _ui/, and a component the page
+// hands its address as `action`), a # it cannot place, or an expression whose names it cannot follow, fails — unless
+// ALLOWED below says why that one is safe. So a new way of writing an address is a failure to look at, not a route
+// lost without a word.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const REC = 'src/pages/c/[clinic]/patients';
+const PAGE = `${REC}/[patient].astro`;
 const S = await import(pathToFileURL(join(ROOT, REC, '_record/sections.ts')).href);
 const R = await import(pathToFileURL(join(ROOT, 'src/lib/record.ts')).href);
 const X = await import(pathToFileURL(join(ROOT, 'src/lib/record-extra.ts')).href);
@@ -55,89 +63,499 @@ for (const [k, v] of Object.entries(OPEN_PANEL)) resolves(`OPEN_PANEL[${k}]`, v)
 for (const i of [...R.RECORD_INTENTS, ...X.EXTRA_INTENTS]) {
   const section = R.SECTION_OF[i] ?? X.SECTION_OF[i];
   if (!section) fail('an intent with no section', i);
-  // Where the post redirects (the page: treated → chart-offer, back=chart → chart, else ANCHOR / EXTRA_ANCHOR / section).
+  // Where a saved post goes when the page's redirect names no literal hash: ANCHOR / EXTRA_ANCHOR, else the section.
   hashResolves(`the redirect of ${i}`, ANCHOR[i] ?? X.EXTRA_ANCHOR[i] ?? section);
 }
-hashResolves('the redirect of a treatment with a chart offer', 'chart-offer');
-for (const b of ['chart', 'treatment', 'overview', 'patient', 'treatment-record']) { const v = backOf(b); if (v) resolves(`back=${b}`, v); }
+const BACKS = [];
+for (const b of ['chart', 'treatment', 'overview', 'patient', 'treatment-record', 'health', 'nonsense']) { const v = backOf(b); if (v) { resolves(`back=${b}`, v); BACKS.push(v); } }
 if (backOf('chart') !== 'chart') fail('backOf: the palette\'s back=chart', 'chart', backOf('chart'));
 
-// --- the source: saved words, hashes and ?open= links ---------------------------------------------------------
+// --- reading the source: a small lexer ---------------------------------------------------------------------------
+// Every string and template literal (a template's ${…} is lexed in turn, so a literal inside one is a token of its
+// own that knows the address written before it), and a mask of the source: the same length, with comments, regular
+// expressions and the text of every literal blanked, so code — calls, definitions, brackets — is found without being
+// fooled by what a string says. A quote that does not close on its line is text (an apostrophe in a page's words).
+function lex(src, astro) {
+  const n = src.length;
+  const mask = src.split('');
+  const tokens = [];
+  const blank = (a, b) => { for (let k = a; k < b; k++) if (mask[k] !== '\n') mask[k] = ' '; };
+  const str = (i, parent) => {
+    const q = src[i];
+    let j = i + 1;
+    while (j < n && src[j] !== q) { if (src[j] === '\n') return null; j += src[j] === '\\' ? 2 : 1; }
+    if (j >= n) return null;
+    const t = { kind: 'str', start: i, end: j + 1, parts: [{ text: src.slice(i + 1, j), at: i + 1 }], parent };
+    tokens.push(t); blank(i + 1, j);
+    return t;
+  };
+  const regex = (i) => {
+    let j = i + 1, cls = false;
+    for (; j < n; j++) {
+      const c = src[j];
+      if (c === '\n') return 0;
+      if (c === '\\') { j++; continue; }
+      if (cls) { if (c === ']') cls = false; } else if (c === '[') cls = true; else if (c === '/') break;
+    }
+    if (j >= n || j === i + 1) return 0;
+    j++;
+    while (/[a-z]/.test(src[j] ?? '')) j++;
+    return /^[\s,;.)\]}]?$/.test(src[j] ?? '') ? j : 0;
+  };
+  const tpl = (i, parent) => {
+    const t = { kind: 'tpl', start: i, end: n, parts: [], parent };
+    tokens.push(t);
+    let j = i + 1, textAt = j;
+    while (j < n && src[j] !== '`') {
+      if (src[j] === '\\') { j += 2; continue; }
+      if (src[j] === '$' && src[j + 1] === '{') {
+        t.parts.push({ text: src.slice(textAt, j), at: textAt }); blank(textAt, j + 2);
+        const e = code(j + 2, true, { tok: t, part: t.parts.length });
+        t.parts.push({ expr: src.slice(j + 2, e), at: j + 2, end: e });
+        blank(e, e + 1);
+        j = e + 1; textAt = j;
+        continue;
+      }
+      j++;
+    }
+    t.parts.push({ text: src.slice(textAt, j), at: textAt }); blank(textAt, j);
+    t.end = Math.min(j + 1, n);
+    return t;
+  };
+  // Code from i: to the end, or (inExpr) to the } that closes a template's ${.
+  function code(i, inExpr, parent) {
+    let depth = 0, prev = '';
+    while (i < n) {
+      const c = src[i];
+      if (astro && src.startsWith('<!--', i)) { const e = src.indexOf('-->', i + 4); const end = e < 0 ? n : e + 3; blank(i, end); i = end; continue; }
+      if (c === '/' && src[i + 1] === '/' && src[i - 1] !== ':') { let e = src.indexOf('\n', i); if (e < 0) e = n; blank(i, e); i = e; continue; }
+      if (c === '/' && src[i + 1] === '*') { const e = src.indexOf('*/', i + 2); const end = e < 0 ? n : e + 2; blank(i, end); i = end; continue; }
+      if (c === "'" || c === '"') { const t = str(i, parent); i = t ? t.end : i + 1; prev = c; continue; }
+      if (c === '`') { i = tpl(i, parent).end; prev = '`'; continue; }
+      if (c === '/' && src[i + 1] !== '>' && (prev === '' || '(,=:[!&|?;{}'.includes(prev))) { const e = regex(i); if (e) { blank(i + 1, e); i = e; prev = '/'; continue; } }
+      if (inExpr) { if (c === '{') depth++; else if (c === '}') { if (depth === 0) return i; depth--; } }
+      if (!/\s/.test(c)) prev = c;
+      i++;
+    }
+    return i;
+  }
+  code(0, false, null);
+  return { mask: mask.join(''), tokens };
+}
+
 const files = [];
 const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (/\.(astro|ts|mjs)$/.test(f) && !/\.test\.ts$/.test(f)) files.push(p); } };
 walk(join(ROOT, 'src'));
-const at = (file, src, index) => `${relative(ROOT, file)}:${src.slice(0, index).split('\n').length}`;
-const found = { saved: new Map(), hash: new Map(), open: new Map(), go: new Map() };
-const note = (kind, v, where) => { if (!found[kind].has(v)) found[kind].set(v, []); found[kind].get(v).push(where); };
-const scan = (file, src, re, kind, pick = (m) => m[1]) => { for (const m of src.matchAll(re)) { const v = pick(m); if (v) note(kind, v, at(file, src, m.index)); } };
-const RECORD_VARS = {
-  [`${REC}/[patient].astro`]: ['here', 'recHere'],
-  [`${REC}/[patient]/consents/[document].astro`]: ['base'],
-  [`${REC}/[patient]/consents/index.astro`]: ['record'],
-  [`${REC}/[patient]/sign/[visit].astro`]: ['record'],
-  [`${REC}/new/index.astro`]: ['recordHref'],
-};
-for (const file of files) {
-  const src = readFileSync(file, 'utf8');
-  const rel = relative(ROOT, file);
-  // The record page and the pieces it is drawn from (not the pages under a record: rx/, sign/, consents/ …).
-  const inRecord = rel === `${REC}/[patient].astro` || rel.startsWith(`${REC}/_record/`);
-  // Saved words the record libraries return: done('plan'), done(`plan-${to}`), saved: `rx:${id}`.
-  if (rel === 'src/lib/record.ts' || rel === 'src/lib/record-extra.ts') {
-    scan(file, src, /\bdone\(\s*(?:[^'`)]*\?\s*)?['`]([a-z]+)/g, 'saved');
-    scan(file, src, /\bdone\([^)]*:\s*['`]([a-z]+)/g, 'saved');
-    scan(file, src, /\bsaved:\s*['`]([a-z]+)/g, 'saved');
+const FILES = files.map((p) => {
+  const src = readFileSync(p, 'utf8');
+  // A page's <style> is CSS (colours, #ids): not an address.
+  const body = src.replace(/<style[\s\S]*?<\/style>/g, (s) => s.replace(/[^\n]/g, ' '));
+  const { mask, tokens } = lex(body, p.endsWith('.astro'));
+  const lines = [0];
+  for (let i = 0; i < src.length; i++) if (src[i] === '\n') lines.push(i + 1);
+  return { rel: relative(ROOT, p), src: body, mask, tokens, tokAt: new Map(tokens.map((t) => [t.start, t])), lines };
+});
+const byRel = new Map(FILES.map((F) => [F.rel, F]));
+const where = (F, i) => { let lo = 0, hi = F.lines.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (F.lines[m] <= i) lo = m; else hi = m - 1; } return `${F.rel}:${lo + 1}`; };
+
+// --- reading code: brackets, expressions, definitions, calls -------------------------------------------------------
+/** The bracket that closes the one at i (literals skipped). */
+function close(F, i) {
+  let d = 0;
+  for (let j = i + 1; j < F.src.length;) {
+    const t = F.tokAt.get(j); if (t) { j = t.end; continue; }
+    const c = F.mask[j];
+    if ('([{'.includes(c)) d++;
+    else if (')]}'.includes(c)) { if (d === 0) return j; d--; }
+    j++;
   }
-  // ?saved= in a redirect to the record, and a record URL with a hash. Which variable holds the record's address
-  // differs by file: the record page's `here`, a form's `action` in _record/, the consent pages' `base` / `record`.
-  const recVars = RECORD_VARS[rel] ?? (rel.startsWith(`${REC}/_record/`) ? ['action'] : []);
-  for (const v of recVars) {
-    scan(file, src, new RegExp(`\\$\\{${v}\\}\\?(?:[^'"\`#\\s]*&)?saved=([a-z][a-z-]*)`, 'g'), 'saved');
-    scan(file, src, new RegExp(`\\$\\{${v}\\}(?:\\?[^'"\`#\\s]*)?#([a-z][a-z0-9-]*)`, 'g'), 'hash');
-  }
-  scan(file, src, /\/patients\/\$\{[^}]+\}\/\?(?:[^'"`#\s]*&)?saved=([a-z][a-z-]*)/g, 'saved');
-  // The forms queue and the intake: `${base}${r.patientId}/?saved=form`, `${base}/${id}/?saved=intake`.
-  if (rel.startsWith(`${REC}/`)) scan(file, src, /\$\{\w+\}\/?\$\{[\w.()]+\}\/\?(?:[^'"`#\s]*&)?saved=([a-z][a-z-]*)/g, 'saved');
-  // The record page's own redirects: to('saved=nothing', 'health'), to(`saved=${r.answers ? 'health' : 'birth'}`, 'health').
-  if (rel === `${REC}/[patient].astro`) {
-    for (const m of src.matchAll(/\bto\(\s*(?:`saved=([^`]*)`|'saved=([^']*)')/g)) {
-      const w = m[1] ?? m[2];
-      for (const x of w.includes('${') ? [...w.matchAll(/'([a-z][a-z-]*)'/g)].map((y) => y[1]) : [w]) note('saved', x, at(file, src, m.index));
-    }
-    scan(file, src, /\bto\([^;]*?,\s*'([a-z][a-z-]*)'\)/g, 'hash');
-  }
-  // A record URL with a hash: /patients/${id}/#x, /patients/${id}/?…#x, ${base}/${id}/#x (the intake page).
-  scan(file, src, /\/patients\/\$\{[^}]+\}\/(?:\?[^'"`#\s]*)?#([a-z][a-z0-9-]*)/g, 'hash');
-  scan(file, src, /\$\{\w+\}\/\$\{[\w.]+\}\/#([a-z][a-z0-9-]*)/g, 'hash');
-  // A patient link with a hash added: patientHref(id) + '#treatment'.
-  scan(file, src, /[Pp]atient\w*\([^)]*\)\s*\+\s*'#([a-z][a-z0-9-]*)'/g, 'hash');
-  // import.astro: `/patients/${p.id}/${d.kind === 'visits' ? '#visits' : ''}`.
-  scan(file, src, /\/patients\/\$\{[^}]+\}\/\$\{[^}]*'#([a-z][a-z0-9-]*)'/g, 'hash');
-  // The record's own hash links and buttons.
-  if (inRecord) {
-    scan(file, src, /href(?:=|:\s*)['"]#([a-z][a-z0-9-]*)['"]/g, 'hash');
-    scan(file, src, /data-rec-(?:go|show)="([a-z][a-z0-9-]*)"/g, 'go');
-    scan(file, src, /\b(?:go|show):\s*'([a-z][a-z0-9-]*)'/g, 'go');
-    scan(file, src, /\bhref=\{`#([a-z][a-z0-9-]*)`\}/g, 'hash');
-  }
-  // The Dashboard's visit panel: rec('health'), rec('vitals', 'vitals') → #health, ?open=vitals.
-  scan(file, src, /\brec\('([a-z][a-z0-9-]*)'/g, 'hash');
-  scan(file, src, /\brec\('[a-z-]+',\s*'([a-z]+)'\)/g, 'open');
-  // ?open=x in a record link.
-  if (/patients\//.test(src) || inRecord || /recordHref/.test(src)) scan(file, src, /[?&]open=([a-z]+)\b/g, 'open');
+  return F.src.length;
 }
+/** Positions from a to b, at the top level of that span (not inside brackets or literals), where test(i) holds. */
+function tops(F, a, b, test) {
+  const out = [];
+  let d = 0;
+  for (let i = a; i < b;) {
+    const t = F.tokAt.get(i); if (t) { i = t.end; continue; }
+    const c = F.mask[i];
+    if ('([{'.includes(c)) d++; else if (')]}'.includes(c)) d--; else if (d === 0 && test(i)) out.push(i);
+    i++;
+  }
+  return out;
+}
+const splitTop = (F, a, b, sep) => { const at = tops(F, a, b, (i) => F.mask.startsWith(sep, i)); const out = []; let s = a; for (const i of at) { out.push([s, i]); s = i + sep.length; } out.push([s, b]); return out.filter(([x, y]) => F.src.slice(x, y).trim()); };
+/** Where an expression starting at a ends: a ; or , or a closing bracket of its own level, or the end of its line
+ *  when the line does not carry on (an operator at its end, or at the start of the next). */
+function exprEnd(F, a) {
+  let d = 0;
+  for (let i = a; i < F.src.length;) {
+    const t = F.tokAt.get(i); if (t) { i = t.end; continue; }
+    const c = F.mask[i];
+    if ('([{'.includes(c)) d++;
+    else if (')]}'.includes(c)) { if (d === 0) return i; d--; }
+    else if (d === 0 && (c === ';' || c === ',')) return i;
+    else if (d === 0 && c === '\n') {
+      const before = F.mask.slice(a, i).trimEnd().slice(-1);
+      let k = i + 1; while (k < F.mask.length && /\s/.test(F.mask[k])) k++;
+      if (before && !'=?:(,[{+&|'.includes(before) && !'?:.&|+'.includes(F.mask[k] ?? '')) return i;
+    }
+    i++;
+  }
+  return F.src.length;
+}
+const paramsOf = (F, p0, p1) => splitTop(F, p0 + 1, p1, ',').map(([x, y]) => /^\s*(?:\.\.\.)?([\w$]+)/.exec(F.src.slice(x, y))?.[1] ?? null);
+function functionsOf(F) {
+  const out = [];
+  for (const m of F.mask.matchAll(/(?<![\w$.])(export\s+)?(?:async\s+)?function\s*\*?\s*([\w$]+)\s*(?:<[^>(]*>)?\s*\(/g)) {
+    const p0 = m.index + m[0].length - 1, p1 = close(F, p0);
+    let b = p1 + 1; while (b < F.src.length && F.mask[b] !== '{') b++;
+    out.push({ name: m[2], exported: !!m[1], at: m.index, params: paramsOf(F, p0, p1), bodyStart: b, bodyEnd: close(F, b) });
+  }
+  for (const m of F.mask.matchAll(/(?<![\w$.])(export\s+)?(?:const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?\(/g)) {
+    const p0 = m.index + m[0].length - 1, p1 = close(F, p0);
+    const arrow = /^\s*(?::[^=]*?)?=>\s*/.exec(F.mask.slice(p1 + 1, p1 + 240));
+    if (!arrow) continue;
+    const b = p1 + 1 + arrow[0].length;
+    out.push({ name: m[2], exported: !!m[1], at: m.index, params: paramsOf(F, p0, p1), bodyStart: b, bodyEnd: F.mask[b] === '{' ? close(F, b) : exprEnd(F, b), exprBody: F.mask[b] !== '{' });
+  }
+  return out;
+}
+function definitionsOf(F) {
+  const out = [];
+  for (const m of F.mask.matchAll(/(?<![\w$.])(const|let|var)\s+([\w$]+)\s*(?::[^=;]*?)?=(?![=>])\s*/g)) out.push({ name: m[2], kind: m[1], at: m.index, a: m.index + m[0].length, b: exprEnd(F, m.index + m[0].length) });
+  // A `let` changes later: each assignment is a definition too.
+  for (const name of new Set(out.filter((d) => d.kind !== 'const').map((d) => d.name))) {
+    for (const m of F.mask.matchAll(new RegExp(`(?<![\\w$.])${name.replace(/\$/g, '\\$')}\\s*=(?![=>])\\s*`, 'g'))) {
+      const a = m.index + m[0].length;
+      if (!out.some((d) => d.a === a)) out.push({ name, kind: 'set', at: m.index, a, b: exprEnd(F, a) });
+    }
+  }
+  return out;
+}
+// Where definitions are read: a .ts file whole; in an .astro page its frontmatter and its <script>s (the markup's
+// `id="…"` is not an assignment to `id`).
+for (const F of FILES) {
+  F.code = [[0, F.src.length]];
+  if (F.rel.endsWith('.astro')) {
+    const fm = /^---\r?\n[\s\S]*?\n---/.exec(F.src);
+    F.code = [...(fm ? [[0, fm[0].length]] : []), ...[...F.src.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map((m) => [m.index, m.index + m[0].length])];
+  }
+  const inCode = (x) => F.code.some(([a, b]) => x.at >= a && x.at < b);
+  F.fns = functionsOf(F).filter(inCode);
+  F.defs = definitionsOf(F).filter(inCode);
+}
+/** Every call of fn: in its own file, or in every file when it is exported. Only where a call can stand (after an
+ *  operator, a bracket, an arrow, `return` or at a line's start), so a page's words ("… to (…)") are not calls. */
+function callsOf(fn, F0) {
+  const out = [];
+  const re = new RegExp(`(?<![\\w$.])${fn.name.replace(/\$/g, '\\$')}\\s*\\(`, 'g');
+  for (const F of fn.exported ? FILES : [F0]) {
+    for (const m of F.mask.matchAll(re)) {
+      const before = F.mask.slice(Math.max(0, m.index - 16), m.index);
+      if (/function\s*\*?\s*$/.test(before)) continue;
+      if (!/(?:[=(,:?&|!{};[+]|=>|^|\n|\breturn|\bawait|\))\s*$/.test(before)) continue;
+      const p0 = m.index + m[0].length - 1;
+      out.push({ F, at: m.index, args: splitTop(F, p0 + 1, close(F, p0), ',') });
+    }
+  }
+  return out;
+}
+
+// --- following an expression to the names it can take -----------------------------------------------------------
+/** The alternatives an expression can evaluate to: both sides of a ternary (never its condition), every side of ??
+ *  and ||, the last of &&; brackets, `x!` and `x as T` taken off. Each is a literal token or a piece of code. */
+function alts(F, a, b, out = []) {
+  while (a < b && /\s/.test(F.src[a])) a++;
+  while (b > a && /\s/.test(F.src[b - 1])) b--;
+  if (a >= b) return out;
+  const tok = F.tokAt.get(a);
+  if (tok && tok.end === b) { out.push({ tok, at: a }); return out; }
+  if (F.mask[a] === '(' && close(F, a) === b - 1) return alts(F, a + 1, b - 1, out);
+  const isQ = (i) => F.mask[i] === '?' && F.mask[i + 1] !== '?' && F.mask[i - 1] !== '?' && F.mask[i + 1] !== '.';
+  const qs = tops(F, a, b, isQ);
+  if (qs.length) {
+    let open = 0, colon = -1;
+    for (const i of tops(F, qs[0] + 1, b, (i) => isQ(i) || F.mask[i] === ':')) { if (F.mask[i] === '?') open++; else if (open === 0) { colon = i; break; } else open--; }
+    if (colon > 0) { alts(F, qs[0] + 1, colon, out); alts(F, colon + 1, b, out); return out; }
+  }
+  for (const op of ['??', '||']) {
+    const parts = splitTop(F, a, b, op);
+    if (parts.length > 1) { for (const [x, y] of parts) alts(F, x, y, out); return out; }
+  }
+  const ands = tops(F, a, b, (i) => F.mask.startsWith('&&', i));
+  if (ands.length) return alts(F, ands[ands.length - 1] + 2, b, out);
+  const as = tops(F, a, b, (i) => /^\sas\s/.test(F.mask.slice(i, i + 4)));
+  if (as.length) return alts(F, a, as[0], out);
+  if (F.mask[b - 1] === '!') return alts(F, a, b - 1, out);
+  out.push({ code: F.src.slice(a, b), at: a });
+  return out;
+}
+/** A template or string as an address: its text as written, each ${…} as \u0001expression\u0002. */
+const render = (parts) => parts.map((p) => (p.expr !== undefined ? `\u0001${p.expr.trim()}\u0002` : p.text)).join('');
+/** The address written before part k of a token: the enclosing template's, up to its ${, then this token's. */
+const addrBefore = (t, k) => (t.parent ? addrBefore(t.parent.tok, t.parent.part) : '') + render(t.parts.slice(0, k));
+
+// Expressions whose names this check reads whole elsewhere: taken as covered, not followed.
+const COVERED = [
+  [/^(?:ANCHOR|EXTRA_ANCHOR|SAVED_TO|SAVED_WORD|OPEN_PANEL|TAB_OF|SECTION_OF)\s*\[/, 'a map checked whole above'],
+  [/^outcome\.section$/, 'an intent\'s section: `const section` in record.ts / record-extra.ts, read below'],
+  [/^(?:encodeURIComponent\()?outcome\.saved\)?$/, 'a clinical save\'s word: record.ts / record-extra.ts\'s done() and saved:, read below'],
+  [/^backOf\(/, 'backOf(), checked above'],
+  [/^recordSaved\(/, 'recordSaved(), SAVED_WORD checked above'],
+  [/^[\w$]+\.(?:go|show)$/, 'an object\'s go / show: every `go:` and `show:` in the record\'s files is read'],
+];
+// Expressions that cannot be followed, and why each is safe. One that matches nothing any more fails, so the list
+// stays true. file: repo path; text: the expression exactly as written.
+const ALLOWED = [
+  { file: PAGE, text: 'decodeURIComponent(location.hash.slice(1))', why: 'fromHash writes the address\'s own #hash back (#timeline as #treatment-record); every hash that links in is checked here' },
+  { file: PAGE, text: 'String((e as CustomEvent).detail?.id ?? \'\').replace(/^rec-/, \'\')', why: 'the tab just chosen, written into the address: a tab\'s own id' },
+];
+
+/** Follow an expression (a..b in file F) to the literal names it can take. */
+function follow(F, a, b, res = { lits: [], covered: [], unresolved: [] }, depth = 0) {
+  for (const x of alts(F, a, b)) {
+    const w = where(F, x.at);
+    if (x.tok) {
+      if (x.tok.parts.length === 1) { if (x.tok.parts[0].text) res.lits.push({ v: x.tok.parts[0].text, where: w }); }
+      else res.unresolved.push({ F, text: F.src.slice(x.tok.start, x.tok.end), where: w });
+      continue;
+    }
+    const text = x.code.trim();
+    if (/^(?:null|undefined|true|false)$/.test(text)) continue;
+    const cov = COVERED.find(([re]) => re.test(text));
+    if (cov) { res.covered.push({ text, why: cov[1], where: w }); continue; }
+    if (depth > 12) { res.unresolved.push({ F, text, where: w }); continue; }
+    // el.dataset.pickHome → every data-pick-home="…" (or ={…}) in the record's files.
+    const ds = /^[\w$]+(?:\??\.[\w$]+)*\??\.dataset\.([\w$]+)$/.exec(text);
+    if (ds) {
+      const attr = 'data-' + ds[1].replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
+      let any = false;
+      for (const G of FILES.filter((G) => RECORD_OWN.has(G.rel))) {
+        for (const m of G.mask.matchAll(new RegExp(`(?<![\\w-])${attr}=(["'{])`, 'g'))) {
+          any = true;
+          const q = m.index + m[0].length - 1;
+          if (m[1] === '{') follow(G, q + 1, close(G, q), res, depth + 1);
+          else { const t = G.tokAt.get(q); if (t?.parts[0].text) res.lits.push({ v: t.parts[0].text, where: where(G, q) }); }
+        }
+      }
+      if (!any) res.unresolved.push({ F, text, where: w });
+      continue;
+    }
+    if (/^[A-Za-z_$][\w$]*$/.test(text)) {
+      // A parameter of the function it is written in: what every call passes there.
+      const fn = F.fns.filter((f) => f.params.includes(text) && x.at >= f.bodyStart && x.at <= f.bodyEnd).sort((p, q) => (p.bodyEnd - p.bodyStart) - (q.bodyEnd - q.bodyStart))[0];
+      if (fn) {
+        const i = fn.params.indexOf(text);
+        const calls = callsOf(fn, F);
+        if (!calls.length) res.unresolved.push({ F, text: `${text} (no call of ${fn.name}() found)`, where: w });
+        for (const c of calls) if (c.args[i]) follow(c.F, c.args[i][0], c.args[i][1], res, depth + 1);
+        continue;
+      }
+      // A const (the nearest one before), or a let with every value it is given.
+      const defs = F.defs.filter((d) => d.name === text);
+      if (defs.length) {
+        const use = defs.some((d) => d.kind !== 'const') ? defs : [defs.filter((d) => d.at < x.at).pop() ?? defs[0]];
+        for (const d of use) follow(F, d.a, d.b, res, depth + 1);
+        continue;
+      }
+    }
+    res.unresolved.push({ F, text, where: w });
+  }
+  return res;
+}
+const allowedHits = new Set();
+/** Report what could not be followed (unless ALLOWED says why it is safe); hand back the names. */
+const namesOf = (what, res) => {
+  for (const u of res.unresolved) {
+    const ok = ALLOWED.findIndex((x) => x.file === u.F.rel && x.text === u.text);
+    if (ok >= 0) allowedHits.add(ok);
+    else fail(`${what} (${u.where}): this check cannot tell which names \`${u.text}\` takes — write a literal, or teach the check (COVERED / ALLOWED)`, u.text);
+  }
+  return res.lits;
+};
+
+// --- whose address is it --------------------------------------------------------------------------------------
+// A record address: `/patients/${id}/` (then a query), a variable holding one (`const here = …`), a patients-list base
+// and an id (`${base}${id}/`), a function that returns one (patientHref(id)), or `action` in the record's components.
+const REC_BASE = /^\/c\/\u0001[^\u0002]+\u0002\/patients\/\u0001[^\u0002]+\u0002\/?$/;
+const LIST_BASE = /^\/c\/\u0001[^\u0002]+\u0002\/patients\/?$/;
+const REC_PATH = /\/patients\/\u0001[^\u0002]+\u0002\/(?:[?&][\s\S]*|\u0001[\s\S]*)?$/;
+const QUERY_AFTER = /^\/?(?:[?&][\s\S]*|\u0001[\s\S]*)?$/;
+const ID_AFTER = /^\/?\u0001[^\u0002]+\u0002\/(?:[?&][\s\S]*|\u0001[\s\S]*)?$/;
+// The Dashboard's boot.links.record is `/c/${clinic.slug}/patients/` (src/pages/c/[clinic]/index.astro).
+const LIST_EXPRS = new Set(['boot.links.record']);
+const isRecordExpr = (F, e) => { e = e.trim().replace(/!$/, ''); const call = /^([\w$]+)\s*\(/.exec(e); return call ? F.recordHelpers.has(call[1]) : F.recordVars.has(e); };
+const isListExpr = (F, e) => F.listVars.has(e.trim()) || LIST_EXPRS.has(e.trim());
+/** 'record' (an address of the record), 'page' (another page, or a page under the record), 'here' (this page's own
+ *  address), 'unknown' (named like a record's address, but not one this check can read), or null (cannot tell). */
+function addressOf(F, A) {
+  if (REC_PATH.test(A)) return 'record';
+  const m = /^\u0001([^\u0002]*)\u0002([\s\S]*)$/.exec(A);
+  if (m) {
+    if (isRecordExpr(F, m[1])) return QUERY_AFTER.test(m[2]) ? 'record' : 'page';
+    if (isListExpr(F, m[1])) return ID_AFTER.test(m[2]) ? 'record' : 'page';
+    if (m[1] === 'location.pathname' && m[2].startsWith('\u0001location.search\u0002')) return 'here';
+    // Named like a patient's or a record's address, but not one this check knows: say so, in any file.
+    if (/record|patient/i.test(m[1].replace(/\(.*$/s, ''))) return 'unknown';
+  }
+  if (/^(?:https?:|mailto:|tel:|\/)/.test(A)) return 'page';
+  return null;
+}
+function addressVars(F, own) {
+  F.recordVars = new Set(own && F.rel !== PAGE ? ['action'] : []);
+  F.listVars = new Set();
+  F.recordHelpers = new Set();
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const d of F.defs) {
+      if (F.recordVars.has(d.name) || F.listVars.has(d.name)) continue;
+      for (const x of alts(F, d.a, d.b)) {
+        const s = x.tok ? render(x.tok.parts) : x.code.trim();
+        if (x.tok ? REC_BASE.test(s) : F.recordVars.has(s)) { F.recordVars.add(d.name); grew = true; break; }
+        if (x.tok ? LIST_BASE.test(s) : F.listVars.has(s)) { F.listVars.add(d.name); grew = true; break; }
+      }
+    }
+    for (const f of F.fns) {
+      if (!f.exprBody || F.recordHelpers.has(f.name)) continue;
+      if (alts(F, f.bodyStart, f.bodyEnd).some((x) => x.tok && addressOf(F, render(x.tok.parts)) === 'record')) { F.recordHelpers.add(f.name); grew = true; }
+    }
+  }
+}
+// The record's own files: the page, _record/, _ui/, and every component the page draws with its address as `action`.
+const RECORD_OWN = new Set([PAGE, ...FILES.filter((F) => F.rel.startsWith(`${REC}/_record/`) || F.rel.startsWith(`${REC}/_ui/`)).map((F) => F.rel)]);
+const pageF = byRel.get(PAGE);
+addressVars(pageF, true);
+for (const m of pageF.src.matchAll(/import\s+([\w$]+)\s+from\s+'([^']+\.astro)'/g)) {
+  const rel = relative(ROOT, resolve(dirname(join(ROOT, PAGE)), m[2]));
+  for (const tag of pageF.mask.matchAll(new RegExp(`<${m[1]}\\b`, 'g'))) {
+    let end = tag.index, d = 0;
+    for (let i = tag.index + 1; i < pageF.src.length;) { const t = pageF.tokAt.get(i); if (t) { i = t.end; continue; } const c = pageF.mask[i]; if (c === '{') d++; else if (c === '}') d--; else if (c === '>' && d === 0) { end = i; break; } i++; }
+    const act = /\baction=\{\s*`?(?:\$\{)?([\w$]+)/.exec(pageF.src.slice(tag.index, end));
+    if (act && pageF.recordVars.has(act[1])) RECORD_OWN.add(rel);
+  }
+}
+for (const F of FILES) if (F !== pageF) addressVars(F, RECORD_OWN.has(F.rel));
+
+// --- the source: hashes, saved words, ?open=, data-rec-go / show, backTo ----------------------------------------
+const found = { saved: new Map(), hash: new Map(), open: new Map(), go: new Map(), back: new Map() };
+const note = (kind, v, w) => { if (!found[kind].has(v)) found[kind].set(v, []); found[kind].get(v).push(w); };
+let hashSites = 0;
+const SELECTOR_CALL = /(?:\$\$?|querySelector(?:All)?|closest|matches)\s*(?:<[^>]*>)?\(\s*$/;
+// A '#name' added to an address: patientHref(id) + '#money', action.replace(/#.*$/, '') + '#consent-paper', here + '#x'.
+const CONCAT = /([\w$.]+)\s*(\((?:[^()]|\([^()]*\))*\))?\s*\+\s*$/;
+const recordConcat = (F, chain, called) => (called
+  ? F.recordHelpers.has(chain) || (/\.(?:replace|slice|split|trim)$/.test(chain) && F.recordVars.has(chain.split('.')[0]))
+  : F.recordVars.has(chain));
+for (const F of FILES) {
+  const own = RECORD_OWN.has(F.rel);
+  for (const t of F.tokens) {
+    t.parts.forEach((p, k) => {
+      if (p.expr !== undefined) return;
+      const nextExpr = t.parts[k + 1]?.expr !== undefined ? t.parts[k + 1] : null;
+      // A # that can start a fragment: at the literal's start, after a / or a ${…}, or after a query.
+      for (const m of p.text.matchAll(/#/g)) {
+        const o = m.index;
+        const rest = p.text.slice(o + 1);
+        const name = /^[a-z][a-z0-9-]*/.exec(rest)?.[0];
+        // '#' + name: the fragment is what is added after the literal.
+        const plus = !name && rest === '' && !nextExpr && k === t.parts.length - 1 ? /^[ \t]*\+\s*/.exec(F.mask.slice(t.end, t.end + 40)) : null;
+        if (!name && !(rest === '' && (nextExpr || plus))) continue;
+        const prev = o > 0 ? p.text[o - 1] : k > 0 ? '}' : '^';
+        const A = addrBefore(t, k) + p.text.slice(0, o);
+        if (!(prev === '^' || prev === '}' || prev === '/' || /\?\S*$/.test(A.replace(/\u0001[^\u0002]*\u0002/g, 'x')))) continue;
+        const w = where(F, p.at + o);
+        let place;
+        if (A === '') {
+          const line = F.mask.slice(F.mask.lastIndexOf('\n', t.start) + 1, t.start);
+          const cat = CONCAT.exec(line);
+          if (/^#[0-9a-fA-F]{3,8}$/.test(p.text) || SELECTOR_CALL.test(line)) place = 'page';
+          else if (cat) place = recordConcat(F, cat[1], !!cat[2]) ? 'record' : null;
+          else place = own ? 'record' : 'page';
+        } else place = addressOf(F, A);
+        if (place === 'here') place = own ? 'record' : 'page';
+        if (place === 'unknown') place = null;
+        else if (place === null && !own) place = 'page';
+        if (place === 'page') continue;
+        hashSites++;
+        if (place === null) { fail(`a # this check cannot place (${w}): \`${F.src.slice(t.start, t.end).slice(0, 120)}\` — say in addressOf() whose address it is`, A); continue; }
+        if (name && name.length === rest.length && nextExpr) { fail(`a #hash with a name built in pieces (${w}): the check cannot read \`#${name}\${…}\``, name); continue; }
+        if (name) note('hash', name, w);
+        else {
+          const [a, b] = nextExpr ? [nextExpr.at, nextExpr.end] : [t.end + plus[0].length, exprEnd(F, t.end + plus[0].length)];
+          for (const l of namesOf(`the #hash at ${w}`, follow(F, a, b))) note('hash', l.v.replace(/^#/, ''), `${w} via ${l.where}`);
+        }
+      }
+      // ?saved= and ?open= on an address of the record (or, in the record's own files, a query written apart: to('saved=…')).
+      for (const m of p.text.matchAll(/(^|[?&])(saved|open)=([a-z][a-z-]*)?/g)) {
+        const A = addrBefore(t, k) + p.text.slice(0, m.index);
+        const place = A === '' ? (own ? 'record' : 'page') : addressOf(F, A) === 'here' ? 'record' : addressOf(F, A);
+        if (place !== 'record') continue;
+        const kind = m[2], w = where(F, p.at + m.index);
+        if (m[3]) note(kind, m[3], w);
+        else if (m.index + m[0].length === p.text.length && nextExpr) for (const l of namesOf(`the ?${kind}= at ${w}`, follow(F, nextExpr.at, nextExpr.end))) note(kind, l.v.split(/[&#]/)[0], `${w} via ${l.where}`);
+      }
+    });
+  }
+  if (!own) continue;
+  // A # the lexer did not see inside a literal (markup, code), or a "literal" that is really a stretch of markup between
+  // two apostrophes: the check would not be reading that line as written, so it says so.
+  for (const m of F.mask.matchAll(/#(?=[a-z$])/g)) fail(`a # outside any string (${where(F, m.index)}): this check cannot read \`${F.src.slice(m.index, m.index + 40).split('\n')[0]}\``, F.rel);
+  for (const t of F.tokens) if (t.kind === 'str' && /[<>]|="/.test(t.parts[0].text) && /#[a-z$]/.test(t.parts[0].text)) fail(`markup read as a string (${where(F, t.start)}): an apostrophe in the words? Write it as ’ so this check reads the line`, t.parts[0].text.slice(0, 80));
+  // A script that sets a hash (pickpanel's aimForm: `u.hash = back === 'chart' ? 'chart' : home`, home from every call).
+  for (const m of F.mask.matchAll(/\.hash\s*=(?![=>])\s*/g)) {
+    const a = m.index + m[0].length, w = where(F, m.index);
+    hashSites++;
+    for (const l of namesOf(`the hash set at ${w}`, follow(F, a, exprEnd(F, a)))) note('hash', l.v.replace(/^#/, ''), `${w} via ${l.where}`);
+  }
+  // data-rec-go / data-rec-show, as literals, as an object's go: / show:, or as an expression.
+  for (const m of F.mask.matchAll(/data-rec-(?:go|show)=(["'{])/g)) {
+    const q = m.index + m[0].length - 1, w = where(F, m.index);
+    if (m[1] === '{') for (const l of namesOf(`data-rec-go / show at ${w}`, follow(F, q + 1, close(F, q)))) note('go', l.v, `${w} via ${l.where}`);
+    else { const t = F.tokAt.get(q); note('go', t?.parts[0].text ?? '', w); }
+  }
+  for (const m of F.src.matchAll(/\b(?:go|show):\s*'([a-z][a-z0-9-]*)'/g)) note('go', m[1], where(F, m.index));
+}
+// Saved words the record libraries return: done('plan'), done(`plan-${to}`), saved: `rx:${id}`.
+for (const rel of ['src/lib/record.ts', 'src/lib/record-extra.ts']) {
+  const F = byRel.get(rel);
+  for (const re of [/\bdone\(\s*(?:[^'`)]*\?\s*)?['`]([a-z]+)/g, /\bdone\([^)]*:\s*['`]([a-z]+)/g, /\bsaved:\s*['`]([a-z]+)/g]) for (const m of F.src.matchAll(re)) note('saved', m[1], where(F, m.index));
+}
+// Every section the page's first tab can come from: what landingSection's backTo is given (the page's `backTo`), and
+// an intent's section (SECTION_OF[intent], else the fallback in record.ts / record-extra.ts).
+const landing = byRel.get(`${REC}/_record/sections.ts`).fns.find((f) => f.name === 'landingSection');
+const landingCalls = landing ? callsOf(landing, null).filter((c) => c.F === pageF) : [];
+if (!landingCalls.length) fail(`${PAGE} does not call landingSection(): this check reads the page's first tab through it — update the check with the page`, 'landingSection');
+for (const c of landingCalls) {
+  let obj = c.args[0]?.[0] ?? -1;
+  while (obj >= 0 && /\s/.test(c.F.src[obj])) obj++;
+  const prop = obj >= 0 && c.F.mask[obj] === '{' ? splitTop(c.F, obj + 1, close(c.F, obj), ',').find(([x, y]) => /^\s*backTo\b/.test(c.F.src.slice(x, y))) : null;
+  if (!prop) { fail(`landingSection() at ${where(c.F, c.at)}: this check cannot find its backTo`, 'backTo'); continue; }
+  const colon = c.F.src.slice(prop[0], prop[1]).indexOf(':');
+  const res = colon < 0 ? follow(c.F, prop[0], prop[1]) : follow(c.F, prop[0] + colon + 1, prop[1]);
+  for (const l of namesOf(`landingSection's backTo at ${where(c.F, c.at)}`, res)) note('back', l.v, l.where);
+}
+for (const rel of ['src/lib/record.ts', 'src/lib/record-extra.ts']) {
+  const F = byRel.get(rel);
+  for (const d of F.defs.filter((d) => d.name === 'section')) for (const l of namesOf(`\`const section\` in ${rel}`, follow(F, d.a, d.b))) note('back', l.v, l.where);
+}
+ALLOWED.forEach((x, i) => { if (!allowedHits.has(i)) fail(`ALLOWED: nothing in ${x.file} writes \`${x.text}\` any more — take it off the list`, x.text); });
 
 // The page's own saved words that land on the default tab on purpose (This visit's "No change": the strip is on Today).
 const DEFAULT_OK = new Set(['checked', 'checked-today']);
-for (const [w, where] of found.saved) {
+for (const [w, at] of found.saved) {
   checked++;
   const s = Object.hasOwn(SAVED_TO, w) ? SAVED_TO[w] : recordSaved(w);
-  if (s === null) { if (!DEFAULT_OK.has(w)) fail(`?saved=${w} (${where[0]}) has no section in SAVED_TO or SAVED_WORD`, w); }
-  else resolves(`?saved=${w} (${where[0]})`, s);
+  if (s === null) { if (!DEFAULT_OK.has(w)) fail(`?saved=${w} (${at[0]}) has no section in SAVED_TO or SAVED_WORD`, w); }
+  else resolves(`?saved=${w} (${at[0]})`, s);
 }
-for (const [h, where] of found.hash) hashResolves(`#${h} (${where.join(', ')})`, h);
-for (const [g, where] of found.go) resolves(`data-rec-go / show "${g}" (${where[0]})`, g);
-for (const [o, where] of found.open) { checked++; if (!Object.hasOwn(OPEN_PANEL, o)) fail(`?open=${o} (${where.join(', ')}) is not a panel the record opens (OPEN_PANEL)`, o); }
+for (const [h, at] of found.hash) hashResolves(`#${h} (${at.join(', ')})`, h);
+for (const [g, at] of found.go) resolves(`data-rec-go / show "${g}" (${at[0]})`, g);
+for (const [b, at] of found.back) resolves(`a section the page lands on (${at.join(', ')})`, b);
+for (const [o, at] of found.open) { checked++; if (!Object.hasOwn(OPEN_PANEL, o)) fail(`?open=${o} (${at.join(', ')}) is not a panel the record opens (OPEN_PANEL)`, o); }
+// Every panel the page opens as it loads (openNow === 'rx' …) needs its section in OPEN_PANEL, and so does every ?open=
+// the spec lists (§5; `health` joins with rec-health in S5).
+for (const m of pageF.src.matchAll(/\bopenNow\s*===\s*'([a-z-]+)'/g)) { checked++; if (!Object.hasOwn(OPEN_PANEL, m[1])) fail(`the page opens a panel for ?open=${m[1]} (${where(pageF, m.index)}) that OPEN_PANEL does not know`, m[1]); }
+for (const o of ['vitals', 'note', 'rx', 'done', 'file', 'details']) { checked++; if (!Object.hasOwn(OPEN_PANEL, o)) fail(`?open=${o}, an inbound link of spec §5, is not in OPEN_PANEL`, o); }
 
 // --- the inbound links of spec §5 -----------------------------------------------------------------------------
 const SPEC_HASHES = ['treatment-record', 'timeline', 'rx', 'letters', 'treatment', 'money', 'visits', 'consent', 'consent-paper', 'consent-forms', 'visit-consents',
@@ -146,7 +564,8 @@ const SPEC_HASHES = ['treatment-record', 'timeline', 'rx', 'letters', 'treatment
 for (const h of SPEC_HASHES) hashResolves('an inbound hash of spec §5', h);
 
 // --- the first tab, over every combination ---------------------------------------------------------------------
-const sections = [...new Set([...Object.values(R.SECTION_OF), ...Object.values(X.SECTION_OF), 'overview', 'health', 'consent', 'chart', 'treatment'])];
+// backTo: every value the page gives it (read above), every section an intent has, and what backOf() gives.
+const sections = [...new Set([...found.back.keys(), ...Object.values(R.SECTION_OF), ...Object.values(X.SECTION_OF), ...BACKS])];
 const savedWords = [null, ...Object.keys(SAVED_TO), ...found.saved.keys(), 'rx:0f0f0f0f-1111-4222-8333-444444444444', 'files:3', 'vitals-crisis', 'plan-done', 'nonsense', 'constructor', '__proto__'];
 const opens = [null, ...Object.keys(OPEN_PANEL)];
 const visits = [null, 'today', 'ledger', 'other'];
@@ -166,11 +585,15 @@ for (const visit of visits) resolves(`?visit= (${visit ?? 'none or unknown'})`, 
 const list = (m) => [...m.keys()].sort().join(' ');
 console.log(`tabs: ${TABS.map((t) => `${t.id} (${t.label})`).join(' · ')}`);
 console.log(`TAB_OF: ${Object.keys(TAB_OF).length} names`);
+console.log(`the record's own files (${RECORD_OWN.size}); ${hashSites} places an address of the record gets its #hash`);
 console.log(`from the source — saved words (${found.saved.size}): ${list(found.saved)}`);
 console.log(`from the source — hashes (${found.hash.size}): ${list(found.hash)}`);
 console.log(`from the source — data-rec-go / show (${found.go.size}): ${list(found.go)}`);
 console.log(`from the source — ?open= (${found.open.size}): ${list(found.open)}`);
+console.log(`from the source — sections the page lands on (${found.back.size}): ${list(found.back)}`);
 console.log(`${checked} names checked, ${combos} landing combinations`);
+// --list: every name with every place it was read from.
+if (process.argv.includes('--list')) for (const [kind, m] of Object.entries(found)) for (const [v, at] of [...m].sort()) console.log(`  ${kind} ${v}: ${at.join(', ')}`);
 if (fails.length) {
   console.log(`\n${fails.length} did not resolve to one of the four tabs:`);
   for (const f of fails) console.log(`  ✗ ${f}`);
