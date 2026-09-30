@@ -12,11 +12,14 @@
 //     of the record carries, in any page (`${action}#${back === 'chart' ? 'chart' : 'notes'}`, a query holding quotes
 //     before the hash, `patientHref(id) + '#money'`, `action.replace(/#.*$/, '') + '#consent-paper'`); every hash a
 //     script sets (`u.hash = …`, followed into aimForm()'s calls and data-pick-home); every ?saved= and ?open= such an
-//     address carries; every data-rec-go / data-rec-show; every section the page's `backTo` can hold;
+//     address carries; every data-rec-go / data-rec-show (data-rec-go={a.go}: every value `go` is given, however
+//     written); every name that picks a tab (every call of the page's show(), every tab looked up by its id
+//     rec-rec-<name>-tab, every data-rec-panel); every `saved` and `section` record.ts and record-extra.ts give an
+//     Outcome (so every call of done()); every section the page's `backTo` can hold;
 //   - landingSection() over every combination of a post's section (every value `backTo` can take, read from the page),
 //     back=chart, a saved word, a panel to open and a ?visit= (today's, another day's on the Treatment record, another
 //     day's that is not, none);
-//   - the inbound hashes the spec lists (§5).
+//   - the inbound names the spec lists (§5), each on the tab §5 puts it on.
 // It is closed to what it cannot read: in the record's own files (the page, _record/, _ui/, and a component the page
 // hands its address as `action`), a # it cannot place, or an expression whose names it cannot follow, fails — unless
 // ALLOWED below says why that one is safe. So a new way of writing an address is a failure to look at, not a route
@@ -298,18 +301,46 @@ const addrBefore = (t, k) => (t.parent ? addrBefore(t.parent.tok, t.parent.part)
 // Expressions whose names this check reads whole elsewhere: taken as covered, not followed.
 const COVERED = [
   [/^(?:ANCHOR|EXTRA_ANCHOR|SAVED_TO|SAVED_WORD|OPEN_PANEL|TAB_OF|SECTION_OF)\s*\[/, 'a map checked whole above'],
-  [/^outcome\.section$/, 'an intent\'s section: `const section` in record.ts / record-extra.ts, read below'],
-  [/^(?:encodeURIComponent\()?outcome\.saved\)?$/, 'a clinical save\'s word: record.ts / record-extra.ts\'s done() and saved:, read below'],
+  [/^outcome\.section$/, 'an intent\'s section: every `section` an Outcome is given in record.ts / record-extra.ts, read below'],
+  [/^(?:encodeURIComponent\()?outcome\.saved\)?$/, 'a clinical save\'s word: every `saved` an Outcome is given in record.ts / record-extra.ts, read below'],
   [/^backOf\(/, 'backOf(), checked above'],
   [/^recordSaved\(/, 'recordSaved(), SAVED_WORD checked above'],
-  [/^[\w$]+\.(?:go|show)$/, 'an object\'s go / show: every `go:` and `show:` in the record\'s files is read'],
 ];
 // Expressions that cannot be followed, and why each is safe. One that matches nothing any more fails, so the list
 // stays true. file: repo path; text: the expression exactly as written.
 const ALLOWED = [
   { file: PAGE, text: 'decodeURIComponent(location.hash.slice(1))', why: 'fromHash writes the address\'s own #hash back (#timeline as #treatment-record); every hash that links in is checked here' },
   { file: PAGE, text: 'String((e as CustomEvent).detail?.id ?? \'\').replace(/^rec-/, \'\')', why: 'the tab just chosen, written into the address: a tab\'s own id' },
+  { file: PAGE, text: 'id.replace(/^rec-/, \'\')', why: 'fromHash shows the tab the address\'s own #hash names (less rec-) when no section holds its element; every hash that links in is checked here' },
 ];
+
+/** Every value an object is given under the key `name` in file F: `name: v`, `'name': v`, the shorthand `{ name }`
+ *  (in code), and `x.name = v`. A key written `name?:`, or one whose value is a type (`string`, `string | null`), is a
+ *  type's member, not a value. Each is a span [a, b] to follow (a shorthand's span is its own name). */
+const TYPE_ONLY = /^(?:string|number|boolean|null|undefined|unknown|any)(?:\[\])?(?:\s*\|\s*(?:string|number|boolean|null|undefined|unknown|any)(?:\[\])?)*$/;
+function keyValues(F, name) {
+  const out = [];
+  const esc = name.replace(/\$/g, '\\$');
+  const before = (i) => { let k = i - 1; while (k >= 0 && /\s/.test(F.mask[k])) k--; return F.mask[k] ?? ''; };
+  const isKey = (i) => before(i) === '{' || before(i) === ',';
+  const value = (a) => { const b = exprEnd(F, a); if (!TYPE_ONLY.test(F.src.slice(a, b).trim())) out.push([a, b]); };
+  for (const m of F.mask.matchAll(new RegExp(`(?<![\\w$.])${esc}\\s*(\\?)?:\\s*`, 'g'))) if (!m[1] && isKey(m.index)) value(m.index + m[0].length);
+  for (const t of F.tokens) {
+    if (t.parts.length !== 1 || t.parts[0].text !== name || !isKey(t.start)) continue;
+    const c = /^\s*:\s*/.exec(F.mask.slice(t.end, t.end + 40));
+    if (c) value(t.end + c[0].length);
+  }
+  for (const m of F.mask.matchAll(new RegExp(`(?<![\\w$.])${esc}(?=\\s*[,}])`, 'g'))) {
+    if (isKey(m.index) && F.code.some(([a, b]) => m.index >= a && m.index < b)) out.push([m.index, m.index + name.length]);
+  }
+  for (const m of F.mask.matchAll(new RegExp(`\\.${esc}\\s*=(?![=>])\\s*`, 'g'))) value(m.index + m[0].length);
+  return out;
+}
+/** The files that import F (a component's props come from the page that draws it). */
+const importersOf = (F) => FILES.filter((G) => G !== F && [...G.src.matchAll(/\bimport\s+[\w$]+\s+from\s+['"]([^'"]+)['"]/g)]
+  .some((m) => m[1].startsWith('.') && relative(ROOT, resolve(dirname(join(ROOT, G.rel)), m[1])) === F.rel));
+// A member chain ending in .dataset.x: el.dataset.pickHome, el?.closest<HTMLElement>('[data-rec-panel]')?.dataset.recPanel.
+const DATASET = /^[A-Za-z_$][\w$]*(?:\??\.[\w$]+|(?:\?\.)?(?:<[^<>()]*>)?\((?:[^()]|\([^()]*\))*\)|\[[^\]]*\])*\??\.dataset\.([\w$]+)$/;
 
 /** Follow an expression (a..b in file F) to the literal names it can take. */
 function follow(F, a, b, res = { lits: [], covered: [], unresolved: [] }, depth = 0) {
@@ -317,6 +348,8 @@ function follow(F, a, b, res = { lits: [], covered: [], unresolved: [] }, depth 
     const w = where(F, x.at);
     if (x.tok) {
       if (x.tok.parts.length === 1) { if (x.tok.parts[0].text) res.lits.push({ v: x.tok.parts[0].text, where: w }); }
+      // A saved word is read by its first word (recordSaved: plan-done → plan, rx:<id> → rx), so `plan-${to}` is 'plan-'.
+      else if (res.prefix && /[-:]/.test(x.tok.parts[0].text)) res.lits.push({ v: x.tok.parts[0].text, where: w });
       else res.unresolved.push({ F, text: F.src.slice(x.tok.start, x.tok.end), where: w });
       continue;
     }
@@ -325,8 +358,9 @@ function follow(F, a, b, res = { lits: [], covered: [], unresolved: [] }, depth 
     const cov = COVERED.find(([re]) => re.test(text));
     if (cov) { res.covered.push({ text, why: cov[1], where: w }); continue; }
     if (depth > 12) { res.unresolved.push({ F, text, where: w }); continue; }
-    // el.dataset.pickHome → every data-pick-home="…" (or ={…}) in the record's files.
-    const ds = /^[\w$]+(?:\??\.[\w$]+)*\??\.dataset\.([\w$]+)$/.exec(text);
+    // el.dataset.pickHome → every data-pick-home="…" (or ={…}) in the record's files, and every value a script gives it
+    // there (el.dataset.pickHome = …, setAttribute('data-pick-home', …)).
+    const ds = DATASET.exec(text);
     if (ds) {
       const attr = 'data-' + ds[1].replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
       let any = false;
@@ -337,10 +371,29 @@ function follow(F, a, b, res = { lits: [], covered: [], unresolved: [] }, depth 
           if (m[1] === '{') follow(G, q + 1, close(G, q), res, depth + 1);
           else { const t = G.tokAt.get(q); if (t?.parts[0].text) res.lits.push({ v: t.parts[0].text, where: where(G, q) }); }
         }
+        for (const m of G.mask.matchAll(new RegExp(`\\.dataset\\.${ds[1].replace(/\$/g, "\\$")}\\s*=(?![=>])\\s*`, 'g'))) { any = true; const a = m.index + m[0].length; follow(G, a, exprEnd(G, a), res, depth + 1); }
+        for (const t of G.tokens) {
+          if (t.parts.length !== 1 || t.parts[0].text !== attr || !/\bsetAttribute\s*\(\s*$/.test(G.mask.slice(Math.max(0, t.start - 40), t.start))) continue;
+          const c = /^\s*,\s*/.exec(G.mask.slice(t.end, t.end + 20));
+          if (c) { any = true; const a = t.end + c[0].length; follow(G, a, exprEnd(G, a), res, depth + 1); }
+        }
       }
       if (!any) res.unresolved.push({ F, text, where: w });
       continue;
     }
+    // An object's property in the record's own files (a.go, o.show): every value that key is given in the file, and
+    // in the files that draw it (keyValues). None found: the check cannot tell.
+    const prop = /^[A-Za-z_$][\w$]*(?:\??\.[\w$]+)*\??\.([\w$]+)$/.exec(text);
+    if (prop && RECORD_OWN.has(F.rel)) {
+      const spans = [F, ...importersOf(F)].flatMap((G) => keyValues(G, prop[1]).map(([a, b]) => [G, a, b]));
+      if (!spans.length) res.unresolved.push({ F, text, where: w });
+      for (const [G, a, b] of spans) follow(G, a, b, res, depth + 1);
+      continue;
+    }
+    // A call of a function this file writes as one expression (panelOf(el)): what that expression can be.
+    const call = /^([A-Za-z_$][\w$]*)\s*\(/.exec(text);
+    const callee = call && close(F, x.at + call[0].length - 1) === x.at + text.length - 1 ? F.fns.find((f) => f.name === call[1] && f.exprBody) : null;
+    if (callee) { follow(F, callee.bodyStart, callee.bodyEnd, res, depth + 1); continue; }
     if (/^[A-Za-z_$][\w$]*$/.test(text)) {
       // A parameter of the function it is written in: what every call passes there.
       const fn = F.fns.filter((f) => f.params.includes(text) && x.at >= f.bodyStart && x.at <= f.bodyEnd).sort((p, q) => (p.bodyEnd - p.bodyStart) - (q.bodyEnd - q.bodyStart))[0];
@@ -437,8 +490,8 @@ for (const m of pageF.src.matchAll(/import\s+([\w$]+)\s+from\s+'([^']+\.astro)'/
 for (const F of FILES) if (F !== pageF) addressVars(F, RECORD_OWN.has(F.rel));
 
 // --- the source: hashes, saved words, ?open=, data-rec-go / show, backTo ----------------------------------------
-const found = { saved: new Map(), hash: new Map(), open: new Map(), go: new Map(), back: new Map() };
-const note = (kind, v, w) => { if (!found[kind].has(v)) found[kind].set(v, []); found[kind].get(v).push(w); };
+const found = { saved: new Map(), hash: new Map(), open: new Map(), go: new Map(), tab: new Map(), back: new Map() };
+const note = (kind, v, w) => { if (!found[kind].has(v)) found[kind].set(v, []); if (!found[kind].get(v).includes(w)) found[kind].get(v).push(w); };
 let hashSites = 0;
 const SELECTOR_CALL = /(?:\$\$?|querySelector(?:All)?|closest|matches)\s*(?:<[^>]*>)?\(\s*$/;
 // A '#name' added to an address: patientHref(id) + '#money', action.replace(/#.*$/, '') + '#consent-paper', here + '#x'.
@@ -507,18 +560,45 @@ for (const F of FILES) {
     hashSites++;
     for (const l of namesOf(`the hash set at ${w}`, follow(F, a, exprEnd(F, a)))) note('hash', l.v.replace(/^#/, ''), `${w} via ${l.where}`);
   }
-  // data-rec-go / data-rec-show, as literals, as an object's go: / show:, or as an expression.
+  // data-rec-go / data-rec-show, as literals or as an expression: data-rec-go={a.go} is every value `go` is given in
+  // the file and in the page that draws it, however written (`go: "x"`, `go: ok ? 'x' : 'y'`, go: `x`, a const).
   for (const m of F.mask.matchAll(/data-rec-(?:go|show)=(["'{])/g)) {
     const q = m.index + m[0].length - 1, w = where(F, m.index);
     if (m[1] === '{') for (const l of namesOf(`data-rec-go / show at ${w}`, follow(F, q + 1, close(F, q)))) note('go', l.v, `${w} via ${l.where}`);
     else { const t = F.tokAt.get(q); note('go', t?.parts[0].text ?? '', w); }
   }
-  for (const m of F.src.matchAll(/\b(?:go|show):\s*'([a-z][a-z0-9-]*)'/g)) note('go', m[1], where(F, m.index));
+  // A tab looked up by its id: 'rec-rec-chart-tab' as written, or `rec-rec-${name}-tab` with every name it is given
+  // (the page's tabFor(name): every call, so every show() call too). The template that draws a tab (RecordNav's
+  // id={`rec-rec-${i.id}-tab`}) makes the tabs, and is not a lookup.
+  for (const t of F.tokens) {
+    for (const p of t.parts) for (const m of (p.text ?? '').matchAll(/rec-rec-([a-z][a-z0-9-]*)-tab/g)) note('tab', m[1], where(F, p.at + m.index));
+    t.parts.forEach((p, k) => {
+      if (p.expr === undefined || !/(?:^|[^\w-])rec-rec-$/.test(t.parts[k - 1]?.text ?? '') || !/^-tab/.test(t.parts[k + 1]?.text ?? '')) return;
+      if (/\bid=\{\s*$/.test(F.mask.slice(Math.max(0, t.start - 12), t.start))) return;
+      const w = where(F, p.at);
+      for (const l of namesOf(`the tab looked up at ${w}`, follow(F, p.at, p.end))) note('tab', l.v, `${w} via ${l.where}`);
+    });
+  }
 }
-// Saved words the record libraries return: done('plan'), done(`plan-${to}`), saved: `rx:${id}`.
+// The page's show(name): every name it is given picks a tab (the offline kept copy's show('chart'), the chart's
+// notices, data-rec-go / data-rec-show, fromHash). Read from its calls whatever show() does with the name.
+const pageShow = pageF.fns.find((f) => f.name === 'show');
+if (!pageShow) fail(`${PAGE} has no show(): this check reads the names that pick a tab through its calls — update the check with the page`, 'show');
+else for (const c of callsOf(pageShow, pageF)) {
+  const w = where(pageF, c.at);
+  if (!c.args[0]) { fail(`show() with no name (${w})`, 'show()'); continue; }
+  for (const l of namesOf(`show() at ${w}`, follow(pageF, c.args[0][0], c.args[0][1]))) note('tab', l.v, `${w} via ${l.where}`);
+}
+// Saved words and sections the record libraries return: every `saved` and `section` an object is given in record.ts and
+// record-extra.ts (done(saved) → { ok: true, section, saved }, so every call of done(); { …, saved: `rx:${id}` }),
+// however written. A template counts by its first word (`plan-${to}` is plan).
 for (const rel of ['src/lib/record.ts', 'src/lib/record-extra.ts']) {
   const F = byRel.get(rel);
-  for (const re of [/\bdone\(\s*(?:[^'`)]*\?\s*)?['`]([a-z]+)/g, /\bdone\([^)]*:\s*['`]([a-z]+)/g, /\bsaved:\s*['`]([a-z]+)/g]) for (const m of F.src.matchAll(re)) note('saved', m[1], where(F, m.index));
+  for (const [key, kind] of [['saved', 'saved'], ['section', 'back']]) {
+    const spans = keyValues(F, key);
+    if (!spans.length) fail(`${rel}: no \`${key}\` found in an Outcome — this check reads the record's saves through it; update the check with the library`, key);
+    for (const [a, b] of spans) for (const l of namesOf(`the \`${key}\` at ${where(F, a)}`, follow(F, a, b, { lits: [], covered: [], unresolved: [], prefix: kind === 'saved' }))) note(kind, l.v, l.where);
+  }
 }
 // Every section the page's first tab can come from: what landingSection's backTo is given (the page's `backTo`), and
 // an intent's section (SECTION_OF[intent], else the fallback in record.ts / record-extra.ts).
@@ -534,10 +614,6 @@ for (const c of landingCalls) {
   const res = colon < 0 ? follow(c.F, prop[0], prop[1]) : follow(c.F, prop[0] + colon + 1, prop[1]);
   for (const l of namesOf(`landingSection's backTo at ${where(c.F, c.at)}`, res)) note('back', l.v, l.where);
 }
-for (const rel of ['src/lib/record.ts', 'src/lib/record-extra.ts']) {
-  const F = byRel.get(rel);
-  for (const d of F.defs.filter((d) => d.name === 'section')) for (const l of namesOf(`\`const section\` in ${rel}`, follow(F, d.a, d.b))) note('back', l.v, l.where);
-}
 ALLOWED.forEach((x, i) => { if (!allowedHits.has(i)) fail(`ALLOWED: nothing in ${x.file} writes \`${x.text}\` any more — take it off the list`, x.text); });
 
 // The page's own saved words that land on the default tab on purpose (This visit's "No change": the strip is on Today).
@@ -550,6 +626,7 @@ for (const [w, at] of found.saved) {
 }
 for (const [h, at] of found.hash) hashResolves(`#${h} (${at.join(', ')})`, h);
 for (const [g, at] of found.go) resolves(`data-rec-go / show "${g}" (${at[0]})`, g);
+for (const [g, at] of found.tab) resolves(`a name that picks a tab, "${g}" (${at[0]})`, g);
 for (const [b, at] of found.back) resolves(`a section the page lands on (${at.join(', ')})`, b);
 for (const [o, at] of found.open) { checked++; if (!Object.hasOwn(OPEN_PANEL, o)) fail(`?open=${o} (${at.join(', ')}) is not a panel the record opens (OPEN_PANEL)`, o); }
 // Every panel the page opens as it loads (openNow === 'rx' …) needs its section in OPEN_PANEL, and so does every ?open=
@@ -558,10 +635,19 @@ for (const m of pageF.src.matchAll(/\bopenNow\s*===\s*'([a-z-]+)'/g)) { checked+
 for (const o of ['vitals', 'note', 'rx', 'done', 'file', 'details']) { checked++; if (!Object.hasOwn(OPEN_PANEL, o)) fail(`?open=${o}, an inbound link of spec §5, is not in OPEN_PANEL`, o); }
 
 // --- the inbound links of spec §5 -----------------------------------------------------------------------------
-const SPEC_HASHES = ['treatment-record', 'timeline', 'rx', 'letters', 'treatment', 'money', 'visits', 'consent', 'consent-paper', 'consent-forms', 'visit-consents',
-  'patient-forms', 'details-card', 'chart-offer', 'chart', 'health', 'vitals', 'recall', 'treatment-done', 'treatment-lab', 'loas', 'payplans', 'files', 'notes', 'texts',
-  'overview', 'this-visit', 'patient', 'rec-overview', 'rec-patient', 'rec-chart', 'rec-treatment-record'];
-for (const h of SPEC_HASHES) hashResolves('an inbound hash of spec §5', h);
+// TAB_OF as spec §5 draws it: each name on its own tab, not only on some tab (#money on Today would pass the rest of
+// this check). A name TAB_OF adds later is checked above; one of these moved or gone fails here.
+const SPEC_TAB_OF = {
+  overview: ['overview', 'this-visit', 'visits', 'recall'],
+  patient: ['patient', 'health', 'vitals', 'consent', 'consent-paper', 'consent-forms', 'visit-consents', 'patient-forms', 'details-card'],
+  chart: ['chart', 'chart-offer', 'treatment', 'treatment-done', 'treatment-lab', 'loas', 'payplans', 'files'],
+  'treatment-record': ['treatment-record', 'timeline', 'notes', 'rx', 'letters', 'money', 'texts'],
+};
+for (const [tab, names] of Object.entries(SPEC_TAB_OF)) for (const h of [...names, `rec-${tab}`]) {
+  checked++;
+  const t = tabOf(h) ?? tabOf(h.replace(/^rec-/, ''));
+  if (t !== tab) fail(`an inbound name of spec §5 on the wrong tab: #${h} belongs on ${tab}`, h, t);
+}
 
 // --- the first tab, over every combination ---------------------------------------------------------------------
 // backTo: every value the page gives it (read above), every section an intent has, and what backOf() gives.
@@ -589,6 +675,7 @@ console.log(`the record's own files (${RECORD_OWN.size}); ${hashSites} places an
 console.log(`from the source — saved words (${found.saved.size}): ${list(found.saved)}`);
 console.log(`from the source — hashes (${found.hash.size}): ${list(found.hash)}`);
 console.log(`from the source — data-rec-go / show (${found.go.size}): ${list(found.go)}`);
+console.log(`from the source — names that pick a tab: show() and rec-rec-<name>-tab (${found.tab.size}): ${list(found.tab)}`);
 console.log(`from the source — ?open= (${found.open.size}): ${list(found.open)}`);
 console.log(`from the source — sections the page lands on (${found.back.size}): ${list(found.back)}`);
 console.log(`${checked} names checked, ${combos} landing combinations`);
