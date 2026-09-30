@@ -151,7 +151,8 @@ export interface Ctx { clinicId: string; staffId: string; patientId: string; sid
 /** What a post did: where to go back to, or what was wrong (with what was typed, to show again). qs: more for the
  *  address it lands on (treated=<procedure_done id> for the chart's offer, chartskip=changed|ended). */
 export type Outcome = { ok: true; section: string; saved: string; qs?: Record<string, string> } | { ok: false; section: string; problem: string; values: Record<string, string> };
-const SECTION_OF: Record<string, string> = {
+/** Each intent's section (the record page maps it to a tab through TAB_OF in _record/sections.ts). */
+export const SECTION_OF: Record<string, string> = {
   'plan-add': 'treatment', 'plan-status': 'treatment', 'plan-remove': 'treatment', 'done-add': 'treatment', 'lab-add': 'treatment', 'lab-next': 'treatment',
   'note-add': 'notes', 'rx-add': 'rx', 'file-add': 'files', 'file-remove': 'files', 'recall-set': 'overview', 'recall-done': 'overview', 'recall-clear': 'overview',
   'chart-apply': 'chart',

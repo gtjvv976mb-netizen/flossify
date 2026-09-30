@@ -123,6 +123,7 @@ import RecordNav from './_record/RecordNav.astro';
 import Banner from './_record/Banner.astro';
 import Who from './_record/Who.astro';
 import VisitStrip from './_record/VisitStrip.astro';
+import { ANCHOR, OPEN_PANEL, backOf, landingSection, recordSaved } from './_record/sections';
 import { shellLinks } from '../../../../components/ws/routes';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
@@ -192,8 +193,6 @@ let rxTyped: RxItem[] = [];
 let stripProblem: string | null = null;
 // The section a post came back to.
 let backTo: string | null = null;
-// Where on the page a clinical-record post lands again.
-const ANCHOR: Record<string, string> = { 'done-add': 'treatment-done', 'lab-add': 'treatment-lab', 'lab-next': 'treatment-lab', 'recall-set': 'recall', 'recall-done': 'recall', 'recall-clear': 'recall' };
 /** A refused clinical-record post (src/lib/refused.ts): thrown out of the transaction so nothing half-done is kept, its outcome as the detail. */
 type RecordRefusal = Extract<Outcome, { ok: false }>;
 
@@ -302,7 +301,7 @@ if (Astro.request.method === 'POST') {
   } else if (RECORD_INTENTS.has(intent) || EXTRA_INTENTS.has(intent)) {
     // The clinical record (src/lib/record.ts): every intent checks canEditRecords in its own transaction.
     // A panel opened from the chart's palette posts back=chart: saved or refused, it comes back to the Chart.
-    const postedBack = form.get('back') === 'chart' ? 'chart' : form.get('back') === 'treatment' ? 'treatment' : null;
+    const postedBack = backOf(form.get('back'));
     const outcome = slow
       ? ({ ok: false, section: 'overview', problem: slow, values: {} } as Extract<Outcome, { ok: false }>)
       : await withClinic(clinic.id, async (tx) => {
@@ -314,7 +313,8 @@ if (Astro.request.method === 'POST') {
         }).catch((e) => { if (e instanceof Refused) return (e as Refused<RecordRefusal>).detail; throw e; });
     if (outcome === 'none') return notFound();
     if (outcome.ok) {
-      // A treatment the chart could show lands on its offer (treated=…, #chart-offer), in the section the post came from.
+      // A treatment the chart could show lands on its offer (treated=…, #chart-offer), in the section the post came from;
+      // anything else on its anchor (ANCHOR in ./_record/sections.ts, EXTRA_ANCHOR), else its section.
       const qs = [`saved=${encodeURIComponent(outcome.saved)}`, ...Object.entries(outcome.qs ?? {}).map(([k, v]) => `${k}=${encodeURIComponent(v)}`), postedBack === 'chart' ? 'back=chart' : ''].filter(Boolean).join('&');
       const hash = outcome.qs?.treated ? 'chart-offer' : postedBack === 'chart' ? 'chart' : ANCHOR[intent] ?? EXTRA_ANCHOR[intent] ?? outcome.section;
       return Astro.redirect(to(qs, hash), 303);
@@ -495,8 +495,8 @@ const thisVisit: StripVisit | null = thisRow ? { id: thisRow.id, startsAt: thisR
 const laterVisits = thisVisit ? visits.filter((v) => v.id !== thisVisit.id && going(v.status) && v.status !== 'completed' && +v.starts_at > +thisVisit.startsAt) : [];
 const laterVisitAt: Date | null = laterVisits.length ? laterVisits[laterVisits.length - 1].starts_at : null;
 // ?open=vitals|note|rx|done|file|details: the page opens that panel as it loads (the Dashboard's "Take it", "Write the
-// note", the desk note's "Edit"). &dash=<visit> with details: saving goes back to the Dashboard with that visit open.
-const OPEN_PANEL: Record<string, string> = { vitals: 'health', note: 'notes', rx: 'rx', done: 'treatment', file: 'files', details: 'overview' };
+// note", the desk note's "Edit"; OPEN_PANEL in ./_record/sections.ts). &dash=<visit> with details: saving goes back to
+// the Dashboard with that visit open.
 const openNow = canEdit && Object.hasOwn(OPEN_PANEL, q.get('open') ?? '') ? q.get('open')! : null;
 const dashVisit = UUID.test(q.get('dash') ?? '') ? q.get('dash')!.toLowerCase() : null;
 
@@ -614,7 +614,6 @@ const SECTIONS = [
   { id: 'consent', label: 'Consent' },
   { id: 'texts', label: 'Texts', count: data.texts.length || null },
 ];
-const savedTo: Record<string, string> = { intake: 'overview', capacity: 'consent', 'consent-removed': 'consent', health: 'health', birth: 'health', nothing: 'health', consent: 'consent', 'consent-already': 'consent', paper: 'consent', details: 'overview', new: 'overview', form: 'overview' };
 
 // --- a patient form just added ------------------------------------------------
 // The consents as the record has them now, in words (never a claim the rows do not make).
@@ -641,15 +640,9 @@ const usedLabel = used ? ({ phone: 'mobile', email: 'email', address_line: 'addr
   emergency_name: 'emergency contact', emergency_relation: 'emergency contact’s relation', emergency_phone: 'emergency contact’s number',
   guardian_name: 'parent or guardian', guardian_relation: 'parent or guardian’s relation', guardian_phone: 'parent or guardian’s mobile',
   hmo_name: 'HMO', hmo_member_no: 'HMO card number', middle_name: 'middle name', suffix: 'suffix' } as Record<string, string>)[used] ?? 'detail' : null;
-// A clinical-record save names its section by its first word (plan-done, rx:<id>, files:3, recall-cleared …).
-const recordSaved = (s: string | null) => {
-  const w = (s ?? '').split(/[-:]/)[0];
-  return ({ plan: 'treatment', done: 'treatment', lab: 'treatment', note: 'notes', addendum: 'notes', rx: 'rx', file: 'files', files: 'files', recall: 'overview',
-    vitals: 'health', letter: 'rx', answered: 'rx', loa: 'treatment', payplan: 'treatment', adjusted: 'treatment', charted: 'treatment' } as Record<string, string>)[w] ?? null;
-};
-// The section showing first: where a post came back to, the section of what was just saved, the section of a
-// panel to open, the Treatment record (or Visits) for another day's visit (?visit=), else the Overview.
-// ?back=chart: a save from a panel the chart's palette opened lands on the Chart.
+// The section showing first (landingSection in ./_record/sections.ts): where a post came back to, the section of what
+// was just saved (SAVED_TO, recordSaved), the section of a panel to open, the Treatment record (or Visits) for another
+// day's visit (?visit=), else the Overview. ?back=chart: a save from a panel the chart's palette opened lands on the Chart.
 const fromChart = q.get('back') === 'chart';
 // The chart's offer after a treatment (p01 step 2): its state, a write that was skipped (the tooth changed, or the page's
 // sign-in ended), or a refused Update the chart. Drawn at the top of the section the post came back to, only.
@@ -657,7 +650,8 @@ const offerState = data.offerState;
 const chartSkip = q.get('chartskip') === 'changed' || q.get('chartskip') === 'ended' ? (q.get('chartskip') as 'changed' | 'ended') : null;
 const offerProblem = recordProblem?.intent === 'chart-apply' ? recordProblem : null;
 const showOffer = canEdit && (!!offerProblem || !!chartSkip || !!(offerState && (offerState.applied || calloutWorthy(offerState.offer))));
-const current = backTo ?? (fromChart ? 'chart' : null) ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? (openNow ? OPEN_PANEL[openNow] : openVisit && !thisVisit ? (data.ledger.openKeys.has(openVisit) ? 'treatment-record' : 'visits') : 'overview');
+const current = landingSection({ backTo, fromChart, saved, openNow,
+  visit: !openVisit ? null : thisVisit ? 'today' : data.ledger.openKeys.has(openVisit) ? 'ledger' : 'other' });
 // "Leave the chart as it is": the same address without the offer (and without the saved line it came with).
 const leaveOffer = (section: string) => {
   const u = new URLSearchParams(q);

@@ -18,7 +18,8 @@
     "sms:worker": "node --env-file-if-exists=.env --experimental-strip-types scripts/sms/worker.ts",
     "sms:once": "node --env-file-if-exists=.env --experimental-strip-types scripts/sms/worker.ts --once",
     "consent:hash": "node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs scripts/consent-hash.ts",
-    "test:consent": "node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs --test src/lib/consent-library.test.ts src/lib/consent-seal.test.ts"
+    "test:consent": "node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs --test src/lib/consent-library.test.ts src/lib/consent-seal.test.ts",
+    "test:record-tabs": "node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs scripts/dev/record-tabs-check.mjs"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.6",

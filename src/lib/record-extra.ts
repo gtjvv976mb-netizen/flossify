@@ -131,7 +131,8 @@ export async function loadExtra(tx: Tx, patientId: string, hmoNames: Map<string,
 
 // --- writing -----------------------------------------------------------------------------------------
 export interface ExtraCtx { clinicId: string; staffId: string; patientId: string; canBill: boolean; hmoNames: Map<string, string> }
-const SECTION_OF: Record<string, string> = {
+/** Each intent's section (the record page maps it to a tab through TAB_OF in _record/sections.ts). */
+export const SECTION_OF: Record<string, string> = {
   'vitals-add': 'health', 'letter-add': 'rx', 'letter-answer': 'rx',
   'loa-add': 'treatment', 'loa-approve': 'treatment', 'loa-deny': 'treatment', 'loa-cancel': 'treatment',
   'payplan-add': 'treatment', 'payplan-stop': 'treatment', 'adjust-add': 'treatment',
