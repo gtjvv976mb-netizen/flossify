@@ -3,7 +3,8 @@
 // braces, the adjustment visits. The money is the statement the plan made (paid on the Finances page like
 // any other), so this card only reads it: what should be paid by now, what is behind (in words and amber,
 // never colour alone), the next payment and the next adjustment. Amounts show to people who may bill;
-// anyone who may edit records writes an adjustment. On the Treatment section.
+// anyone who may edit records writes an adjustment. On Chart & plan; the panels (part="panels") are drawn outside the
+// tabs, so Add ▾ starts a plan over the tab in view. What a save says is the page's saved line (./SavedLine.astro).
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
@@ -16,26 +17,19 @@ import { peso, type PayPlan } from '../../../../../lib/record-extra';
 import type { RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
 
-interface Props { plans: PayPlan[]; canEdit: boolean; canBill: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; financesBase: string }
-const { plans, canEdit, canBill, action, problem, saved, today, firstName, financesBase } = Astro.props;
+/** part: the plans (in their tab) or the panels (outside the tabs). */
+interface Props { part: 'body' | 'panels'; plans: PayPlan[]; canEdit: boolean; canBill: boolean; action: string; problem: RecordProblem | null; today: string; firstName: string; financesBase: string }
+const { part, plans, canEdit, canBill, action, problem, today, firstName, financesBase } = Astro.props;
 const v = problem?.intent === 'payplan-add' ? problem.values : ({} as Record<string, string>);
 const av = problem?.intent === 'adjust-add' ? problem.values : ({} as Record<string, string>);
 const inline = problem && ['payplan-stop'].includes(problem.intent) ? problem.text : null;
-const madeInvoice = saved?.startsWith('payplan:') ? saved.slice(8) : null;
-const adjustedNext = saved?.startsWith('adjusted:') ? saved.slice(9) : null;
 const running = plans.filter((p) => p.status === 'active');
 const pct = (p: PayPlan) => Math.min(100, Math.round((p.paid / p.total) * 100));
 const help = 'text-[13px] leading-snug text-ink-2';
 ---
 
+{part === 'body' && (
 <div class="grid gap-4 max-md:gap-3">
-  {madeInvoice && (
-    <Callout tone="success" title="Plan made, with its statement.">
-      <p><a href={`${financesBase}${madeInvoice}/`} class="font-semibold underline underline-offset-2">Take the down payment</a> on the statement, as with any payment.</p>
-    </Callout>
-  )}
-  {adjustedNext && <Callout tone="success" text={`Adjustment saved. The next one is ${dateText(adjustedNext)}: book it before they leave.`} />}
-  {saved === 'payplan-stopped' && <Callout tone="success" text="Plan stopped. Its statement stays, with whatever is left to pay." />}
   {inline && <Callout tone="alert" text={inline} />}
   <Pane as="section" label="Braces and payment plans" id="payplans">
     <Head icon="money" title="Braces and payment plans" meta={running.length ? `${running.length} running` : undefined} />
@@ -97,12 +91,13 @@ const help = 'text-[13px] leading-snug text-ink-2';
     )}
   </Pane>
 </div>
+)}
 
-{canEdit && canBill && (
+{part === 'panels' && canEdit && canBill && (
   <SidePanel id="rec-payplan-add" title="New payment plan" meta={firstName} open={problem?.intent === 'payplan-add'}>
     {problem?.intent === 'payplan-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
     <form method="post" action={`${action}#payplans`} class="grid gap-4" data-pp-form>
-      <Csrf /><input type="hidden" name="intent" value="payplan-add" />
+      <Csrf /><input type="hidden" name="intent" value="payplan-add" /><input type="hidden" name="back" value="" data-rec-back />
       <fieldset class="min-w-0">
         <legend class="mb-2 text-[14px] font-medium text-ink-2">What is it for?</legend>
         <div class="fl-kinds">
@@ -125,11 +120,11 @@ const help = 'text-[13px] leading-snug text-ink-2';
     </form>
   </SidePanel>
 )}
-{canEdit && (
+{part === 'panels' && canEdit && (
   <SidePanel id="rec-adjust-add" title="Adjustment done" meta={firstName} open={problem?.intent === 'adjust-add'}>
     {problem?.intent === 'adjust-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
     <form method="post" action={`${action}#payplans`} class="grid gap-4">
-      <Csrf /><input type="hidden" name="intent" value="adjust-add" />
+      <Csrf /><input type="hidden" name="intent" value="adjust-add" /><input type="hidden" name="back" value="" data-rec-back />
       <input type="hidden" name="plan" value={av.plan ?? ''} data-adjust-plan />
       <label class="field"><span class="meta">Day</span><input type="date" name="done_on" value={av.done_on ?? today} max={today} data-adjust-on /></label>
       <label class="field"><span class="meta">What was done <span class="font-normal">(optional)</span></span><input name="note" value={av.note ?? ''} maxlength="300" autocomplete="off" placeholder="e.g. Upper 0.016 NiTi, new elastics" /></label>

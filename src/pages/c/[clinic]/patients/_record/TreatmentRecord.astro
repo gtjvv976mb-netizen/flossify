@@ -8,6 +8,7 @@
 // A real table where the section is wide (from 54rem inside it); below that, each day is a card with
 // labelled lines (the container query in record.css). With more than 14 days, the script folds all but the
 // last 10 behind "Show N earlier days" (the hidden attribute, never a class); with scripts off, every day shows.
+// It is the first card of the Treatment record tab, whose top carries the #treatment-record anchor (the page).
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import Chip from '../../../../../components/ws/Chip.astro';
@@ -30,7 +31,7 @@ const balanceNote = !money ? null
   : 'Balance is what the patient owes at the end of that day: charges less payments, less what an HMO or PhilHealth is still expected to pay. It is the same count as the Balance at the top. Void statements and voided payments are not counted; they stay in Money.';
 ---
 
-<Pane as="section" label="Treatment record" id="treatment-record" pad="none">
+<Pane as="section" label="Treatment record" pad="none">
   <div class="trec-head">
     <Head icon="history" title="Treatment record" meta={ledger.count ? (ledger.count === 1 ? 'One treatment' : `${ledger.count} treatments`) : undefined}>
       <a slot="actions" href={printHref} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>

@@ -7,7 +7,7 @@
 // and Print. A form still to sign also has, for someone who can edit records,
 // Explain and confirm (its named dentist only), Sign on this tablet, and Print
 // for signing on paper. The head has Prepare consent forms and, for a treating
-// dentist, Record that the patient cannot decide.
+// dentist, Record that the patient cannot decide: its panel (part="panels") is drawn outside the record's tabs.
 import Pane from '../../../../../components/ws/Pane.astro';
 import Icon from '../../../../../components/ws/Icon.astro';
 import Csrf from '../../../../../components/Csrf.astro';
@@ -19,6 +19,8 @@ import Who from './Who.astro';
 import { STATE_WORDS, signerWords, CAPACITY_MAX, type RecordDoc } from '../../../../../lib/consent-docs';
 
 interface Props {
+  /** The list (on Patient info) or the capacity panel (outside the tabs). */
+  part: 'body' | 'panels';
   docs: RecordDoc[];
   slug: string;
   patientId: string;
@@ -32,13 +34,14 @@ interface Props {
   /** Consent forms are offered on this server (none on a production server until reviewed): Prepare consent forms shows. */
   canPrepare: boolean;
 }
-const { docs, slug, patientId, firstName, canEdit, mayExplain, mayCapacity, capacity, canPrepare } = Astro.props;
+const { part, docs, slug, patientId, firstName, canEdit, mayExplain, mayCapacity, capacity, canPrepare } = Astro.props;
 const base = `/c/${slug}/patients/${patientId}/consents/`;
 const TONE: Record<string, string> = { success: 'rp-ok', warn: 'rp-warn', alert: 'rp-alert', neutral: '', info: '' };
 const day = (d: Date) => new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(new Date(d));
 const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.teeth as number[]) : Array.isArray(d.fields.area) ? (d.fields.area as number[]) : []);
 ---
 
+{part === 'body' && (
 <Pane as="section" label="Consent forms" id="consent-forms">
   <Head icon="form" title="Consent forms" meta={docs.length ? (docs.length === 1 ? 'One form' : `${docs.length} forms`) : undefined}>
     {canEdit && (canPrepare || mayCapacity) && (
@@ -95,8 +98,9 @@ const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.tee
     </ul>
   )}
 </Pane>
+)}
 
-{mayCapacity && (
+{part === 'panels' && mayCapacity && (
   <SidePanel id="rec-capacity" title="The patient cannot decide now" meta={firstName}>
     <form method="post" action={base} class="grid gap-4">
       <Csrf /><input type="hidden" name="intent" value="capacity" />

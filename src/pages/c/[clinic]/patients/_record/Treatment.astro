@@ -4,8 +4,8 @@
 // done under the dentist, so the plan and the list below never disagree. Every form is a side panel; every
 // button is one post (recordAction in src/lib/record.ts), and a refused post comes back with its sentence.
 // Add to plan and Record a treatment are TreatmentPanels.astro, outside the record's sections, so the chart's
-// palette can open them too; the lab case panel stays here. The record page puts the chart's offer (ChartOffer.astro) in the `offer`
-// slot, under the saved line, when a treatment saved here could be charted.
+// palette can open them too; the lab case panel is here (part="panels"), drawn outside the tabs as well. On Chart &
+// plan, under the chart and the chart's offer (ChartOffer.astro); what a save says is the page's saved line.
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
@@ -18,9 +18,10 @@ import { PLAN_STATUS, LAB_STATUS, LAB_NEXT, type Clinical, type RecordProblem } 
 import { dateText } from '../../../../../lib/health';
 import type { Loa } from '../../../../../lib/record-extra';
 
-/** visitId: today's visit (036) — a plan item marked done is written against it. */
-interface Props { c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; visitId?: string | null }
-const { c, loas = [], canEdit, action, meId, problem, saved, today, firstName, visitId = null } = Astro.props;
+/** part: the plan, work done and lab cases (in their tab) or the lab case panel (outside the tabs). visitId: today's
+ *  visit (036) — a plan item marked done is written against it. */
+interface Props { part: 'body' | 'panels'; c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; today: string; firstName: string; visitId?: string | null }
+const { part, c, loas = [], canEdit, action, meId, problem, today, firstName, visitId = null } = Astro.props;
 
 const peso = (n: number | string) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 const tooth = (fdi: number | null, surface: string | null) => (fdi ? `${fdi}${surface ? ` ${surface}` : ''}` : null);
@@ -35,22 +36,15 @@ const sum = (xs: { price: string }[]) => xs.reduce((n, i) => n + Number(i.price)
 const toDo = sum(open), accepted = sum(open.filter((i) => i.status === 'accepted')), doneSum = sum(c.plan.filter((i) => i.status === 'done'));
 const labsOpen = c.labs.filter((l) => l.status !== 'fitted');
 
-const SAVED: Record<string, string> = {
-  plan: 'Added to the plan.', 'plan-accepted': 'Marked accepted. The patient agreed to it.', 'plan-declined': 'Marked declined. It stays on the plan, crossed out.',
-  'plan-planned': 'Back to planned.', 'plan-done': 'Marked done, and added to treatments done.', 'plan-removed': 'Taken off the plan.',
-  done: 'Treatment recorded.', lab: 'Lab case added.', 'lab-moved': 'Lab case moved on.',
-};
 const inline = problem && ['plan-status', 'plan-remove', 'lab-next'].includes(problem.intent) ? problem.text : null;
 const v = (intent: string) => (problem?.intent === intent ? problem.values : {} as Record<string, string>);
 const lv = v('lab-add');
 const help = 'text-[13px] leading-snug text-ink-2';
 ---
 
+{part === 'body' && (
 <div class="grid gap-4 max-md:gap-3">
-  {saved && SAVED[saved] && <Callout tone="success" text={SAVED[saved]} />}
   {inline && <Callout tone="alert" text={inline} />}
-  {/* The chart's offer after a treatment was recorded or marked done here (_record/ChartOffer.astro, p01 step 2). */}
-  <slot name="offer" />
 
   <Pane as="section" label="Treatment plan" id="treatment">
     <Head icon="plan" title="Treatment plan" meta={open.length ? `${open.length} to do` : 'Nothing to do'} />
@@ -214,13 +208,14 @@ const help = 'text-[13px] leading-snug text-ink-2';
     )}
   </Pane>
 </div>
+)}
 
-{canEdit && (
+{part === 'panels' && canEdit && (
   <>
     <SidePanel id="rec-lab-add" title="New lab case" meta={firstName} open={problem?.intent === 'lab-add'}>
       {problem?.intent === 'lab-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was added.`} />}
       <form method="post" action={`${action}#treatment-lab`} class="grid gap-4">
-        <Csrf /><input type="hidden" name="intent" value="lab-add" />
+        <Csrf /><input type="hidden" name="intent" value="lab-add" /><input type="hidden" name="back" value="" data-rec-back />
         <label class="field"><span class="meta">What the lab is making</span><input name="description" value={lv.description ?? ''} required maxlength="200" autocomplete="off" placeholder="e.g. PFM crown, 21" /></label>
         <label class="field"><span class="meta">Lab</span><input name="lab" value={lv.lab ?? ''} required maxlength="120" autocomplete="off" list="rec-lab-names" /></label>
         <datalist id="rec-lab-names">{[...new Set(c.labs.map((l) => l.lab))].map((n) => <option value={n} />)}</datalist>

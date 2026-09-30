@@ -1,13 +1,22 @@
-// What the record's tooth-first panels (TreatmentPanels, NotePanel) share in the browser: where a form comes back
-// to, and where focus goes when the panel closes.
+// What the record's side panels share in the browser: where a form comes back to, and where focus goes when the
+// panel closes.
 //
-// A panel opened from the chart's palette posts back=chart: the form's address ends #chart, so a refused post
-// comes back over the Chart section, and a saved one lands on the chart with its line. Any other opener clears it.
+// Every panel form posts `back`: the tab it was opened over (the page's script and the tooth-first panels,
+// TreatmentPanels and NotePanel, set it as the panel opens). The form's address then ends #<back>, so a refused post
+// comes back over that tab with its panel open, and a saved one lands there with its saved line. A panel opened from
+// the chart's palette posts back=chart and is the one that gives focus back to its tooth.
+import { backOf } from './sections';
 
-/** Point a form at `#chart` (back=chart) or at its own section's anchor. */
+/** The tab the record shows now (overview · patient · chart · treatment-record), or '' before there is one. */
+export function currentTab(): string {
+  const t = document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"][id^="rec-rec-"]');
+  return t ? t.id.replace(/^rec-rec-|-tab$/g, '') : '';
+}
+
+/** Point a form at `#<back>` (the tab it was opened over) or, with no back, at its own section's anchor. */
 export function aimForm(form: HTMLFormElement, back: string, home: string): void {
   const u = new URL(form.action, location.href);
-  u.hash = back === 'chart' ? 'chart' : home;
+  u.hash = backOf(back) ?? home;
   form.action = u.href;
 }
 

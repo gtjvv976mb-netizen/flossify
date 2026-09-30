@@ -569,7 +569,7 @@ const patientsHref = `/c/${clinic.slug}/patients/`;
                 {view.made.map((p) => {
                   const name = [p.first_name, p.last_name, p.suffix].filter(Boolean).join(' ');
                   return (
-                    <li class="!py-0"><a href={`/c/${clinic.slug}/patients/${p.id}/${d.kind === 'visits' ? '#visits' : ''}`} class="flex min-h-12 w-full items-center gap-3 py-1.5 text-[15px] hover:text-[var(--ws-teal-ink)]"><Avatar name={name} size="sm" /><span class="min-w-0 flex-1 font-semibold">{name}</span><span class="text-[13px] text-muted tabular-nums">{[p.chart_no, p.n ? `${p.n} ${p.n === 1 ? 'visit' : 'visits'}` : null, money && p.s ? `${p.s} ${p.s === 1 ? 'statement' : 'statements'}` : null].filter(Boolean).join(' · ')}</span></a></li>
+                    <li class="!py-0"><a href={`/c/${clinic.slug}/patients/${p.id}/${d.kind === 'visits' ? '#treatment-record' : ''}`} class="flex min-h-12 w-full items-center gap-3 py-1.5 text-[15px] hover:text-[var(--ws-teal-ink)]"><Avatar name={name} size="sm" /><span class="min-w-0 flex-1 font-semibold">{name}</span><span class="text-[13px] text-muted tabular-nums">{[p.chart_no, p.n ? `${p.n} ${p.n === 1 ? 'visit' : 'visits'}` : null, money && p.s ? `${p.s} ${p.s === 1 ? 'statement' : 'statements'}` : null].filter(Boolean).join(' · ')}</span></a></li>
                   );
                 })}
               </ul>

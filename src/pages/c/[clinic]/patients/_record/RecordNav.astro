@@ -1,35 +1,97 @@
 ---
-// The record's index: its sections grouped under Patient · Health · Clinical · Documents · Billing, each
-// with its colour, icon and count (./sections.ts). On a wide screen a column that stays in view beside the
-// content; on a narrower one a row that scrolls sideways. It is the shell's in-place tabs underneath
-// (data-ws-tabs, role="tab", ids rec-rec-<section>-tab), so the page's script and the arrow keys work as
-// before; the group names are drawn for the eye and said once in each button for a screen reader.
+// The record's four tabs in one row that stays at the top of the screen, under the workspace's top bar: Today ·
+// Patient info · Chart & plan · Treatment record, each with its hue on its icon and a count where one helps
+// (./sections.ts), and Add ▾ at the end of the row: everything that is written into the record, one tap from any tab.
+// It is the shell's in-place tabs underneath (data-ws-tabs, role="tab", ids rec-rec-<id>-tab), so the page's script
+// and the left and right arrow keys work as before. On a phone the row is five columns, the four tabs and Add, each
+// an icon over its short name; a count becomes a dot there, and it stays in the tab's name.
+//
+// Add ▾ is the workspace's disclosure menu (ws/Menu.astro: Escape, a click elsewhere or a panel opening closes it).
+// Its items open the record's side panels, which live outside the tabs, so each opens over the tab in view and saves
+// back to it (the page's script sets each form's `back`). Items that write need records.edit, a payment plan and a
+// charge need finance.bill: the same people the panels are drawn for. The page hides the menu offline and on the
+// copy kept for a brownout, where nothing can be saved.
+import Menu from '../../../../../components/ws/Menu.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
 import Glyph from '../_ui/Glyph.astro';
-import { GROUPS, SECTION_META } from './sections';
+import type { GlyphName } from '../_ui/glyphs';
+import { TABS, type Hue, type TabId } from './sections';
 
-interface Item { id: string; label: string; count?: number | null }
-interface Props { items: Item[]; current: string; name: string }
-const { items, current, name } = Astro.props;
-const groups = GROUPS.map((g) => ({ ...g, items: items.filter((i) => SECTION_META[i.id]?.group === g.name) })).filter((g) => g.items.length);
+interface Props {
+  current: TabId;
+  /** The patient's short name, for the row's label; firstName for the menu's words. */
+  name: string;
+  firstName: string;
+  /** A tab's count and what it counts, said with the tab's name ("2 open on the plan"). */
+  counts?: Partial<Record<TabId, { n: number; words: string }>>;
+  canEdit: boolean;
+  money: boolean;
+  chargeHref: string;
+}
+const { current, name, firstName, counts = {}, canEdit, money, chargeHref } = Astro.props;
+
+interface Item { open: string; label: string; hint: string; hue: Hue; glyph: GlyphName; attrs?: Record<string, string> }
+const groups: { title: string; items: Item[] }[] = canEdit ? [
+  { title: 'This visit', items: [
+    { open: 'rec-note-add', label: 'Clinical note', hint: 'What was found and done today', hue: 'blue', glyph: 'pen', attrs: { 'data-amends': '' } },
+    { open: 'rec-done-add', label: 'Record a treatment', hint: 'Work done, and on which tooth', hue: 'blue', glyph: 'tooth' },
+    { open: 'rec-vitals-add', label: 'Blood pressure', hint: 'Before anaesthesia', hue: 'rose', glyph: 'heart' },
+    { open: 'rec-rx-add', label: 'Prescription', hint: 'With the PRC and PTR on file', hue: 'violet', glyph: 'pill' },
+    { open: 'rec-file-add', label: 'X-ray or photo', hint: 'Or a document, as a PDF', hue: 'blue', glyph: 'image' },
+  ] },
+  { title: 'Plan', items: [
+    { open: 'rec-plan-add', label: 'Add to plan', hint: 'With the price from your fee guide', hue: 'blue', glyph: 'plan' },
+    { open: 'rec-lab-add', label: 'Lab case', hint: 'A crown or a denture from a lab', hue: 'blue', glyph: 'lab' },
+    { open: 'rec-loa-add', label: 'HMO approval (LOA)', hint: 'Ask the HMO before treatment', hue: 'blue', glyph: 'shield' },
+    ...(money ? [{ open: 'rec-payplan-add', label: 'Braces or payment plan', hint: 'Paid in parts, on one statement', hue: 'green' as const, glyph: 'money' as const }] : []),
+  ] },
+  { title: 'Papers', items: [
+    { open: 'rec-letter-add', label: 'Certificate or letter', hint: 'Or a referral, or medical clearance', hue: 'violet', glyph: 'form', attrs: { 'data-letter-kind': 'certificate' } },
+  ] },
+] : [];
 ---
 
-<nav class="rec-nav" aria-label={`Sections of ${name}’s record`}>
-  <div role="tablist" aria-label="Sections of the record" aria-orientation="vertical" class="rec-tabs rec-nav-list" data-ws-tabs>
-    {groups.map((g) => (
-      <>
-        <p class:list={['rec-nav-group', `hue-${g.hue}`]} aria-hidden="true"><span class="rec-nav-dot"></span>{g.name}</p>
-        {g.items.map((i) => {
-          const m = SECTION_META[i.id];
-          return (
-            <button type="button" role="tab" id={`rec-rec-${i.id}-tab`} aria-controls={`rec-${i.id}`} class:list={['rec-nav-item', `hue-${m.hue}`]}
-              aria-selected={i.id === current ? 'true' : 'false'} tabindex={i.id === current ? 0 : -1}>
-              <span class="rec-nav-icon" aria-hidden="true"><Glyph name={m.icon} size={17} /></span>
-              <span class="rec-nav-label"><span class="sr-only">{g.name}: </span>{i.label}</span>
-              {i.count ? <span class="rec-nav-count">{i.count}</span> : null}
+<div class="rec-bar" data-rec-bar>
+  <nav class="rec-nav" aria-label={`${name}’s record`}>
+    <div role="tablist" aria-label="Parts of the record" aria-orientation="horizontal" class="rec-tabs rec-nav-list" data-ws-tabs>
+      {TABS.map((t) => {
+        const c = counts[t.id];
+        return (
+          <button type="button" role="tab" id={`rec-rec-${t.id}-tab`} aria-controls={`rec-${t.id}`} class:list={['rec-nav-item', `hue-${t.hue}`]}
+            aria-selected={t.id === current ? 'true' : 'false'} tabindex={t.id === current ? 0 : -1}>
+            <span class="rec-nav-icon" aria-hidden="true"><Glyph name={t.icon} size={18} />{c ? <span class="rec-nav-dot"></span> : null}</span>
+            <span class="rec-nav-label"><span class="rec-nav-long">{t.label}</span><span class="rec-nav-short" aria-hidden="true">{t.short}</span></span>
+            {c ? <span class="rec-nav-count"><span aria-hidden="true">{c.n}</span><span class="sr-only">, {c.words}</span></span> : null}
+          </button>
+        );
+      })}
+    </div>
+  </nav>
+  {(groups.length > 0 || money) && (
+    <Menu id="rec-add" label={`Add to ${firstName}’s record`} buttonClass="rec-add-btn" class="rec-add" align="right">
+      <Fragment slot="button"><span class="rec-nav-icon" aria-hidden="true"><Icon name="plus" size={18} /></span><span class="rec-add-word">Add</span><Icon name="chevron" size={16} class="rec-add-chev" /></Fragment>
+      {groups.map((g, i) => (
+        <>
+          {i > 0 && <div class="ws-menu-sep" role="separator"></div>}
+          <p class="ws-menu-head">{g.title}</p>
+          {g.items.map((it) => (
+            <button type="button" class="ws-menu-item" data-ws-open={it.open} data-rec-add-item {...(it.attrs ?? {})}>
+              <span class="ws-menu-icon" data-hue={it.hue}><Glyph name={it.glyph} /></span>
+              <span class="ws-menu-words">{it.label}<span class="ws-menu-hint">{it.hint}</span></span>
             </button>
-          );
-        })}
-      </>
-    ))}
-  </div>
-</nav>
+          ))}
+        </>
+      ))}
+      {money && (
+        <>
+          {groups.length > 0 && <div class="ws-menu-sep" role="separator"></div>}
+          <p class="ws-menu-head">Money</p>
+          <a class="ws-menu-item" href={chargeHref}>
+            <span class="ws-menu-icon" data-hue="green"><Icon name="money" /></span>
+            <span class="ws-menu-words">New charge<span class="ws-menu-hint">A statement for {firstName} to pay</span></span>
+          </a>
+        </>
+      )}
+    </Menu>
+  )}
+</div>

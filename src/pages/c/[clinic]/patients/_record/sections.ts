@@ -1,35 +1,33 @@
-// The record's sections, grouped and colour-coded so a person always knows where they are: the same hue on
-// the section's button in the record's index, its banner, its cards' top edge and icons, and its lines on
-// the Treatment record. Five groups, each a hue the workspace already has in both themes — teal for the patient,
-// rose for health, blue for clinical work, violet for documents, green for money — and never amber or red,
-// which keep their meanings ("needs attention", "blocked"). Colour is never alone: every button, banner
-// and card also says its group and name in words.
+// The record's colours. Four tabs (below), each with one hue on its icon; every card keeps a top edge and an icon
+// in the hue of what it holds (CARD_HUE): teal for the visit, rose for health, blue for clinical work, violet for
+// documents and the ledger, green for money — hues the workspace already has in both themes, and never amber or
+// red, which keep their meanings ("needs attention", "blocked"). Colour is never alone: every tab and card also
+// says what it is in words.
 import type { GlyphName } from '../_ui/glyphs';
 
 export type Hue = 'teal' | 'rose' | 'blue' | 'violet' | 'green';
-export interface SectionMeta { group: string; hue: Hue; icon: GlyphName; blurb: string }
+export interface SectionMeta { hue: Hue; icon: GlyphName }
 
-export const GROUPS: { name: string; hue: Hue }[] = [
-  { name: 'Patient', hue: 'teal' },
-  { name: 'Health', hue: 'rose' },
-  { name: 'Clinical', hue: 'blue' },
-  { name: 'Documents', hue: 'violet' },
-  { name: 'Billing', hue: 'green' },
-];
-
+/** The record's old twelve sections: their hue and icon. They are names now, not tabs: TAB_OF puts each in a tab. */
 export const SECTION_META: Record<string, SectionMeta> = {
-  overview: { group: 'Patient', hue: 'teal', icon: 'user', blurb: 'Who they are, the next check-up, and each part of the record in short.' },
-  'treatment-record': { group: 'Patient', hue: 'teal', icon: 'history', blurb: 'Every treatment by date: the tooth, the procedure and the dentist, as on the paper treatment record.' },
-  visits: { group: 'Patient', hue: 'teal', icon: 'calendar', blurb: 'Every booking and visit, past and coming.' },
-  health: { group: 'Health', hue: 'rose', icon: 'heart', blurb: 'Blood pressure, allergies, conditions and medicines. Check before treatment.' },
-  chart: { group: 'Clinical', hue: 'blue', icon: 'tooth', blurb: 'The teeth as they are. Every change saves as you make it.' },
-  treatment: { group: 'Clinical', hue: 'blue', icon: 'plan', blurb: 'The plan, work done, lab cases, HMO approvals and payment plans.' },
-  notes: { group: 'Clinical', hue: 'blue', icon: 'pen', blurb: 'What the dentist found and did at each visit.' },
-  files: { group: 'Clinical', hue: 'blue', icon: 'image', blurb: 'X-rays, photos and scanned papers.' },
-  rx: { group: 'Documents', hue: 'violet', icon: 'pill', blurb: 'Prescriptions, certificates, referrals and clearance requests to print.' },
-  consent: { group: 'Documents', hue: 'violet', icon: 'shield', blurb: 'The privacy notice, the treatment consent and the patient forms.' },
-  texts: { group: 'Documents', hue: 'violet', icon: 'message', blurb: 'Texts sent to and from this patient.' },
-  money: { group: 'Billing', hue: 'green', icon: 'money', blurb: 'Statements, payments and what is owed.' },
+  overview: { hue: 'teal', icon: 'user' },
+  'treatment-record': { hue: 'teal', icon: 'history' },
+  visits: { hue: 'teal', icon: 'calendar' },
+  health: { hue: 'rose', icon: 'heart' },
+  chart: { hue: 'blue', icon: 'tooth' },
+  treatment: { hue: 'blue', icon: 'plan' },
+  notes: { hue: 'blue', icon: 'pen' },
+  files: { hue: 'blue', icon: 'image' },
+  rx: { hue: 'violet', icon: 'pill' },
+  consent: { hue: 'violet', icon: 'shield' },
+  texts: { hue: 'violet', icon: 'message' },
+  money: { hue: 'green', icon: 'money' },
+};
+/** A card's hue (its top edge and icon), by the section it came from: the ledger is violet like its tab, and the
+ *  payment plans green like the money they hold. */
+export const CARD_HUE: Readonly<Record<string, Hue>> = {
+  ...Object.fromEntries(Object.entries(SECTION_META).map(([k, m]) => [k, m.hue])),
+  'treatment-record': 'violet', payplans: 'green',
 };
 
 // --- the four tabs (the simpler record) -------------------------------------------------------------------
@@ -49,7 +47,7 @@ export const TABS: readonly TabMeta[] = [
 /**
  * Every old section name and every anchor a link or a post lands on → the tab it now lives in. The one map the
  * record reads a name through: the server's first tab (a post's section, a saved word's section, a panel to open,
- * a visit), `back`, the client's show() for data-rec-go / data-rec-show, and a link's #hash when its element is
+ * a visit), `back`, the client's show() for data-rec-go, and a link's #hash when its element is
  * not on the page (a dentist's #money, #loas with no LOA). `npm run test:record-tabs` fails when a name the page,
  * record.ts or record-extra.ts can produce, or a link elsewhere points at, is missing here.
  */
@@ -86,17 +84,22 @@ export const recordSaved = (s: string | null): string | null => {
   return Object.hasOwn(SAVED_WORD, w) ? SAVED_WORD[w] : null;
 };
 /** ?open=vitals|note|rx|done|file|details: the panel the page opens as it loads (the Dashboard's "Take it", "Write the
- *  note", the desk note's "Edit") → the section shown behind it. */
-export const OPEN_PANEL: Readonly<Record<string, string>> = { vitals: 'health', note: 'notes', rx: 'rx', done: 'treatment', file: 'files', details: 'overview' };
-/** The `back` a record form may carry (a panel the chart's palette opened posts back=chart), or null. */
-export const backOf = (v: unknown): 'chart' | 'treatment' | null => (v === 'chart' ? 'chart' : v === 'treatment' ? 'treatment' : null);
+ *  note", the desk note's "Edit") → the tab shown behind it. The panels live outside the tabs, so every one opens
+ *  over Today. */
+export const OPEN_PANEL: Readonly<Record<string, string>> = { vitals: 'overview', note: 'overview', rx: 'overview', done: 'overview', file: 'overview', details: 'overview' };
+/** The `back` a record form or an address may carry: the tab a panel was opened over (the page's script sets it; the
+ *  chart's palette sends chart), or null. An old back=treatment is the Chart & plan tab now. */
+export const backOf = (v: unknown): TabId | null =>
+  v === 'overview' ? 'overview' : v === 'patient' ? 'patient' : v === 'chart' || v === 'treatment' ? 'chart' : v === 'treatment-record' ? 'treatment-record' : null;
 /**
- * The section showing first: where a post came back to, the section of what was just saved, the section of a
- * panel to open, the Treatment record (or Visits) for another day's visit (?visit=), else the Overview.
+ * The section showing first (the page shows its tab, TAB_OF): where a post came back to, the chart for a treatment
+ * the chart could show (?treated=, the chart's offer is drawn only there), the tab a saved panel was opened over
+ * (?back=), the section of what was just saved, the tab of a panel to open, the Treatment record (or Visits) for
+ * another day's visit (?visit=), else Today.
  * visit: 'today' when ?visit= is today's visit (This visit shows it), 'ledger' for another day's visit on the
  * Treatment record, 'other' for another day's visit that is not (a future one, a cancelled one that holds nothing).
  */
-export function landingSection(o: { backTo: string | null; fromChart: boolean; saved: string | null; openNow: string | null; visit: 'today' | 'ledger' | 'other' | null }): string {
-  return o.backTo ?? (o.fromChart ? 'chart' : null) ?? (Object.hasOwn(SAVED_TO, o.saved ?? '') ? SAVED_TO[o.saved ?? ''] : null) ?? recordSaved(o.saved)
+export function landingSection(o: { backTo: string | null; treated: boolean; back: TabId | null; saved: string | null; openNow: string | null; visit: 'today' | 'ledger' | 'other' | null }): string {
+  return o.backTo ?? (o.treated ? 'chart' : null) ?? o.back ?? (Object.hasOwn(SAVED_TO, o.saved ?? '') ? SAVED_TO[o.saved ?? ''] : null) ?? recordSaved(o.saved)
     ?? (o.openNow ? OPEN_PANEL[o.openNow] : o.visit === 'ledger' ? 'treatment-record' : o.visit === 'other' ? 'visits' : 'overview');
 }

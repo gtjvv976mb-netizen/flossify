@@ -1,8 +1,9 @@
 ---
 // Blood pressure and pulse, taken before anaesthesia: the newest reading large, in words as well as
 // numbers (bpWords in src/lib/record-extra.ts — a guide, not a diagnosis), and the ones before it. A reading
-// is never changed; a wrong one is simply taken again. Top of the Health section, and "Take blood pressure"
-// in the record's More menu.
+// is never changed; a wrong one is simply taken again. On Patient info; its panel (part="panels") is drawn outside
+// the tabs, so Today's "Take it" and Add ▾ › Blood pressure open it over the tab in view. What a save says is the
+// page's saved line (./SavedLine.astro).
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
@@ -15,21 +16,21 @@ import { bpWords, pulseWords, type Vital } from '../../../../../lib/record-extra
 import type { RecordProblem } from '../../../../../lib/record';
 import { when } from '../../../../../lib/health';
 
-/** visitId: today's visit (036) — the reading is written against it. openNow: the page opens the panel as it loads (?open=vitals). */
-interface Props { vitals: Vital[]; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; firstName: string; visitId?: string | null; openNow?: boolean }
-const { vitals, canEdit, action, problem, saved, firstName, visitId = null, openNow = false } = Astro.props;
+/** part: the card (in its tab) or the panel (outside the tabs). visitId: today's visit (036) — the reading is written
+ *  against it. openNow: the page opens the panel as it loads (?open=vitals). */
+interface Props { part: 'body' | 'panels'; vitals: Vital[]; canEdit: boolean; action: string; problem: RecordProblem | null; firstName: string; visitId?: string | null; openNow?: boolean }
+const { part, vitals, canEdit, action, problem, firstName, visitId = null, openNow = false } = Astro.props;
 const latest = vitals[0] ?? null;
 const w = latest?.sys && latest?.dia ? bpWords(latest.sys, latest.dia) : null;
 const v = problem?.intent === 'vitals-add' ? problem.values : ({} as Record<string, string>);
-const savedWords = saved?.startsWith('vitals') ? (saved === 'vitals-crisis' || saved === 'vitals-high' ? null : 'Reading saved.') : null;
 const recent = vitals.slice(1, 6);
 ---
 
+{part === 'body' && (
 <Pane as="section" label="Blood pressure and pulse" id="vitals">
   <Head icon="heart" title="Blood pressure and pulse" meta={latest ? `Taken ${when(new Date(latest.at))}` : undefined}>
     {canEdit && <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-vitals-add"><Icon name="plus" />Take a reading</button>}
   </Head>
-  {savedWords && <Callout tone="success" class="mb-3" text={savedWords} />}
   {latest ? (
     <>
       <div class="vt-now">
@@ -52,12 +53,13 @@ const recent = vitals.slice(1, 6);
     </>
   ) : <Empty icon="info" text={`No reading yet. Take ${firstName}’s blood pressure before anaesthesia.`} />}
 </Pane>
+)}
 
-{canEdit && (
+{part === 'panels' && canEdit && (
   <SidePanel id="rec-vitals-add" title="Take a reading" meta={firstName} open={problem?.intent === 'vitals-add' || openNow}>
     {problem?.intent === 'vitals-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
     <form method="post" action={`${action}#vitals`} class="grid gap-4">
-      <Csrf /><input type="hidden" name="intent" value="vitals-add" />
+      <Csrf /><input type="hidden" name="intent" value="vitals-add" /><input type="hidden" name="back" value="" data-rec-back />
       {visitId && <input type="hidden" name="visit" value={visitId} />}
       <fieldset class="min-w-0">
         <legend class="mb-2 text-[14px] font-medium text-ink-2">Blood pressure (mmHg)</legend>

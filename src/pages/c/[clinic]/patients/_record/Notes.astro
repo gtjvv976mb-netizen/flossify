@@ -2,20 +2,19 @@
 // Clinical notes: one visit each, in the order a dentist thinks — why they came, what was found, the
 // diagnosis, what was done, what comes next — dated, with the dentist and the teeth. A signed note is
 // never edited (the database lets the app insert only): a correction is an addendum, shown under the
-// note it adds to, dated and signed in turn. The note's panel is NotePanel.astro, outside the record's sections,
-// so the chart's palette can open it too.
+// note it adds to, dated and signed in turn. The note's panel is NotePanel.astro, outside the record's tabs,
+// so the chart's palette and Add ▾ can open it too; what a save says is the page's saved line.
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import Icon from '../../../../../components/ws/Icon.astro';
 import Head from '../_ui/Head.astro';
-import Callout from '../_ui/Callout.astro';
 import Glyph from '../_ui/Glyph.astro';
 import Who from './Who.astro';
 import type { Clinical, Note } from '../../../../../lib/record';
 import { dateText, when } from '../../../../../lib/health';
 
-interface Props { c: Clinical; canEdit: boolean; saved: string | null }
-const { c, canEdit, saved } = Astro.props;
+interface Props { c: Clinical; canEdit: boolean }
+const { c, canEdit } = Astro.props;
 
 const PARTS: [keyof Note, string][] = [['complaint', 'Why they came'], ['findings', 'What was found'], ['diagnosis', 'Diagnosis'], ['treatment', 'What was done'], ['plan', 'Next steps']];
 const roots = c.notes.filter((n) => !n.amends);
@@ -25,7 +24,6 @@ const orphans = c.notes.filter((n) => n.amends && !c.notes.some((r) => r.id === 
 ---
 
 <div class="grid gap-4 max-md:gap-3">
-  {(saved === 'note' || saved === 'addendum') && <Callout tone="success" text={saved === 'note' ? 'Note saved under your name.' : 'Addendum saved under the note.'} />}
   <Pane as="section" label="Clinical notes" id="notes">
     <Head icon="pen" title="Clinical notes" meta={roots.length ? `${roots.length} ${roots.length === 1 ? 'note' : 'notes'}` : undefined} />
     <div class="rec-lead -mt-2 mb-4">

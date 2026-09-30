@@ -1,23 +1,33 @@
 ---
 // One patient's record, in the workspace (the Patients tab lit): a head
 // of the facts that decide the next step — name, age, mobile, HMO, alerts,
-// balance (finance roles), next and last visit, consent — then the
-// sections switched in place: Overview · Treatment record · Health · Chart ·
-// Treatment · Notes · Rx & letters · Files · Visits · Money · Consent · Texts
-// (docs/workspace-redesign.md, "Patients"). The section is in
-// the address (#health, #chart, …), so a reload, a post that comes back and
-// a link all land on it. Money is shown only to people who may bill here
+// balance (finance roles), next and last visit, consent — then four tabs
+// switched in place, in a row that stays at the top of the screen
+// (./_record/RecordNav.astro, ./_record/sections.ts): Today (this visit, what is
+// coming, the next check-up, the visits) · Patient info (health, blood
+// pressure, consent) · Chart & plan (the chart, the plan and work done, lab
+// cases, X-rays and photos, HMO approvals, payment plans) · Treatment record
+// (the ledger, notes, prescriptions and letters, statements, texts). The tab is
+// in the address (#chart, #treatment-record, or any card's anchor: #health,
+// #rx, …, each read through TAB_OF), so a reload, a post that comes back and a
+// link all land on it. Money is shown only to people who may bill here
 // (canBill in src/lib/invoices.ts), like the Finances tab.
 //
 // Drawn in the soft, very simple template (docs/workspace-redesign.md, "The
 // soft template" and "Very simple"): the patient's avatar, name and a few facts
 // with the chart no. as a small reference pill; one teal main action, New
 // booking (the Dashboard's booking panel, the patient filled in), Edit details
-// beside it and the rest under More (New charge, Bring in past visits); the
-// alert chips; at most four numbers (next visit, last visit, balance, consent
-// — the last two open their sections); the sections as one segmented control.
+// beside it; the alert chips; at most four numbers (next visit, last visit,
+// balance, consent). Everything written into the record (a note, a treatment,
+// a reading, a prescription, a file, a plan item, a lab case, an LOA, a
+// payment plan, a letter, a charge) is under Add ▾ at the end of the tab row.
 // The pages' own pieces are in ./_ui/ (patients.css, HealthLists, Callout,
 // Head, Glyph).
+//
+// Every side panel lives outside the tabs, so it opens over whichever tab is
+// in view, and its form posts back=<that tab>: a save comes back to the tab
+// with its saved line at the top (./_record/SavedLine.astro), and a refused
+// post comes back over it with the panel open again.
 //
 // Every query runs inside withClinic(), so row-level security decides whether
 // this patient exists here; a patient of another clinic (or a made-up id) is
@@ -27,12 +37,14 @@
 // The odontogram is src/components/Odontogram.astro. It gains the palette's
 // record actions and the plan/done marks (props `actions`, `work`); its
 // offline logic (the kept copy of this page, changes waiting on the device)
-// is untouched. A copy served offline opens on the Chart, and a notice the
-// chart raises (a colleague's newer finding, changes waiting) brings the
-// Chart forward. The palette's Add to plan, Treatment done and Clinical note
-// open Add to plan, Record a treatment and the note (_record/TreatmentPanels,
-// _record/NotePanel, outside the sections) over the Chart on that tooth; they
-// post back=chart, and the save lands on the chart with its line (?back=chart).
+// is untouched. A copy served offline opens on Chart & plan, and a notice the
+// chart raises (a colleague's newer finding, changes waiting) brings it
+// forward; Add ▾ hides there and whenever the device is offline. The palette's
+// Add to plan, Treatment done and Clinical note open Add to plan, Record a
+// treatment and the note (_record/TreatmentPanels, _record/NotePanel, outside
+// the tabs) over the chart on that tooth; they post back=chart, the save lands
+// on the chart with its line (?back=chart), and closing one gives focus back
+// to the tooth.
 //
 // Four forms post back to this page, each with the CSRF token, checked before
 // anything else (a miss comes back with ?stale=1):
@@ -56,8 +68,9 @@
 //   intent=details  Edit details (a side panel): name, chart no., sex, mobile,
 //                   email, address, HMO, emergency contact, notes —
 //                   updateDetails() in src/lib/import.ts, audit patient.update.
-//                   The birth date stays with the health form, which keeps its
-//                   history. Opened from the Dashboard's desk note
+//                   Saved, it lands on Today; refused, over the tab it was
+//                   opened on. The birth date stays with the health form, which
+//                   keeps its history. Opened from the Dashboard's desk note
 //                   (?open=details&dash=<visit>), the form carries the visit in
 //                   a hidden dash, and a save goes back to the Dashboard with that
 //                   visit open (only a visit of this patient's).
@@ -96,7 +109,6 @@ import Empty from '../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../components/ws/SidePanel.astro';
 import Icon from '../../../../components/ws/Icon.astro';
 import Avatar from '../../../../components/ws/Avatar.astro';
-import Menu from '../../../../components/ws/Menu.astro';
 import Head from './_ui/Head.astro';
 import Callout from './_ui/Callout.astro';
 import HealthLists from './_ui/HealthLists.astro';
@@ -120,10 +132,10 @@ import Letters from './_record/Letters.astro';
 import Loas from './_record/Loas.astro';
 import PayPlans from './_record/PayPlans.astro';
 import RecordNav from './_record/RecordNav.astro';
-import Banner from './_record/Banner.astro';
+import SavedLine from './_record/SavedLine.astro';
 import Who from './_record/Who.astro';
 import VisitStrip from './_record/VisitStrip.astro';
-import { ANCHOR, OPEN_PANEL, backOf, landingSection, recordSaved } from './_record/sections';
+import { ANCHOR, CARD_HUE, OPEN_PANEL, TABS, backOf, landingSection, tabOf } from './_record/sections';
 import { shellLinks } from '../../../../components/ws/routes';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
@@ -191,10 +203,13 @@ let recordProblem: RecordProblem | null = null;
 let rxTyped: RxItem[] = [];
 // "No change" on the This visit strip (intent health-checked) that was refused: its sentence, on the strip.
 let stripProblem: string | null = null;
-// The section a post came back to.
+// The section (or tab) a post came back to.
 let backTo: string | null = null;
 /** A refused clinical-record post (src/lib/refused.ts): thrown out of the transaction so nothing half-done is kept, its outcome as the detail. */
 type RecordRefusal = Extract<Outcome, { ok: false }>;
+/** The intents whose refusal is said in their card, not in a panel (a plan item's Mark done from its row too, which
+ *  posts no back): it comes back to that card's section whatever `back` a post carried. */
+const INLINE_REFUSAL = new Set(['plan-remove', 'lab-next', 'file-remove', 'loa-cancel', 'payplan-stop', 'recall-done', 'recall-clear', 'chart-apply']);
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -276,7 +291,8 @@ if (Astro.request.method === 'POST') {
       paperState.problem = r === 'denied' ? 'Your account cannot record consent at this branch. Ask the owner.' : `${PAPER_WORDS[r]} Nothing was recorded.`;
     }
   } else if (intent === 'details') {
-    backTo = 'overview';
+    // Refused, it comes back over the tab it was opened on (its back); saved, it lands on Today.
+    backTo = backOf(form.get('back')) ?? 'overview';
     const { person, problems } = readPersonForm(form);
     detailsPosted = person;
     const dashIn = String(form.get('dash') ?? '');
@@ -300,7 +316,8 @@ if (Astro.request.method === 'POST') {
     detailsProblems = problems;
   } else if (RECORD_INTENTS.has(intent) || EXTRA_INTENTS.has(intent)) {
     // The clinical record (src/lib/record.ts): every intent checks canEditRecords in its own transaction.
-    // A panel opened from the chart's palette posts back=chart: saved or refused, it comes back to the Chart.
+    // A panel's form posts back=<the tab it was opened over> (the chart's palette: back=chart): saved or refused, it
+    // comes back to that tab. A card's own buttons post no back and come back to their card.
     const postedBack = backOf(form.get('back'));
     const outcome = slow
       ? ({ ok: false, section: 'overview', problem: slow, values: {} } as Extract<Outcome, { ok: false }>)
@@ -313,14 +330,16 @@ if (Astro.request.method === 'POST') {
         }).catch((e) => { if (e instanceof Refused) return (e as Refused<RecordRefusal>).detail; throw e; });
     if (outcome === 'none') return notFound();
     if (outcome.ok) {
-      // A treatment the chart could show lands on its offer (treated=…, #chart-offer), in the section the post came from;
-      // anything else on its anchor (ANCHOR in ./_record/sections.ts, EXTRA_ANCHOR), else its section.
-      const qs = [`saved=${encodeURIComponent(outcome.saved)}`, ...Object.entries(outcome.qs ?? {}).map(([k, v]) => `${k}=${encodeURIComponent(v)}`), postedBack === 'chart' ? 'back=chart' : ''].filter(Boolean).join('&');
-      const hash = outcome.qs?.treated ? 'chart-offer' : postedBack === 'chart' ? 'chart' : ANCHOR[intent] ?? EXTRA_ANCHOR[intent] ?? outcome.section;
+      // A treatment the chart could show lands on its offer (treated=…, #chart-offer), which is drawn on Chart & plan;
+      // a panel's save on the tab it was opened over (back=…, #<tab>, its saved line at the top); anything else on its
+      // anchor (ANCHOR in ./_record/sections.ts, EXTRA_ANCHOR), else its section.
+      const qs = [`saved=${encodeURIComponent(outcome.saved)}`, ...Object.entries(outcome.qs ?? {}).map(([k, v]) => `${k}=${encodeURIComponent(v)}`), postedBack ? `back=${postedBack}` : ''].filter(Boolean).join('&');
+      const hash = outcome.qs?.treated ? 'chart-offer' : postedBack ?? ANCHOR[intent] ?? EXTRA_ANCHOR[intent] ?? outcome.section;
       return Astro.redirect(to(qs, hash), 303);
     }
-    // Refused (the rate limit too): back to the section the form was posted from.
-    backTo = postedBack ?? (slow ? null : outcome.section);
+    // Refused (the rate limit too): a panel's post comes back over the tab it was opened on, with the panel open
+    // again; a card's own button (its sentence is drawn in the card) comes back to the card's section.
+    backTo = (INLINE_REFUSAL.has(intent) || (intent === 'plan-status' && !postedBack) ? null : postedBack) ?? (slow ? null : outcome.section);
     recordProblem = { intent, text: outcome.problem, values: outcome.values };
     if (intent === 'rx-add') {
       const col = (k: string) => form.getAll(k).map((x) => String(x));
@@ -494,9 +513,9 @@ const thisVisit: StripVisit | null = thisRow ? { id: thisRow.id, startsAt: thisR
 // A visit already on the book after this one (the strip then does not ask for a check-up).
 const laterVisits = thisVisit ? visits.filter((v) => v.id !== thisVisit.id && going(v.status) && v.status !== 'completed' && +v.starts_at > +thisVisit.startsAt) : [];
 const laterVisitAt: Date | null = laterVisits.length ? laterVisits[laterVisits.length - 1].starts_at : null;
-// ?open=vitals|note|rx|done|file|details: the page opens that panel as it loads (the Dashboard's "Take it", "Write the
-// note", the desk note's "Edit"; OPEN_PANEL in ./_record/sections.ts). &dash=<visit> with details: saving goes back to
-// the Dashboard with that visit open.
+// ?open=vitals|note|rx|done|file|details: the page opens that panel as it loads, over Today (the Dashboard's "Take it",
+// "Write the note", the desk note's "Edit"; OPEN_PANEL in ./_record/sections.ts). &dash=<visit> with details: saving goes
+// back to the Dashboard with that visit open.
 const openNow = canEdit && Object.hasOwn(OPEN_PANEL, q.get('open') ?? '') ? q.get('open')! : null;
 const dashVisit = UUID.test(q.get('dash') ?? '') ? q.get('dash')!.toLowerCase() : null;
 
@@ -593,27 +612,6 @@ for (const d of clin.done) if (d.fdi && PERMANENT(d.fdi) && +new Date(d.at) >= w
 const babyWork = [...planOpen, ...clin.done.filter((d) => +new Date(d.at) >= workSince)].some((x) => x.fdi != null && x.fdi >= 51);
 // A new note's teeth: those of today's treatments (the This visit strip's visit, and today's with no visit named).
 const noteTeeth = [...new Set(clin.done.filter((d) => d.fdi && ((thisVisit && d.visitId === thisVisit.id) || (manilaDay(new Date(d.at)) === today && !d.visitId))).map((d) => d.fdi!))];
-// The line the Chart shows after a save from a panel its palette opened.
-const CHART_SAVED: Record<string, string> = {
-  plan: 'Added to the plan. Teeth with planned work have a ring under their number.',
-  'plan-done': 'Marked done, and added to treatments done.',
-  done: 'Treatment recorded.',
-  note: 'Note saved under your name.',
-};
-const SECTIONS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'treatment-record', label: 'Treatment record' },
-  { id: 'health', label: 'Health' },
-  { id: 'chart', label: 'Chart' },
-  { id: 'treatment', label: 'Treatment', count: planOpen.length || null },
-  { id: 'notes', label: 'Notes', count: clin.notes.filter((n) => !n.amends).length || null },
-  { id: 'rx', label: 'Rx & letters', count: (clin.rx.length + ext.letters.length) || null },
-  { id: 'files', label: 'Files', count: clin.files.length || null },
-  { id: 'visits', label: 'Visits', count: visits.length || null },
-  ...(money ? [{ id: 'money', label: 'Money', count: data.statements.filter((s) => s.status === 'issued' || s.status === 'partly_paid').length || null }] : []),
-  { id: 'consent', label: 'Consent' },
-  { id: 'texts', label: 'Texts', count: data.texts.length || null },
-];
 
 // --- a patient form just added ------------------------------------------------
 // The consents as the record has them now, in words (never a claim the rows do not make).
@@ -640,18 +638,19 @@ const usedLabel = used ? ({ phone: 'mobile', email: 'email', address_line: 'addr
   emergency_name: 'emergency contact', emergency_relation: 'emergency contact’s relation', emergency_phone: 'emergency contact’s number',
   guardian_name: 'parent or guardian', guardian_relation: 'parent or guardian’s relation', guardian_phone: 'parent or guardian’s mobile',
   hmo_name: 'HMO', hmo_member_no: 'HMO card number', middle_name: 'middle name', suffix: 'suffix' } as Record<string, string>)[used] ?? 'detail' : null;
-// The section showing first (landingSection in ./_record/sections.ts): where a post came back to, the section of what
-// was just saved (SAVED_TO, recordSaved), the section of a panel to open, the Treatment record (or Visits) for another
-// day's visit (?visit=), else the Overview. ?back=chart: a save from a panel the chart's palette opened lands on the Chart.
-const fromChart = q.get('back') === 'chart';
+// The tab showing first (landingSection in ./_record/sections.ts, through TAB_OF): where a post came back to, Chart & plan
+// for the chart's offer (?treated=), the tab a panel was opened over (?back=), the tab of what was just saved (SAVED_TO,
+// recordSaved), Today for a panel to open (?open=), the Treatment record (or Today) for another day's visit (?visit=),
+// else Today.
+const backQ = backOf(q.get('back'));
 // The chart's offer after a treatment (p01 step 2): its state, a write that was skipped (the tooth changed, or the page's
 // sign-in ended), or a refused Update the chart. Drawn at the top of the section the post came back to, only.
 const offerState = data.offerState;
 const chartSkip = q.get('chartskip') === 'changed' || q.get('chartskip') === 'ended' ? (q.get('chartskip') as 'changed' | 'ended') : null;
 const offerProblem = recordProblem?.intent === 'chart-apply' ? recordProblem : null;
 const showOffer = canEdit && (!!offerProblem || !!chartSkip || !!(offerState && (offerState.applied || calloutWorthy(offerState.offer))));
-const current = landingSection({ backTo, fromChart, saved, openNow,
-  visit: !openVisit ? null : thisVisit ? 'today' : data.ledger.openKeys.has(openVisit) ? 'ledger' : 'other' });
+const current = tabOf(landingSection({ backTo, treated: UUID.test(q.get('treated') ?? ''), back: backQ, saved, openNow,
+  visit: !openVisit ? null : thisVisit ? 'today' : data.ledger.openKeys.has(openVisit) ? 'ledger' : 'other' })) ?? 'overview';
 // "Leave the chart as it is": the same address without the offer (and without the saved line it came with).
 const leaveOffer = (section: string) => {
   const u = new URLSearchParams(q);
@@ -663,7 +662,8 @@ const leaveOffer = (section: string) => {
 const privacyState = { ok: !data.notice || (!!consentNow && !guardianNeeded), words: guardianNeeded ? 'Privacy notice: a parent or guardian must agree for a patient under 18' : 'Privacy notice: not agreed yet' };
 // A health history over a year old is asked again (the head says so; the strip offers "No change").
 const staleHealth = !!latest && answered(latest) && Date.now() - +new Date(latest.at) > 365 * 864e5;
-const SECTION_LABEL = Object.fromEntries(SECTIONS.map((x) => [x.id, x.label])) as Record<string, string>;
+// The counts on the tabs: Chart & plan counts what is still open on the plan.
+const tabCounts = planOpen.length ? { chart: { n: planOpen.length, words: planOpen.length === 1 ? 'one open on the plan' : `${planOpen.length} open on the plan` } } : {};
 
 // --- money --------------------------------------------------------------------
 const stmts = data.statements.map((s) => {
@@ -717,8 +717,26 @@ const visitFromForm: [string, string][] = lf ? ([
   ['Nervous about visits', answerText(FIELDS.nervous, lf.nervous)],
 ] as [string, string | null][]).filter((r): r is [string, string] => !!r[1]) : [];
 const formsBase = `/c/${clinic.slug}/patients/forms/`;
-const moreItems = (money ? 1 : 0) + (canEdit ? 7 : 0);
 const recHere = here;
+
+// --- the cards and their panels ---------------------------------------------------
+// Each card with a panel is drawn twice, with the same props: its body in its tab (part="body") and its panels outside
+// the tabs (part="panels"), so a panel opens over whichever tab is in view. What a save says is the saved line, drawn
+// at the top of the tab showing first.
+const savedLineProps = { saved, c: clin, letters: ext.letters, vitals: ext.vitals, firstName: patient.first_name, rxBase: `${here}rx/`, letterBase: `${here}letters/`, financesBase: links.finances, ptrFix };
+const vitalsProps = { vitals: ext.vitals, canEdit, action: recHere, problem: recordProblem, firstName: patient.first_name, visitId: thisVisit?.id ?? null, openNow: openNow === 'vitals' };
+const recallProps = { recall: clin.recall, canEdit, action: recHere, problem: recordProblem, today, firstName: patient.first_name, bookHref, texts: me.recall_texts === true };
+const treatmentProps = { c: clin, loas: ext.loas, canEdit, action: recHere, meId: session.staffId, problem: recordProblem, today, firstName: patient.first_name, visitId: thisVisit?.id ?? null };
+const filesProps = { c: clin, canEdit, action: recHere, problem: recordProblem, today, firstName: patient.first_name, fileBase: `${here}files/`, visitId: thisVisit?.id ?? null, openNow: openNow === 'file' };
+const loasProps = { loas: ext.loas, plan: clin.plan, payors: ext.hmoPayors, hmoName: patient.hmo_name, memberNo: patient.hmo_member_no, canEdit, action: recHere, problem: recordProblem, today, firstName: patient.first_name, settingsHref: `/c/${clinic.slug}/settings/` };
+const payPlansProps = { plans: ext.plans, canEdit, canBill: money, action: recHere, problem: recordProblem, today, firstName: patient.first_name, financesBase: links.finances };
+const rxProps = { c: clin, canEdit, action: recHere, meId: session.staffId, problem: recordProblem, firstName: patient.first_name, printBase: `${here}rx/`, allergies, typedRows: rxTyped, visitId: thisVisit?.id ?? null, openNow: openNow === 'rx', today, ptrFix };
+const lettersProps = { letters: ext.letters, clinicians: clin.clinicians, canEdit, action: recHere, meId: session.staffId, problem: recordProblem, today, firstName: patient.first_name, printBase: `${here}letters/`, lastVisit: lastVisit ? manilaDay(lastVisit.starts_at) : null, conditions, ptrFix };
+// Each tab's hue (on its cards' top edge and icons, TABS), and the cards inside a tab that keep their own (CARD_HUE).
+const TAB_HUE = Object.fromEntries(TABS.map((t) => [t.id, `hue-${t.hue}`])) as Record<string, string>;
+const cardHue = (name: string) => `contents hue-${CARD_HUE[name]}`;
+const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId: patient.id, firstName: patient.first_name, canEdit, mayExplain: data.mayExplainIds,
+  mayCapacity: canEdit && data.treatsHere && !minor && !!patient.birth, capacity: data.capacity, canPrepare: data.canPrepare };
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: me.area }} title={titleName} section="patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
@@ -740,51 +758,6 @@ const recHere = here;
       <div class="rec-actions">
         <a href={bookHref} class="ws-btn ws-btn-primary md:order-last"><Icon name="calendar" />New booking</a>
         {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="details"><Icon name="user" />Edit details</button>}
-        {moreItems > 0 && (
-          <Menu id="rec-more" label={`More for ${shortName}`} buttonClass="ws-btn ws-btn-quiet" align="right">
-            <Fragment slot="button">More <Icon name="chevron" size={16} /></Fragment>
-            {canEdit && (
-              <>
-                <button type="button" class="ws-menu-item" data-ws-open="rec-note-add" data-amends="" data-rec-show="notes">
-                  <span class="ws-menu-icon" data-tint="blue"><Glyph name="pen" /></span>
-                  <span class="ws-menu-words">Clinical note<span class="ws-menu-hint">What was found and done today</span></span>
-                </button>
-                <button type="button" class="ws-menu-item" data-ws-open="rec-plan-add" data-rec-show="treatment">
-                  <span class="ws-menu-icon" data-tint="green"><Glyph name="plan" /></span>
-                  <span class="ws-menu-words">Add to treatment plan<span class="ws-menu-hint">With the price from your fee guide</span></span>
-                </button>
-                <button type="button" class="ws-menu-item" data-ws-open="rec-rx-add" data-rec-show="rx">
-                  <span class="ws-menu-icon" data-tint="blue"><Glyph name="pill" /></span>
-                  <span class="ws-menu-words">Prescription<span class="ws-menu-hint">With the PRC and PTR on file</span></span>
-                </button>
-                <button type="button" class="ws-menu-item" data-ws-open="rec-vitals-add" data-rec-show="health">
-                  <span class="ws-menu-icon" data-tint="red"><Glyph name="heart" /></span>
-                  <span class="ws-menu-words">Take blood pressure<span class="ws-menu-hint">Before anaesthesia</span></span>
-                </button>
-                <button type="button" class="ws-menu-item" data-ws-open="rec-letter-add" data-letter-kind="certificate" data-rec-show="rx">
-                  <span class="ws-menu-icon" data-tint="blue"><Glyph name="form" /></span>
-                  <span class="ws-menu-words">Dental certificate<span class="ws-menu-hint">Or a referral, or medical clearance</span></span>
-                </button>
-                <button type="button" class="ws-menu-item" data-ws-open="rec-file-add" data-rec-show="files">
-                  <span class="ws-menu-icon" data-tint="blue"><Glyph name="image" /></span>
-                  <span class="ws-menu-words">Add X-ray or photo<span class="ws-menu-hint">Or a document, as a PDF</span></span>
-                </button>
-              </>
-            )}
-            {money && (
-              <a class="ws-menu-item" href={chargeHref}>
-                <span class="ws-menu-icon" data-tint="green"><Icon name="money" /></span>
-                <span class="ws-menu-words">New charge<span class="ws-menu-hint">A statement for {patient.first_name} to pay</span></span>
-              </a>
-            )}
-            {canEdit && (
-              <a class="ws-menu-item" href={importHref}>
-                <span class="ws-menu-icon" data-tint="blue"><Icon name="upload" /></span>
-                <span class="ws-menu-words">Bring in past visits<span class="ws-menu-hint">From a spreadsheet of old records</span></span>
-              </a>
-            )}
-          </Menu>
-        )}
       </div>
     </div>
 
@@ -864,139 +837,165 @@ const recHere = here;
     </div></div>
   </Pane>
 
-  {/* The record's body: its colour-coded index beside the sections (./_record/RecordNav.astro). */}
-  <div class="rec-body">
-  <RecordNav items={SECTIONS.map((x) => ({ id: x.id, label: x.label, count: 'count' in x ? x.count : null }))} current={current} name={shortName} />
-  <div class="rec-main">
+  {/* The record's body: the tab row, sticky at the top under the workspace's top bar (./_record/RecordNav.astro), the four
+      tabs, and every side panel, outside the tabs so each opens over the tab in view. */}
+  <div class="rec-body" data-rec-body data-rec-opened={openNow ? '' : undefined} data-rec-posted={Astro.request.method === 'POST' ? '' : undefined}>
+  <RecordNav current={current} name={shortName} firstName={patient.first_name} counts={tabCounts} canEdit={canEdit} money={money} chargeHref={chargeHref} />
 
-  {/* Every visit's panel, outside the sections so it opens from the Treatment record's dates and from Visits alike. */}
-  <VisitPanels visits={data.fullVisits} slug={clinic.slug} patientId={patient.id} canEdit={canEdit} money={money} open={thisVisit && openVisit === thisVisit.id ? null : openVisit} today={today} firstName={patient.first_name} />
-  {/* Add to plan, Record a treatment and the note, outside the sections too, so the chart's palette can open them over the Chart. */}
-  {canEdit && <TreatmentPanels c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'done'} chartSid={chartSid} />}
-  {canEdit && <NotePanel c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'note'} defaultTeeth={noteTeeth} />}
-
-  {/* Today's visit, above the sections: what is still to do at it and what is done (036). */}
-  {thisVisit && (
-    <VisitStrip visit={thisVisit} c={clin} x={ext} signed={data.signed} health={latest} privacy={privacyState} minor={minor} laterVisitAt={laterVisitAt}
-      canEdit={canEdit} money={money} today={today} firstName={patient.first_name} action={here} chargeHref={`${chargeHref}&visit=${thisVisit.id}`} printBase={`${here}rx/`}
-      saved={saved} problem={stripProblem} />
-  )}
-
-  <!-- Overview -->
-  <div id="rec-overview" role="tabpanel" aria-labelledby="rec-rec-overview-tab" hidden={current !== 'overview'} class="min-w-0 grid items-start gap-4 max-md:gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] content-start hue-teal" data-rec-panel="overview">
-    <Banner id="overview" label={SECTION_LABEL.overview} class="lg:col-span-2" />
-    <div class="grid content-start gap-4 max-md:gap-3">
-    <Pane title="Details" icon="user" id="overview">
-      <dl class="rf-grid">
-        {present.map(([k, v]) => <div class:list={['rf', (k === 'Address' || k === 'Emergency contact' || k === 'HMO') && 'rf-wide']}><dt>{k}</dt><dd>{v}</dd></div>)}
-        {!canEdit && missing.map((k) => <div class="rf rf-missing"><dt>{capitalise(k)}</dt><dd>Not on file</dd></div>)}
-      </dl>
-      {canEdit && missing.length > 0 && (
-        <div class="rf-grid mt-2" aria-label="Not on file yet">
-          {missing.map((k) => <button type="button" class="rf rf-missing" data-ws-open="details"><span class="rf-k">{capitalise(k)}</span><span class="rf-v">+ Add</span></button>)}
-        </div>
-      )}
-      {patient.notes && <p class="rf-note mt-3"><strong>Notes</strong>{patient.notes}</p>}
-      <p class="mt-4 flex items-start gap-2 border-t border-[var(--ws-hair)] pt-3 text-[13px] leading-relaxed text-ink-2">
-        <Icon name="info" size={16} class="mt-0.5 shrink-0" />
-        <span>Every look at this record, and every change to it, is logged under the person’s name.</span>
-      </p>
-    </Pane>
-    <Pane title="Recent visits" icon="calendar">
-      {visits.length > 4 && <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="visits">See all {visits.length}</button>}
-      {visits.length === 0 ? <Empty icon="calendar" text="No visits yet." action={{ label: 'Book the first one', href: bookHref }} /> : (
-        <ul class="rs-list">
-          {visits.slice(0, 4).map((v) => (
-            <li class="rs-item">
-              <p class="rs-what">{v.reason ?? 'Visit'}</p>
-              <p class="rp-row">
-                <span class="rp"><Icon name="calendar" size={14} />{visitText(v)}</span>
-                <Chip status={v.status} />
-                {v.source === 'import' && <Chip tone="neutral" label="Imported" />}
-                <Who name={v.dentist} />
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Pane>
-    </div>
-    <div class="grid content-start gap-4 max-md:gap-3">
-      <RecallCard recall={clin.recall} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} bookHref={bookHref} texts={me.recall_texts === true} />
-      <Pane as="section" label="Health, in short" class="hue-rose">
-        <Head icon="heart" title="Health">
-          <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="health">{canEdit ? 'Update' : 'Open'}</button>
-        </Head>
-        {latest && answered(latest) ? (
-          <>
-            <div>
-              <div class="rs-line"><span class="rk">Allergies</span>
-                <p class="rp-row">{latest.allergies === null ? <span class="rp">Not asked yet</span> : latest.allergies.length ? latest.allergies.map((a) => <span class="rp rp-alert"><Icon name="alert" size={14} />{a}</span>) : <span class="rp rp-ok"><Icon name="check" size={14} />None known</span>}</p></div>
-              <div class="rs-line"><span class="rk">Conditions</span>
-                <p class="rp-row">{latest.conditions === null ? <span class="rp">Not asked yet</span> : latest.conditions.length ? latest.conditions.map((c) => <span class="rp rp-warn">{c}</span>) : <span class="rp rp-ok"><Icon name="check" size={14} />None</span>}</p></div>
-              <div class="rs-line"><span class="rk">Medicines</span>
-                <p class="rp-row">{latest.medications === null ? <span class="rp">Not asked yet</span> : latest.medications.length ? latest.medications.map((m) => <span class="rp">{m}</span>) : <span class="rp rp-ok"><Icon name="check" size={14} />None</span>}</p></div>
-              {latestBp && bpNow && <div class="rs-line"><span class="rk">Blood pressure</span>
-                <p class="rp-row"><span class:list={['rp', bpNow.tone === 'alert' ? 'rp-alert' : bpNow.tone === 'warn' ? 'rp-warn' : 'rp-ok']}>{latestBp.sys}/{latestBp.dia} · {bpNow.label.toLowerCase()}</span><span class="rp">{dateText(bpDay)}</span></p></div>}
-            </div>
-            <p class="mt-2 text-[13px] text-ink-2">Updated {byLine(latest)}.</p>
-          </>
-        ) : (
-          <Empty icon="info" text="No health answers yet. Ask the patient before treatment." />
+  <!-- Today -->
+  <div id="rec-overview" role="tabpanel" aria-labelledby="rec-rec-overview-tab" hidden={current !== 'overview'} class={`rec-tab min-w-0 grid gap-4 max-md:gap-3 content-start ${TAB_HUE['overview']}`} data-rec-panel="overview">
+    <span id="overview" class="rec-anchor" aria-hidden="true"></span>
+    {current === 'overview' && <SavedLine tab="overview" {...savedLineProps} />}
+    {/* Today's visit: what is still to do at it and what is done (036). */}
+    {thisVisit && (
+      <VisitStrip visit={thisVisit} c={clin} x={ext} signed={data.signed} health={latest} privacy={privacyState} minor={minor} laterVisitAt={laterVisitAt}
+        canEdit={canEdit} money={money} today={today} firstName={patient.first_name} action={here} chargeHref={`${chargeHref}&visit=${thisVisit.id}`} printBase={`${here}rx/`}
+        saved={saved} problem={stripProblem} />
+    )}
+    <div class="min-w-0 grid items-start gap-4 max-md:gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+      <div class="grid content-start gap-4 max-md:gap-3">
+      <Pane title="Details" icon="user">
+        <dl class="rf-grid">
+          {present.map(([k, v]) => <div class:list={['rf', (k === 'Address' || k === 'Emergency contact' || k === 'HMO') && 'rf-wide']}><dt>{k}</dt><dd>{v}</dd></div>)}
+          {!canEdit && missing.map((k) => <div class="rf rf-missing"><dt>{capitalise(k)}</dt><dd>Not on file</dd></div>)}
+        </dl>
+        {canEdit && missing.length > 0 && (
+          <div class="rf-grid mt-2" aria-label="Not on file yet">
+            {missing.map((k) => <button type="button" class="rf rf-missing" data-ws-open="details"><span class="rf-k">{capitalise(k)}</span><span class="rf-v">+ Add</span></button>)}
+          </div>
+        )}
+        {patient.notes && <p class="rf-note mt-3"><strong>Notes</strong>{patient.notes}</p>}
+        <p class="mt-4 flex items-start gap-2 border-t border-[var(--ws-hair)] pt-3 text-[13px] leading-relaxed text-ink-2">
+          <Icon name="info" size={16} class="mt-0.5 shrink-0" />
+          <span>Every look at this record, and every change to it, is logged under the person’s name.</span>
+        </p>
+      </Pane>
+      <Pane title="Recent visits" icon="calendar">
+        {visits.length > 4 && <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="visits">See all {visits.length}</button>}
+        {visits.length === 0 ? <Empty icon="calendar" text="No visits yet." action={{ label: 'Book the first one', href: bookHref }} /> : (
+          <ul class="rs-list">
+            {visits.slice(0, 4).map((v) => (
+              <li class="rs-item">
+                <p class="rs-what">{v.reason ?? 'Visit'}</p>
+                <p class="rp-row">
+                  <span class="rp"><Icon name="calendar" size={14} />{visitText(v)}</span>
+                  <Chip status={v.status} />
+                  {v.source === 'import' && <Chip tone="neutral" label="Imported" />}
+                  <Who name={v.dentist} />
+                </p>
+              </li>
+            ))}
+          </ul>
         )}
       </Pane>
-      {(planOpen.length > 0 || clin.labs.some((l) => l.status !== 'fitted')) && (
-        <Pane as="section" label="Treatment, in short" class="hue-blue">
-          <Head icon="plan" title="Treatment plan" meta={planOpen.length ? `${planOpen.length} to do` : undefined}>
-            <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="treatment">Open</button>
+      </div>
+      <div class="grid content-start gap-4 max-md:gap-3">
+        <RecallCard part="body" {...recallProps} />
+        <Pane as="section" label="Health, in short" class="hue-rose">
+          <Head icon="heart" title="Health">
+            <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="health">{canEdit ? 'Update' : 'Open'}</button>
           </Head>
-          {planOpen.length > 0 ? (
-            <ul class="rs-list">
-              {planOpen.slice(0, 4).map((i) => (
-                <li class="rs-item">
-                  <p class="rs-what">{i.name}</p>
-                  <p class="rp-row">
-                    {i.fdi && <span class="rp rp-tooth"><Glyph name="tooth" size={14} />{i.fdi}{i.surface ? ` ${i.surface}` : ''}</span>}
-                    <Chip tone={i.status === 'accepted' ? 'warn' : 'neutral'} label={i.status === 'accepted' ? 'Agreed' : 'Planned'} />
-                    <span class="rp">Phase {i.phase}</span>
-                  </p>
-                </li>
-              ))}
-            </ul>
-          ) : <p class="text-[15px] text-ink-2">Nothing left on the plan.</p>}
-          {planOpen.length > 4 && <p class="mt-2 text-[13.5px] text-ink-2">And {planOpen.length - 4} more.</p>}
-          {(() => { const open = clin.labs.filter((l) => l.status !== 'fitted'); return open.length > 0 && (
-            <div class="mt-3 grid gap-1.5">
-              <span class="rk">Lab cases</span>
-              {open.slice(0, 3).map((l) => <p class="rp-row text-[14px]"><span class="font-semibold">{l.description}</span><span class="rp">{l.lab}</span>{l.dueOn && !l.receivedOn && <span class:list={['rp', l.dueOn < today ? 'rp-alert' : '']}>{l.dueOn < today ? 'Late · ' : 'Due '}{dateText(l.dueOn)}</span>}</p>)}
-              {open.length > 3 && <p class="text-[13.5px] text-ink-2">And {open.length - 3} more.</p>}
-            </div>
-          ); })()}
+          {latest && answered(latest) ? (
+            <>
+              <div>
+                <div class="rs-line"><span class="rk">Allergies</span>
+                  <p class="rp-row">{latest.allergies === null ? <span class="rp">Not asked yet</span> : latest.allergies.length ? latest.allergies.map((a) => <span class="rp rp-alert"><Icon name="alert" size={14} />{a}</span>) : <span class="rp rp-ok"><Icon name="check" size={14} />None known</span>}</p></div>
+                <div class="rs-line"><span class="rk">Conditions</span>
+                  <p class="rp-row">{latest.conditions === null ? <span class="rp">Not asked yet</span> : latest.conditions.length ? latest.conditions.map((c) => <span class="rp rp-warn">{c}</span>) : <span class="rp rp-ok"><Icon name="check" size={14} />None</span>}</p></div>
+                <div class="rs-line"><span class="rk">Medicines</span>
+                  <p class="rp-row">{latest.medications === null ? <span class="rp">Not asked yet</span> : latest.medications.length ? latest.medications.map((m) => <span class="rp">{m}</span>) : <span class="rp rp-ok"><Icon name="check" size={14} />None</span>}</p></div>
+                {latestBp && bpNow && <div class="rs-line"><span class="rk">Blood pressure</span>
+                  <p class="rp-row"><span class:list={['rp', bpNow.tone === 'alert' ? 'rp-alert' : bpNow.tone === 'warn' ? 'rp-warn' : 'rp-ok']}>{latestBp.sys}/{latestBp.dia} · {bpNow.label.toLowerCase()}</span><span class="rp">{dateText(bpDay)}</span></p></div>}
+              </div>
+              <p class="mt-2 text-[13px] text-ink-2">Updated {byLine(latest)}.</p>
+            </>
+          ) : (
+            <Empty icon="info" text="No health answers yet. Ask the patient before treatment." />
+          )}
         </Pane>
-      )}
-      {data.latestForm && (
-        <Pane as="section" label="From the patient forms" class="hue-violet">
-          <Head icon="form" title="From the patient forms" meta={`Sent ${day(data.latestForm.submittedAt)} · ${data.latestForm.ref}`}>
-            <a slot="actions" href={`${formsBase}${data.latestForm.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">All answers</a>
-          </Head>
-          {visitFromForm.length ? (
-            <div>{visitFromForm.map(([k, v]) => <div class="rs-line"><span class="rk">{k}</span><p class="text-[15px] text-ink">{v}</p></div>)}</div>
-          ) : <p class="text-[15px] text-ink-2">Nothing about this visit on the form.</p>}
-        </Pane>
-      )}
+        {(planOpen.length > 0 || clin.labs.some((l) => l.status !== 'fitted')) && (
+          <Pane as="section" label="Treatment, in short" class="hue-blue">
+            <Head icon="plan" title="Treatment plan" meta={planOpen.length ? `${planOpen.length} to do` : undefined}>
+              <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="treatment">Open</button>
+            </Head>
+            {planOpen.length > 0 ? (
+              <ul class="rs-list">
+                {planOpen.slice(0, 4).map((i) => (
+                  <li class="rs-item">
+                    <p class="rs-what">{i.name}</p>
+                    <p class="rp-row">
+                      {i.fdi && <span class="rp rp-tooth"><Glyph name="tooth" size={14} />{i.fdi}{i.surface ? ` ${i.surface}` : ''}</span>}
+                      <Chip tone={i.status === 'accepted' ? 'warn' : 'neutral'} label={i.status === 'accepted' ? 'Agreed' : 'Planned'} />
+                      <span class="rp">Phase {i.phase}</span>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : <p class="text-[15px] text-ink-2">Nothing left on the plan.</p>}
+            {planOpen.length > 4 && <p class="mt-2 text-[13.5px] text-ink-2">And {planOpen.length - 4} more.</p>}
+            {(() => { const open = clin.labs.filter((l) => l.status !== 'fitted'); return open.length > 0 && (
+              <div class="mt-3 grid gap-1.5">
+                <span class="rk">Lab cases</span>
+                {open.slice(0, 3).map((l) => <p class="rp-row text-[14px]"><span class="font-semibold">{l.description}</span><span class="rp">{l.lab}</span>{l.dueOn && !l.receivedOn && <span class:list={['rp', l.dueOn < today ? 'rp-alert' : '']}>{l.dueOn < today ? 'Late · ' : 'Due '}{dateText(l.dueOn)}</span>}</p>)}
+                {open.length > 3 && <p class="text-[13.5px] text-ink-2">And {open.length - 3} more.</p>}
+              </div>
+            ); })()}
+          </Pane>
+        )}
+        {data.latestForm && (
+          <Pane as="section" label="From the patient forms" class="hue-violet">
+            <Head icon="form" title="From the patient forms" meta={`Sent ${day(data.latestForm.submittedAt)} · ${data.latestForm.ref}`}>
+              <a slot="actions" href={`${formsBase}${data.latestForm.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">All answers</a>
+            </Head>
+            {visitFromForm.length ? (
+              <div>{visitFromForm.map(([k, v]) => <div class="rs-line"><span class="rk">{k}</span><p class="text-[15px] text-ink">{v}</p></div>)}</div>
+            ) : <p class="text-[15px] text-ink-2">Nothing about this visit on the form.</p>}
+          </Pane>
+        )}
+      </div>
     </div>
+    <Pane title="Visits" icon="calendar" id="visits" meta={visits.length === 200 ? 'The newest 200' : `${visits.length} on record`} pad="none">
+      {visits.length === 0 ? (
+        <div class="px-6 py-3 max-md:px-4"><Empty icon="calendar" text="No visits yet." action={canEdit ? { label: 'Bring in past visits from a spreadsheet', href: importHref } : { label: 'Book the first one', href: bookHref }} /></div>
+      ) : (
+        <table class="ws-table">
+          <caption class="sr-only">Visits of {shortName}, newest first</caption>
+          <thead>
+            <tr>
+              <th scope="col" class="meta">When</th>
+              <th scope="col" class="meta">Service</th>
+              <th scope="col" class="meta">Dentist</th>
+              <th scope="col" class="meta">Teeth</th>
+              <th scope="col" class="meta">Status</th>
+              {money && <th scope="col" class="meta text-right">Charged</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {visits.map((v) => (
+              <tr>
+                <td class="text-[14.5px] whitespace-nowrap tabular-nums">
+                  <span class="font-semibold">{visitText(v)}</span>
+                  <span class="block text-[13px] text-muted">{SOURCE[v.source] ?? v.source}{v.chair ? ` · chair ${v.chair}` : ''}</span>
+                  <button type="button" class="vx-link" data-ws-open={`rec-visit-${v.id}`} aria-haspopup="dialog">See the whole visit</button>
+                </td>
+                <td class="text-[15px]"><span class="meta ws-cell-label">Service</span>{v.reason ?? '—'}{v.notes && <span class="block max-w-[40ch] text-[13.5px] text-ink-2 max-lg:max-w-none">{v.notes}</span>}</td>
+                <td class="text-[15px]"><span class="meta ws-cell-label">Dentist</span>{v.dentist ? <Who name={v.dentist} /> : <span class="text-ink-2">—</span>}{v.dentist_free && <span class="block text-[13px] text-muted">As the old record has it</span>}</td>
+                <td class="text-[15px] tabular-nums"><span class="meta ws-cell-label">Teeth</span>{v.teeth?.length ? <span class="rp-row">{v.teeth.map((t: number) => <span class="rp rp-tooth">{t}</span>)}</span> : <span class="text-ink-2">—</span>}</td>
+                <td><span class="meta ws-cell-label">Status</span><Chip status={v.status} /></td>
+                {money && <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Charged</span>{v.charged ? pesos(v.charged) : <span class="text-muted">—</span>}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Pane>
   </div>
 
-  <!-- Treatment record -->
-  <div id="rec-treatment-record" role="tabpanel" aria-labelledby="rec-rec-treatment-record-tab" hidden={current !== 'treatment-record'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-teal" data-rec-panel="treatment-record">
-    <Banner id="treatment-record" label={SECTION_LABEL['treatment-record']} />
-    <TreatmentRecord ledger={data.ledger} money={money} today={today} printHref={`${here}treatment-record/`} name={shortName} />
-  </div>
-
-  <!-- Health -->
-  <div id="rec-health" role="tabpanel" aria-labelledby="rec-rec-health-tab" hidden={current !== 'health'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-rose" data-rec-panel="health">
-    <Banner id="health" label={SECTION_LABEL.health} />
-    <Vitals vitals={ext.vitals} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'vitals'} />
+  <!-- Patient info -->
+  <div id="rec-patient" role="tabpanel" aria-labelledby="rec-rec-patient-tab" hidden={current !== 'patient'} class={`rec-tab min-w-0 grid gap-4 max-md:gap-3 content-start ${TAB_HUE['patient']}`} data-rec-panel="patient">
+    <span id="patient" class="rec-anchor" aria-hidden="true"></span>
+    {current === 'patient' && <SavedLine tab="patient" {...savedLineProps} />}
+    <Vitals part="body" {...vitalsProps} />
     <Pane as="section" label="Health" id="health">
       <Head icon="heart" title="Health" />
       <p class="-mt-2 text-[14px] text-muted">
@@ -1077,14 +1076,74 @@ const recHere = here;
         </details>
       )}
     </Pane>
+    <div id="consent" class={`min-w-0 grid gap-4 max-md:gap-3 content-start hue-${CARD_HUE.consent}`}>
+      <Pane as="section" label="Privacy consent">
+        <Head icon="shield" title="Privacy consent" />
+        <DeskConsent notice={data.notice} consents={data.consents} canRecord={canEdit} minor={minor} birthKnown={!!patient.birth} dpo={data.dpo} action={`${here}#consent`}
+          problem={consentProblem} givenBy={givenBy} agreedAs={agreedAs} recorded={saved === 'consent' ? 'saved' : saved === 'consent-already' ? 'already' : null}
+          paperForms={data.paperForms} paper={{ ...paperState, recorded: saved === 'paper' ? 'saved' : null }} />
+      </Pane>
+      <ConsentForms part="body" {...consentFormsProps} />
+      <Pane as="section" label="Signed at visits" id="visit-consents">
+        <Head icon="pen" title="Signed at visits" meta={data.signed.length === 1 ? 'One consent' : `${data.signed.length} consents`} />
+        <p class="-mt-2 mb-3 text-[14px] text-ink-2">The consent to examination and treatment, signed on the clinic’s tablet for a visit: what the dentist explained, and the signature. Open a visit from its date on the Treatment record, or in Visits, to have one signed.</p>
+        {data.signed.length === 0 ? <p class="text-[14.5px] text-ink-2">None signed on the tablet yet.</p> : (
+          <ul class="rs-list">
+            {data.signed.map((k) => {
+              const v = data.fullVisits.find((x) => x.id === k.visitId);
+              return (
+                <li class="rs-item vx-signed-row">
+                  <Signature strokes={k.strokes} name={k.signedBy} />
+                  <div class="min-w-0 grid gap-1.5">
+                    <p class="rs-what">{k.signedBy}{k.signedAs === 'guardian' ? `, ${(k.relation ?? 'parent or guardian').toLocaleLowerCase('en')}` : ''}</p>
+                    <p class="rp-row"><span class="rp">Signed {when(k.at)}</span>{k.dentist && <Who name={k.dentist} />}</p>
+                    <p class="text-[14.5px] text-ink">{k.treatment.split('\n').join(' · ')}</p>
+                    {v && <button type="button" class="vx-link" data-ws-open={`rec-visit-${v.key}`} aria-haspopup="dialog">See the visit, {dateText(v.day)}</button>}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Pane>
+      {data.forms.length > 0 && (
+        <Pane as="section" label="Patient forms" id="patient-forms" class="mt-4 max-md:mt-3">
+          <Head icon="form" title="Patient forms" meta={`${data.forms.length === 1 ? 'One form' : `${data.forms.length} forms`} from the QR code`} />
+          <p class="-mt-2 mb-3 text-[14px] text-ink-2">Filled in on the patient’s own phone: their details, health and dental history, the consent to examination and treatment, and the privacy notice.</p>
+          <ul class="pt-list fm-rec-list">
+            {data.forms.map((f) => (
+              <li>
+                <div class="min-w-0 text-[14.5px]">
+                  <p><span class="font-semibold">Sent {when(f.submittedAt)}</span> <span class="pt-ref ml-1">{f.ref}</span></p>
+                  <p class="text-ink-2">Signed by {signedText(f.signedByName, f.signedAs)}. Added {f.addedAs === 'new' ? 'as a new patient' : 'to this record'}{f.addedByName ? ` by ${f.addedByName}` : ''}, {day(f.addedAt)}.</p>
+                  <p class="fm-rec-consents">
+                    {(['treatment', 'privacy'] as const).map((k) => {
+                      const what = k === 'treatment' ? 'Examination and treatment' : 'Privacy notice';
+                      const st = f.consentState[k];
+                      return st === 'form' ? <Chip tone="accent" icon="check">{what}</Chip>
+                        : st === 'on-file' ? <Chip tone="neutral" label={`${what}: already on file`} />
+                        : <Chip tone="warn" icon="alert">{`${what}: not recorded (a guardian must agree)`}</Chip>;
+                    })}
+                  </p>
+                </div>
+                <span class="flex flex-wrap gap-2">
+                  <a href={`${formsBase}${f.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">See answers</a>
+                  <a href={`${formsBase}${f.id}/print/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" />Print</a>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Pane>
+      )}
+    </div>
   </div>
 
-  <!-- Chart -->
-  <div id="rec-chart" role="tabpanel" aria-labelledby="rec-rec-chart-tab" hidden={current !== 'chart'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="chart">
-    <Banner id="chart" label={SECTION_LABEL.chart} />
-    {fromChart && saved && CHART_SAVED[saved] && <Callout tone="success" text={CHART_SAVED[saved]} />}
-    {showOffer && current === 'chart' && <ChartOffer state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="chart" leaveHref={leaveOffer('chart')} inChart />}
-    <Pane as="section" label="Chart" id="chart" class="pt-chart-pane">
+  <!-- Chart & plan -->
+  <div id="rec-chart" role="tabpanel" aria-labelledby="rec-rec-chart-tab" hidden={current !== 'chart'} class={`rec-tab min-w-0 grid gap-4 max-md:gap-3 content-start ${TAB_HUE['chart']}`} data-rec-panel="chart">
+    <span id="chart" class="rec-anchor" aria-hidden="true"></span>
+    {current === 'chart' && <SavedLine tab="chart" {...savedLineProps} />}
+    {showOffer && <ChartOffer state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="chart" leaveHref={leaveOffer('chart')} inChart />}
+    <Pane as="section" label="Chart" class="pt-chart-pane">
       <Head icon="tooth" title="Chart" />
       <p class="-mt-2 mb-4 text-[14px] text-muted">Every change is saved as you make it, under your name.</p>
       {/* The odontogram (src/components/Odontogram.astro, its offline logic untouched; the palette's record actions
@@ -1132,85 +1191,22 @@ const recHere = here;
         </details>
       )}
     </Pane>
+    <Treatment part="body" {...treatmentProps} />
+    <Files part="body" {...filesProps} />
+    <Loas part="body" {...loasProps} />
+    <div class={cardHue('payplans')}><PayPlans part="body" {...payPlansProps} /></div>
   </div>
 
-  <!-- Treatment -->
-  <div id="rec-treatment" role="tabpanel" aria-labelledby="rec-rec-treatment-tab" hidden={current !== 'treatment'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="treatment">
-    <Banner id="treatment" label={SECTION_LABEL.treatment} />
-    <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null}>
-      {showOffer && current === 'treatment' && <ChartOffer slot="offer" state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="treatment" leaveHref={leaveOffer('treatment')} inChart={false} />}
-    </Treatment>
-    <div class="mt-4 grid gap-4 max-md:mt-3 max-md:gap-3">
-      <Loas loas={ext.loas} plan={clin.plan} payors={ext.hmoPayors} hmoName={patient.hmo_name} memberNo={patient.hmo_member_no} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} settingsHref={`/c/${clinic.slug}/settings/`} />
-      <PayPlans plans={ext.plans} canEdit={canEdit} canBill={money} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} financesBase={links.finances} />
-    </div>
-  </div>
-
-  <!-- Notes -->
-  <div id="rec-notes" role="tabpanel" aria-labelledby="rec-rec-notes-tab" hidden={current !== 'notes'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="notes">
-    <Banner id="notes" label={SECTION_LABEL.notes} />
-    <Notes c={clin} canEdit={canEdit} saved={saved} />
-  </div>
-
-  <!-- Prescriptions -->
-  <div id="rec-rx" role="tabpanel" aria-labelledby="rec-rec-rx-tab" hidden={current !== 'rx'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="rx">
-    <Banner id="rx" label={SECTION_LABEL.rx} />
-    <Prescriptions c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} firstName={patient.first_name} printBase={`${here}rx/`} allergies={allergies} typedRows={rxTyped} visitId={thisVisit?.id ?? null} openNow={openNow === 'rx'} today={today} ptrFix={ptrFix} />
-    <div class="mt-4 max-md:mt-3">
-      <Letters letters={ext.letters} clinicians={clin.clinicians} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} printBase={`${here}letters/`} lastVisit={lastVisit ? manilaDay(lastVisit.starts_at) : null} conditions={conditions} ptrFix={ptrFix} />
-    </div>
-  </div>
-
-  <!-- Files -->
-  <div id="rec-files" role="tabpanel" aria-labelledby="rec-rec-files-tab" hidden={current !== 'files'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="files">
-    <Banner id="files" label={SECTION_LABEL.files} />
-    <Files c={clin} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} fileBase={`${here}files/`} visitId={thisVisit?.id ?? null} openNow={openNow === 'file'} />
-  </div>
-
-  <!-- Visits -->
-  <div id="rec-visits" role="tabpanel" aria-labelledby="rec-rec-visits-tab" hidden={current !== 'visits'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-teal" data-rec-panel="visits">
-    <Banner id="visits" label={SECTION_LABEL.visits} />
-    <Pane title="Visits" icon="calendar" id="visits" meta={visits.length === 200 ? 'The newest 200' : `${visits.length} on record`} pad="none">
-      {visits.length === 0 ? (
-        <div class="px-6 py-3 max-md:px-4"><Empty icon="calendar" text="No visits yet." action={canEdit ? { label: 'Bring in past visits from a spreadsheet', href: importHref } : { label: 'Book the first one', href: bookHref }} /></div>
-      ) : (
-        <table class="ws-table">
-          <caption class="sr-only">Visits of {shortName}, newest first</caption>
-          <thead>
-            <tr>
-              <th scope="col" class="meta">When</th>
-              <th scope="col" class="meta">Service</th>
-              <th scope="col" class="meta">Dentist</th>
-              <th scope="col" class="meta">Teeth</th>
-              <th scope="col" class="meta">Status</th>
-              {money && <th scope="col" class="meta text-right">Charged</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {visits.map((v) => (
-              <tr>
-                <td class="text-[14.5px] whitespace-nowrap tabular-nums">
-                  <span class="font-semibold">{visitText(v)}</span>
-                  <span class="block text-[13px] text-muted">{SOURCE[v.source] ?? v.source}{v.chair ? ` · chair ${v.chair}` : ''}</span>
-                  <button type="button" class="vx-link" data-ws-open={`rec-visit-${v.id}`} aria-haspopup="dialog">See the whole visit</button>
-                </td>
-                <td class="text-[15px]"><span class="meta ws-cell-label">Service</span>{v.reason ?? '—'}{v.notes && <span class="block max-w-[40ch] text-[13.5px] text-ink-2 max-lg:max-w-none">{v.notes}</span>}</td>
-                <td class="text-[15px]"><span class="meta ws-cell-label">Dentist</span>{v.dentist ? <Who name={v.dentist} /> : <span class="text-ink-2">—</span>}{v.dentist_free && <span class="block text-[13px] text-muted">As the old record has it</span>}</td>
-                <td class="text-[15px] tabular-nums"><span class="meta ws-cell-label">Teeth</span>{v.teeth?.length ? <span class="rp-row">{v.teeth.map((t: number) => <span class="rp rp-tooth">{t}</span>)}</span> : <span class="text-ink-2">—</span>}</td>
-                <td><span class="meta ws-cell-label">Status</span><Chip status={v.status} /></td>
-                {money && <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Charged</span>{v.charged ? pesos(v.charged) : <span class="text-muted">—</span>}</td>}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Pane>
-  </div>
-
-  <!-- Money -->
-  {money && (
-    <div id="rec-money" role="tabpanel" aria-labelledby="rec-rec-money-tab" hidden={current !== 'money'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-green" data-rec-panel="money">
-    <Banner id="money" label={SECTION_LABEL.money} />
+  <!-- Treatment record -->
+  <div id="rec-treatment-record" role="tabpanel" aria-labelledby="rec-rec-treatment-record-tab" hidden={current !== 'treatment-record'} class={`rec-tab min-w-0 grid gap-4 max-md:gap-3 content-start ${TAB_HUE['treatment-record']}`} data-rec-panel="treatment-record">
+    <span id="treatment-record" class="rec-anchor" aria-hidden="true"></span>
+    {current === 'treatment-record' && <SavedLine tab="treatment-record" {...savedLineProps} />}
+    <TreatmentRecord ledger={data.ledger} money={money} today={today} printHref={`${here}treatment-record/`} name={shortName} />
+    <div class={cardHue('notes')}><Notes c={clin} canEdit={canEdit} /></div>
+    <Prescriptions part="body" {...rxProps} />
+    <Letters part="body" {...lettersProps} />
+    {money && (
+      <div class={cardHue('money')}>
       <Pane title="Money" icon="money" id="money" pad="none">
         <Fragment slot="actions">
           <a href={`${links.finances}?patient=${patient.id}&view=all`} class="ws-btn ws-btn-quiet ws-btn-sm">In Finances <Icon name="arrow-right" size={16} /></a>
@@ -1256,76 +1252,8 @@ const recHere = here;
           </table>
         )}
       </Pane>
-    </div>
-  )}
-
-  <!-- Consent -->
-  <div id="rec-consent" role="tabpanel" aria-labelledby="rec-rec-consent-tab" hidden={current !== 'consent'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="consent">
-    <Banner id="consent" label={SECTION_LABEL.consent} />
-    <Pane as="section" label="Privacy consent">
-      <Head icon="shield" title="Privacy consent" />
-      <DeskConsent notice={data.notice} consents={data.consents} canRecord={canEdit} minor={minor} birthKnown={!!patient.birth} dpo={data.dpo} action={`${here}#consent`}
-        problem={consentProblem} givenBy={givenBy} agreedAs={agreedAs} recorded={saved === 'consent' ? 'saved' : saved === 'consent-already' ? 'already' : null}
-        paperForms={data.paperForms} paper={{ ...paperState, recorded: saved === 'paper' ? 'saved' : null }} />
-    </Pane>
-    <ConsentForms docs={data.consentDocs} slug={clinic.slug} patientId={patient.id} firstName={patient.first_name} canEdit={canEdit} mayExplain={data.mayExplainIds}
-      mayCapacity={canEdit && data.treatsHere && !minor && !!patient.birth} capacity={data.capacity} canPrepare={data.canPrepare} />
-    <Pane as="section" label="Signed at visits" id="visit-consents">
-      <Head icon="pen" title="Signed at visits" meta={data.signed.length === 1 ? 'One consent' : `${data.signed.length} consents`} />
-      <p class="-mt-2 mb-3 text-[14px] text-ink-2">The consent to examination and treatment, signed on the clinic’s tablet for a visit: what the dentist explained, and the signature. Open a visit from its date on the Treatment record, or in Visits, to have one signed.</p>
-      {data.signed.length === 0 ? <p class="text-[14.5px] text-ink-2">None signed on the tablet yet.</p> : (
-        <ul class="rs-list">
-          {data.signed.map((k) => {
-            const v = data.fullVisits.find((x) => x.id === k.visitId);
-            return (
-              <li class="rs-item vx-signed-row">
-                <Signature strokes={k.strokes} name={k.signedBy} />
-                <div class="min-w-0 grid gap-1.5">
-                  <p class="rs-what">{k.signedBy}{k.signedAs === 'guardian' ? `, ${(k.relation ?? 'parent or guardian').toLocaleLowerCase('en')}` : ''}</p>
-                  <p class="rp-row"><span class="rp">Signed {when(k.at)}</span>{k.dentist && <Who name={k.dentist} />}</p>
-                  <p class="text-[14.5px] text-ink">{k.treatment.split('\n').join(' · ')}</p>
-                  {v && <button type="button" class="vx-link" data-ws-open={`rec-visit-${v.key}`} aria-haspopup="dialog">See the visit, {dateText(v.day)}</button>}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </Pane>
-    {data.forms.length > 0 && (
-      <Pane as="section" label="Patient forms" id="patient-forms" class="mt-4 max-md:mt-3">
-        <Head icon="form" title="Patient forms" meta={`${data.forms.length === 1 ? 'One form' : `${data.forms.length} forms`} from the QR code`} />
-        <p class="-mt-2 mb-3 text-[14px] text-ink-2">Filled in on the patient’s own phone: their details, health and dental history, the consent to examination and treatment, and the privacy notice.</p>
-        <ul class="pt-list fm-rec-list">
-          {data.forms.map((f) => (
-            <li>
-              <div class="min-w-0 text-[14.5px]">
-                <p><span class="font-semibold">Sent {when(f.submittedAt)}</span> <span class="pt-ref ml-1">{f.ref}</span></p>
-                <p class="text-ink-2">Signed by {signedText(f.signedByName, f.signedAs)}. Added {f.addedAs === 'new' ? 'as a new patient' : 'to this record'}{f.addedByName ? ` by ${f.addedByName}` : ''}, {day(f.addedAt)}.</p>
-                <p class="fm-rec-consents">
-                  {(['treatment', 'privacy'] as const).map((k) => {
-                    const what = k === 'treatment' ? 'Examination and treatment' : 'Privacy notice';
-                    const st = f.consentState[k];
-                    return st === 'form' ? <Chip tone="accent" icon="check">{what}</Chip>
-                      : st === 'on-file' ? <Chip tone="neutral" label={`${what}: already on file`} />
-                      : <Chip tone="warn" icon="alert">{`${what}: not recorded (a guardian must agree)`}</Chip>;
-                  })}
-                </p>
-              </div>
-              <span class="flex flex-wrap gap-2">
-                <a href={`${formsBase}${f.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">See answers</a>
-                <a href={`${formsBase}${f.id}/print/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" />Print</a>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Pane>
+      </div>
     )}
-  </div>
-
-  <!-- Texts -->
-  <div id="rec-texts" role="tabpanel" aria-labelledby="rec-rec-texts-tab" hidden={current !== 'texts'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="texts">
-    <Banner id="texts" label={SECTION_LABEL.texts} />
     <Pane title="Texts" icon="message" id="texts" meta={data.texts.length === 50 ? 'The newest 50' : `${data.texts.length} about this patient`} pad="none">
       <a slot="actions" href={links.messages} class="ws-btn ws-btn-quiet ws-btn-sm">All messages <Icon name="arrow-right" size={16} /></a>
       {data.texts.length === 0 ? (
@@ -1351,7 +1279,20 @@ const recHere = here;
     </Pane>
   </div>
 
-  </div>
+  {/* The side panels, outside the tabs: every visit's (the Treatment record's dates, Visits, ?visit=), Add to plan,
+      Record a treatment and the note (the chart's palette opens them on a tooth), and each card's own. */}
+  <VisitPanels visits={data.fullVisits} slug={clinic.slug} patientId={patient.id} canEdit={canEdit} money={money} open={thisVisit && openVisit === thisVisit.id ? null : openVisit} today={today} firstName={patient.first_name} />
+  {canEdit && <TreatmentPanels c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'done'} chartSid={chartSid} />}
+  {canEdit && <NotePanel c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'note'} defaultTeeth={noteTeeth} />}
+  <Vitals part="panels" {...vitalsProps} />
+  <RecallCard part="panels" {...recallProps} />
+  <Treatment part="panels" {...treatmentProps} />
+  <Files part="panels" {...filesProps} />
+  <Loas part="panels" {...loasProps} />
+  <PayPlans part="panels" {...payPlansProps} />
+  <Prescriptions part="panels" {...rxProps} />
+  <Letters part="panels" {...lettersProps} />
+  <ConsentForms part="panels" {...consentFormsProps} />
   </div>
 
   {canEdit && (
@@ -1361,7 +1302,7 @@ const recHere = here;
       <form method="post" action={(detailsDash ?? dashVisit) ? here : `${here}#overview`} class="grid gap-4">
         <Csrf />
         <input type="hidden" name="intent" value="details" />
-        {(detailsDash ?? dashVisit) && <input type="hidden" name="dash" value={detailsDash ?? dashVisit} />}
+        {(detailsDash ?? dashVisit) ? <input type="hidden" name="dash" value={detailsDash ?? dashVisit} /> : <input type="hidden" name="back" value="" data-rec-back />}
         <div class="grid gap-4 sm:grid-cols-2">
           <label class="field"><span class="meta">Last name</span><input name="last_name" value={d.last} required maxlength="60" autocomplete="off" /></label>
           <label class="field"><span class="meta">First name</span><input name="first_name" value={d.first} required maxlength="60" autocomplete="off" /></label>
@@ -1400,17 +1341,50 @@ const recHere = here;
 
 <script>
   import { ageOn, ageText, capitalise } from '../../../../lib/health';
+  import { tabOf } from './_record/sections';
+  import { aimForm, currentTab } from './_record/pickpanel';
 
-  // --- the sections: in the address, so a reload or a post lands where it was ---
+  // --- the tabs: in the address, so a reload or a post lands where it was ---
   const list = document.querySelector<HTMLElement>('.rec-tabs');
+  const bar = document.querySelector<HTMLElement>('[data-rec-bar]');
+  const topBar = document.querySelector<HTMLElement>('[data-ws-top]');
+  const root = document.documentElement;
   const tabFor = (name: string) => document.getElementById(`rec-rec-${name}-tab`) as HTMLButtonElement | null;
   const panelOf = (el: Element | null) => el?.closest<HTMLElement>('[data-rec-panel]')?.dataset.recPanel ?? null;
+  /** The tab a name lives in: its element's tab, else TAB_OF (less a tab panel's rec-). */
+  const tabNamed = (name: string) => panelOf(document.getElementById(name)) ?? tabOf(name) ?? tabOf(name.replace(/^rec-/, ''));
+
+  // The tab row sticks under the workspace's top bar; what is scrolled to (a tab, a card) lands just under the row.
+  const measure = () => {
+    const top = Math.round(topBar?.getBoundingClientRect().height ?? 0);
+    root.style.setProperty('--rec-top', `${top}px`);
+    root.style.setProperty('--rec-stick', `${top + Math.round(bar?.getBoundingClientRect().height ?? 0)}px`);
+  };
+  measure();
+  if ('ResizeObserver' in window) { const ro = new ResizeObserver(measure); if (topBar) ro.observe(topBar); if (bar) ro.observe(bar); }
+  /** Scroll only when needed: a tab's top hidden under the row (the page was scrolled down), or too low on the screen
+   *  to see (a phone); then it starts just under the row, stuck under the top bar. */
+  const reveal = (el: HTMLElement) => {
+    const barBox = bar?.getBoundingClientRect();
+    const top = el.getBoundingClientRect().top;
+    if (top >= (barBox?.bottom ?? 0) + 11 && top <= innerHeight - 96) return;
+    scrollBy({ top: top - ((topBar?.getBoundingClientRect().height ?? 0) + (barBox?.height ?? 0) + 12) });
+  };
+
+  /** Show the tab a name lives in (a tab, an old section, a card's anchor: TAB_OF), and bring what it names into view:
+   *  a card by its id (#health, #rx …), a tab from its top. */
   const show = (name: string, focus = false) => {
-    const t = tabFor(name);
+    const target = document.getElementById(name);
+    const tab = tabNamed(name);
+    const t = tab ? tabFor(tab) : null;
     if (!t) return false;
     if (t.getAttribute('aria-selected') !== 'true') t.click();
-    t.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    if (focus) t.focus();
+    const panel = document.getElementById(`rec-${tab}`);
+    requestAnimationFrame(() => {
+      if (target && !target.matches('[data-rec-panel], .rec-anchor')) target.scrollIntoView({ block: 'start' });
+      else if (panel) reveal(panel);
+      if (focus) t.focus({ preventScroll: true });
+    });
     return true;
   };
   const fromHash = () => {
@@ -1418,17 +1392,38 @@ const recHere = here;
     if (!id) return;
     // The Timeline became the Treatment record: an old #timeline link lands there, and the address says so.
     if (id === 'timeline') { id = 'treatment-record'; history.replaceState(null, '', `${location.pathname}${location.search}#${id}`); }
-    const target = document.getElementById(id);
-    const name = panelOf(target) ?? id.replace(/^rec-/, '');
-    if (show(name) && target && !target.matches('[data-rec-panel]')) requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
+    show(id);
+  };
+  // Every panel's form comes back to the tab it is opened over: as it opens, its `back` and the #<tab> on its address
+  // (the tooth-first panels, TreatmentPanels and NotePanel, do the same for theirs, and send back=chart from the palette).
+  const aimBack = (d: HTMLDialogElement) => {
+    const tab = currentTab();
+    if (!tab) return;
+    d.querySelectorAll<HTMLInputElement>('input[data-rec-back]').forEach((b) => {
+      b.value = tab;
+      if (b.form) aimForm(b.form, tab, 'overview');
+    });
   };
   list?.addEventListener('ws:tab', (e) => {
     const id = String((e as CustomEvent).detail?.id ?? '').replace(/^rec-/, '');
     if (id && location.hash !== `#${id}`) history.replaceState(null, '', `${location.pathname}${location.search}#${id}`);
-    tabFor(id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const panel = document.getElementById(`rec-${id}`);
+    if (panel) reveal(panel);
   });
   window.addEventListener('hashchange', fromHash);
-  fromHash();
+  // A panel the page opened as it loaded (?open=…, the Dashboard's links) stands over Today: the address's #hash
+  // (the Dashboard writes #vitals with ?open=vitals) does not move the tab behind it. A post that came back refused
+  // stands on the tab the server chose for it (a panel's own tab, a card's own tab): a #hash naming another tab is
+  // put right in the address instead.
+  const body = document.querySelector<HTMLElement>('[data-rec-body]');
+  const asked = decodeURIComponent(location.hash.slice(1));
+  if (body?.hasAttribute('data-rec-posted') && asked && tabNamed(asked) !== currentTab()) history.replaceState(null, '', `${location.pathname}${location.search}#${currentTab()}`);
+  else if (!body?.hasAttribute('data-rec-opened')) fromHash();
+  // A panel the server drew open (a refused post, ?open=…) may have opened before this script ran.
+  document.querySelectorAll<HTMLDialogElement>('dialog[data-ws-panel]').forEach((d) => {
+    d.addEventListener('ws:panel-open', () => aimBack(d));
+    if (d.open) aimBack(d);
+  });
 
   // ?open=details (the Dashboard's desk note, "Edit"): the caret waits at the end of Notes, once the shell has opened
   // the panel and focused its title; then the address drops open and dash, so Back does not open the panel again.
@@ -1443,9 +1438,38 @@ const recHere = here;
       history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
     }));
   }
-  document.querySelectorAll<HTMLElement>('[data-rec-go]').forEach((b) => b.addEventListener('click', () => { show(b.dataset.recGo!, true); }));
-  // A quick action in More (a note, a plan item, a prescription, a file) brings its section forward behind its panel.
-  document.querySelectorAll<HTMLElement>('[data-rec-show]').forEach((b) => b.addEventListener('click', () => { show(b.dataset.recShow!); }));
+  // A way to another part of the record (a chip in the head, a line of This visit): its tab, and the card it names.
+  document.querySelectorAll<HTMLElement>('[data-rec-go]').forEach((b) => b.addEventListener('click', (e) => {
+    if (b instanceof HTMLAnchorElement) e.preventDefault();
+    show(b.dataset.recGo!, true);
+  }));
+
+  // Add ▾: hidden offline and on the copy kept for a brownout (nothing can be saved there). Its list fits the screen
+  // under the row (scrolled to where the row sticks first, when it would not), and a panel it opened gives focus back
+  // to it when it closes.
+  const add = document.querySelector<HTMLElement>('.rec-add');
+  const addButton = add?.querySelector<HTMLButtonElement>(':scope > button') ?? null;
+  const addList = add?.querySelector<HTMLElement>(':scope > .ws-menu-pop') ?? null;
+  const online = () => { if (add) add.hidden = !!root.dataset.offlineCopy || !navigator.onLine; };
+  online();
+  window.addEventListener('online', online);
+  window.addEventListener('offline', online);
+  if (addList) new MutationObserver(() => {
+    if (addList.hidden) return;
+    addList.style.maxHeight = '';
+    const room = () => innerHeight - addList.getBoundingClientRect().top - 12;
+    const barTop = bar?.getBoundingClientRect().top ?? 0;
+    const stuckAt = topBar?.getBoundingClientRect().height ?? 0;
+    if (room() < Math.min(addList.scrollHeight, 520) && barTop > stuckAt + 1) scrollBy({ top: barTop - stuckAt, behavior: 'instant' });
+    addList.style.maxHeight = `${Math.max(160, room())}px`;
+  }).observe(addList, { attributes: true, attributeFilter: ['hidden'] });
+  let fromAdd: Element | null = null;
+  document.querySelectorAll<HTMLElement>('[data-rec-add-item]').forEach((b) => b.addEventListener('click', () => { fromAdd = document.getElementById(b.dataset.wsOpen ?? ''); }));
+  document.querySelectorAll<HTMLDialogElement>('dialog[data-ws-panel]').forEach((d) => d.addEventListener('ws:panel-close', () => {
+    if (fromAdd !== d) return;
+    fromAdd = null;
+    addButton?.focus();
+  }));
 
   // The chart speaks up: a copy of this page kept for a brownout opens on the Chart, and a
   // notice the chart raises (a colleague's newer finding, changes waiting on this device)

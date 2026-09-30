@@ -4,7 +4,9 @@
 // the panel says, under the prescriber, when the PTR on file needs attention today (src/lib/ptr.ts), and
 // never refuses for it; its fix link opens in a new tab. Up to six medicines, each with how to take it. The medicine box
 // suggests names only — never a dose: the dentist writes the strength and the directions every time.
-// Generic names come first, as the Generics Act (RA 6675) asks.
+// Generic names come first, as the Generics Act (RA 6675) asks. The panel (part="panels") is drawn outside the
+// tabs, so Today and Add ▾ open it over the tab in view; what a save says (Print it, and the PTR the paper took when
+// it needs a word) is the page's saved line (./SavedLine.astro).
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
@@ -15,13 +17,14 @@ import Callout from '../_ui/Callout.astro';
 import Glyph from '../_ui/Glyph.astro';
 import PtrWords from './PtrWords.astro';
 import { RX_ROWS, type Clinical, type RecordProblem, type RxItem } from '../../../../../lib/record';
-import { when, manilaToday } from '../../../../../lib/health';
-import { ptrState, ptrWords, ptrSavedTitle, ptrLine, PTR_AMBER, type PtrFix } from '../../../../../lib/ptr';
+import { when } from '../../../../../lib/health';
+import { ptrState, ptrWords, ptrLine, type PtrFix } from '../../../../../lib/ptr';
 
-/** visitId: today's visit (036) — a new prescription is written against it. openNow: the page opens the panel as it loads (?open=rx).
- *  today: the Manila day (the PTR note compares with it); ptrFix: where each clinician's PTR is fixed, or null (the record page). */
-interface Props { c: Clinical; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; firstName: string; printBase: string; allergies: string[]; typedRows?: RxItem[]; visitId?: string | null; openNow?: boolean; today: string; ptrFix: Record<string, PtrFix | null> }
-const { c, canEdit, action, meId, problem, saved, firstName, printBase, allergies, typedRows = [], visitId = null, openNow = false, today, ptrFix } = Astro.props;
+/** part: the list (in its tab) or the panel (outside the tabs). visitId: today's visit (036) — a new prescription is
+ *  written against it. openNow: the page opens the panel as it loads (?open=rx). today: the Manila day (the PTR note
+ *  compares with it); ptrFix: where each clinician's PTR is fixed, or null (the record page). */
+interface Props { part: 'body' | 'panels'; c: Clinical; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; firstName: string; printBase: string; allergies: string[]; typedRows?: RxItem[]; visitId?: string | null; openNow?: boolean; today: string; ptrFix: Record<string, PtrFix | null> }
+const { part, c, canEdit, action, meId, problem, firstName, printBase, allergies, typedRows = [], visitId = null, openNow = false, today, ptrFix } = Astro.props;
 
 // Names only, the ones a dental clinic writes most. No strengths or doses.
 const DRUGS = ['Amoxicillin', 'Co-amoxiclav (amoxicillin + clavulanic acid)', 'Clindamycin', 'Azithromycin', 'Metronidazole', 'Cefalexin',
@@ -32,7 +35,6 @@ const v = problem?.intent === 'rx-add' ? problem.values : null;
 const rows = Array.from({ length: RX_ROWS }, (_, i) => ({ drug: '', strength: '', qty: '', sig: '', ...(v ? typedRows[i] : {}), i }));
 const lastTyped = v ? typedRows.reduce((n, r, i) => (r.drug || r.strength || r.qty || r.sig ? i + 1 : n), 0) : 0;
 const shownRows = Math.min(RX_ROWS, Math.max(2, lastTyped));
-const justSaved = saved?.startsWith('rx:') ? saved.slice(3) : null;
 const help = 'text-[13px] leading-snug text-ink-2';
 // The prescriber the select draws chosen, and the PTR note for each clinician with a PRC licence whose PTR on
 // file needs a word today (none for ok; a clinician with no PRC is blocked by the PRC already).
@@ -42,21 +44,9 @@ const ptrNotes = c.clinicians.filter((x) => x.prc).map((x) => ({
   words: ptrWords(ptrState({ number: x.ptr, year: x.ptrYear }, today), { number: x.ptr, year: x.ptrYear }, today, { self: x.id === meId, name: x.name }),
 })).filter((n) => n.words);
 const shownNote = ptrNotes.find((n) => n.id === selectedId);
-// The saved prescription's own copy, against the day it was written.
-const savedRx = justSaved ? c.rx.find((r) => r.id === justSaved) : null;
-const savedPtr = savedRx ? { number: savedRx.ptr, year: savedRx.ptrYear } : null;
-const savedState = savedRx && savedPtr ? ptrState(savedPtr, manilaToday(new Date(savedRx.at))) : null;
 ---
 
-<div class="grid gap-4 max-md:gap-3">
-  {justSaved && (
-    <Callout tone="success" title="Prescription saved.">
-      <p><a href={`${printBase}${justSaved}/`} class="font-semibold underline underline-offset-2" target="_blank" rel="noopener">Print it for {firstName}</a> on the clinic’s paper, with the prescriber’s licence numbers.</p>
-    </Callout>
-  )}
-  {savedRx && savedPtr && savedState && PTR_AMBER.includes(savedState) && (
-    <PtrWords mode="saved" noun="prescription" title={ptrSavedTitle(savedState, savedPtr)} fix={ptrFix[savedRx.prescriberId] ?? null} />
-  )}
+{part === 'body' && (
   <Pane as="section" label="Prescriptions" id="rx">
     <Head icon="pill" title="Prescriptions" meta={c.rx.length ? `${c.rx.length} written` : undefined} />
     <div class="rec-lead -mt-2 mb-4">
@@ -84,14 +74,14 @@ const savedState = savedRx && savedPtr ? ptrState(savedPtr, manilaToday(new Date
       </div>
     )}
   </Pane>
-</div>
+)}
 
-{canEdit && (
+{part === 'panels' && canEdit && (
   <SidePanel id="rec-rx-add" title="New prescription" meta={firstName} wide open={!!v || openNow}>
     {problem?.intent === 'rx-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
     {allergies.length > 0 && <Callout tone="alert" role="none" class="mb-4" title={`Allergies on file: ${allergies.join(', ')}`} text="Check every medicine against them." />}
     <form method="post" action={`${action}#rx`} class="grid gap-4" data-rx-form>
-      <Csrf /><input type="hidden" name="intent" value="rx-add" />
+      <Csrf /><input type="hidden" name="intent" value="rx-add" /><input type="hidden" name="back" value="" data-rec-back />
       {visitId && <input type="hidden" name="visit" value={visitId} />}
       <div>
         <label class="field"><span class="meta">Prescribed by</span>

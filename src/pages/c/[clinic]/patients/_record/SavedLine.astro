@@ -1,0 +1,106 @@
+---
+// The saved line: what a save from the record's panels and cards says, in one place at the top of the tab it lands on
+// (the page draws it in the tab showing first). A panel posts back=<the tab it was opened over>, so a prescription
+// written from Today says "Print it" — and, when the PTR its paper took needs a word, says so — on Today. The words
+// were each card's own (Treatment, Notes, Prescriptions, Letters, Files, the blood pressure, the next check-up, the
+// LOAs and the payment plans) and the Chart's own after a save from its palette; they moved here unchanged.
+//
+// A blood pressure out of the usual range: on Patient info its card, right under this line, says what the reading
+// means, so the line says only that it was saved (as the card did); on another tab the line says it.
+import Callout from '../_ui/Callout.astro';
+import PtrWords from './PtrWords.astro';
+import type { Clinical } from '../../../../../lib/record';
+import { LETTER_KIND, bpWords, type Letter, type Vital } from '../../../../../lib/record-extra';
+import { dateText, manilaToday } from '../../../../../lib/health';
+import { ptrState, ptrSavedTitle, PTR_AMBER, type PtrFix } from '../../../../../lib/ptr';
+import type { TabId } from './sections';
+
+interface Props {
+  saved: string | null;
+  /** The tab it is drawn in. */
+  tab: TabId;
+  c: Clinical;
+  letters: Letter[];
+  vitals: Vital[];
+  firstName: string;
+  rxBase: string;
+  letterBase: string;
+  financesBase: string;
+  /** Where each clinician's PTR is fixed, or null (the record page works it out). */
+  ptrFix: Record<string, PtrFix | null>;
+}
+const { saved, tab, c, letters, vitals, firstName, rxBase, letterBase, financesBase, ptrFix } = Astro.props;
+
+const WORDS: Record<string, string> = {
+  // the plan, work done, lab cases
+  plan: 'Added to the plan.', 'plan-accepted': 'Marked accepted. The patient agreed to it.', 'plan-declined': 'Marked declined. It stays on the plan, crossed out.',
+  'plan-planned': 'Back to planned.', 'plan-done': 'Marked done, and added to treatments done.', 'plan-removed': 'Taken off the plan.',
+  done: 'Treatment recorded.', lab: 'Lab case added.', 'lab-moved': 'Lab case moved on.',
+  // notes, files
+  note: 'Note saved under your name.', addendum: 'Addendum saved under the note.',
+  file: 'File added to the record.', 'file-removed': 'File taken off the record. It is kept for the audit.',
+  // the next check-up
+  recall: 'Next check-up set.', 'recall-done': 'Marked as came in. Set the next one when you are ready.', 'recall-cleared': 'Next check-up cleared.',
+  // HMO approvals, payment plans, letters
+  loa: 'LOA request noted. Write in the approval code when the HMO answers.', 'loa-approved': 'Approved. The code is on the record.',
+  'loa-denied': 'Denied. The reason is on the record.', 'loa-cancelled': 'LOA cancelled.',
+  'payplan-stopped': 'Plan stopped. Its statement stays, with whatever is left to pay.',
+  answered: 'The physician’s reply is on the record.',
+};
+// On the Chart after a save (the palette's panels, and any panel opened over the Chart): the words that point at the chart.
+const CHART_WORDS: Record<string, string> = {
+  plan: 'Added to the plan. Teeth with planned work have a ring under their number.',
+  'plan-done': 'Marked done, and added to treatments done.',
+  done: 'Treatment recorded.',
+  note: 'Note saved under your name.',
+};
+
+const word = saved ?? '';
+const after = (prefix: string) => (word.startsWith(prefix) ? word.slice(prefix.length) : null);
+const text = (tab === 'chart' ? CHART_WORDS[word] : undefined) ?? (Object.hasOwn(WORDS, word) ? WORDS[word] : null)
+  ?? (after('files:') ? `${after('files:')} files added to the record.` : null);
+
+// A prescription: Print it, and the PTR its paper took when that needs a word (against the day it was written).
+const rx = after('rx:') ? c.rx.find((r) => r.id === after('rx:')) ?? null : null;
+const rxPtr = rx ? { number: rx.ptr, year: rx.ptrYear } : null;
+const rxState = rx && rxPtr ? ptrState(rxPtr, manilaToday(new Date(rx.at))) : null;
+// A letter: the same, against the day it was issued.
+const made = after('letter:') ? letters.find((l) => l.id === after('letter:')) ?? null : null;
+const madePtr = made ? { number: made.ptr, year: made.ptrYear } : null;
+const madeState = made && madePtr ? ptrState(madePtr, made.issuedOn) : null;
+// A payment plan made, with its statement; an adjustment, with the next one.
+const planInvoice = after('payplan:');
+const nextAdjust = after('adjusted:');
+// A blood pressure reading: the newest one is the one just saved.
+const reading = word.startsWith('vitals') ? vitals.find((v) => v.sys && v.dia) ?? null : null;
+const bp = reading ? bpWords(reading.sys!, reading.dia!) : null;
+const bpHere = word.startsWith('vitals') && tab === 'patient';
+---
+
+{text && <Callout tone="success" text={text} />}
+{rx && (
+  <Callout tone="success" title="Prescription saved.">
+    <p><a href={`${rxBase}${rx.id}/`} class="font-semibold underline underline-offset-2" target="_blank" rel="noopener">Print it for {firstName}</a> on the clinic’s paper, with the prescriber’s licence numbers.</p>
+  </Callout>
+)}
+{rx && rxPtr && rxState && PTR_AMBER.includes(rxState) && (
+  <PtrWords mode="saved" noun="prescription" title={ptrSavedTitle(rxState, rxPtr)} fix={ptrFix[rx.prescriberId] ?? null} />
+)}
+{made && (
+  <Callout tone="success" title={`${LETTER_KIND[made.kind]} saved.`}>
+    <p><a href={`${letterBase}${made.id}/`} class="font-semibold underline underline-offset-2" target="_blank" rel="noopener">Print it</a> on the clinic’s paper, signed by {made.dentist}.</p>
+  </Callout>
+)}
+{made && madePtr && madeState && PTR_AMBER.includes(madeState) && (
+  <PtrWords mode="saved" noun="letter" title={ptrSavedTitle(madeState, madePtr)} fix={ptrFix[made.dentistId] ?? null} />
+)}
+{planInvoice && (
+  <Callout tone="success" title="Plan made, with its statement.">
+    <p><a href={`${financesBase}${planInvoice}/`} class="font-semibold underline underline-offset-2">Take the down payment</a> on the statement, as with any payment.</p>
+  </Callout>
+)}
+{nextAdjust && <Callout tone="success" text={`Adjustment saved. The next one is ${dateText(nextAdjust)}: book it before they leave.`} />}
+{word.startsWith('vitals') && (bpHere
+  ? word !== 'vitals-crisis' && word !== 'vitals-high' && <Callout tone="success" text="Reading saved." />
+  : !bp || bp.tone === 'neutral' ? <Callout tone="success" text="Reading saved." />
+  : <Callout tone={bp.tone === 'alert' ? 'alert' : 'warn'} title={`Reading saved: ${bp.label.toLowerCase()} blood pressure, ${reading!.sys}/${reading!.dia}.`} text={bp.advice} />)}

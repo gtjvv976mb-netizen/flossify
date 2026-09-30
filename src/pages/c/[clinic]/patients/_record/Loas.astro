@@ -2,7 +2,8 @@
 // HMO approvals (LOA): before treatment an HMO such as Maxicare or Intellicare gives a letter of
 // authorization with an approval code. Ask for one for the plan items it covers; write in the code when it
 // is approved (or the reason it was denied); it is used once every item it covers is done. A plan item
-// waiting for its LOA says so on the plan, and Mark done asks first. On the Treatment section.
+// waiting for its LOA says so on the plan, and Mark done asks first. On Chart & plan; the panels (part="panels") are
+// drawn outside the tabs, so Add ▾ asks for an LOA over the tab in view. What a save says is the page's saved line.
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
@@ -16,21 +17,21 @@ import type { PlanItem, RecordProblem } from '../../../../../lib/record';
 import type { PayorOption } from '../../../../../lib/invoices';
 import { dateText } from '../../../../../lib/health';
 
-interface Props { loas: Loa[]; plan: PlanItem[]; payors: PayorOption[]; hmoName: string | null; memberNo: string | null; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; settingsHref: string }
-const { loas, plan, payors, hmoName, memberNo, canEdit, action, problem, saved, today, firstName, settingsHref } = Astro.props;
+/** part: the list (in its tab) or the panels (outside the tabs). */
+interface Props { part: 'body' | 'panels'; loas: Loa[]; plan: PlanItem[]; payors: PayorOption[]; hmoName: string | null; memberNo: string | null; canEdit: boolean; action: string; problem: RecordProblem | null; today: string; firstName: string; settingsHref: string }
+const { part, loas, plan, payors, hmoName, memberNo, canEdit, action, problem, today, firstName, settingsHref } = Astro.props;
 const open = plan.filter((i) => (i.status === 'planned' || i.status === 'accepted') && !i.loaId);
 const v = problem?.intent === 'loa-add' ? problem.values : ({} as Record<string, string>);
 const dv = problem && ['loa-approve', 'loa-deny'].includes(problem.intent) ? problem.values : ({} as Record<string, string>);
 const inline = problem && ['loa-cancel'].includes(problem.intent) ? problem.text : null;
 const preset = v.payor ?? payors.find((p) => hmoName && p.name.toLowerCase() === hmoName.toLowerCase())?.value ?? '';
 const picked = new Set((v._items ?? '').split(',').filter(Boolean));
-const SAVED: Record<string, string> = { loa: 'LOA request noted. Write in the approval code when the HMO answers.', 'loa-approved': 'Approved. The code is on the record.', 'loa-denied': 'Denied. The reason is on the record.', 'loa-cancelled': 'LOA cancelled.' };
 const tone = (a: Loa) => (a.expired ? 'alert' : a.status === 'approved' ? 'accent' : a.status === 'denied' ? 'alert' : a.status === 'requested' ? 'warn' : 'muted') as 'accent' | 'alert' | 'warn' | 'muted';
 const help = 'text-[13px] leading-snug text-ink-2';
 ---
 
+{part === 'body' && (
 <div class="grid gap-4 max-md:gap-3">
-  {saved && SAVED[saved] && <Callout tone="success" text={SAVED[saved]} />}
   {inline && <Callout tone="alert" text={inline} />}
   <Pane as="section" label="HMO approvals" id="loas">
     <Head icon="shield" title="HMO approvals (LOA)" meta={loas.filter((a) => a.status === 'requested').length ? `${loas.filter((a) => a.status === 'requested').length} waiting` : undefined} />
@@ -71,8 +72,9 @@ const help = 'text-[13px] leading-snug text-ink-2';
     )}
   </Pane>
 </div>
+)}
 
-{canEdit && (
+{part === 'panels' && canEdit && (
   <>
     <SidePanel id="rec-loa-add" title="Ask for an LOA" meta={firstName} open={problem?.intent === 'loa-add'}>
       {problem?.intent === 'loa-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
@@ -82,7 +84,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
         </Callout>
       ) : (
         <form method="post" action={`${action}#loas`} class="grid gap-4">
-          <Csrf /><input type="hidden" name="intent" value="loa-add" />
+          <Csrf /><input type="hidden" name="intent" value="loa-add" /><input type="hidden" name="back" value="" data-rec-back />
           <label class="field"><span class="meta">HMO</span>
             <select name="payor" required>
               <option value="">Choose the HMO…</option>
@@ -112,7 +114,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
     <SidePanel id="rec-loa-approve" title="LOA approved" meta={firstName} open={problem?.intent === 'loa-approve'}>
       {problem?.intent === 'loa-approve' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
       <form method="post" action={`${action}#loas`} class="grid gap-4">
-        <Csrf /><input type="hidden" name="intent" value="loa-approve" />
+        <Csrf /><input type="hidden" name="intent" value="loa-approve" /><input type="hidden" name="back" value="" data-rec-back />
         <input type="hidden" name="loa" value={dv.loa ?? ''} data-loa-id />
         <label class="field"><span class="meta">Approval code</span><input name="loa_number" value={dv.loa_number ?? ''} required maxlength="60" autocomplete="off" class="font-mono" /></label>
         <div class="grid grid-cols-2 gap-4">
@@ -127,7 +129,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
     <SidePanel id="rec-loa-deny" title="LOA denied" meta={firstName} open={problem?.intent === 'loa-deny'}>
       {problem?.intent === 'loa-deny' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
       <form method="post" action={`${action}#loas`} class="grid gap-4">
-        <Csrf /><input type="hidden" name="intent" value="loa-deny" />
+        <Csrf /><input type="hidden" name="intent" value="loa-deny" /><input type="hidden" name="back" value="" data-rec-back />
         <input type="hidden" name="loa" value={dv.loa ?? ''} data-loa-id />
         <label class="field"><span class="meta">The HMO’s reason</span><input name="reason" value={dv.reason ?? ''} required maxlength="300" autocomplete="off" placeholder="e.g. Not covered by the plan: cosmetic" /></label>
         <p class={help}>The patient can still have it done and pay on their own.</p>

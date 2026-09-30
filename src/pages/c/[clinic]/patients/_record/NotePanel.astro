@@ -1,18 +1,19 @@
 ---
-// New clinical note and Add an addendum: the Notes section's side panel, rendered outside the record's sections so
-// the chart's palette can open it over the Chart section (a <dialog> in a hidden section is not drawn). Its other
-// openers (New note, Add an addendum, the More menu, the This visit strip) bring Notes forward behind it.
+// New clinical note and Add an addendum: the notes' side panel, rendered outside the record's tabs so the chart's
+// palette, Add ▾, Today and each note's Add an addendum open it over the tab in view (a <dialog> in a hidden tab is
+// not drawn); it posts back=<that tab>, so the save lands there.
 //
 // The teeth are a ToothPick of checkboxes (tick every tooth the note is about; the typed box adds more). A new note
 // opens with the teeth of today's treatments ticked (the This visit strip's visit, and today's with no visit named:
 // defaultTeeth); an addendum with none; from a tooth, with only that tooth, and then it posts back=chart so the
-// save lands on the chart. Every other opener clears that. A refused post keeps what was ticked.
+// save lands on the chart. A refused post keeps what was ticked.
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
 import Icon from '../../../../../components/ws/Icon.astro';
 import Csrf from '../../../../../components/Csrf.astro';
 import Callout from '../_ui/Callout.astro';
 import ToothPick from '../_ui/ToothPick.astro';
 import type { Clinical, RecordProblem } from '../../../../../lib/record';
+import { backOf } from './sections';
 
 /** visitId: today's visit (036) — a new note is written against it. openNow: the page opens the panel as it loads
  *  (?open=note). defaultTeeth: the teeth of today's treatments. */
@@ -22,7 +23,7 @@ const { c, canEdit, action, meId, problem, today, firstName, visitId = null, ope
 const meClinician = c.clinicians.some((x) => x.id === meId);
 const refused = problem?.intent === 'note-add';
 const v = refused ? problem!.values : ({} as Record<string, string>);
-const back = v.back === 'chart' ? 'chart' : '';
+const back = backOf(v.back) ?? '';
 ---
 
 {canEdit && (
@@ -57,7 +58,7 @@ const back = v.back === 'chart' ? 'chart' : '';
 
 <script>
   import { setTeeth, readTeeth } from '../_ui/toothpick';
-  import { aimForm, focusBack } from './pickpanel';
+  import { aimForm, currentTab, focusBack } from './pickpanel';
 
   // One panel for a new note and an addendum: the button that opened it says which.
   const panel = document.getElementById('rec-note-add');
@@ -68,7 +69,8 @@ const back = v.back === 'chart' ? 'chart' : '';
   panel?.addEventListener('ws:panel-open', (e) => {
     const { opener, auto } = ((e as CustomEvent).detail ?? {}) as { opener?: HTMLElement | null; auto?: boolean };
     if (auto) {
-      // A refused post (or ?open=note): the form holds what was posted, or today's teeth.
+      // A refused post (or ?open=note): the form holds what was posted (its back too), or today's teeth, over Today.
+      if (back && !back.value) back.value = currentTab();
       if (back?.value === 'chart' && tp) panel.dataset.pickFdi = pickTooth?.value || String(readTeeth(tp)[0] ?? '');
       if (form && back) aimForm(form, back.value, 'notes');
       return;
@@ -89,7 +91,7 @@ const back = v.back === 'chart' ? 'chart' : '';
     const pickFdi = opener?.dataset.pickFdi;
     if (opener?.dataset.amends) {
       setTeeth(tp, []);
-      back.value = '';
+      back.value = currentTab();
       delete panel.dataset.pickFdi;
     } else if (pickFdi) {
       setTeeth(tp, [Number(pickFdi)]);
@@ -97,7 +99,7 @@ const back = v.back === 'chart' ? 'chart' : '';
       panel.dataset.pickFdi = pickFdi;
     } else {
       setTeeth(tp, (form.dataset.noteDefaultTeeth ?? '').split(' ').filter(Boolean).map(Number));
-      back.value = '';
+      back.value = currentTab();
       delete panel.dataset.pickFdi;
     }
     if (pickTooth) pickTooth.value = back.value === 'chart' ? pickFdi ?? '' : '';

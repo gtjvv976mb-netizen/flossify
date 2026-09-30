@@ -1,12 +1,11 @@
 ---
-// Add to plan and Record a treatment: the two side panels of Treatment, rendered outside the record's sections
-// (as VisitPanels is) so the chart's palette can open them over the Chart section — a <dialog> inside a section
-// with the `hidden` attribute is not drawn. Their openers elsewhere (Treatment's buttons, the More menu, the This
-// visit strip) still bring Treatment forward behind them (data-rec-show).
+// Add to plan and Record a treatment: the two side panels of the plan, rendered outside the record's tabs (as
+// VisitPanels is) so the chart's palette, Add ▾ and Today can open them over the tab in view — a <dialog> inside a
+// tab with the `hidden` attribute is not drawn. Each posts back=<that tab>, so a save lands there.
 //
 // The tooth is a ToothPick (FDI tiles, baby teeth, the typed box, the surface toggles); the server reads it with
 // pickedTooth() in src/lib/record.ts. Opened from a tooth (the palette's data-pick-open buttons), the panel starts
-// on that tooth and posts back=chart, so the save lands on the chart; any other opener clears that. The surfaces
+// on that tooth and posts back=chart, so the save lands on the chart; any other opener starts clean. The surfaces
 // the palette had ticked are only a suggestion, ticked while the fee-guide item works on surfaces (a filling or a
 // sealant: data-fee-surfaces, from the item's chart effect) and not once the person has touched the toggles.
 //
@@ -29,6 +28,7 @@ import Callout from '../_ui/Callout.astro';
 import ToothPick from '../_ui/ToothPick.astro';
 import type { Clinical, RecordProblem } from '../../../../../lib/record';
 import type { Loa } from '../../../../../lib/record-extra';
+import { backOf } from './sections';
 
 /** visitId: today's visit (036) — a treatment recorded or marked done is written against it. openNow: the page opens
  *  Record a treatment as it loads (?open=done). */
@@ -51,8 +51,9 @@ const loaAsk = (loaId: string | null) => {
   const a = loaOf(loaId);
   return a && (a.status === 'requested' || a.expired) ? `${a.payor} has not approved this yet (no valid LOA). Mark it done anyway? The HMO may not pay for it.` : undefined;
 };
-// A Mark done from the panel that was refused, from the chart: the panel comes back open on that item's tooth.
-const planRefused = problem?.intent === 'plan-status' && problem.values.back === 'chart' ? problem : null;
+// A Mark done from the panel that was refused (the panel's forms post a back; the plan's own rows do not): the panel
+// comes back open on that item's tooth, over the tab it was opened over.
+const planRefused = problem?.intent === 'plan-status' && backOf(problem.values.back) ? problem : null;
 const refusedFdi = planRefused ? c.plan.find((i) => i.id === planRefused.values.item)?.fdi ?? null : null;
 const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
 ---
@@ -63,7 +64,7 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
       {problem?.intent === 'plan-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was added.`} />}
       <form method="post" action={`${action}#${pv.back === 'chart' ? 'chart' : 'treatment'}`} class="grid gap-4" data-fee-form data-pick-form data-pick-home="treatment">
         <Csrf /><input type="hidden" name="intent" value="plan-add" />
-        <input type="hidden" name="back" value={pv.back === 'chart' ? 'chart' : ''} data-pick-back />
+        <input type="hidden" name="back" value={backOf(pv.back) ?? ''} data-pick-back />
         <input type="hidden" name="pick" value={pv.back === 'chart' ? pv.pick ?? '' : ''} data-pick-tooth />
         <label class="field"><span class="meta">From your fee guide</span>
           <select name="catalog_id" data-fee-pick>
@@ -111,7 +112,7 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
       <form method="post" action={`${action}#${dv.back === 'chart' ? 'chart' : 'treatment-done'}`} class="grid gap-4" data-fee-form data-pick-form data-pick-home="treatment-done">
         <Csrf /><input type="hidden" name="intent" value="done-add" />
         {visitId && <input type="hidden" name="visit" value={visitId} />}
-        <input type="hidden" name="back" value={dv.back === 'chart' || planRefused ? 'chart' : ''} data-pick-back />
+        <input type="hidden" name="back" value={backOf(planRefused ? planRefused.values.back : dv.back) ?? ''} data-pick-back />
         <input type="hidden" name="pick" value={planRefused ? String(refusedFdi ?? '') : dv.back === 'chart' ? dv.pick ?? '' : ''} data-pick-tooth />
         <label class="field"><span class="meta">From your fee guide</span>
           <select name="catalog_id" data-fee-pick>
@@ -149,7 +150,7 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
 
 <script>
   import { readTeeth, readSurfaces, setTeeth, setSurfaces } from '../_ui/toothpick';
-  import { aimForm, focusBack } from './pickpanel';
+  import { aimForm, currentTab, focusBack } from './pickpanel';
   import { chartOffer, markKey, offerWords, type LiveMark } from '../../../../../lib/chart-offer';
   import type { Surface, ToothCondition } from '../../../../../data/demo';
 
@@ -254,7 +255,8 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
     dialog.addEventListener('ws:panel-open', (e) => {
       const { opener, auto } = (e as CustomEvent).detail ?? {};
       if (auto) {
-        // A refused post: the form already holds what was posted.
+        // A refused post: the form already holds what was posted (its back too). Opened by ?open=done: over Today.
+        if (!back.value) back.value = currentTab();
         const served = plan?.dataset.pickServedFdi;
         const t = served || pickTooth?.value || String(readTeeth(tp)[0] ?? '');
         if (t) dialog.dataset.pickFdi = t;
@@ -273,11 +275,11 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
         back.value = 'chart';
         if (pickTooth) pickTooth.value = from.dataset.pickFdi!;
       } else {
-        // After a pick: start clean, and keep anything else typed. Only the palette sends a panel back to the chart.
+        // After a pick: start clean, and keep anything else typed. The save comes back to the tab in view.
         if ('pickFdi' in dialog.dataset) { setTeeth(tp, []); setSurfaces(tp, ''); }
         delete dialog.dataset.pickFdi;
         delete dialog.dataset.pickSurfaces;
-        back.value = '';
+        back.value = currentTab();
         if (pickTooth) pickTooth.value = '';
       }
       aimForm(form, back.value, home);

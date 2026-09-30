@@ -121,8 +121,8 @@
   .pt-tiles .ws-tile-link { padding-right: 2.25rem; }
   .pt-tiles .ws-tile-icon { display: none; }
 }
-/* A section reached by its address (#health, #money) lands under the sticky top, not behind it. */
-[data-rec-panel], [data-rec-panel] .ws-pane, [data-chart-offer] { scroll-margin-top: 5.5rem; }
+/* A card reached by its address (#health, #money) lands under the sticky top and the record's tab row: record.css
+   (.rec-body [id]). */
 .rec-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 @media (max-width: 767px) {
   .rec-actions { width: 100%; }

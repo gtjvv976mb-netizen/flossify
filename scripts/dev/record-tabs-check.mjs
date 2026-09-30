@@ -26,8 +26,9 @@
 //     data-rec-panel); every `saved` and `section` record.ts and record-extra.ts give an Outcome (so every call of
 //     done()); every section the page's `backTo` can hold;
 //   - landingSection() over every combination of a post's section (every value `backTo` can take, read from the page),
-//     back=chart, a saved word, a panel to open and a ?visit= (today's, another day's on the Treatment record, another
-//     day's that is not, none);
+//     ?treated=, every ?back= backOf() gives (the tab a panel was opened over), a saved word, a panel to open and a
+//     ?visit= (today's, another day's on the Treatment record, another day's that is not, none); and that ?treated=
+//     lands on Chart & plan and a back on its own tab, whatever was saved;
 //   - the inbound names the spec lists (§5), each on the tab §5 puts it on; and every §5 link another page writes,
 //     pinned to its file (SPEC_SITES): a link the check stops reading there fails instead of going quiet.
 // It is closed to what it cannot read: in the record's own files (the page, _record/, _ui/, and a component the page
@@ -519,6 +520,8 @@ const COVERED = [
   [/^outcome\.section$/, 'an intent\'s section: every `section` an Outcome is given in record.ts / record-extra.ts, read below'],
   [/^(?:encodeURIComponent\()?outcome\.saved\)?$/, 'a clinical save\'s word: every `saved` an Outcome is given in record.ts / record-extra.ts, read below'],
   [/^backOf\(/, 'backOf(), checked above'],
+  [/^tabOf\(/, 'tabOf(), TAB_OF checked above'],
+  [/^currentTab\(\)$/, 'currentTab() (_record/pickpanel.ts): the tab shown now, read from the chosen tab\'s own id (rec-rec-<tab>-tab, one of TABS)'],
   [/^recordSaved\(/, 'recordSaved(), SAVED_WORD checked above'],
 ];
 // Expressions that cannot be followed, and why each is safe. One that matches nothing any more fails, so the list
@@ -526,7 +529,6 @@ const COVERED = [
 const ALLOWED = [
   { file: PAGE, text: 'decodeURIComponent(location.hash.slice(1))', why: 'fromHash writes the address\'s own #hash back (#timeline as #treatment-record); every hash that links in is checked here' },
   { file: PAGE, text: 'String((e as CustomEvent).detail?.id ?? \'\').replace(/^rec-/, \'\')', why: 'the tab just chosen, written into the address: a tab\'s own id' },
-  { file: PAGE, text: 'id.replace(/^rec-/, \'\')', why: 'fromHash shows the tab the address\'s own #hash names (less rec-) when no section holds its element; every hash that links in is checked here' },
   { file: PAGE, text: '[postedVisit ? `visit=${postedVisit}` : \'\', qs].filter(Boolean).join(\'&\')', why: 'the query of a post\'s redirect (to()): visit= and to()\'s first argument, whose saved= words are read where the page writes them (in the record\'s own files every saved= and open= is the record\'s)' },
   { file: PAGE, text: 'u.toString()', why: 'leaveOffer(): the page\'s own query less treated, chartskip and saved' },
 ];
@@ -1074,7 +1076,7 @@ const SPEC_SITES = [
   ['#letters (letters/[letter].astro:25)', `${RP}/letters/[letter].astro`, 'hash', ['letters']],
   ['#files (files/[file]/view.astro)', `${RP}/files/[file]/view.astro`, 'hash', ['files']],
   ['#treatment (finances/close:338), #money (:370)', 'src/pages/c/[clinic]/finances/close/index.astro', 'hash', ['treatment', 'money']],
-  ['#visits (import.astro:572)', `${REC}/import.astro`, 'hash', ['visits']],
+  ['#treatment-record (import.astro:572, was #visits: the imported past visits are on the ledger)', `${REC}/import.astro`, 'hash', ['treatment-record']],
   ['the intake\'s #consent (consents/index.astro)', `${RP}/consents/index.astro`, 'hash', ['consent']],
   ['?saved=capacity (consents/index.astro:35)', `${RP}/consents/index.astro`, 'saved', ['capacity']],
   ['the intake\'s #consent ([document].astro:100, 170)', `${RP}/consents/[document].astro`, 'hash', ['consent']],
@@ -1105,15 +1107,19 @@ const opens = [null, ...Object.keys(OPEN_PANEL)];
 const visits = [null, 'today', 'ledger', 'other'];
 let combos = 0;
 const lost = new Map(); // a section landingSection gave that is no tab → [how often, the first combination]
-for (const backTo of [null, ...sections]) for (const fromChart of [false, true]) for (const saved of savedWords) for (const openNow of opens) for (const visit of visits) {
+for (const backTo of [null, ...sections]) for (const treated of [false, true]) for (const back of [null, ...new Set(BACKS)]) for (const saved of savedWords) for (const openNow of opens) for (const visit of visits) {
   combos++;
-  const s = landingSection({ backTo, fromChart, saved, openNow, visit });
+  const s = landingSection({ backTo, treated, back, saved, openNow, visit });
   const t = tabOf(s);
-  if (!t || !TAB_IDS.includes(t)) { const x = lost.get(s) ?? [0, { backTo, fromChart, saved, openNow, visit }]; x[0]++; lost.set(s, x); }
+  if (!t || !TAB_IDS.includes(t)) { const x = lost.get(s) ?? [0, { backTo, treated, back, saved, openNow, visit }]; x[0]++; lost.set(s, x); }
 }
 for (const [s, [n, first]] of lost) fail(`landingSection gave a section that is no tab, in ${n} of the combinations, first`, first, s);
 // ?visit= by itself (today, another day's on the Treatment record, a future or cancelled one that is not, an unknown id).
-for (const visit of visits) resolves(`?visit= (${visit ?? 'none or unknown'})`, landingSection({ backTo: null, fromChart: false, saved: null, openNow: null, visit }));
+for (const visit of visits) resolves(`?visit= (${visit ?? 'none or unknown'})`, landingSection({ backTo: null, treated: false, back: null, saved: null, openNow: null, visit }));
+// The chart's offer is drawn on Chart & plan only: ?treated= lands there whatever else the address says (a post's own
+// refusal aside); and a panel's back lands on its tab whatever was saved.
+for (const back of [null, ...new Set(BACKS)]) for (const saved of savedWords) { checked++; const t = tabOf(landingSection({ backTo: null, treated: true, back, saved, openNow: null, visit: null })); if (t !== 'chart') fail('?treated= with back and saved', { back, saved }, t); }
+for (const back of new Set(BACKS)) for (const saved of savedWords) { checked++; const t = tabOf(landingSection({ backTo: null, treated: false, back, saved, openNow: null, visit: 'today' })); if (t !== back) fail(`back=${back} with a saved word`, saved, t); }
 
 // --- the report -----------------------------------------------------------------------------------------------
 const list = (m) => [...m.keys()].sort().join(' ');
