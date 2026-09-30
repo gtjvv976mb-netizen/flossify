@@ -166,7 +166,13 @@
 .rec-tab { position: relative; }
 /* A tab's own anchor (#overview, #patient, #chart, #treatment-record): its top, under the row. */
 .rec-anchor { position: absolute; top: 0; left: 0; width: 1px; height: 1px; pointer-events: none; }
-.rec-body [id] { scroll-margin-top: calc(var(--rec-stick, 8.5rem) + 0.75rem); }
+/* While the record is open, whatever the page scrolls to lands under the stuck row, never beneath it: a focused control
+   (Tab and Shift+Tab, focus given back as a panel closes), a #card, scrollIntoView. The padding is where the row ends
+   plus a gap of 1rem, which also clears a date field's box when only its day or month is scrolled to; the same gap at
+   the foot clears a text box's own padding when Tab brings only its caret into view. A card's own scroll margin, kept
+   for its other pages (DeskConsent's scroll-mt-24), would add to it here: none inside the record. */
+html:has([data-rec-bar]) { scroll-padding-top: calc(var(--rec-stick, 8.5rem) + 1rem); scroll-padding-bottom: 1rem; }
+.rec-body [id] { scroll-margin-top: 0; }
 .rec-bar {
   position: sticky; top: var(--rec-top, 4.5rem); z-index: 30; display: flex; align-items: center; gap: 0.5rem; min-width: 0;
   padding: 0.375rem; border: 1px solid var(--ws-hair); border-radius: 16px; background: var(--c-surface); box-shadow: var(--ws-shadow);
@@ -208,7 +214,7 @@
 }
 @media (max-width: 767px) {
   .rec-body { gap: 0.75rem; }
-  .rec-body [id] { scroll-margin-top: calc(var(--rec-stick, 7.5rem) + 0.5rem); }
+  html:has([data-rec-bar]) { scroll-padding-top: calc(var(--rec-stick, 7.5rem) + 1rem); }
   .rec-bar { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 1fr); gap: 0; padding: 0.25rem; border-radius: 14px; }
   .rec-bar:not(:has(.rec-add:not([hidden]))) { grid-template-columns: minmax(0, 1fr); }
   .rec-nav-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }

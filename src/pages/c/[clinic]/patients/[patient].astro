@@ -159,8 +159,8 @@ import { signedText } from './_forms/words';
 import { can } from '../../../../lib/can';
 import { mayManage } from '../../../../lib/roles';
 import type { PtrFix } from '../../../../lib/ptr';
-import { loadClinical, loadChartChanges, recordAction, RECORD_INTENTS, RX_ROWS, type Outcome, type RecordProblem, type RxItem } from '../../../../lib/record';
-import { loadExtra, extraAction, bpWords, EXTRA_INTENTS, EXTRA_ANCHOR } from '../../../../lib/record-extra';
+import { loadClinical, loadChartChanges, recordAction, RECORD_INTENTS, RX_ROWS, SECTION_OF as RECORD_SECTION, type Outcome, type RecordProblem, type RxItem } from '../../../../lib/record';
+import { loadExtra, extraAction, bpWords, EXTRA_INTENTS, EXTRA_ANCHOR, SECTION_OF as EXTRA_SECTION } from '../../../../lib/record-extra';
 import { loadVisitConsents } from '../../../../lib/visit-consent';
 import { Refused } from '../../../../lib/refused';
 import { loadConsentDocuments, mayAttest, capacityNote } from '../../../../lib/consent-docs';
@@ -321,8 +321,9 @@ if (Astro.request.method === 'POST') {
     // A panel's form posts back=<the tab it was opened over> (the chart's palette: back=chart): saved or refused, it
     // comes back to that tab. A card's own buttons post no back and come back to their card.
     const postedBack = backOf(form.get('back'));
+    // Refused by the rate limit before anything was read: the intent's own section, as its refusal would have said.
     const outcome = slow
-      ? ({ ok: false, section: 'overview', problem: slow, values: {} } as Extract<Outcome, { ok: false }>)
+      ? ({ ok: false, section: RECORD_SECTION[intent] ?? EXTRA_SECTION[intent] ?? 'overview', problem: slow, values: {} } as Extract<Outcome, { ok: false }>)
       : await withClinic(clinic.id, async (tx) => {
           const o = EXTRA_INTENTS.has(intent)
             ? await extraAction(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, canBill: money, hmoNames: HMO_NAMES }, intent, form)
@@ -342,7 +343,7 @@ if (Astro.request.method === 'POST') {
     }
     // Refused (the rate limit too): a panel's post comes back over the tab it was opened on, with the panel open
     // again; a card's own button (its sentence is drawn in the card) comes back to the card's section.
-    backTo = (INLINE_REFUSAL.has(intent) || (intent === 'plan-status' && !postedBack) ? null : postedBack) ?? (slow ? null : outcome.section);
+    backTo = (INLINE_REFUSAL.has(intent) || (intent === 'plan-status' && !postedBack) ? null : postedBack) ?? outcome.section;
     recordProblem = { intent, text: outcome.problem, values: outcome.values };
     if (intent === 'rx-add') {
       const col = (k: string) => form.getAll(k).map((x) => String(x));
