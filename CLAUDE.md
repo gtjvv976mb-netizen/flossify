@@ -1264,9 +1264,10 @@ consent forms the procedure needs; page 1 patient information, then the consent 
 made. The design is the intake spec (session scratchpad `intake-spec.md`, with the owner's four answers at its
 end: procedure forms are signed only after the named dentist records "I explained this"; the profile is made
 at Send unless the patient looks like one already on file; a fresh signature on every form with initials on
-the risks; the six scheduling features first). **Phase 1 is invisible**: the library, the data and the shared
-add path. The desk's steps, clinic tablets, the patient's pages (`/f/i/<token>/`, `/f/t/`), park/unlock and
-the record's Consent forms pane are phase 2; the phone path phase 3; the record integration phase 4.
+the risks; the six scheduling features first). **Phase 1** is the library, the data and the shared add path;
+**phase 2** (shipped, fixes in 043) the desk's steps, clinic tablets, the patient's pages (`/f/i/<token>/`,
+`/f/t/`), park/unlock and the record's Consent forms pane; the phone path is phase 3, the record integration
+phase 4.
 
 - **The consent library is data** (`src/lib/consent-library.ts`, no Node imports): ten forms
   (`anaesthesia-2026-10` … `photos-2026-10`, `consent_version` kind `document`, in force from 1 Oct 2026) and
@@ -1311,6 +1312,25 @@ the record's Consent forms pane are phase 2; the phone path phase 3; the record 
   refuses a non-local database). **Deploy:** 039 applies before 040 when shipped together; a database that
   already has 040–042 takes it with `npm run db:migrate -- --allow-late`, run by hand once — never in
   `render.yaml` or the Procfile.
+- **Phase 2 (039, fixes in 043).** The desk ticks the consent forms, fills the clinic's part, and the named
+  dentist records "Explain and confirm" (what the patient said is asked of a patient 7 to 17, and while the age
+  is not known unless the desk said 18 or over). The forms then go to a clinic tablet or to the desk's own
+  device ("Hand this device to <name>", `/auth/park/`: the desk is signed out, `fl_idev` is one per browser
+  under `/f/i/`). The patient's pages `/f/i/<token>/` run page 1, then each form, with a quiet Back, "Ask the
+  desk" that keeps what was typed, "Decide later" (the photos too), then Check and send. A clinic device pings
+  every 12 s and leaves when the desk stops, moves or replaces the link; its closed pages say "Please hand the
+  device back to the desk" (`intake_device()`), and the desk's device offers "For the clinic". Unlocking
+  (`/auth/unlock/`) or the next hand-over stops the desk device's link (`endHandover`). A clinic tablet is made
+  at `/auth/tablet/` (a session change for `sw.js`) and never holds a staff session: `/f/t/`, its poll and
+  `/f/i/` end one and log `tablet.signout`. Every standalone workspace page and a record's file view
+  (`files/<id>/view/`) carry `ParkedGuard` and leave when the device is handed over. On the record, a form in
+  forms being filled in cannot be printed or recorded on paper; throwing the forms away or unticking a form
+  puts a record form back as it was. `?paper=1` opens only as "Print for signing on paper" allows, and prints
+  the initials boxes and the patient's questions that "Record a paper signing" asks. Adding forms to a patient
+  on file re-checks who signed against the record's birth date. Dates on consent pages are Manila days. 043
+  applies after 039–042 and only resets a version's fingerprint where no consent form uses that version yet.
+  Stop (not throw away) leaves a record form tied to the paused intake until it is taken out, thrown away or
+  purged; the record links to the open forms and says how to get it back.
 
 ## Open — read before shipping
 
@@ -1462,6 +1482,9 @@ src/data/schema.sql            full multi-tenant Postgres model with RLS
 src/data/lqip.json             blur placeholders, keyed by image name
 src/data/shot-size.json        real screenshot dimensions (generated)
 src/data/migrations/039        the patient intake and the consent library: intakes, links, tablets, consent forms, signings, attestations, the chain
+src/data/migrations/043        the intake's review fixes (phase 2)
+src/pages/f/i/, f/t/, auth/park.ts, auth/unlock.astro, auth/tablet.ts  the patient's intake pages, the clinic tablet, handing a device over
+src/lib/intake.ts, intake-public.ts, consent-docs.ts, park.ts  the desk's intake, its public side, consent documents, hand-over
 src/lib/consent-library.ts, consent-seal.ts  the consent forms as data and the one renderer; canonical JSON, snapshot, seal, chain (npm run consent:hash)
 src/lib/intake-def.ts, patient-add.ts, refused.ts  the intake's page 1; adding a patient's own answers (forms and intakes); the one Refused class
 scripts/dev/intake/db-test.mjs the intake database checks; scripts/ts-register.mjs runs a script that imports src/lib
