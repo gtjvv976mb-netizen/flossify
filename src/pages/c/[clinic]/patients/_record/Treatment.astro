@@ -5,7 +5,9 @@
 // button is one post (recordAction in src/lib/record.ts), and a refused post comes back with its sentence.
 // Add to plan and Record a treatment are TreatmentPanels.astro, outside the record's sections, so the chart's
 // palette can open them too; the lab case panel is here (part="panels"), drawn outside the tabs as well. On Chart &
-// plan, under the chart and the chart's offer (ChartOffer.astro); what a save says is the page's saved line.
+// plan, under the chart and the chart's offer (ChartOffer.astro). What a save says is the page's saved line: a row's
+// own button lands on its card (#treatment, #treatment-done, #treatment-lab), so the page puts the line in the `saved`
+// slot and names the card (savedAt); a refused row button's sentence is drawn in the same place, in its own card.
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
@@ -19,9 +21,9 @@ import { dateText } from '../../../../../lib/health';
 import type { Loa } from '../../../../../lib/record-extra';
 
 /** part: the plan, work done and lab cases (in their tab) or the lab case panel (outside the tabs). visitId: today's
- *  visit (036) — a plan item marked done is written against it. */
-interface Props { part: 'body' | 'panels'; c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; today: string; firstName: string; visitId?: string | null }
-const { part, c, loas = [], canEdit, action, meId, problem, today, firstName, visitId = null } = Astro.props;
+ *  visit (036) — a plan item marked done is written against it. savedAt: the card the `saved` slot goes in. */
+interface Props { part: 'body' | 'panels'; c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; today: string; firstName: string; visitId?: string | null; savedAt?: string | null }
+const { part, c, loas = [], canEdit, action, meId, problem, today, firstName, visitId = null, savedAt = null } = Astro.props;
 
 const peso = (n: number | string) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 const tooth = (fdi: number | null, surface: string | null) => (fdi ? `${fdi}${surface ? ` ${surface}` : ''}` : null);
@@ -37,6 +39,7 @@ const toDo = sum(open), accepted = sum(open.filter((i) => i.status === 'accepted
 const labsOpen = c.labs.filter((l) => l.status !== 'fitted');
 
 const inline = problem && ['plan-status', 'plan-remove', 'lab-next'].includes(problem.intent) ? problem.text : null;
+const inlineLab = problem?.intent === 'lab-next';
 const v = (intent: string) => (problem?.intent === intent ? problem.values : {} as Record<string, string>);
 const lv = v('lab-add');
 const help = 'text-[13px] leading-snug text-ink-2';
@@ -44,10 +47,10 @@ const help = 'text-[13px] leading-snug text-ink-2';
 
 {part === 'body' && (
 <div class="grid gap-4 max-md:gap-3">
-  {inline && <Callout tone="alert" text={inline} />}
-
   <Pane as="section" label="Treatment plan" id="treatment">
     <Head icon="plan" title="Treatment plan" meta={open.length ? `${open.length} to do` : 'Nothing to do'} />
+    {savedAt === 'treatment' && <slot name="saved" />}
+    {inline && !inlineLab && <Callout tone="alert" class="mb-4" text={inline} />}
     <div class="rec-lead -mt-2 mb-4">
       <p>What the dentist proposes for {firstName}, in the order to do it. Mark each one when the patient agrees, and when it is done.</p>
       {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-plan-add"><Icon name="plus" />Add to plan</button>}
@@ -135,6 +138,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
 
   <Pane as="section" label="Treatments done" id="treatment-done">
     <Head icon="tooth" title="Treatments done" meta={c.done.length ? `${c.done.length} on record` : undefined} />
+    {savedAt === 'treatment-done' && <slot name="saved" />}
     <div class="rec-lead -mt-2 mb-4">
       <p>What was done, by whom, on which tooth. Items marked done on the plan land here too.</p>
       {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-done-add"><Icon name="plus" />Record a treatment</button>}
@@ -162,6 +166,8 @@ const help = 'text-[13px] leading-snug text-ink-2';
 
   <Pane as="section" label="Lab cases" id="treatment-lab">
     <Head icon="lab" title="Lab cases" meta={labsOpen.length ? `${labsOpen.length} open` : undefined} />
+    {savedAt === 'treatment-lab' && <slot name="saved" />}
+    {inline && inlineLab && <Callout tone="alert" class="mb-4" text={inline} />}
     <div class="rec-lead -mt-2 mb-4">
       <p>Crowns, dentures, retainers and other work made by a lab: where each one is, and when it is due back.</p>
       {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-lab-add"><Icon name="plus" />New lab case</button>}

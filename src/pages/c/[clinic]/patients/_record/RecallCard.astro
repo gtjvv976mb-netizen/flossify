@@ -2,7 +2,8 @@
 // The next check-up, on the Overview: when this patient should come back and why. One tap sets it in 3, 6 or
 // 12 months; "Pick a day" for anything else. When it is due the card says so in amber, and overdue in red,
 // with words as well as colour. "Came in" closes it (then set the next); "Clear" takes it away. Its panel
-// (part="panels") is drawn outside the tabs; what a save says is the page's saved line (./SavedLine.astro).
+// (part="panels") is drawn outside the tabs. What a save says is the page's saved line (./SavedLine.astro): a card
+// button lands here (#recall), so the page puts the line in the `saved` slot, under the title.
 import Pane from '../../../../../components/ws/Pane.astro';
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
 import Icon from '../../../../../components/ws/Icon.astro';
@@ -31,6 +32,7 @@ const quick = (months: number, label: string) => ({ months, label });
 {part === 'body' && (
 <Pane as="section" label="Next check-up" id="recall">
   <Head icon="recall" title="Next check-up" />
+  <slot name="saved" />
   {inline && <Callout tone="alert" class="mb-3" text={inline} />}
   {recall ? (
     <>

@@ -55,6 +55,8 @@ const link = 'inline-flex min-h-[44px] items-center px-1 font-semibold underline
 ---
 
 <div id="chart-offer" class="grid gap-3" data-chart-offer>
+  {/* The saved line ("Treatment recorded."), when the address lands here (?treated=, #chart-offer). */}
+  <slot />
   {kind === 'problem' ? (
     <Callout tone="alert" text={problem!.text} />
   ) : (

@@ -7,7 +7,9 @@
 //
 // What it reads:
 //   - the maps themselves: ANCHOR, EXTRA_ANCHOR, both SECTION_OF (record.ts, record-extra.ts), SAVED_TO, SAVED_WORD,
-//     OPEN_PANEL, the old sections (SECTION_META), every `back` a form may carry (backOf);
+//     SAVED_CARD (the card a save without a back lands on, and where its saved line is drawn: on the tab that save's
+//     word lands on, and the same card as the anchor the redirect named before it), OPEN_PANEL, the old sections
+//     (SECTION_META), every `back` a form may carry (backOf);
 //   - the source, through a small lexer (below). An address of the record is known by its shape: /patients/${id}/, a
 //     patients-list base and an id, a variable or a helper that holds or returns one (patientHref(id)), a parameter one
 //     is passed to (withHash(record, h): `u` inside it), `action` in the record's components. What is written after
@@ -48,7 +50,7 @@ const PAGE = `${REC}/[patient].astro`;
 const S = await import(pathToFileURL(join(ROOT, REC, '_record/sections.ts')).href);
 const R = await import(pathToFileURL(join(ROOT, 'src/lib/record.ts')).href);
 const X = await import(pathToFileURL(join(ROOT, 'src/lib/record-extra.ts')).href);
-const { TABS, TAB_OF, tabOf, SECTION_META, ANCHOR, SAVED_TO, SAVED_WORD, recordSaved, OPEN_PANEL, backOf, landingSection } = S;
+const { TABS, TAB_OF, tabOf, SECTION_META, ANCHOR, SAVED_TO, SAVED_WORD, SAVED_CARD, savedCard, recordSaved, OPEN_PANEL, backOf, landingSection } = S;
 
 const TAB_IDS = ['overview', 'patient', 'chart', 'treatment-record'];
 const fails = [];
@@ -76,11 +78,17 @@ for (const [k, v] of Object.entries(R.SECTION_OF)) resolves(`record.ts SECTION_O
 for (const [k, v] of Object.entries(X.SECTION_OF)) resolves(`record-extra.ts SECTION_OF[${k}]`, v);
 for (const [k, v] of Object.entries(SAVED_TO)) resolves(`SAVED_TO[${k}]`, v);
 for (const [k, v] of Object.entries(SAVED_WORD)) resolves(`SAVED_WORD[${k}]`, v);
+for (const [k, v] of Object.entries(SAVED_CARD)) {
+  hashResolves(`SAVED_CARD[${k}]`, v);
+  // The card is on the tab the page shows for that word (SAVED_WORD), so the saved line drawn in it is on screen.
+  checked++; if (!Object.hasOwn(SAVED_WORD, k) || tabOf(v) !== tabOf(SAVED_WORD[k])) fail(`SAVED_CARD[${k}]: on the tab its word lands on (SAVED_WORD)`, v, SAVED_WORD[k]);
+}
 for (const [k, v] of Object.entries(OPEN_PANEL)) resolves(`OPEN_PANEL[${k}]`, v);
 for (const i of [...R.RECORD_INTENTS, ...X.EXTRA_INTENTS]) {
   const section = R.SECTION_OF[i] ?? X.SECTION_OF[i];
   if (!section) fail('an intent with no section', i);
-  // Where a saved post goes when the page's redirect names no literal hash: ANCHOR / EXTRA_ANCHOR, else the section.
+  // Where a saved post goes when the page's redirect names no literal hash: its card (savedCard of its word), else
+  // ANCHOR / EXTRA_ANCHOR, else the section.
   hashResolves(`the redirect of ${i}`, ANCHOR[i] ?? X.EXTRA_ANCHOR[i] ?? section);
 }
 const BACKS = [];
@@ -523,6 +531,7 @@ const COVERED = [
   [/^tabOf\(/, 'tabOf(), TAB_OF checked above'],
   [/^currentTab\(\)$/, 'currentTab() (_record/pickpanel.ts): the tab shown now, read from the chosen tab\'s own id (rec-rec-<tab>-tab, one of TABS)'],
   [/^recordSaved\(/, 'recordSaved(), SAVED_WORD checked above'],
+  [/^savedCard\(/, 'savedCard(), SAVED_CARD checked above (and every saved word against it, below)'],
 ];
 // Expressions that cannot be followed, and why each is safe. One that matches nothing any more fails, so the list
 // stays true. file: repo path; text: the expression exactly as written.
@@ -1032,6 +1041,17 @@ for (const [w, at] of found.saved) {
   const s = Object.hasOwn(SAVED_TO, w) ? SAVED_TO[w] : recordSaved(w);
   if (s === null) { if (!DEFAULT_OK.has(w)) fail(`?saved=${w} (${at[0]}) has no section in SAVED_TO or SAVED_WORD`, w); }
   else resolves(`?saved=${w} (${at[0]})`, s);
+}
+// A clinical save that carries no back lands on its card (savedCard; the page draws its saved line there): every such
+// word has one, and it is a card some intent's redirect named before (its anchor or its section). Only `charted` has
+// none: the chart's offer always lands on ?treated=, #chart-offer.
+const ANCHORS = new Set([...R.RECORD_INTENTS, ...X.EXTRA_INTENTS].map((i) => ANCHOR[i] ?? X.EXTRA_ANCHOR[i] ?? R.SECTION_OF[i] ?? X.SECTION_OF[i]));
+for (const [w, at] of found.saved) {
+  if (recordSaved(w) === null || w === 'charted') continue;
+  checked++;
+  const card = savedCard(w);
+  if (!card) fail(`?saved=${w} (${at[0]}) has no card in SAVED_CARD`, w);
+  else if (!ANCHORS.has(card)) fail(`SAVED_CARD for ?saved=${w}: not an anchor or a section any intent's redirect names`, card);
 }
 for (const [h, at] of found.hash) hashResolves(`#${h} (${at.join(', ')})`, h);
 for (const [g, at] of found.go) resolves(`data-rec-go / show "${g}" (${at[0]})`, g);

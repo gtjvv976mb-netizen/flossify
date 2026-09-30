@@ -26,6 +26,7 @@ const orphans = c.notes.filter((n) => n.amends && !c.notes.some((r) => r.id === 
 <div class="grid gap-4 max-md:gap-3">
   <Pane as="section" label="Clinical notes" id="notes">
     <Head icon="pen" title="Clinical notes" meta={roots.length ? `${roots.length} ${roots.length === 1 ? 'note' : 'notes'}` : undefined} />
+    <slot name="saved" />
     <div class="rec-lead -mt-2 mb-4">
       <p>What the dentist saw and did at each visit. A saved note cannot be changed; to correct one, add an addendum.</p>
       {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-note-add" data-amends=""><Icon name="plus" />New note</button>}

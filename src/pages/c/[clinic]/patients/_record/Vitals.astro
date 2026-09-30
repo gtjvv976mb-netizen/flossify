@@ -31,6 +31,7 @@ const recent = vitals.slice(1, 6);
   <Head icon="heart" title="Blood pressure and pulse" meta={latest ? `Taken ${when(new Date(latest.at))}` : undefined}>
     {canEdit && <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-vitals-add"><Icon name="plus" />Take a reading</button>}
   </Head>
+  <slot name="saved" />
   {latest ? (
     <>
       <div class="vt-now">

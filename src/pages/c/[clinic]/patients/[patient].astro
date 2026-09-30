@@ -27,7 +27,9 @@
 // Every side panel lives outside the tabs, so it opens over whichever tab is
 // in view, and its form posts back=<that tab>: a save comes back to the tab
 // with its saved line at the top (./_record/SavedLine.astro), and a refused
-// post comes back over it with the panel open again.
+// post comes back over it with the panel open again. A card's own button (the
+// next check-up, a plan row, a lab case …) posts no back: it comes back to its
+// card, with the saved line (or the refusal) inside the card, under its title.
 //
 // Every query runs inside withClinic(), so row-level security decides whether
 // this patient exists here; a patient of another clinic (or a made-up id) is
@@ -135,7 +137,7 @@ import RecordNav from './_record/RecordNav.astro';
 import SavedLine from './_record/SavedLine.astro';
 import Who from './_record/Who.astro';
 import VisitStrip from './_record/VisitStrip.astro';
-import { ANCHOR, CARD_HUE, OPEN_PANEL, TABS, backOf, landingSection, tabOf } from './_record/sections';
+import { ANCHOR, CARD_HUE, OPEN_PANEL, TABS, backOf, landingSection, savedCard, tabOf } from './_record/sections';
 import { shellLinks } from '../../../../components/ws/routes';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
@@ -332,9 +334,10 @@ if (Astro.request.method === 'POST') {
     if (outcome.ok) {
       // A treatment the chart could show lands on its offer (treated=…, #chart-offer), which is drawn on Chart & plan;
       // a panel's save on the tab it was opened over (back=…, #<tab>, its saved line at the top); anything else on its
-      // anchor (ANCHOR in ./_record/sections.ts, EXTRA_ANCHOR), else its section.
+      // card (savedCard in ./_record/sections.ts, where the page then draws its saved line), else its anchor (ANCHOR,
+      // EXTRA_ANCHOR), else its section.
       const qs = [`saved=${encodeURIComponent(outcome.saved)}`, ...Object.entries(outcome.qs ?? {}).map(([k, v]) => `${k}=${encodeURIComponent(v)}`), postedBack ? `back=${postedBack}` : ''].filter(Boolean).join('&');
-      const hash = outcome.qs?.treated ? 'chart-offer' : postedBack ?? ANCHOR[intent] ?? EXTRA_ANCHOR[intent] ?? outcome.section;
+      const hash = outcome.qs?.treated ? 'chart-offer' : postedBack ?? savedCard(outcome.saved) ?? ANCHOR[intent] ?? EXTRA_ANCHOR[intent] ?? outcome.section;
       return Astro.redirect(to(qs, hash), 303);
     }
     // Refused (the rate limit too): a panel's post comes back over the tab it was opened on, with the panel open
@@ -649,8 +652,16 @@ const offerState = data.offerState;
 const chartSkip = q.get('chartskip') === 'changed' || q.get('chartskip') === 'ended' ? (q.get('chartskip') as 'changed' | 'ended') : null;
 const offerProblem = recordProblem?.intent === 'chart-apply' ? recordProblem : null;
 const showOffer = canEdit && (!!offerProblem || !!chartSkip || !!(offerState && (offerState.applied || calloutWorthy(offerState.offer))));
-const current = tabOf(landingSection({ backTo, treated: UUID.test(q.get('treated') ?? ''), back: backQ, saved, openNow,
+const treatedQ = UUID.test(q.get('treated') ?? '');
+const current = tabOf(landingSection({ backTo, treated: treatedQ, back: backQ, saved, openNow,
   visit: !openVisit ? null : thisVisit ? 'today' : data.ledger.openKeys.has(openVisit) ? 'ledger' : 'other' })) ?? 'overview';
+// Where the saved line is drawn: where the address lands (./_record/SavedLine.astro), so it is on screen after the save.
+// A treatment the chart could show (?treated=, #chart-offer): at the top of the chart's offer. A card's own button, which
+// posts no back (#recall, #treatment …): inside that card, under its title (savedCard). A panel's save (?back=, #<tab>),
+// an offer no longer drawn (the address's #chart-offer then shows the tab from its top), or a card that is not on the
+// tab showing: at the top of the tab.
+const savedAim = !saved ? null : treatedQ ? (showOffer ? 'chart-offer' : null) : backQ ? null : savedCard(saved);
+const savedIn = savedAim && tabOf(savedAim) === current ? savedAim : null;
 // "Leave the chart as it is": the same address without the offer (and without the saved line it came with).
 const leaveOffer = (section: string) => {
   const u = new URLSearchParams(q);
@@ -722,8 +733,9 @@ const recHere = here;
 // --- the cards and their panels ---------------------------------------------------
 // Each card with a panel is drawn twice, with the same props: its body in its tab (part="body") and its panels outside
 // the tabs (part="panels"), so a panel opens over whichever tab is in view. What a save says is the saved line, drawn
-// at the top of the tab showing first.
-const savedLineProps = { saved, c: clin, letters: ext.letters, vitals: ext.vitals, firstName: patient.first_name, rxBase: `${here}rx/`, letterBase: `${here}letters/`, financesBase: links.finances, ptrFix };
+// once, where the address lands (savedIn, above): at the top of the tab showing first, or in the `saved` slot of the
+// card a card's own button came back to, or at the top of the chart's offer.
+const savedLineProps = { saved, tab: current, c: clin, letters: ext.letters, vitals: ext.vitals, firstName: patient.first_name, rxBase: `${here}rx/`, letterBase: `${here}letters/`, financesBase: links.finances, ptrFix };
 const vitalsProps = { vitals: ext.vitals, canEdit, action: recHere, problem: recordProblem, firstName: patient.first_name, visitId: thisVisit?.id ?? null, openNow: openNow === 'vitals' };
 const recallProps = { recall: clin.recall, canEdit, action: recHere, problem: recordProblem, today, firstName: patient.first_name, bookHref, texts: me.recall_texts === true };
 const treatmentProps = { c: clin, loas: ext.loas, canEdit, action: recHere, meId: session.staffId, problem: recordProblem, today, firstName: patient.first_name, visitId: thisVisit?.id ?? null };
@@ -845,7 +857,7 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
   <!-- Today -->
   <div id="rec-overview" role="tabpanel" aria-labelledby="rec-rec-overview-tab" hidden={current !== 'overview'} class={`rec-tab min-w-0 grid gap-4 max-md:gap-3 content-start ${TAB_HUE['overview']}`} data-rec-panel="overview">
     <span id="overview" class="rec-anchor" aria-hidden="true"></span>
-    {current === 'overview' && <SavedLine tab="overview" {...savedLineProps} />}
+    {current === 'overview' && !savedIn && <SavedLine {...savedLineProps} />}
     {/* Today's visit: what is still to do at it and what is done (036). */}
     {thisVisit && (
       <VisitStrip visit={thisVisit} c={clin} x={ext} signed={data.signed} health={latest} privacy={privacyState} minor={minor} laterVisitAt={laterVisitAt}
@@ -890,7 +902,7 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
       </Pane>
       </div>
       <div class="grid content-start gap-4 max-md:gap-3">
-        <RecallCard part="body" {...recallProps} />
+        <RecallCard part="body" {...recallProps}>{savedIn === 'recall' && <SavedLine slot="saved" class="mb-3" {...savedLineProps} />}</RecallCard>
         <Pane as="section" label="Health, in short" class="hue-rose">
           <Head icon="heart" title="Health">
             <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="health">{canEdit ? 'Update' : 'Open'}</button>
@@ -994,8 +1006,8 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
   <!-- Patient info -->
   <div id="rec-patient" role="tabpanel" aria-labelledby="rec-rec-patient-tab" hidden={current !== 'patient'} class={`rec-tab min-w-0 grid gap-4 max-md:gap-3 content-start ${TAB_HUE['patient']}`} data-rec-panel="patient">
     <span id="patient" class="rec-anchor" aria-hidden="true"></span>
-    {current === 'patient' && <SavedLine tab="patient" {...savedLineProps} />}
-    <Vitals part="body" {...vitalsProps} />
+    {current === 'patient' && !savedIn && <SavedLine {...savedLineProps} />}
+    <Vitals part="body" {...vitalsProps}>{savedIn === 'vitals' && <SavedLine slot="saved" class="mb-4" {...savedLineProps} />}</Vitals>
     <Pane as="section" label="Health" id="health">
       <Head icon="heart" title="Health" />
       <p class="-mt-2 text-[14px] text-muted">
@@ -1076,7 +1088,9 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
         </details>
       )}
     </Pane>
-    <div id="consent" class={`min-w-0 grid gap-4 max-md:gap-3 content-start hue-${CARD_HUE.consent}`}>
+    {/* Consent: the privacy notice, the consent forms, signed at visits, the patient forms. #consent is DeskConsent's own
+        section (the privacy notice's state and its form, where consent is recorded), as before: one element per id. */}
+    <div class={`min-w-0 grid gap-4 max-md:gap-3 content-start hue-${CARD_HUE.consent}`}>
       <Pane as="section" label="Privacy consent">
         <Head icon="shield" title="Privacy consent" />
         <DeskConsent notice={data.notice} consents={data.consents} canRecord={canEdit} minor={minor} birthKnown={!!patient.birth} dpo={data.dpo} action={`${here}#consent`}
@@ -1141,8 +1155,8 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
   <!-- Chart & plan -->
   <div id="rec-chart" role="tabpanel" aria-labelledby="rec-rec-chart-tab" hidden={current !== 'chart'} class={`rec-tab min-w-0 grid gap-4 max-md:gap-3 content-start ${TAB_HUE['chart']}`} data-rec-panel="chart">
     <span id="chart" class="rec-anchor" aria-hidden="true"></span>
-    {current === 'chart' && <SavedLine tab="chart" {...savedLineProps} />}
-    {showOffer && <ChartOffer state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="chart" leaveHref={leaveOffer('chart')} inChart />}
+    {current === 'chart' && !savedIn && <SavedLine {...savedLineProps} />}
+    {showOffer && <ChartOffer state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="chart" leaveHref={leaveOffer('chart')} inChart>{savedIn === 'chart-offer' && <SavedLine {...savedLineProps} />}</ChartOffer>}
     <Pane as="section" label="Chart" class="pt-chart-pane">
       <Head icon="tooth" title="Chart" />
       <p class="-mt-2 mb-4 text-[14px] text-muted">Every change is saved as you make it, under your name.</p>
@@ -1191,20 +1205,20 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
         </details>
       )}
     </Pane>
-    <Treatment part="body" {...treatmentProps} />
-    <Files part="body" {...filesProps} />
-    <Loas part="body" {...loasProps} />
-    <div class={cardHue('payplans')}><PayPlans part="body" {...payPlansProps} /></div>
+    <Treatment part="body" {...treatmentProps} savedAt={savedIn}>{savedIn?.startsWith('treatment') && <SavedLine slot="saved" class="mb-4" {...savedLineProps} />}</Treatment>
+    <Files part="body" {...filesProps}>{savedIn === 'files' && <SavedLine slot="saved" class="mb-4" {...savedLineProps} />}</Files>
+    <Loas part="body" {...loasProps}>{savedIn === 'loas' && <SavedLine slot="saved" class="mb-4" {...savedLineProps} />}</Loas>
+    <div class={cardHue('payplans')}><PayPlans part="body" {...payPlansProps}>{savedIn === 'payplans' && <SavedLine slot="saved" class="mb-4" {...savedLineProps} />}</PayPlans></div>
   </div>
 
   <!-- Treatment record -->
   <div id="rec-treatment-record" role="tabpanel" aria-labelledby="rec-rec-treatment-record-tab" hidden={current !== 'treatment-record'} class={`rec-tab min-w-0 grid gap-4 max-md:gap-3 content-start ${TAB_HUE['treatment-record']}`} data-rec-panel="treatment-record">
     <span id="treatment-record" class="rec-anchor" aria-hidden="true"></span>
-    {current === 'treatment-record' && <SavedLine tab="treatment-record" {...savedLineProps} />}
+    {current === 'treatment-record' && !savedIn && <SavedLine {...savedLineProps} />}
     <TreatmentRecord ledger={data.ledger} money={money} today={today} printHref={`${here}treatment-record/`} name={shortName} />
-    <div class={cardHue('notes')}><Notes c={clin} canEdit={canEdit} /></div>
-    <Prescriptions part="body" {...rxProps} />
-    <Letters part="body" {...lettersProps} />
+    <div class={cardHue('notes')}><Notes c={clin} canEdit={canEdit}>{savedIn === 'notes' && <SavedLine slot="saved" class="mb-4" {...savedLineProps} />}</Notes></div>
+    <Prescriptions part="body" {...rxProps}>{savedIn === 'rx' && <SavedLine slot="saved" class="mb-4" {...savedLineProps} />}</Prescriptions>
+    <Letters part="body" {...lettersProps}>{savedIn === 'letters' && <SavedLine slot="saved" class="mb-4" {...savedLineProps} />}</Letters>
     {money && (
       <div class={cardHue('money')}>
       <Pane title="Money" icon="money" id="money" pad="none">

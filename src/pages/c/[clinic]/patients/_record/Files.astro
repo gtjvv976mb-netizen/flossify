@@ -37,9 +37,10 @@ const help = 'text-[13px] leading-snug text-ink-2';
 
 {part === 'body' && (
 <div class="grid gap-4 max-md:gap-3">
-  {inline && <Callout tone="alert" text={inline} />}
   <Pane as="section" label="Files" id="files">
     <Head icon="image" title="X-rays, photos and files" meta={c.files.length ? `${c.files.length} on record` : undefined} />
+    <slot name="saved" />
+    {inline && <Callout tone="alert" class="mb-4" text={inline} />}
     <div class="rec-lead -mt-2 mb-4">
       <p>Only people who work at this branch can open them. Pictures and PDFs, up to 25 MB each.</p>
       {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-file-add"><Icon name="upload" />Add files</button>}

@@ -30,9 +30,10 @@ const help = 'text-[13px] leading-snug text-ink-2';
 
 {part === 'body' && (
 <div class="grid gap-4 max-md:gap-3">
-  {inline && <Callout tone="alert" text={inline} />}
   <Pane as="section" label="Braces and payment plans" id="payplans">
     <Head icon="money" title="Braces and payment plans" meta={running.length ? `${running.length} running` : undefined} />
+    <slot name="saved" />
+    {inline && <Callout tone="alert" class="mb-4" text={inline} />}
     <div class="rec-lead -mt-2 mb-4">
       <p>Treatment paid over months: a down payment, then so much a month. Payments are taken on the plan’s statement in Finances.</p>
       {canEdit && canBill && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-payplan-add"><Icon name="plus" />New plan</button>}

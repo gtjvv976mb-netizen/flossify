@@ -157,8 +157,11 @@
 /* --- the tab row (./RecordNav.astro): the four tabs and Add ▾, in one row that sticks at the top of the screen
    under the workspace's top bar (--rec-top, measured by the page; --rec-stick is where the row ends, so what is
    scrolled to lands under it). Never at the foot of the screen. Each tab's icon wears its hue; the chosen tab is the
-   workspace's teal "chosen thing". From 768px: the tabs in a row, Add ▾ at its end. Below: five columns, an icon over
-   its short name, a count a dot on the icon (the number stays in the tab's name). --- */
+   workspace's teal "chosen thing". From 768px: the tabs in one row, Add ▾ at its end; where the four do not fit on one
+   line (a tablet, a laptop with the full sidebar, a wide system font) the row's script (RecordNav.astro) tightens them
+   (data-fit="compact"), then gives them their short names (data-fit="short", the full name stays the tab's name).
+   Below 768px: five columns, an icon over its short name, a count a dot on the icon (the number stays in the tab's
+   name). --- */
 .rec-body { display: grid; gap: 1rem; min-width: 0; align-content: start; }
 .rec-tab { position: relative; }
 /* A tab's own anchor (#overview, #patient, #chart, #treatment-record): its top, under the row. */
@@ -195,8 +198,13 @@
 .rec-add .ws-menu-icon[data-hue="violet"] { background: var(--ws-violet-tint); color: var(--ws-violet-ink); }
 .rec-add .ws-menu-icon[data-hue="green"] { background: var(--ws-green-tint); color: var(--ws-green-ink); }
 .rec-add .ws-menu-head { color: var(--c-ink-2); }
-@media (max-width: 1023px) and (min-width: 768px) {
-  .rec-nav-item, .rec-add-btn { gap: 0.375rem; padding-right: 0.625rem; font-size: 14.5px; }
+@media (min-width: 768px) {
+  .rec-bar[data-fit] { gap: 0.375rem; }
+  .rec-bar[data-fit] .rec-nav-list { gap: 0.125rem; }
+  .rec-bar[data-fit] .rec-nav-item, .rec-bar[data-fit] .rec-add-btn { gap: 0.375rem; padding: 0 0.625rem 0 0.3125rem; font-size: 14.5px; }
+  .rec-bar[data-fit] .rec-nav-icon { width: 28px; height: 28px; border-radius: 8px; }
+  .rec-bar[data-fit="short"] .rec-nav-long { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .rec-bar[data-fit="short"] .rec-nav-short { display: inline; }
 }
 @media (max-width: 767px) {
   .rec-body { gap: 0.75rem; }

@@ -6,6 +6,12 @@
 // and the left and right arrow keys work as before. On a phone the row is five columns, the four tabs and Add, each
 // an icon over its short name; a count becomes a dot there, and it stays in the tab's name.
 //
+// From 768px the four tabs stay on one line: the script under the row (inline, so it runs before the row is first
+// drawn) measures them, and where they would wrap it tightens them (data-fit="compact"), then gives them their short
+// names (data-fit="short"; the full name stays the tab's name for a screen reader). It measures the words as this
+// device draws them, so a count on a tab or a wider system font never pushes a tab onto a second line; it measures
+// again when the row's width changes (a turned tablet, the sidebar folded).
+//
 // Add ▾ is the workspace's disclosure menu (ws/Menu.astro: Escape, a click elsewhere or a panel opening closes it).
 // Its items open the record's side panels, which live outside the tabs, so each opens over the tab in view and saves
 // back to it (the page's script sets each form's `back`). Items that write need records.edit, a payment plan and a
@@ -95,3 +101,25 @@ const groups: { title: string; items: Item[] }[] = canEdit ? [
     </Menu>
   )}
 </div>
+<script is:inline>
+  (() => {
+    const bar = document.currentScript && document.currentScript.previousElementSibling;
+    if (!bar || !bar.matches('[data-rec-bar]') || !('ResizeObserver' in window)) return;
+    const tabs = [...bar.querySelectorAll('[role="tab"]')];
+    const phone = matchMedia('(max-width: 767px)');
+    const oneLine = () => tabs.every((t) => t.offsetTop === tabs[0].offsetTop);
+    let width = -1;
+    const fit = () => {
+      bar.removeAttribute('data-fit');
+      if (!phone.matches && !oneLine()) {
+        bar.setAttribute('data-fit', 'compact');
+        if (!oneLine()) bar.setAttribute('data-fit', 'short');
+      }
+      width = bar.clientWidth;
+    };
+    fit();
+    // A new width is fitted in the next frame, not inside the observer (a size changed there loops).
+    new ResizeObserver(() => { if (bar.clientWidth !== width) requestAnimationFrame(fit); }).observe(bar);
+    if (document.fonts) document.fonts.ready.then(fit);
+  })();
+</script>

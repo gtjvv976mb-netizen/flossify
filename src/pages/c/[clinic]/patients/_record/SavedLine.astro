@@ -1,12 +1,15 @@
 ---
-// The saved line: what a save from the record's panels and cards says, in one place at the top of the tab it lands on
-// (the page draws it in the tab showing first). A panel posts back=<the tab it was opened over>, so a prescription
-// written from Today says "Print it" — and, when the PTR its paper took needs a word, says so — on Today. The words
-// were each card's own (Treatment, Notes, Prescriptions, Letters, Files, the blood pressure, the next check-up, the
-// LOAs and the payment plans) and the Chart's own after a save from its palette; they moved here unchanged.
+// The saved line: what a save from the record's panels and cards says, in one place, drawn once, where the address
+// lands. A panel posts back=<the tab it was opened over>, so a prescription written from Today says "Print it" — and,
+// when the PTR its paper took needs a word, says so — at the top of Today. A card's own button (the next check-up, a
+// plan row, a lab case …) posts no back and lands on its card (#recall, #treatment …): the line is drawn inside that
+// card, under its title (savedCard in ./sections.ts). A treatment the chart could show lands on the chart's offer
+// (?treated=, #chart-offer), and the line is drawn at the top of the offer. The words were each card's own (Treatment,
+// Notes, Prescriptions, Letters, Files, the blood pressure, the next check-up, the LOAs and the payment plans) and the
+// Chart's own after a save from its palette; they moved here unchanged.
 //
-// A blood pressure out of the usual range: on Patient info its card, right under this line, says what the reading
-// means, so the line says only that it was saved (as the card did); on another tab the line says it.
+// A blood pressure out of the usual range: on Patient info its card, right under this line (or around it), says what
+// the reading means, so the line says only that it was saved (as the card did); on another tab the line says it.
 import Callout from '../_ui/Callout.astro';
 import PtrWords from './PtrWords.astro';
 import type { Clinical } from '../../../../../lib/record';
@@ -28,8 +31,10 @@ interface Props {
   financesBase: string;
   /** Where each clinician's PTR is fixed, or null (the record page works it out). */
   ptrFix: Record<string, PtrFix | null>;
+  /** Space around it: inside a card it keeps apart from what follows. */
+  class?: string;
 }
-const { saved, tab, c, letters, vitals, firstName, rxBase, letterBase, financesBase, ptrFix } = Astro.props;
+const { saved, tab, c, letters, vitals, firstName, rxBase, letterBase, financesBase, ptrFix, class: cls } = Astro.props;
 
 const WORDS: Record<string, string> = {
   // the plan, work done, lab cases
@@ -75,8 +80,13 @@ const nextAdjust = after('adjusted:');
 const reading = word.startsWith('vitals') ? vitals.find((v) => v.sys && v.dia) ?? null : null;
 const bp = reading ? bpWords(reading.sys!, reading.dia!) : null;
 const bpHere = word.startsWith('vitals') && tab === 'patient';
+const vitalsLine = word.startsWith('vitals') && !(bpHere && (word === 'vitals-crisis' || word === 'vitals-high'));
+// Drawn only when there is something to say (an empty box would still take a gap in the tab's grid).
+const any = !!(text || rx || made || planInvoice || nextAdjust || vitalsLine);
 ---
 
+{any && (
+<div class:list={['grid gap-3', cls]} data-rec-saved>
 {text && <Callout tone="success" text={text} />}
 {rx && (
   <Callout tone="success" title="Prescription saved.">
@@ -100,7 +110,8 @@ const bpHere = word.startsWith('vitals') && tab === 'patient';
   </Callout>
 )}
 {nextAdjust && <Callout tone="success" text={`Adjustment saved. The next one is ${dateText(nextAdjust)}: book it before they leave.`} />}
-{word.startsWith('vitals') && (bpHere
-  ? word !== 'vitals-crisis' && word !== 'vitals-high' && <Callout tone="success" text="Reading saved." />
-  : !bp || bp.tone === 'neutral' ? <Callout tone="success" text="Reading saved." />
+{vitalsLine && (bpHere || !bp || bp.tone === 'neutral'
+  ? <Callout tone="success" text="Reading saved." />
   : <Callout tone={bp.tone === 'alert' ? 'alert' : 'warn'} title={`Reading saved: ${bp.label.toLowerCase()} blood pressure, ${reading!.sys}/${reading!.dia}.`} text={bp.advice} />)}
+</div>
+)}

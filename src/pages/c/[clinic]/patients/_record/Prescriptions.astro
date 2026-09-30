@@ -49,6 +49,7 @@ const shownNote = ptrNotes.find((n) => n.id === selectedId);
 {part === 'body' && (
   <Pane as="section" label="Prescriptions" id="rx">
     <Head icon="pill" title="Prescriptions" meta={c.rx.length ? `${c.rx.length} written` : undefined} />
+    <slot name="saved" />
     <div class="rec-lead -mt-2 mb-4">
       <p>Medicines prescribed to {firstName}, printed with the dentist’s PRC licence and the PTR on file.</p>
       {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-rx-add"><Icon name="plus" />New prescription</button>}

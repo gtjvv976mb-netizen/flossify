@@ -83,6 +83,19 @@ export const recordSaved = (s: string | null): string | null => {
   const w = (s ?? '').split(/[-:]/)[0];
   return Object.hasOwn(SAVED_WORD, w) ? SAVED_WORD[w] : null;
 };
+/** The card a save that carries no back lands on (a card's own button: the next check-up, a plan row, a lab case, a
+ *  file, an LOA, a payment plan; or a panel posted without its back), by the saved word's first word. The page's
+ *  redirect names it as the #hash, and the page draws the saved line inside that card, under its title, so it is on
+ *  screen where the address lands. A save with a back lands on its tab and says so at the tab's top; a treatment the
+ *  chart could show (?treated=) says so at the chart's offer. */
+export const SAVED_CARD: Readonly<Record<string, string>> = {
+  recall: 'recall', plan: 'treatment', done: 'treatment-done', lab: 'treatment-lab', note: 'notes', addendum: 'notes', rx: 'rx',
+  file: 'files', files: 'files', vitals: 'vitals', letter: 'letters', answered: 'letters', loa: 'loas', payplan: 'payplans', adjusted: 'payplans',
+};
+export const savedCard = (s: string | null): string | null => {
+  const w = (s ?? '').split(/[-:]/)[0];
+  return Object.hasOwn(SAVED_CARD, w) ? SAVED_CARD[w] : null;
+};
 /** ?open=vitals|note|rx|done|file|details: the panel the page opens as it loads (the Dashboard's "Take it", "Write the
  *  note", the desk note's "Edit") → the tab shown behind it. The panels live outside the tabs, so every one opens
  *  over Today. */

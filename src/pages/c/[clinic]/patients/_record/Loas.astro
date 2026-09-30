@@ -32,9 +32,10 @@ const help = 'text-[13px] leading-snug text-ink-2';
 
 {part === 'body' && (
 <div class="grid gap-4 max-md:gap-3">
-  {inline && <Callout tone="alert" text={inline} />}
   <Pane as="section" label="HMO approvals" id="loas">
     <Head icon="shield" title="HMO approvals (LOA)" meta={loas.filter((a) => a.status === 'requested').length ? `${loas.filter((a) => a.status === 'requested').length} waiting` : undefined} />
+    <slot name="saved" />
+    {inline && <Callout tone="alert" class="mb-4" text={inline} />}
     <div class="rec-lead -mt-2 mb-4">
       <p>{hmoName ? `${firstName} has ${hmoName}. ` : ''}Ask the HMO for a letter of authorization before treatment, and write in its approval code here.</p>
       {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-loa-add"><Icon name="plus" />Ask for an LOA</button>}

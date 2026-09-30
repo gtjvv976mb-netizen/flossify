@@ -54,6 +54,7 @@ const summary = (l: Letter) =>
 {part === 'body' && (
   <Pane as="section" label="Certificates and letters" id="letters">
     <Head icon="form" title="Certificates and letters" meta={letters.length ? `${letters.length} written` : undefined} />
+    <slot name="saved" />
     <p class="-mt-2 mb-4 text-[14px] text-ink-2">Printed on the clinic’s paper with the dentist’s PRC licence and the PTR on file. A letter is never changed once saved.</p>
     {canEdit && (
       <div class="lt-kinds">
