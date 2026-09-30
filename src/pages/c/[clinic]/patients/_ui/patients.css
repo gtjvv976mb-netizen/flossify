@@ -104,7 +104,10 @@
    fact that starts a line puts its dot in the clipped margin, so no line starts with a dot. */
 .rec-facts { margin-top: 0.375rem; overflow: hidden; font-size: 15px; color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
 .rec-facts-in { display: flex; flex-wrap: wrap; align-items: center; row-gap: 0.25rem; margin-left: -1.5rem; }
-.rec-facts-in > span { position: relative; padding-left: 1.5rem; white-space: nowrap; }
+/* A fact keeps to one line while it fits one; one longer than the whole line (a long HMO name and its member no.)
+   wraps inside itself rather than running into the clipped edge. max-width counts the dot's 1.5rem, which the
+   negative margin gives back. */
+.rec-facts-in > span { position: relative; box-sizing: border-box; max-width: 100%; min-width: 0; padding-left: 1.5rem; overflow-wrap: anywhere; }
 .rec-facts-in > span::before { content: "·" / ""; position: absolute; left: 0.6rem; color: var(--c-muted); }
 /* What the patient owes (people who may bill here): a link to their statements in Finances, a 44px target (inside the
    facts' clipped box, so its line is 44px tall: beside the avatar that changes nothing). */
