@@ -32,26 +32,46 @@ import { libraryHash, snapshotText } from './consent-seal';
 import { contextFor, clinicFace, type ClinicFace, type Attested } from './consent-docs';
 import { readStrokes, type Strokes } from './visit-consent';
 import { PHONE_PATH_BUILT, TOKEN_SHAPE, SECRET_SHAPE, addAtSend } from './intake';
-import { DEVICE_COOKIE, TABLET_COOKIE } from './park';
+import { DEVICE_COOKIE, TABLET_COOKIE, clearDeviceSecret } from './park';
+import { readSession, clearSession, authEvent } from './auth';
 
 /** The largest post a patient's page may send (a signature is the biggest part of it). */
 export const INTAKE_POST_MAX = 192 * 1024;
 
 const sha = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
 
-/** The device's proof for a link: the hash of its own secret (fl_idev on this link's pages, else a clinic tablet's fl_ctab). */
-export function deviceProof(cookies: AstroCookies): { hash: string; tablet: boolean } | null {
+/** The device's proofs for a link, in the order to try them: the hash of its own secret (fl_idev, under /f/i/), then a clinic tablet's fl_ctab. */
+export function deviceProofs(cookies: AstroCookies): { hash: string; tablet: boolean }[] {
+  const out: { hash: string; tablet: boolean }[] = [];
   const own = cookies.get(DEVICE_COOKIE)?.value;
-  if (own && SECRET_SHAPE.test(own)) return { hash: sha(own), tablet: false };
+  if (own && SECRET_SHAPE.test(own)) out.push({ hash: sha(own), tablet: false });
   const tab = cookies.get(TABLET_COOKIE)?.value;
-  if (tab && SECRET_SHAPE.test(tab)) return { hash: sha(tab), tablet: true };
-  return null;
+  if (tab && SECRET_SHAPE.test(tab)) out.push({ hash: sha(tab), tablet: true });
+  return out;
 }
+/** The first of them. */
+export const deviceProof = (cookies: AstroCookies) => deviceProofs(cookies)[0] ?? null;
 
 /** A clinic tablet's own proof (fl_ctab), for /f/t/. */
 export function tabletProof(cookies: AstroCookies): string | null {
   const tab = cookies.get(TABLET_COOKIE)?.value;
   return tab && SECRET_SHAPE.test(tab) ? sha(tab) : null;
+}
+
+/**
+ * A clinic tablet never holds a staff session (the spec §1.7(a)): one made on
+ * it after it became a tablet is ended wherever the tablet shows its proof —
+ * /f/t/, its poll and the patient's pages — and logged (auth_event
+ * tablet.signout, no patient). `device`: a hand-over secret on it goes too
+ * (/f/t/ only: that cookie is not sent there, so it is expired blind).
+ */
+export async function endStaffOnTablet(cookies: AstroCookies, who: { ip: string | null; ua: string | null }, opts: { device?: boolean } = {}): Promise<void> {
+  const s = readSession(cookies);
+  if (s) {
+    clearSession(cookies);
+    await authEvent('tablet.signout', { staffId: s.staffId, ip: who.ip, ua: who.ua });
+  }
+  if (opts.device) clearDeviceSecret(cookies);
 }
 
 // ---------------------------------------------------------------------------
@@ -103,7 +123,14 @@ export async function lookupIntake(token: string, device: string | null, ip: str
   const v = (await publicRead<{ v: Record<string, any> }>('select intake_view($1, $2) as v', [token, device])).at(0)?.v;
   if (!v || v.status === 'unknown') return missed(ip);
   const look: IntakeLook = { status: v.status, clinic: clinicOf(v.clinic), parts: v.parts, target: v.target };
-  if (v.status !== 'open') return look;
+  if (v.status !== 'open') {
+    // Which device this link was for, when it was this device's own (for the words, and "For the clinic").
+    if (device && v.status !== 'taken' && v.status !== 'welcome' && v.status !== 'verify') {
+      const d = (await publicRead<{ d: string | null }>('select intake_device($1, $2) as d', [token, device])).at(0)?.d ?? null;
+      if (d === 'phone' || d === 'tablet' || d === 'desk') look.device = d;
+    }
+    return look;
+  }
   const pages: IntakePageView[] = (v.pages ?? []).map((p: Record<string, any>) => ({
     id: p.id, ref: p.ref, versionId: p.version_id, code: p.code, kind: p.kind, sort: p.sort, rev: p.rev, fields: p.fields ?? {}, dentistName: p.dentist_name,
     dentistPrc: p.dentist_prc, explainedIn: p.explained_in, explainedOther: p.explained_other, interpreter: p.interpreter, inForce: p.in_force, signable: p.signable,
@@ -173,7 +200,7 @@ export async function faceOf(look: IntakeLook): Promise<ClinicFace> {
 }
 
 /** One consent page drawn for the patient: the words, their facts, and (once decided) what they chose. */
-export function renderPage(look: IntakeLook, p: IntakePageView, face: ClinicFace, extra: Partial<Pick<Parameters<typeof renderDocument>[2], 'answers' | 'initials' | 'decision' | 'signer' | 'read' | 'explainedIn'>> = {}): Rendered {
+export function renderPage(look: IntakeLook, p: IntakePageView, face: ClinicFace, extra: Partial<Pick<Parameters<typeof renderDocument>[2], 'answers' | 'initials' | 'decision' | 'signer' | 'read' | 'explainedIn' | 'unsigned'>> = {}): Rendered {
   const who = patientOf(look);
   const attested: Attested | null = p.attestation ? {
     at: new Date(p.attestation.attestedAt), lang: p.attestation.explainedIn, interpreter: p.attestation.interpreter, assent: p.attestation.assent,
@@ -207,8 +234,10 @@ export type Decided =
 /**
  * A decision on a page (§5.4): the patient's part read and checked
  * (readPatientPart: the name held, never the one posted), the signature
- * (readStrokes; none only for a photos refusal), the page drawn by the server
- * with every choice and frozen as its snapshot, then intake_decide.
+ * (readStrokes; none only for a photos refusal, which carries no "By signing"
+ * sentence), the page drawn by the server with every choice and frozen as its
+ * snapshot, then intake_decide. "Decide later" is kept unsigned (a photos form
+ * too, 043: a minor's parent may not be there).
  */
 export async function decidePage(token: string, device: string, look: IntakeLook, p: IntakePageView, face: ClinicFace, raw: RawPart, strokesRaw: string): Promise<Decided> {
   if (!p.signable) return { status: 'not_ready' };
@@ -228,7 +257,7 @@ export async function decidePage(token: string, device: string, look: IntakeLook
   }
   const signer = unsignedNo && !part.signer ? { name: who.name, as: 'patient' as const, method: 'sign' as const, relation: null, authority: null, ground: null, note: null } : part.signer!;
   const rendered = renderPage(look, p, face, {
-    answers: part.answers, initials: part.initials, decision: part.decision, signer, read: part.read, explainedIn: part.explainedIn,
+    answers: part.answers, initials: part.initials, decision: part.decision, signer, read: part.read, explainedIn: part.explainedIn, unsigned: unsignedNo,
   });
   const snapshot = snapshotText(rendered, { document: p.id, ref: p.ref });
   const page = {
@@ -287,3 +316,19 @@ export const INTAKE_WORDS: Record<Exclude<IntakeStatus, 'open'>, { title: string
   unknown: { title: 'This link doesn’t open any forms', lead: 'Please ask the desk.', code: 404 },
   wait: { title: 'Please wait a little', lead: 'Or ask the desk for a paper form.', code: 429 },
 };
+
+/** On a clinic tablet or the desk's device handed over, the patient never had a code: the device's own words. */
+const CLINIC_DEVICE_WORDS: Partial<Record<Exclude<IntakeStatus, 'open'>, { title: string; lead: string }>> = {
+  expired: { title: 'These forms closed', lead: 'Please hand the device back to the desk.' },
+  idle: { title: 'These forms closed', lead: 'They closed after a while with nothing typed. Please hand the device back to the desk.' },
+  replaced: { title: 'These forms moved to another device', lead: 'Please hand the device back to the desk.' },
+  closed: { title: 'These forms were stopped', lead: 'Please hand the device back to the desk.' },
+  taken: { title: 'These forms are open on another device', lead: 'Please hand the device back to the desk.' },
+};
+
+/** The words for a status on this device: a phone's (the code it was given), or a clinic device's. */
+export function intakeWords(status: Exclude<IntakeStatus, 'open'>, device: 'phone' | 'tablet' | 'desk' | null): { title: string; lead: string; code: number } {
+  const base = INTAKE_WORDS[status];
+  const own = device === 'tablet' || device === 'desk' ? CLINIC_DEVICE_WORDS[status] : undefined;
+  return own ? { ...base, ...own } : base;
+}

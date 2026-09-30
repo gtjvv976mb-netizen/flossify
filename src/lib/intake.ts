@@ -277,13 +277,13 @@ export function intakeAge(it: Pick<DeskIntake, 'patient' | 'page1Birth'>, today 
   return birth ? ageOn(birth, today) : null;
 }
 
-/** "Juan D." for a new patient (the desk's label, or page 1's first name once given), the name for a patient on file. */
-export function intakeName(it: Pick<DeskIntake, 'patient' | 'label' | 'answers' | 'ref'>): string {
+/** "Juan D." for a new patient (the desk's label, or page 1's first name once given; else "New patient", the ref shown beside it), the name for a patient on file. */
+export function intakeName(it: Pick<DeskIntake, 'patient' | 'label' | 'answers'>): string {
   if (it.patient) return it.patient.name;
   const first = typeof it.answers?.first_name === 'string' ? it.answers.first_name : null;
   const last = typeof it.answers?.last_name === 'string' ? it.answers.last_name : null;
   if (first) return last ? `${first} ${last.charAt(0)}.` : first;
-  return it.label ?? `New patient (${it.ref})`;
+  return it.label ?? 'New patient';
 }
 
 /** "10:36 am" in Manila. */
@@ -310,7 +310,7 @@ export function partTag(d: DeskDoc): { words: string; tone: Tone } {
     case 'reading': return { words: 'Reading', tone: 'info' };
     case 'read': return { words: d.attestation ? 'Read: ready to sign' : 'Read, waiting for the dentist', tone: 'info' };
     case 'question': return { words: 'Has a question', tone: 'warn' };
-    case 'later': return { words: 'Will ask the dentist', tone: 'warn' };
+    case 'later': return { words: d.code === 'photos' ? 'Decide later' : 'Will ask the dentist', tone: 'warn' };
     case 'agreed': return { words: `Signed ${p.decidedAt ? hm(p.decidedAt) : ''}`.trim(), tone: 'success' };
     case 'refused': return d.code === 'photos' ? { words: 'No photos', tone: 'neutral' } : { words: 'Did not agree', tone: 'alert' };
   }
@@ -402,7 +402,7 @@ async function mayEdit(tx: Tx, clinicId: string, staffId: string): Promise<void>
 type IntakeRow = {
   id: string; clinic_id: string; ref: string; target: 'new' | 'existing'; status: IntakeStatus; rev: number; patient_id: string | null;
   appointment_id: string | null; desk_minor: DeskMinor | null; came_with: CameWith | null; label: string | null; answers: Record<string, unknown> | null;
-  created_by: string; sent_at: Date | null; page1_done_at: Date | null; privacy_version: string | null; privacy_at: Date | null;
+  created_by: string; created_at: Date; sent_at: Date | null; page1_done_at: Date | null; privacy_version: string | null; privacy_at: Date | null;
   privacy_as: string | null; privacy_by_name: string | null; form_version: string; decided_at: Date | null; decided_by: string | null;
 };
 
@@ -419,6 +419,16 @@ async function lockIntake(tx: Tx, id: string, rev?: number | null): Promise<Inta
   }
   return i;
 }
+
+/**
+ * A form that was on the record before these forms began ("Sign on this
+ * tablet" moved it in: startIntake's `documents`): on a patient, and prepared
+ * before the intake was made. $2 is the intake's created_at. Taking it out of
+ * the forms, or throwing the forms away, puts it back on the record as it was
+ * (intake_id cleared) instead of removing it; only forms made for the intake
+ * are removed.
+ */
+const FROM_RECORD = `(d.patient_id is not null and d.prepared_at < $2::timestamptz)`;
 
 const event = (tx: Tx, clinicId: string, intakeId: string, kind: string, staffId: string | null, detail: string | null = null, documentId: string | null = null) =>
   tx.query('insert into intake_event (clinic_id, intake_id, kind, document_id, detail, staff_id) values ($1, $2, $3, $4, $5, $6)',
@@ -475,7 +485,7 @@ export async function startIntake(tx: Tx, a: {
               (select i.ref from intake i where i.id = d.intake_id and i.status in ('preparing', 'out')) as open_intake, v.title
          from consent_document d join consent_version v on v.id = d.version_id where d.id = $1 for update of d`, [isUuid(docId) ? docId : null])).rows[0];
     if (!d || d.patient_id !== patient!.id || d.cancelled) throw refuseStart('doc_other', 'That form is not this patient’s, or was removed.');
-    if (d.open_intake) throw refuseStart('doc_open', `${d.title ?? 'That form'} is in forms being filled in now (${d.open_intake}). Stop those first.`);
+    if (d.open_intake) throw refuseStart('doc_open', `${d.title ?? 'That form'} is in forms being filled in now (${d.open_intake}). Take it out of those forms, or throw them away, first.`);
     if (!['to_sign', 'refused', 'no_photos', 'withdrawn'].includes(d.state)) throw refuseStart('doc_signed', `${d.title ?? 'That form'} is signed already. Only a form never signed, refused or withdrawn is signed again.`);
     if (!d.in_force) throw refuseStart('doc_words', `The clinic has newer words for ${d.title ?? 'that form'}. Prepare it again from the record.`);
     await tx.query('update consent_document set intake_id = $2 where id = $1', [d.id, id]);
@@ -578,11 +588,18 @@ export async function saveChecklist(tx: Tx, a: {
   if (!wanted.size && i.target === 'existing') problems.push('Choose at least one form.');
   if (problems.length) throw new Refused(problems);
 
-  const have = (await tx.query<{ id: string; code: string; signed: boolean }>(
-    `select d.id, coalesce(v.code, 'general') as code, exists (select 1 from consent_signing s where s.document_id = d.id) as signed
-       from consent_document d join consent_version v on v.id = d.version_id where d.intake_id = $1 and d.cancelled_at is null`, [i.id])).rows;
+  const have = (await tx.query<{ id: string; code: string; signed: boolean; from_record: boolean }>(
+    `select d.id, coalesce(v.code, 'general') as code, exists (select 1 from consent_signing s where s.document_id = d.id) as signed,
+            ${FROM_RECORD} as from_record
+       from consent_document d join consent_version v on v.id = d.version_id where d.intake_id = $1 and d.cancelled_at is null`, [i.id, i.created_at])).rows;
   for (const d of have) {
     if (wanted.has(d.code as Code)) continue;
+    // A form that was on the record before these forms goes back to the record as it was; one made for them is removed.
+    if (d.from_record) {
+      await tx.query('update consent_document set intake_id = null where id = $1', [d.id]);
+      await event(tx, a.clinicId, i.id, 'cancelled_doc', a.staffId, 'back to the record', d.id);
+      continue;
+    }
     if (d.signed) { problems.push('A form signed before is kept in these forms: it is here to be signed again.'); continue; }
     await tx.query(`update consent_document set cancelled_at = now(), cancelled_by = $2, cancel_why = 'removed' where id = $1`, [d.id, a.staffId]);
     await event(tx, a.clinicId, i.id, 'cancelled_doc', a.staffId, 'removed', d.id);
@@ -675,7 +692,7 @@ export async function listTablets(q: Q): Promise<Tablet[]> {
 }
 
 /** Why a hand-over was refused, as a word a page can carry in its address (?refused=): the sentence is LIVE_REFUSED's. */
-export type LiveRefusal = 'sent' | 'page1' | 'phone' | 'words' | 'none' | 'minor' | 'tablet' | 'busy' | 'allowed' | 'stale';
+export type LiveRefusal = 'sent' | 'page1' | 'phone' | 'words' | 'none' | 'minor' | 'tablet' | 'busy' | 'allowed' | 'stale' | 'wait';
 export const LIVE_REFUSED: Record<LiveRefusal, string> = {
   sent: 'These forms were sent already.',
   page1: 'A new patient’s details open here when the clinic’s privacy notice covers them.',
@@ -687,6 +704,7 @@ export const LIVE_REFUSED: Record<LiveRefusal, string> = {
   busy: 'That tablet is showing another patient’s forms. Stop those first, or choose another device.',
   allowed: NOT_ALLOWED,
   stale: STALE,
+  wait: 'Too many at once. Wait a moment and try again.',
 };
 const refuseLive = (code: LiveRefusal, text = LIVE_REFUSED[code]) => new Refused<{ code: LiveRefusal }>(text, { code });
 
@@ -764,12 +782,35 @@ export async function stopLink(tx: Tx, a: { clinicId: string; staffId: string; i
   await audit(tx, a.clinicId, a.staffId, 'intake.stop', 'intake', i.id);
 }
 
-/** Stop and throw away an intake not sent: the link retires, forms nobody signed are removed. Audit intake.cancel. */
+/**
+ * A hand-over of this device is over (/auth/unlock/, or the next /auth/park/
+ * on the same browser): the intake's live link on the desk's device retires
+ * as stopped and the intake is preparing again, as Stop does. Saved pages
+ * stay. Any staff member who signed in at this clinic may end it: it only
+ * takes the forms back. True when a link was stopped. Audit intake.stop.
+ */
+export async function endHandover(tx: Tx, a: { clinicId: string; staffId: string; intakeId: string; why: 'unlocked' | 'handed over again' }): Promise<boolean> {
+  if (!isUuid(a.intakeId)) return false;
+  const i = (await tx.query<{ id: string; status: IntakeStatus }>('select id, status from intake where id = $1 and clinic_id = $2 for update', [a.intakeId, a.clinicId])).rows[0];
+  if (!i) return false;
+  const l = (await tx.query<{ token: string; device: LinkDevice }>(
+    'select token, device from intake_link where intake_id = $1 and retired_at is null for update', [i.id])).rows[0];
+  if (!l || l.device !== 'desk' || i.status !== 'out') return false;
+  await tx.query(`update intake_link set retired_at = now(), retired_why = 'stopped' where token = $1`, [l.token]);
+  await tx.query(`update intake set status = 'preparing', rev = rev + 1 where id = $1`, [i.id]);
+  await event(tx, a.clinicId, i.id, 'stopped', a.staffId, a.why === 'unlocked' ? 'the device was unlocked' : 'the device was handed over again');
+  await audit(tx, a.clinicId, a.staffId, 'intake.stop', 'intake', i.id);
+  return true;
+}
+
+/** Stop and throw away an intake not sent: the link retires, forms that were on the record go back to it, the other forms nobody signed are removed. Audit intake.cancel. */
 export async function cancelIntake(tx: Tx, a: { clinicId: string; staffId: string; intakeId: string; rev: number }): Promise<void> {
   await mayEdit(tx, a.clinicId, a.staffId);
   const i = await lockIntake(tx, a.intakeId, a.rev);
   if (i.status !== 'preparing' && i.status !== 'out') throw new Refused('These forms were sent: dismiss them instead, with a reason.');
   await tx.query(`update intake_link set retired_at = now(), retired_why = 'cancelled' where intake_id = $1 and retired_at is null`, [i.id]);
+  // Forms that were on the record before go back to it as they were; only the forms made for these are removed.
+  await tx.query(`update consent_document d set intake_id = null where d.intake_id = $1 and d.cancelled_at is null and ${FROM_RECORD}`, [i.id, i.created_at]);
   await tx.query(
     `update consent_document d set cancelled_at = now(), cancelled_by = $2, cancel_why = 'intake'
       where d.intake_id = $1 and d.cancelled_at is null and not exists (select 1 from consent_signing s where s.document_id = d.id)`, [i.id, a.staffId]);
@@ -913,6 +954,22 @@ export async function addIntake(tx: Tx, a: {
       clinicId: a.clinicId, staffId: a.staffId, patientId, values, source: sourceOf(i), merge: true,
       birthChange: !target.birth && fill.fill.birth_date ? fill.fill.birth_date : null,
     });
+    // Who signed was checked against page 1's birth date; the record's is the one that counts now (the same
+    // rule as a signing: consent_signer_problem on the Manila day it was signed). A form the record's age
+    // makes wrong is not put on the record: the desk checks the birth date first.
+    const wrong = (await tx.query<{ minor: boolean | null; problem: string }>(
+      `select years_on($3::date, (s.signed_at at time zone 'Asia/Manila')::date) < 18 as minor,
+              consent_signer_problem(years_on($3::date, (s.signed_at at time zone 'Asia/Manila')::date) < 18, s.channel, s.signed_as, s.method,
+                                     s.authority, s.authority_ground, s.authority_note, $2::uuid, $4::uuid) as problem
+         from consent_signing s join consent_document d on d.id = s.document_id
+        where d.intake_id = $1 and d.cancelled_at is null`, [i.id, patientId, birthOnFile, a.clinicId])).rows.filter((r) => r.problem);
+    if (wrong.length) {
+      throw new Refused(wrong[0].minor === null
+        ? `Add ${target.firstName}’s birth date to their record first: who may sign depends on it.`
+        : wrong[0].minor
+          ? `${target.firstName}’s record makes them under 18, but the forms were signed as if they were not. Check the birth date on the record. If it is right, dismiss these forms and ask a parent or guardian to sign new ones.`
+          : `${target.firstName}’s record makes them 18 or over, but the forms were signed for them as a minor. Check the birth date on the record. If it is right, dismiss these forms and ask ${target.firstName} to sign new ones.`);
+    }
   }
   const privacy = await writePrivacyConsent(tx, {
     clinicId: a.clinicId, staffId: a.staffId, patientId, birthOnFile,
@@ -954,13 +1011,24 @@ export async function addAtSend(tx: Tx, a: { clinicId: string; intakeId: string 
 // ---------------------------------------------------------------------------
 export const TABLET_NAME_MAX = 40;
 
-/** Make this browser a clinic tablet: a new secret, kept hashed. Needs settings.edit (the page checks can(); the trigger nothing). Audit tablet.add. */
+/** Why "Make this device a clinic tablet" was refused, as a word /auth/tablet/ carries back to Settings (?tablet_refused=). */
+export type TabletRefusal = 'name' | 'long' | 'taken' | 'allowed' | 'wait';
+export const TABLET_REFUSED: Record<TabletRefusal, string> = {
+  name: 'Give the tablet a name, like “Tablet 1” or “Front desk tablet”.',
+  long: `Keep the name under ${TABLET_NAME_MAX} characters.`,
+  taken: 'A tablet here has that name already. Choose another name.',
+  allowed: 'Your account cannot change the clinic’s settings. Ask the owner.',
+  wait: 'Too many at once. Wait a moment and try again.',
+};
+const refuseTablet = (code: TabletRefusal) => new Refused<{ code: TabletRefusal }>(TABLET_REFUSED[code], { code });
+
+/** Make this browser a clinic tablet: a new secret, kept hashed. Needs settings.edit (/auth/tablet/ checks can(); the trigger nothing). Audit tablet.add. */
 export async function registerTablet(tx: Tx, a: { clinicId: string; staffId: string; name: string }): Promise<{ id: string; secret: string }> {
   const name = a.name.replace(/\s+/g, ' ').trim().normalize('NFC');
-  if (!name) throw new Refused('Give the tablet a name, like “Tablet 1” or “Front desk tablet”.');
-  if (name.length > TABLET_NAME_MAX) throw new Refused(`Keep the name under ${TABLET_NAME_MAX} characters.`);
+  if (!name) throw refuseTablet('name');
+  if (name.length > TABLET_NAME_MAX) throw refuseTablet('long');
   const taken = (await tx.query('select 1 from clinic_tablet where retired_at is null and lower(name) = lower($1)', [name])).rowCount;
-  if (taken) throw new Refused(`A tablet here is called “${name}” already. Choose another name.`);
+  if (taken) throw refuseTablet('taken');
   const secret = newDeviceSecret();
   const id = (await tx.query<{ id: string }>(
     'insert into clinic_tablet (clinic_id, name, secret_sha256, created_by) values ($1, $2, $3, $4) returning id',

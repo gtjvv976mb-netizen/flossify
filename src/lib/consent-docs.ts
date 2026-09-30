@@ -149,7 +149,7 @@ async function signingsOf(q: Q, docIds: string[]): Promise<Map<string, RecordSig
   const out = new Map<string, RecordSigning[]>();
   if (!docIds.length) return out;
   const rows = (await q.query<Record<string, any>>(
-    `select s.*, lb.full_name as link_by_name, rb.full_name as recorded_by_name, ch.seq as chain_seq,
+    `select s.*, to_char(s.signed_on, 'YYYY-MM-DD') as signed_on_ymd, lb.full_name as link_by_name, rb.full_name as recorded_by_name, ch.seq as chain_seq,
             c.kind as c_kind, cs.full_name as c_staff, c.confirmed_at as c_at, c.attachment_id as c_file, c.note as c_note,
             w.told_by_name as w_told, w.how as w_how, w.note as w_note, ws.full_name as w_by, w.withdrawn_at as w_at
        from consent_signing s
@@ -163,7 +163,7 @@ async function signingsOf(q: Q, docIds: string[]): Promise<Map<string, RecordSig
     list.push({
       id: r.id, decision: r.decision, channel: r.channel, method: r.method, signedByName: r.signed_by_name, signedAs: r.signed_as, relation: r.relation,
       authority: r.authority, authorityGround: r.authority_ground, authorityNote: r.authority_note, explainedIn: r.explained_in, readBy: r.read_by,
-      strokes: r.strokes ? readStrokes(r.strokes) : null, signedOn: r.signed_on ? new Date(r.signed_on).toISOString().slice(0, 10) : null,
+      strokes: r.strokes ? readStrokes(r.strokes) : null, signedOn: r.signed_on_ymd ?? null,
       attachmentId: r.attachment_id, needsConfirm: r.needs_confirm, linkByName: r.link_by_name, openedAt: r.opened_at, decidedAt: r.decided_at,
       signedAt: r.signed_at, recordedByName: r.recorded_by_name, snapshot: r.snapshot, sealSha256: r.seal_sha256, snapshotSha256: r.snapshot_sha256,
       chainSeq: r.chain_seq === null ? null : Number(r.chain_seq),
@@ -222,7 +222,8 @@ export async function mayAttest(q: Q, clinicId: string, staffId: string, dentist
  * The named dentist confirms the clinical part and records "I explained
  * this": the dentist's fields read with the dentist's own rules (required
  * ones required), saved, and frozen by the attestation (the language actually
- * used, an interpreter, and for a patient aged 7 to 17 what they said). Only
+ * used, an interpreter, and for a patient aged 7 to 17 — or whose age is not
+ * known yet and the desk did not say 18 or over — what they said). Only
  * the form's own dentist, treating here with a PRC licence; the form open,
  * unsigned and not printed. Audit consent.attest.
  */
@@ -230,13 +231,24 @@ export async function attestDocument(tx: Tx, a: {
   clinicId: string; staffId: string; docId: string; rev: number; raw: RawPart; lang: string | null; langOther: string | null; interpreter: string | null; assent: string | null;
 }): Promise<void> {
   if (!(await canEditRecords(tx, a.staffId, a.clinicId))) throw new Refused(NOT_ALLOWED);
+  const docId = isUuid(a.docId) ? a.docId : null;
+  // The intake first, then its live link, then the form: the order the patient's pages and the desk's writes
+  // take (intake_gate, lockIntake), so two of them never wait on each other. The form's intake is read without a
+  // lock, and read again once the form is locked: if it moved meanwhile, the page was stale.
+  const intakeBefore = (await tx.query<{ intake_id: string | null }>('select intake_id from consent_document where id = $1', [docId])).rows[0]?.intake_id ?? null;
+  if (intakeBefore) {
+    await tx.query('select id from intake where id = $1 for update', [intakeBefore]);
+    await tx.query('select token from intake_link where intake_id = $1 and retired_at is null for update', [intakeBefore]);
+  }
   const d = (await tx.query<{ id: string; version_id: string; dentist_id: string | null; dentist_name: string | null; rev: number; fields: Fields; cancelled: boolean;
-    printed: boolean; signed: boolean; attested: boolean; patient_id: string | null; intake_id: string | null; intake_open: boolean | null }>(
+    printed: boolean; signed: boolean; attested: boolean; patient_id: string | null; intake_id: string | null; intake_open: boolean | null; desk_minor: string | null }>(
     `select d.id, d.version_id, d.dentist_id, d.dentist_name, d.rev, d.fields, d.cancelled_at is not null as cancelled, d.paper_printed_at is not null as printed,
             exists (select 1 from consent_signing s where s.document_id = d.id) as signed,
             exists (select 1 from consent_attestation x where x.document_id = d.id) as attested, d.patient_id, d.intake_id,
-            (select i.status in ('preparing', 'out') from intake i where i.id = d.intake_id) as intake_open
-       from consent_document d where d.id = $1 for update`, [isUuid(a.docId) ? a.docId : null])).rows[0];
+            (select i.status in ('preparing', 'out') from intake i where i.id = d.intake_id) as intake_open,
+            (select i.desk_minor from intake i where i.id = d.intake_id) as desk_minor
+       from consent_document d where d.id = $1 for update of d`, [docId])).rows[0];
+  if (d && d.intake_id !== intakeBefore) throw new Refused('The form changed while you were reading it. Here it is as it is now.');
   if (!d || d.cancelled) throw new Refused('That form was removed.');
   const t = TEMPLATES[d.version_id];
   if (!t || !t.attest) throw new Refused('This form is not explained and confirmed by a dentist.');
@@ -250,6 +262,9 @@ export async function attestDocument(tx: Tx, a: {
   const birth = (await tx.query<{ b: string | null }>(`select to_char(consent_birth_date($1, $2), 'YYYY-MM-DD') as b`, [d.patient_id, d.intake_id])).rows[0]?.b ?? null;
   const age = birth ? ageOn(birth, manilaToday()) : null;
   const minor = birth ? isMinor(birth) : null;
+  // What the patient said is asked of a patient aged 7 to 17, and while the age is not known yet unless the
+  // desk said they are 18 or over (ExplainForm asks the same; consent_attestation_check, 043, holds it).
+  const askAssent = age !== null ? age >= 7 && age <= 17 : d.desk_minor !== 'no';
   const read = readClinicPart(t, a.raw, { minor, dentist: true });
   const problems: string[] = [];
   for (const [name, text] of Object.entries(read.errors)) {
@@ -262,13 +277,13 @@ export async function attestDocument(tx: Tx, a: {
   const interpreter = clean(a.interpreter) || null;
   if (interpreter && interpreter.length > INTERPRETER_MAX) problems.push(`Keep the interpreter’s name under ${INTERPRETER_MAX} characters.`);
   const assent = ASSENT.find((x) => x.value === a.assent)?.value ?? null;
-  if (age !== null && age >= 7 && age <= 17 && !assent) problems.push('Say what the patient said: agreed, objected, or not asked.');
+  if (askAssent && !assent) problems.push('Say what the patient said: agreed, objected, or not asked.');
   if (problems.length) throw new Refused(problems);
   await tx.query('update consent_document set fields = $2 where id = $1', [d.id, JSON.stringify(read.fields)]);
   await tx.query(
     `insert into consent_attestation (clinic_id, document_id, dentist_id, dentist_name, dentist_prc, explained_in, interpreter, assent, fields_sha256)
      values ($1, $2, $3, '-', '-', $4, $5, $6, repeat('0', 64))`,
-    [a.clinicId, d.id, a.staffId, lang, interpreter, age !== null && age >= 7 && age <= 17 ? assent : null]);
+    [a.clinicId, d.id, a.staffId, lang, interpreter, askAssent ? assent : null]);
   if (d.intake_id && d.intake_open) {
     await tx.query(`insert into intake_event (clinic_id, intake_id, kind, document_id, staff_id, detail) values ($1, $2, 'confirm', $3, $4, 'explained')`,
       [a.clinicId, d.intake_id, d.id, a.staffId]);
@@ -370,7 +385,7 @@ export async function printForPaper(tx: Tx, a: { clinicId: string; staffId: stri
             (select i.status in ('preparing', 'out') from intake i where i.id = d.intake_id) as intake_open
        from consent_document d where d.id = $1 for update`, [isUuid(a.docId) ? a.docId : null])).rows[0];
   if (!d || !d.patient_id) throw new Refused('That form is not on a record.');
-  if (d.intake_open) throw new Refused('That form is in forms being filled in now. Stop those first.');
+  if (d.intake_open) throw new Refused('That form is in forms being filled in now. Take it out of those forms, or throw them away, first.');
   const t = TEMPLATES[d.version_id];
   if (d.state !== 'to_sign' || (await tx.query('select 1 from consent_signing where document_id = $1', [d.id])).rowCount) throw new Refused('Only a form never signed is printed for signing.');
   if (t?.attest && !d.attested) throw new Refused('The dentist explains and confirms this form before it is printed for signing.');
@@ -389,9 +404,11 @@ export async function recordPaperSigning(tx: Tx, a: {
   clinicId: string; staffId: string; docId: string; raw: RawPart; signedOn: string; attachmentId: string; clinic: ClinicFace;
 }): Promise<void> {
   if (!(await canEditRecords(tx, a.staffId, a.clinicId))) throw new Refused(NOT_ALLOWED);
+  // The form locked first, then read: what is checked is what is signed.
+  await tx.query('select 1 from consent_document where id = $1 for update', [isUuid(a.docId) ? a.docId : null]);
   const doc = await loadConsentDocument(tx, a.docId);
   if (!doc || !doc.patientId || !doc.template) throw new Refused('That form is not on a record.');
-  await tx.query('select 1 from consent_document where id = $1 for update', [doc.id]);
+  if (doc.intakeStatus === 'preparing' || doc.intakeStatus === 'out') throw new Refused('That form is in forms being filled in now. Take it out of those forms, or throw them away, first.');
   if (!doc.paperPrintedAt) throw new Refused('Print the form for signing first.');
   if (doc.state !== 'to_sign') throw new Refused('This form is signed already.');
   const t = doc.template;

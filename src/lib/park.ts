@@ -1,9 +1,13 @@
 // A device handed to a patient (the intake, 039; the spec §1.7 and §0.13).
 //
 // "Hand this device to Juan" (/auth/park/) makes the intake's link already
-// claimed by a secret made for this browser (fl_idev, scoped to that link),
-// then SIGNS THE DESK OUT (clearSession): no cookie merely hides a live
-// session. What stays is this hint, fl_park — who handed it over, at which
+// claimed by a secret made for this browser (fl_idev, one per browser, under
+// /f/i/: the next hand-over overwrites it, so an earlier patient's link answers
+// "open on another device" here), then SIGNS THE DESK OUT (clearSession): no
+// cookie merely hides a live session. The hand-over ends — the desk's link
+// retired as stopped and fl_idev expired — at /auth/unlock/, at the next
+// /auth/park/ (the hint below names the last intake), and fl_idev goes at any
+// staff sign-in (setSession). What stays is this hint, fl_park — who handed it over, at which
 // clinic, for which intake — signed with SESSION_SECRET so it cannot be
 // forged, httpOnly, SameSite=Strict, only under /auth/, for 24 hours. It opens
 // nothing: readSession() never reads it, and /auth/unlock/ uses it only to
@@ -16,8 +20,9 @@ import type { AstroCookies } from 'astro';
 
 export const PARK_COOKIE = 'fl_park';
 export const PARK_HOURS = 24;
-/** The device secret of a handed-over desk or a phone, scoped to its own link's pages. */
+/** The device secret of a handed-over desk or a phone: one per browser, under /f/i/. */
 export const DEVICE_COOKIE = 'fl_idev';
+export const DEVICE_PATH = '/f/i/';
 /** A clinic tablet's secret (Clinic settings → Clinic tablets), scoped to /f/. */
 export const TABLET_COOKIE = 'fl_ctab';
 export const TABLET_DAYS = 180;
@@ -57,9 +62,14 @@ export function clearPark(cookies: AstroCookies): void {
   cookies.delete(PARK_COOKIE, { path: '/auth/' });
 }
 
-/** The handed-over desk's own secret for one link: httpOnly, only on that link's pages, 24 hours. */
-export function setDeviceSecret(cookies: AstroCookies, token: string, secret: string): void {
-  cookies.set(DEVICE_COOKIE, secret, { httpOnly: true, secure: secure(), sameSite: 'lax', path: `/f/i/${token}/`, maxAge: PARK_HOURS * 3600 });
+/** The handed-over desk's own secret: httpOnly, only under /f/i/, 24 hours. One per browser: a new hand-over replaces the last. */
+export function setDeviceSecret(cookies: AstroCookies, secret: string): void {
+  cookies.set(DEVICE_COOKIE, secret, { httpOnly: true, secure: secure(), sameSite: 'lax', path: DEVICE_PATH, maxAge: PARK_HOURS * 3600 });
+}
+
+/** The hand-over is over on this browser: its secret goes, so its link answers "open on another device" here. */
+export function clearDeviceSecret(cookies: AstroCookies): void {
+  cookies.delete(DEVICE_COOKIE, { path: DEVICE_PATH });
 }
 
 /** A clinic tablet's secret: httpOnly, SameSite=Strict, only under /f/, 180 days. */
