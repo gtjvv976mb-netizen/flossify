@@ -14,12 +14,11 @@
 //
 // The safety line rides with the row (./SafetyLine.astro), so the allergies stay in view while the dentist charts:
 // below 768px as one line of words above the five columns, from the start; from 768px as a compact copy of the head's
-// line, a line on top of the row that the page shows (data-pinned) as soon as the head's line starts to go under the
-// top bar. The copy takes no room in the page (nothing under it moves as it comes and goes): while it shows, the row
-// sticks lower by its height, so the copy stands right under the top bar, over the head it copies, and never over the
-// tab's content. The page counts its height in --rec-stick, so whatever is scrolled to lands below the row. The script under the
-// row keeps the row and its copy within 128px: what does not fit folds into "+N more alerts, at the top" (the note
-// first, the blood pressure last); an allergy never does.
+// line, the row's second line under the tabs, which the page shows (data-pinned) once the head's line has left the
+// screen. The row grows to hold it and what follows moves down, so the copy never covers the head's note, a callout
+// or the tab's content. The page counts its height in --rec-stick, so whatever is scrolled to lands below the row. The
+// script under the row keeps the row and its copy within 128px: what does not fit folds into "+N more alerts, at the
+// top" (the note first, the blood pressure last); an allergy never does.
 //
 // Add ▾ is the workspace's disclosure menu (ws/Menu.astro: Escape, a click elsewhere or a panel opening closes it).
 // Its items open the record's side panels, which live outside the tabs, so each opens over the tab in view and saves
@@ -140,7 +139,10 @@ const groups: { title: string; items: Item[] }[] = canEdit ? [
       const order = parts.map((c, i) => ({ c, i, rank: Number(c.getAttribute('data-rec-pin-fold')) }))
         .filter((x) => x.rank > 0).sort((a, b) => a.rank - b.rank || b.i - a.i);
       let folded = 0;
-      const over = () => bar.offsetHeight + box.offsetHeight > CAP;
+      // The row without the room it makes for the copy while pinned (its padding at the foot, the copy's height then).
+      const cs = getComputedStyle(bar);
+      const row = bar.offsetHeight - (parseFloat(cs.paddingBottom) - parseFloat(cs.paddingTop));
+      const over = () => row + box.offsetHeight > CAP;
       for (const x of order) {
         if (!over()) break;
         x.c.hidden = true;

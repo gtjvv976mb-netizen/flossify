@@ -233,24 +233,25 @@ html:has([data-rec-bar]) { scroll-padding-top: calc(var(--rec-stick, 8.5rem) + 1
 }
 
 /* The safety line's copies in the row (./SafetyLine.astro, ./RecordNav.astro). Below 768px: one line of words above the
-   five columns, there from the start. From 768px: a compact copy of the head's line on top of the row, as the phone's
-   line is, laid out all the time (so the page can count its height, --rec-pin-h, in --rec-stick) and shown as soon as
-   the head's line starts to go under the top bar (data-pinned, set by the page). While it shows, the row sticks that
-   much lower, so the copy has its place right under the top bar whether or not the row has reached its own: the copy
-   covers only the head it copies, never the tab's content, and nothing in the page moves as it comes and goes. The
-   row's script folds what does not fit in 128px (row and copy) into "+N more alerts, at the top"; a folded pill
-   carries the hidden attribute, which the chips' own display would otherwise beat. */
+   five columns, there from the start. From 768px: a compact copy of the head's line as the row's second line, under
+   the tabs, once the head's line has left the screen (data-pinned, set by the page as the line's foot goes under the
+   top bar). The row then grows by the copy's height (its padding makes the room, --rec-pin-h) and what follows it moves
+   down that much: the copy takes a place of its own in the page, so it never covers the head (the note for the
+   dentist, a callout, a button) or the tab's content. Unpinned, it is laid out hidden in the same place (so it is
+   measured before it shows, and the page counts it in --rec-stick). The row's script folds what does not fit in
+   128px (row and copy) into "+N more alerts, at the top"; a folded pill carries the hidden attribute, which the
+   chips' own display would otherwise beat. The page turns the browser's scroll anchoring off from 768px: the room the
+   copy makes pushes the tab's content down, never the tab's content under the copy. */
 .rec-pin, .rec-pin-line { display: none; }
 .rec-body { position: relative; }
 .rec-pin-in > [hidden] { display: none; }
 @media (min-width: 768px) {
+  html:has([data-rec-bar]) { overflow-anchor: none; }
   .rec-pin {
-    display: block; position: absolute; bottom: 100%; left: -1px; right: -1px; visibility: hidden; pointer-events: none;
-    border: 1px solid var(--ws-hair); border-radius: 16px 16px 0 0; background: var(--c-surface); box-shadow: var(--ws-shadow);
+    display: block; position: absolute; left: 0; right: 0; bottom: 0; visibility: hidden; pointer-events: none;
+    border-top: 1px solid var(--ws-hair); border-radius: 0 0 15px 15px; background: var(--c-surface);
   }
-  /* The copy's bottom edge lies on the row's top edge (it hangs from the row's padding box), so the row sits 1px higher
-     and the copy meets the top bar with no gap. */
-  .rec-bar[data-pinned] { top: calc(var(--rec-top, 4.5rem) + var(--rec-pin-h, 0px) - 1px); border-top-left-radius: 0; border-top-right-radius: 0; }
+  .rec-bar[data-pinned] { padding-bottom: calc(0.375rem + var(--rec-pin-h, 0px)); }
   .rec-bar[data-pinned] .rec-pin { visibility: visible; pointer-events: auto; }
   .rec-pin-in { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.375rem; padding: 0.375rem 0.625rem 0.4375rem; }
   .rec-pin-chip { min-height: 24px; padding: 0.0625rem 0.5rem; }

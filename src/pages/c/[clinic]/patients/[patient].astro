@@ -332,8 +332,8 @@ if (Astro.request.method === 'POST') {
           `select to_char(starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as ymd from appointment where id = $1 and patient_id = $2`, [detailsDash, patientId])).rows[0]);
         if (v) return Astro.redirect(`/c/${clinic.slug}/?${v.ymd === manilaToday() ? '' : `date=${v.ymd}&`}booking=${detailsDash}`, 303);
       }
-      if (r === 'saved') return Astro.redirect(`${here}?saved=details#overview`, 303);
-      if (r === 'birth') return Astro.redirect(`${here}?saved=birth#overview`, 303);
+      if (r === 'saved') return Astro.redirect(`${here}?saved=details`, 303);
+      if (r === 'birth') return Astro.redirect(`${here}?saved=birth`, 303);
       if (r === 'denied') problems.push('Your account cannot change records at this branch. Ask the owner.');
       else if ('moved' in r) {
         // The next Save starts from the birth date on file now; what this person typed stays in the field.
@@ -824,24 +824,24 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
     )}
     {latest?.note && <Callout tone="alert" role="none" class="mt-3" title="Note for the dentist" text={latest.note} />}
     {deskNote && <p class="rec-desk-note mt-3"><Icon name="note" size={16} /><span class="min-w-0"><span class="rec-desk-note-k">Desk note</span> {deskNote}</span></p>}
-    {stale && <Callout tone="alert" class="mt-4" text={CSRF_MESSAGE} />}
+    {stale && <Callout data-rec-said tone="alert" class="mt-4" text={CSRF_MESSAGE} />}
     {/* A refused post whose form is not on this page for this person (no records.edit, or a payment plan without finance.bill): its sentence here. */}
-    {recordProblem && (!canEdit || (recordProblem.intent === 'payplan-add' && !money)) && <Callout tone="alert" class="mt-4" text={`${recordProblem.text} Nothing was saved.`} />}
-    {saved === 'new' && <Callout tone="success" class="mt-4" text={`Added. ${shortName} is on file as ${patient.chart_no}; everything from the form is below.`} />}
-    {saved === 'details' && <Callout tone="success" class="mt-4" text="Details saved." />}
-    {saved === 'birth' && <Callout tone="success" class="mt-4" text="Details saved. The birth date the record had is kept in the health history." />}
-    {saved === 'capacity' && <Callout tone="success" class="mt-4" text="Recorded. For 30 days a representative may sign consent forms for them, on a clinic device." />}
-    {saved === 'consent-removed' && <Callout tone="success" class="mt-4" text="The form was removed." />}
-    {q.get('capacity') === 'refused' && <Callout tone="alert" class="mt-4" text="Nothing was recorded. Only a treating dentist here with a PRC licence records this, for an adult patient with a birth date on file, and with a reason of at most 300 characters." />}
+    {recordProblem && (!canEdit || (recordProblem.intent === 'payplan-add' && !money)) && <Callout data-rec-said tone="alert" class="mt-4" text={`${recordProblem.text} Nothing was saved.`} />}
+    {saved === 'new' && <Callout data-rec-said tone="success" class="mt-4" text={`Added. ${shortName} is on file as ${patient.chart_no}; everything from the form is below.`} />}
+    {saved === 'details' && <Callout data-rec-said tone="success" class="mt-4" text="Details saved." />}
+    {saved === 'birth' && <Callout data-rec-said tone="success" class="mt-4" text="Details saved. The birth date the record had is kept in the health history." />}
+    {saved === 'capacity' && <Callout data-rec-said tone="success" class="mt-4" text="Recorded. For 30 days a representative may sign consent forms for them, on a clinic device." />}
+    {saved === 'consent-removed' && <Callout data-rec-said tone="success" class="mt-4" text="The form was removed." />}
+    {q.get('capacity') === 'refused' && <Callout data-rec-said tone="alert" class="mt-4" text="Nothing was recorded. Only a treating dentist here with a PRC licence records this, for an adult patient with a birth date on file, and with a reason of at most 300 characters." />}
     {saved === 'intake' && (() => {
       // Just added from an intake (039): what its forms came to, each part a way to the Consent section.
       const n = (st: string[]) => data.intakeDocs.filter((d) => st.includes(d.state)).length;
       const signedN = n(['agreed']), toSign = n(['to_sign']), toConfirm = n(['to_confirm']), refused = data.intakeDocs.filter((d) => d.state === 'refused' && d.code !== 'photos').length;
       const parts = [signedN && `${signedN === 1 ? 'one consent form' : `${signedN} consent forms`} signed`, toSign && `${toSign} to sign at the chair`, toConfirm && `${toConfirm} to confirm`, refused && `${refused} not agreed`].filter(Boolean) as string[];
-      return <Callout tone="success" class="mt-4" title={`${shortName} is added.`}>{parts.length > 0 && <p>{capitalise(parts.join(' · '))}. <a href="#consent" class="font-semibold underline underline-offset-2" data-rec-go="consent">See Consent</a></p>}</Callout>;
+      return <Callout data-rec-said tone="success" class="mt-4" title={`${shortName} is added.`}>{parts.length > 0 && <p>{capitalise(parts.join(' · '))}. <a href="#consent" class="font-semibold underline underline-offset-2" data-rec-go="consent">See Consent</a></p>}</Callout>;
     })()}
     {saved === 'form' && data.added && addedConsents && (
-      <Callout tone="success" class="mt-4" title={data.added.addedAs === 'new' ? `Added from the patient forms (${data.added.ref}).` : `Added the patient forms (${data.added.ref}) to ${patient.first_name}’s record.`}>
+      <Callout data-rec-said tone="success" class="mt-4" title={data.added.addedAs === 'new' ? `Added from the patient forms (${data.added.ref}).` : `Added the patient forms (${data.added.ref}) to ${patient.first_name}’s record.`}>
         <p>
           {data.added.addedAs === 'new' ? `${shortName} is on file as ${patient.chart_no}, with the health history from the form` : 'Empty details were filled in, and the record has the health history from the form'}{addedConsents.from.length ? ` and ${andList(addedConsents.from)}` : ''}.
           {addedConsents.onFile.length > 0 && ` ${capitalise(andList(addedConsents.onFile))} ${addedConsents.onFile.length === 1 ? 'was' : 'were'} already on file.`}
@@ -851,14 +851,14 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
       </Callout>
     )}
     {saved === 'form' && addedConsents && addedConsents.none.length > 0 && (
-      <Callout tone="warn" role="alert" class="mt-3" title="No consent was recorded from this form.">
+      <Callout data-rec-said tone="warn" role="alert" class="mt-3" title="No consent was recorded from this form.">
         <p>The birth date on the record makes {patient.first_name} under 18 on the day the form was signed, and {patient.first_name} signed it themself. A parent or guardian needs to agree: record it in <a href="#consent" class="font-semibold underline underline-offset-2" data-rec-go="consent">Consent</a>.</p>
       </Callout>
     )}
-    {usedLabel && !formUseProblem && <Callout tone="success" class="mt-4" text={`The ${usedLabel} on the record is now the one from the form.`} />}
-    {formUseProblem && <Callout tone="alert" class="mt-4" text={formUseProblem} />}
+    {usedLabel && !formUseProblem && <Callout data-rec-said tone="success" class="mt-4" text={`The ${usedLabel} on the record is now the one from the form.`} />}
+    {formUseProblem && <Callout data-rec-said tone="alert" class="mt-4" text={formUseProblem} />}
     {data.added && data.addedDiffers.length > 0 && (
-      <Callout tone="warn" role={saved === 'form' ? 'alert' : undefined} class="mt-3" title="The form says something the record does not. The record kept what it had:">
+      <Callout data-rec-said tone="warn" role={saved === 'form' ? 'alert' : undefined} class="mt-3" title="The form says something the record does not. The record kept what it had:">
         <ul class="fm-diff">
           {data.addedDiffers.map((d) => (
             <li class="fm-diff-use">
@@ -1400,35 +1400,56 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
   const tabNamed = (name: string) => panelOf(document.getElementById(name)) ?? tabOf(name) ?? tabOf(name.replace(/^rec-/, ''));
 
   // The tab row sticks under the workspace's top bar; what is scrolled to (a tab, a card) lands just under the row.
-  // From 768px the row pins a copy of the head's safety line on top of itself as soon as the head's line starts to go
-  // under the top bar (data-pinned; ./_record/RecordNav.astro), and then sticks lower by the copy's height (--rec-pin-h),
-  // so the copy stands right under the top bar, over the head, wherever the row is: a tab or a #card landed on just
-  // under the row has the allergies on screen above it. The copy is laid out all the time and takes no room in the
-  // page, so --rec-stick counts it always: whatever is scrolled to, focused or landed on lands below the row, and the
-  // copy never covers a card, the chart's offer or a field. (The side panels and the chart's palette sit in the top
-  // layer, above the row.)
+  // From 768px the row shows a copy of the head's safety line as its second line once the head's line has left the
+  // screen (data-pinned; ./_record/RecordNav.astro): the row grows by the copy's height (--rec-pin-h) and what follows
+  // it moves down, so the copy covers nothing, neither the head's note, callouts and buttons nor the tab's content.
+  // Wherever the row is stuck the head's line has left, so --rec-stick counts the copy always, and a landing is worked
+  // out for the row as it will be once the scroll is done (the copy shown or not): whatever is scrolled to, focused
+  // or landed on lands below the row with the allergies on screen above it. (The side panels and the chart's palette
+  // sit in the top layer, above the row.)
   const pin = bar?.querySelector<HTMLElement>('[data-rec-pin]') ?? null;
   const pinHeight = () => Math.round(pin?.getBoundingClientRect().height ?? 0);
   const topHeight = () => Math.round(topBar?.getBoundingClientRect().height ?? 0);
+  const pinned = () => !!bar?.hasAttribute('data-pinned');
+  /** The row's own height, without the room it makes for the copy while that shows. */
+  const rowHeight = () => {
+    if (!bar) return 0;
+    const cs = getComputedStyle(bar);
+    return Math.round(bar.getBoundingClientRect().height - (parseFloat(cs.paddingBottom) - parseFloat(cs.paddingTop)));
+  };
   let watchedTop = -1;
   const measure = () => {
     const top = topHeight();
     root.style.setProperty('--rec-top', `${top}px`);
     root.style.setProperty('--rec-pin-h', `${pinHeight()}px`);
-    root.style.setProperty('--rec-stick', `${top + Math.round(bar?.getBoundingClientRect().height ?? 0) + pinHeight()}px`);
+    root.style.setProperty('--rec-stick', `${top + rowHeight() + pinHeight()}px`);
     if (top !== watchedTop) watchPin(top);
   };
+  const safetyHead = document.querySelector<HTMLElement>('[data-rec-safety]');
+  const PIN_AT = 12;
+  /** Scroll so that el starts just under the row (and the copy, when it will show once scrolled there). */
+  const land = (el: HTMLElement) => {
+    const top = topHeight(), row = rowHeight(), pinH = pinHeight(), now = pinned();
+    const r = el.getBoundingClientRect().top;
+    // Below the row, el moves by the copy's height as it comes or goes.
+    const below = !!bar && !bar.contains(el) && !!(bar.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const withPin = r + (below && !now ? pinH : 0), withoutPin = r - (below && now ? pinH : 0);
+    let d = withPin - (top + row + pinH + 12);
+    // The copy shows only once the head's line has left the screen; if this scroll leaves it on screen, land without.
+    if (!pinH || !safetyHead || safetyHead.getBoundingClientRect().bottom - d > top + PIN_AT + 0.5) d = withoutPin - (top + row + 12);
+    if (Math.abs(d) >= 1) scrollBy({ top: d, behavior: 'instant' });
+  };
   /** Scroll only when needed: a tab's top hidden under the row (the page was scrolled down), or too low on the screen
-   *  to see (a phone); then it starts just under the row and the room its pinned copy takes above it. */
+   *  to see (a phone); then it starts just under the row. */
   const reveal = (el: HTMLElement) => {
     const barBox = bar?.getBoundingClientRect();
     const top = el.getBoundingClientRect().top;
     if (top >= (barBox?.bottom ?? 0) + 11 && top <= innerHeight - 96) return;
-    scrollBy({ top: top - (topHeight() + (barBox?.height ?? 0) + pinHeight() + 12) });
+    land(el);
   };
-  // Pinned while any of the head's safety line is under the top bar: one observer under the top bar, on the line (whole
-  // on screen, or not; and if not, gone up, never down). Made again when the top bar's height changes.
-  const safetyHead = document.querySelector<HTMLElement>('[data-rec-safety]');
+  // Pinned once the head's safety line has left the screen: no more of it below the top bar than a sliver of its last
+  // row of pills, too little to read (PIN_AT). One observer under the top bar, on the line (gone up, never down); made
+  // again when the top bar's height changes.
   let watching: IntersectionObserver | null = null;
   function watchPin(top: number) {
     watchedTop = top;
@@ -1436,8 +1457,15 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
     watching = null;
     if (!bar || !pin || !safetyHead || !('IntersectionObserver' in window)) return;
     watching = new IntersectionObserver(([e]) => {
-      bar.toggleAttribute('data-pinned', e.intersectionRatio < 0.999 && e.boundingClientRect.top < top + 1);
-    }, { rootMargin: `-${top}px 0px 0px 0px`, threshold: [0, 0.999] });
+      const was = pinned();
+      bar.toggleAttribute('data-pinned', !e.isIntersecting && e.boundingClientRect.bottom <= top + PIN_AT + 0.5);
+      // The copy's room pushes what follows down: a control Tab just brought up from below stays on screen.
+      const f = document.activeElement;
+      if (!was && pinned() && f instanceof HTMLElement && !bar.contains(f) && !f.closest('dialog') && (bar.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+        const r = f.getBoundingClientRect(), foot = innerHeight - 16;
+        if (r.bottom > foot && r.top - (r.bottom - foot) >= top + rowHeight() + pinHeight()) scrollBy({ top: r.bottom - foot, behavior: 'instant' });
+      }
+    }, { rootMargin: `-${top + PIN_AT}px 0px 0px 0px`, threshold: [0] });
     watching.observe(safetyHead);
   }
   measure();
@@ -1453,7 +1481,7 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
     if (t.getAttribute('aria-selected') !== 'true') t.click();
     const panel = document.getElementById(`rec-${tab}`);
     requestAnimationFrame(() => {
-      if (target && !target.matches('[data-rec-panel], .rec-anchor')) target.scrollIntoView({ block: 'start' });
+      if (target && !target.matches('[data-rec-panel], .rec-anchor')) land(target);
       else if (panel) reveal(panel);
       if (focus) t.focus({ preventScroll: true });
     });
@@ -1491,6 +1519,20 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
   const asked = decodeURIComponent(location.hash.slice(1));
   if (body?.hasAttribute('data-rec-posted') && asked && tabNamed(asked) !== currentTab()) history.replaceState(null, '', `${location.pathname}${location.search}#${currentTab()}`);
   else if (!body?.hasAttribute('data-rec-opened')) fromHash();
+  // A save or a refusal that is said in the head (Details saved., the stale page …) lands with its words on screen:
+  // at the top of the page when they fit there, else just enough further down, whatever tab the address names; a
+  // #card the address names still wins.
+  const said = [...document.querySelectorAll<HTMLElement>('[data-rec-said]')];
+  const showSaid = () => {
+    const first = said[0].getBoundingClientRect(), last = said[said.length - 1].getBoundingClientRect();
+    const d = Math.min(first.top - (topHeight() + 16), Math.max(last.bottom - (innerHeight - 16), -scrollY));
+    if (Math.abs(d) >= 1) scrollBy({ top: d, behavior: 'instant' });
+  };
+  const askedEl = asked ? document.getElementById(asked) : null;
+  if (said.length > 0 && !body?.hasAttribute('data-rec-opened') && (!asked || asked === 'timeline' || !!askedEl?.matches('.rec-anchor, [data-rec-panel]'))) {
+    requestAnimationFrame(() => requestAnimationFrame(showSaid));
+    if (document.readyState !== 'complete') addEventListener('load', () => requestAnimationFrame(showSaid), { once: true });
+  }
   // A text box in a tab that Tab brings up from below shows only its caret's line (the browser reveals the caret, not
   // the box): the whole box, when it fits between the row (and its pinned copy) and the foot of the screen.
   body?.addEventListener('focusin', (e) => {
@@ -1544,8 +1586,8 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
     addList.style.maxHeight = '';
     const room = () => innerHeight - addList.getBoundingClientRect().top - 12;
     const barTop = bar?.getBoundingClientRect().top ?? 0;
-    // Where the row sticks: under the top bar, and under the safety line's copy once that shows (from 768px).
-    const stuckAt = topHeight() + pinHeight();
+    // Where the row sticks: right under the top bar.
+    const stuckAt = topHeight();
     if (room() < Math.min(addList.scrollHeight, 520) && barTop > stuckAt + 1) scrollBy({ top: barTop - stuckAt, behavior: 'instant' });
     addList.style.maxHeight = `${Math.max(160, room())}px`;
   }).observe(addList, { attributes: true, attributeFilter: ['hidden'] });
