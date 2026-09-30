@@ -12,6 +12,14 @@
 // device draws them, so a count on a tab or a wider system font never pushes a tab onto a second line; it measures
 // again when the row's width changes (a turned tablet, the sidebar folded).
 //
+// The safety line rides with the row (./SafetyLine.astro), so the allergies stay in view while the dentist charts:
+// below 768px as one line of words above the five columns, from the start; from 768px as a compact copy of the head's
+// line, a second line of the row that the page shows (data-pinned) once the row is stuck and the head's line has left
+// the screen. The copy stands below the row without taking room in the page (nothing under it moves as it comes and
+// goes); the page counts its height in --rec-stick, so whatever is scrolled to lands below it. The script under the
+// row keeps the row and its copy within 128px: what does not fit folds into "+N more alerts, at the top" (the note
+// first, the blood pressure last); an allergy never does.
+//
 // Add ▾ is the workspace's disclosure menu (ws/Menu.astro: Escape, a click elsewhere or a panel opening closes it).
 // Its items open the record's side panels, which live outside the tabs, so each opens over the tab in view and saves
 // back to it (the page's script sets each form's `back`). Items that write need records.edit, a payment plan and a
@@ -21,7 +29,9 @@ import Menu from '../../../../../components/ws/Menu.astro';
 import Icon from '../../../../../components/ws/Icon.astro';
 import Glyph from '../_ui/Glyph.astro';
 import type { GlyphName } from '../_ui/glyphs';
+import SafetyLine from './SafetyLine.astro';
 import { TABS, type Hue, type TabId } from './sections';
+import type { SafetyItem, SafetyTone } from './safety';
 
 interface Props {
   current: TabId;
@@ -33,8 +43,12 @@ interface Props {
   canEdit: boolean;
   money: boolean;
   chargeHref: string;
+  /** The head's safety line (./safety.ts), the note for the dentist, and the phone's line of words. */
+  safety: SafetyItem[];
+  note: string | null;
+  line: { text: string; tone: SafetyTone; more: number };
 }
-const { current, name, firstName, counts = {}, canEdit, money, chargeHref } = Astro.props;
+const { current, name, firstName, counts = {}, canEdit, money, chargeHref, safety, note, line } = Astro.props;
 
 interface Item { open: string; label: string; hint: string; hue: Hue; glyph: GlyphName; attrs?: Record<string, string> }
 const groups: { title: string; items: Item[] }[] = canEdit ? [
@@ -57,7 +71,10 @@ const groups: { title: string; items: Item[] }[] = canEdit ? [
 ] : [];
 ---
 
+{/* Everything above the row, invisible: the page's observer sees the row stick when this leaves the screen. */}
+<span class="rec-stuck-mark" aria-hidden="true" data-rec-stuck></span>
 <div class="rec-bar" data-rec-bar>
+  <SafetyLine variant="line" items={safety} note={note} line={line} />
   <nav class="rec-nav" aria-label={`${name}’s record`}>
     <div role="tablist" aria-label="Parts of the record" aria-orientation="horizontal" class="rec-tabs rec-nav-list" data-ws-tabs>
       {TABS.map((t) => {
@@ -100,6 +117,7 @@ const groups: { title: string; items: Item[] }[] = canEdit ? [
       )}
     </Menu>
   )}
+  <SafetyLine variant="pin" items={safety} note={note} />
 </div>
 <script is:inline>
   (() => {
@@ -108,6 +126,30 @@ const groups: { title: string; items: Item[] }[] = canEdit ? [
     const tabs = [...bar.querySelectorAll('[role="tab"]')];
     const phone = matchMedia('(max-width: 767px)');
     const oneLine = () => tabs.every((t) => t.offsetTop === tabs[0].offsetTop);
+    // The pinned copy of the safety line: laid out (hidden) all the time, so it is measured before it is shown.
+    const box = bar.querySelector('[data-rec-pin]');
+    const pin = box && box.querySelector('[data-rec-pin-in]');
+    const more = pin && pin.querySelector('[data-rec-pin-more]');
+    const CAP = 128;
+    const fold = () => {
+      if (!pin || !more) return;
+      const parts = [...pin.children].filter((c) => c !== more);
+      parts.forEach((c) => { c.hidden = false; });
+      more.hidden = true;
+      if (phone.matches) return;
+      // The note first, then the medicines, the conditions … the blood pressure last, each from the end; never an allergy.
+      const order = parts.map((c, i) => ({ c, i, rank: Number(c.getAttribute('data-rec-pin-fold')) }))
+        .filter((x) => x.rank > 0).sort((a, b) => a.rank - b.rank || b.i - a.i);
+      let folded = 0;
+      const over = () => bar.offsetHeight + box.offsetHeight > CAP;
+      for (const x of order) {
+        if (!over()) break;
+        x.c.hidden = true;
+        folded += 1;
+        more.textContent = `+${folded} more ${folded === 1 ? 'alert' : 'alerts'}, at the top`;
+        more.hidden = false;
+      }
+    };
     let width = -1;
     const fit = () => {
       bar.removeAttribute('data-fit');
@@ -115,6 +157,7 @@ const groups: { title: string; items: Item[] }[] = canEdit ? [
         bar.setAttribute('data-fit', 'compact');
         if (!oneLine()) bar.setAttribute('data-fit', 'short');
       }
+      fold();
       width = bar.clientWidth;
     };
     fit();

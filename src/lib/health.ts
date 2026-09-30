@@ -192,17 +192,22 @@ export function readHealthForm(form: FormData, today = manilaToday()): { answers
   if (note.length > NOTE_MAX) problems.push(`Keep the note under ${NOTE_MAX} characters; it has ${note.length}.`);
   answers.note = note || null;
 
-  const raw = oneLine(form.get('birth_date'));
-  let birth: string | null = null;
-  if (raw) {
-    const m = YMD.exec(raw);
-    const real = m && (() => { const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])); return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3]; })();
-    if (!real) problems.push('That birth date is not a real date. Pick it from the calendar, or type it as day, month, year.');
-    else if (raw > today) problems.push('The birth date is after today. Check the year.');
-    else if (raw < '1900-01-01') problems.push('The birth date is before 1900. Check the year.');
-    else birth = raw;
-  }
+  const { birth, problem } = readBirth(form.get('birth_date'), today);
+  if (problem) problems.push(problem);
   return { answers, birth, problems };
+}
+
+/** A posted birth date (YYYY-MM-DD, or empty for none): a real day, not after today, not before 1900. The health
+ *  form (Add patient) and Edit details on the patient record read it the same way. */
+export function readBirth(v: unknown, today = manilaToday()): { birth: string | null; problem: string | null } {
+  const raw = oneLine(v);
+  if (!raw) return { birth: null, problem: null };
+  const m = YMD.exec(raw);
+  const real = m && (() => { const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])); return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3]; })();
+  if (!real) return { birth: null, problem: 'That birth date is not a real date. Pick it from the calendar, or type it as day, month, year.' };
+  if (raw > today) return { birth: null, problem: 'The birth date is after today. Check the year.' };
+  if (raw < '1900-01-01') return { birth: null, problem: 'The birth date is before 1900. Check the year.' };
+  return { birth: raw, problem: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -348,6 +353,36 @@ export async function saveHealth(tx: Tx, a: {
     await audit('patient.birth_date');
   }
   return { kind: 'saved', answers: answersChanged || checked, birth: birthChanged };
+}
+
+/**
+ * A birth date changed in Edit details (the patient record), kept exactly as the health form keeps one (saveHealth):
+ * a new medical_history version that copies the latest answers, with the change written into its `answers` as
+ * {"birth_date": {"from", "to"}}, the patient row updated, audit patient.birth_date. `birthWas` is the birth date the
+ * form was drawn with: a birth date this person did not touch is left as it is on file ('unchanged'), and one someone
+ * else changed since the form was drawn writes nothing ('conflict', with the one on file now). The record runs it in
+ * the transaction that saves the rest of the details, so a conflict takes back the whole save.
+ */
+export async function saveBirth(tx: Tx, a: {
+  clinicId: string; staffId: string; patientId: string; birth: string | null; birthWas: string | null;
+}): Promise<{ kind: 'none' } | { kind: 'unchanged' } | { kind: 'saved' } | { kind: 'conflict'; birth: string | null }> {
+  const p = (await tx.query<{ birth: string | null }>(
+    `select to_char(birth_date, 'YYYY-MM-DD') as birth from patient where id = $1 and archived_at is null for update`, [a.patientId])).rows[0];
+  if (!p) return { kind: 'none' };
+  const stored = p.birth ?? null;
+  if (a.birth === a.birthWas) return { kind: 'unchanged' };
+  if (stored !== a.birthWas) return { kind: 'conflict', birth: stored };
+  if (a.birth === stored) return { kind: 'unchanged' };
+  const latest = (await readHealth(tx, a.patientId, 1)).versions[0] ?? null;
+  await tx.query(
+    `insert into medical_history (clinic_id, patient_id, answered_by, recorded_by, allergies, conditions, medications, note, answers)
+     values ($1, $2, 'staff', $3, $4, $5, $6, $7, $8)`,
+    [a.clinicId, a.patientId, a.staffId, latest?.allergies ?? null, latest?.conditions ?? null, latest?.medications ?? null, latest?.note ?? null,
+      JSON.stringify({ birth_date: { from: stored, to: a.birth } })]);
+  await tx.query('update patient set birth_date = $2, updated_at = now() where id = $1', [a.patientId, a.birth]);
+  await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'patient.birth_date', 'patient', $3)`,
+    [a.clinicId, a.staffId, a.patientId]);
+  return { kind: 'saved' };
 }
 
 /**

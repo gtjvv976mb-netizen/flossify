@@ -1,7 +1,8 @@
 ---
 // One patient's record, in the workspace (the Patients tab lit): a head
-// of the facts that decide the next step — name, age, mobile, HMO, alerts,
-// balance (finance roles), next and last visit, consent — then four tabs
+// of the facts that decide the next step — name, age, mobile, the HMO card,
+// what they owe (finance roles), the safety line, the note for the dentist
+// and the desk's note — then four tabs
 // switched in place, in a row that stays at the top of the screen
 // (./_record/RecordNav.astro, ./_record/sections.ts): Today (this visit, what is
 // coming, the next check-up, the visits) · Patient info (health, blood
@@ -14,11 +15,17 @@
 // (canBill in src/lib/invoices.ts), like the Finances tab.
 //
 // Drawn in the soft, very simple template (docs/workspace-redesign.md, "The
-// soft template" and "Very simple"): the patient's avatar, name and a few facts
-// with the chart no. as a small reference pill; one teal main action, New
-// booking (the Dashboard's booking panel, the patient filled in), Edit details
-// beside it; the alert chips; at most four numbers (next visit, last visit,
-// balance, consent). Everything written into the record (a note, a treatment,
+// soft template" and "Very simple"): the patient's avatar and a few facts in
+// one line with the chart no. as a small reference pill — for people who may
+// bill, "Owes ₱…" (or "In credit ₱…") as a link to their statements in
+// Finances; Edit details and New booking (the Dashboard's booking panel, the
+// patient filled in), both quiet, since a screen's one teal button is its
+// tab's; then the safety line, in plain words and never buttons
+// (./_record/SafetyLine.astro: the allergies, or which kind of none, the
+// conditions, the medicines, a blood pressure, a clearance, under 18), which
+// the tab row pins while the record is scrolled; the note for the dentist in
+// full; the desk's note (deskNoteOf: patient.notes less the import's own
+// lines) in one quiet line. Everything written into the record (a note, a treatment,
 // a reading, a prescription, a file, a plan item, a lab case, an LOA, a
 // payment plan, a letter, a charge) is under Add ▾ at the end of the tab row.
 // The pages' own pieces are in ./_ui/ (patients.css, HealthLists, Callout,
@@ -50,14 +57,12 @@
 //
 // Four forms post back to this page, each with the CSRF token, checked before
 // anything else (a miss comes back with ?stale=1):
-//   intent=health   birth date, allergies, conditions, medicines, a note.
+//   intent=health   allergies, conditions, medicines, a note.
 //                   saveHealth() in src/lib/health.ts: a new medical_history
-//                   version under the person who saved it (a birth date
-//                   change is kept in it, from and to), audit health.update /
-//                   patient.birth_date. A save that started from an older
-//                   version than the newest, or that changes a birth date
-//                   someone else changed since, writes nothing and shows what
-//                   the other person saved.
+//                   version under the person who saved it, audit
+//                   health.update. A save that started from an older version
+//                   than the newest writes nothing and shows what the other
+//                   person saved.
 //   intent=consent  the privacy notice agreed at the desk (DeskConsent.astro),
 //                   recordDeskConsent(): channel 'desk', who agreed (the
 //                   patient, or a parent or guardian, named), audit
@@ -67,12 +72,17 @@
 //                   copy of the notice in force, dated on a day it was in
 //                   force, or the clinic's own form (026). Audit consent.paper
 //                   / consent.paper_form.
-//   intent=details  Edit details (a side panel): name, chart no., sex, mobile,
-//                   email, address, HMO, emergency contact, notes —
-//                   updateDetails() in src/lib/import.ts, audit patient.update.
-//                   Saved, it lands on Today; refused, over the tab it was
-//                   opened on. The birth date stays with the health form, which
-//                   keeps its history. Opened from the Dashboard's desk note
+//   intent=details  Edit details (a side panel): name, chart no., birth date,
+//                   sex, mobile, email, address, HMO, emergency contact, notes —
+//                   updateDetails() in src/lib/import.ts, audit patient.update;
+//                   a changed birth date is kept in the health history as the
+//                   health form kept it (saveBirth() in src/lib/health.ts: a
+//                   version with the change from and to, audit
+//                   patient.birth_date), in the same transaction, and one
+//                   someone else changed since the panel opened takes back the
+//                   whole save and says what is on file now. Saved, it lands on
+//                   Today (?saved=details, or ?saved=birth when the birth date
+//                   changed); refused, over the tab it was opened on. Opened from the Dashboard's desk note
 //                   (?open=details&dash=<visit>), the form carries the visit in
 //                   a hidden dash, and a save goes back to the Dashboard with that
 //                   visit open (only a visit of this patient's).
@@ -105,7 +115,6 @@ import DeskConsent from '../../../../components/DeskConsent.astro';
 import ConsentForms from './_record/ConsentForms.astro';
 import Odontogram from '../../../../components/Odontogram.astro';
 import Pane from '../../../../components/ws/Pane.astro';
-import Tile from '../../../../components/ws/Tile.astro';
 import Chip from '../../../../components/ws/Chip.astro';
 import Empty from '../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../components/ws/SidePanel.astro';
@@ -135,6 +144,8 @@ import Loas from './_record/Loas.astro';
 import PayPlans from './_record/PayPlans.astro';
 import RecordNav from './_record/RecordNav.astro';
 import SavedLine from './_record/SavedLine.astro';
+import SafetyLine from './_record/SafetyLine.astro';
+import { safetyItems, safetyLine } from './_record/safety';
 import Who from './_record/Who.astro';
 import VisitStrip from './_record/VisitStrip.astro';
 import { ANCHOR, CARD_HUE, OPEN_PANEL, TABS, backOf, landingSection, savedCard, tabOf } from './_record/sections';
@@ -146,10 +157,10 @@ import { hit, waitText, LIMITS } from '../../../../lib/throttle';
 import {
   LISTS, NOTE_MAX, NAME_MAX, manilaToday, ageOn, ageText, when, day, oneLine, readHealthForm, saveHealth, readHealth,
   canEditRecords, readConsents, noticeInForce, recordDeskConsent, versionChanges, listText, answered, dateText, capitalise,
-  consentInForce, readPaperForms, readPaperForm, recordPaperConsent, PAPER_WORDS, recheckHealth,
+  consentInForce, readPaperForms, readPaperForm, recordPaperConsent, PAPER_WORDS, recheckHealth, readBirth, saveBirth,
   type HealthAnswers, type HealthVersion, type AgreedAs, type PaperIn,
 } from '../../../../lib/health';
-import { readPersonForm, updateDetails, hmoSuggestions, SEXES, NOTES_MAX, type PersonIn } from '../../../../lib/import';
+import { readPersonForm, updateDetails, hmoSuggestions, deskNoteOf, importNotesOf, SEXES, NOTES_MAX, type PersonIn } from '../../../../lib/import';
 import { pesos, statementNo, STATUS as BILL_STATUS, fromDb } from '../../../../lib/invoices';
 import { prettyPhone } from '../../../../lib/messages';
 import { hmos } from '../../../../data/directory';
@@ -189,14 +200,16 @@ const chartSid = chartSession(session);
 
 // What a post left behind for the page to show.
 let healthProblems: string[] = [];
-let posted: { answers: HealthAnswers; birth: string; birthWas: string; base: string } | null = null;
-let conflict: { latest: HealthVersion | null; birth: string | null; versionMoved: boolean; birthMoved: boolean } | null = null;
+let posted: { answers: HealthAnswers; base: string } | null = null;
+let conflict: { latest: HealthVersion | null } | null = null;
 let consentProblem: string | null = null;
 let givenBy = '';
 let agreedAs: AgreedAs | null = null;
 let paperState: { open: boolean; problem: string | null; values: Partial<PaperIn> } = { open: false, problem: null, values: {} };
 let detailsProblems: string[] = [];
 let detailsPosted: PersonIn | null = null;
+// The birth date Edit details was posted with, and the one it was drawn with (on a conflict, the one on file now).
+let birthPosted: { value: string; was: string } | null = null;
 // Edit details opened from the Dashboard (?open=details&dash=<visit>): the visit to go back to once it is saved.
 let detailsDash: string | null = null;
 let formUseProblem: string | null = null;
@@ -226,33 +239,30 @@ if (Astro.request.method === 'POST') {
   const to = (qs: string, hash: string) => `${here}?${[postedVisit ? `visit=${postedVisit}` : '', qs].filter(Boolean).join('&')}${hash ? `#${hash}` : ''}`;
 
   if (intent === 'health') {
+    // The answers only: the birth date is in Edit details now (the form sends none, so saveHealth leaves it as it is).
+    // A form drawn before the birth date moved still carries it (birth_was): kept, as saveHealth always kept it.
     backTo = 'health';
     const { answers, birth, problems } = readHealthForm(form);
+    const legacy = form.has('birth_was') ? { birth, birthWas: oneLine(form.get('birth_was')) || null } : { birth: null, birthWas: null };
     let base = String(form.get('base') ?? '');
-    // The birth date this page opened with: a save changes the birth date only when this person changed it.
-    let birthWas = oneLine(form.get('birth_was'));
-    let birthShown = oneLine(form.get('birth_date'));
     if (slow) problems.unshift(slow);
     if (problems.length === 0) {
       const r = await withClinic(clinic.id, async (tx) =>
         (await canEditRecords(tx, session.staffId, clinic.id))
-          ? saveHealth(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, base, answers, birth, birthWas: birthWas || null })
+          ? saveHealth(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, base, answers, ...legacy })
           : ({ kind: 'denied' } as const));
       if (r.kind === 'none') return notFound();
-      if (r.kind === 'saved') return Astro.redirect(to(`saved=${r.answers ? 'health' : 'birth'}`, 'health'), 303);
+      if (r.kind === 'saved') return Astro.redirect(to(r.answers ? 'saved=health' : 'saved=birth', r.answers ? 'health' : 'overview'), 303);
       if (r.kind === 'unchanged') return Astro.redirect(to('saved=nothing', 'health'), 303);
       if (r.kind === 'denied') problems.push('Your account cannot change records at this branch. Ask the owner.');
       if (r.kind === 'conflict') {
-        conflict = { latest: r.latest, birth: r.birth, versionMoved: (r.latest?.id ?? 'none') !== base, birthMoved: (r.birth ?? '') !== birthWas };
-        // The next Save starts from what is on file now. A birth date this person
-        // did not change shows the one on file; one they changed stays as typed.
-        if (birthShown === birthWas) birthShown = r.birth ?? '';
+        conflict = { latest: r.latest };
+        // The next Save starts from what is on file now.
         base = r.latest?.id ?? 'none';
-        birthWas = r.birth ?? '';
       }
     }
     healthProblems = problems;
-    posted = { answers, birth: birthShown, birthWas, base };
+    posted = { answers, base };
   } else if (intent === 'consent') {
     backTo = 'consent';
     givenBy = oneLine(form.get('given_by_name'));
@@ -297,23 +307,39 @@ if (Astro.request.method === 'POST') {
     backTo = backOf(form.get('back')) ?? 'overview';
     const { person, problems } = readPersonForm(form);
     detailsPosted = person;
+    // The birth date (its history is kept in the health history: saveBirth), and the one the panel was drawn with.
+    const birthIn = readBirth(form.get('birth_date'));
+    if (birthIn.problem) problems.push(birthIn.problem);
+    birthPosted = { value: oneLine(form.get('birth_date')), was: oneLine(form.get('birth_was')) };
     const dashIn = String(form.get('dash') ?? '');
     detailsDash = UUID.test(dashIn) ? dashIn.toLowerCase() : null;
     if (slow) problems.unshift(slow);
     if (!problems.length) {
-      const r = await withClinic(clinic.id, async (tx) =>
-        (await canEditRecords(tx, session.staffId, clinic.id))
-          ? updateDetails(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, p: person })
-          : ('denied' as const));
+      // One transaction: a birth date someone else changed since the panel opened takes back the rest of the save too.
+      const r = await withClinic(clinic.id, async (tx) => {
+        if (!(await canEditRecords(tx, session.staffId, clinic.id))) return 'denied' as const;
+        const u = await updateDetails(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, p: person });
+        if (u !== 'saved') return u;
+        const b = await saveBirth(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, birth: birthIn.birth, birthWas: birthPosted!.was || null });
+        if (b.kind === 'none') return 'none' as const;
+        if (b.kind === 'conflict') throw new Refused<{ onFile: string | null }>('birth', { onFile: b.birth });
+        return b.kind === 'saved' ? ('birth' as const) : ('saved' as const);
+      }).catch((e) => { if (e instanceof Refused) return { moved: (e as Refused<{ onFile: string | null }>).detail.onFile }; throw e; });
       if (r === 'none') return notFound();
-      if (r === 'saved' && detailsDash) {
+      if ((r === 'saved' || r === 'birth') && detailsDash) {
         // Back to the Dashboard with that visit's panel open, showing the new note: only a visit of this patient's.
         const v = await withClinic(clinic.id, async (tx) => (await tx.query(
           `select to_char(starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as ymd from appointment where id = $1 and patient_id = $2`, [detailsDash, patientId])).rows[0]);
         if (v) return Astro.redirect(`/c/${clinic.slug}/?${v.ymd === manilaToday() ? '' : `date=${v.ymd}&`}booking=${detailsDash}`, 303);
       }
       if (r === 'saved') return Astro.redirect(`${here}?saved=details#overview`, 303);
-      problems.push(r === 'denied' ? 'Your account cannot change records at this branch. Ask the owner.' : r.taken);
+      if (r === 'birth') return Astro.redirect(`${here}?saved=birth#overview`, 303);
+      if (r === 'denied') problems.push('Your account cannot change records at this branch. Ask the owner.');
+      else if ('moved' in r) {
+        // The next Save starts from the birth date on file now; what this person typed stays in the field.
+        problems.push(`Someone changed the birth date on file to ${dateText(r.moved) ?? 'none'} after this panel opened. Check it with the patient, then save again.`);
+        birthPosted.was = r.moved ?? '';
+      } else problems.push(r.taken);
     }
     detailsProblems = problems;
   } else if (RECORD_INTENTS.has(intent) || EXTRA_INTENTS.has(intent)) {
@@ -393,11 +419,6 @@ const data = await withClinic(clinic.id, async (tx) => {
             (select i.total from invoice i where i.appointment_id = a.id and i.status <> 'void' order by i.issued_at limit 1) as charged
        from appointment a left join staff s on s.id = a.dentist_id
       where a.patient_id = $1 order by a.starts_at desc limit 200`, [p.id])).rows;
-  const next = (await tx.query(
-    `select a.starts_at, a.reason, a.status, s.full_name as dentist from appointment a left join staff s on s.id = a.dentist_id
-      where a.patient_id = $1 and a.status not in ('cancelled', 'no_show', 'completed')
-        and (a.starts_at >= now() - interval '1 hour' or a.status in ('arrived', 'in_lobby', 'in_chair'))
-      order by a.status in ('arrived', 'in_lobby', 'in_chair') desc, a.starts_at limit 1`, [p.id])).rows[0] ?? null;
   // Who looked. Required to answer a subject-access request.
   await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'patient.view', 'patient', $3)`, [clinic.id, session.staffId, p.id]);
   const health = await readHealth(tx, p.id);
@@ -452,7 +473,7 @@ const data = await withClinic(clinic.id, async (tx) => {
   // ?treated=<procedure_done id>: the chart's offer for that treatment, as the chart is now (read only; the write re-checks).
   const treatedQ = q.get('treated');
   const offerState = canEdit && treatedQ && UUID.test(treatedQ) ? await offerFor(tx, p.id, treatedQ) : null;
-  return { consentDocs, mayExplainIds, treatsHere, capacity, canPrepare, intakeDocs, offerState, clinical, extra, ledger, chartChanges, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
+  return { consentDocs, mayExplainIds, treatsHere, capacity, canPrepare, intakeDocs, offerState, clinical, extra, ledger, chartChanges, signed, fullVisits, me, p, teeth, visits, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
 });
 if (!data) return notFound();
 const { me, p: patient, visits, health, canEdit } = data;
@@ -486,8 +507,10 @@ const allergies: string[] = latest?.allergies ?? [];
 const conditions: string[] = latest?.conditions ?? [];
 const medications: string[] = latest?.medications ?? [];
 const shown: HealthAnswers = posted?.answers ?? { allergies: latest?.allergies ?? null, conditions: latest?.conditions ?? null, medications: latest?.medications ?? null, note: latest?.note ?? null };
-const birthValue = posted ? posted.birth : patient.birth ?? '';
-const birthWas = posted ? posted.birthWas : patient.birth ?? '';
+// Edit details' birth date: what was typed when a post came back, else the one on file; `birthWas` is the one the
+// panel is drawn with (after a conflict, the one on file now), so a save changes it only when this person did.
+const birthValue = birthPosted ? birthPosted.value : patient.birth ?? '';
+const birthWas = birthPosted ? birthPosted.was : patient.birth ?? '';
 const formAge = birthValue ? ageOn(birthValue, today) : null;
 const base = posted?.base ?? latest?.id ?? 'none';
 const saved = q.get('saved');
@@ -543,7 +566,6 @@ const byLine = (v: HealthVersion) =>
     ? ` from the patient forms${v.formRef ? ` (${v.formRef}${v.formSentAt ? `, sent ${day(new Date(v.formSentAt))}` : ''})` : ''}` : ''}`;
 const stateLine = (v: HealthAnswers) =>
   [...LISTS.map((l) => `${l.label} ${listText(v[l.key], l.key === 'allergies' ? 'none known' : 'none')}`), v.note && `Note: ${v.note}`].filter(Boolean).join(' · ');
-const birthLine = (b: string | null) => `Birth date ${dateText(b) ?? 'not on file'}`;
 /** A list as one plain line: "Penicillin, Latex", "None known", "Not asked yet". */
 const listLine = (v: string[] | null, none: string) => (v === null ? 'Not asked yet' : capitalise(listText(v, none)));
 
@@ -552,26 +574,22 @@ const fullName = [patient.first_name, patient.middle_name, patient.last_name, pa
 const shortName = `${patient.first_name} ${patient.last_name}`;
 const titleName = patient.suffix ? `${shortName} ${patient.suffix}` : shortName;
 const SEX: Record<string, string> = { female: 'Female', male: 'Male', other: 'Other', undisclosed: 'Sex not said' };
-// Under the name: the few facts the desk reads out. The chart no. sits beside them as a small reference pill.
+// Beside the avatar: the few facts the desk reads out, in one line — age, sex, mobile, the HMO and its card's member
+// no. The chart no. sits before them as a small reference pill. For people who may bill here, what the patient owes
+// (or has in credit) ends the line, as a link to their statements in Finances (patient_balance(), as Money says it).
 const facts = [
   age !== null ? ageText(age) : null,
   patient.sex ? SEX[patient.sex] : null,
   patient.phone ? prettyPhone(patient.phone) : null,
-  patient.hmo_name ? patient.hmo_name : null,
+  patient.hmo_name ? [patient.hmo_name, patient.hmo_member_no].filter(Boolean).join(' ') : null,
 ].filter(Boolean) as string[];
 const balance = fromDb(patient.balance);
+const statementsHref = `${links.finances}?patient=${patient.id}&view=all`;
 const lastVisit = visits.find((v) => v.status === 'completed') ?? null;
-const nextVisit = data.next;
-const nextParts = (d: Date) => new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).formatToParts(d).reduce((o, x) => ({ ...o, [x.type]: x.value }), {} as Record<string, string>);
-// A visit under way (arrived, waiting, in the chair) is the one that matters now.
-const HERE: Record<string, string> = { arrived: 'Arrived', in_lobby: 'Waiting', in_chair: 'In the chair' };
-const hereNow = nextVisit ? HERE[nextVisit.status] ?? null : null;
-const nextValue = hereNow ?? (nextVisit ? (() => { const x = nextParts(nextVisit.starts_at); return `${x.weekday} ${x.day} ${x.month}`; })() : 'None');
-const nextNote = nextVisit ? (() => { const x = nextParts(nextVisit.starts_at); return [`${x.hour}:${x.minute} ${String(x.dayPeriod).toLowerCase()}`, nextVisit.reason, nextVisit.dentist].filter(Boolean).join(' · '); })() : 'Nothing on the calendar yet';
-const consentValue = !data.notice ? '—' : consentNow && !guardianNeeded ? 'On record' : guardianNeeded && consentNow ? 'Guardian needed' : 'Not yet';
-const consentNote = !data.notice ? 'No notice in force'
-  : consentNow && !guardianNeeded ? (consentNow.channel === 'paper' && consentNow.signed_on ? `Signed on paper ${dateText(consentNow.signed_on)}` : `Given ${day(new Date(consentNow.given_at))}`)
-  : data.paperForms.length ? 'Clinic’s own form on file; ask for the notice' : 'Ask at the desk';
+// The desk's note (the Dashboard shows it beside the patient's visits): patient.notes less the import's own lines,
+// which stay with the details (importNotesOf).
+const deskNote = deskNoteOf(patient.notes);
+const importNotes = importNotesOf(patient.notes);
 const bookHref = `${links.newBooking}&patient=${patient.id}`;
 const chargeHref = `${links.newCharge}?patient=${patient.id}`;
 const importHref = `/c/${clinic.slug}/patients/import/`;
@@ -587,9 +605,9 @@ const ptrFix: Record<string, PtrFix | null> = Object.fromEntries(clin.clinicians
   : can(clinic, 'people.manage') && x.rank !== null && mayManage(clinic, { role_rank: x.rank, role_owner: x.isOwner }, false)
     ? { self: false, href: `/c/${clinic.slug}/settings/people/${x.id}/#prc` }
     : null]));
-// The head's safety chips (034): the latest blood pressure when it was taken today or is out of range, and
-// whether a physician's clearance is needed (a high reading in the last 30 days with no clearance since, a
-// request still waiting, or a physician who did not clear) — always words, never colour alone.
+// The safety line's blood pressure and clearance (034): the latest blood pressure when it was taken today or is out of
+// range, and whether a physician's clearance is needed (a high reading in the last 30 days with no clearance since, a
+// request still waiting — "Clearance asked <day>" — or a physician who did not clear) — always words, never colour alone.
 const latestBp = ext.vitals.find((x) => x.sys && x.dia) ?? null;
 const bpNow = latestBp ? bpWords(latestBp.sys!, latestBp.dia!) : null;
 const bpDay = latestBp ? manilaDay(new Date(latestBp.at)) : null;
@@ -599,11 +617,19 @@ const bpChip = latestBp && bpNow && (bpDay === today || (bpRecent && bpNow.tone 
 const lastClearance = ext.letters.find((l) => l.kind === 'clearance') ?? null;
 const clearedSince = !!lastClearance?.answer && lastClearance.answer !== 'not_cleared' && !!bpDay && (lastClearance.answeredOn ?? '') >= bpDay;
 const clearance: { text: string; tone: 'alert' | 'warn' | 'accent' } | null =
-  lastClearance && !lastClearance.answer ? { text: 'Waiting for medical clearance', tone: 'warn' }
+  lastClearance && !lastClearance.answer ? { text: `Clearance asked ${dateText(lastClearance.issuedOn)}`, tone: 'warn' }
   : lastClearance?.answer === 'not_cleared' ? { text: 'Physician has not cleared treatment', tone: 'alert' }
   : bpRecent && (bpNow?.level === 'high' || bpNow?.level === 'crisis') && !clearedSince ? { text: 'Needs medical clearance', tone: 'alert' }
   : lastClearance?.answer && lastClearance.answeredOn && Date.now() - Date.parse(`${lastClearance.answeredOn}T00:00:00+08:00`) < 180 * 864e5 ? { text: `Cleared by physician ${dateText(lastClearance.answeredOn)}`, tone: 'accent' }
   : null;
+// The safety line (./_record/safety.ts): in the head, pinned in the tab row while the record is scrolled.
+const safety = safetyItems({
+  allergies: latest ? latest.allergies : null, conditions, medications, bp: bpChip, clearance,
+  minor: minor ? (guardianNeeded ? 'Under 18: a guardian must agree' : `Under 18 · guardian ${consentNow?.given_by_name}`) : null,
+});
+const safetyPhone = safetyLine(latest ? latest.allergies : null, safety, latest?.note ?? null);
+// Three things to do, not safety facts (an HMO approval waiting, a payment plan behind, a health history over a year
+// old): each a way to where it is done, in a row of their own under the safety line (Today's Needs attention next).
 const behindPlans = money ? ext.plans.filter((x) => x.status === 'active' && x.missed > 0) : [];
 const loaWaiting = ext.loas.filter((a) => a.status === 'requested').length;
 const planOpen = clin.plan.filter((i) => i.status === 'planned' || i.status === 'accepted');
@@ -719,8 +745,9 @@ const detailRows: [string, string | null][] = [
   ['Chart no.', patient.chart_no],
   ['On file since', `${dateText(manilaDay(patient.created_at))}${patient.imported ? ', from an import' : patient.created_by_name ? `, added by ${patient.created_by_name}` : ''}`],
 ];
-// Only what is on file is listed; what is missing is one line, with the way to add it.
-const present = detailRows.filter(([, v]) => v);
+// Only what is on file is listed; what is missing is one line, with the way to add it. The desk's note is in the head;
+// what the import wrote into the notes (an old phone number, a birth year) is listed here.
+const present = [...detailRows.filter(([, v]) => v), ...(importNotes.length ? [['From the old records', importNotes.join(' · ')] as [string, string]] : [])];
 const missing = detailRows.filter(([, v]) => !v).map(([k]) => (k === 'HMO' ? k : k.toLowerCase()));
 const help = 'text-[13px] leading-snug text-muted';
 // The latest patient form's words about this visit, for the Overview.
@@ -758,7 +785,7 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: me.area }} title={titleName} section="patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
   {/* The patient's name is the page's title, in the top bar (the layout's heading), as on a
       person's page and a statement: this card is who they are beside it — the avatar, the few
-      facts, the actions and the four numbers — with no second name. */}
+      facts, the two actions, the safety line and the notes — with no second name. */}
   <Pane as="div" label={`${shortName}, patient record`}>
     <a href={`/c/${clinic.slug}/patients/`} class="rec-back" data-pts-back><Icon name="chevron-left" />Back to patients</a>
     <script>
@@ -766,37 +793,40 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
       import { restoreBackLinks } from './_list/back';
       restoreBackLinks();
     </script>
-    <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+    <div class="rec-head-row">
       <div class="rec-who">
         <Avatar name={shortName} size="lg" />
-        <p class="rec-facts min-w-0"><span class="rec-facts-in"><span><span class="pt-ref" title="Chart no."><span class="sr-only">Chart no. </span>{patient.chart_no}</span></span>{facts.map((f) => <span>{f}</span>)}</span></p>
+        <p class="rec-facts min-w-0"><span class="rec-facts-in">
+          <span><span class="pt-ref" title="Chart no."><span class="sr-only">Chart no. </span>{patient.chart_no}</span></span>
+          {facts.map((f) => <span>{f}</span>)}
+          {money && (balance > 0n ? <span><a href={statementsHref} class="rec-owes">Owes <b>{pesos(balance)}</b></a></span>
+            : balance < 0n ? <span><a href={statementsHref} class="rec-owes">In credit <b>{pesos(-balance)}</b></a></span>
+            : <span>Nothing owed</span>)}
+        </span></p>
       </div>
       <div class="rec-actions">
-        {/* Both quiet: a screen's one teal button is the tab's own (Patient info's Record consent, Chart & plan's Add to plan). */}
-        <a href={bookHref} class="ws-btn ws-btn-quiet md:order-last"><Icon name="calendar" />New booking</a>
+        {/* Both quiet, and one tap from any tab: a screen's one teal button is its tab's own. */}
         {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="details"><Icon name="user" />Edit details</button>}
+        <a href={bookHref} class="ws-btn ws-btn-quiet"><Icon name="calendar" />New booking</a>
       </div>
     </div>
 
-    {(allergies.length > 0 || conditions.length > 0 || medications.length > 0 || minor || bpChip || clearance || behindPlans.length > 0 || loaWaiting > 0 || staleHealth) && (
-      <div role="alert" class="rec-alerts mt-5">
-        {allergies.map((a) => <Chip tone="alert" icon="alert">Allergy: {a}</Chip>)}
-        {conditions.map((c) => <Chip tone="warn">{c}</Chip>)}
-        {medications.map((m) => <Chip tone="neutral">Takes {m}</Chip>)}
-        {bpChip && <button type="button" class="rec-chip-go" data-rec-go="health"><Chip tone={bpChip.tone === 'neutral' ? 'neutral' : bpChip.tone} icon={bpChip.tone === 'neutral' ? undefined : 'alert'} label={bpChip.text} /></button>}
-        {clearance && <button type="button" class="rec-chip-go" data-rec-go="rx"><Chip tone={clearance.tone} icon={clearance.tone === 'accent' ? 'check' : 'alert'} label={clearance.text} /></button>}
+    <SafetyLine variant="head" items={safety} class="mt-4" />
+    {(behindPlans.length > 0 || loaWaiting > 0 || staleHealth) && (
+      <div class="rec-alerts rec-todo mt-2">
         {loaWaiting > 0 && <button type="button" class="rec-chip-go" data-rec-go="treatment"><Chip tone="warn" icon="clock" label={loaWaiting === 1 ? 'Waiting for an HMO LOA' : `Waiting for ${loaWaiting} HMO LOAs`} /></button>}
         {behindPlans.map((x) => <button type="button" class="rec-chip-go" data-rec-go="treatment"><Chip tone="alert" icon="money" label={`${x.title}: behind ${x.missed === 1 ? 'one month' : `${x.missed} months`}`} /></button>)}
-        {minor && <Chip tone="warn" icon="user">{guardianNeeded ? 'Under 18: a guardian must agree' : `Under 18 · guardian ${consentNow?.given_by_name}`}</Chip>}
         {staleHealth && <button type="button" class="rec-chip-go" data-rec-go="health"><Chip tone="warn" icon="clock" label={`Health history last checked ${day(new Date(latest!.at))}: ask again`} /></button>}
       </div>
     )}
     {latest?.note && <Callout tone="alert" role="none" class="mt-3" title="Note for the dentist" text={latest.note} />}
+    {deskNote && <p class="rec-desk-note mt-3"><Icon name="note" size={16} /><span class="min-w-0"><span class="rec-desk-note-k">Desk note</span> {deskNote}</span></p>}
     {stale && <Callout tone="alert" class="mt-4" text={CSRF_MESSAGE} />}
     {/* A refused post whose form is not on this page for this person (no records.edit, or a payment plan without finance.bill): its sentence here. */}
     {recordProblem && (!canEdit || (recordProblem.intent === 'payplan-add' && !money)) && <Callout tone="alert" class="mt-4" text={`${recordProblem.text} Nothing was saved.`} />}
     {saved === 'new' && <Callout tone="success" class="mt-4" text={`Added. ${shortName} is on file as ${patient.chart_no}; everything from the form is below.`} />}
     {saved === 'details' && <Callout tone="success" class="mt-4" text="Details saved." />}
+    {saved === 'birth' && <Callout tone="success" class="mt-4" text="Details saved. The birth date the record had is kept in the health history." />}
     {saved === 'capacity' && <Callout tone="success" class="mt-4" text="Recorded. For 30 days a representative may sign consent forms for them, on a clinic device." />}
     {saved === 'consent-removed' && <Callout tone="success" class="mt-4" text="The form was removed." />}
     {q.get('capacity') === 'refused' && <Callout tone="alert" class="mt-4" text="Nothing was recorded. Only a treating dentist here with a PRC licence records this, for an adult patient with a birth date on file, and with a reason of at most 300 characters." />}
@@ -842,22 +872,16 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
             </li>
           ))}
         </ul>
-        {canEdit && <p class="mt-2">{data.addedDiffers.some((d) => d.field === 'phone' || d.field === 'email') ? 'Check a mobile or email with the patient before you use it: visits and reminders go by mobile. ' : ''}A birth date changes in the Health section.</p>}
+        {canEdit && <p class="mt-2">{data.addedDiffers.some((d) => d.field === 'phone' || d.field === 'email') ? 'Check a mobile or email with the patient before you use it: visits and reminders go by mobile. ' : ''}A birth date changes in Edit details.</p>}
       </Callout>
     )}
-
-    <div class="pt-tiles-wrap mt-5"><div class="ws-tiles pt-tiles">
-      <Tile label={hereNow ? 'Today, now' : 'Next visit'} value={nextValue} tone={hereNow ? 'accent' : 'default'} note={nextNote} icon="calendar" />
-      <Tile label="Last visit" value={lastVisit ? dateText(manilaDay(lastVisit.starts_at))! : 'None yet'} note={lastVisit ? [lastVisit.reason, lastVisit.dentist].filter(Boolean).join(' · ') : 'No finished visit on file'} icon="clock" />
-      {money && <Tile label="Balance" value={pesos(balance > 0n ? balance : -balance)} tone={balance > 0n ? 'alert' : 'default'} note={balance > 0n ? `Owed${openCount ? ` on ${openCount} ${openCount === 1 ? 'statement' : 'statements'}` : ''}` : balance < 0n ? 'In credit' : 'Nothing owed'} icon="money" href="#money" />}
-      <Tile label="Consent" value={consentValue} tone={consentValue === 'On record' ? 'accent' : consentValue === '—' ? 'default' : 'warn'} note={consentNote} icon="file" href="#consent" />
-    </div></div>
   </Pane>
 
   {/* The record's body: the tab row, sticky at the top under the workspace's top bar (./_record/RecordNav.astro), the four
       tabs, and every side panel, outside the tabs so each opens over the tab in view. */}
   <div class="rec-body" data-rec-body data-rec-opened={openNow ? '' : undefined} data-rec-posted={Astro.request.method === 'POST' ? '' : undefined}>
-  <RecordNav current={current} name={shortName} firstName={patient.first_name} counts={tabCounts} canEdit={canEdit} money={money} chargeHref={chargeHref} />
+  <RecordNav current={current} name={shortName} firstName={patient.first_name} counts={tabCounts} canEdit={canEdit} money={money} chargeHref={chargeHref}
+    safety={safety} note={latest?.note ?? null} line={safetyPhone} />
 
   <!-- Today -->
   <div id="rec-overview" role="tabpanel" aria-labelledby="rec-rec-overview-tab" hidden={current !== 'overview'} class={`rec-tab min-w-0 grid gap-4 max-md:gap-3 content-start ${TAB_HUE['overview']}`} data-rec-panel="overview">
@@ -873,7 +897,7 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
       <div class="grid content-start gap-4 max-md:gap-3">
       <Pane title="Details" icon="user">
         <dl class="rf-grid">
-          {present.map(([k, v]) => <div class:list={['rf', (k === 'Address' || k === 'Emergency contact' || k === 'HMO') && 'rf-wide']}><dt>{k}</dt><dd>{v}</dd></div>)}
+          {present.map(([k, v]) => <div class:list={['rf', (k === 'Address' || k === 'Emergency contact' || k === 'HMO' || k === 'From the old records') && 'rf-wide']}><dt>{k}</dt><dd>{v}</dd></div>)}
           {!canEdit && missing.map((k) => <div class="rf rf-missing"><dt>{capitalise(k)}</dt><dd>Not on file</dd></div>)}
         </dl>
         {canEdit && missing.length > 0 && (
@@ -881,7 +905,6 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
             {missing.map((k) => <button type="button" class="rf rf-missing" data-ws-open="details"><span class="rf-k">{capitalise(k)}</span><span class="rf-v">+ Add</span></button>)}
           </div>
         )}
-        {patient.notes && <p class="rf-note mt-3"><strong>Notes</strong>{patient.notes}</p>}
         <p class="mt-4 flex items-start gap-2 border-t border-[var(--ws-hair)] pt-3 text-[13px] leading-relaxed text-ink-2">
           <Icon name="info" size={16} class="mt-0.5 shrink-0" />
           <span>Every look at this record, and every change to it, is logged under the person’s name.</span>
@@ -1021,16 +1044,15 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
           : `No health answers yet. Ask the patient before treatment. Last saved ${byLine(latest)}.`}
       </p>
 
-      {(saved === 'health' || saved === 'birth') && <Callout tone="success" class="mt-4" text="Saved." />}
+      {saved === 'health' && <Callout tone="success" class="mt-4" text="Saved." />}
       {saved === 'nothing' && <Callout tone="info" class="mt-4" text="Nothing was saved: nothing is ticked or typed yet." />}
       {conflict && (
         <Callout tone="warn" role="alert" class="mt-4">
           <p class="font-semibold">
-            {conflict.versionMoved && conflict.latest ? `${conflict.latest.by ?? 'Someone'} saved this record ${when(new Date(conflict.latest.at))}, after you opened it.`
-              : conflict.birthMoved ? `The birth date on file changed to ${dateText(conflict.birth) ?? 'none'} after you opened this page.`
+            {conflict.latest ? `${conflict.latest.by ?? 'Someone'} saved this record ${when(new Date(conflict.latest.at))}, after you opened it.`
               : 'This record changed after you opened it.'} Nothing of yours was saved yet.
           </p>
-          <p class="mt-1.5 text-ink-2">On file now: {birthLine(conflict.birth)}{conflict.latest && <> · {stateLine(conflict.latest)}</>}.</p>
+          {conflict.latest && <p class="mt-1.5 text-ink-2">On file now: {stateLine(conflict.latest)}.</p>}
           <p class="mt-1.5 text-ink-2">Your answers are still below. Check them against what is on file, then press Save again.</p>
         </Callout>
       )}
@@ -1041,16 +1063,7 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
           <Csrf />
           <input type="hidden" name="intent" value="health" />
           <input type="hidden" name="base" value={base} />
-          <input type="hidden" name="birth_was" value={birthWas} />
           {thisVisit && <input type="hidden" name="visit" value={thisVisit.id} />}
-
-          <div class="field border-b border-[var(--ws-hair)] pb-5">
-            <label for="birth_date" class="meta">Birth date</label>
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <input id="birth_date" type="date" name="birth_date" value={birthValue} min="1900-01-01" max={today} class="w-[13.5rem]" data-health-birth data-today={today} />
-              <span class="text-[15px] text-ink-2" aria-live="polite" data-health-age>{formAge !== null && formAge >= 0 ? ageText(formAge) : birthValue ? '' : 'Not on file yet'}</span>
-            </div>
-          </div>
 
           <HealthLists chips={healthChips} none={healthNone} />
 
@@ -1328,6 +1341,17 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
           <label class="field"><span class="meta">Middle name</span><input name="middle_name" value={d.middle ?? ''} maxlength="60" autocomplete="off" /></label>
           <label class="field"><span class="meta">Suffix</span><input name="suffix" value={d.suffix ?? ''} maxlength="10" autocomplete="off" placeholder="Jr., Sr., III" /></label>
         </div>
+        {/* The birth date, with the age beside it as it is typed. A change is kept in the health history, from and to
+            (saveBirth); birth_was is the one this panel was drawn with, so a date nobody here touched is left alone. */}
+        <div class="field">
+          <label for="rec-birth" class="meta">Birth date</label>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <input id="rec-birth" type="date" name="birth_date" value={birthValue} min="1900-01-01" max={today} class="w-[13.5rem]" autocomplete="off" aria-describedby="rec-birth-help" data-rec-birth data-today={today} />
+            <span class="text-[15px] text-ink-2" aria-live="polite" data-rec-birth-age>{formAge !== null && formAge >= 0 ? ageText(formAge) : birthValue ? '' : 'Not on file yet'}</span>
+          </div>
+          <span id="rec-birth-help" class={help}>A change is kept in the health history, with the date it replaced.</span>
+          <input type="hidden" name="birth_was" value={birthWas} />
+        </div>
         <fieldset class="min-w-0">
           <legend class="float-left w-full text-[14px] font-medium text-ink-2">Sex</legend>
           <div class="pk-row clear-both pt-2">
@@ -1351,7 +1375,6 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
         </div>
         <label class="field"><span class="meta">Notes</span><textarea name="notes" rows="3" maxlength={NOTES_MAX} data-rec-details-notes>{d.notes ?? ''}</textarea><span class={help}>The desk sees this beside the patient’s visits on the Dashboard. Keep health details in Health.</span></label>
         <datalist id="rec-hmo-names">{data.hmoNames.map((h) => <option value={h} />)}</datalist>
-        <p class="flex items-start gap-2 text-[13.5px] text-muted"><Icon name="info" size={16} class="mt-0.5 shrink-0" />The birth date is changed on Health, where its history is kept.</p>
         <div><button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save details</button></div>
       </form>
     </SidePanel>
@@ -1374,21 +1397,57 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
   const tabNamed = (name: string) => panelOf(document.getElementById(name)) ?? tabOf(name) ?? tabOf(name.replace(/^rec-/, ''));
 
   // The tab row sticks under the workspace's top bar; what is scrolled to (a tab, a card) lands just under the row.
+  // From 768px the row pins a copy of the head's safety line below itself while it is stuck and the head's line has
+  // left the screen (data-pinned; ./_record/RecordNav.astro). The copy is laid out all the time and takes no room in
+  // the page, so --rec-stick counts it always: whatever is scrolled to, focused or landed on lands below it, and it
+  // never covers a card, the chart's offer or a field. (The side panels and the chart's palette sit in the top layer,
+  // above the row.)
+  const pin = bar?.querySelector<HTMLElement>('[data-rec-pin]') ?? null;
+  const pinHeight = () => Math.round(pin?.getBoundingClientRect().height ?? 0);
+  const topHeight = () => Math.round(topBar?.getBoundingClientRect().height ?? 0);
+  let watchedTop = -1;
   const measure = () => {
-    const top = Math.round(topBar?.getBoundingClientRect().height ?? 0);
+    const top = topHeight();
     root.style.setProperty('--rec-top', `${top}px`);
-    root.style.setProperty('--rec-stick', `${top + Math.round(bar?.getBoundingClientRect().height ?? 0)}px`);
+    root.style.setProperty('--rec-stick', `${top + Math.round(bar?.getBoundingClientRect().height ?? 0) + pinHeight()}px`);
+    if (top !== watchedTop) watchPin(top);
   };
-  measure();
-  if ('ResizeObserver' in window) { const ro = new ResizeObserver(measure); if (topBar) ro.observe(topBar); if (bar) ro.observe(bar); }
   /** Scroll only when needed: a tab's top hidden under the row (the page was scrolled down), or too low on the screen
-   *  to see (a phone); then it starts just under the row, stuck under the top bar. */
+   *  to see (a phone); then it starts just under the row and the room its pinned copy takes. */
   const reveal = (el: HTMLElement) => {
     const barBox = bar?.getBoundingClientRect();
     const top = el.getBoundingClientRect().top;
-    if (top >= (barBox?.bottom ?? 0) + 11 && top <= innerHeight - 96) return;
-    scrollBy({ top: top - ((topBar?.getBoundingClientRect().height ?? 0) + (barBox?.height ?? 0) + 12) });
+    const covered = (barBox?.bottom ?? 0) + (bar?.hasAttribute('data-pinned') ? pinHeight() : 0);
+    if (top >= covered + 11 && top <= innerHeight - 96) return;
+    scrollBy({ top: top - (topHeight() + (barBox?.height ?? 0) + pinHeight() + 12) });
   };
+  // Pinned while the row is stuck under the top bar and the head's safety line is off the screen: two observers under
+  // the top bar, one on the line, one on a mark over everything above the row's own place (RecordNav's data-rec-stuck:
+  // the row is stuck once it has left). Made again when the top bar's height changes.
+  const safetyHead = document.querySelector<HTMLElement>('[data-rec-safety]');
+  const aboveRow = document.querySelector<HTMLElement>('[data-rec-stuck]');
+  let lineGone = false;
+  let stuck = false;
+  let watching: IntersectionObserver[] = [];
+  const pinNow = () => bar?.toggleAttribute('data-pinned', lineGone && stuck);
+  function watchPin(top: number) {
+    watchedTop = top;
+    watching.forEach((o) => o.disconnect());
+    watching = [];
+    if (!bar || !pin || !safetyHead || !aboveRow || !('IntersectionObserver' in window)) return;
+    const gone = (r: DOMRectReadOnly) => r.bottom <= top + 1;
+    const line = new IntersectionObserver(([e]) => { lineGone = !e.isIntersecting && gone(e.boundingClientRect); pinNow(); }, { rootMargin: `-${top}px 0px 0px 0px` });
+    const row = new IntersectionObserver(([e]) => {
+      stuck = !e.isIntersecting;
+      lineGone = gone(safetyHead.getBoundingClientRect());
+      pinNow();
+    }, { rootMargin: `-${top}px 0px 0px 0px` });
+    line.observe(safetyHead);
+    row.observe(aboveRow);
+    watching = [line, row];
+  }
+  measure();
+  if ('ResizeObserver' in window) { const ro = new ResizeObserver(measure); if (topBar) ro.observe(topBar); if (bar) ro.observe(bar); if (pin) ro.observe(pin); }
 
   /** Show the tab a name lives in (a tab, an old section, a card's anchor: TAB_OF), and bring what it names into view:
    *  a card by its id (#health, #rx …), a tab from its top. */
@@ -1438,6 +1497,19 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
   const asked = decodeURIComponent(location.hash.slice(1));
   if (body?.hasAttribute('data-rec-posted') && asked && tabNamed(asked) !== currentTab()) history.replaceState(null, '', `${location.pathname}${location.search}#${currentTab()}`);
   else if (!body?.hasAttribute('data-rec-opened')) fromHash();
+  // A text box in a tab that Tab brings up from below shows only its caret's line (the browser reveals the caret, not
+  // the box): the whole box, when it fits between the row (and its pinned copy) and the foot of the screen.
+  body?.addEventListener('focusin', (e) => {
+    const t = e.target;
+    if (!(t instanceof HTMLTextAreaElement) || t.closest('dialog')) return;
+    const fit = () => {
+      const r = t.getBoundingClientRect();
+      const foot = innerHeight - 16, head = (parseFloat(getComputedStyle(root).getPropertyValue('--rec-stick')) || 0) + 16;
+      if (r.bottom > foot && r.top > head && r.height <= foot - head) scrollBy({ top: Math.min(r.bottom - foot, r.top - head) });
+    };
+    fit();
+    requestAnimationFrame(fit);
+  });
   // A panel the server drew open (a refused post, ?open=…) may have opened before this script ran.
   document.querySelectorAll<HTMLDialogElement>('dialog[data-ws-panel]').forEach((d) => {
     d.addEventListener('ws:panel-open', () => aimBack(d));
@@ -1544,8 +1616,8 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
   // The health form. Chips are checkboxes, so the form posts without this
   // script too (what is left in an "add" box is split on commas and saved).
   // With it: Enter or Add turns the typed words into ticked chips, the none
-  // chip and the others untick each other, the age follows the birth date,
-  // and leaving with unsaved changes asks first. "Unsaved" is the form's
+  // chip and the others untick each other, and leaving with unsaved changes
+  // asks first. "Unsaved" is the form's
   // data-health-unsaved attribute, so the consent form can see it.
   document.querySelectorAll<HTMLFormElement>('[data-health-form]').forEach((form) => {
     const note = form.querySelector<HTMLElement>('[data-health-dirty]');
@@ -1587,25 +1659,25 @@ const consentFormsProps = { docs: data.consentDocs, slug: clinic.slug, patientId
       box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
       group.querySelector<HTMLButtonElement>('[data-health-add]')!.addEventListener('click', add);
     });
-
-    // The age beside the birth date. A date field fills its year a digit at a
-    // time (0001, 0019, 0197, 1975), so nothing shows until the year is a
-    // real one; a year still before 1900 when the field is left says so.
-    const birth = form.querySelector<HTMLInputElement>('[data-health-birth]');
-    const age = form.querySelector<HTMLElement>('[data-health-age]');
-    const showAge = (leaving: boolean) => {
-      if (!birth || !age) return;
-      const today = birth.dataset.today ?? '';
-      const v = birth.value;
-      const years = v ? ageOn(v, today) : null;
-      age.textContent = !v ? 'Not on file yet'
-        : v < '1900-01-01' ? (leaving ? 'Check the year' : '')
-        : years === null || years < 0 || v > today ? 'Check the date'
-        : ageText(years);
-    };
-    birth?.addEventListener('input', () => showAge(false));
-    birth?.addEventListener('blur', () => showAge(true));
   });
+
+  // Edit details: the age beside the birth date. A date field fills its year a
+  // digit at a time (0001, 0019, 0197, 1975), so nothing shows until the year
+  // is a real one; a year still before 1900 when the field is left says so.
+  const birth = document.querySelector<HTMLInputElement>('[data-rec-birth]');
+  const birthAge = document.querySelector<HTMLElement>('[data-rec-birth-age]');
+  const showAge = (leaving: boolean) => {
+    if (!birth || !birthAge) return;
+    const today = birth.dataset.today ?? '';
+    const v = birth.value;
+    const years = v ? ageOn(v, today) : null;
+    birthAge.textContent = !v ? 'Not on file yet'
+      : v < '1900-01-01' ? (leaving ? 'Check the year' : '')
+      : years === null || years < 0 || v > today ? 'Check the date'
+      : ageText(years);
+  };
+  birth?.addEventListener('input', () => showAge(false));
+  birth?.addEventListener('blur', () => showAge(true));
 
   // Recording consent reloads the page. With health answers typed and not
   // saved, that would throw them away behind a browser "Leave site?" box, so

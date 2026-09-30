@@ -69,9 +69,10 @@ export const tabOf = (name: string | null | undefined): TabId | null => (name &&
 // --- where a post, a saved line or a link lands (in the old section names; TAB_OF maps them to a tab) ----------
 /** Where on the page a clinical-record post lands again (an element id). record-extra.ts has EXTRA_ANCHOR. */
 export const ANCHOR: Readonly<Record<string, string>> = { 'done-add': 'treatment-done', 'lab-add': 'treatment-lab', 'lab-next': 'treatment-lab', 'recall-set': 'recall', 'recall-done': 'recall', 'recall-clear': 'recall' };
-/** ?saved=<word> after one of the page's own posts (and the consent pages', the intake's, Add patient's) → its section. */
+/** ?saved=<word> after one of the page's own posts (and the consent pages', the intake's, Add patient's) → its section.
+ *  `birth` is Edit details' save when the birth date changed: it lands on Today, like `details`. */
 export const SAVED_TO: Readonly<Record<string, string>> = {
-  intake: 'overview', capacity: 'consent', 'consent-removed': 'consent', health: 'health', birth: 'health', nothing: 'health', consent: 'consent',
+  intake: 'overview', capacity: 'consent', 'consent-removed': 'consent', health: 'health', birth: 'overview', nothing: 'health', consent: 'consent',
   'consent-already': 'consent', paper: 'consent', details: 'overview', new: 'overview', form: 'overview',
 };
 /** A clinical-record save names its section by its first word (plan-done, rx:<id>, files:3, recall-cleared …). */

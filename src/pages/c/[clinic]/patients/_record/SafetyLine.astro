@@ -1,0 +1,53 @@
+---
+// The safety line (./safety.ts), drawn three ways, always as words on tinted pills, never as buttons:
+//   head  in the record's head, in full: the allergies (or "No known allergies" / "Allergies: not asked yet"), the
+//         conditions, the medicines, a blood pressure, a clearance, under 18. The note for the dentist is the head's own
+//         callout under it.
+//   pin   the compact copy the tab row shows from 768px once the head has scrolled away (./RecordNav.astro): the same
+//         pills, smaller, and the note for the dentist on one line. The row keeps to 128px: the row's script folds what
+//         does not fit into "+N more alerts, at the top" — the note first, then the medicines, the conditions, under 18,
+//         the clearance and the blood pressure, each from the end (FOLD); an allergy is never folded.
+//   line  below 768px, the one line of words above the row's five columns, there from the start: the allergies in
+//         full, and how many more alerts the head has.
+// The copies are aria-hidden: the head's line is the one a screen reader reads, once.
+import Icon from '../../../../../components/ws/Icon.astro';
+import { TONE } from '../../../../../components/ws/status';
+import { isAllergy, type SafetyItem, type SafetyTone } from './safety';
+
+interface Props {
+  variant: 'head' | 'pin' | 'line';
+  items: SafetyItem[];
+  /** The note for the dentist (pin: its one line; line: counted in "+N more"). */
+  note?: string | null;
+  /** The phone's line (safetyLine in ./safety.ts). */
+  line?: { text: string; tone: SafetyTone; more: number };
+  class?: string;
+}
+const { variant, items, note = null, line, class: cls } = Astro.props;
+// The workspace's chip tints (both themes, measured): the tones Chip.astro uses, and green for "No known allergies".
+const TINT = (t: SafetyTone) => (t === 'ok' ? 'ws-tint-green' : TONE[t]);
+const alerting = items.some((i) => i.tone === 'alert' || i.tone === 'warn');
+// The pinned copy folds the note first and the blood pressure last: what matters most at the chair stays longest.
+const FOLD: Partial<Record<SafetyItem['kind'], number>> = { medicine: 2, condition: 3, minor: 4, clearance: 5, bp: 6 };
+---
+
+{variant === 'head' && (
+  <div class:list={['rec-alerts', cls]} data-rec-safety role={alerting ? 'alert' : undefined}>
+    {items.map((i) => <span class:list={['ws-chip', TINT(i.tone)]}>{i.icon && <Icon name={i.icon} size={14} />}{i.text}</span>)}
+  </div>
+)}
+{variant === 'pin' && (
+  <div class:list={['rec-pin', cls]} aria-hidden="true" data-rec-pin>
+    <p class="rec-pin-in" data-rec-pin-in>
+      {items.map((i) => <span class:list={['ws-chip rec-pin-chip', TINT(i.tone)]} data-rec-pin-fold={isAllergy(i) ? undefined : FOLD[i.kind]}>{i.icon && <Icon name={i.icon} size={14} />}{i.text}</span>)}
+      {note && <span class:list={['ws-chip rec-pin-chip rec-pin-note', TONE.alert]} data-rec-pin-fold="1"><Icon name="note" size={14} /><span class="rec-pin-note-text">Note: {note}</span></span>}
+      <span class="rec-pin-more" data-rec-pin-more hidden></span>
+    </p>
+  </div>
+)}
+{variant === 'line' && line && (
+  <p class:list={['rec-pin-line', TINT(line.tone), cls]} aria-hidden="true">
+    <Icon name={line.tone === 'ok' ? 'check' : 'alert'} size={16} />
+    <span class="min-w-0"><span class="font-semibold">{line.text}</span>{line.more > 0 && <span> · +{line.more} more</span>}</span>
+  </p>
+)}

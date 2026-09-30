@@ -232,6 +232,39 @@ html:has([data-rec-bar]) { scroll-padding-top: calc(var(--rec-stick, 8.5rem) + 1
   .rec-add .ws-menu-pop { left: 0.25rem; right: 0.25rem; top: calc(100% + 0.375rem); min-width: 0; max-width: none; }
 }
 
+/* The safety line's copies in the row (./SafetyLine.astro, ./RecordNav.astro). Below 768px: one line of words above the
+   five columns, there from the start. From 768px: a compact copy of the head's line hanging below the row, laid out
+   all the time (so the page can count its height in --rec-stick) and shown only while the row is stuck and the head's
+   line is off the screen (data-pinned, set by the page). It takes no room in the page, so nothing under it moves as it
+   comes and goes. The row's script folds what does not fit in 128px (row and copy) into "+N more alerts, at the top";
+   a folded pill carries the hidden attribute, which the chips' own display would otherwise beat. */
+.rec-pin, .rec-pin-line { display: none; }
+/* Whether the row is stuck: a mark over everything above the row's own place in the page (the page's observer reads it
+   leaving the screen under the top bar; an observer on the row itself misses a jump from below the screen to stuck). */
+.rec-body { position: relative; }
+.rec-stuck-mark { position: absolute; left: 0; bottom: 100%; width: 1px; height: 10000px; visibility: hidden; pointer-events: none; }
+.rec-pin-in > [hidden] { display: none; }
+@media (min-width: 768px) {
+  .rec-pin {
+    display: block; position: absolute; top: 100%; left: -1px; right: -1px; visibility: hidden; pointer-events: none;
+    border: 1px solid var(--ws-hair); border-radius: 0 0 16px 16px; background: var(--c-surface); box-shadow: var(--ws-shadow);
+  }
+  .rec-bar[data-pinned] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .rec-bar[data-pinned] .rec-pin { visibility: visible; pointer-events: auto; }
+  .rec-pin-in { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.375rem; padding: 0.375rem 0.625rem 0.4375rem; }
+  .rec-pin-chip { min-height: 24px; padding: 0.0625rem 0.5rem; }
+  .rec-pin-note { max-width: 100%; min-width: 0; }
+  .rec-pin-note-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .rec-pin-more { padding: 0 0.25rem; font-size: 13px; font-weight: 600; color: var(--c-ink-2); white-space: nowrap; }
+}
+@media (max-width: 767px) {
+  .rec-pin-line {
+    display: flex; grid-column: 1 / -1; align-items: flex-start; gap: 0.375rem; margin: 0 0 0.25rem; padding: 0.3125rem 0.625rem;
+    border-radius: 10px; font-size: 13.5px; line-height: 1.35; overflow-wrap: anywhere;
+  }
+  .rec-pin-line > svg { flex: none; margin-top: 1px; }
+}
+
 /* Every card: the top edge and the icon in the hue of what it holds (CARD_HUE in ./sections.ts, set on a tab or a
    wrapper around its cards). */
 [data-rec-panel] .ws-pane { border-top: 3px solid var(--hue-bar, var(--ws-hair)); }

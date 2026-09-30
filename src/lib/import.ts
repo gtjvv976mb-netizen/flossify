@@ -161,6 +161,15 @@ export function deskNoteOf(notes: string | null): string | null {
   return out || null;
 }
 
+/** The import's own lines in the patient's notes, in the order written: what deskNoteOf() takes out (the record
+ *  shows the desk's note in its head, and these with the patient's details). The same rule: a line standing alone
+ *  between " · " separators or the ends of a line.
+ *   "Prefers mornings · Phone from the old records: 045 123 4567"  →  ["Phone from the old records: 045 123 4567"] */
+export function importNotesOf(notes: string | null): string[] {
+  const own = new RegExp(`^${OWN_LINE}$`);
+  return (notes ?? '').split(/\r\n|\n|\r/).flatMap((line) => line.split(' · ')).filter((part) => own.test(part));
+}
+
 // ---------------------------------------------------------------------------
 // Words: comparing names, headers and services the way people mean them
 // ---------------------------------------------------------------------------
