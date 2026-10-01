@@ -1267,7 +1267,8 @@ at Send unless the patient looks like one already on file; a fresh signature on 
 the risks; the six scheduling features first). **Phase 1** is the library, the data and the shared add path;
 **phase 2** (shipped, fixes in 043) the desk's steps, clinic tablets, the patient's pages (`/f/i/<token>/`,
 `/f/t/`), park/unlock and the record's Consent forms pane; **phase 3** (shipped 1 Oct, no migration) the
-patient's own phone; the record integration is phase 4 (`docs/intake-design.md`).
+patient's own phone; **phase 4** (the record integration, `docs/intake-design.md`) began the same day with
+the signed forms on the visit panel and the Treatment record (the owner's first pick).
 
 - **The consent library is data** (`src/lib/consent-library.ts`, no Node imports): ten forms
   (`anaesthesia-2026-10` … `photos-2026-10`, `consent_version` kind `document`, in force from 1 Oct 2026) and
@@ -1356,6 +1357,19 @@ patient's own phone; the record integration is phase 4 (`docs/intake-design.md`)
   new one, the geometry at 390 (no sideways scroll, 44 px), and the database after each; `--keep` leaves a Start
   screen, a birth-date screen and the desk's QR step open with saved states for `contrast.mjs` (`PW_STATE`,
   `PW_CHROMIUM`). Measured 1 Oct: 0 fails, lowest 5.30:1, light and dark, phone and desk.
+- **Phase 4, first piece: the signed forms where the dentist looks (no migration).** `loadVisits()` takes the
+  record's consent forms (`RecordDoc[]`, `Visit.forms`): a form prepared from a visit belongs to it, signed or still
+  to sign; one signed through an intake or on paper with no visit named joins the visit of the day it was signed (a
+  paper's own day), and never makes a day of its own; a form nobody signed and no visit names stays in Consent. The
+  **visit panel**'s "Consent and signature" draws each as a card beside the tablet-signed consent (`[data-vx-form]`:
+  the signature or "Signed on paper", who signed, the state pill, where — `SIGNED_WHERE`: on their phone, the
+  clinic's tablet, a device handed to them, paper — and when, the teeth, who explained, Open the form, Print). The
+  **Treatment record** gets a row of kind `consent` per signed form, before the work it covers (`formWords`:
+  "Signed by Ana Dimaculangan · on their phone · 2:31 pm", or "Did not agree · …", "withdrawn <day>"), with the
+  form's teeth and the dentist who explained it; a form still to sign is no row. The paper draws the same rows.
+  `holds()` counts signed forms, so a visit with nothing else done is still history. Checked by `phone-e2e.mjs` at a
+  clinic with a visit today (the card, the row, the paper, the page fits at 1440 and 390) and measured with the
+  panel open: 0 contrast fails, light and dark, desk and phone.
 
 ## Open — read before shipping
 

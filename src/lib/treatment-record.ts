@@ -19,6 +19,7 @@ import type { Tx } from './db';
 import type { Clinical, Done } from './record';
 import type { Extra } from './record-extra';
 import type { Visit } from './visit-record';
+import { STATE_WORDS, signerWords, type RecordDoc, type RecordSigning } from './consent-docs';
 import { dateText } from './health';
 import { sumsOf, fromDb, pesos, statementNo, methodLabel, DISCOUNTS, PAYOR_METHODS, type Cents } from './invoices';
 
@@ -29,7 +30,7 @@ const timeWords = (d: Date | string) => new Intl.DateTimeFormat('en-PH', { timeZ
 const endOfDay = (day: string) => new Date(Date.parse(`${day}T00:00:00+08:00`) + 864e5);
 const LIMIT = 2000;
 
-export type RowKind = 'done' | 'adjust' | 'visit' | 'charge' | 'discount' | 'other' | 'payor' | 'payment';
+export type RowKind = 'done' | 'adjust' | 'visit' | 'consent' | 'charge' | 'discount' | 'other' | 'payor' | 'payment';
 export interface LedgerRow {
   kind: RowKind;
   /** Tooth pills: "36 MO", "11". */
@@ -112,6 +113,21 @@ export async function loadRecallsSet(tx: Tx, patientId: string): Promise<{ due: 
 
 /** A visit under way or done: on the ledger even before its booked time. */
 const BEGUN = new Set(['arrived', 'in_lobby', 'in_chair', 'completed']);
+
+/** Where a consent form was signed, for the ledger and the visit panel. */
+export const SIGNED_WHERE: Record<RecordSigning['channel'], string> = { phone: 'on their phone', tablet: 'on the clinic’s tablet', desk: 'on a device handed to them', paper: 'on paper' };
+/** The moment a signing counts from: the paper's own day at noon Manila, else when it was signed. */
+export const signedAtOf = (s: RecordSigning): Date => (s.channel === 'paper' && s.signedOn ? new Date(`${s.signedOn}T12:00:00+08:00`) : new Date(s.signedAt));
+/** The teeth a form names (its clinic part's teeth, or an area). */
+export const docTeeth = (d: RecordDoc): number[] => (Array.isArray(d.fields.teeth) ? (d.fields.teeth as number[]) : Array.isArray(d.fields.area) ? (d.fields.area as number[]) : []);
+/** "Signed by Ana Dimaculangan · on their phone · 2:31 pm", or "Did not agree · Ana Dimaculangan · …", in the ledger's words. */
+export function formWords(d: RecordDoc, s: RecordSigning): string {
+  const who = signerWords({ name: s.signedByName, as: s.signedAs, relation: s.relation, method: s.method });
+  const state = STATE_WORDS[d.state].words;
+  const when = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(signedAtOf(s)).toLowerCase();
+  const head = state === 'Signed' ? `Signed by ${who}` : `${state} · ${who}`;
+  return [head, SIGNED_WHERE[s.channel], s.channel === 'paper' ? null : when, s.withdrawal ? `withdrawn ${dateText(dayKey(s.withdrawal.at))}` : null].filter(Boolean).join(' · ');
+}
 const tooth = (fdi: number | null, surface: string | null) => (fdi ? [`${fdi}${surface ? ` ${surface}` : ''}`] : []);
 const blank = (kind: RowKind, words: string): LedgerRow => ({ kind, teeth: [], words, detail: null, status: null, quiet: false, dentist: null, charged: null, paid: null, balance: null, next: null });
 const clip = (s: string | null | undefined, n: number) => (s ? (s.length > n ? `${s.slice(0, n).trimEnd()}…` : s) : null);
@@ -125,6 +141,8 @@ function holds(v: Visit): string[] {
   if (v.letters.length) out.push(v.letters.length === 1 ? 'letter' : `${v.letters.length} letters`);
   if (v.vitals.length) out.push('blood pressure');
   if (v.files.length) out.push(v.files.length === 1 ? 'one file' : `${v.files.length} files`);
+  const signedForms = v.forms.filter((d) => d.latest).length;
+  if (signedForms) out.push(signedForms === 1 ? 'consent form' : `${signedForms} consent forms`);
   return out;
 }
 const holdsNothing = (v: Visit) => holds(v).length === 0 && v.procs.length === 0 && v.adjustments.length === 0 && v.consents.length === 0;
@@ -193,6 +211,17 @@ export function buildLedger(i: BuildIn): Ledger {
       r.charged = chargedFor(d, v.day);
       slot(v.day).clinical.push({ row: r, at: +new Date(d.at), order: 0 });
       count++;
+    }
+    // The consent forms signed for this visit (through an intake, on a clinic device or on paper): one row each, what
+    // was agreed and by whom, before the work it covers. A form still to sign is the visit panel's business, not history.
+    for (const d of v.forms) {
+      const s = d.latest;
+      if (!s) continue;
+      const r = blank('consent', d.title);
+      r.teeth = docTeeth(d).map(String);
+      r.detail = formWords(d, s);
+      r.dentist = d.attestation?.dentistName ?? d.dentistName ?? v.dentist;
+      slot(v.day).clinical.push({ row: r, at: +signedAtOf(s), order: -1 });
     }
     if (v.procs.length || v.adjustments.length) continue;
     // A visit with nothing done is a row when it is treatment history: not a cancelled visit that holds nothing,

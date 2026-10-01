@@ -19,6 +19,7 @@ import { loadClinical } from '../../../../../lib/record';
 import { loadExtra } from '../../../../../lib/record-extra';
 import { loadVisits, VISIT_STATUS } from '../../../../../lib/visit-record';
 import { loadVisitConsents } from '../../../../../lib/visit-consent';
+import { loadConsentDocuments } from '../../../../../lib/consent-docs';
 import { buildLedger, loadLedgerMoney, loadRecallsSet, balanceWords, amountWords } from '../../../../../lib/treatment-record';
 import { pesos, NOT_BIR } from '../../../../../lib/invoices';
 import { hmos } from '../../../../../data/directory';
@@ -41,7 +42,7 @@ const data = await withClinic(clinic.id, async (tx) => {
   const c = (await tx.query('select name, address_line, barangay, city, province, phone from clinic where id = $1', [clinic.id])).rows[0];
   const clinical = await loadClinical(tx, clinic.id, p.id);
   const extra = await loadExtra(tx, p.id, HMO_NAMES);
-  const visits = await loadVisits(tx, p.id, clinical, extra, await loadVisitConsents(tx, p.id), money);
+  const visits = await loadVisits(tx, p.id, clinical, extra, await loadVisitConsents(tx, p.id), money, await loadConsentDocuments(tx, p.id));
   const ledger = buildLedger({ visits, clinical, extra, recalls: await loadRecallsSet(tx, p.id), money: money ? await loadLedgerMoney(tx, p.id) : null, onFile: p.balance, patientId: p.id });
   await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'record.treatment_record_print', 'patient', $3)`, [clinic.id, session.staffId, p.id]);
   return { p, c, ledger };

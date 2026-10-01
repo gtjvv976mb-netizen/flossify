@@ -292,13 +292,31 @@ await signAllAndSend(phoneA);
 }
 await phoneA.context().close();
 
+/** No sideways scroll, and every visible button at least 44 px tall, on the page as it is (a dialog's buttons too). */
+async function fitsPage(p, what) {
+  const g = await p.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    small: Array.from(document.querySelectorAll('button, a.btn, a.ws-btn, input[type="submit"]')).filter((b) => b.getClientRects().length && b.getBoundingClientRect().height > 0 && b.getBoundingClientRect().height < 44)
+      .map((b) => `${(b.textContent ?? '').trim().slice(0, 30)} ${Math.round(b.getBoundingClientRect().height)}px`),
+  }));
+  assert.equal(g.scroll, 0, `${what}: no sideways scroll (overflow ${g.scroll}px)`);
+  assert.deepEqual(g.small, [], `${what}: every button at least 44 px`);
+  ok(`${what}: fits ${await p.evaluate(() => innerWidth)} px, buttons ≥ 44 px`);
+}
+
 // ---------------------------------------------------------------------------
 // Path B: a patient on file types their birth date first
 // ---------------------------------------------------------------------------
 console.log('\nB. A patient on file, on their own phone');
+// A patient on file with a birth date, by preference one with a visit today, so the signed form's place on the
+// record (phase 4: the Treatment record and the visit panel) can be checked afterwards.
 const onFile = (await q(
-  `select id, first_name, birth_date::text as birth from patient where clinic_id = $1 and birth_date is not null and archived_at is null
-    order by created_at limit 1`, [clinicId]))[0];
+  `select * from (
+     select p.id, p.first_name, p.birth_date::text as birth, p.created_at,
+            (select a.id from appointment a where a.patient_id = p.id and (a.starts_at at time zone 'Asia/Manila')::date = (now() at time zone 'Asia/Manila')::date
+                and a.status not in ('cancelled', 'no_show') order by a.starts_at limit 1) as visit_today
+       from patient p where p.clinic_id = $1 and p.birth_date is not null and p.archived_at is null) x
+    order by (visit_today is null), created_at limit 1`, [clinicId]))[0];
 assert(onFile, 'a seeded patient with a birth date');
 const B = await prepareOnDesk(onFile.id);
 const phoneB = await (await phoneCtx()).newPage();
@@ -335,6 +353,54 @@ await signAllAndSend(phoneB);
   ok(`database: intake ${it.status} for ${onFile.first_name} (verified), link retired as sent`);
 }
 await phoneB.context().close();
+
+// Phase 4: the signed form on the record. With a visit today, the form joins it: a card in the visit panel (where it
+// was signed, by whom, Open the form, Print) and, once the visit has begun, a consent row on the Treatment record
+// and on its paper. Without one, the form stays in Consent only (checked too).
+{
+  const title = (await q(`select v.title from consent_document d join consent_version v on v.id = d.version_id where d.intake_id = $1 and d.cancelled_at is null limit 1`, [B.intakeId]))[0]?.title;
+  const record = `${base}/c/${slug}/patients/${onFile.id}/`;
+  await desk.goto(record, { waitUntil: 'load' });
+  if (onFile.visit_today) {
+    const panel = desk.locator(`#rec-visit-${onFile.visit_today}`);
+    assert.equal(await panel.count(), 1, 'the visit panel for today’s visit is on the record');
+    const card = panel.locator('[data-vx-form]');
+    assert.ok(await card.count() >= 1, 'the signed form has a card in the visit panel');
+    const words = (await card.first().innerText()).replace(/\s+/g, ' ');
+    assert.match(words, /Signed/, words);
+    assert.match(words, /on their phone/, words);
+    assert.ok(words.includes(title), `the card names the form (${title})`);
+    assert.equal(await card.first().locator('a[href$="/print/"]').count(), 1, 'the card has Print');
+    assert.equal(await card.first().locator('svg').count() >= 1, true, 'the card draws the signature');
+    const visit = (await q(`select status, starts_at < now() as begun from appointment where id = $1`, [onFile.visit_today]))[0];
+    const begun = visit.begun || ['arrived', 'in_lobby', 'in_chair', 'completed'].includes(visit.status);
+    const row = desk.locator('tr[data-kind="consent"]');
+    if (begun) {
+      assert.ok(await row.count() >= 1, 'a consent row on the Treatment record once the visit has begun');
+      const rowWords = (await row.first().innerText()).replace(/\s+/g, ' ');
+      assert.match(rowWords, /Signed by .* · on their phone/, rowWords);
+      const paper = await desk.goto(`${record}treatment-record/`, { waitUntil: 'load' });
+      assert.equal(paper.status(), 200);
+      assert.match((await desk.textContent('body')).replace(/\s+/g, ' '), /on their phone/, 'the paper carries the consent row');
+      ok(`record: the form is on the visit panel and the Treatment record (visit ${visit.status}); the paper too`);
+      // The record with that visit's panel open fits a desk and a phone.
+      await desk.goto(`${record}?visit=${onFile.visit_today}`, { waitUntil: 'load' });
+      await desk.waitForTimeout(600);
+      await fitsPage(desk, 'record with the visit panel open at 1440');
+      await desk.setViewportSize({ width: 390, height: 844 });
+      await desk.reload({ waitUntil: 'load' });
+      await desk.waitForTimeout(600);
+      await fitsPage(desk, 'record with the visit panel open at 390');
+      await desk.setViewportSize({ width: 1440, height: 900 });
+    } else {
+      assert.equal(await row.count(), 0, 'no ledger row before the visit begins');
+      ok(`record: the form is on the visit panel; the visit (${visit.status}, not begun) has no ledger row yet`);
+    }
+  } else {
+    assert.equal(await desk.locator('[data-vx-form]').count(), 0, 'with no visit today the form joins no visit');
+    ok('record: no visit today, so the form stays in Consent only');
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Path C: a phone that walks away; "Show a new code". And the screens fit a phone.

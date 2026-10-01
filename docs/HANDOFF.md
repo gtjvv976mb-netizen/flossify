@@ -157,12 +157,13 @@ Open with the owner before a clinic depends on it (also in `CLAUDE.md` "Open"):
 
 ### 2. The intake's phase 4: the record integration
 
-Phases 1 to 3 are built. The original spec named phase 4 only as "the record
-integration"; `docs/intake-design.md` lists the candidates (the signed forms on
-the Timeline and in the visit panel, re-signing from the record, page 1's
-health history beside the one on file, withdrawals and overrides drawn) and
-says to ask the owner which first. None needs a migration. Build it on a branch
-from `main`; write what was decided into that file.
+Phases 1 to 3 are built, and phase 4's first piece (the owner's pick on 1 Oct):
+the forms signed through an intake or on paper now sit on the visit panel and
+the Treatment record. `docs/intake-design.md` keeps the three candidates still
+open (re-signing from the record, page 1's health history beside the one on
+file, withdrawals and overrides drawn), for the owner to rank. None needs a
+migration. Build the next on a branch from `main`; write what was decided into
+that file.
 
 ### 3. Then
 

@@ -423,7 +423,7 @@ const data = await withClinic(clinic.id, async (tx) => {
   const intakeDocs = intakeQ && UUID.test(intakeQ) ? (await tx.query<{ id: string; state: string; code: string | null }>(
     `select d.id, consent_document_state(d.id) as state, v.code from consent_document d join consent_version v on v.id = d.version_id
       where d.patient_id = $1 and (d.intake_id = $2 or exists (select 1 from consent_signing s where s.document_id = d.id and s.intake_id = $2)) and d.cancelled_at is null`, [p.id, intakeQ])).rows : [];
-  const fullVisits = await loadVisits(tx, p.id, clinical, extra, signed, money);
+  const fullVisits = await loadVisits(tx, p.id, clinical, extra, signed, money, consentDocs);
   const ledger = buildLedger({ visits: fullVisits, clinical, extra, recalls: await loadRecallsSet(tx, p.id), money: money ? await loadLedgerMoney(tx, p.id) : null, onFile: p.balance, patientId: p.id });
   const chartChanges = await loadChartChanges(tx, p.id);
   // ?treated=<procedure_done id>: the chart's offer for that treatment, as the chart is now (read only; the write re-checks).

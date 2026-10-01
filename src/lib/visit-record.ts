@@ -16,6 +16,7 @@ import type { Tx } from './db';
 import type { Clinical, Done, Note, Rx, FileRow } from './record';
 import type { Extra, Vital, Letter } from './record-extra';
 import type { VisitConsent } from './visit-consent';
+import type { RecordDoc } from './consent-docs';
 import { fromDb, pesos, statementNo, methodLabel, PAYOR_METHODS } from './invoices';
 
 const TZ = 'Asia/Manila';
@@ -63,6 +64,8 @@ export interface Visit {
   files: FileRow[];
   adjustments: { id: string; note: string | null; by: string | null }[];
   consents: VisitConsent[];
+  /** The consent forms (039) of this visit: prepared from it, or signed through an intake or on paper on its day. */
+  forms: RecordDoc[];
   agreed: VisitAgreed[];
   texts: VisitText[];
   money: VisitMoney | null;
@@ -84,7 +87,7 @@ export const canSign = (v: Pick<Visit, 'id' | 'status' | 'day'>, today: string) 
 export const sourceWords = (s: string | null) => (s ? SOURCE[s] ?? null : null);
 
 /** Every visit, newest first, each with everything that belongs to it. */
-export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extra, consents: VisitConsent[], money: boolean): Promise<Visit[]> {
+export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extra, consents: VisitConsent[], money: boolean, docs: RecordDoc[] = []): Promise<Visit[]> {
   const [appts, agreed, texts, stmts, lines, pays] = await Promise.all([
     tx.query(`select a.id, a.starts_at, a.ends_at, a.status, a.reason, a.source, a.public_ref, a.date_only, a.teeth, a.chair, a.arrived_at, a.seated_at, a.created_at,
                      coalesce(s.full_name, a.dentist_name) as dentist, b.full_name as booked_by
@@ -106,7 +109,7 @@ export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extr
   const visits = new Map<string, Visit>();
   const blank = (key: string, day: string, at: Date): Visit => ({
     key, id: null, day, at, end: null, dateOnly: false, status: null, reason: null, dentist: null, chair: null, source: null, ref: null, bookedBy: null,
-    arrivedAt: null, seatedAt: null, asked: [], procs: [], notes: [], rx: [], letters: [], vitals: [], files: [], adjustments: [], consents: [], agreed: [], texts: [],
+    arrivedAt: null, seatedAt: null, asked: [], procs: [], notes: [], rx: [], letters: [], vitals: [], files: [], adjustments: [], consents: [], forms: [], agreed: [], texts: [],
     money: null, teeth: [], future: false, bookedAt: null,
   });
   for (const a of appts.rows) {
@@ -175,6 +178,20 @@ export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extr
   }
 
   for (const k of consents) { const v = visits.get(k.visitId); if (v) v.consents.push(k); }
+  // The consent forms (039): a form prepared from a visit belongs to it, signed or still to sign; one signed through
+  // an intake or on paper with no visit named joins the visit of the day it was signed (a paper's own day), and
+  // never makes a day of its own. A form nobody signed and no visit names stays in Consent.
+  for (const d of docs) {
+    if (d.cancelledAt) continue;
+    const s = d.latest;
+    let v = d.appointmentId ? visits.get(d.appointmentId) ?? null : null;
+    if (!v && s) {
+      const day = s.channel === 'paper' && s.signedOn ? s.signedOn : dayKey(new Date(s.signedAt));
+      v = onDay(s.channel === 'paper' && s.signedOn ? new Date(`${s.signedOn}T12:00:00+08:00`) : new Date(s.signedAt), day, false);
+    }
+    if (v) v.forms.push(d);
+  }
+  for (const v of visits.values()) v.forms.sort((a, b) => (a.template?.order ?? 999) - (b.template?.order ?? 999) || +new Date(a.preparedAt) - +new Date(b.preparedAt));
   for (const k of agreed.rows) {
     const v = visits.get(k.appointment_id);
     if (v) { v.agreed.push({ title: k.title, how: CHANNEL[k.channel] ?? k.channel, by: k.given_by_name, at: k.given_at }); }

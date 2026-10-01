@@ -71,16 +71,37 @@ Verified by `scripts/dev/intake/phone-e2e.mjs` (two browsers, three paths, the
 database after each, geometry at 390) and `scripts/dev/glass/contrast.mjs` with
 `--keep` (0 fails, lowest 5.30:1).
 
-## Phase 4 — the record integration: to settle with the owner
+## Phase 4 — the record integration
 
-The original spec named phase 4 only as "the record integration". What exists
+The original spec named phase 4 only as "the record integration". What existed
 already on the record: the Consent forms pane (phase 2), the signed consent on
 the visit (035), `visit_treatment_consented()` for the visit panel's checklist.
-The candidates, for the owner to choose from, in the order they seem to matter:
+Four candidates were put to the owner on 1 Oct; they chose the first.
 
-1. **The signed forms on the Timeline and in the visit panel**, beside the
-   tablet-signed consent of 035: one line per form signed through an intake,
-   with its print, so the dentist sees at the chair what was agreed.
+### 4.1 — the signed forms where the dentist looks (built 1 Oct, no migration)
+
+- **A form belongs to a visit** when it was prepared from one (its
+  `appointment_id`); otherwise a signed form joins the visit of the day it was
+  signed (a paper's own day), the same rule the visit panel uses for blood
+  pressure and files: it joins an existing visit and never makes a day of its
+  own. A form nobody signed and no visit names stays in Consent only.
+- **The visit panel** lists each form as a card in "Consent and signature",
+  beside the tablet-signed consent of 035: the signature (or "Signed on
+  paper"), who signed, the state in a pill, where and when it was signed, the
+  teeth, who explained it, Open the form and Print. A form still to sign shows
+  as "To sign", so the dentist sees at the chair what is outstanding.
+- **The Treatment record** gets one row per signed form, before the work it
+  covers: "Signed by Ana Dimaculangan · on their phone · 2:31 pm" (or "Did not
+  agree · …", "withdrawn <day>"), the form's teeth, the dentist who explained
+  it. No money. The paper draws the same rows. A form still to sign is not
+  history and is no row.
+- Built in `src/lib/visit-record.ts` (`Visit.forms`), `src/lib/treatment-record.ts`
+  (row kind `consent`, `formWords`, `SIGNED_WHERE`) and `_record/VisitPanels.astro`.
+  Checked by `scripts/dev/intake/phone-e2e.mjs` at a clinic with a visit today and
+  measured with the panel open (0 contrast fails, fits 1440 and 390).
+
+### Still open, for the owner to rank
+
 2. **Re-signing from the record**: when a form's words change (a new version),
    the record offers "Sign again" straight to a phone or tablet, without
    starting a new intake by hand.
@@ -90,5 +111,5 @@ The candidates, for the owner to choose from, in the order they seem to matter:
 4. **Withdrawals and overrides on the record**, which the data holds
    (`consent_withdrawal`, `consent_override`) and no page draws yet.
 
-None of these needs a migration. Ask the owner which first; build it on a branch
-from `main`; write what was decided here.
+None of these needs a migration. Build the next on a branch from `main`; write
+what was decided here.
