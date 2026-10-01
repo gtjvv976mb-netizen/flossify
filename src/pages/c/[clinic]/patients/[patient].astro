@@ -148,8 +148,8 @@ import { loadClinical, loadChartChanges, recordAction, RECORD_INTENTS, RX_ROWS, 
 import { loadExtra, extraAction, bpWords, EXTRA_INTENTS, EXTRA_ANCHOR } from '../../../../lib/record-extra';
 import { loadVisitConsents } from '../../../../lib/visit-consent';
 import { Refused } from '../../../../lib/refused';
-import { loadConsentDocuments, mayAttest, capacityNote } from '../../../../lib/consent-docs';
-import { intakeGates } from '../../../../lib/intake';
+import { loadConsentDocuments, mayAttest, capacityNote, consentGapsFor, overrideConsent } from '../../../../lib/consent-docs';
+import { intakeGates, intakeAnswers, useIntakeDetail } from '../../../../lib/intake';
 import { loadVisits, type StripVisit } from '../../../../lib/visit-record';
 import { buildLedger, loadLedgerMoney, loadRecallsSet } from '../../../../lib/treatment-record';
 import { offerFor } from '../../../../lib/chart-write';
@@ -185,6 +185,8 @@ let detailsPosted: PersonIn | null = null;
 // Edit details opened from the Dashboard (?open=details&dash=<visit>): the visit to go back to once it is saved.
 let detailsDash: string | null = null;
 let formUseProblem: string | null = null;
+// A Go ahead anyway from the This visit strip (intent consent-override) that was refused: which form, so its panel opens again.
+let aheadDoc: string | null = null;
 // A clinical-record post (Treatment, Notes, Prescriptions, Files, the next check-up) that was refused.
 let recordProblem: RecordProblem | null = null;
 let rxTyped: RxItem[] = [];
@@ -350,6 +352,36 @@ if (Astro.request.method === 'POST') {
       if (r === 'saved' || r === 'same') return Astro.redirect(`${here}?form=${formId}&used=${encodeURIComponent(field)}#overview`, 303);
       formUseProblem = r === 'not-allowed' ? 'Your account cannot change records at this branch. Ask the owner.' : 'That form is not on this record any more. Nothing was changed.';
     }
+  } else if (intent === 'intake-use') {
+    // One detail from page 1 of an intake added to this record ("Use Teacher"), the QR forms' rule (phase 4.3).
+    backTo = 'overview';
+    const intakeId = String(form.get('intake') ?? '');
+    const field = String(form.get('field') ?? '');
+    if (slow) formUseProblem = slow;
+    else if (!UUID.test(intakeId) || !TAKEABLE.has(field)) formUseProblem = 'That detail cannot be taken from the forms. Nothing was changed.';
+    else {
+      const r = await withClinic(clinic.id, (tx) => useIntakeDetail(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, intakeId, field }));
+      if (r === 'saved' || r === 'same') return Astro.redirect(`${here}?intake=${intakeId}&used=${encodeURIComponent(field)}#overview`, 303);
+      formUseProblem = r === 'not-allowed' ? 'Your account cannot change records at this branch. Ask the owner.' : 'Those forms are not on this record any more. Nothing was changed.';
+    }
+  } else if (intent === 'consent-override') {
+    // Go ahead anyway, from the This visit strip: the visit goes ahead without a consent form agreed, the reason kept with the
+    // form (overrideConsent, context strip; phase 4.4). Comes back to the strip (?visit=).
+    const docId = String(form.get('document') ?? '');
+    const visitId = String(form.get('visit') ?? '');
+    aheadDoc = UUID.test(docId) ? docId : null;
+    if (slow) stripProblem = slow;
+    else if (!aheadDoc || !UUID.test(visitId)) stripProblem = 'Choose the form. Nothing was recorded.';
+    else {
+      const r = await withClinic(clinic.id, async (tx) => {
+        const own = (await tx.query('select 1 from consent_document where id = $1 and patient_id = $2 and appointment_id = $3 and cancelled_at is null', [docId, patientId, visitId])).rowCount;
+        if (!own) throw new Refused('That form is not this visit’s any more. Nothing was recorded.');
+        await overrideConsent(tx, { clinicId: clinic.id, staffId: session.staffId, docId, context: 'strip', reason: String(form.get('reason') ?? '') });
+        return 'saved' as const;
+      }).catch((e) => { if (e instanceof Refused) return e.reasons.join(' '); throw e; });
+      if (r === 'saved') return Astro.redirect(`${here}?saved=consent-ahead&visit=${visitId}`, 303);
+      stripProblem = r;
+    }
   }
 }
 
@@ -407,6 +439,11 @@ const data = await withClinic(clinic.id, async (tx) => {
   // What the form says that the record does not: different, or a mobile or email the desk did not take.
   const cmp = added && added.addedAs === 'existing' ? await compareWithRecord(tx, added.values, p.id) : null;
   const addedDiffers = cmp ? [...cmp.differs, ...cmp.proposed] : [];
+  // The same for an intake's page 1 just added to a patient on file (?saved=intake, or one of its details used: ?intake=&used=), phase 4.3.
+  const intakeRef = q.get('saved') === 'intake' || q.has('used') || formUseProblem ? q.get('intake') ?? '' : '';
+  const addedIntake = !added && intakeRef && UUID.test(intakeRef) ? await intakeAnswers(tx, intakeRef, p.id) : null;
+  const cmpI = addedIntake && addedIntake.addedAs === 'existing' ? await compareWithRecord(tx, addedIntake.values, p.id) : null;
+  const intakeDiffers = cmpI ? [...cmpI.differs, ...cmpI.proposed] : [];
   // The clinical record (033), each visit with everything from it (its panel), the consents signed on the tablet, and
   // the Treatment record built from them (src/lib/treatment-record.ts; money read only for people who may bill).
   const clinical = await loadClinical(tx, clinic.id, p.id);
@@ -426,12 +463,14 @@ const data = await withClinic(clinic.id, async (tx) => {
     `select d.id, consent_document_state(d.id) as state, v.code from consent_document d join consent_version v on v.id = d.version_id
       where d.patient_id = $1 and (d.intake_id = $2 or exists (select 1 from consent_signing s where s.document_id = d.id and s.intake_id = $2)) and d.cancelled_at is null`, [p.id, intakeQ])).rows : [];
   const fullVisits = await loadVisits(tx, p.id, clinical, extra, signed, money, consentDocs);
+  // Consent forms linked to a plan line or a visit that are not agreed (phase 4.4): Mark done and the strip ask why before going ahead.
+  const gaps = await consentGapsFor(tx, p.id);
   const ledger = buildLedger({ visits: fullVisits, clinical, extra, recalls: await loadRecallsSet(tx, p.id), money: money ? await loadLedgerMoney(tx, p.id) : null, onFile: p.balance, patientId: p.id });
   const chartChanges = await loadChartChanges(tx, p.id);
   // ?treated=<procedure_done id>: the chart's offer for that treatment, as the chart is now (read only; the write re-checks).
   const treatedQ = q.get('treated');
   const offerState = canEdit && treatedQ && UUID.test(treatedQ) ? await offerFor(tx, p.id, treatedQ) : null;
-  return { consentDocs, mayExplainIds, treatsHere, capacity, canPrepare, offeredCodes, intakeDocs, offerState, clinical, extra, ledger, chartChanges, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
+  return { consentDocs, mayExplainIds, treatsHere, capacity, canPrepare, offeredCodes, intakeDocs, gaps, offerState, clinical, extra, ledger, chartChanges, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers, addedIntake, intakeDiffers };
 });
 if (!data) return notFound();
 const { me, p: patient, visits, health, canEdit } = data;
@@ -513,10 +552,11 @@ const chipsFor = (key: (typeof LISTS)[number]['key'], picks: readonly string[]) 
 const healthChips = Object.fromEntries(LISTS.map((l) => [l.key, chipsFor(l.key, l.picks)]));
 const healthNone = Object.fromEntries(LISTS.map((l) => [l.key, shown[l.key]?.length === 0]));
 
-// A version from the patient forms is dated when it went on the record; the line says when it was sent.
+// A version from the patient forms (the QR poster, or an intake's page 1) is dated when it went on the record; the line says when it was sent.
 const byLine = (v: HealthVersion) =>
   `${when(new Date(v.at))}${v.by ? ` by ${v.by}` : v.answeredBy === 'patient'
-    ? ` from the patient forms${v.formRef ? ` (${v.formRef}${v.formSentAt ? `, sent ${day(new Date(v.formSentAt))}` : ''})` : ''}` : ''}`;
+    ? v.intakeRef ? ` from the forms ${patient.first_name} filled in (${v.intakeRef}${v.formSentAt ? `, sent ${day(new Date(v.formSentAt))}` : ''})`
+    : ` from the patient forms${v.formRef ? ` (${v.formRef}${v.formSentAt ? `, sent ${day(new Date(v.formSentAt))}` : ''})` : ''}` : ''}`;
 const stateLine = (v: HealthAnswers) =>
   [...LISTS.map((l) => `${l.label} ${listText(v[l.key], l.key === 'allergies' ? 'none known' : 'none')}`), v.note && `Note: ${v.note}`].filter(Boolean).join(' · ');
 const birthLine = (b: string | null) => `Birth date ${dateText(b) ?? 'not on file'}`;
@@ -616,7 +656,7 @@ const SECTIONS = [
   { id: 'consent', label: 'Consent' },
   { id: 'texts', label: 'Texts', count: data.texts.length || null },
 ];
-const savedTo: Record<string, string> = { intake: 'overview', capacity: 'consent', 'consent-removed': 'consent', health: 'health', birth: 'health', nothing: 'health', consent: 'consent', 'consent-already': 'consent', paper: 'consent', details: 'overview', new: 'overview', form: 'overview' };
+const savedTo: Record<string, string> = { intake: 'overview', 'consent-ahead': 'overview', capacity: 'consent', 'consent-removed': 'consent', health: 'health', birth: 'health', nothing: 'health', consent: 'consent', 'consent-already': 'consent', paper: 'consent', details: 'overview', new: 'overview', form: 'overview' };
 
 // --- a patient form just added ------------------------------------------------
 // The consents as the record has them now, in words (never a claim the rows do not make).
@@ -632,12 +672,17 @@ const andList = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0,
 // What the new health version kept from the record that the form did not say (Add to <patient>).
 const lowerEq = (a: string, b: string) => a.toLocaleLowerCase('en') === b.toLocaleLowerCase('en');
 const keptFromRecord = (() => {
-  if (!data.added || data.added.addedAs !== 'existing') return [] as string[];
-  const v = health.versions.find((x) => x.formRef === data.added!.ref);
+  const src = data.added?.addedAs === 'existing' ? { ref: data.added.ref, values: data.added.values, kind: 'form' as const }
+    : data.addedIntake?.addedAs === 'existing' ? { ref: data.addedIntake.ref, values: data.addedIntake.values, kind: 'intake' as const } : null;
+  if (!src) return [] as string[];
+  const v = health.versions.find((x) => (src.kind === 'form' ? x.formRef : x.intakeRef) === src.ref);
   if (!v) return [];
-  const fromForm = healthLists(data.added.values);
+  const fromForm = healthLists(src.values);
   return (['allergies', 'conditions', 'medications'] as const).flatMap((k) => (v[k] ?? []).filter((x) => !fromForm[k].some((y) => lowerEq(x, y))));
 })();
+// What a form or an intake just added says that the record does not, and the post that takes one detail (form-use / intake-use).
+const differs = data.added ? { kind: 'form' as const, id: data.added.id, intent: 'form-use', param: 'form', list: data.addedDiffers, says: 'The form says', from: 'the form' }
+  : data.addedIntake ? { kind: 'intake' as const, id: data.addedIntake.id, intent: 'intake-use', param: 'intake', list: data.intakeDiffers, says: 'Their forms say', from: 'their forms' } : null;
 const used = q.get('used');
 const usedLabel = used ? ({ phone: 'mobile', email: 'email', address_line: 'address', city: 'city', province: 'province', sex: 'sex', occupation: 'occupation',
   emergency_name: 'emergency contact', emergency_relation: 'emergency contact’s relation', emergency_phone: 'emergency contact’s number',
@@ -819,11 +864,18 @@ const recHere = here;
     {saved === 'consent-removed' && <Callout tone="success" class="mt-4" text="The form was removed." />}
     {q.get('capacity') === 'refused' && <Callout tone="alert" class="mt-4" text="Nothing was recorded. Only a treating dentist here with a PRC licence records this, for an adult patient with a birth date on file, and with a reason of at most 300 characters." />}
     {saved === 'intake' && (() => {
-      // Just added from an intake (039): what its forms came to, each part a way to the Consent section.
+      // Just added from an intake (039): what its forms came to, each part a way to the Consent section; added to a patient on file,
+      // what page 1 did to the record (empty details filled, the health history, what the record kept), as the QR forms say it (4.3).
       const n = (st: string[]) => data.intakeDocs.filter((d) => st.includes(d.state)).length;
       const signedN = n(['agreed']), toSign = n(['to_sign']), toConfirm = n(['to_confirm']), refused = data.intakeDocs.filter((d) => d.state === 'refused' && d.code !== 'photos').length;
       const parts = [signedN && `${signedN === 1 ? 'one consent form' : `${signedN} consent forms`} signed`, toSign && `${toSign} to sign at the chair`, toConfirm && `${toConfirm} to confirm`, refused && `${refused} not agreed`].filter(Boolean) as string[];
-      return <Callout tone="success" class="mt-4" title={`${shortName} is added.`}>{parts.length > 0 && <p>{capitalise(parts.join(' · '))}. <a href="#consent" class="font-semibold underline underline-offset-2" data-rec-go="consent">See Consent</a></p>}</Callout>;
+      const onFile = data.addedIntake?.addedAs === 'existing';
+      return (
+        <Callout tone="success" class="mt-4" title={onFile ? `Added the forms (${data.addedIntake!.ref}) to ${patient.first_name}’s record.` : `${shortName} is added.`}>
+          {onFile && <p>Empty details were filled in, and the record has the health history {patient.first_name} gave on page 1{data.addedIntake!.sentAt ? ` (sent ${day(data.addedIntake!.sentAt)})` : ''}.{keptFromRecord.length > 0 && ` Kept from the record as well: ${keptFromRecord.join(', ')}.`}</p>}
+          {parts.length > 0 && <p>{capitalise(parts.join(' · '))}. <a href="#consent" class="font-semibold underline underline-offset-2" data-rec-go="consent">See Consent</a></p>}
+        </Callout>
+      );
     })()}
     {saved === 'form' && data.added && addedConsents && (
       <Callout tone="success" class="mt-4" title={data.added.addedAs === 'new' ? `Added from the patient forms (${data.added.ref}).` : `Added the patient forms (${data.added.ref}) to ${patient.first_name}’s record.`}>
@@ -840,27 +892,27 @@ const recHere = here;
         <p>The birth date on the record makes {patient.first_name} under 18 on the day the form was signed, and {patient.first_name} signed it themself. A parent or guardian needs to agree: record it in <a href="#consent" class="font-semibold underline underline-offset-2" data-rec-go="consent">Consent</a>.</p>
       </Callout>
     )}
-    {usedLabel && !formUseProblem && <Callout tone="success" class="mt-4" text={`The ${usedLabel} on the record is now the one from the form.`} />}
+    {usedLabel && !formUseProblem && <Callout tone="success" class="mt-4" text={`The ${usedLabel} on the record is now the one from ${differs?.from ?? 'the form'}.`} />}
     {formUseProblem && <Callout tone="alert" class="mt-4" text={formUseProblem} />}
-    {data.added && data.addedDiffers.length > 0 && (
-      <Callout tone="warn" role={saved === 'form' ? 'alert' : undefined} class="mt-3" title="The form says something the record does not. The record kept what it had:">
+    {differs && differs.list.length > 0 && (
+      <Callout tone="warn" role={saved === 'form' || saved === 'intake' ? 'alert' : undefined} class="mt-3" title={`${differs.says} something the record does not. The record kept what it had:`} data-rec-differs={differs.kind}>
         <ul class="fm-diff">
-          {data.addedDiffers.map((d) => (
+          {differs.list.map((d) => (
             <li class="fm-diff-use">
-              <span class="min-w-0"><span class="fm-diff-k">{d.label}</span>On file: {d.onFile || 'nothing'}<br />On the form: {d.onForm}</span>
+              <span class="min-w-0"><span class="fm-diff-k">{d.label}</span>On file: {d.onFile || 'nothing'}<br />On {differs.kind === 'form' ? 'the form' : 'their forms'}: {d.onForm}</span>
               {canEdit && TAKEABLE.has(d.field) && (
-                <form method="post" action={`${here}?form=${data.added!.id}#overview`}>
+                <form method="post" action={`${here}?${differs.param}=${differs.id}#overview`}>
                   <Csrf />
-                  <input type="hidden" name="intent" value="form-use" />
-                  <input type="hidden" name="form" value={data.added!.id} />
+                  <input type="hidden" name="intent" value={differs.intent} />
+                  <input type="hidden" name={differs.param} value={differs.id} />
                   <input type="hidden" name="field" value={d.field} />
-                  <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm">Use {d.onForm.length > 24 ? 'the form’s' : d.onForm}</button>
+                  <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm">Use {d.onForm.length > 24 ? (differs.kind === 'form' ? 'the form’s' : 'theirs') : d.onForm}</button>
                 </form>
               )}
             </li>
           ))}
         </ul>
-        {canEdit && <p class="mt-2">{data.addedDiffers.some((d) => d.field === 'phone' || d.field === 'email') ? 'Check a mobile or email with the patient before you use it: visits and reminders go by mobile. ' : ''}A birth date changes in the Health section.</p>}
+        {canEdit && <p class="mt-2">{differs.list.some((d) => d.field === 'phone' || d.field === 'email') ? 'Check a mobile or email with the patient before you use it: visits and reminders go by mobile. ' : ''}A birth date changes in the Health section.</p>}
       </Callout>
     )}
 
@@ -880,14 +932,14 @@ const recHere = here;
   {/* Every visit's panel, outside the sections so it opens from the Treatment record's dates and from Visits alike. */}
   <VisitPanels visits={data.fullVisits} slug={clinic.slug} patientId={patient.id} canEdit={canEdit} money={money} open={thisVisit && openVisit === thisVisit.id ? null : openVisit} today={today} firstName={patient.first_name} />
   {/* Add to plan, Record a treatment and the note, outside the sections too, so the chart's palette can open them over the Chart. */}
-  {canEdit && <TreatmentPanels c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'done'} chartSid={chartSid} />}
+  {canEdit && <TreatmentPanels c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'done'} chartSid={chartSid} gaps={data.gaps.byPlanItem} />}
   {canEdit && <NotePanel c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'note'} defaultTeeth={noteTeeth} />}
 
   {/* Today's visit, above the sections: what is still to do at it and what is done (036). */}
   {thisVisit && (
     <VisitStrip visit={thisVisit} c={clin} x={ext} signed={data.signed} health={latest} privacy={privacyState} minor={minor} laterVisitAt={laterVisitAt}
       canEdit={canEdit} money={money} today={today} firstName={patient.first_name} action={here} chargeHref={`${chargeHref}&visit=${thisVisit.id}`} printBase={`${here}rx/`}
-      saved={saved} problem={stripProblem} />
+      saved={saved} problem={stripProblem} forms={data.fullVisits.find((v) => v.id === thisVisit.id)?.forms ?? []} consentsBase={`${here}consents/`} aheadDoc={aheadDoc} />
   )}
 
   <!-- Overview -->
@@ -1145,7 +1197,7 @@ const recHere = here;
   <!-- Treatment -->
   <div id="rec-treatment" role="tabpanel" aria-labelledby="rec-rec-treatment-tab" hidden={current !== 'treatment'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="treatment">
     <Banner id="treatment" label={SECTION_LABEL.treatment} />
-    <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null}>
+    <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} gaps={data.gaps.byPlanItem} consentsBase={`${here}consents/`}>
       {showOffer && current === 'treatment' && <ChartOffer slot="offer" state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="treatment" leaveHref={leaveOffer('treatment')} inChart={false} />}
     </Treatment>
     <div class="mt-4 grid gap-4 max-md:mt-3 max-md:gap-3">

@@ -157,14 +157,16 @@ Open with the owner before a clinic depends on it (also in `CLAUDE.md` "Open"):
 
 ### 2. The intake's phase 4: the record integration
 
-Phases 1 to 3 are built, and phase 4's first two pieces (1 Oct): the forms
-signed through an intake or on paper sit on the visit panel and the Treatment
-record, and a form is signed again from the record, on a phone or a tablet,
-with newer words prepared again. `docs/intake-design.md` keeps the two
-candidates still open (page 1's health history beside the one on file,
-withdrawals and overrides drawn), for the owner to rank. Neither needs a
-migration. Build the next on a branch from `main`; write what was decided into
-that file.
+Phases 1 to 4 are built (1 Oct): the forms signed through an intake or on
+paper sit on the visit panel and the Treatment record (4.1); a form is signed
+again from the record, on a phone or a tablet, with newer words prepared
+again (4.2); page 1 of an intake added to a patient on file is compared with
+the record, "Use" per detail, and the Health section names the forms (4.3);
+and withdrawals and overrides are asked for first (Mark done anyway, the
+strip's Go ahead anyway) and drawn everywhere the form is (4.4). None needed a
+migration. `docs/intake-design.md` says what each settled. What is left is
+the owner's: the forms' words (`CONSENT_REVIEWED`), the Filipino lines, and
+whether the calendar's In the chair step should ask too.
 
 ### 3. Then
 

@@ -19,7 +19,7 @@ import { LETTER_KIND } from '../../../../../lib/record-extra';
 import { TREATMENT_CONSENT } from '../../../../../lib/patient-forms-def';
 import { pesos } from '../../../../../lib/invoices';
 import { canSign, sourceWords, VISIT_STATUS, type Visit } from '../../../../../lib/visit-record';
-import { STATE_WORDS, signerWords } from '../../../../../lib/consent-docs';
+import { STATE_WORDS, signerWords, withdrawalWords, overrideWords } from '../../../../../lib/consent-docs';
 import { SIGNED_WHERE, signedAtOf, docTeeth } from '../../../../../lib/treatment-record';
 const TONE: Record<string, string> = { success: 'rp-ok', warn: 'rp-warn', alert: 'rp-alert', neutral: '', info: '' };
 
@@ -90,10 +90,13 @@ const NOTE_PARTS = [['complaint', 'Why they came'], ['findings', 'Findings'], ['
                     <span class:list={['rp', TONE[st.tone]]}>{st.tone === 'success' && <Icon name="check" size={14} />}{st.words}</span>
                     {s && <span class="rp">{SIGNED_WHERE[s.channel]}{s.channel === 'paper' && s.signedOn ? `, ${dateText(s.signedOn)}` : `, ${stamp(signedAtOf(s))}`}</span>}
                     {s?.withdrawal && <span class="rp rp-alert">Withdrawn {stamp(s.withdrawal.at)}</span>}
+                    {d.overrides.length > 0 && <span class="rp rp-warn">Went ahead anyway{d.overrides.length > 1 ? ` ×${d.overrides.length}` : ''}</span>}
                     {teeth.map((t) => <span class="rp rp-tooth"><Glyph name="tooth" size={14} />{t}</span>)}
                   </p>
                 </div>
                 <div class="rs-line"><span class="rk">{d.state === 'agreed' ? 'Agreed to' : 'Form'}</span><p class="text-[15px] text-ink">{d.title}</p></div>
+                {s?.withdrawal && <div class="rs-line"><span class="rk">Withdrawn</span><p class="text-[14.5px] text-ink">{withdrawalWords(s.withdrawal).replace(/^Withdrawn /, '')}</p></div>}
+                {d.overrides.map((o) => <div class="rs-line" data-vx-override={o.id}><span class="rk">Went ahead</span><p class="text-[14.5px] text-ink">{overrideWords(o).replace(/^Went ahead anyway /, '')}</p></div>)}
                 {d.attestation && <div class="rs-line"><span class="rk">Explained by</span><p><Who name={d.attestation.dentistName} /></p></div>}
                 {!d.attestation && d.dentistName && <div class="rs-line"><span class="rk">Dentist</span><p><Who name={d.dentistName} /></p></div>}
                 <p class="flex flex-wrap gap-2">

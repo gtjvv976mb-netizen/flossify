@@ -58,7 +58,7 @@ import {
   type PatientFormValues, type SignedAs,
 } from './patient-forms-def';
 import {
-  audit, digits10, insertPatientFromAnswers, fillPatientFromAnswers, writeHealthFromAnswers, writeConsentRow, planFill, detailCols, sameText,
+  audit, digits10, insertPatientFromAnswers, fillPatientFromAnswers, writeHealthFromAnswers, writeConsentRow, planFill, detailCols, useAnswerDetail,
   FILLABLE, TAKEABLE, type AnswerSource, type ConsentOutcome, type KeptDetail,
 } from './patient-add';
 
@@ -636,18 +636,11 @@ export async function addToPatient(tx: Tx, a: { clinicId: string; staffId: strin
 export async function useFormDetail(tx: Tx, a: { clinicId: string; staffId: string; patientId: string; formId: string; field: string }):
   Promise<'saved' | 'same' | 'gone' | 'not-allowed'> {
   if (!(await canEditRecords(tx, a.staffId, a.clinicId))) return 'not-allowed';
-  const x = FILLABLE.find((y) => y.col === a.field && TAKEABLE.has(y.col));
-  if (!x || !/^[0-9a-f-]{36}$/i.test(a.patientId) || !/^[0-9a-f-]{36}$/i.test(a.formId)) return 'gone';
+  if (!TAKEABLE.has(a.field) || !/^[0-9a-f-]{36}$/i.test(a.patientId) || !/^[0-9a-f-]{36}$/i.test(a.formId)) return 'gone';
   const f = (await tx.query<{ answers: PatientFormValues }>(
     `select answers from patient_form where id = $1 and patient_id = $2 and status = 'added'`, [a.formId, a.patientId])).rows[0];
-  const want = f ? x.from(f.answers) : null;
-  if (!want) return 'gone';
-  const p = (await tx.query<{ v: string | null }>(`select ${x.col}::text as v from patient where id = $1 and archived_at is null for update`, [a.patientId])).rows[0];
-  if (!p) return 'gone';
-  if (p.v !== null && p.v !== '' && sameText(p.v, want)) return 'same';
-  await tx.query(`update patient set ${x.col} = $2, updated_at = now() where id = $1`, [a.patientId, want]);
-  await audit(tx, a.clinicId, a.staffId, 'patient.update', 'patient', a.patientId);
-  return 'saved';
+  if (!f) return 'gone';
+  return useAnswerDetail(tx, { clinicId: a.clinicId, staffId: a.staffId, patientId: a.patientId, values: f.answers, field: a.field });
 }
 
 /** "Dismiss": the form leaves the queue and is deleted 30 days after it was sent. 'gone' when it is not new. Audit forms.dismiss. */

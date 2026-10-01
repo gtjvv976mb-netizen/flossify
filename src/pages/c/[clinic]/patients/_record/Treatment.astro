@@ -17,10 +17,15 @@ import Callout from '../_ui/Callout.astro';
 import { PLAN_STATUS, LAB_STATUS, LAB_NEXT, type Clinical, type RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
 import type { Loa } from '../../../../../lib/record-extra';
+import { gapWhy, type ConsentGap } from '../../../../../lib/consent-docs';
 
-/** visitId: today's visit (036) — a plan item marked done is written against it. */
-interface Props { c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; visitId?: string | null }
-const { c, loas = [], canEdit, action, meId, problem, saved, today, firstName, visitId = null } = Astro.props;
+/** visitId: today's visit (036) — a plan item marked done is written against it. gaps: per plan line, the consent forms linked to it
+ *  that are not agreed (phase 4.4): Mark done then asks why, and the reason is kept against the form. */
+interface Props { c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; visitId?: string | null; gaps?: ReadonlyMap<string, ConsentGap[]>; consentsBase?: string }
+const { c, loas = [], canEdit, action, meId, problem, saved, today, firstName, visitId = null, gaps = new Map(), consentsBase = '' } = Astro.props;
+const gapsOf = (id: string) => gaps.get(id) ?? [];
+// A refused Mark done keeps the reason typed, on its own line only.
+const typedReason = (id: string) => (problem?.intent === 'plan-status' && problem.values.item === id ? problem.values.consent_reason ?? '' : '');
 
 const peso = (n: number | string) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 const tooth = (fdi: number | null, surface: string | null) => (fdi ? `${fdi}${surface ? ` ${surface}` : ''}` : null);
@@ -80,6 +85,12 @@ const help = 'text-[13px] leading-snug text-ink-2';
                           : <Chip tone="warn" icon="clock" label={a.expired ? 'LOA expired' : `Waiting for ${a.payor}’s LOA`} />; })()}
                         {i.note && <span>{i.note}</span>}
                       </p>
+                      {gapsOf(i.id).length > 0 && (
+                        <p class="tx-gap" data-tx-gap={i.id}>
+                          <Icon name="alert" size={16} />
+                          <span>{gapsOf(i.id).map((g, n) => <>{n > 0 && ' · '}<a href={`${consentsBase}${g.docId}/`} class="font-semibold underline underline-offset-2">{g.title}</a>: {gapWhy(g)}</>)}</span>
+                        </p>
+                      )}
                     </div>
                     <p class="tx-price">{peso(i.price)}</p>
                     {canEdit && (
@@ -96,7 +107,8 @@ const help = 'text-[13px] leading-snug text-ink-2';
                               {c.clinicians.map((x) => <option value={x.id}>{x.name}</option>)}
                             </select>
                           )}
-                          <button class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="check" />Mark done</button></form>
+                          {gapsOf(i.id).length > 0 && <input name="consent_reason" class="tx-why" value={typedReason(i.id)} maxlength="200" autocomplete="off" required placeholder="Why go ahead without the consent?" aria-label={`Why mark ${i.name} done without the consent form`} />}
+                          <button class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="check" />{gapsOf(i.id).length ? 'Mark done anyway' : 'Mark done'}</button></form>
                         {i.status === 'accepted' && (
                           <form method="post" action={`${action}#treatment`}><Csrf /><input type="hidden" name="intent" value="plan-status" /><input type="hidden" name="item" value={i.id} /><input type="hidden" name="to" value="planned" />
                             <button class="ws-btn ws-btn-quiet ws-btn-sm">Not agreed yet</button></form>

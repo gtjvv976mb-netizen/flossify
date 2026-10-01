@@ -45,7 +45,7 @@ import { Refused } from '../../../../../../lib/refused';
 import { renderDocument, holds, EXPLAINED_LANGS, signerChoices, type SignerChoice } from '../../../../../../lib/consent-library';
 import {
   loadConsentDocument, snapshotDoc, signingCheck, attestDocument, confirmSigning, withdrawConsent, printForPaper, recordPaperSigning, cancelDocument,
-  mayAttest, clinicFace, contextFor, plannedLanguage, bornLine, signerWords, STATE_WORDS, WITHDRAW_HOW, type RecordSigning,
+  mayAttest, clinicFace, contextFor, plannedLanguage, bornLine, signerWords, withdrawalWords, overrideWords, STATE_WORDS, WITHDRAW_HOW, type RecordSigning,
 } from '../../../../../../lib/consent-docs';
 import { rawFromFields, rawFromForm, feeChips, timeWords, intakeGates } from '../../../../../../lib/intake';
 
@@ -231,7 +231,7 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
             {doc.attestation && <p class="text-[14.5px] text-ink-2">Confirmed and explained in {doc.attestation.lang} by {doc.attestation.dentistName}, PRC {doc.attestation.dentistPrc}, {day(doc.attestation.at)}, {hm(doc.attestation.at)}{doc.attestation.interpreter ? ` · interpreter ${doc.attestation.interpreter}` : ''}{doc.attestation.assent ? ` · the patient ${doc.attestation.assent === 'not_asked' ? 'was not asked' : doc.attestation.assent}` : ''}</p>}
             {latest.confirmation && <p class="text-[14.5px] text-ink-2">{latest.confirmation.kind === 'witness' ? 'Witnessed' : 'Papers checked'} by {latest.confirmation.staffName}, {hm(latest.confirmation.at)}</p>}
             {latest.needsConfirm && !latest.confirmation && <p class="rp-row"><span class="rp rp-warn">To confirm: {latest.needsConfirm === 'witness' ? 'a staff member who saw the mark made' : 'a staff member checks the papers'}</span></p>}
-            {latest.withdrawal && <p class="rp-row"><span class="rp rp-alert">Withdrawn {day(latest.withdrawal.at)}: told by {latest.withdrawal.toldBy}, {WITHDRAW_HOW.find((h) => h.value === latest.withdrawal!.how)?.label.toLocaleLowerCase('en')}, recorded by {latest.withdrawal.byName}</span></p>}
+            {latest.withdrawal && <p class="rp-row"><span class="rp rp-alert">{withdrawalWords(latest.withdrawal)}</span></p>}
           </div>
         </div>
       </div>
@@ -256,6 +256,17 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
     </Pane>
   ) : (
     <Pane as="div" label="Words"><Callout tone="warn" role="note" text="The words of this form are not on this server." /></Pane>
+  )}
+
+  {/* Treatment that went ahead without this form agreed (phase 4.4): every time, where, the form's state then, why, who, when. */}
+  {doc.overrides.length > 0 && (
+    <Pane as="section" label="Went ahead without this consent">
+      <Head icon="alert" title="Went ahead without this consent" meta={doc.overrides.length === 1 ? 'Once' : `${doc.overrides.length} times`} />
+      <ul class="grid gap-2 text-[14.5px] text-ink">
+        {doc.overrides.map((o) => <li class="flex items-start gap-2" data-cd-override={o.id}><Icon name="alert" size={16} class="mt-0.5 flex-none text-[var(--ws-amber-ink)]" /><span>{overrideWords(o).replace(/^Went ahead anyway /, '')}</span></li>)}
+      </ul>
+      <p class="ik-help mt-3">Kept with the form: the record never blocks treatment, and never hides that it went ahead.</p>
+    </Pane>
   )}
 
   {canEdit && needsConfirm && (

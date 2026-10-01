@@ -25,6 +25,8 @@ import { bpWords, type Extra } from '../../../../../lib/record-extra';
 import type { Clinical } from '../../../../../lib/record';
 import type { VisitConsent } from '../../../../../lib/visit-consent';
 import { VISIT_STATUS, canSign, type StripVisit } from '../../../../../lib/visit-record';
+import { gapWords, OVERRIDE_CONTEXT, type RecordDoc, type ConsentGap } from '../../../../../lib/consent-docs';
+import SidePanel from '../../../../../components/ws/SidePanel.astro';
 import { fromDb, pesos } from '../../../../../lib/invoices';
 import { AFTERCARE, kindForCatalog } from '../../../../../lib/aftercare';
 
@@ -51,8 +53,14 @@ interface Props {
   printBase: string;
   saved: string | null;
   problem: string | null;
+  /** The consent forms of this visit (039, Visit.forms): signed ones as done, those not agreed as a line that asks why before going ahead (phase 4.4). */
+  forms?: RecordDoc[];
+  /** The record's consent pages: /c/<slug>/patients/<id>/consents/. */
+  consentsBase?: string;
+  /** A Go ahead anyway that was refused: the form's id, so its panel opens again with the sentence (`problem`). */
+  aheadDoc?: string | null;
 }
-const { visit, c, x, signed, health, privacy, minor, laterVisitAt, canEdit, money, today, firstName, action, chargeHref, printBase, saved, problem } = Astro.props;
+const { visit, c, x, signed, health, privacy, minor, laterVisitAt, canEdit, money, today, firstName, action, chargeHref, printBase, saved, problem, forms = [], consentsBase = '', aheadDoc = null } = Astro.props;
 
 const tz = 'Asia/Manila';
 const dayOf = (d: Date | string) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(d));
@@ -98,6 +106,28 @@ const signable = canEdit && canSign({ id: visit.id, status: visit.status, day: d
 if (consent) ok.push({ words: `Consent signed by ${consent.signedBy}, ${time(consent.at)}`, go: 'consent' });
 else lines.push({ tone: 'warn', words: `Consent to treatment: not signed${minor && signable ? ' (a parent or guardian signs)' : finished ? ' at this visit' : ''}`, acts: signable ? [{ label: 'Sign on this tablet', href: `${action}sign/${visit.id}/` }] : [{ label: 'Consent', go: 'consent' }] });
 if (!privacy.ok) lines.push({ tone: 'warn', words: privacy.words, acts: canEdit ? [{ label: 'Record it', go: 'consent' }] : [] });
+// The consent forms prepared from this visit (039): agreed ones are done; one not agreed is a line — Sign, or, with a reason,
+// go ahead anyway (consent_override, context strip; the same rule as consentGaps: "No photos" is a decision, not a gap). A form
+// already gone ahead without today is done, in words that say so.
+const gaps: ConsentGap[] = forms
+  .filter((d) => d.appointmentId === visit.id && d.state !== 'agreed' && d.state !== 'no_photos' && d.state !== 'cancelled')
+  .map((d) => ({ docId: d.id, title: d.title, state: d.state, explained: !!d.attestation || !d.template?.attest }));
+for (const d of forms) {
+  if (d.appointmentId !== visit.id) continue;
+  if (d.state === 'agreed') ok.push({ words: `${d.title}: signed${d.latest ? ` by ${d.latest.signedByName}` : ''}`, go: 'consent' });
+  for (const o of d.overrides) {
+    if (dayOf(o.at) !== today) continue;
+    ok.push({ words: `${d.title}: went ahead anyway (${OVERRIDE_CONTEXT[o.context]}), ${o.staffName}, ${time(o.at)}`, go: 'consent' });
+  }
+}
+for (const g of gaps) {
+  const d = forms.find((f) => f.id === g.docId)!;
+  const ahead = d.overrides.some((o) => dayOf(o.at) === today);
+  if (ahead) continue;
+  const acts: Act[] = [{ label: 'Open the form', href: `${consentsBase}${g.docId}/` }];
+  if (canEdit && !finished) acts.push({ label: 'Go ahead anyway', open: `rec-ahead-${g.docId}` });
+  lines.push({ tone: 'warn', words: `Consent form · ${gapWords(g)}`, acts });
+}
 
 // During the visit.
 for (const d of done) ok.push({ words: `${d.name}${d.fdi ? ` · ${d.fdi}${d.surface ? ` ${d.surface}` : ''}` : ''}`, go: 'treatment' });
@@ -121,7 +151,7 @@ if (finished && money) {
   else lines.push({ tone: 'warn', words: 'Not charged yet', acts: [{ label: 'Charge this visit', href: chargeHref }] });
 }
 
-const SAVED: Record<string, string> = { checked: `Health history checked with ${firstName}: no change.`, 'checked-today': 'The health history was already checked today.' };
+const SAVED: Record<string, string> = { checked: `Health history checked with ${firstName}: no change.`, 'checked-today': 'The health history was already checked today.', 'consent-ahead': 'Recorded: the visit goes ahead without that consent form, and why. It stays with the form.' };
 const TONE_ICON: Record<Tone, 'info' | 'alert'> = { plain: 'info', warn: 'alert', alert: 'alert' };
 ---
 
@@ -172,3 +202,16 @@ const TONE_ICON: Record<Tone, 'info' | 'alert'> = { plain: 'info', warn: 'alert'
     </p>
   )}
 </Pane>
+
+{/* Going ahead without a consent form (phase 4.4): never blocked, the reason kept against the form (overrideConsent). */}
+{canEdit && !finished && gaps.map((g) => (
+  <SidePanel id={`rec-ahead-${g.docId}`} title="Go ahead without this consent?" meta={g.title} open={aheadDoc === g.docId}>
+    <form method="post" action={action} class="grid gap-4">
+      {aheadDoc === g.docId && problem && <Callout tone="alert" text={problem} />}
+      <Csrf /><input type="hidden" name="intent" value="consent-override" /><input type="hidden" name="document" value={g.docId} /><input type="hidden" name="visit" value={visit.id} />
+      <p class="text-[15px] text-ink-2">{gapWords(g)}. The visit is never blocked; say why it goes ahead, and that is kept with the form for anyone who reads it later.</p>
+      <label class="field"><span class="meta">Why</span><input name="reason" maxlength="200" autocomplete="off" required placeholder="e.g. emergency: pain relief only, consent to follow" /></label>
+      <div class="flex flex-wrap gap-2"><button type="submit" class="ws-btn ws-btn-primary">Go ahead anyway</button><button type="button" class="ws-btn ws-btn-quiet" data-ws-close>Not now</button></div>
+    </form>
+  </SidePanel>
+))}

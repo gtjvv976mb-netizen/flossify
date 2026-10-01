@@ -43,7 +43,7 @@ import { templatesInForce } from './consent-seal';
 import { INTAKE_FORM_VERSION } from './intake-def';
 import { lockClinic } from './import';
 import {
-  audit, insertPatientFromAnswers, fillPatientFromAnswers, writeHealthFromAnswers, writePrivacyConsent, type AnswerSource,
+  audit, insertPatientFromAnswers, fillPatientFromAnswers, writeHealthFromAnswers, writePrivacyConsent, useAnswerDetail, type AnswerSource,
 } from './patient-add';
 
 type Q = Pick<Tx, 'query'>;
@@ -1027,6 +1027,38 @@ export async function addIntake(tx: Tx, a: {
   await event(tx, a.clinicId, i.id, 'added', a.staffId, a.as === 'new' ? 'as a new patient' : 'to a patient on file');
   await audit(tx, a.clinicId, a.staffId, 'intake.add', 'intake', i.id);
   return { patientId, chartNo, as: a.as, filled, kept, privacy };
+}
+
+/** An intake added to this patient: its page 1 answers, for the record (4.3). */
+export interface AddedIntake { id: string; ref: string; addedAs: 'new' | 'existing'; sentAt: Date | null; values: PatientFormValues }
+
+/**
+ * The page 1 answers of an intake added to this patient (a new patient's
+ * intake, added as new or to a patient on file), for the record page to compare
+ * with the record and offer "Use" per detail — as the QR forms do. Null when
+ * the intake is not this patient's, not added, or had no page 1 (an intake for
+ * a patient on file asks none). Inside withClinic().
+ */
+export async function intakeAnswers(q: Q, intakeId: string, patientId: string): Promise<AddedIntake | null> {
+  if (!isUuid(intakeId) || !isUuid(patientId)) return null;
+  const i = (await q.query<IntakeRow & { added_as: 'new' | 'existing' | null }>(
+    `select * from intake where id = $1 and patient_id = $2 and status = 'added' and target = 'new'`, [intakeId, patientId])).rows[0];
+  if (!i || !i.answers || !i.added_as) return null;
+  return { id: i.id, ref: i.ref, addedAs: i.added_as, sentAt: i.sent_at, values: valuesOf(i) };
+}
+
+/**
+ * "Use <what page 1 says>" on the record after an intake was added to a
+ * patient on file: one detail (a TAKEABLE column) written from the intake's
+ * page 1, over what was on file. Never a name or the birth date. Audit
+ * patient.update (useAnswerDetail, the QR forms' rule).
+ */
+export async function useIntakeDetail(tx: Tx, a: { clinicId: string; staffId: string; patientId: string; intakeId: string; field: string }):
+  Promise<'saved' | 'same' | 'gone' | 'not-allowed'> {
+  if (!(await canEditRecords(tx, a.staffId, a.clinicId))) return 'not-allowed';
+  const i = await intakeAnswers(tx, a.intakeId, a.patientId);
+  if (!i) return 'gone';
+  return useAnswerDetail(tx, { clinicId: a.clinicId, staffId: a.staffId, patientId: a.patientId, values: i.values, field: a.field });
 }
 
 /**

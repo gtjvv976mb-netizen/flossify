@@ -19,7 +19,7 @@ import type { Tx } from './db';
 import type { Clinical, Done } from './record';
 import type { Extra } from './record-extra';
 import type { Visit } from './visit-record';
-import { STATE_WORDS, signerWords, type RecordDoc, type RecordSigning } from './consent-docs';
+import { STATE_WORDS, signerWords, overrideWords, type RecordDoc, type RecordSigning } from './consent-docs';
 import { dateText } from './health';
 import { sumsOf, fromDb, pesos, statementNo, methodLabel, DISCOUNTS, PAYOR_METHODS, type Cents } from './invoices';
 
@@ -216,12 +216,23 @@ export function buildLedger(i: BuildIn): Ledger {
     // was agreed and by whom, before the work it covers. A form still to sign is the visit panel's business, not history.
     for (const d of v.forms) {
       const s = d.latest;
-      if (!s) continue;
-      const r = blank('consent', d.title);
-      r.teeth = docTeeth(d).map(String);
-      r.detail = formWords(d, s);
-      r.dentist = d.attestation?.dentistName ?? d.dentistName ?? v.dentist;
-      slot(v.day).clinical.push({ row: r, at: +signedAtOf(s), order: -1 });
+      if (s) {
+        const r = blank('consent', d.title);
+        r.teeth = docTeeth(d).map(String);
+        r.detail = formWords(d, s);
+        r.dentist = d.attestation?.dentistName ?? d.dentistName ?? v.dentist;
+        slot(v.day).clinical.push({ row: r, at: +signedAtOf(s), order: -1 });
+      }
+      // Treatment went ahead without this form agreed (phase 4.4): one row each, on the visit the form belongs to, naming
+      // its own day when that differs, so the ledger never hides it.
+      for (const o of d.overrides) {
+        const r = blank('consent', `Went ahead without ${d.title}`);
+        r.teeth = docTeeth(d).map(String);
+        const oDay = dayKey(o.at);
+        r.detail = [overrideWords(o), oDay !== v.day ? `on ${dateText(oDay)}` : null].filter(Boolean).join(' · ');
+        r.dentist = d.attestation?.dentistName ?? d.dentistName ?? v.dentist;
+        slot(v.day).clinical.push({ row: r, at: +new Date(o.at), order: -1 });
+      }
     }
     if (v.procs.length || v.adjustments.length) continue;
     // A visit with nothing done is a row when it is treatment history: not a cancelled visit that holds nothing,

@@ -1267,8 +1267,9 @@ at Send unless the patient looks like one already on file; a fresh signature on 
 the risks; the six scheduling features first). **Phase 1** is the library, the data and the shared add path;
 **phase 2** (shipped, fixes in 043) the desk's steps, clinic tablets, the patient's pages (`/f/i/<token>/`,
 `/f/t/`), park/unlock and the record's Consent forms pane; **phase 3** (shipped 1 Oct, no migration) the
-patient's own phone; **phase 4** (the record integration, `docs/intake-design.md`) began the same day with
-the signed forms on the visit panel and the Treatment record (the owner's first pick).
+patient's own phone; **phase 4** (the record integration, `docs/intake-design.md`) followed the same day: the
+signed forms on the visit panel and the Treatment record (the owner's first pick), Sign again from the record,
+page 1 beside the record with "Use" per detail, and withdrawals and overrides asked first and drawn.
 
 - **The consent library is data** (`src/lib/consent-library.ts`, no Node imports): ten forms
   (`anaesthesia-2026-10` … `photos-2026-10`, `consent_version` kind `document`, in force from 1 Oct 2026) and
@@ -1385,6 +1386,43 @@ the signed forms on the visit panel and the Treatment record (the owner's first 
   superuser's), an unsigned form on it, the record's pill and button, the intake under `treatment-2026-09`, the
   old form `renewed`, signed on the phone, the record clean. The pill and buttons reuse measured classes
   (`rp-warn`, `ws-btn-quiet`, `ik-tag[data-tone=warn]`).
+- **Phase 4, third piece: page 1 beside the record, "Use" per detail (no migration).** An intake for a new
+  patient added **to a patient on file** (Screen F, `add_to`) lands on `?saved=intake&intake=<id>` as before;
+  the record now says what the QR forms say there — "Added the forms (IN-…) to <name>'s record. Empty details
+  were filled in, and the record has the health history <name> gave on page 1 (sent …). Kept from the record as
+  well: …" — and lists each detail page 1 says differently, or a mobile or email the desk did not tick, with
+  **Use <it>** (intent `intake-use`: `useIntakeDetail` in `intake.ts` → `useAnswerDetail` in `patient-add.ts`,
+  the one writer `useFormDetail` now calls too; `TAKEABLE` only, never a name or the birth date; back with
+  `?intake=<id>&used=<field>`). `intakeAnswers(q, intakeId, patientId)` is the read (an added intake of this
+  patient's with a page 1). The Health section names the forms a version came from: `readHealth` joins the
+  intake (`HealthVersion.intakeRef`, `formSentAt` is the intake's `sent_at` then) and the line reads "from the
+  forms <name> filled in (IN-7K2F, sent 1 Oct 2026)". Checked by `phone-e2e.mjs` D: page 1 with a patient on
+  file's name and birth date, Send waits, Screen F's panel says "Occupation: on file Nurse · on the forms
+  Teacher", the record's callouts, Use Teacher, the Health line.
+- **Phase 4, fourth piece: withdrawals and overrides, asked first and drawn (no migration).** The data of 039
+  (`consent_withdrawal`, `consent_override`) now reaches the pages. **Ask first:** a form linked to a plan line
+  (`consent_document.plan_item_id`) that is not agreed — to sign, to confirm, refused, withdrawn; "No photos" is a
+  decision, not a gap (`consentGapsFor(q, patientId)` → by plan line and by visit; `ConsentGap`, `gapWords`,
+  `gapWhy`; a form nobody explains is never "not explained") — shows the gap in amber under the line (`.tx-gap`)
+  and turns Mark done into **Mark done anyway** with a reason box (`consent_reason`, `.tx-why`), on the Treatment
+  plan and on the tooth panel's one-tap list alike. `plan-status` to `done` in `record.ts` runs `consentGaps`
+  for the line: without a reason it refuses with the gap in words ("…: not signed yet. To mark it done anyway,
+  say why in the box beside Mark done."); with one it records `overrideConsent(context 'plan_done')` for each
+  gapped form in the same transaction, then writes the treatment. A form linked to **today's visit**
+  (`appointment_id`) that is not agreed is a line on the This visit strip ("Consent form · <title>: not signed
+  yet", Open the form, **Go ahead anyway** → a side panel `rec-ahead-<doc>` with a reason, intent
+  `consent-override` on the record page, context `strip`, back to `?saved=consent-ahead&visit=`); once it went
+  ahead today the line becomes a done pill that says so. The calendar's In the chair step (`in_chair`) does not
+  ask: the strip is the record's side of it. **Drawn:** `RecordDoc.overrides` (`overridesOf`, newest first;
+  `overrideWords`: "Went ahead anyway (not signed), treatment marked done · Dr …, 1 Oct 2026, 2:31 pm: “…”") and
+  the withdrawal in full (`withdrawalWords`: "Withdrawn 1 Oct 2026: told by …, by phone, recorded by …. “…”")
+  on the Consent pane's rows (`[data-rc-withdrawal]`, `[data-rc-override]`), the visit panel's cards (a
+  "Went ahead anyway ×2" pill and `rk` lines), the form's own page (a "Went ahead without this consent" pane),
+  and the Treatment record: one `consent` row per override, "Went ahead without <title>", on the visit the form
+  belongs to, naming the override's own day when it differs; the paper draws it too. Nothing blocks treatment;
+  nothing hides that it went ahead. Checked by `phone-e2e.mjs` E at a clinic with a visit today (a plan line and
+  an unsigned form planted on it: the strip, the refusal, the override rows, every place it is drawn, then a
+  withdrawal of path B's signed form).
 
 ## Open — read before shipping
 
@@ -1428,6 +1466,9 @@ the signed forms on the visit panel and the Treatment record (the owner's first 
   lawyer reads it first. The consent to examination and treatment
   (`treatment-2026-09`) is Flossify's plain summary of the usual Philippine
   dental consent; a dentist and the lawyer read it too.
+- **Going ahead without a consent form asks why on the record** (Mark done anyway, the strip's Go ahead
+  anyway; phase 4.4) and the calendar's In the chair step does not: `consent_override.context 'in_chair'` is
+  unused. The owner decides whether the board should ask too (one more field on the status PATCH).
 - **The consent forms (039) are unreviewed drafts** (`CONSENT_REVIEWED` is empty), in force in the
   database from 1 Oct 2026; production offers none until a dentist and the owner's lawyer have read each. The
   Filipino "In short" lines for nine forms and the attestation's Filipino are not written yet.
@@ -1537,7 +1578,7 @@ src/data/lqip.json             blur placeholders, keyed by image name
 src/data/shot-size.json        real screenshot dimensions (generated)
 src/data/migrations/039        the patient intake and the consent library: intakes, links, tablets, consent forms, signings, attestations, the chain
 src/data/migrations/043        the intake's review fixes (phase 2)
-scripts/dev/intake/phone-e2e.mjs  the phone path end to end in two browsers (phase 3); --keep leaves screens for contrast.mjs
+scripts/dev/intake/phone-e2e.mjs  the phone path end to end in two browsers (phase 3) and the record's phase 4 (B2, D, E); --keep leaves screens for contrast.mjs
 docs/intake-design.md          the intake as built (phases 1–3) and what phase 4 is to settle with the owner
 src/pages/f/i/, f/t/, auth/park.ts, auth/unlock.astro, auth/tablet.ts  the patient's intake pages, the clinic tablet, handing a device over
 src/lib/intake.ts, intake-public.ts, consent-docs.ts, park.ts  the desk's intake, its public side, consent documents, hand-over

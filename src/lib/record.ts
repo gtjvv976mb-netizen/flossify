@@ -19,6 +19,8 @@ import { canEditRecords, manilaToday, oneLine } from './health';
 import { UPLOAD_DIR } from './uploads';
 import { calloutWorthy } from './chart-offer';
 import { chartFromRecord, offerFor } from './chart-write';
+import { consentGaps, gapWords, overrideConsent } from './consent-docs';
+import { Refused } from './refused';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -256,6 +258,20 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       if (to === 'done') {
         const dentist = await clinician(String(form.get('dentist') ?? '')) ?? await clinician(c.staffId);
         if (!dentist) return fail('Choose the dentist who did it.');
+        // A consent form linked to this line that is not agreed (to sign, to confirm, refused, withdrawn): going ahead is never
+        // blocked, but it asks why, and the reason is kept against each form (consent_override, phase 4.4). The page draws the
+        // reason box beside Mark done when it knows of a gap; a post without one is refused with the gap in words.
+        const gaps = await consentGaps(tx, { planItemId: id });
+        if (gaps.length) {
+          const reason = oneLine(form.get('consent_reason'));
+          if (!reason) return fail(`${gaps.map(gapWords).join('; ')}. To mark it done anyway, say why in the box beside Mark done.`);
+          try {
+            for (const g of gaps) await overrideConsent(tx, { clinicId: c.clinicId, staffId: c.staffId, docId: g.docId, context: 'plan_done', reason });
+          } catch (e) {
+            if (e instanceof Refused) return fail(e.reasons.join(' '));
+            throw e;
+          }
+        }
         const { rows: [d] } = await tx.query(
           `insert into procedure_done (clinic_id, patient_id, plan_id, catalog_id, name, fdi, surface, price, performed_by, clinical_note, created_by, appointment_id)
            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,

@@ -29,12 +29,14 @@ import Callout from '../_ui/Callout.astro';
 import ToothPick from '../_ui/ToothPick.astro';
 import type { Clinical, RecordProblem } from '../../../../../lib/record';
 import type { Loa } from '../../../../../lib/record-extra';
+import { gapWords, type ConsentGap } from '../../../../../lib/consent-docs';
 
 /** visitId: today's visit (036) — a treatment recorded or marked done is written against it. openNow: the page opens
  *  Record a treatment as it loads (?open=done). */
 /** chartSid: this page's sign-in (chartSession), posted with a ticked chart line so the write is bound to it. */
-interface Props { c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; today: string; firstName: string; visitId?: string | null; openNow?: boolean; chartSid: string }
-const { c, loas = [], canEdit, action, meId, problem, today, firstName, visitId = null, openNow = false, chartSid } = Astro.props;
+/** gaps: per plan line, the consent forms linked to it that are not agreed (phase 4.4): its one-tap Mark done asks why. */
+interface Props { c: Clinical; loas?: Loa[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; today: string; firstName: string; visitId?: string | null; openNow?: boolean; chartSid: string; gaps?: ReadonlyMap<string, ConsentGap[]> }
+const { c, loas = [], canEdit, action, meId, problem, today, firstName, visitId = null, openNow = false, chartSid, gaps = new Map() } = Astro.props;
 
 const peso = (n: number | string) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 const meClinician = c.clinicians.some((x) => x.id === meId);
@@ -47,6 +49,7 @@ const cats = [...new Set(c.catalog.map((x) => x.category ?? 'Other'))];
 const SURFACE_WORK = new Set(['filled', 'sealant']);
 // Open plan items on a tooth: the Mark done list of Record a treatment.
 const onTeeth = c.plan.filter((i) => (i.status === 'planned' || i.status === 'accepted') && i.fdi);
+const gapsOf = (id: string) => gaps.get(id) ?? [];
 const loaAsk = (loaId: string | null) => {
   const a = loaOf(loaId);
   return a && (a.status === 'requested' || a.expired) ? `${a.payor} has not approved this yet (no valid LOA). Mark it done anyway? The HMO may not pay for it.` : undefined;
@@ -102,7 +105,9 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
                 {c.clinicians.map((x) => <option value={x.id}>{x.name}</option>)}
               </select>
             )}
-            <button class="ws-btn ws-btn-quiet" aria-label={`Mark done: ${i.name}, tooth ${i.fdi}${i.surface ? ` ${i.surface}` : ''}`}><Icon name="check" />Mark done: {i.name}{i.surface ? ` ${i.surface}` : ''}</button>
+            {gapsOf(i.id).length > 0 && <span class="tx-gap basis-full"><Icon name="alert" size={16} /><span>{gapsOf(i.id).map(gapWords).join(' · ')}</span></span>}
+            {gapsOf(i.id).length > 0 && <input name="consent_reason" class="tx-why" maxlength="200" autocomplete="off" required placeholder="Why go ahead without the consent?" aria-label={`Why mark ${i.name} done without the consent form`} />}
+            <button class="ws-btn ws-btn-quiet" aria-label={`Mark done${gapsOf(i.id).length ? ' anyway' : ''}: ${i.name}, tooth ${i.fdi}${i.surface ? ` ${i.surface}` : ''}`}><Icon name="check" />Mark done{gapsOf(i.id).length ? ' anyway' : ''}: {i.name}{i.surface ? ` ${i.surface}` : ''}</button>
           </form>
         ))}
         <p class="text-[14px] text-ink-2">Or record other work on <span data-pick-plan-tooth>{refusedFdi ?? ''}</span> below.</p>

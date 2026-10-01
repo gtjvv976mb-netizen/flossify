@@ -2,7 +2,9 @@
 // code; the patient's own phone scans it (opens its link), presses Start, fills in page 1 and signs the general
 // consent, and sends; the desk's live panel sees it arrive. Then a patient on file: Start, a wrong birth date
 // (told), the right one, sign, send. A second phone opening a claimed link is turned away. Checks the database
-// after each path (the intake added, the signing sealed, the link retired as sent).
+// after each path (the intake added, the signing sealed, the link retired as sent). Then the record (phase 4):
+// a form signed again under newer words (B2), page 1 beside a record on file with "Use" per detail (D), and
+// withdrawals and overrides asked for and drawn (E).
 //
 //   node scripts/dev/intake/phone-e2e.mjs [base=http://127.0.0.1:4610] [slug] [email] [password=flossify]
 //   DB=flossify_t (default) · PGHOST (default /var/run/postgresql) · PGUSER — the server's own database, local only
@@ -461,6 +463,176 @@ console.log('\nB2. Newer words: sign again from the record, on their phone');
   // What the test planted goes (the retired old form was never signed, so nothing restricts it; the database checks count the versions).
   await q('delete from consent_document where id = $1', [old.id]);
   await q(`delete from consent_version where id = 'treatment-2026-01'`);
+}
+
+// ---------------------------------------------------------------------------
+// Path D (phase 4.3): a new patient's forms on their phone, where page 1 names someone already on file (the
+// same name and birth date), so Send waits for the desk; the desk adds them to that record; the record then
+// says what page 1 said differently and offers "Use" per detail, and the Health section names the forms.
+// ---------------------------------------------------------------------------
+console.log('\nD. Page 1 beside the record: a look-alike added to a patient on file, "Use" per detail');
+{
+  // The record says Nurse; page 1 will say Teacher (the script's answer). The city is empty on file: filled in.
+  await q(`update patient set occupation = 'Nurse', city = null where id = $1`, [onFile.id]);
+  const D = await prepareOnDesk(null);
+  const phone = await (await phoneCtx()).newPage();
+  phone.setDefaultTimeout(60_000);
+  watch(phone, 'phone D');
+  await phone.goto(D.link, { waitUntil: 'load' });
+  await phone.waitForSelector('[data-ip-start]');
+  await Promise.all([phone.waitForLoadState('load'), phone.click('[data-ip-start] button.btn-primary')]);
+  const name = (await q('select first_name, last_name from patient where id = $1', [onFile.id]))[0];
+  await doPage1(phone, { first: name.first_name, last: name.last_name, birth: onFile.birth, mobile: '0917 555 0188', email: 'lookalike@example.com' });
+  await signAllAndSend(phone);
+  await phone.context().close();
+  const it = (await q('select status, patient_id from intake where id = $1', [D.intakeId]))[0];
+  assert.equal(it.status, 'sent', `Send waits for the desk when someone on file looks like them (got ${it.status})`);
+  assert.equal(it.patient_id, null);
+  ok('phone D: sent; the look-alike on file makes it wait for the desk');
+  // Screen F: "Is this someone on file?" → Add to <name>'s record (the panel says what the forms say otherwise).
+  await desk.goto(`${D.here}?step=add`, { waitUntil: 'load' });
+  const opener = desk.locator(`button[data-ws-open="ik-add-${onFile.id}"]`);
+  assert.equal(await opener.count(), 1, 'the patient on file is offered on Screen F');
+  await opener.click();
+  const panel = desk.locator(`#ik-add-${onFile.id}`);
+  const panelWords = (await panel.innerText()).replace(/\s+/g, ' ');
+  assert.match(panelWords, /Occupation: on file Nurse · on the forms Teacher/, panelWords);
+  await Promise.all([desk.waitForURL(/saved=intake/), panel.locator('button[type="submit"]').click()]);
+  assert.match(desk.url(), new RegExp(`/patients/${onFile.id}/\\?saved=intake&intake=${D.intakeId}`), desk.url());
+  const callouts = (await desk.locator('.ws-callout').allInnerTexts()).map((t) => t.replace(/\s+/g, ' '));
+  assert.ok(callouts.some((t) => /Added the forms \(IN-[A-Z0-9]+\) to .*record\. Empty details were filled in, and the record has the health history .* gave on page 1/.test(t)), callouts.join(' | '));
+  const differs = desk.locator('[data-rec-differs="intake"]');
+  assert.equal(await differs.count(), 1, 'the record lists what page 1 says differently');
+  const dWords = (await differs.innerText()).replace(/\s+/g, ' ');
+  assert.match(dWords, /Their forms say something the record does not/, dWords);
+  assert.match(dWords, /Occupation ?On file: Nurse ?On their forms: Teacher/, dWords);
+  assert.equal((await q('select occupation, city from patient where id = $1', [onFile.id]))[0].city, 'Baguio City', 'the empty city was filled in from page 1');
+  ok('record: "Added the forms (IN-…) to the record", the city filled in, Occupation on file Nurse / on their forms Teacher');
+  // "Use Teacher".
+  const use = differs.locator('form:has(input[name="field"][value="occupation"]) button');
+  assert.equal((await use.textContent()).trim(), 'Use Teacher');
+  await Promise.all([desk.waitForURL(/used=occupation/), use.click()]);
+  assert.equal((await q('select occupation from patient where id = $1', [onFile.id]))[0].occupation, 'Teacher');
+  const after = (await desk.locator('.ws-callout').allInnerTexts()).map((t) => t.replace(/\s+/g, ' '));
+  assert.ok(after.some((t) => /The occupation on the record is now the one from their forms\./.test(t)), after.join(' | '));
+  assert.equal(await desk.locator('[data-rec-differs="intake"] form:has(input[name="field"][value="occupation"])').count(), 0, 'Occupation no longer differs');
+  ok('record: Use Teacher → the occupation is Teacher, said on the page, no longer listed');
+  // The Health section names the forms the version came from.
+  await desk.locator('#rec-rec-health-tab').click();
+  await desk.locator('#rec-health details.pt-more summary').click();
+  const hWords = (await desk.locator('#rec-health details.pt-more').innerText()).replace(/\s+/g, ' ');
+  assert.match(hWords, new RegExp(`from the forms ${name.first_name} filled in \\(IN-[A-Z0-9]+, sent `), hWords);
+  ok('Health: the new version reads "from the forms <name> filled in (IN-…, sent …)"');
+}
+
+// ---------------------------------------------------------------------------
+// Path E (phase 4.4): a consent form linked to a plan line and today's visit, not signed. The This visit strip
+// asks why before the visit goes ahead; Mark done refuses without a reason and records the override with one;
+// the Consent pane, the visit panel, the Treatment record, its paper and the form's page all show it. Then a
+// signed form is withdrawn, and the same places say so.
+// ---------------------------------------------------------------------------
+console.log('\nE. Withdrawals and overrides: ask first, then drawn everywhere');
+if (onFile.visit_today) {
+  const staffId = (await q('select id from staff where email = $1', [owner.email]))[0].id;
+  const plan = (await q(`insert into treatment_plan (clinic_id, patient_id, name) values ($1, $2, 'Test plan') returning id`, [clinicId, onFile.id]))[0];
+  const item = (await q(`insert into treatment_plan_item (clinic_id, plan_id, patient_id, name, fdi, price, created_by) values ($1, $2, $3, 'Tooth extraction', 36, 1500, $4) returning id`, [clinicId, plan.id, onFile.id, staffId]))[0];
+  // A reference in the forms' alphabet (no I, L, O, 0 or 1: consent_document's check), unique enough for a test.
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const ref = `CF-${Array.from({ length: 5 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('')}`;
+  const gapDoc = (await q(`insert into consent_document (clinic_id, ref, version_id, patient_id, appointment_id, plan_item_id, fields, sort, prepared_by)
+                           values ($1, $2, 'treatment-2026-09', $3, $4, $5, '{}', 1, $6) returning id`, [clinicId, ref, onFile.id, onFile.visit_today, item.id, staffId]))[0];
+  const record = `${base}/c/${slug}/patients/${onFile.id}/`;
+  // The strip: the gap in words, Go ahead anyway with a reason.
+  await desk.goto(`${record}?visit=${onFile.visit_today}`, { waitUntil: 'load' });
+  const line = desk.locator('.vs-line', { hasText: 'Consent form ·' });
+  assert.equal(await line.count(), 1, 'the strip has a line for the unsigned form');
+  assert.match((await line.innerText()).replace(/\s+/g, ' '), /Consent form · Consent to dental examination and treatment: not signed yet/);
+  await line.locator(`button[data-ws-open="rec-ahead-${gapDoc.id}"]`).click();
+  const ahead = desk.locator(`#rec-ahead-${gapDoc.id}`);
+  await ahead.locator('input[name="reason"]').fill('Emergency: pain relief first, the form after');
+  await Promise.all([desk.waitForURL(/saved=consent-ahead/), ahead.locator('button[type="submit"]').click()]);
+  const strip1 = (await desk.locator('#this-visit').innerText()).replace(/\s+/g, ' ');
+  assert.match(strip1, /Recorded: the visit goes ahead without that consent form/, strip1);
+  assert.match(strip1, /went ahead anyway \(the visit went ahead\)/, strip1);
+  assert.equal(await desk.locator('.vs-line', { hasText: 'Consent form ·' }).count(), 0, 'the line is gone once it went ahead today');
+  let ov = await q('select context, state_then, reason from consent_override where document_id = $1 order by at', [gapDoc.id]);
+  assert.deepEqual(ov, [{ context: 'strip', state_then: 'to_sign', reason: 'Emergency: pain relief first, the form after' }]);
+  ok('strip: "Consent form · …: not signed yet" → Go ahead anyway with a reason → recorded (context strip, state to_sign), the strip says so');
+  // Mark done: refused without a reason, recorded with one.
+  await desk.locator('#rec-rec-treatment-tab').click();
+  const gap = desk.locator(`[data-tx-gap="${item.id}"]`);
+  assert.equal(await gap.count(), 1, 'the plan line shows its consent gap');
+  assert.match((await gap.innerText()).replace(/\s+/g, ' '), /Consent to dental examination and treatment: not signed yet/);
+  const doneForm = desk.locator(`form.tx-done-form:has(input[name="item"][value="${item.id}"])`);
+  assert.equal((await doneForm.locator('button').textContent()).trim(), 'Mark done anyway');
+  await doneForm.locator('input[name="consent_reason"]').evaluate((el) => { el.removeAttribute('required'); });
+  // A refused post draws the page again at the same address: wait for the post's answer, not for a URL change.
+  const posted = () => desk.waitForResponse((r) => r.request().method() === 'POST' && r.url().startsWith(record));
+  await Promise.all([posted(), doneForm.locator('button').click()]);
+  await desk.waitForLoadState('load');
+  const refusal = (await desk.locator('#rec-treatment .ws-callout').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ')).join(' | ');
+  assert.match(refusal, /not signed yet\. To mark it done anyway, say why in the box beside Mark done\./, refusal);
+  assert.equal((await q('select status from treatment_plan_item where id = $1', [item.id]))[0].status, 'planned', 'nothing changed on a refused Mark done');
+  const doneForm2 = desk.locator(`form.tx-done-form:has(input[name="item"][value="${item.id}"])`);
+  await doneForm2.locator('input[name="consent_reason"]').fill('Patient asked to go ahead; signs after');
+  await Promise.all([desk.waitForURL(/saved=plan-done/), doneForm2.locator('button').click()]);
+  assert.equal((await q('select status from treatment_plan_item where id = $1', [item.id]))[0].status, 'done');
+  ov = await q('select context, state_then, reason from consent_override where document_id = $1 order by at', [gapDoc.id]);
+  assert.deepEqual(ov.map((o) => o.context), ['strip', 'plan_done']);
+  assert.equal(ov[1].reason, 'Patient asked to go ahead; signs after');
+  ok('Mark done: refused without a reason (the plan unchanged); with one, done and recorded (context plan_done)');
+  // Drawn: the Consent pane, the visit panel, the form's page, the Treatment record and its paper.
+  await desk.goto(record, { waitUntil: 'load' });
+  await desk.locator('#rec-rec-consent-tab').click();
+  // Scoped to this form's row: an earlier run may have left a form with overrides of its own on the record.
+  const rcOv = desk.locator(`li.vx-signed-row:has(a[href$="/consents/${gapDoc.id}/"]) [data-rc-override]`);
+  assert.equal(await rcOv.count(), 2, 'the Consent pane lists both overrides');
+  const rcWords = (await rcOv.allInnerTexts()).map((t) => t.replace(/\s+/g, ' '));
+  assert.ok(rcWords.some((t) => /^Went ahead anyway \(not signed\), treatment marked done · .+, \d+ \w+ \d{4}, \d+:\d\d [ap]m: “Patient asked to go ahead; signs after”$/.test(t)), rcWords.join(' | '));
+  assert.ok(rcWords.some((t) => /the visit went ahead/.test(t)), rcWords.join(' | '));
+  const vxOv = desk.locator(`#rec-visit-${onFile.visit_today} [data-vx-form="${gapDoc.id}"] [data-vx-override]`);
+  assert.equal(await vxOv.count(), 2, 'the visit panel card lists both');
+  const cardPill = (await desk.locator(`#rec-visit-${onFile.visit_today} [data-vx-form="${gapDoc.id}"]`).innerText()).replace(/\s+/g, ' ');
+  assert.match(cardPill, /Went ahead anyway ×2/, cardPill);
+  await desk.goto(`${record}consents/${gapDoc.id}/`, { waitUntil: 'load' });
+  assert.equal(await desk.locator('[data-cd-override]').count(), 2, 'the form’s page lists both');
+  assert.match((await desk.locator('section', { hasText: 'Went ahead without this consent' }).first().innerText()).replace(/\s+/g, ' '), /2 times/);
+  const visit = (await q(`select status, starts_at < now() as begun from appointment where id = $1`, [onFile.visit_today]))[0];
+  const begun = visit.begun || ['arrived', 'in_lobby', 'in_chair', 'completed'].includes(visit.status);
+  await desk.goto(record, { waitUntil: 'load' });
+  const rows = (await desk.locator('tr[data-kind="consent"]').allInnerTexts()).map((t) => t.replace(/\s+/g, ' '));
+  if (begun) {
+    assert.ok(rows.filter((t) => /Went ahead without Consent to dental examination and treatment/.test(t)).length >= 2, rows.join(' | '));
+    assert.match((await (await desk.goto(`${record}treatment-record/`, { waitUntil: 'load' })).text()).replace(/\s+/g, ' '), /Went ahead without Consent to dental/, 'the paper carries the override rows');
+    ok('drawn: Consent pane (2), visit panel (2, "Went ahead anyway ×2"), the form’s page (2), the Treatment record and its paper');
+  } else {
+    assert.equal(rows.filter((t) => /Went ahead without/.test(t)).length, 0, 'no ledger row before the visit begins');
+    ok('drawn: Consent pane (2), visit panel (2, "Went ahead anyway ×2"), the form’s page (2); the ledger waits for the visit to begin');
+  }
+  // A withdrawal, on the form path B signed: the form's page, the Consent pane and the visit panel say who told the clinic, how, who recorded it.
+  const signedDoc = (await q(`select d.id from consent_document d where d.intake_id = $1 and d.cancelled_at is null and consent_document_state(d.id) = 'agreed'`, [B.intakeId]))[0];
+  assert(signedDoc, 'path B’s signed form is agreed');
+  await desk.goto(`${record}consents/${signedDoc.id}/`, { waitUntil: 'load' });
+  await desk.locator('button[data-ws-open="cd-withdraw"]').click();
+  const wd = desk.locator('#cd-withdraw');
+  await wd.locator('input[name="told_by"]').fill(`${onFile.first_name} Bautista`.replace(/ Bautista$/, '') + ' (the patient)');
+  await wd.locator('label.chip-radio', { hasText: 'By phone' }).click();
+  await wd.locator('input[name="note"]').fill('Changed their mind');
+  await Promise.all([desk.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/consents/')), wd.locator('button[type="submit"]').click()]);
+  await desk.waitForLoadState('load');
+  await desk.waitForSelector('.rp-alert');
+  const pageWords = (await desk.textContent('body')).replace(/\s+/g, ' ');
+  assert.match(pageWords, /Withdrawn \d+ \w+ \d{4}: told by .* \(the patient\), by phone, recorded by .*\. “Changed their mind”/, pageWords.slice(0, 400));
+  await desk.goto(record, { waitUntil: 'load' });
+  await desk.locator('#rec-rec-consent-tab').click();
+  const rcWd = desk.locator(`li.vx-signed-row:has(a[href$="/consents/${signedDoc.id}/"]) [data-rc-withdrawal]`);
+  assert.equal(await rcWd.count(), 1, 'the Consent pane says it was withdrawn, in full');
+  assert.match((await rcWd.innerText()).replace(/\s+/g, ' '), /told by .* \(the patient\), by phone, recorded by .*\. “Changed their mind”/);
+  const wdCard = desk.locator(`#rec-visit-${onFile.visit_today} [data-vx-form="${signedDoc.id}"]`);
+  if (await wdCard.count()) assert.match((await wdCard.innerText()).replace(/\s+/g, ' '), /Withdrawn .* told by .* by phone/, 'the visit panel card says so');
+  ok(`withdrawn: the form’s page, the Consent pane${(await wdCard.count()) ? ' and the visit panel card' : ''} say who told the clinic, how, and who recorded it`);
+} else {
+  log('no visit today for the patient on file: path E (the strip, the plan line, the panel) needs one; skipped');
 }
 
 // ---------------------------------------------------------------------------
