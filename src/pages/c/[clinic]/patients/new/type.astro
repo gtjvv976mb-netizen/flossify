@@ -1,14 +1,22 @@
 ---
-// Add patient: everything about one patient on one page, in clear sections —
-// Person, Health, Consent, Past visits, Opening balance — and one Save.
-// (docs/workspace-redesign.md, "Patients".)
+// Add patient, typed in: everything about one patient on one page, in clear
+// sections — Person, Health, Consent, Past visits, Opening balance — and one
+// Save. (docs/workspace-redesign.md, "Patients".) Reached from Add patient's
+// chooser (./index.astro: on their phone, at the clinic, or type it in) —
+// "Type it in yourself", for a phone call or a paper form.
 //
-// Three ways in, side by side at the top: type it in (this page), let
-// patients fill it in themselves — the QR code for the desk, marked Easiest
-// (./qr/, the patient forms: src/lib/patient-forms.ts) — or import a
-// spreadsheet (./import.astro).
-// When forms patients sent are waiting, a line says so before anyone types the
-// same person in again (./forms/).
+// The chooser (./index.astro) sends the desk straight here, with its query,
+// when typing is the only way open — on a production server until the consent
+// forms are reviewed — and this page then says so in one quiet line.
+//
+// ?next=consents (the chooser's "At the clinic" while page 1 of the intake is
+// closed, and anyone who wants the consent forms next): Save lands on the
+// chooser for the new patient (./?patient=<id>&saved=new), where their consent
+// forms are prepared — or on the record, as without it, while no consent form
+// is open here. The flag rides in a hidden field, so a refused save keeps it.
+//
+// When forms patients sent are waiting (the QR poster's, and intakes sent and
+// not added yet), a line says so before anyone types the same person in again.
 //
 // Soft and simple (docs/workspace-redesign.md, "Very simple"): the few fields
 // the desk always fills are in view (name, birth date, sex, mobile, email,
@@ -26,8 +34,9 @@
 // through recordPaperConsent — src/lib/health.ts), the past visits as
 // completed visits marked imported, their charges and payments as
 // statements in the clinic's own series (src/lib/import.ts, insertMoney),
-// and an opening balance as one more. Anything refused rolls all of it back
-// and the page comes back with what was typed and every reason in words.
+// and an opening balance as one more. Anything refused (Refused, src/lib/
+// refused.ts) rolls all of it back and the page comes back with what was
+// typed and every reason in words.
 //
 // Before saving: a duplicate check. The page asks as the name and mobile are
 // typed (GET /api/patients/match), and the server asks again on Save: people
@@ -36,52 +45,56 @@
 // 0142 — open her record?" — and saves only when the desk says it is someone
 // else (confirm_new carries the ids it was shown; a new look-alike asks again).
 //
-// Who: people who can edit records at this branch (staff_access.
-// can_edit_records, canEditRecords). The money parts (amounts on past visits,
-// the opening balance) only for people who may bill here (canBill in
-// src/lib/invoices.ts); for others they are not drawn, and the server ignores
-// them if posted. Every write is in audit_log (patient.create, health.update,
-// consent.desk / consent.paper / consent.paper_form, appointment.import,
-// invoice.import, payment.import).
+// Who: people who can edit records at this branch (can(ws, 'records.edit') to
+// draw it, canEditRecords in the transaction). The money parts (amounts on
+// past visits, the opening balance) only for people who may bill here
+// (can(ws, 'finance.bill'), src/lib/can.ts); for others they are not drawn,
+// and the server ignores them if posted. Every write is in audit_log
+// (patient.create, health.update, consent.desk / consent.paper /
+// consent.paper_form, appointment.import, invoice.import, payment.import).
 export const prerender = false;
 
-import ClinicLayout from '../../../../layouts/Clinic.astro';
-import Csrf from '../../../../components/Csrf.astro';
-import DeskConsent from '../../../../components/DeskConsent.astro';
-import Pane from '../../../../components/ws/Pane.astro';
-import Icon from '../../../../components/ws/Icon.astro';
-import Avatar from '../../../../components/ws/Avatar.astro';
-import Head from './_ui/Head.astro';
-import Callout from './_ui/Callout.astro';
-import Glyph from './_ui/Glyph.astro';
-import HealthLists from './_ui/HealthLists.astro';
-import PastVisit from './_ui/PastVisit.astro';
-import './_ui/patients.css';
-import './_forms/forms.css';
-import { requireWorkspace } from '../../../../lib/workspace';
-import { withClinic } from '../../../../lib/db';
-import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
-import { hit, waitText, LIMITS } from '../../../../lib/throttle';
-import { METHODS, pesos, realDay, type Cents } from '../../../../lib/invoices';
+import ClinicLayout from '../../../../../layouts/Clinic.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import DeskConsent from '../../../../../components/DeskConsent.astro';
+import Pane from '../../../../../components/ws/Pane.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Avatar from '../../../../../components/ws/Avatar.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import Glyph from '../_ui/Glyph.astro';
+import HealthLists from '../_ui/HealthLists.astro';
+import PastVisit from '../_ui/PastVisit.astro';
+import '../_ui/patients.css';
+import '../_forms/forms.css';
+import { requireWorkspace } from '../../../../../lib/workspace';
+import { withClinic } from '../../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
+import { hit, waitText, LIMITS } from '../../../../../lib/throttle';
+import { METHODS, pesos, realDay, type Cents } from '../../../../../lib/invoices';
 import {
   LISTS, NOTE_MAX, NAME_MAX, manilaToday, ageOn, ageText, oneLine, readHealthForm, canEditRecords, noticeInForce,
   recordDeskConsent, recordPaperConsent, readPaperForm, PAPER_WORDS, dateText, answered, type HealthAnswers, type AgreedAs, type PaperIn,
-} from '../../../../lib/health';
+} from '../../../../../lib/health';
 import {
   readPersonForm, snapshot, lookAlikes, lockClinic, nextChartNos, chartKey, archivedChart, insertPatients, insertHealth, insertVisits, insertMoney, keyUuid,
   visitKey, openingKey, visitLine, readTeeth, readMoney, matchService, OPENING_LINE, SEXES, SERVICE_MAX, VISIT_NOTE_MAX, NOTES_MAX, hmoSuggestions,
   type VisitIn, type PersonIn,
-} from '../../../../lib/import';
-import { hmos } from '../../../../data/directory';
-import { prettyPhone } from '../../../../lib/messages';
-import { countNewForms } from '../../../../lib/patient-forms';
-import { can } from '../../../../lib/can';
+} from '../../../../../lib/import';
+import { hmos } from '../../../../../data/directory';
+import { prettyPhone } from '../../../../../lib/messages';
+import { countNewForms } from '../../../../../lib/patient-forms';
+import { can } from '../../../../../lib/can';
+import { Refused } from '../../../../../lib/refused';
+import { countSentIntakes, intakeGates } from '../../../../../lib/intake';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
 const money = can(clinic, 'finance.bill');
-const here = `/c/${clinic.slug}/patients/new/`;
+const here = `/c/${clinic.slug}/patients/new/type/`;
+// ?next=consents (or the hidden field a refused save carries): Save goes on to the chooser for this patient's consent forms.
+const nextConsents = Astro.url.searchParams.get('next') === 'consents';
 const today = manilaToday();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // How a past visit was paid: the Finances methods, and cheque (payment.method allows it; old records have them).
@@ -104,6 +117,11 @@ const setup = await withClinic(clinic.id, async (tx) => ({
   nextChart: nextChartNos((await tx.query<{ chart_no: string }>('select chart_no from patient')).rows.map((r) => r.chart_no), 1)[0],
   // Forms patients sent from the QR code and nobody has added yet: said before the desk types one of them in again.
   formsWaiting: await countNewForms(tx),
+  // Intakes sent and not added yet (039), said on a line of their own.
+  intakesSent: await countSentIntakes(tx),
+  // Consent forms open on this server (none on a production server until they are reviewed): the chooser sends the desk
+  // straight here when typing is the only way, and this page says why in one quiet line.
+  formsOpen: (await intakeGates(tx)).templates.length > 0,
 }));
 
 // ---------------------------------------------------------------------------
@@ -121,11 +139,10 @@ let consentHow: 'later' | 'desk' | 'paper' = 'later';
 let paperValues: Partial<PaperIn> = {};
 const stale = Astro.url.searchParams.get('stale') === '1';
 
-class Refused extends Error { reasons: string[]; constructor(r: string[]) { super('refused'); this.reasons = r; } }
-
 if (Astro.request.method === 'POST' && setup.canEdit) {
   const form = await Astro.request.formData();
-  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(here + '?stale=1', 303);
+  const goNext = nextConsents || form.get('next') === 'consents';
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(here + (goNext ? '?next=consents&stale=1' : '?stale=1'), 303);
   posted = form;
   const V = (k: string) => form.getAll(k).map((v) => String(v ?? ''));
   const cols = { date: V('visit_date'), dentist: V('visit_dentist'), dentistName: V('visit_dentist_name'), service: V('visit_service'), teeth: V('visit_teeth'), notes: V('visit_notes'), charged: V('visit_charged'), paid: V('visit_paid'), method: V('visit_method') };
@@ -266,6 +283,8 @@ if (Astro.request.method === 'POST' && setup.canEdit) {
         if ('dupes' in out) {
           dupes = out.dupes.map((p) => ({ id: p.id, name: [p.first_name, p.last_name, p.suffix].filter(Boolean).join(' '), chartNo: p.chart_no, phone: p.phone, birth: p.birth }));
         } else {
+          // On to their consent forms only while forms are open here; otherwise the record, as without ?next.
+          if (goNext && setup.formsOpen) return Astro.redirect(`/c/${clinic.slug}/patients/new/?patient=${out.id}&saved=new`, 303);
           return Astro.redirect(`/c/${clinic.slug}/patients/${out.id}/?saved=new`, 303);
         }
       } catch (e) {
@@ -311,7 +330,7 @@ const formsHref = `/c/${clinic.slug}/patients/forms/`;
   <a href={`/c/${clinic.slug}/patients/`} class="rec-back ws-glass m-0! w-fit px-3!" data-pts-back><Icon name="chevron-left" />Back to patients</a>
   <script>
     // Back to the list as it was left: the same search, filter and sort (./_list/back.ts).
-    import { restoreBackLinks } from './_list/back';
+    import { restoreBackLinks } from '../_list/back';
     restoreBackLinks();
   </script>
   {stale && <Callout tone="alert" text={CSRF_MESSAGE} />}
@@ -358,9 +377,18 @@ const formsHref = `/c/${clinic.slug}/patients/forms/`;
           <a href={formsHref} class="ws-empty-go">New patient forms <Icon name="arrow-right" size={16} /></a>
         </p>
       )}
+      {setup.intakesSent > 0 && (
+        <p class="fm-ways-waiting">
+          <Glyph name="form" size={18} />
+          <span>{setup.intakesSent === 1 ? 'One patient has' : `${setup.intakesSent} patients have`} sent their details and consent forms and are not added yet.</span>
+          <a href={`/c/${clinic.slug}/patients/intake/`} class="ws-empty-go">Forms sent <Icon name="arrow-right" size={16} /></a>
+        </p>
+      )}
+      {!setup.formsOpen && <p class="mt-2.5 text-[14px] leading-snug text-ink-2" data-add-forms-closed>Patients can fill in and sign their own forms here once the clinic’s consent forms are reviewed.</p>}
     </Pane>
     <form method="post" action={here} class="grid gap-4 max-md:gap-3" data-add-form>
       <Csrf />
+      {(nextConsents || val('next') === 'consents') && <input type="hidden" name="next" value="consents" />}
 
       {dupFirst && (
         <Pane as="div" label="Before saving">
@@ -477,6 +505,7 @@ const formsHref = `/c/${clinic.slug}/patients/forms/`;
             <label class="field sm:col-span-2 lg:col-span-4">
               <span class="meta">Other notes</span>
               <textarea name="notes" rows="2" maxlength={NOTES_MAX}>{val('notes')}</textarea>
+              <span class={help}>The desk sees this beside the patient’s visits on the Dashboard. Keep health details in Health.</span>
             </label>
           </div>
         </details>
@@ -547,7 +576,7 @@ const formsHref = `/c/${clinic.slug}/patients/forms/`;
 </ClinicLayout>
 
 <script>
-  import { ageOn, ageText, capitalise } from '../../../../lib/health';
+  import { ageOn, ageText, capitalise } from '../../../../../lib/health';
 
   const form = document.querySelector<HTMLFormElement>('[data-add-form]');
   if (form) {

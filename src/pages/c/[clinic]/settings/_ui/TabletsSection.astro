@@ -1,0 +1,81 @@
+---
+// Clinic tablets: the devices patients fill in and sign their forms on
+// (src/pages/c/[clinic]/settings/_lib/tablets.ts). The list, each with when it
+// last asked for work and whether it is showing forms now; rename and remove;
+// and "Make this device a clinic tablet", done on the tablet itself: it posts to
+// /auth/tablet/, which signs this browser out of the workspace and leaves it on
+// "Ready for the next patient".
+import Pane from '../../../../../components/ws/Pane.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../components/Csrf.astro';
+import Note from './Note.astro';
+import type { Tablet, TabletsRefused } from '../_lib/tablets';
+
+interface Props {
+  base: string;
+  slug: string;
+  tablets: Tablet[];
+  refused: TabletsRefused | null;
+  notes: { tone: 'ok' | 'alert' | 'warn'; text: string }[];
+  on: boolean;
+}
+const { base, slug, tablets, refused, notes, on } = Astro.props;
+const seen = (d: Date | null) => {
+  if (!d) return 'Not seen yet';
+  const s = Math.round((Date.now() - new Date(d).getTime()) / 1000);
+  if (s < 90) return 'Ready now';
+  if (s < 3600) return `Seen ${Math.round(s / 60)} min ago`;
+  return `Seen ${new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(new Date(d))}`;
+};
+const nextName = `Tablet ${tablets.length + 1}`;
+---
+
+<div class="set-panel" data-set-panel="tablets" data-on={on ? '' : undefined}>
+  <Pane id="tablets" icon="phone" title="Clinic tablets" class="set-sec">
+    <p class="set-intro">A tablet at the desk where patients fill in their details and sign their consent forms. It holds no staff sign-in: you send forms to it from Add patient.</p>
+    {(notes.length > 0 || refused) && (
+      <div class="set-notes mt-5">
+        {notes.map((n) => <Note tone={n.tone} text={n.text} />)}
+        {refused && <Note tone="alert" title="Nothing was saved yet. Please fix:" items={refused.problems} refused />}
+      </div>
+    )}
+
+    <h3 class="set-sub">Tablets here</h3>
+    {tablets.length === 0 ? (
+      <p class="mt-1 text-[14.5px] text-ink-2">None yet.</p>
+    ) : (
+      <ul class="mt-3 grid gap-3">
+        {tablets.map((t) => (
+          <li class="rounded-[12px] border border-[var(--ws-hair)] p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="grid">
+                <span class="text-[15.5px] font-semibold">{t.name}</span>
+                <span class="text-[14px] text-ink-2">{seen(t.lastSeenAt)}{t.busyWith ? ` · showing forms ${t.busyWith}` : ''}</span>
+              </span>
+              <form method="post" action={base}>
+                <Csrf /><input type="hidden" name="form" value="tablet-remove" /><input type="hidden" name="tablet" value={t.id} />
+                <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="close" size={16} />Remove {t.name}</button>
+              </form>
+            </div>
+            <form method="post" action={base} class="mt-3 flex flex-wrap items-end gap-2" data-set-form="tablets">
+              <Csrf /><input type="hidden" name="form" value="tablet-rename" /><input type="hidden" name="tablet" value={t.id} />
+              <label class="field min-w-0 flex-1"><span class="meta">Name</span><input name="name" value={refused?.form === 'tablet-rename' ? refused.name : t.name} maxlength="40" autocomplete="off" /></label>
+              <button type="submit" class="ws-btn ws-btn-quiet">Rename</button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    )}
+
+    <h3 class="set-sub">Make this device a clinic tablet</h3>
+    <p class="mt-1 text-[14.5px] text-ink-2">Do this on the tablet itself. It signs this browser out of Flossify and leaves it on “Ready for the next patient”. To use it as a staff device again, remove it here and sign in.</p>
+    <form method="post" action="/auth/tablet/" class="mt-4 grid gap-4 sm:max-w-[24rem]" data-set-form="tablets">
+      <Csrf />
+      <input type="hidden" name="clinic" value={slug} />
+      <label class="field"><span class="meta">Its name</span><input name="name" value={refused?.form === 'tablet-add' ? refused.name : nextName} maxlength="40" autocomplete="off" required /></label>
+      <div class="set-foot">
+        <button type="submit" class="ws-btn ws-btn-primary"><Icon name="phone" />Make this device a clinic tablet</button>
+      </div>
+    </form>
+  </Pane>
+</div>

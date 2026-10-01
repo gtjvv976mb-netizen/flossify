@@ -14,7 +14,7 @@ import Empty from '../../components/ws/Empty.astro';
 import ClinicBadge from './_ui/ClinicBadge.astro';
 import './_ui/patient.css';
 import { services, symptoms, hmos, hmoById, priceText, CATEGORY_LABEL } from '../../data/directory';
-import { loadDirectory, openSlots, slotIso } from '../../lib/directory-db';
+import { loadDirectory, openSlots, slotIso, closuresFor } from '../../lib/directory-db';
 
 const listings = await loadDirectory();
 const areas = [...new Set(listings.map((l) => l.area))];
@@ -25,6 +25,8 @@ const cards = await Promise.all(listings.map(async (l) => ({
   minPrice: Object.fromEntries(l.fees.map((f) => [f.id, f.min])),
   dentists: l.dentistProfiles,
   slots: l.workspace ? await openSlots(l, { limit: 3 }) : [],
+  // Closures and lunch, the same 31 days the clinic's own page reads, so a card and its page never disagree (040).
+  closures: await closuresFor(l),
 })));
 ---
 
@@ -120,7 +122,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
 
     <!-- Results -->
     <ul class="pt-results" data-results>
-      {cards.map(({ l, dentists, offered, minPrice, fees, slots }) => {
+      {cards.map(({ l, dentists, offered, minPrice, fees, slots, closures }) => {
         const checked = dentists.filter((d) => d.prcCheckedOn).length;
         const specialties = dentists.filter((d) => d.specialty).map((d) => d.specialty).join(', ');
         return (
@@ -135,6 +137,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
           data-offered={offered.join(',')}
           data-minprice={JSON.stringify(minPrice)}
           data-hours={JSON.stringify(l.hours)}
+          data-closures={JSON.stringify(closures)}
           data-first-slot={slots[0] ? slotIso(slots[0]) : ''}
         >
           <div class="result-main min-w-0">
@@ -186,7 +189,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
             <div class="pt-side-slots" data-slots>
               {l.workspace
                 ? (slots.length
-                    ? slots.map((sl) => <a class="slot" href={`/find/${l.slug}/book/?slot=${encodeURIComponent(slotIso(sl))}`}><span class="meta">{sl.dayLabel}</span>{sl.label}</a>)
+                    ? slots.map((sl) => <a class="slot" href={`/find/${l.slug}/book/?slot=${encodeURIComponent(slotIso(sl))}`} data-slot-link><span class="meta">{sl.dayLabel}</span>{sl.label}</a>)
                     : <span class="pt-side-note">Nothing open in the next two weeks — call the clinic.</span>)
                 : <span class="pt-side-note">Not on the live schedule yet. Send a request and the clinic confirms the time with you.</span>}
             </div>
@@ -240,7 +243,7 @@ const cards = await Promise.all(listings.map(async (l) => ({
     // Live status, from the visitor's clock in the clinic's time zone. Slots came from the server.
     const now = manilaNow();
     const facts = new Map(results.map((li) => {
-      const st = statusFor(JSON.parse(li.dataset.hours!), now);
+      const st = statusFor(JSON.parse(li.dataset.hours!), now, JSON.parse(li.dataset.closures || '[]'));
       const pill = $('[data-status]', li)!;
       pill.dataset.state = st.state;
       $('[data-status-text]', li)!.textContent = st.text;
@@ -320,6 +323,18 @@ const cards = await Promise.all(listings.map(async (l) => ({
       const n = setCount(); moreCount.hidden = n === 0; moreCount.textContent = `${n} set`;
       if (empty) empty.hidden = shown.length > 0;
       writeUrl();
+      results.forEach(carry);
+    }
+
+    // A tapped time carries what she chose here, in this page's own names, so the booking opens on that reason.
+    function carry(li: HTMLElement) {
+      for (const a of $$<HTMLAnchorElement>('[data-slot-link], [data-book]', li)) {
+        const u = new URL(a.href);
+        u.searchParams.delete('service'); u.searchParams.delete('symptom');
+        if (state.service) u.searchParams.set('service', state.service);
+        else if (state.symptom) u.searchParams.set('symptom', state.symptom);
+        a.href = u.pathname + u.search;
+      }
     }
 
     // On a phone the pills are one row that scrolls sideways: a fade on the side where more wait, and

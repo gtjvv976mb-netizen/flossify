@@ -13,10 +13,11 @@
 //
 // Everything a person typed (names, notes, reasons) goes in with textContent.
 import * as M from './model';
-import type { Card, PackedPts, Service, StaffDay } from './model';
+import type { BlockRange, Card, PackedPts, Service, StaffDay } from './model';
+import { blockLabel, whyWords } from '../../../lib/block-words';
 import { initPanels, type Panels } from './panels';
 import { initPatients, type PatientsList, type Pt } from './patients';
-import { avatar, callout, icon } from './ui';
+import { avatar, callout, icon, pill } from './ui';
 
 export interface Boot {
   slug: string; csrf: string; today: string; date: string; view: 'day' | 'week'; by: 'chair' | 'dentist'; dentist: string;
@@ -29,27 +30,48 @@ export interface Boot {
   canSchedule: boolean;
   /** May text patients (can(ws, 'messages.send')): "Text the patient" is offered only then. */
   canText: boolean;
+  /** May change Clinic settings (settings.edit): the Block panel says where lunch and a dentist's hours are set. */
+  canSettings: boolean;
   chairs: number; hours: Record<number, [number, number] | null>; staff: StaffDay[]; catalog: Service[];
   next: Record<string, string[]>;
   cards: Card[]; todayCards: Card[]; toPlace: Card[]; toConfirm: Card[];
+  /** Blocked time (040) over the range on screen and today: lunch, a dentist's time not in, the dated blocks. */
+  blocks: BlockRange[];
   /** Every patient, packed (model.ts, PT_KEYS); patients.ts unpacks it. */
   patients: PackedPts;
-  links: { record: string; charge: string; finances: string; messages: string; addPatient: string; importPatients: string };
-  open: { new: boolean; patient: string | null; booking: string | null };
+  links: { record: string; charge: string; finances: string; messages: string; addPatient: string; importPatients: string; hours: string; calls: string };
+  open: { new: boolean; patient: string | null; booking: string | null; block: boolean };
   pf: string; pq: string;
 }
-export type Reply = { ok: true; card: Card; texted: boolean } | { ok: false; error: string; status?: number };
+/** A refusal carries the server's sentence; `blocked` (with its range's `kind`) is the soft stop of blocked time (040):
+ *  the same call with anyway: true books it. A clash is a 409 without it, and has no anyway. */
+export type Reply = { ok: true; card: Card; texted: boolean; retold: number } | { ok: false; error: string; status?: number; blocked?: boolean; kind?: string };
+/** A range of days as the server answers it: the visits (cancelled left out by the caller) and the blocked time. */
+export type Book = { cards: Card[]; blocks: BlockRange[] };
 
 /** What the panels and the patients list share with the calendar. */
 export interface Ctx {
   boot: Boot;
   el: <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => HTMLElementTagNameMap[K];
   call: (method: 'POST' | 'PATCH', body: Record<string, unknown>) => Promise<Reply>;
+  /** The same call, into blocked time on purpose (Book anyway, Move anyway): anyway: true. */
+  callAnyway: (method: 'POST' | 'PATCH', body: Record<string, unknown>) => Promise<Reply>;
   /** Take the server's word for a visit and redraw everything it touches. */
   absorb: (c: Card) => void;
   card: (id: string) => Card | undefined;
   /** Cards on a given Manila day that the page has (for "next free"), or null when that day is not loaded. */
   dayCards: (ymd: string) => Card[] | null;
+  /** The 8 days from Manila day `ymd` (the GET's limit), cancelled left out, with their blocked time: kept 60 s;
+   *  `fresh` asks the server whatever is kept. null = could not be reached. */
+  rangeCards: (ymd: string, o?: { fresh?: boolean }) => Promise<Book | null>;
+  /** Run the live board's refresh now, after any refresh in flight: today and the range on screen are read again,
+   *  and every change is absorbed and drawn. `clear`: forget every range kept (a block was added or removed). */
+  reload: (o?: { clear?: boolean }) => Promise<void>;
+  /** The blocked time of a Manila day the page has read (the range on screen, today, or eight days kept for the free
+   *  times), or null when that day is not loaded. */
+  dayBlocks: (ymd: string) => BlockRange[] | null;
+  /** A dated block the page has, by id (the strip's pills open it). */
+  blockById: (id: string) => BlockRange | undefined;
   staffById: Map<string, StaffDay>;
   say: (text: string, go?: { label: string; ymd: string; id?: string }) => void;
   fail: (text: string) => void;
@@ -95,12 +117,15 @@ function start(boot: Boot) {
     today: new Map<string, Card>(boot.todayCards.map((c) => [c.id, c])),
     lane: new Map<string, Card>([...boot.toPlace, ...boot.toConfirm].map((c) => [c.id, c])),
     selDay: boot.date,
+    /** Blocked time over the range on screen, and over today (the walk-in, the live board). */
+    blocks: [] as BlockRange[],
+    todayBlocks: [] as BlockRange[],
     focusId: null as string | null,
     phone: window.matchMedia('(max-width: 767px)').matches,
     scrollTo: true,
     dragging: false,
   };
-  const cache = new Map<string, Card[]>();
+  const cache = new Map<string, Book>();
   // Set once the panels and the list exist (below); everything that reads them runs after that.
   let patients: PatientsList | null = null;
   let panels: Panels = null as unknown as Panels;
@@ -115,6 +140,9 @@ function start(boot: Boot) {
   const inRange = (c: Card, r = rangeOf(S.date, S.view)) => c.status !== 'cancelled' && Date.parse(c.startsAt) < r.to && Date.parse(c.endsAt) > r.from;
   const t0 = M.startMs(boot.today);
   const isTodayCard = (c: Card) => c.status !== 'cancelled' && Date.parse(c.startsAt) >= t0 && Date.parse(c.startsAt) < t0 + M.DAY_MS;
+  const overlaps = (b: { startsAt: string; endsAt: string }, r: { from: number; to: number }) => Date.parse(b.startsAt) < r.to && Date.parse(b.endsAt) > r.from;
+  S.blocks = (boot.blocks ?? []).filter((b) => overlaps(b, rangeOf(S.date, S.view)));
+  S.todayBlocks = (boot.blocks ?? []).filter((b) => overlaps(b, rangeOf(boot.today, 'day')));
   const inLane = (c: Card) => c.status !== 'cancelled' && Date.parse(c.startsAt) >= Date.now() - M.DAY_MS
     && ((c.source === 'request' && !c.movedAt && c.status !== 'no_show' && c.status !== 'completed') || (c.source === 'web' && c.status === 'booked'));
 
@@ -149,31 +177,64 @@ function start(boot: Boot) {
       });
       let data: any = null;
       try { data = await res.json(); } catch { /* no body */ }
-      if (res.ok && data?.appointment) return { ok: true, card: data.appointment as Card, texted: data.texted === true };
+      // retold: texts still waiting that were withdrawn to be written again with the new reason (p25's edit).
+      if (res.ok && data?.appointment) return { ok: true, card: data.appointment as Card, texted: data.texted === true, retold: Number(data?.retold) || 0 };
       if (res.status === 401) return { ok: false, status: 401, error: 'Your sign-in has ended. Sign in again, then try that once more.' };
-      return { ok: false, status: res.status, error: typeof data?.error === 'string' && data.error ? data.error : OFFLINE };
+      return {
+        ok: false, status: res.status, error: typeof data?.error === 'string' && data.error ? data.error : OFFLINE,
+        blocked: data?.blocked === true, kind: typeof data?.kind === 'string' ? data.kind : undefined,
+      };
     } catch {
       return { ok: false, error: OFFLINE };
     }
   }
+  const callAnyway = (method: 'POST' | 'PATCH', body: Record<string, unknown>) => call(method, { ...body, anyway: true });
   let loadSeq = 0;
-  /** One range straight from the server, past the cache: the cards, or null when it could not be reached. */
-  async function fetchRaw(from: number, to: number): Promise<Card[] | null> {
+  /** One range straight from the server, past the cache: the cards and the blocked time, or null when it could not
+   *  be reached. */
+  async function fetchRaw(from: number, to: number): Promise<Book | null> {
     try {
       const q = new URLSearchParams({ clinic: boot.slug, from: new Date(from).toISOString(), to: new Date(to).toISOString() });
       const res = await fetch(`/api/schedule?${q}`, { credentials: 'same-origin', headers: { accept: 'application/json' } });
       if (!res.ok) return null;
       const data = await res.json();
-      return Array.isArray(data?.appointments) ? (data.appointments as Card[]) : null;
+      return Array.isArray(data?.appointments)
+        ? { cards: data.appointments as Card[], blocks: Array.isArray(data?.blocks) ? (data.blocks as BlockRange[]) : [] }
+        : null;
     } catch { return null; }
   }
-  async function fetchRange(date: string, view: View): Promise<Card[] | null> {
+  async function fetchRange(date: string, view: View): Promise<Book | null> {
     const r = rangeOf(date, view), key = `${r.from}|${r.to}`;
     const hit = cache.get(key);
     if (hit) return hit;
     const list = await fetchRaw(r.from, r.to);
     if (list) { cache.set(key, list); if (cache.size > 12) cache.delete(cache.keys().next().value as string); }
     return list;
+  }
+  // The free times (free.ts): eight days from a day, apart from the view's cache, kept 60 s, four ranges at most.
+  // A read already on its way is shared rather than asked twice; absorb() empties both, since a change may be in them.
+  const ahead = new Map<string, { at: number } & Book>();
+  const aheadWait = new Map<string, Promise<Book | null>>();
+  let aheadGen = 0;
+  const forget = () => { cache.clear(); ahead.clear(); aheadWait.clear(); aheadGen++; };
+  function rangeCards(ymd: string, o: { fresh?: boolean } = {}): Promise<Book | null> {
+    const hit = ahead.get(ymd);
+    if (!o.fresh && hit && Date.now() - hit.at < 60_000) return Promise.resolve({ cards: hit.cards, blocks: hit.blocks });
+    const waiting = aheadWait.get(ymd);
+    if (!o.fresh && waiting) return waiting;
+    const gen = aheadGen, from = M.startMs(ymd);
+    const p = fetchRaw(from, from + 8 * M.DAY_MS).then((got) => {
+      if (aheadWait.get(ymd) === p) aheadWait.delete(ymd);
+      if (!got) return null;
+      const book = { cards: got.cards.filter((c) => c.status !== 'cancelled'), blocks: got.blocks };
+      if (gen === aheadGen) {
+        ahead.delete(ymd); ahead.set(ymd, { at: Date.now(), ...book });
+        while (ahead.size > 4) ahead.delete(ahead.keys().next().value as string);
+      }
+      return book;
+    });
+    aheadWait.set(ymd, p);
+    return p;
   }
 
   // --- the messages under the bar -----------------------------------------------------------------
@@ -185,8 +246,15 @@ function start(boot: Boot) {
     x.addEventListener('click', () => { box.hidden = true; });
     return x;
   };
-  function fail(text: string) {
-    callout(toastErr, text); toastErr.append(closeX(toastErr)); toastOk.hidden = true;
+  /** A refusal under the bar; `act` adds one quiet button after the words (Move anyway, for a drop into blocked time). */
+  function fail(text: string, act?: { label: string; run: () => void }) {
+    const extra: Node[] = [];
+    if (act) {
+      const b = el('button', 'cal-toast-go', act.label); b.type = 'button'; b.dataset.calAnyway = '';
+      b.addEventListener('click', () => { toastErr.hidden = true; act.run(); });
+      extra.push(document.createTextNode(' '), b);
+    }
+    callout(toastErr, text, extra); toastErr.append(closeX(toastErr)); toastOk.hidden = true;
     toastErr.style.animation = 'none'; void toastErr.offsetWidth; toastErr.style.animation = '';
   }
   function say(text: string, go?: { label: string; ymd: string; id?: string }) {
@@ -285,6 +353,14 @@ function start(boot: Boot) {
       mark.append(icon('alert', 13));
       who.append(mark);
     }
+    // The patient's desk note (p25): a small line icon in the card's own secondary ink, never a status colour; the
+    // note itself in the title and the label.
+    if (c.deskNote) {
+      const n = el('span', 'cal-desknote');
+      n.title = `Desk note: ${M.clip(c.deskNote, 200)}`;
+      n.append(icon('note', 13));
+      who.append(n);
+    }
     // The name and the chart no. share a one-line box that wraps: a chart no. with no room goes, whole, to the
     // hidden second line; a name with no room ellipsises. The alert mark stands outside it and never pushes the name off.
     const nm = el('span', 'cal-card-nm');
@@ -335,6 +411,7 @@ function start(boot: Boot) {
       serviceOf(c), price && `fee guide ${price}`,
       c.dentistName ?? 'any dentist', c.chair === null ? 'no chair' : `chair ${c.chair}`,
       word, waited !== null && `waiting ${waited} minutes`, allergy && `allergy: ${allergy}`, c.conditions && `alert: ${c.conditions}`, M.sourceLine(c),
+      c.deskNote && `desk note: ${M.clip(c.deskNote, 120)}`,
     ].filter(Boolean).join(', ');
     b.setAttribute('aria-label', label);
     return b;
@@ -387,6 +464,26 @@ function start(boot: Boot) {
     if (!open) { add(start, end); return; }
     add(start, Math.min(end, open[0])); add(Math.max(start, open[1]), end);
   }
+  /** Blocked time on a column (040): the closed-hours hatch, which takes no clicks (a click on the lane still opens
+   *  New booking at that minute), and on it — where it is at least 24 px tall — the words on a solid chip, never on
+   *  the hatch. Which blocks a column draws: lunch and a closure in every column; a chair's time out of use in its
+   *  chair's column; a dentist's time away or not in in their column (by dentist) or on a week filtered to them. */
+  function blockEls(lane: HTMLElement, list: BlockRange[], dayStart: number, start: number, end: number, mpx: number) {
+    for (const r of list) {
+      const s = Math.max(start, (Date.parse(r.startsAt) - dayStart) / 60_000), e = Math.min(end, (Date.parse(r.endsAt) - dayStart) / 60_000);
+      if (e <= s) continue;
+      const d = el('div', 'cal-block'); d.style.cssText = `--s:${s - start};--d:${e - s}`;
+      if ((e - s) * mpx >= 24) { const chip = pill(blockLabel(r, 'chip'), 'slate'); chip.classList.add('cal-block-chip'); d.append(chip); }
+      lane.append(d);
+    }
+  }
+  const everywhere = (r: BlockRange) => r.kind === 'lunch' || r.kind === 'closed';
+  /** The blocks a day view's column draws (the table in spec p07 §1.4). */
+  const blocksForCol = (list: BlockRange[], key: string) => list.filter((r) => everywhere(r)
+    || (S.by === 'chair' ? r.kind === 'chair_out' && key !== '' && String(r.chair) === key
+      : (r.kind === 'leave' || r.kind === 'hours') && key !== '' && r.dentistId === key));
+  /** A week draws the clinic's blocks, and a dentist's own only while the week is filtered to them. */
+  const blocksForWeek = (list: BlockRange[]) => { const f = filter(); return list.filter((r) => everywhere(r) || (!!f && (r.kind === 'leave' || r.kind === 'hours') && r.dentistId === f)); };
   const shownCards = () => { const f = filter(); const all = [...S.cards.values()]; return f ? all.filter((a) => a.dentistId === f) : all; };
   // A visit brought in from old records with its day only has no place on a timeline: it is listed above the
   // grid instead (renderUndated), never drawn at the noon it is stored at.
@@ -398,6 +495,7 @@ function start(boot: Boot) {
     const dayStart = M.startMs(S.date), dow = M.dowOf(S.date);
     const all = allTimed(), shown = shownTimed();
     const open = M.hoursOf(boot.hours, dow);
+    const dayBlocks = M.blocksOn(S.blocks, S.date);
     const [start, end] = M.bounds(all.map((a) => M.spanOn(a, dayStart)), open);
     geo = { start, end, dayStart };
     const cols = M.columns(S.by, shown, boot.chairs, boot.staff, dow, S.by === 'dentist' ? filter() : '');
@@ -415,6 +513,7 @@ function start(boot: Boot) {
       const lane = el('div', 'cal-lanecol');
       lane.dataset.lane = c.key; lane.dataset.laneLabel = c.label;
       closedBlocks(lane, open, start, end);
+      blockEls(lane, blocksForCol(dayBlocks, c.key), dayStart, start, end, MPX.day);
       for (const p of stack(M.lanes(mine.map((a) => ({ a, ...M.spanOn(a, dayStart) }))), MPX.day)) lane.append(cardEl(p.a, { s: p.s, e: p.e, lane: p.lane, lanes: p.lanes, z: p.z, nudge: p.nudge, base: start }));
       body.append(lane);
     }
@@ -443,14 +542,17 @@ function start(boot: Boot) {
     const body = el('div', 'cal-body'); body.append(gutter(start, end));
     for (const d of days) {
       const mine = shown.filter((a) => inDay(a, d));
+      const onDay = M.blocksOn(S.blocks, d.ymd);
+      // A day a closure covers whole reads "closed", like a weekday with no hours.
+      const isOpen = !!d.open && !M.wholeDayClosed(onDay, boot.hours, d.ymd);
       const h = el('button', 'cal-colhead');
       h.type = 'button'; h.dataset.day = d.ymd;
-      h.setAttribute('aria-label', `${M.dayLabel(d.ymd, 'long')}${d.ymd === boot.today ? ', today' : ''}: ${d.open ? `${mine.length} visit${mine.length === 1 ? '' : 's'}` : 'closed'}. Open the day.`);
+      h.setAttribute('aria-label', `${M.dayLabel(d.ymd, 'long')}${d.ymd === boot.today ? ', today' : ''}: ${isOpen ? `${mine.length} visit${mine.length === 1 ? '' : 's'}` : 'closed'}. Open the day.`);
       // "Today" goes on the second line, before the count, so a narrow day's name is never cut to "Fri 25 · t…";
       // in a narrow column the word "visits" gives way to it (cal.css), the number never does.
       const sub = el('span', 'meta');
       if (d.ymd === boot.today) sub.append('today · ');
-      if (d.open) sub.append(`${mine.length || 'no'}`, el('span', 'cal-colhead-unit', ` visit${mine.length === 1 ? '' : 's'}`));
+      if (isOpen) sub.append(`${mine.length || 'no'}`, el('span', 'cal-colhead-unit', ` visit${mine.length === 1 ? '' : 's'}`));
       else sub.append('closed');
       h.append(el('span', 'cal-colhead-name', M.dayLabel(d.ymd, 'day')), sub);
       if (d.ymd === boot.today) h.dataset.today = '';
@@ -461,6 +563,7 @@ function start(boot: Boot) {
       if (d.ymd === boot.today) lane.dataset.today = '';
       if (d.ymd === S.selDay) lane.dataset.selected = '';
       closedBlocks(lane, d.open, start, end);
+      blockEls(lane, blocksForWeek(onDay), d.start, start, end, MPX.week);
       for (const p of stack(M.lanes(mine.map((a) => ({ a, ...M.spanOn(a, d.start) }))), MPX.week)) lane.append(cardEl(p.a, { s: p.s, e: p.e, lane: p.lane, lanes: p.lanes, z: p.z, nudge: p.nudge, base: start, week: true }));
       if (d.ymd === boot.today) { const now = el('div', 'cal-now'); now.dataset.now = ''; lane.append(now); }
       body.append(lane);
@@ -483,13 +586,24 @@ function start(boot: Boot) {
       out.push(el('p', 'cal-empty cal-list-quiet', `${quiet.length > 1 ? `${name(quiet[0])} – ${name(quiet[quiet.length - 1])}` : name(quiet[0])}: nothing booked`));
       quiet = [];
     };
+    // Blocked time reads as a line among the cards, in time order ("Lunch · 12:00–1:00 pm"): the clinic's, the chairs',
+    // a dentist's time away, and a dentist's hours only on a list filtered to them. Not a button: the strip opens them.
+    const f = filter();
+    const listBlocks = (ymd: string) => M.blocksOn(S.blocks, ymd).filter((r) => r.kind !== 'hours' || (!!f && r.dentistId === f))
+      .map((r) => ({ at: Math.max(Date.parse(r.startsAt), M.startMs(ymd)), node: el('p', 'cal-list-block', blockLabel(r, 'strip', { day: ymd })) }));
     for (const ymd of days) {
       const start = M.startMs(ymd);
       const mine = shown.filter((a) => { const t = Date.parse(a.startsAt); return t >= start && t < start + M.DAY_MS; });
-      if (!mine.length) { if (S.view === 'day') out.push(emptyDay()); else quiet.push(ymd); continue; }
+      const lines = listBlocks(ymd);
+      if (!mine.length) {
+        if (S.view === 'day') out.push(emptyDay(), ...lines.map((x) => x.node));
+        else quiet.push(ymd);
+        continue;
+      }
       flushQuiet();
       if (S.view === 'week') out.push(el('h3', 'cal-list-day', `${M.dayLabel(ymd)}${ymd === boot.today ? ' · today' : ''}`));
-      for (const c of mine) out.push(cardEl(c, { static: true }));
+      const items = [...mine.map((c) => ({ at: Date.parse(c.startsAt), node: cardEl(c, { static: true }) as HTMLElement })), ...lines];
+      for (const x of items.sort((a, b) => a.at - b.at)) out.push(x.node);
     }
     flushQuiet();
     list.replaceChildren(...out);
@@ -498,7 +612,10 @@ function start(boot: Boot) {
     const f = filter();
     if (shownCards().some((c) => !timed(c))) return 'Nothing else on this day: the visits above came from earlier records, without a time.';
     if (f && S.cards.size) return `Nothing booked for ${f === me.id ? 'you' : staffById.get(f)?.name ?? 'that dentist'} on this day.`;
-    return M.hoursOf(boot.hours, M.dowOf(S.date)) ? 'Nothing booked on this day yet.' : 'The clinic is closed on this day. A visit can still be booked on it.';
+    const shut = M.wholeDayClosed(M.blocksOn(S.blocks, S.date), boot.hours, S.date);
+    const note = shut?.note?.replace(/\s+/g, ' ').trim();
+    if (shut) return `The clinic is closed on this day${note ? ` (${note})` : ''}. A booking here asks you to confirm first.`;
+    return M.hoursOf(boot.hours, M.dowOf(S.date)) ? 'Nothing booked on this day yet.' : 'The clinic is closed on this day. A booking here asks you to confirm first.';
   }
   /** A phone's empty day, the friendly way: an icon, one line, and the next thing to do. */
   function emptyDay() {
@@ -536,43 +653,82 @@ function start(boot: Boot) {
   // Every 30 s while this tab is visible, today's visits (and the range on screen, when that is another day)
   // are fetched again, and any visit that changed on another screen — the front desk pressed Arrived, the
   // tablet pressed Done — is absorbed and flashed, so the desk PC and the operatory tablet agree without a
-  // reload. Not while a card is being dragged; the open visit panel is refilled unless its move form is open.
+  // reload. Not while a card is being dragged; the open visit panel is refilled unless its Move or Edit form is open.
+  // A refresh can be awaited (reload: after a refused booking, before the free times read the book again), and it
+  // tells the panels which Manila days changed, so an open block of free times over one of them is drawn again.
+  // Blocked time is read with the visits (040): when the set of blocks changes (another screen added or removed one),
+  // the grid is drawn again and the days those blocks touch are among the days reported.
   const LIVE_KEYS: (keyof Card)[] = ['status', 'chair', 'startsAt', 'endsAt', 'dentistId', 'arrivedAt', 'seatedAt', 'reason', 'notes',
-    'healthAskedAt', 'bpOnDay', 'consentSigned', 'labPending', 'clearanceWaiting', 'unbilled', 'recallDue', 'nextVisitAt'];
+    'healthAskedAt', 'bpOnDay', 'consentSigned', 'labPending', 'clearanceWaiting', 'unbilled', 'recallDue', 'nextVisitAt',
+    'catalogId', 'deskNote', 'formNervous', 'consentFor'];
   const differs = (a: Card, b: Card) => LIVE_KEYS.some((k) => a[k] !== b[k])
     || (a.statement?.id ?? null) !== (b.statement?.id ?? null) || (a.statement?.status ?? null) !== (b.statement?.status ?? null);
   const liveLine = $('[data-cal-live]');
-  let refreshing = false;
-  async function refresh() {
-    if (refreshing || S.dragging || document.visibilityState !== 'visible' || navigator.onLine === false) return;
-    refreshing = true;
-    try {
-      const ranges = [rangeOf(boot.today, 'day')];
-      const shown = rangeOf(S.date, S.view);
-      if (shown.from !== ranges[0].from || shown.to !== ranges[0].to) ranges.push(shown);
-      for (const rg of ranges) {
-        const got = await fetchRaw(rg.from, rg.to);
-        if (!got) return;
-        cache.set(`${rg.from}|${rg.to}`, got);
-        const seen = new Set<string>();
-        const moveOpen = !!document.querySelector('dialog[open] [data-vp-move]:not([hidden])');
-        for (const c of got) {
-          seen.add(c.id);
-          const old = S.cards.get(c.id) ?? S.today.get(c.id) ?? S.lane.get(c.id);
-          if (old && !differs(old, c)) continue;
-          absorb(c);
-          if (old && old.status !== c.status) {
-            flash(c.id);
-            if (liveLine) liveLine.textContent = `${c.patientName}: ${M.statusWord(c.status).toLowerCase()}, ${M.timeOf(new Date().toISOString())}`;
+  let inflight: Promise<void> | null = null;
+  function refresh(force = false): Promise<void> {
+    if (inflight) return inflight;
+    if (S.dragging || navigator.onLine === false || (!force && document.visibilityState !== 'visible')) return Promise.resolve();
+    const days = new Set<string>();
+    const dayOf = (c: Card) => M.manila(c.startsAt).ymd;
+    const blockKey = (b: BlockRange) => `${b.id}|${b.kind}|${b.startsAt}|${b.endsAt}|${b.dentistId}|${b.chair}`;
+    /** The Manila days of a range that a block touches. */
+    const blockDays = (b: BlockRange, rg: { from: number; to: number }) => {
+      const out: string[] = [];
+      for (let d = M.ymdOf(Math.max(rg.from, Date.parse(b.startsAt))); M.startMs(d) < Math.min(rg.to, Date.parse(b.endsAt)); d = M.addDays(d, 1)) out.push(d);
+      return out;
+    };
+    let blocksMoved = false;
+    inflight = (async () => {
+      try {
+        const ranges = [rangeOf(boot.today, 'day')];
+        const shown = rangeOf(S.date, S.view);
+        if (shown.from !== ranges[0].from || shown.to !== ranges[0].to) ranges.push(shown);
+        for (const rg of ranges) {
+          const book = await fetchRaw(rg.from, rg.to);
+          if (!book) return;
+          cache.set(`${rg.from}|${rg.to}`, book);
+          const isShown = rg.from === shown.from && rg.to === shown.to, isToday = rg.from === ranges[0].from && rg.to === ranges[0].to;
+          const had = isShown ? S.blocks : S.todayBlocks;
+          const was = new Set(had.map(blockKey)), now = new Set(book.blocks.map(blockKey));
+          const moved = [...had.filter((b) => !now.has(blockKey(b))), ...book.blocks.filter((b) => !was.has(blockKey(b)))];
+          if (moved.length) { blocksMoved = true; for (const b of moved) for (const d of blockDays(b, rg)) days.add(d); }
+          if (isShown) S.blocks = book.blocks;
+          if (isToday) S.todayBlocks = book.blocks;
+          const got = book.cards;
+          const seen = new Set<string>();
+          // Never under an open Move or Edit form: what the desk typed stays (the card behind it is still redrawn).
+          const formOpen = !!document.querySelector('dialog[open] :is([data-vp-move], [data-vp-edit]):not([hidden])');
+          for (const c of got) {
+            seen.add(c.id);
+            const old = S.cards.get(c.id) ?? S.today.get(c.id) ?? S.lane.get(c.id);
+            if (old && !differs(old, c)) continue;
+            days.add(dayOf(c));
+            if (old) days.add(dayOf(old));
+            absorb(c);
+            if (old && old.status !== c.status) {
+              flash(c.id);
+              if (liveLine) liveLine.textContent = `${c.patientName}: ${M.statusWord(c.status).toLowerCase()}, ${M.timeOf(new Date().toISOString())}`;
+            }
+            if (panels.visitOpen() === c.id && !formOpen) panels.openVisit(c.id, null);
           }
-          if (panels.visitOpen() === c.id && !moveOpen) panels.openVisit(c.id, null);
+          // A visit no longer in the range (cancelled, or moved to another day) leaves the board.
+          for (const old of [...S.cards.values(), ...S.today.values()]) {
+            if (!seen.has(old.id) && !M.isRequest(old) && Date.parse(old.startsAt) < rg.to && Date.parse(old.endsAt) > rg.from) { days.add(dayOf(old)); absorb({ ...old, status: 'cancelled' }); }
+          }
         }
-        // A visit no longer in the range (cancelled, or moved to another day) leaves the board.
-        for (const old of [...S.cards.values(), ...S.today.values()]) {
-          if (!seen.has(old.id) && !M.isRequest(old) && Date.parse(old.startsAt) < rg.to && Date.parse(old.endsAt) > rg.from) absorb({ ...old, status: 'cancelled' });
-        }
+      } finally {
+        inflight = null;
+        // Blocked time changed: everything kept may hold the old blocks; draw the grid, the strip and the count again.
+        if (blocksMoved) { forget(); if (!S.dragging) renderAll(); }
+        if (days.size) panels.changed(days);
       }
-    } finally { refreshing = false; }
+    })();
+    return inflight;
+  }
+  async function reload(o: { clear?: boolean } = {}) {
+    if (inflight) await inflight.catch(() => undefined);
+    if (o.clear) forget();
+    await refresh(true).catch(() => undefined);
   }
   window.setInterval(() => void refresh(), 30_000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void refresh(); });
@@ -590,10 +746,17 @@ function start(boot: Boot) {
     }
     const dayStart = M.startMs(S.date), open = M.hoursOf(boot.hours, M.dowOf(S.date));
     const bits = [all.length === 0 ? 'Nothing booked' : `${all.length} booked`, needs];
-    if (open && S.date >= boot.today) {
-      const f = M.nextFree(all, open, dayStart, S.date === boot.today, boot.chairs);
+    // Blocked time (040): a closure over the whole day says so; the next free half hour skips the clinic's blocked
+    // time and each chair's own; the day's lunch is said.
+    const dayBlocks = M.blocksOn(S.blocks, S.date);
+    const shut = M.wholeDayClosed(dayBlocks, boot.hours, S.date);
+    const lunch = M.lunchOn(dayBlocks, S.date);
+    if (shut) bits.push('closed all day');
+    else if (open && S.date >= boot.today) {
+      const f = M.nextFree(all, open, dayStart, S.date === boot.today, boot.chairs, Date.now(), dayBlocks);
       bits.push(f ? `next free: Chair ${f.chair} at ${M.hm(f.min)}` : S.date === boot.today ? 'no free time left today' : 'fully booked');
     } else if (!open) bits.push('the clinic is closed');
+    if (lunch && open && !shut) bits.push(`lunch ${M.spanShort(lunch[0], lunch[1])}`);
     const f = filter();
     if (f && all.length) {
       const mine = all.filter((a) => a.dentistId === f).length;
@@ -629,7 +792,40 @@ function start(boot: Boot) {
     $('[data-undated-list]', box)!.replaceChildren(...cards.map((c) => { const li = el('li'); const b = cardEl(c, { static: true, undated: true }); b.tabIndex = 0; li.append(b); return li; }));
   }
 
+  /** The strip: the dated blocks over the range on screen (a closure, a dentist away, a chair out of use), each a pill
+   *  that opens it in the Block panel. Worded for the day on screen; in a week, from its day. Hidden when none. */
+  function renderBlocks() {
+    const box = $('[data-cal-blocks]'), listEl = $('[data-cal-blocks-list]');
+    if (!box || !listEl) return;
+    const dated = S.blocks.filter((r) => r.id).sort((x, y) => x.startsAt.localeCompare(y.startsAt));
+    const words = (r: BlockRange) => {
+      if (S.view === 'day') return blockLabel(r, 'strip', { day: S.date });
+      const a = M.manila(r.startsAt).ymd, z = M.manila(new Date(Date.parse(r.endsAt) - 1).toISOString()).ymd;
+      return a === z ? `${M.dayLabel(a, 'day')} · ${blockLabel(r, 'strip', { day: a })}` : blockLabel(r, 'strip');
+    };
+    const ICON = { closed: 'clinic', leave: 'user', chair_out: 'settings' } as const;
+    listEl.replaceChildren(...dated.map((r) => {
+      const li = el('li'), b = el('button', 'cal-block-pill');
+      b.type = 'button'; b.dataset.blockId = r.id!;
+      const w = el('span', 'cal-block-pill-words');
+      w.append(icon(ICON[r.kind as keyof typeof ICON] ?? 'clock', 15), words(r));
+      b.append(w);
+      b.addEventListener('click', () => panels.openBlock(r.id!, b));
+      li.append(b); return li;
+    }));
+    box.hidden = dated.length === 0;
+  }
+
   function renderPrint() {
+    // "Blocked: Lunch 12–1 pm; Dr. Cariño away" under the caption (the grid's hatch does not print).
+    const f = filter();
+    const said = new Set(S.blocks.filter((r) => r.kind !== 'hours' || (!!f && r.dentistId === f)).map((r) => {
+      if (r.kind !== 'lunch') return r.kind === 'hours' ? blockLabel(r, 'strip') : whyWords(r);
+      const d0 = M.startMs(M.manila(r.startsAt).ymd);
+      return `Lunch ${M.spanShort((Date.parse(r.startsAt) - d0) / 60_000, (Date.parse(r.endsAt) - d0) / 60_000)}`;
+    }));
+    const pb = $('[data-cal-print-blocks]');
+    if (pb) pb.textContent = said.size ? `Blocked: ${[...said].join('; ')}` : '';
     const rows = shownCards().sort((x, y) => x.startsAt.localeCompare(y.startsAt));
     $('[data-cal-print-caption]')!.textContent = `${document.title.split(' — ')[1] ?? ''} · ${title.textContent}`;
     $('[data-cal-print-rows]')!.replaceChildren(...(rows.length ? rows.map((a) => {
@@ -820,7 +1016,7 @@ function start(boot: Boot) {
   setBar();
   window.addEventListener('resize', () => setBar(), { passive: true });
   function renderAll() {
-    renderChrome(); renderCount(); renderLane(); renderUndated(); renderCalendar(); renderPrint(); renderTiles();
+    renderChrome(); renderCount(); renderLane(); renderUndated(); renderBlocks(); renderCalendar(); renderPrint(); renderTiles();
   }
 
   // --- changes ----------------------------------------------------------------------------------------
@@ -828,7 +1024,7 @@ function start(boot: Boot) {
     if (inRange(c)) S.cards.set(c.id, c); else S.cards.delete(c.id);
     if (isTodayCard(c)) S.today.set(c.id, c); else S.today.delete(c.id);
     if (inLane(c)) S.lane.set(c.id, c); else S.lane.delete(c.id);
-    cache.clear();
+    forget();
     patients?.absorb(c);
     if (!S.dragging) renderAll();
   }
@@ -857,7 +1053,8 @@ function start(boot: Boot) {
         fail(navigator.onLine === false ? 'Offline: the calendar needs the connection to show another day.' : 'That day could not be loaded. Try again in a moment.');
         return;
       }
-      S.cards = new Map(got.filter((c) => c.status !== 'cancelled').map((c) => [c.id, c]));
+      S.cards = new Map(got.cards.filter((c) => c.status !== 'cancelled').map((c) => [c.id, c]));
+      S.blocks = got.blocks;
       S.scrollTo = true;
     }
     if (o.push !== false) writeUrl(true);
@@ -931,6 +1128,12 @@ function start(boot: Boot) {
   $('[data-reqs]')!.addEventListener('click', onCardClick);
   $('[data-cal-undated]')?.addEventListener('click', onCardClick);
   $('[data-cal-new]')!.addEventListener('click', (e) => panels.openBook({ ymd: S.date, by: S.by }, e.currentTarget as HTMLElement));
+  // More → Block time (040), for schedule.edit (the page renders it only then).
+  $('[data-cal-block-new]')?.addEventListener('click', (e) => {
+    const b = e.currentTarget as HTMLElement;
+    closeCalMenu(b);
+    panels.openBlockNew({ ymd: S.date }, b.closest('[data-ws-menu]')?.querySelector<HTMLElement>(':scope > button') ?? b);
+  });
 
   const mpx = () => MPX[S.view];
   function minuteAt(lane: HTMLElement, clientY: number, grab: number) {
@@ -1055,9 +1258,15 @@ function start(boot: Boot) {
     if (!r.ok) {
       if (was) S.cards.set(c.id, was); else S.cards.delete(c.id);
       renderAll();
-      fail(r.error);
+      // Dropped into blocked time (040): the card goes back, and the sentence carries the one press that moves it anyway.
+      if (r.blocked) fail(r.error, { label: 'Move anyway', run: () => void callAnyway('PATCH', body).then((r2) => (r2.ok ? moved(c, r2) : fail(r2.error))) });
+      else fail(r.error);
       return;
     }
+    moved(c, r);
+  }
+  /** A drop the server took: its answer drawn, said, and the card in focus. */
+  function moved(c: Card, r: { card: Card; texted: boolean }) {
     absorb(r.card);
     toastErr.hidden = true;
     const placed = M.isRequest(c) && !M.isRequest(r.card);
@@ -1119,13 +1328,22 @@ function start(boot: Boot) {
 
   // --- the rest of the page -------------------------------------------------------------------------------------
   const ctx: Ctx = {
-    boot, el, call, absorb, card: (id) => S.cards.get(id) ?? S.lane.get(id) ?? S.today.get(id),
+    boot, el, call, callAnyway, absorb, card: (id) => S.cards.get(id) ?? S.lane.get(id) ?? S.today.get(id),
     dayCards: (ymd) => {
       const r = rangeOf(S.date, S.view);
       const s = M.startMs(ymd);
       if (s < r.from || s >= r.to) return null;
       return [...S.cards.values()].filter((c) => Date.parse(c.startsAt) >= s && Date.parse(c.startsAt) < s + M.DAY_MS);
     },
+    rangeCards, reload,
+    dayBlocks: (ymd) => {
+      const r = rangeOf(S.date, S.view), s = M.startMs(ymd);
+      if (s >= r.from && s < r.to) return M.blocksOn(S.blocks, ymd);
+      if (ymd === boot.today) return M.blocksOn(S.todayBlocks, ymd);
+      for (const [base, v] of ahead) if (base <= ymd && ymd < M.addDays(base, 8)) return M.blocksOn(v.blocks, ymd);
+      return null;
+    },
+    blockById: (id) => [...S.blocks, ...S.todayBlocks, ...[...ahead.values()].flatMap((v) => v.blocks)].find((b) => b.id === id),
     staffById, say, fail, show, flash, filter,
     setWhose: (whose) => { void go(whose === 'mine' ? { dentist: '', by: 'dentist' } : { dentist: 'all' }); },
     url: () => calUrl(),
@@ -1152,6 +1370,9 @@ function start(boot: Boot) {
       else fail('That booking is not on the book for this day any more. It may have been cancelled or moved; search for the patient to find it.');
     } else if (boot.open.new) {
       panels.openBook({ ymd: S.date, by: S.by, patientId: boot.open.patient ?? undefined }, $('[data-cal-new]'));
+    } else if (boot.open.block) {
+      // + New → Block time on any workspace page lands here (?new=block).
+      panels.openBlockNew({ ymd: S.date }, $('[data-cal-new]'));
     }
     if (changed) history.replaceState({ dash: true }, '', clean.pathname + clean.search + clean.hash);
     // After the load's own scroll to the fragment, which would otherwise take the focus back off the field.

@@ -1,0 +1,141 @@
+---
+// Patient forms in progress (the intake, 039; the spec §1.9): every intake of
+// this branch not added yet, in three groups — Sent: add to the records ·
+// Filling in now · Not finished (with the time left of its 24 hours) — for
+// people who can add patients (can(ws, 'records.edit')).
+//
+// POST intent=start is the one place an intake is made (Add patient's
+// chooser, the record's Prepare consent forms, Sign on this tablet): csrfOk,
+// the staff's save limit, then startIntake() in one withClinic() transaction.
+// A refusal goes back where it came from with ?refused=<code> (a fixed
+// sentence there, never typed text); "Type it in yourself", and "At the
+// clinic" for a new patient while page 1 is closed, go on to ../new/type/.
+export const prerender = false;
+
+import ClinicLayout from '../../../../../layouts/Clinic.astro';
+import Pane from '../../../../../components/ws/Pane.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Avatar from '../../../../../components/ws/Avatar.astro';
+import Head from '../_ui/Head.astro';
+import Callout from '../_ui/Callout.astro';
+import '../_ui/patients.css';
+import './intake.css';
+import { requireWorkspace } from '../../../../../lib/workspace';
+import { withClinic } from '../../../../../lib/db';
+import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
+import { hit, LIMITS } from '../../../../../lib/throttle';
+import { canEditRecords } from '../../../../../lib/health';
+import { can } from '../../../../../lib/can';
+import { Refused } from '../../../../../lib/refused';
+import { intakeGates, startIntake, isUuid, intakeName, timeWords, INTAKE_KEEP_HOURS, type StartRefusal } from '../../../../../lib/intake';
+
+const ws = await requireWorkspace(Astro);
+if (ws instanceof Response) return ws;
+const { clinic, session, branches } = ws;
+const slug = clinic.slug;
+const base = `/c/${slug}/patients`;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const patientId = String(form.get('patient') ?? '');
+  const back = isUuid(patientId) ? `${base}/new/?patient=${patientId}` : `${base}/new/`;
+  const sep = back.includes('?') ? '&' : '?';
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect(`${back}${sep}stale=1`, 303);
+  if (form.get('intent') !== 'start') return Astro.redirect(back, 303);
+  const way = String(form.get('way') ?? '');
+  const docs = form.getAll('document').map(String).filter(isUuid);
+  if (way === 'type' && !isUuid(patientId)) return Astro.redirect(`${base}/new/type/`, 303);
+  if (way !== 'clinic' && way !== 'phone') return Astro.redirect(`${back}${sep}refused=way`, 303);
+  const rate = await hit('record:s:' + session.staffId, ...LIMITS.chart.staff);
+  if (!rate.allowed) return Astro.redirect(`${back}${sep}refused=busy`, 303);
+  const visitId = String(form.get('visit') ?? '');
+  let out: { id: string } | { type: true } | { refused: string };
+  try {
+    out = await withClinic(clinic.id, async (tx) => {
+      const gates = await intakeGates(tx);
+      if (!gates.templates.length) return { refused: 'forms' };
+      // A new patient while page 1 is closed: their details are typed at the desk first.
+      if (!isUuid(patientId) && !gates.page1Open) return { type: true as const };
+      if (way === 'phone' && !gates.phoneOpen) return { refused: 'way' };
+      return startIntake(tx, { clinicId: clinic.id, staffId: session.staffId, gates, patientId: isUuid(patientId) ? patientId : null, appointmentId: isUuid(visitId) ? visitId : null, documents: docs });
+    });
+  } catch (e) {
+    // Refused: thrown out of the transaction, so nothing of it stays.
+    if (!(e instanceof Refused)) throw e;
+    out = { refused: (e as Refused<{ code?: StartRefusal }>).detail?.code ?? 'allowed' };
+  }
+  if ('type' in out) return Astro.redirect(`${base}/new/type/?next=consents`, 303);
+  if ('refused' in out) {
+    // Sign on this tablet, from a form on the record: its refusal goes back to that form's page.
+    if (docs.length && isUuid(patientId) && form.get('from') === 'document') return Astro.redirect(`${base}/${patientId}/consents/${docs[0]}/?refused=${out.refused}`, 303);
+    return Astro.redirect(`${back}${sep}refused=${out.refused.startsWith('doc_') ? 'patient' : out.refused}`, 303);
+  }
+  const step = docs.length ? 'check' : 'consents';
+  return Astro.redirect(`${base}/intake/${out.id}/?step=${step}${way === 'phone' ? '&via=phone' : ''}`, 303);
+}
+
+const data = await withClinic(clinic.id, async (tx) => {
+  const canEdit = can(clinic, 'records.edit') && (await canEditRecords(tx, session.staffId, clinic.id));
+  if (!canEdit) return { canEdit, area: null, rows: [] };
+  const rows = (await tx.query<{ id: string; ref: string; status: string; target: string; label: string | null; answers: Record<string, unknown> | null;
+    patient_first: string | null; patient_last: string | null; patient_suffix: string | null; created_at: Date; sent_at: Date | null; by_name: string;
+    parts: string; device: string | null; tablet: string | null }>(
+    `select i.id, i.ref, i.status, i.target, i.label, case when i.status = 'sent' then i.answers else null end as answers,
+            p.first_name as patient_first, p.last_name as patient_last, p.suffix as patient_suffix, i.created_at, i.sent_at, s.full_name as by_name,
+            (select count(*) from consent_document d where d.intake_id = i.id and d.cancelled_at is null)::text as parts,
+            l.device, t.name as tablet
+       from intake i join staff s on s.id = i.created_by left join patient p on p.id = i.patient_id
+       left join intake_link l on l.intake_id = i.id and l.retired_at is null left join clinic_tablet t on t.id = l.tablet_id
+      where i.status in ('preparing', 'out', 'sent') order by coalesce(i.sent_at, i.created_at) desc limit 200`)).rows;
+  return { canEdit, area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null, rows };
+});
+
+const stale = Astro.url.searchParams.get('stale') === '1';
+const now = Date.now();
+const left = (created: Date) => {
+  const ms = new Date(created).getTime() + INTAKE_KEEP_HOURS * 3600_000 - now;
+  if (ms <= 0) return 'goes at the next clean-up';
+  const h = Math.floor(ms / 3600_000), m = Math.floor((ms % 3600_000) / 60_000);
+  return h ? `${h} h ${m} min left` : `${m} min left`;
+};
+const nameOf = (r: (typeof data.rows)[number]) => r.patient_first
+  ? [r.patient_first, r.patient_last, r.patient_suffix].filter(Boolean).join(' ')
+  : intakeName({ patient: null, label: r.label, answers: r.answers });
+const groups = [
+  { key: 'sent', title: 'Sent: add to the records', empty: 'Nothing waiting to be added.', rows: data.rows.filter((r) => r.status === 'sent') },
+  { key: 'out', title: 'Filling in now', empty: 'Nobody is filling in forms now.', rows: data.rows.filter((r) => r.status === 'out') },
+  { key: 'preparing', title: 'Not finished', empty: 'Nothing half-prepared.', rows: data.rows.filter((r) => r.status === 'preparing') },
+];
+const where = (r: (typeof data.rows)[number]) => r.device === 'tablet' ? `on ${r.tablet}` : r.device === 'desk' ? 'on a device handed over' : r.device === 'phone' ? 'on their phone' : null;
+---
+
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug, name: clinic.name, area: data.area }} title="Patient forms in progress" section="add-patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  <a href={`${base}/new/`} class="rec-back ws-glass m-0! w-fit px-3!"><Icon name="chevron-left" />Add patient</a>
+  {stale && <Callout tone="alert" text={CSRF_MESSAGE} />}
+  {!data.canEdit ? (
+    <Pane as="div" label="Not allowed">
+      <Callout tone="alert" role="note" text="Your account cannot add patients at this branch. Ask the owner." />
+    </Pane>
+  ) : groups.map((g) => (
+    <Pane as="section" label={g.title} id={`ik-${g.key}`}>
+      <Head icon={g.key === 'sent' ? 'form' : g.key === 'out' ? 'tablet' : 'pen'} title={g.title} meta={g.rows.length ? String(g.rows.length) : undefined} />
+      {g.rows.length === 0 ? <p class="ik-help">{g.empty}</p> : (
+        <ul class="ik-list">
+          {g.rows.map((r) => (
+            <li class="ik-row">
+              <a class="ik-row-main" href={`${base}/intake/${r.id}/`}>
+                <Avatar name={nameOf(r)} />
+                <span class="grid min-w-0">
+                  <span class="ik-row-name">{nameOf(r)}</span>
+                  <span class="ik-row-meta"><span class="ik-ref">{r.ref}</span> · {r.target === 'new' ? 'new patient' : 'patient on file'} · {Number(r.parts) === 1 ? '1 form' : `${r.parts} forms`}{where(r) ? ` · ${where(r)}` : ''} · by {r.by_name}</span>
+                </span>
+              </a>
+              <span class="ik-row-meta">{r.status === 'sent' && r.sent_at ? `Sent ${timeWords(r.sent_at)}` : left(r.created_at)}</span>
+              <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${base}/intake/${r.id}/`}>{r.status === 'sent' ? 'Add' : 'Open'} <Icon name="arrow-right" size={16} /></a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Pane>
+  ))}
+</ClinicLayout>

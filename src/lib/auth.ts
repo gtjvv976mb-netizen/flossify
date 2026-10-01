@@ -13,6 +13,7 @@ import { scryptSync, randomBytes, timingSafeEqual, createHmac } from 'node:crypt
 import type { AstroCookies } from 'astro';
 import { pool } from './db';
 import { permsOf, type Perm, type RoleAccess } from './can';
+import { clearDeviceSecret } from './park';
 
 const SECRET = process.env.SESSION_SECRET;
 if (!SECRET || SECRET.length < 32) throw new Error('SESSION_SECRET must be set to at least 32 characters. See .env.example.');
@@ -54,6 +55,8 @@ export type Device = keyof typeof SESSION_HOURS;
 export function setSession(cookies: AstroCookies, s: Omit<Session, 'exp'>, hours: number = SESSION_HOURS.own) {
   const body = Buffer.from(JSON.stringify({ ...s, exp: Date.now() + hours * 3_600_000 })).toString('base64url');
   cookies.set(COOKIE, `${body}.${sign(body)}`, { httpOnly: true, sameSite: 'lax', secure: import.meta.env.PROD, path: '/', maxAge: hours * 3_600 });
+  // A staff sign-in ends any hand-over on this browser (039): the patient's link no longer opens here.
+  clearDeviceSecret(cookies);
 }
 
 export function clearSession(cookies: AstroCookies) {

@@ -8,11 +8,11 @@
 //
 // Every write it starts carries the visit's id in a hidden `visit` field (the panels' forms take a
 // visitId), so a reading, a note, a treatment, a prescription or a file taken now names this visit on the
-// Timeline instead of being matched to it by the day later. "No change" (intent health-checked) copies the
+// Treatment record instead of being matched to it by the day later. "No change" (intent health-checked) copies the
 // health history under the person who asked, so "last checked" moves to today.
 //
 // What belongs to the visit: anything stamped with its id, or written today with no visit on it (the
-// desk's old habit). The same rule the Timeline uses (src/lib/visit-record.ts), for today only.
+// desk's old habit). The same rule the Treatment record uses (src/lib/visit-record.ts), for today only.
 import Pane from '../../../../../components/ws/Pane.astro';
 import Icon from '../../../../../components/ws/Icon.astro';
 import Chip from '../../../../../components/ws/Chip.astro';

@@ -1,0 +1,143 @@
+---
+// The clinic's part of one consent form as inputs: every ClinicField of its
+// template, named `<prefix><field>` (and readClinicPart's _other, _from, _to,
+// _kind, _includes), filled from `raw` (a post coming back, or the stored
+// fields: rawFromFields). Desk fields are the desk's; dentist fields are
+// "Proposed · <dentist> confirms" unless `dentist` (the named dentist is
+// confirming now, and their required fields are required). Fee-guide amounts
+// are quick-fill chips (the script fills the amount; without it, type it).
+import Icon from '../../../../../../components/ws/Icon.astro';
+import { holds, type Template, type RawPart, type ClinicField } from '../../../../../../lib/consent-library';
+import type { FeeChip } from '../../../../../../lib/intake';
+
+interface Props {
+  t: Template;
+  prefix: string;
+  raw: RawPart;
+  errors?: Record<string, string>;
+  /** The named dentist confirms now: dentist fields are theirs, not proposals. */
+  dentist?: boolean;
+  dentistName?: string | null;
+  minor?: boolean | null;
+  chips?: FeeChip[];
+}
+const { t, prefix, raw, errors = {}, dentist = false, dentistName = null, minor = null, chips = [] } = Astro.props;
+const one = (n: string) => { const v = raw[n]; return Array.isArray(v) ? String(v[0] ?? '') : String(v ?? ''); };
+const many = (n: string) => { const v = raw[n]; return v === undefined ? [] : Array.isArray(v) ? v.map(String) : [String(v)]; };
+const id = (n: string) => `${prefix}${n}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+// A field whose `when` depends on another field is always drawn (the server keeps it only when it holds), with a line saying when.
+const whenWords = (f: ClinicField) => {
+  const w = f.when as { f?: string; in?: readonly string[] } | undefined;
+  if (!w?.f) return null;
+  const other = t.clinicFields.find((x) => x.name === w.f);
+  const labels = (w.in ?? []).map((v) => other?.choices?.find((c) => c.value === v)?.label ?? v);
+  return other ? `Only for ${labels.join(' or ')}.` : null;
+};
+const shown = t.clinicFields.filter((f) => !f.when || !('minor' in (f.when as object)) || holds(f.when, t, {}, minor));
+const pesoText = (c: number) => `₱${(c / 100).toLocaleString('en-PH', { maximumFractionDigits: 2 })}`;
+---
+
+<div class="ik-fields">
+  {shown.map((f) => {
+    const err = errors[f.name];
+    const label = f.label + (f.required && (f.who === 'desk' || dentist) ? '' : f.kind === 'money' || f.required ? '' : ' (optional)');
+    const proposed = f.who === 'dentist' && !dentist;
+    const help = f.help ?? whenWords(f);
+    const wide = f.kind === 'choices' || f.kind === 'money' || f.kind === 'text' && (f.max ?? 160) > 80;
+    const errId = err ? `${id(f.name)}-err` : undefined;
+    return (
+      <div class:list={['min-w-0', wide && 'ik-wide']} data-ik-field={f.name}>
+        {(f.kind === 'teeth' || f.kind === 'text' || f.kind === 'number') && (
+          <label class="field">
+            <span class="meta">{label}{proposed && <span class="ik-proposed"> · Proposed · {dentistName ?? 'the dentist'} confirms</span>}</span>
+            <input id={id(f.name)} name={`${prefix}${f.name}`} value={one(f.name)} autocomplete="off"
+              inputmode={f.kind === 'teeth' || f.kind === 'number' ? 'numeric' : undefined}
+              maxlength={f.kind === 'text' ? f.max ?? 160 : f.kind === 'teeth' ? 120 : 4}
+              placeholder={f.kind === 'teeth' ? (f.maxTeeth === 1 ? '36' : '36, 37') : undefined}
+              aria-invalid={err ? 'true' : undefined} aria-describedby={errId} />
+            {f.kind === 'teeth' && <span class="ik-help">FDI numbers: 11 to 48, or 51 to 85 for milk teeth.</span>}
+            {f.kind === 'number' && <span class="ik-help">A whole number from {f.min ?? 0} to {f.max}.</span>}
+            {help && <span class="ik-help">{help}</span>}
+          </label>
+        )}
+        {f.kind === 'choice' && (
+          <div class="grid gap-2">
+            <label class="field">
+              <span class="meta">{label}{proposed && <span class="ik-proposed"> · Proposed · {dentistName ?? 'the dentist'} confirms</span>}</span>
+              <select id={id(f.name)} name={`${prefix}${f.name}`} aria-invalid={err ? 'true' : undefined} aria-describedby={errId}>
+                <option value="">Not chosen yet</option>
+                {f.choices?.map((c) => <option value={c.value} selected={one(f.name) === c.value}>{c.short ?? c.label}</option>)}
+                {f.other && <option value="other" selected={one(f.name) === 'other'}>Something else (write it)</option>}
+              </select>
+              {help && <span class="ik-help">{help}</span>}
+            </label>
+            {f.other && (
+              <label class="field">
+                <span class="meta">If something else, what</span>
+                <input name={`${prefix}${f.name}_other`} value={one(`${f.name}_other`)} maxlength={f.other.max} autocomplete="off" />
+              </label>
+            )}
+          </div>
+        )}
+        {f.kind === 'yesno' && (
+          <fieldset class="ik-q">
+            <legend>{label}{proposed && <span class="ik-proposed"> · Proposed · {dentistName ?? 'the dentist'} confirms</span>}</legend>
+            <div class="ik-q-row">
+              {[['', 'Not said'], ['yes', 'Yes'], ['no', 'No']].map(([v, w]) => (
+                <label class="chip-radio"><input type="radio" name={`${prefix}${f.name}`} value={v} checked={one(f.name) === v} /><span>{w}</span></label>
+              ))}
+            </div>
+            {help && <span class="ik-help">{help}</span>}
+          </fieldset>
+        )}
+        {f.kind === 'choices' && (
+          <fieldset class="ik-q" aria-describedby={errId}>
+            <legend>{label}{proposed && <span class="ik-proposed"> · Proposed · {dentistName ?? 'the dentist'} confirms</span>}</legend>
+            <div class="ik-opts">
+              {f.choices?.map((c) => (
+                <label class="check"><input type="checkbox" name={`${prefix}${f.name}`} value={c.value} checked={many(f.name).includes(c.value)} /><span>{c.short ?? c.label}</span></label>
+              ))}
+            </div>
+            {help && <span class="ik-help">{help}</span>}
+          </fieldset>
+        )}
+        {f.kind === 'range' && (
+          <fieldset class="ik-q">
+            <legend>{label}{proposed && <span class="ik-proposed"> · Proposed · {dentistName ?? 'the dentist'} confirms</span>}</legend>
+            <div class="ik-money-row">
+              <label class="field"><span class="meta">From</span><input name={`${prefix}${f.name}_from`} value={one(`${f.name}_from`)} inputmode="numeric" maxlength="4" autocomplete="off" /></label>
+              <label class="field"><span class="meta">To</span><input name={`${prefix}${f.name}_to`} value={one(`${f.name}_to`)} inputmode="numeric" maxlength="4" autocomplete="off" /></label>
+            </div>
+            <span class="ik-help">From {f.min} to {f.max}{f.unit ? ` ${f.unit}s` : ''}, the smaller number first.</span>
+          </fieldset>
+        )}
+        {f.kind === 'money' && (
+          <fieldset class="ik-q ik-money" data-ik-money={`${prefix}${f.name}`}>
+            <legend>{label}</legend>
+            <div class="ik-q-row">
+              {[['amount', 'An amount'], ['range', 'A range'], ...(f.allowLater ? [['later', 'Told before starting']] : [])].map(([v, w]) => (
+                <label class="chip-radio"><input type="radio" name={`${prefix}${f.name}_kind`} value={v} checked={one(`${f.name}_kind`) === v} data-ik-money-kind /><span>{w}</span></label>
+              ))}
+            </div>
+            <div class="ik-money-row">
+              <label class="field"><span class="meta">Pesos</span><input name={`${prefix}${f.name}_from`} value={one(`${f.name}_from`)} inputmode="decimal" maxlength="14" autocomplete="off" placeholder="3,000" data-ik-money-from /></label>
+              <label class="field"><span class="meta">Up to (a range)</span><input name={`${prefix}${f.name}_to`} value={one(`${f.name}_to`)} inputmode="decimal" maxlength="14" autocomplete="off" data-ik-money-to /></label>
+            </div>
+            <label class="field"><span class="meta">What it includes (optional)</span><input name={`${prefix}${f.name}_includes`} value={one(`${f.name}_includes`)} maxlength="160" autocomplete="off" /></label>
+            {chips.length > 0 && f.prefill === 'fee_guide' && (
+              <div class="ik-chips" aria-label="From the fee guide">
+                {chips.map((c) => (
+                  <button type="button" class="ik-chip" data-ik-chip data-kind={c.money.kind} data-from={String(c.money.from / 100)} data-to={c.money.kind === 'range' ? String(c.money.to / 100) : ''}>
+                    {c.label}: {c.money.kind === 'range' ? `${pesoText(c.money.from)} to ${pesoText(c.money.to)}` : pesoText(c.money.from)}
+                  </button>
+                ))}
+              </div>
+            )}
+            {help && <span class="ik-help">{help}</span>}
+          </fieldset>
+        )}
+        {err && <p class="mt-1 flex items-center gap-1.5 text-[14px] font-medium text-[var(--ws-red-ink)]" id={errId}><Icon name="alert" size={16} />{err}</p>}
+      </div>
+    );
+  })}
+</div>

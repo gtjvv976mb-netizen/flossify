@@ -98,7 +98,7 @@ export const FIELDS: Field[] = [
   { key: 'conditions', label: 'Conditions', kinds: ['patients'], words: ['conditions', 'condition', 'medical conditions', 'medical history', 'illnesses', 'illness', 'sakit'], hint: 'Separated by commas. “None” or blank, as above.', example: 'Hypertension' },
   { key: 'medicines', label: 'Medicines taken now', kinds: ['patients'], words: ['medicines', 'medicine', 'medications', 'medication', 'maintenance', 'maintenance meds', 'current medication', 'gamot'], hint: 'Separated by commas.', example: 'Losartan' },
   { key: 'health_note', label: 'Note for the dentist', kinds: ['patients'], words: ['health note', 'medical note', 'medical remarks', 'alert', 'alerts', 'warning'], hint: 'One line the dentist must read first.', example: 'Faints at injections' },
-  { key: 'notes', label: 'Other notes', kinds: ['patients'], words: ['notes', 'note', 'remarks', 'comments', 'other notes'], hint: 'Anything else, kept on the record.', example: '' },
+  { key: 'notes', label: 'Other notes', kinds: ['patients'], words: ['notes', 'note', 'remarks', 'comments', 'other notes'], hint: 'Anything else, kept on the record. The desk sees it beside their visits.', example: '' },
   { key: 'paper_consent', label: 'Consent signed on paper', kinds: ['patients'], words: ['consent', 'consent date', 'consent signed', 'date consent signed', 'consent signed on', 'waiver', 'waiver date'], hint: 'The date on the clinic’s own consent form, if the patient signed one. Kept as that form, not as consent to Flossify’s privacy notice.', example: '2019-03-12' },
   { key: 'opening_balance', label: 'Opening balance', kinds: ['patients'], money: true, words: ['opening balance', 'balance', 'amount due', 'unpaid', 'outstanding', 'outstanding balance', 'utang', 'balance due'], hint: 'What the patient still owes from before, in pesos. It becomes one statement.', example: '1500' },
   { key: 'balance_as_of', label: 'Balance as of', kinds: ['patients'], money: true, words: ['balance as of', 'as of', 'balance date'], hint: 'The day the balance was counted. Blank means today.', example: '2026-09-01' },
@@ -122,6 +122,44 @@ export const TEMPLATE: Record<Kind, string[]> = {
     'notes', 'paper_consent', 'opening_balance', 'balance_as_of'],
   visits: ['chart_no', 'last_name', 'first_name', 'birth_date', 'mobile', 'visit_date', 'dentist', 'service', 'teeth', 'visit_notes', 'charged', 'paid', 'paid_by'],
 };
+
+// ---------------------------------------------------------------------------
+// The import's own lines in a patient's notes
+// ---------------------------------------------------------------------------
+// A row's notes are the file's own notes, then these two lines when they apply, joined with " · ". They are
+// the import speaking, not the desk: deskNoteOf() takes them out again wherever patient.notes is shown as
+// the desk's note (the Dashboard's cards, Today's patients, the visit panel), so there is one definition.
+/** A number that is not a Philippine mobile, kept where a person will see it. */
+export const oldPhoneNote = (phone: string) => `Phone from the old records: ${phone}`;
+/** Only a year on an old index card: no birthday is made up from it. */
+export const birthYearNote = (year: number | string) => `Born in ${year} (the old records give only the year)`;
+
+/** One of the lines above, standing alone between " · " separators or the ends of a line. The phone is what
+ *  the old records had (one line, at most 40 characters), so it runs to the next " · " or the line's end. */
+const OWN_LINE = String.raw`(?:Phone from the old records: .*?|Born in \d{1,4} \(the old records give only the year\))(?= · |$)`;
+const OWN_AFTER = new RegExp(` · ${OWN_LINE}`, 'g');
+const OWN_FIRST = new RegExp(`^${OWN_LINE}(?: · )?`);
+
+/**
+ * The patient's notes as the desk wrote them: every occurrence of the import's own two lines removed, with the
+ * " · " left dangling beside each, then trimmed; null when nothing is left. Everything else (line breaks, a
+ * " · " the desk typed, the words) stays as written. A line that held only the import's words goes with its
+ * line break.
+ *   "Prefers mornings · Phone from the old records: 045 123 4567"  →  "Prefers mornings"
+ */
+export function deskNoteOf(notes: string | null): string | null {
+  if (!notes) return null;
+  const parts = notes.split(/(\r\n|\n|\r)/); // [line, break, line, break, line …]
+  const kept: { brk: string; text: string }[] = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    const line = parts[i];
+    const text = line.replace(OWN_AFTER, '').replace(OWN_FIRST, '');
+    if (text !== line && !text.trim()) continue; // only the import's words were on it
+    kept.push({ brk: i > 0 ? parts[i - 1] : '', text });
+  }
+  const out = kept.map((k, j) => (j > 0 ? k.brk : '') + k.text).join('').trim();
+  return out || null;
+}
 
 // ---------------------------------------------------------------------------
 // Words: comparing names, headers and services the way people mean them
@@ -1017,7 +1055,7 @@ export function plan(s: Snapshot, input: PlanInput): Plan {
       if (sexRaw === 'bad') notes.push(`Sex “${cell(r, 'sex')}” was left out: write Female, Male, or leave it blank.`);
       const phone = readPhone(cell(r, 'mobile'));
       let extraNote: string | null = null;
-      if (phone.other) { notes.push(`${phone.other} is not a Philippine mobile, so texts cannot reach it. It is kept in the notes instead.`); extraNote = `Phone from the old records: ${phone.other}`; }
+      if (phone.other) { notes.push(`${phone.other} is not a Philippine mobile, so texts cannot reach it. It is kept in the notes instead.`); extraNote = oldPhoneNote(phone.other); }
       const emailRaw = clean(cell(r, 'email'), EMAIL_MAX + 1);
       let email: string | null = null;
       if (emailRaw) { const e = normalizeEmail(emailRaw); if (EMAIL_ADDRESS.test(e) && e.length <= EMAIL_MAX) email = e; else notes.push(`“${emailRaw}” is not an email address; left out.`); }
@@ -1041,7 +1079,7 @@ export function plan(s: Snapshot, input: PlanInput): Plan {
       }
       const paperForm = dateOf(r, 'paper_consent', 'Consent signed on paper', problems, notes);
       if (paperForm && paperForm > today) problems.push(`Consent signed on paper ${ymdText(paperForm)} is after today.`);
-      const notesText = [clean(cell(r, 'notes'), NOTES_MAX), extraNote, birthYear ? `Born in ${birthYear} (the old records give only the year)` : null].filter(Boolean).join(' · ') || null;
+      const notesText = [clean(cell(r, 'notes'), NOTES_MAX), extraNote, birthYear ? birthYearNote(birthYear) : null].filter(Boolean).join(' · ') || null;
       const patient: PatientIn = {
         chartNo, first, middle: tidyName(cell(r, 'middle_name')).slice(0, NAME_PART_MAX) || null, last, suffix,
         birth, sex: sexRaw === 'bad' ? null : sexRaw, phone: phone.mobile, email,

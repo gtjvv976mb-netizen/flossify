@@ -18,13 +18,19 @@
 //              can_edit_records, the queue's own rule); null for anyone else,
 //              and then the inbox leaves the row out. The sidebar's Patients
 //              tab shows the same number.
+//   closed   — visits in the next 14 days that sit in time the clinic is not open for booking (lunch, a
+//              closed day, a dentist away or not in, a chair out of use, outside the hours) and that nobody
+//              has kept there (appointment.blocked_ok_at null): Calls → In closed time's rule
+//              (src/lib/blocks.ts, VISIT_AHEAD_SQL and IN_SCOPE_SQL against clinic_unavailable(), 040),
+//              over two weeks. Only for someone who may change the schedule (schedule.edit); null otherwise.
 //
 // One transaction under withClinic(), so row-level security keeps every count
 // to this branch. It never breaks the page: if it cannot be read, the inbox
 // shows no number.
 import { withClinic } from '../../lib/db';
+import { IN_SCOPE_SQL, VISIT_AHEAD_SQL } from '../../lib/blocks';
 
-export interface Inbox { failed: number; replies: number; requests: number; forms: number | null; total: number }
+export interface Inbox { failed: number; replies: number; requests: number; forms: number | null; closed: number | null; total: number }
 
 /** Messages sets this when it shows the replies; path-scoped to the branch. */
 export const SEEN_COOKIE = 'fl_replies_seen';
@@ -51,10 +57,17 @@ export async function inboxFor(clinicId: string, seen: Date, staffId?: string | 
              and status not in ('cancelled', 'no_show', 'completed')
              and starts_at >= now() - interval '1 day')::int as requests,
          case when staff_can($3::uuid, $4::uuid, 'records.edit')
-              then (select count(*) from patient_form where status = 'new')::int end as forms`,
+              then (select count(*) from patient_form where status = 'new')::int end as forms,
+         case when staff_can($3::uuid, $4::uuid, 'schedule.edit')
+              then (with u as materialized (select * from clinic_unavailable($4::uuid, now(), now() + interval '14 days'))
+                    select count(*) from appointment a
+                     where a.clinic_id = $4::uuid and a.blocked_ok_at is null and ${VISIT_AHEAD_SQL}
+                       and a.starts_at < now() + interval '14 days'
+                       and exists (select 1 from u where ${IN_SCOPE_SQL}))::int end as closed`,
       [seen, WINDOW_DAYS, staffId ?? null, clinicId])).rows[0]);
     const forms: number | null = r.forms ?? null;
-    return { failed: r.failed, replies: r.replies, requests: r.requests, forms, total: r.failed + r.replies + r.requests + (forms ?? 0) };
+    const closed: number | null = r.closed ?? null;
+    return { failed: r.failed, replies: r.replies, requests: r.requests, forms, closed, total: r.failed + r.replies + r.requests + (forms ?? 0) + (closed ?? 0) };
   } catch (e) {
     console.error('inbox: could not count', e);
     return null;

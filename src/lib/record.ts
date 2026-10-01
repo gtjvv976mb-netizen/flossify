@@ -1,6 +1,6 @@
 // The clinical record beyond health and the chart (033): the treatment plan, treatments done,
-// clinical notes, prescriptions, files (X-rays, photos, documents), lab cases, the next check-up —
-// and the Timeline, everything that happened to a patient in one list, newest first.
+// clinical notes, prescriptions, files (X-rays, photos, documents), lab cases, the next check-up, and the
+// chart's history. The Treatment record, the ledger of what was done and paid, is src/lib/treatment-record.ts.
 //
 // Every read and write runs inside withClinic (row-level security decides whether the patient is
 // here at all); every write first asks canEditRecords (the role's "records.edit") in the same
@@ -15,8 +15,10 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { Tx } from './db';
-import { canEditRecords, dateText, manilaToday, oneLine } from './health';
+import { canEditRecords, manilaToday, oneLine } from './health';
 import { UPLOAD_DIR } from './uploads';
+import { calloutWorthy } from './chart-offer';
+import { chartFromRecord, offerFor } from './chart-write';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -33,7 +35,16 @@ export function teethFrom(v: unknown): number[] {
   return out;
 }
 const toothOf = (v: FormDataEntryValue | null) => { const t = teethFrom(v); return t.length ? t[0] : null; };
-const surfaceOf = (v: FormDataEntryValue | null) => { const s = String(v ?? '').toUpperCase().replace(/[^A-Z]/g, ''); return s && SURFACE.test(s) ? s : null; };
+/** "MO", "M O", "MMO" → "MO": letters only, each once, then checked. */
+const surfaceOf = (v: FormDataEntryValue | null) => { const s = [...new Set(String(v ?? '').toUpperCase().replace(/[^A-Z]/g, ''))].join(''); return s && SURFACE.test(s) ? s : null; };
+/** The tooth a ToothPick posted. The typed box wins when the radios hold nothing; both holding a tooth,
+ *  and different, is a clash (scripts off). An older page posts `fdi` as text; it reads the same. */
+function pickedTooth(form: FormData): { raw: string; fdi: number | null; clash: string | null } {
+  const typed = String(form.get('fdi_typed') ?? '').trim(), picked = String(form.get('fdi') ?? '').trim();
+  const raw = typed || picked, fdi = toothOf(raw);
+  const clash = typed && picked && fdi && toothOf(picked) !== fdi ? `${picked} is picked and ${typed} is typed. Keep one of them.` : null;
+  return { raw, fdi, clash };
+}
 /** "1,500", "₱1500.50" → centavos-safe string for numeric(12,2), or null when it is not an amount. */
 export function amountOf(v: unknown): string | null {
   const s = String(v ?? '').replace(/[₱,\s]/g, '');
@@ -42,7 +53,6 @@ export function amountOf(v: unknown): string | null {
   return s;
 }
 const dayOf = (v: FormDataEntryValue | null) => { const s = String(v ?? '').trim(); return ISO_DAY.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) ? s : null; };
-const peso = (n: number | string) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 
 const looksLike = (mime: string, b: Buffer) =>
   mime === 'image/jpeg' ? b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff
@@ -74,12 +84,17 @@ export interface PlanItem { id: string; loaId: string | null; name: string; fdi:
 export interface Done { id: string; visitId: string | null; name: string; code: string | null; category: string | null; fdi: number | null; surface: string | null; price: string; at: Date; dentist: string | null; note: string | null; fromPlan: boolean }
 export interface Note { id: string; visitId: string | null; visitOn: string; dentist: string | null; complaint: string | null; findings: string | null; diagnosis: string | null; treatment: string | null; plan: string | null; teeth: number[]; amends: string | null; by: string | null; at: Date }
 export interface RxItem { drug: string; strength: string; qty: string; sig: string }
-export interface Rx { id: string; visitId: string | null; at: Date; prescriber: string | null; prescriberId: string; prc: string | null; ptr: string | null; items: RxItem[]; notes: string | null }
+/** ptr / ptrYear: the copy of the prescriber's PTR taken when it was saved (041), never the live staff value. */
+export interface Rx { id: string; visitId: string | null; at: Date; prescriber: string | null; prescriberId: string; prc: string | null; ptr: string | null; ptrYear: number | null; items: RxItem[]; notes: string | null }
 export interface FileRow { id: string; visitId: string | null; kind: string; mime: string; bytes: number; takenAt: string | null; fdi: number | null; caption: string | null; by: string | null; at: Date; thumb: boolean }
 export interface Recall { id: string; dueOn: string; reason: string; by: string | null; at: Date; /** The Manila day the check-up text last went (036), or null. */ textedOn: string | null }
 export interface Lab { id: string; lab: string; description: string; shade: string | null; sentOn: string | null; dueOn: string | null; receivedOn: string | null; cost: string; status: string; note: string | null; at: Date }
-export interface Clinician { id: string; name: string; prc: string | null; ptr: string | null }
-export interface CatalogItem { id: string; name: string; price: string; max: string | null; from: boolean; tooth: boolean; category: string | null }
+/** ptr / ptrYear: the PTR on file now; rank / isOwner: their role's, for who may fix it (ptrFix on the record page). */
+export interface Clinician { id: string; name: string; prc: string | null; ptr: string | null; ptrYear: number | null; rank: number | null; isOwner: boolean }
+/** code: the fee guide's code. effect: what it leaves on the chart (procedure_catalog.chart_effect, 042: filled, sealant,
+ *  root_canal, crown, missing, veneer; null for none): the picker carries the chart's surfaces over for filled and
+ *  sealant only, and Record a treatment offers to chart it. */
+export interface CatalogItem { id: string; code: string; effect: string | null; name: string; price: string; max: string | null; from: boolean; tooth: boolean; category: string | null }
 
 export interface Clinical { plan: PlanItem[]; done: Done[]; notes: Note[]; rx: Rx[]; files: FileRow[]; recall: Recall | null; labs: Lab[]; clinicians: Clinician[]; catalog: CatalogItem[] }
 
@@ -93,7 +108,7 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
     tx.query(`select n.*, to_char(n.visit_on, 'YYYY-MM-DD') as day, d.full_name as dentist, c.full_name as by_name
                 from clinical_note n left join staff d on d.id = n.dentist_id left join staff c on c.id = n.created_by
                where n.patient_id = $1 order by n.visit_on desc, n.created_at desc limit 300`, [patientId]),
-    tx.query(`select r.id, r.appointment_id, r.issued_at, r.items, r.notes, r.prescriber_id, s.full_name, s.prc_licence, s.ptr_number
+    tx.query(`select r.id, r.appointment_id, r.issued_at, r.items, r.notes, r.prescriber_id, s.full_name, s.prc_licence, r.ptr_number, r.ptr_year
                 from prescription r left join staff s on s.id = r.prescriber_id where r.patient_id = $1 order by r.issued_at desc limit 200`, [patientId]),
     tx.query(`select a.id, a.appointment_id, a.kind, a.mime, a.bytes, to_char(a.taken_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as taken, a.fdi, a.caption, s.full_name as by_name, a.created_at, a.storage_key
                 from attachment a left join staff s on s.id = a.uploaded_by where a.patient_id = $1 and a.removed_at is null order by coalesce(a.taken_at, a.created_at) desc limit 500`, [patientId]),
@@ -101,90 +116,45 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
                 from recall r left join staff s on s.id = r.created_by where r.patient_id = $1 and r.completed_at is null order by r.due_on limit 1`, [patientId]),
     tx.query(`select l.*, to_char(l.sent_on, 'YYYY-MM-DD') as sent, to_char(l.due_on, 'YYYY-MM-DD') as due, to_char(l.received_on, 'YYYY-MM-DD') as received
                 from lab_order l where l.patient_id = $1 order by (l.status = 'fitted'), l.created_at desc limit 100`, [patientId]),
-    tx.query(`select s.id, s.full_name, s.prc_licence, s.ptr_number from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $1
+    tx.query(`select s.id, s.full_name, s.prc_licence, s.ptr_number, s.ptr_year, cr.rank, cr.is_owner
+                from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $1 left join clinic_role cr on cr.id = s.role_id
                where s.disabled_at is null and s.role in ('owner', 'dentist', 'associate') order by s.full_name`, [clinicId]),
-    tx.query(`select id, name, default_price, price_max, price_from, tooth_scoped, category from procedure_catalog where active order by category nulls last, name`),
+    tx.query(`select id, code, chart_effect, name, default_price, price_max, price_from, tooth_scoped, category from procedure_catalog where active order by category nulls last, name`),
   ]);
   return {
     plan: plan.rows.map((r) => ({ id: r.id, loaId: r.loa_id ?? null, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, phase: r.phase, status: r.status, note: r.note, createdAt: r.created_at, decidedAt: r.decided_at, by: r.by_name })),
     done: done.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, name: r.name, code: r.code ?? null, category: r.category ?? null, fdi: r.fdi, surface: r.surface, price: r.price, at: r.performed_at, dentist: r.dentist, note: r.clinical_note, fromPlan: r.from_plan })),
     notes: notes.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, visitOn: r.day, dentist: r.dentist, complaint: r.complaint, findings: r.findings, diagnosis: r.diagnosis, treatment: r.treatment, plan: r.plan, teeth: r.teeth ?? [], amends: r.amends_id, by: r.by_name, at: r.created_at })),
-    rx: rx.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, at: r.issued_at, prescriber: r.full_name, prescriberId: r.prescriber_id, prc: r.prc_licence, ptr: r.ptr_number, items: Array.isArray(r.items) ? r.items : [], notes: r.notes })),
+    rx: rx.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, at: r.issued_at, prescriber: r.full_name, prescriberId: r.prescriber_id, prc: r.prc_licence, ptr: r.ptr_number, ptrYear: r.ptr_year ?? null, items: Array.isArray(r.items) ? r.items : [], notes: r.notes })),
     files: files.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, kind: r.kind, mime: r.mime, bytes: Number(r.bytes), takenAt: r.taken, fdi: r.fdi, caption: r.caption, by: r.by_name, at: r.created_at, thumb: String(r.storage_key).includes('|thumb') })),
     recall: recall.rows[0] ? { id: recall.rows[0].id, dueOn: recall.rows[0].due, reason: recall.rows[0].reason, by: recall.rows[0].by_name, at: recall.rows[0].created_at, textedOn: recall.rows[0].texted ?? null } : null,
     labs: labs.rows.map((r) => ({ id: r.id, lab: r.lab_name, description: r.description, shade: r.shade, sentOn: r.sent, dueOn: r.due, receivedOn: r.received, cost: r.cost, status: r.status, note: r.note, at: r.created_at })),
-    clinicians: clinicians.rows.map((r) => ({ id: r.id, name: r.full_name, prc: r.prc_licence, ptr: r.ptr_number })),
-    catalog: catalog.rows.map((r) => ({ id: r.id, name: r.name, price: r.default_price, max: r.price_max, from: r.price_from, tooth: r.tooth_scoped, category: r.category })),
+    clinicians: clinicians.rows.map((r) => ({ id: r.id, name: r.full_name, prc: r.prc_licence, ptr: r.ptr_number, ptrYear: r.ptr_year ?? null, rank: r.rank ?? null, isOwner: !!r.is_owner })),
+    catalog: catalog.rows.map((r) => ({ id: r.id, code: r.code, effect: r.chart_effect ?? null, name: r.name, price: r.default_price, max: r.price_max, from: r.price_from, tooth: r.tooth_scoped, category: r.category })),
   };
 }
 
-// --- the Timeline ------------------------------------------------------------------------------
-export type TimelineKind = 'visit' | 'treatment' | 'note' | 'health' | 'chart' | 'money' | 'file' | 'message' | 'consent' | 'record';
-export interface TimelineEvent {
-  at: Date; kind: TimelineKind; title: string; detail?: string | null; by?: string | null; section?: string; tone?: 'neutral' | 'accent' | 'warn' | 'alert' | 'muted';
-  /** What the line is about ("done:<id>", "pay:<id>" …): a line a visit on the Timeline already holds is not listed again. */
-  ref?: string;
-}
-export const TIMELINE_FILTERS: { id: TimelineKind | 'all'; label: string }[] = [
-  { id: 'all', label: 'Everything' }, { id: 'visit', label: 'Visits' }, { id: 'treatment', label: 'Treatment' }, { id: 'note', label: 'Notes & Rx' },
-  { id: 'health', label: 'Health' }, { id: 'chart', label: 'Chart' }, { id: 'file', label: 'Files' }, { id: 'money', label: 'Money' },
-  { id: 'consent', label: 'Consent & forms' }, { id: 'message', label: 'Texts' },
-];
-
-const VISIT_WORD: Record<string, string> = { booked: 'Booked', confirmed: 'Confirmed', arrived: 'Arrived', in_lobby: 'Waiting', in_chair: 'In the chair', completed: 'Visit done', cancelled: 'Cancelled', no_show: 'Did not come' };
-
-/** Everything that happened, newest first. `money`: whether this person may see amounts. */
-export async function loadTimeline(tx: Tx, patientId: string, c: Clinical, money: boolean): Promise<TimelineEvent[]> {
-  const ev: TimelineEvent[] = [];
-  const [p, visits, health, chart, consents, forms, texts, stmts, pays] = await Promise.all([
-    tx.query(`select p.created_at, p.import_id is not null as imported, s.full_name from patient p left join staff s on s.id = p.created_by where p.id = $1`, [patientId]),
-    tx.query(`select a.id, a.starts_at, a.status, a.reason, a.source, a.date_only, coalesce(s.full_name, a.dentist_name) as dentist, a.teeth
-                from appointment a left join staff s on s.id = a.dentist_id where a.patient_id = $1 order by a.starts_at desc limit 300`, [patientId]),
-    tx.query(`select h.answered_at, h.allergies, h.conditions, h.medications, h.answered_by, s.full_name from medical_history h left join staff s on s.id = h.recorded_by
-               where h.patient_id = $1 order by h.answered_at desc limit 100`, [patientId]),
-    tx.query(`select date_trunc('minute', t.noted_at) as at, s.full_name, count(*)::int as n, string_agg(distinct t.fdi::text, ', ' order by t.fdi::text) as teeth
-                from tooth_state t left join staff s on s.id = t.noted_by where t.patient_id = $1 group by 1, 2 order by 1 desc limit 200`, [patientId]),
-    tx.query(`select c.id, c.appointment_id, c.given_at, c.channel, c.given_by_name, v.kind from patient_consent c join consent_version v on v.id = c.version_id where c.patient_id = $1 order by c.given_at desc`, [patientId]),
-    tx.query(`select f.decided_at, f.ref from patient_form f where f.patient_id = $1 and f.status = 'added'`, [patientId]),
-    tx.query(`select m.id, m.created_at, m.direction, m.kind, m.status from message_log m where m.patient_id = $1 and m.channel = 'sms' order by m.created_at desc limit 100`, [patientId]),
-    money ? tx.query(`select i.id, i.issued_at, i.series_prefix, i.number, i.total, i.status from invoice i where i.patient_id = $1 and i.status <> 'draft' order by i.issued_at desc limit 100`, [patientId]) : Promise.resolve({ rows: [] as any[] }),
-    money ? tx.query(`select y.id, y.received_at, y.amount, y.method, y.voided_at from payment y where y.patient_id = $1 order by y.received_at desc limit 200`, [patientId]) : Promise.resolve({ rows: [] as any[] }),
-  ]);
-  const row = p.rows[0];
-  if (row) ev.push({ at: row.created_at, kind: 'record', title: row.imported ? 'Brought in from old records' : 'Added as a patient', by: row.full_name, section: 'overview' });
-  for (const v of visits.rows) {
-    const word = VISIT_WORD[v.status] ?? v.status;
-    const future = new Date(v.starts_at) > new Date();
-    ev.push({ ref: `visit:${v.id}`, at: v.starts_at, kind: 'visit', title: future ? `Upcoming visit · ${word.toLowerCase()}` : word, detail: [v.reason, v.teeth?.length ? `teeth ${v.teeth.join(', ')}` : null, v.dentist].filter(Boolean).join(' · ') || null, section: 'visits',
-      tone: v.status === 'cancelled' || v.status === 'no_show' ? 'muted' : v.status === 'completed' ? 'accent' : 'neutral' });
-  }
-  for (const h of health.rows) {
-    const parts = [h.allergies?.length ? `allergies: ${h.allergies.join(', ')}` : null, h.conditions?.length ? `conditions: ${h.conditions.join(', ')}` : null, h.medications?.length ? `medicines: ${h.medications.join(', ')}` : null].filter(Boolean);
-    ev.push({ at: h.answered_at, kind: 'health', title: h.answered_by === 'patient' ? 'Health history from the patient forms' : 'Health history updated', detail: parts.join(' · ') || 'Nothing to note', by: h.full_name, section: 'health', tone: h.allergies?.length ? 'alert' : 'neutral' });
-  }
-  for (const t of chart.rows) ev.push({ at: t.at, kind: 'chart', title: `Chart: ${t.n === 1 ? 'one change' : `${t.n} changes`}`, detail: `Teeth ${t.teeth}`, by: t.full_name, section: 'chart' });
-  for (const k of consents.rows) ev.push({ ref: k.appointment_id ? `pc:${k.id}` : undefined, at: k.given_at, kind: 'consent', title: k.kind === 'treatment' ? 'Agreed to examination and treatment' : 'Agreed to the privacy notice', detail: [({ desk: 'at the desk', paper: 'on paper', web: 'when booking online', form: 'on the patient forms' } as Record<string, string>)[k.channel] ?? k.channel, k.given_by_name ? `by ${k.given_by_name}` : null].filter(Boolean).join(' · '), section: 'consent', tone: 'accent' });
-  for (const f of forms.rows) if (f.decided_at) ev.push({ at: f.decided_at, kind: 'consent', title: `Patient forms added (${f.ref})`, section: 'consent' });
-  for (const m of texts.rows) ev.push({ ref: `msg:${m.id}`, at: m.created_at, kind: 'message', title: m.direction === 'in' ? 'Text received' : ({ confirmation: 'Booking confirmation texted', reminder: 'Reminder texted', manual: 'Text sent' } as Record<string, string>)[m.kind] ?? 'Text sent', detail: m.status === 'failed' ? 'Did not go through' : null, section: 'texts', tone: m.status === 'failed' ? 'alert' : 'neutral' });
-  for (const s of stmts.rows) ev.push({ ref: `stmt:${s.id}`, at: s.issued_at, kind: 'money', title: `Statement ${s.series_prefix}-${String(s.number).padStart(6, '0')}`, detail: `${peso(s.total)}${s.status === 'void' ? ' · void' : s.status === 'paid' ? ' · paid' : ''}`, section: 'money', tone: s.status === 'void' ? 'muted' : 'neutral' });
-  for (const y of pays.rows) ev.push({ ref: `pay:${y.id}`, at: y.received_at, kind: 'money', title: y.voided_at ? 'Payment voided' : 'Payment received', detail: `${peso(y.amount)} · ${y.method}`, section: 'money', tone: y.voided_at ? 'muted' : 'accent' });
-  for (const d of c.done) ev.push({ ref: `done:${d.id}`, at: d.at, kind: 'treatment', title: `Done: ${d.name}`, detail: [d.fdi ? `tooth ${d.fdi}${d.surface ? ` ${d.surface}` : ''}` : null, d.note].filter(Boolean).join(' · ') || null, by: d.dentist, section: 'treatment', tone: 'accent' });
-  for (const i of c.plan) ev.push({ at: i.createdAt, kind: 'treatment', title: `Planned: ${i.name}`, detail: [i.fdi ? `tooth ${i.fdi}${i.surface ? ` ${i.surface}` : ''}` : null, `phase ${i.phase}`].filter(Boolean).join(' · '), by: i.by, section: 'treatment' });
-  for (const n of c.notes) ev.push({ ref: `note:${n.id}`, at: n.at, kind: 'note', title: n.amends ? 'Addendum to a clinical note' : 'Clinical note', detail: [n.diagnosis, n.treatment].filter(Boolean).join(' · ').slice(0, 160) || n.complaint, by: n.dentist ?? n.by, section: 'notes' });
-  for (const r of c.rx) ev.push({ ref: `rx:${r.id}`, at: r.at, kind: 'note', title: 'Prescription', detail: r.items.map((i) => [i.drug, i.strength].filter(Boolean).join(' ')).join(', '), by: r.prescriber, section: 'rx' });
-  for (const f of c.files) ev.push({ ref: `file:${f.id}`, at: f.at, kind: 'file', title: `${FILE_KINDS[f.kind] ?? 'File'} added`, detail: [f.caption, f.fdi ? `tooth ${f.fdi}` : null].filter(Boolean).join(' · ') || null, by: f.by, section: 'files' });
-  for (const l of c.labs) ev.push({ at: l.at, kind: 'treatment', title: `Lab case: ${l.description}`, detail: `${l.lab} · ${LAB_STATUS[l.status] ?? l.status}`, section: 'treatment' });
-  if (c.recall) ev.push({ at: c.recall.at, kind: 'visit', title: `Next check-up set for ${dateText(c.recall.dueOn)}`, detail: c.recall.reason, by: c.recall.by, section: 'overview' });
-  return ev.filter((e) => e.at).sort((a, b) => +new Date(b.at) - +new Date(a.at));
+// --- changes to the chart ---------------------------------------------------------------------
+export interface ChartChange { at: Date; by: string | null; n: number; teeth: string }
+/** The chart's changes, newest first, grouped by the minute and the person (tooth_state rows): the Chart section's
+ *  "Changes to the chart". The chart itself is the odontogram's; this only reads its history. */
+export async function loadChartChanges(tx: Tx, patientId: string): Promise<ChartChange[]> {
+  const { rows } = await tx.query(
+    `select date_trunc('minute', t.noted_at) as at, s.full_name, count(*)::int as n, string_agg(distinct t.fdi::text, ', ' order by t.fdi::text) as teeth
+       from tooth_state t left join staff s on s.id = t.noted_by where t.patient_id = $1 group by 1, 2 order by 1 desc limit 200`, [patientId]);
+  return rows.map((r) => ({ at: r.at, by: r.full_name ?? null, n: r.n, teeth: r.teeth }));
 }
 
 // --- writing -----------------------------------------------------------------------------------
-export interface Ctx { clinicId: string; staffId: string; patientId: string }
-/** What a post did: where to go back to, or what was wrong (with what was typed, to show again). */
-export type Outcome = { ok: true; section: string; saved: string } | { ok: false; section: string; problem: string; values: Record<string, string> };
+/** sid: the tag of the sign-in the page was drawn under (chartSession(session)); the chart writes need it (p01 step 2). */
+export interface Ctx { clinicId: string; staffId: string; patientId: string; sid?: string }
+/** What a post did: where to go back to, or what was wrong (with what was typed, to show again). qs: more for the
+ *  address it lands on (treated=<procedure_done id> for the chart's offer, chartskip=changed|ended). */
+export type Outcome = { ok: true; section: string; saved: string; qs?: Record<string, string> } | { ok: false; section: string; problem: string; values: Record<string, string> };
 const SECTION_OF: Record<string, string> = {
   'plan-add': 'treatment', 'plan-status': 'treatment', 'plan-remove': 'treatment', 'done-add': 'treatment', 'lab-add': 'treatment', 'lab-next': 'treatment',
   'note-add': 'notes', 'rx-add': 'rx', 'file-add': 'files', 'file-remove': 'files', 'recall-set': 'overview', 'recall-done': 'overview', 'recall-clear': 'overview',
+  'chart-apply': 'chart',
 };
 export const RECORD_INTENTS = new Set(Object.keys(SECTION_OF));
 
@@ -207,14 +177,20 @@ export async function visitOf(tx: Tx, form: FormData, patientId: string): Promis
 /** One post from the record page. The patient must exist here (RLS) and the person may edit records. */
 export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormData): Promise<Outcome | 'none'> {
   const section = SECTION_OF[intent] ?? 'overview';
-  const values = Object.fromEntries([...form.entries()].filter(([k, v]) => typeof v === 'string' && !['_csrf', 'intent'].includes(k)).map(([k, v]) => [k, String(v)])) as Record<string, string>;
+  // What was posted, to draw again on a refusal. The tooth picker posts several `teeth` (a note) and `surface`
+  // (M, O, D …) entries: they are kept together, space-separated, not just the last one.
+  const values: Record<string, string> = {};
+  for (const [k, v] of form.entries()) {
+    if (typeof v !== 'string' || k === '_csrf' || k === 'intent') continue;
+    values[k] = (k === 'teeth' || k === 'surface') && k in values ? `${values[k]} ${v}` : v;
+  }
   const fail = (problem: string): Outcome => ({ ok: false, section, problem, values });
   const done = (saved: string): Outcome => ({ ok: true, section, saved });
   const here = (await tx.query('select id from patient where id = $1 and archived_at is null', [c.patientId])).rows[0];
   if (!here) return 'none';
   if (!(await canEditRecords(tx, c.staffId, c.clinicId))) return fail('Your role cannot change records at this branch. Ask the owner.');
   const clinician = async (id: string) => UUID.test(id) ? (await tx.query(
-    `select s.id, s.full_name, s.prc_licence from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $2
+    `select s.id, s.full_name, s.prc_licence, s.ptr_number, s.ptr_year from staff s join staff_access a on a.staff_id = s.id and a.clinic_id = $2
       where s.id = $1 and s.disabled_at is null and s.role in ('owner', 'dentist', 'associate')`, [id, c.clinicId])).rows[0] : undefined;
   const catalogItem = async (id: string) => UUID.test(id) ? (await tx.query('select id, name, default_price from procedure_catalog where id = $1', [id])).rows[0] : undefined;
 
@@ -224,11 +200,12 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       const name = line(form.get('name'), 160) || cat?.name || '';
       if (!name) return fail('Choose a treatment from your fee guide, or type one.');
       if (name.length > 160) return fail('Keep the treatment’s name to 160 characters.');
-      const typedTooth = String(form.get('fdi') ?? '').trim();
-      const fdi = toothOf(form.get('fdi'));
+      const { raw: typedTooth, fdi, clash } = pickedTooth(form);
       if (typedTooth && !fdi) return fail('That is not a tooth number. Use the FDI numbers on the chart: 11 to 48, or 51 to 85 for baby teeth.');
-      const typedSurface = String(form.get('surface') ?? '').trim();
-      const surface = surfaceOf(form.get('surface'));
+      if (clash) return fail(clash);
+      // The picker's toggles post one `surface` each (M, O …); an older page posts them as one text ("MOD").
+      const typedSurface = form.getAll('surface').map(String).join('').trim();
+      const surface = surfaceOf(typedSurface);
       if (typedSurface && !surface) return fail('Surfaces are letters: M, O, D, B, L (or I, F, P), up to five, like “MOD”.');
       const price = amountOf(form.get('price') || (cat ? cat.default_price : ''));
       if (price === null) return fail('Write the price as a number, like 1500 or 1,500.00.');
@@ -254,7 +231,19 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
          values ($1, $2, $3, $4, $5, $6, $7, $8, case when $9::date = (now() at time zone 'Asia/Manila')::date then now() else ($9::date + time '12:00') at time zone 'Asia/Manila' end, $10, $11, $12) returning id`,
         [c.clinicId, c.patientId, cat?.id ?? null, name, fdi, surface, price, dentist.id, on, note || null, c.staffId, await visitOf(tx, form, c.patientId)]);
       await audit(tx, c, 'record.done_add', 'procedure_done', d.id);
-      return done('done');
+      // The chart (p01 step 2): the line in Record a treatment, ticked by the person, charts it in this same save under the
+      // chart's rules; the treatment is saved whatever that answers. Unticked (or not offered), the page lands on the
+      // follow-up offer when there is one worth a word.
+      const chartTo = String(form.get('chart_from') ?? '');
+      if (form.get('chart') === '1' && chartTo) {
+        const r = await chartFromRecord(tx, { clinicId: c.clinicId, staffId: c.staffId, patientId: c.patientId, sid: c.sid ?? '' },
+          { treated: d.id, from: chartTo, base: form.get('chart_base'), sid: String(form.get('sid') ?? '') });
+        if (r.kind === 'applied' || r.kind === 'changed' || r.kind === 'ended') {
+          return { ok: true, section, saved: 'done', qs: { treated: d.id, ...(r.kind === 'changed' || r.kind === 'ended' ? { chartskip: r.kind } : {}) } };
+        }
+      }
+      const o = await offerFor(tx, c.patientId, d.id);
+      return { ok: true, section, saved: 'done', qs: o && calloutWorthy(o.offer) ? { treated: d.id } : undefined };
     }
     case 'plan-status': {
       const id = String(form.get('item') ?? '');
@@ -280,7 +269,22 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
                           and not exists (select 1 from treatment_plan_item where loa_id = $1 and status in ('planned', 'accepted'))`, [it.loa_id]);
       }
       await audit(tx, c, `record.plan_${to}`, 'treatment_plan_item', id);
+      // Marked done: the follow-up offer to chart it, when there is one worth a word (p01 step 2).
+      if (doneId) {
+        const o = await offerFor(tx, c.patientId, doneId);
+        return { ok: true, section, saved: 'plan-done', qs: o && calloutWorthy(o.offer) ? { treated: doneId } : undefined };
+      }
       return done(`plan-${to}`);
+    }
+    case 'chart-apply': {
+      // Update the chart (the offer's button): only on a page drawn under this sign-in, and only when the tooth still
+      // shows what the person was shown (src/lib/chart-write.ts). canEditRecords ran above, in this transaction.
+      const id = String(form.get('treated') ?? '');
+      if (!UUID.test(id)) return fail('Choose the treatment to chart.');
+      const r = await chartFromRecord(tx, { clinicId: c.clinicId, staffId: c.staffId, patientId: c.patientId, sid: c.sid ?? '' },
+        { treated: id, from: String(form.get('from') ?? ''), base: form.get('base'), sid: String(form.get('sid') ?? '') });
+      if (r.kind === 'missing') return fail('That treatment is not on this record any more. Nothing was changed.');
+      return { ok: true, section, saved: 'charted', qs: { treated: id, ...(r.kind === 'changed' || r.kind === 'ended' ? { chartskip: r.kind } : {}) } };
     }
     case 'plan-remove': {
       const id = String(form.get('item') ?? '');
@@ -302,7 +306,9 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       const { rows: [n] } = await tx.query(
         `insert into clinical_note (clinic_id, patient_id, visit_on, dentist_id, complaint, findings, diagnosis, treatment, plan, teeth, amends_id, created_by, appointment_id)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
-        [c.clinicId, c.patientId, on, dentist?.id ?? null, fields.complaint || null, fields.findings || null, fields.diagnosis || null, fields.treatment || null, fields.plan || null, teethFrom(form.get('teeth')), amends || null, c.staffId, await visitOf(tx, form, c.patientId)]);
+        // Ticked teeth (several `teeth`) and typed ones (`teeth_typed`, or an older page's `teeth` text) together: they cannot clash.
+        [c.clinicId, c.patientId, on, dentist?.id ?? null, fields.complaint || null, fields.findings || null, fields.diagnosis || null, fields.treatment || null, fields.plan || null,
+         teethFrom([...form.getAll('teeth'), form.get('teeth_typed') ?? ''].map(String).join(' ')), amends || null, c.staffId, await visitOf(tx, form, c.patientId)]);
       await audit(tx, c, amends ? 'record.note_addendum' : 'record.note_add', 'clinical_note', n.id);
       return done(amends ? 'addendum' : 'note');
     }
@@ -321,9 +327,11 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       }
       if (!items.length) return fail('Write at least one medicine.');
       const notes = text(form.get('notes'), 500);
+      // The paper takes a copy of the prescriber's PTR as it is on file now, in this transaction (041); no PTR state refuses.
       const { rows: [r] } = await tx.query(
-        `insert into prescription (clinic_id, patient_id, prescriber_id, items, notes, appointment_id) values ($1, $2, $3, $4::jsonb, $5, $6) returning id`,
-        [c.clinicId, c.patientId, prescriber.id, JSON.stringify(items), notes || null, await visitOf(tx, form, c.patientId)]);
+        `insert into prescription (clinic_id, patient_id, prescriber_id, items, notes, appointment_id, ptr_number, ptr_year)
+         values ($1, $2, $3, $4::jsonb, $5, $6, $7, $8) returning id`,
+        [c.clinicId, c.patientId, prescriber.id, JSON.stringify(items), notes || null, await visitOf(tx, form, c.patientId), prescriber.ptr_number ?? null, prescriber.ptr_year ?? null]);
       await audit(tx, c, 'record.rx_add', 'prescription', r.id);
       return { ok: true, section, saved: `rx:${r.id}` };
     }
@@ -333,9 +341,9 @@ export async function recordAction(tx: Tx, c: Ctx, intent: string, form: FormDat
       if (files.length > 10) return fail('Add up to 10 files at a time.');
       const kind = String(form.get('kind') ?? '');
       if (!Object.hasOwn(FILE_KINDS, kind)) return fail('Say what the file is: an X-ray, a photo or a document.');
-      const typedTooth = String(form.get('fdi') ?? '').trim();
-      const fdi = toothOf(form.get('fdi'));
+      const { raw: typedTooth, fdi, clash } = pickedTooth(form);
       if (typedTooth && !fdi) return fail('That is not a tooth number. Use the FDI numbers on the chart, or leave it empty.');
+      if (clash) return fail(clash);
       const taken = dayOf(form.get('taken_on'));
       if (taken && taken > manilaToday()) return fail('The day it was taken cannot be in the future.');
       const caption = line(form.get('caption'), 200);

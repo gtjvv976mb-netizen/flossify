@@ -10,6 +10,16 @@
 // admin on the person's page (Clinic settings → People), with the rules that
 // page keeps; an owner or admin gets a link to their own.
 //
+// The PTR is the one exception: a person sets their own. It is no sign-in
+// detail (nothing finds a person by it, no code goes to it), and it only
+// prints on the prescriptions and letters they sign, copied onto each when
+// saved (041). Saving it bumps no token_version, signs nobody out, needs no
+// throttle, and is audited as staff.ptr. The form posts what it was drawn
+// with, so a PTR the owner changed meanwhile is never silently put back
+// (src/lib/ptr.ts). The handler is split by action: action=ptr is the PTR,
+// anything else is the password form, as it always was (it posts
+// action=password).
+//
 // Change my password: the current one, then the new one twice. The new one
 // goes through setPassword() (src/lib/auth.ts), which bumps token_version, so
 // every other session this person has ends at once (canOpen compares it on
@@ -33,15 +43,19 @@ import Upcoming from '../settings/_ui/Upcoming.astro';
 import Email from '../settings/_ui/Email.astro';
 import '../settings/_ui/settings.css';
 import { requireWorkspace } from '../../../../lib/workspace';
-import { pool } from '../../../../lib/db';
+import { pool, withClinic } from '../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
 import { verifyPassword, setPassword, setSession, passwordProblem, authEvent, PASSWORD_MIN } from '../../../../lib/auth';
 import { hit, refund, clientIp, waitText } from '../../../../lib/throttle';
 import { prettyPhone } from '../../../../lib/messages';
-import { DAYS, ago, dateText, daysText, prcState, treats } from '../settings/_lib/common';
+import { DAYS, ago, dateText, daysText, prcState, signsPapers, treats } from '../settings/_lib/common';
 import { daysOf, upcomingFor } from '../settings/_lib/people';
 import { can } from '../../../../lib/can';
 import ThemeSwitch from '../../../../components/ThemeSwitch.astro';
+import {
+  readPtr, ptrDrawn, ptrConflictText, ptrState, ptrChip, ptrMine, ptrLine, ptrYearOptions, PTR_MAX, type PtrDrawn,
+} from '../../../../lib/ptr';
+import { manilaToday } from '../../../../lib/health';
 
 // Wrong current passwords, per person: [tries, window in seconds]. (src/lib/throttle.ts keeps the
 // service's limits in LIMITS; this one waits to move there.)
@@ -56,51 +70,84 @@ const canSetUp = can(clinic, 'people.manage');
 interface Me {
   full_name: string; role: string; username: string; email: string | null; phone: string | null; prc_licence: string | null; prc_status: string | null; prc_checked_on: Date | null;
   prc_note: string | null; specialty: string | null; slug: string | null; practices: string[] | null; created_at: Date; password_set_at: Date | null; last_seen_at: Date | null;
+  ptr_number: string | null; ptr_year: number | null;
 }
 // staff is group data outside row-level security; this is the signed-in person's own row.
 const readMe = async () => (await pool.query(
   `select full_name, role, username::text as username, email::text as email, phone, prc_licence, prc_status, prc_checked_on, prc_note, specialty, slug, practices,
-          created_at, password_set_at, last_seen_at
+          created_at, password_set_at, last_seen_at, ptr_number, ptr_year
      from staff where id = $1`, [session.staffId])).rows[0] as Me;
 
-let error = '';
+let error = '', ptrError = '';
+let ptrForm: PtrDrawn | null = null;          // what the PTR form draws again after a refusal
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const current = String(form.get('current') ?? '');
-  const password = String(form.get('password') ?? '');
-  const confirm = String(form.get('confirm') ?? '');
-  const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
-  const key = `pwchange:s:${session.staffId}`;
-  const problem = passwordProblem(password);
-  if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
-  else if (!current) error = 'Type your current password first.';
-  else if (problem) error = problem;
-  else if (password !== confirm) error = 'The two new passwords don’t match. Type the new one twice, the same.';
-  else {
-    // Counted first, atomically, and given back when it was right: only wrong tries add up.
-    const gate = await hit(key, ...PASSWORD_LIMIT);
-    if (!gate.allowed) {
-      error = `Too many wrong tries. ${waitText(gate.retryAfter)} Or sign out and use “Forgot password” on the sign-in page.`;
-      await authEvent('password.locked', { staffId: session.staffId, ip, ua });
-    } else {
-      const { rows } = await pool.query('select password_hash from staff where id = $1 and disabled_at is null', [session.staffId]);
-      if (!rows[0] || !verifyPassword(current, rows[0].password_hash)) {
-        error = 'That is not your current password. Check it, and Caps Lock.';
-        await authEvent('password.fail', { staffId: session.staffId, ip, ua });
-      } else if (password === current) {
-        // Said only once the current password is known to be right; a right one never counts against them.
-        await refund(key);
-        error = 'That is the password you have now. Choose a new one.';
+  if (String(form.get('action') ?? '') === 'ptr') {
+    const today = manilaToday();
+    const row = (await pool.query('select role, prc_licence, ptr_number, ptr_year, must_change_password from staff where id = $1 and disabled_at is null', [session.staffId])).rows[0];
+    const onFile = { number: row?.ptr_number ?? null, year: row?.ptr_year ?? null };
+    const r = readPtr(form, onFile, today);
+    ptrForm = r.conflict ? ptrDrawn(r.conflict, today) : r.typed;
+    if (!csrfOk(Astro.cookies, form)) ptrError = CSRF_MESSAGE;
+    else if (!row || !signsPapers(row)) ptrError = 'Only a dentist who signs prescriptions keeps a PTR here.';
+    else if (row.must_change_password) ptrError = 'Choose your own password first, then add your PTR.';
+    else if (r.conflict) ptrError = ptrConflictText(null, r.conflict);
+    else if (r.problem) ptrError = r.problem;
+    else if (!r.changed) return Astro.redirect(`${here}?done=ptr-same#ptr`, 303);
+    else {
+      // Written only if the row still holds what was just read: a change in between is a conflict, not a lost write.
+      const w = await pool.query(
+        `update staff set ptr_number = $2, ptr_year = $3
+          where id = $1 and disabled_at is null and ptr_number is not distinct from $4 and ptr_year is not distinct from $5`,
+        [session.staffId, r.value.number, r.value.year, onFile.number, onFile.year]);
+      if (!w.rowCount) {
+        const now = (await pool.query('select ptr_number, ptr_year from staff where id = $1', [session.staffId])).rows[0];
+        const v = { number: now?.ptr_number ?? null, year: now?.ptr_year ?? null };
+        ptrForm = ptrDrawn(v, today);
+        ptrError = ptrConflictText(null, v);
       } else {
-        await refund(key);
-        const tv = await setPassword(session.staffId, password);
-        // A code still live could set the password again behind them.
-        await pool.query('update one_time_code set used_at = now() where staff_id = $1 and used_at is null', [session.staffId]);
-        await authEvent('password.change', { staffId: session.staffId, ip, ua });
-        // This device carries on, for what was left of its sign-in; every other one is out.
-        const hours = Math.max(1, Math.floor((session.exp - Date.now()) / 3_600_000));
-        setSession(Astro.cookies, { staffId: session.staffId, groupId: session.groupId, clinicId: session.clinicId, name: session.name, role: session.role, tv }, hours);
-        return Astro.redirect(`${here}?done=password#password`, 303);
+        await withClinic(clinic.id, (tx) => tx.query(
+          `insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'staff.ptr', 'staff', $2)`, [clinic.id, session.staffId]));
+        return Astro.redirect(`${here}?done=${r.value.number ? 'ptr' : 'ptr-off'}#ptr`, 303);
+      }
+    }
+  } else {
+    const current = String(form.get('current') ?? '');
+    const password = String(form.get('password') ?? '');
+    const confirm = String(form.get('confirm') ?? '');
+    const ip = clientIp(Astro), ua = Astro.request.headers.get('user-agent');
+    const key = `pwchange:s:${session.staffId}`;
+    const problem = passwordProblem(password);
+    if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
+    else if (!current) error = 'Type your current password first.';
+    else if (problem) error = problem;
+    else if (password !== confirm) error = 'The two new passwords don’t match. Type the new one twice, the same.';
+    else {
+      // Counted first, atomically, and given back when it was right: only wrong tries add up.
+      const gate = await hit(key, ...PASSWORD_LIMIT);
+      if (!gate.allowed) {
+        error = `Too many wrong tries. ${waitText(gate.retryAfter)} Or sign out and use “Forgot password” on the sign-in page.`;
+        await authEvent('password.locked', { staffId: session.staffId, ip, ua });
+      } else {
+        const { rows } = await pool.query('select password_hash from staff where id = $1 and disabled_at is null', [session.staffId]);
+        if (!rows[0] || !verifyPassword(current, rows[0].password_hash)) {
+          error = 'That is not your current password. Check it, and Caps Lock.';
+          await authEvent('password.fail', { staffId: session.staffId, ip, ua });
+        } else if (password === current) {
+          // Said only once the current password is known to be right; a right one never counts against them.
+          await refund(key);
+          error = 'That is the password you have now. Choose a new one.';
+        } else {
+          await refund(key);
+          const tv = await setPassword(session.staffId, password);
+          // A code still live could set the password again behind them.
+          await pool.query('update one_time_code set used_at = now() where staff_id = $1 and used_at is null', [session.staffId]);
+          await authEvent('password.change', { staffId: session.staffId, ip, ua });
+          // This device carries on, for what was left of its sign-in; every other one is out.
+          const hours = Math.max(1, Math.floor((session.exp - Date.now()) / 3_600_000));
+          setSession(Astro.cookies, { staffId: session.staffId, groupId: session.groupId, clinicId: session.clinicId, name: session.name, role: session.role, tv }, hours);
+          return Astro.redirect(`${here}?done=password#password`, 303);
+        }
       }
     }
   }
@@ -120,7 +167,20 @@ const financeWords = roleMoney
   : roleBills
     ? `Yes, by role. Claim amounts: ${clinic.can_view_finance ? 'shown' : 'hidden'}`
     : sees ? 'Yes, claim amounts included' : 'No';
-const done = Astro.url.searchParams.get('done') === 'password';
+const done = Astro.url.searchParams.get('done');
+// The PTR, for anyone who signs papers: its state today, and what its form draws.
+const today = manilaToday();
+const ptrShown = signsPapers(me);
+const ptrNow = { number: me.ptr_number, year: me.ptr_year };
+const ptrSt = ptrState(ptrNow, today);
+const ptrChipNow = ptrChip(ptrSt, ptrNow);
+const ptrDraw = ptrForm ?? ptrDrawn(ptrNow, today);
+const ptrYears = ptrYearOptions(today, me.ptr_year, Number(ptrDraw.ptrYear) || null);
+const PTR_DONE: Record<string, string> = {
+  ptr: 'Your PTR is saved. Prescriptions and certificates you sign from now on carry it; papers already written keep what they printed with.',
+  'ptr-off': 'Your PTR is taken off. What you sign prints a blank PTR line until you add one.',
+  'ptr-same': 'Nothing changed in your PTR.',
+};
 const roleLabel = clinic.role_name;
 ---
 
@@ -141,6 +201,8 @@ const roleLabel = clinic.role_name;
           <p class="set-person-facts"><span><Icon name="clinic" size={16} />{branches.length > 1 ? `Showing ${clinic.name}, one of your ${branches.length} branches` : clinic.name}</span></p>
         </div>
       </div>
+      {/* A PTR post from someone with no PTR block (it was forged) is answered here. */}
+      {ptrError && !ptrShown && <Note tone="alert" text={ptrError} class="mt-5" refused />}
     </Pane>
 
     <div class="set-two">
@@ -153,7 +215,7 @@ const roleLabel = clinic.role_name;
           {clinic.must_change
             ? <p class="ws-callout mb-5" data-tone="info"><Icon name="info" /><span>Someone set your password for you. Choose your own to start: type the one you were given, then yours twice. The rest of {clinic.name} opens as soon as it’s saved.</span></p>
             : <p class="set-intro mb-5">Your other devices are signed out when you change it. This one stays signed in.</p>}
-          {done && <Note tone="ok" text="Your password is changed. Every other device is signed out; sign in there with the new one." class="mb-5" />}
+          {done === 'password' && <Note tone="ok" text="Your password is changed. Every other device is signed out; sign in there with the new one." class="mb-5" />}
           {error && <Note tone="alert" text={error} class="mb-5" refused />}
           <form method="post" action={here} class="grid max-w-[30rem] gap-4" data-pw-form>
             <Csrf />
@@ -210,7 +272,7 @@ const roleLabel = clinic.role_name;
         </Pane>
 
         {(patients || me.prc_licence) && (
-          <Pane id="prc" icon="file" title="My PRC licence" class="set-sec">
+          <Pane id="prc" icon="file" title={ptrShown ? 'My PRC licence and PTR' : 'My PRC licence'} class="set-sec">
             <div class="set-state">
               <Chip tone={prc.tone} label={prc.short} icon={prc.tone === 'accent' ? 'check' : prc.tone === 'muted' ? undefined : 'alert'} />
               {me.prc_licence && <span class="text-[15px] tabular-nums">Licence no. {me.prc_licence}</span>}
@@ -221,6 +283,42 @@ const roleLabel = clinic.role_name;
             {me.slug && (days.length > 0
               ? <a href={`/dentists/${me.slug}/`} target="_blank" rel="noopener" class="set-link mt-1">My public profile<span class="sr-only"> (opens in a new tab)</span><Icon name="arrow-right" size={16} class="set-arrow" /></a>
               : <p class="set-help mt-2">No public profile until you have days here.</p>)}
+            {ptrShown && (
+              <div id="ptr" class="set-sec mt-5 border-t border-hair pt-5">
+                <div class="set-state">
+                  <Chip tone={ptrChipNow.tone} label={ptrChipNow.label} icon={ptrChipNow.tone === 'accent' ? 'check' : ptrChipNow.tone === 'muted' ? undefined : 'alert'} />
+                  {ptrLine(ptrNow) && <span class="text-[15px] tabular-nums">PTR no. {ptrLine(ptrNow)}</span>}
+                  {clinic.must_change
+                    ? <p class="text-[14.5px]">Choose your own password first, then add your PTR.</p>
+                    : ptrMine(ptrSt, ptrNow, today) && <p class="text-[14.5px]">{ptrMine(ptrSt, ptrNow, today)}</p>}
+                </div>
+                {done && PTR_DONE[done] && !ptrError && <Note tone="ok" text={PTR_DONE[done]} class="mt-4" />}
+                {ptrError && <Note tone="alert" text={ptrError} class="mt-4" refused />}
+                {!clinic.must_change && (
+                  <form method="post" action={here} class="mt-4 grid gap-4" data-my-ptr-form>
+                    <Csrf />
+                    <input type="hidden" name="action" value="ptr" />
+                    <input type="hidden" name="ptr_seen" value={ptrDraw.ptrSeen} />
+                    <input type="hidden" name="ptr_year_seen" value={ptrDraw.ptrYearSeen} />
+                    <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_9rem]">
+                      <label class="field">
+                        <span class="meta">PTR number</span>
+                        <input name="ptr" value={ptrDraw.ptr} inputmode="text" autocapitalize="characters" spellcheck="false" maxlength={PTR_MAX} autocomplete="off" placeholder="e.g. 8123456" class="tabular-nums" aria-describedby="ptr-help" />
+                      </label>
+                      <label class="field">
+                        <span class="meta">For the year</span>
+                        <select name="ptr_year">
+                          {ptrDraw.ptrYear === '' && <option value="" selected>Choose the year…</option>}
+                          {ptrYears.map((y) => <option value={y} selected={String(y) === ptrDraw.ptrYear}>{y}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                    <p id="ptr-help" class="set-help">As printed on your professional tax receipt, letters included. Renewed by 31 January; one PTR covers the whole country. It prints on the prescriptions and certificates you sign from now on. Leave the number empty to take it off.</p>
+                    <div><button type="submit" class="ws-btn ws-btn-quiet"><Icon name="check" />Save my PTR</button></div>
+                  </form>
+                )}
+              </div>
+            )}
           </Pane>
         )}
 

@@ -105,11 +105,16 @@ for (const d of dentists) {
   const home = d.clinics[0].slug; const g = groupOf(home); const gid = groupIds.get(g)!;
   const isOwner = !owners.has(gid); if (isOwner) owners.add(gid);
   const { rows } = await db.query(
-    `insert into staff (group_id, full_name, email, prc_licence, role, password_hash, slug, prc_checked_on, pda_member, specialty, practices, practising_since, about, home_clinic_id, phone, password_set_at, prc_status)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now(), case when $8::date is not null then 'checked' else 'pending' end) returning id`,
+    `insert into staff (group_id, full_name, email, prc_licence, role, password_hash, slug, prc_checked_on, pda_member, specialty, practices, practising_since, about, home_clinic_id, phone, password_set_at, prc_status,
+                        ptr_number, ptr_year)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now(), case when $8::date is not null then 'checked' else 'pending' end, $16, $17) returning id`,
     [gid, d.name, email(d.name), d.prc, isOwner ? 'owner' : 'dentist', hash('flossify'), d.slug, d.prcCheckedOn, d.pda, d.specialty, d.practices, d.since, d.about, clinicIds.get(home),
      // A 555 mobile per dentist, so the reset-by-text flow can be tried against the dev database.
-     `0917 555 2${String(staffIds.size + 1).padStart(3, '0')}`]);
+     `0917 555 2${String(staffIds.size + 1).padStart(3, '0')}`,
+     // A PTR for this year on each owner (041), so a prescription prints a real one in dev; the other dentists
+     // have none, so the empty path is always there to see.
+     isOwner ? String(8100000 + staffIds.size + 1) : null,
+     isOwner ? Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric' }).format(new Date())) : null]);
   staffIds.set(d.slug, rows[0].id);
   for (const c of d.clinics) {
     const cid = clinicIds.get(c.slug)!;

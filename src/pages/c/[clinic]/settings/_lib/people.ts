@@ -20,9 +20,9 @@
 // or switch off whom, and which roles they may hand out, is src/lib/roles.ts:
 // only people and roles below your own, and only what you hold yourself.
 //
-// Editing a person: name, role, mobile, email, PRC licence and specialty, by
-// the owner or an admin; an owner's row by an owner only. The rules that make
-// it safe:
+// Editing a person: name, role, mobile, email, PRC licence, specialty and PTR,
+// by the owner or an admin; an owner's row by an owner only. The rules that
+// make it safe:
 //   - One email and one mobile per staff account across the whole service,
 //     checked here as the add form checks them (sign-in finds people by email,
 //     resets find them by mobile).
@@ -43,8 +43,20 @@
 //     acting may give (src/lib/roles.ts), so nobody is made an owner from here. A dentist moved to a role without
 //     patients loses the public profile (slug null); someone moved to dentist
 //     gets one, with the check pending.
+//   - A PTR change bumps nothing and resets no check: it only prints on papers
+//     signed from then on (a copy goes onto each, 041). The dentist can set it
+//     on My page too, so the form posts what it was drawn with (ptr_seen): a
+//     save that did not touch the PTR keeps what is on file now, and one that
+//     changes a PTR changed elsewhere since is refused and says what it is now
+//     (src/lib/ptr.ts).
 //   - Every changed field is one audit_log row (staff.name, staff.email,
-//     staff.phone, staff.role, staff.prc, staff.specialty).
+//     staff.phone, staff.role, staff.prc, staff.specialty, staff.ptr).
+//
+// Days at this branch, and a dentist's own hours on them (040: staff_schedule from_min/to_min, blank for the
+// clinic's hours). The save takes the book's lock (the one bookings take), reads which of this person's visits
+// ahead were in closed time before, writes, and puts back on Calls → In closed time only those it newly put
+// outside their hours (reopenNewlyClosed, src/lib/blocks.ts); the sentence after the save counts them. It never
+// touches the PTR, as the edit never touches the days.
 import type { AstroCookies } from 'astro';
 import { setSession, hashPassword, passwordProblem, type Session } from '../../../../../lib/auth';
 import { mayManage, mayGive, staffRoleFor, type Manager, type Role } from '../../../../../lib/roles';
@@ -53,7 +65,10 @@ import { pool, withClinic, type Tx } from '../../../../../lib/db';
 import { issueCode } from '../../../../../lib/codes';
 import { queueText, queueEmail, texts, emails, codePageFor, normalizePhone, prettyPhone, PH_MOBILE } from '../../../../../lib/messages';
 import { emailEnabled, normalizeEmail, EMAIL_ADDRESS, EMAIL_MAX } from '../../../../../lib/email';
-import { UUID, clinician } from './common';
+import { UUID, clinician, treats, DAYS, DAY_LONG } from './common';
+import { closedIds, reopenNewlyClosed } from '../../../../../lib/blocks';
+import { readPtr, ptrDrawn, ptrConflictText } from '../../../../../lib/ptr';
+import { manilaToday } from '../../../../../lib/health';
 import { normalizeUsername, usernameProblem } from '../../../../../lib/username';
 
 // The seven Board-recognised fields, exactly as staff.specialty's check constraint spells them (migration 002).
@@ -76,12 +91,13 @@ export interface Person {
   role_id: string; role_name: string; role_rank: number; role_owner: boolean; role_perms: string[]; must_change_password: boolean; prc_licence: string | null; specialty: string | null;
   slug: string | null; practices: string[] | null; has_password: boolean; disabled_at: Date | null; can_view_finance: boolean;
   prc_status: 'pending' | 'checked' | 'mismatch'; prc_checked_on: Date | null; prc_note: string | null;
+  ptr_number: string | null; ptr_year: number | null;
   last_seen_at: Date | null; invited_at: Date | null; password_set_at: Date | null; created_at: Date;
 }
 const PERSON = `select s.id, s.full_name, s.role, s.username::text as username, s.phone, s.email::text as email,
                        s.role_id, r.name as role_name, r.rank as role_rank, r.is_owner as role_owner, r.perms as role_perms, s.must_change_password, s.prc_licence, s.specialty, s.slug, s.practices,
                        s.password_hash is not null as has_password, s.disabled_at, a.can_view_finance, s.prc_status, s.prc_checked_on, s.prc_note,
-                       s.last_seen_at, s.invited_at, s.password_set_at, s.created_at
+                       s.ptr_number, s.ptr_year, s.last_seen_at, s.invited_at, s.password_set_at, s.created_at
                   from staff_access a join staff s on s.id = a.staff_id join clinic_role r on r.id = s.role_id`;
 
 /** Everyone who can open this branch: the owner first, then by name, the disabled last. */
@@ -100,6 +116,14 @@ export async function member(clinicId: string, id: string): Promise<Person | und
 
 export const daysOf = (clinicId: string, staffId: string) =>
   withClinic(clinicId, async (tx) => (await tx.query('select dow from staff_schedule where staff_id = $1 and clinic_id = $2 order by dow', [staffId, clinicId])).rows.map((r) => r.dow as number));
+
+/** Their days here and, on each, their own hours (040): from/to in minutes, null for the clinic's hours that day. */
+export const scheduleOf = (clinicId: string, staffId: string) =>
+  withClinic(clinicId, async (tx) => (await tx.query<{ dow: number; from_min: number | null; to_min: number | null }>(
+    'select dow, from_min, to_min from staff_schedule where staff_id = $1 and clinic_id = $2 order by dow', [staffId, clinicId])).rows);
+
+/** The days-and-hours form as typed: the ticked days, and each day's from/to as HH:MM (blank = the clinic's hours). */
+export interface DaysValues { dows: number[]; from: Record<number, string>; to: Record<number, string> }
 
 // --- upcoming appointments -----------------------------------------------------------
 
@@ -273,8 +297,12 @@ export function addedText(name: string, via: string, signIn?: { slug: string; us
 
 // --- one person (their page) -----------------------------------------------------------------
 
-export interface EditValues { name: string; username: string; role: string; roleId: string; treats: boolean; phone: string; email: string; prc: string; specialty: string }
-export interface ActionRefused { error: string; action: string; edit?: EditValues }
+export interface EditValues {
+  name: string; username: string; role: string; roleId: string; treats: boolean; phone: string; email: string; prc: string; specialty: string;
+  /** The PTR fields as drawn, and what the form was drawn with (hidden), so a stale form keeps a PTR saved meanwhile. */
+  ptr: string; ptrYear: string; ptrSeen: string; ptrYearSeen: string;
+}
+export interface ActionRefused { error: string; action: string; edit?: EditValues; /** A refused days save, as typed. */ days?: DaysValues }
 
 /** Everything the person page's forms do. `here` is the person's page. */
 export async function personAction(ctx: Ctx & { here: string }, t: Person, form: FormData): Promise<Response | ActionRefused> {
@@ -340,6 +368,11 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
     const roleId = roleLocked ? t.role_id : String(form.get('role_id') ?? '');
     const role = roleLocked ? null : await roleById(clinic.group_id, roleId);
     const treatsNow = roleLocked ? clinician(t.role) : form.get('treats') === 'on';
+    // The PTR as posted, against the row as it is now (member() reads it afresh on every post).
+    const today = manilaToday();
+    const ptrOnFile = { number: t.ptr_number, year: t.ptr_year };
+    const ptrIn = readPtr(form, ptrOnFile, today);
+    const ptrConflict = ptrIn.conflict ? ptrConflictText(self ? null : t.full_name, ptrIn.conflict) : null;
     const edit: EditValues = {
       name: String(form.get('name') ?? '').trim().replace(/\s+/g, ' '),
       username: form.has('username') ? normalizeUsername(String(form.get('username'))) : t.username,
@@ -350,6 +383,7 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
       email: normalizeEmail(String(form.get('email') ?? '')),
       prc: String(form.get('prc') ?? '').replace(/\s+/g, ''),
       specialty: String(form.get('specialty') ?? ''),
+      ...ptrIn.typed,
     };
     const phone = edit.phone ? normalizePhone(edit.phone) : '';
     // A public profile after the change: dentists always; an owner keeps theirs if they have one.
@@ -367,9 +401,14 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
     else if (edit.email && (!EMAIL_ADDRESS.test(edit.email) || edit.email.length > EMAIL_MAX)) error = 'That email doesn’t look complete. Leave it empty if they have none.';
     else if (clinician(edit.role) && !PRC.test(edit.prc)) error = 'Someone who treats patients needs their PRC licence number: digits only, usually seven.';
     else if (profile && edit.prc && !PRC.test(edit.prc)) error = 'A PRC licence number is digits only, usually seven.';
+    else if (treats(edit.role) && ptrConflict) error = ptrConflict;
+    else if (treats(edit.role) && ptrIn.problem) error = ptrIn.problem;
     else if (profile && edit.specialty && !SPECIALTIES.includes(edit.specialty)) error = 'Pick a specialty from the list, or leave it blank for a general dentist.';
     else if (edit.email && edit.email !== normalizeEmail(t.email ?? '') && (await emailTaken(edit.email, t.id)).rowCount) error = 'That email is already on another Flossify staff account. Use another one for them.';
     else if (phone && normalizePhone(t.phone ?? '') !== phone && (await phoneTaken(phone, t.id)).rowCount) error = 'That mobile number is already on another Flossify staff account. Codes go to one person only.';
+    // Only when the conflict is the refusal shown do the PTR fields redraw with what is on file now; after any
+    // other refusal they come back as typed, with the posted seen values, so the next save still sees it.
+    if (error && error === ptrConflict) Object.assign(edit, ptrDrawn(ptrOnFile, today));
     if (error) return fail(error, edit);
 
     // What the row becomes. Someone who is no longer a dentist keeps no licence, specialty or profile.
@@ -385,6 +424,8 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
       slug: profile ? (t.slug ?? await uniqueSlug(edit.name)) : edit.role === 'owner' ? t.slug : null,
     };
     const practices = profile && !next.specialty && !(t.practices?.length) ? ['General dentistry'] : (t.practices ?? []);
+    // Someone who no longer treats keeps no PTR, as with the PRC.
+    const ptr = treats(edit.role) ? ptrIn.value : { number: null, year: null };
     const changed = {
       name: next.name !== t.full_name,
       username: next.username !== t.username,
@@ -393,6 +434,7 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
       role: next.role !== t.role || next.roleId !== t.role_id,
       prc: (next.prc ?? '') !== (t.prc_licence ?? ''),
       specialty: (next.specialty ?? '') !== (t.specialty ?? ''),
+      ptr: treats(edit.role) ? ptrIn.changed : (t.ptr_number !== null || t.ptr_year !== null),
     };
     // A PRC check pairs the licence number with the licensee's name, so a public profile goes back
     // for a check when either changes: the old "checked" date must not stand under a name nobody
@@ -420,11 +462,23 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
                 prc_checked_on = case when $11::boolean then null else prc_checked_on end,
                 prc_checked_by = case when $11::boolean then null else prc_checked_by end,
                 prc_note       = case when $11::boolean then $12 else prc_note end,
-                username = $13, role_id = $14
+                username = $13, role_id = $14,
+                ptr_number = case when $17::boolean then $15::text else ptr_number end,
+                ptr_year   = case when $17::boolean then $16::smallint else ptr_year end
           where id = $1
+            and (not $17::boolean or (ptr_number is not distinct from $18::text and ptr_year is not distinct from $19::smallint))
           returning token_version`,
-        // The mobile is written only when it changed, so a number on file as '0917 555 2003' is left as it was.
-        [t.id, next.name, next.email, changed.phone ? next.phone : t.phone, next.role, next.prc, next.specialty, next.slug, practices, signOut, prcReset, prcNote, next.username, next.roleId]);
+        // The mobile is written only when it changed, so a number on file as '0917 555 2003' is left as it was;
+        // the PTR likewise, so a PTR the dentist saved on My page after this form was drawn stays. A new PTR is
+        // written only if the row still holds the one read above: My page saving at the same moment is a
+        // conflict to say, never a lost write (as My page's own write is conditional).
+        [t.id, next.name, next.email, changed.phone ? next.phone : t.phone, next.role, next.prc, next.specialty, next.slug, practices, signOut, prcReset, prcNote, next.username, next.roleId,
+         ptr.number, ptr.year, changed.ptr, ptrOnFile.number, ptrOnFile.year]);
+      if (!rows.length) {
+        const now = (await pool.query('select ptr_number, ptr_year from staff where id = $1', [t.id])).rows[0];
+        const v = { number: now?.ptr_number ?? null, year: now?.ptr_year ?? null };
+        return fail(ptrConflictText(self ? null : t.full_name, v), Object.assign(edit, ptrDrawn(v, today)));
+      }
       tv = rows[0].token_version;
     } catch (e) {
       // Two edits at once can both pass the checks above; the database's own unique keys have the last word.
@@ -479,12 +533,33 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
   if (action === 'schedule') {
     if (!self && !manages) return fail(BELOW);
     const days = dows(form);
-    await withClinic(clinic.id, async (tx) => {
+    // Their hours on each ticked day (040): both ends or neither (neither = the clinic's hours), the end after the start.
+    const typed: DaysValues = { dows: days, from: {}, to: {} };
+    for (const [d] of DAYS) { typed.from[d] = String(form.get(`from[${d}]`) ?? '').trim(); typed.to[d] = String(form.get(`to[${d}]`) ?? '').trim(); }
+    const hours = new Map<number, [number, number] | null>();
+    for (const [d] of DAYS) {
+      if (!days.includes(d)) continue;
+      const f = typed.from[d], u = typed.to[d];
+      if (!f && !u) { hours.set(d, null); continue; }
+      const a = toMin(f), b = toMin(u);
+      if (a === null || b === null) return { error: `${DAY_LONG[d]}’s hours need a start and an end, or leave both blank.`, action, days: typed };
+      if (b <= a) return { error: `${DAY_LONG[d]}’s hours end before they start.`, action, days: typed };
+      hours.set(d, [a, b]);
+    }
+    // One writer on the book at a time (the lock bookings take), and only this person's visits that the save puts
+    // outside their hours go back on Calls → In closed time (src/lib/blocks.ts).
+    const newly = await withClinic(clinic.id, async (tx) => {
+      await tx.query('select pg_advisory_xact_lock(hashtext($1))', [clinic.id]);
+      const before = await closedIds(tx, clinic.id, { dentistId: t.id });
       await tx.query('delete from staff_schedule where staff_id = $1 and clinic_id = $2', [t.id, clinic.id]);
-      for (const d of days) await tx.query('insert into staff_schedule (staff_id, clinic_id, dow) values ($1, $2, $3)', [t.id, clinic.id, d]);
+      for (const d of days) {
+        const h = hours.get(d) ?? null;
+        await tx.query('insert into staff_schedule (staff_id, clinic_id, dow, from_min, to_min) values ($1, $2, $3, $4, $5)', [t.id, clinic.id, d, h?.[0] ?? null, h?.[1] ?? null]);
+      }
       await audit(ctx, tx, 'staff.schedule', t.id);
+      return (await reopenNewlyClosed(tx, clinic.id, before, { dentistId: t.id })).length;
     });
-    return see(`${here}?done=schedule#days`);
+    return see(`${here}?done=schedule${newly ? `&closed=${newly}` : ''}#days`);
   }
   if (action === 'finance') {
     if (!isOwner) return fail('Only an owner can change who sees finance.');
@@ -521,11 +596,25 @@ export function personNotice(q: URLSearchParams, p: Person, myId: string): strin
     same: `Nothing changed in ${who}’s details.`,
     disable: `${who} can no longer sign in.`,
     enable: `${who} can sign in again.`,
-    schedule: `Saved ${who}’s days.`,
+    schedule: `Saved ${who}’s days.${closedWords(Number(q.get('closed')))}`,
     password: `Saved. Tell ${who} the new password: they choose their own when they next sign in, and every device they were signed in on is signed out.`,
     finance: `Saved what ${who} can see.`,
   };
   return NOTICES[q.get('done') ?? ''] ?? '';
+}
+
+/** After a days save put this person's visits ahead outside their hours: " 1 visit ahead is now outside their hours: …". */
+function closedWords(n: number): string {
+  if (!Number.isInteger(n) || n < 1) return '';
+  return n === 1 ? ' 1 visit ahead is now outside their hours: it is on the call list.' : ` ${n} visits ahead are now outside their hours: they are on the call list.`;
+}
+
+/** "13:00" → 780; null for anything that is not a time of day. */
+function toMin(s: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s);
+  if (!m) return null;
+  const n = +m[1] * 60 + +m[2];
+  return +m[1] < 24 && +m[2] < 60 ? n : null;
 }
 
 /** Where their sign-in stands, in words and a chip tone. */

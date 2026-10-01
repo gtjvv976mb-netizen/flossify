@@ -1,0 +1,23 @@
+---
+// For a workspace page that stands on its own, without the workspace shell
+// (a printout, a file, the tablet signing page): when this device is handed to
+// a patient ("Hand this device to Juan", /auth/park/) or becomes a clinic
+// tablet, the page that says so posts { parked: true } on the
+// 'flossify-offline' BroadcastChannel. The shell's tabs cover themselves
+// (coverForPatient in shell.ts); a page like this one leaves for the sign-in
+// at once (/auth/unlock/), so nothing of a record stays on the screen. Put it
+// in the page's <head>.
+---
+
+<script is:inline>
+  (function () {
+    if (typeof BroadcastChannel === 'undefined') return;
+    var ch = new BroadcastChannel('flossify-offline');
+    ch.addEventListener('message', function (ev) {
+      var d = ev.data;
+      if (!d || typeof d !== 'object' || d.parked !== true) return;
+      document.documentElement.style.visibility = 'hidden';
+      location.replace('/auth/unlock/');
+    });
+  })();
+</script>

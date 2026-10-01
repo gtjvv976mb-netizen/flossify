@@ -450,6 +450,20 @@ Built from `docs/service-map.md`. Rules that shaped it, and that hold:
   anything JavaScript shows later; the class wins and the element stays gone.
 - Bookings live in `localStorage` (`flossify:bookings`) with a three-minute
   undo. On a live clinic the same submit lands in the workspace.
+- **A time tapped on /find/ is held** (p32). The booking opens with it on a
+  strip inside the wizard card and skips When while it fits. When it no longer
+  fits, the strip turns amber with one sentence and the two nearest free times,
+  or a Call button, and Continue goes to When. The steps are named and numbered
+  from the ones in the flow (three to five), and the reason chosen on /find/
+  carries over.
+- **A clinic with one dentist on its public page books with her.**
+  `soloDentist()` pins her in `openSlots`, and `/api/bookings` pins her for live
+  bookings and requests. The re-check is `slotStillOpen` on her slug, which
+  counts her visits, the unassigned ones and the chairs. There is no Dentist
+  step. A request there never offers "any dentist", and the When step names her
+  days away from the start. Her reminders then name her.
+- Blocked time (lunch, closed days, a dentist's hours and leave, a chair out of
+  use) is honoured by every slot and every request: "Blocked time (040)" below.
 
 ## Backend — Postgres, RLS, sessions
 
@@ -667,6 +681,170 @@ The rules that live in code:
   is few taps, colours that mean status, a visible flow, and never a slot the
   clinic cannot honour. The `QUEUE` colour classes on the Today page are the
   only status colours; the schedule reuses them exactly.
+- **Free times (p24).** New booking (under Chair · Dentist) and a visit's Move
+  form offer up to four free starts for the length on the day chosen, anchored
+  on the form's own time, and with a dentist chosen her next two free days
+  (`cal/free.ts`, `cal/FreeTimes.astro`). The arithmetic is pure, in `model.ts`:
+  `holdsOf`, `freeAt`, `freeStarts`, `pickStarts`, `freeDays`, `blockHolds`. A tap
+  fills Time and Chair (a next day's chip fills the Date too); nothing is saved
+  until Save, and the server still decides under its lock. Suggestions keep the
+  clinic's hours and blocked time (lunch and closures hold everything, a chair
+  out of use its chair, a dentist their days, hours and leave), and every visit
+  that holds its slot. They count visits with no chair or no dentist yet against
+  the chairs and the day's dentists, as /find/ does, and never put a moved visit
+  in its own way. There is no turnover (`TURNOVER_MIN = 0`; the owner's
+  decision). `nextFree`, which feeds the count line and the walk-in's chair, is a
+  wrapper with its old answer when nothing is blocked. A day not on screen is
+  read eight days at a time (`ctx.rangeCards`, kept 60 s). After a clash 409
+  the board reloads (`ctx.reload`) and the free times read the book again; a
+  blocked 409 offers Anyway instead. The live refresh tells an open block which
+  days changed and redraws keeping the focus. The block is hidden while Here now
+  is ticked and for anyone without `schedule.edit`. A redraw keeps every chip
+  that is still wanted, so a tap is not lost when a field's change fires on the
+  press. Hooks are `data-bk-slots*`, `data-vp-slots*` and `data-ft-*`; classes
+  `.ft-*`.
+- At a clinic with one dentist on its calendar (`boot.staff`), New booking
+  starts with her in Dentist, unless the desk tapped a dentist's column or
+  "No dentist" (`openBook`). Dentist menus name a dentist's hours ("Dr. Cariño
+  · in 1:00–6:00 pm").
+- **Edit in place (p25).** PATCH `/api/schedule` tells a move from an edit.
+  - A new start, chair or dentist is a move: it stamps `moved_at` and audits
+    `appointment.move`. A new length alone, or a new service, reason or visit
+    note, is an edit: it audits `appointment.edit` and never stamps `moved_at`,
+    so a length cannot place a web request.
+  - The Edit form sends `catalogCode` and `reason` together. A sent reason is
+    final; an empty one takes the service's name. A retired service is refused
+    unless the visit already has it. "No fee-guide service" is refused while the
+    reason still names one, because data.ts reads a service from the words.
+    Edits are refused on a visit in DONE and on an unplaced request. A visit
+    booked online keeps the patient's note.
+  - Texts follow what they name. Only a new start drops waiting texts and texts
+    the new time. A new dentist, or a new reason, withdraws only the reminders
+    the next reminder pass writes again, through `retellTexts` in `schedule.ts`:
+    keep its conditions in step with `sms_enqueue_reminders`, and it stops at
+    23:45 Manila. A new reason also replaces a waiting confirmation one for one.
+    Sent, held-over and claimed texts are left, and nothing extra is sent. The
+    answer carries `retold`.
+  - The blocked-time soft stop runs on a move and on a resize (after the edit's
+    refusals and the clash rule), and both mark `blocked_ok_at`. Words and status
+    never look at blocks.
+  - The desk note is `patient.notes` less the import's own two lines
+    (`deskNoteOf` in `import.ts`, built from the same `oldPhoneNote` /
+    `birthYearNote` the import writes with). The record's
+    `?open=details&dash=<visit>` opens Edit details with the caret in Notes and
+    drops `open` and `dash` from the address; a save returns to the Dashboard
+    with that visit open (`?booking=`, with `date=` when not today), only when it
+    is the patient's visit.
+  - New charge fills a senior citizen or PWD discount only from the patient's
+    latest statement that is neither void nor a draft (`lastDiscountFor`), says
+    which statement and asks for the card to be checked. An older one is only
+    named, and a birth date of 60 or more only brings a hint. Nothing is filled
+    on a refused save or for a patient found through the search, because
+    `/api/patients` carries no ID numbers.
+  - **The visit panel (the calendar side).** Its actions are the teal next step, Move, Edit, Open record,
+    then More. Edit is quiet, for `schedule.edit` only, on a visit that is not done, cancelled or a
+    no-show, not an unplaced request and not a day-only visit; its form (`[data-vp-edit]`, drawn only for
+    `schedule.edit`) is the Move form's sibling — `toEdit` hides Move and calls `vpFree.hide()`, `toMove`
+    hides Edit then `vpFree.update()`, and FreeTimes lives only in Move. While either form is open its Save
+    is the panel's one teal button and the step goes quiet (`tealFit`). Not now redraws the panel from the
+    board (`unfold`), because the live refresh never refills the panel under an open form (`formOpen`). The
+    form sends only what changed: `catalogCode` and `reason` together, `minutes`, and `notes` — never for a
+    web or request visit, whose note is the patient's own words, shown read-only under "From the booking".
+    A new length into blocked time is warned under Minutes, and the refusal offers a quiet Save anyway
+    (`data-vp-edit-anyway`); the Move form says "Now …" for a length alone.
+  - **The desk note** (`deskNote`, worked out in `data.ts`, never on the client) is a `note` icon on the
+    card (in `--sub`, never a status colour), one line in Today's patients, and a Desk note row after Mobile
+    with Edit or Add a note (`?open=details&dash=<visit>`, for `records.edit`). `formNervous` is a blue
+    pill; `consentFor` names what the tablet consent covered, and the Edit form's amber line asks for a new
+    signature when the service or reason changes; "Notes" is "Visit note". A visit's "consent signed" is
+    `visit_treatment_consented()` (039): the tablet's signing or an agreed general consent form. `LIVE_KEYS`
+    include `catalogId`, `deskNote`, `formNervous` and `consentFor`.
+
+## Blocked time (040) — lunch, closed days, a dentist's hours and leave, a chair out of use
+
+The owner's first ask of the round: blocked time that both the calendar and online booking respect.
+The weekly shape lives with the week — lunch is a break on `clinic_hours` (`break_from_min`/`break_to_min`),
+a dentist's hours are `staff_schedule.from_min`/`to_min` (null = the clinic's hours) — and dated exceptions
+live in `clinic_block` (kinds `closed`, `leave`, `chair_out`; no weekly rows, no lunch kind). A turnover
+buffer, a protected emergency hold and a list of Philippine holidays are deferred for the owner.
+
+- **One reader.** `clinic_unavailable(clinic, from, to)` turns all of it into dated ranges: the hours
+  (`shut`), lunch, a treating dentist's days and hours (`hours`), and the live blocks. The desk reads it
+  under RLS; the public reads `public_blocked_ranges()` and `public_busy_ranges()` (definers: times, a slug
+  or a chair, a collapsed kind and whether a visit has a dentist — never a note, an author, or leave told
+  apart from a day off).
+- **The desk's side is `src/lib/blocks.ts`**, always inside `withClinic`: `loadBlocks` (every range but
+  shut, with names and notes; throws past 400 days), `findBlock` (the first range a visit sits in, in its
+  scope — the clinic, its dentist, its chair — by priority closed, shut, lunch, leave, hours, chair_out),
+  `addBlock` / `removeBlock` (under the book's lock `pg_advisory_xact_lock(hashtext(clinic id))`, audit
+  `schedule.block` / `schedule.unblock`), `closedIds`, `reopenNewlyClosed`, `visitsInClosedTime`,
+  `keepInClosedTime`, `upcomingBlocks`, `readBlock` / `readWholeDays`, and `IN_SCOPE_SQL` /
+  `VISIT_AHEAD_SQL`. A block is only added or removed: the app has insert and `update (removed_at,
+  removed_by)`, and a trigger refuses the rest.
+- **The soft stop.** `/api/schedule` POST, and PATCH when it moves or resizes, run `findBlock` after
+  `findClash`. In closed time the answer is 409 `{ error: <one sentence>, blocked: true, kind }`;
+  `anyway: true` books it and sets `appointment.blocked_ok_at` (audit `appointment.anyway`), and a move out
+  clears it. A walk-in (`status: 'arrived'`) is never asked — the patient is at the desk — and is marked
+  the same way. A clash always wins: a hard 409 with today's sentence and no anyway. A status-only or
+  words-only PATCH never looks at blocks. GET's Range adds `blocks` and `staff[].hours`.
+- **`blocked_ok_at`** means someone saw the visit in closed time and kept it there (Book, Move or Place
+  anyway, a walk-in, Calls → Keep it). Null means nobody has looked, and such a visit belongs on Calls → In
+  closed time. A new block clears the mark on the visits inside it. A weekly change clears it only on
+  visits it newly put in closed time (`closedIds` before, `reopenNewlyClosed` after, under the lock). 040
+  marked the visits already booked in the old weekly closed time as seen.
+- **`/api/schedule/blocks`**: POST `{ kind, dentistId?, chair?, startsAt, endsAt, note? }` → 201 `{ block,
+  inside }`; PATCH `{ id, remove: true }` → 200 `{ removed }`. It uses the schedule's gate and limit,
+  `X-CSRF`, and `schedule.edit`. `inside` lists the visits already booked there with their reminder's
+  state; nothing is done to them, and no text is queued, cancelled or changed by a block (reminders still
+  go: the owner's question p07 §7.1 took its default).
+- **The words are `src/lib/block-words.ts`** (pure; the calendar imports it too): `blockSentence`,
+  `blockLabel(r, 'chip' | 'strip', { day })`, `blockListed`, `whyWords` (the Calls pill), `blockDone`. Whole
+  Manila days are written as days; a block already under way says when it ends.
+  `src/lib/reminder-state.ts` is the one wording of a visit's reminder (Calls, the Block panel).
+  `src/lib/schedule-api.ts` holds the schedule API's gate, body readers and refusal (a refusal may carry
+  extra fields). `isDentistHere` is in `schedule.ts`.
+- **Settings.** Opening hours has lunch on each day (blank for none; both ends or neither, inside the
+  day); a script-only "Same lunch every open day" copies the first lunch where it fits and names the days
+  it skipped. **Closed days** (`settings/_lib/closed-days.ts`, `_ui/ClosedSection.astro`, `settings.edit`)
+  lists every dated block ahead with a quiet Remove, and adds the clinic closed or a dentist away for whole
+  Manila days (its own teal Add closed days; posts `form=closed-add` / `closed-remove`, mapped to `closed`
+  in `SECTION_OF`). A person's page has their hours on their days here, for people who treat. Every weekly
+  save (hours, a person's days) takes the book's lock, reads `closedIds` before, writes, and runs
+  `reopenNewlyClosed`; the note after it counts only the visits it newly put in closed time and links to
+  Calls. Nothing is texted, held, moved or cancelled.
+- **The Dashboard** hatches blocked time like closed hours, with its words on a solid slate chip, and the
+  hatch takes no clicks. Lunch and a closure show in every column; a chair out of use in its chair's
+  column; a dentist's time away or not in in their column, or on a week filtered to them. A phone's list
+  reads each as a line among the cards. The **Blocked** strip lists the dated blocks on screen as pills
+  that open `cal/BlockPanel.astro` in view mode (Remove for `schedule.edit`, asking first). Its add form
+  (More → Block time, + New → `?new=block`) is `schedule.edit` only and lists the visits already inside.
+  New booking and Move say before saving when a time falls in blocked time ("Saving asks you to
+  confirm."); the 409 offers a quiet Book / Move / Place anyway; a drag into blocked time goes back with
+  Move anyway in its toast. The count line says "lunch 12–1 pm" and "closed all day".
+- **Calls → In closed time** (`#closed-time`, first when not empty): each visit ahead in closed time that
+  nobody kept, with why, its reminder in Calls' words, the number, Move (`/?date=&booking=`) and Keep it
+  (`intent=keep`, `schedule.edit`, audit `appointment.keep_blocked`). The next two open days skip a day a
+  closure covers whole; a kept visit on such a day stays on Still to confirm under its own day; the printed
+  sheet has an In closed time table first. The inbox's "In closed time, next 2 weeks" (for
+  `schedule.edit`, shown when above 0) counts the same rule over 14 days.
+- **Patients.** One rule, `slotOpen()` in `src/lib/availability.ts`, decides both what a patient is
+  offered (`openSlots`) and the re-check inside the booking's transaction after the clinic's lock
+  (`slotStillOpen`). A slot is open when nothing clinic-wide touches it (outside the hours, lunch, a
+  closure); a chair in service is free after every visit then; a named dentist is listed and neither away
+  nor booked; and the listed dentists who are in and free outnumber the visits booked then with no
+  dentist. A visit whose dentist is not listed here holds a chair but no listed dentist. `/api/bookings`
+  never reads `anyway`: a blocked slot gets today's 409 "That slot has just gone. Pick another." A request
+  (`placeRequest`) is refused on a day or part of a day a closure shuts, or, with a dentist chosen, that
+  dentist is not in ("Dr. Cariño is not in on Tue 6 Oct. Pick another day, or any dentist."); its
+  placeholder never lands in lunch or the dentist's time away, and "No word by" skips closed days.
+- **The status pill** reads `closuresFor(l)`: the clinic's closures and lunch for 31 days, per Manila day,
+  the same on a Find a clinic card and on the clinic's page ("Open now · lunch at 12 pm", "Lunch · back at 1
+  pm", "Closed today · opens Mon 9 am"). With none, every string is the pre-040 one. The hours card shows
+  each day's lunch and "Closed days ahead" (30 days, never a note). A dentist's days carry their hours
+  ("Here Tue 1–6 pm · Thu") on the clinic page, the booking and `/dentists/<slug>`. A request's Preferred
+  day says "Closed on: …" and, with a dentist chosen, "Dr. Cariño is not in on: …" (`dentistsAway`).
+- Fewer online slots, on purpose: "any dentist" is offered only while a dentist who is in is free, and the
+  named-dentist path now respects chairs, chairs out of use and visits with no dentist.
 
 ## Patient forms — the QR code on the desk (028)
 
@@ -818,12 +996,12 @@ and marked *Easiest*.
   the forms' answers and printouts, records and health histories must not
   stay in a shared clinic computer's cache after sign-out.
 
-## The clinical record (033) — Timeline, Treatment, Notes, Prescriptions, Files, next check-up
+## The clinical record (033) — Treatment record, Treatment, Notes, Prescriptions, Files, next check-up
 
-The patient record (`patients/[patient].astro`) has twelve sections: Overview · Timeline (visits, 035) · Health · Chart ·
+The patient record (`patients/[patient].astro`) has twelve sections: Overview · Treatment record (the PDA ledger, below) · Health · Chart ·
 Treatment · Notes · Rx & letters · Files · Visits · Money · Consent · Texts. Built from standard dental
 practice — the real SwiftCare admin record the owner linked was **not** opened (another clinic's patient
-data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical`, `loadTimeline`,
+data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical`, `loadChartChanges`,
 `recordAction`, `readRecordFile`); the sections are `patients/_record/*.astro` + `record.css`.
 
 - **Every write is one post** with an `intent` in `RECORD_INTENTS`, checked by `canEditRecords` in the same
@@ -843,16 +1021,49 @@ data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical
   `patients/<id>/files/<file>/` behind `requireWorkspace` + RLS (no-store; views and downloads audited).
   The public `/uploads/` route cannot reach them. Remove hides a file (`removed_at`), never deletes it.
 - **Next check-up** (recall) sits on the Overview: 3/6/12 months in one tap, or a day.
-- The Timeline is built around the visits (035, below); what happened between visits stays as small lines
-  with "Open" to their section (money only for people who may bill).
+- **Tooth-first entry (p01, step 1).** Add to plan, Record a treatment, the clinical note and Add files
+  pick the tooth on `_ui/ToothPick.astro`: FDI tiles in the chart's order, mirrored at the midline from
+  400px and stacked below it, baby teeth behind a toggle, Whole mouth or No tooth, and M O D B L toggles (I
+  on an anterior). A typed box sits under the grid; the server reads it too (`pickedTooth()`): when the
+  radios hold nothing the typed box wins, and a picked tooth that differs from the typed one is refused.
+  Old text posts still read the same. For people with `records.edit`, the chart's palette adds "For 26 MO"
+  with Add to plan, Treatment done and Clinical note — `data-pick-open`, never `data-ws-open`, so the shell
+  never takes a hidden palette button as the opener of a panel it draws open. They open the panels over
+  the Chart on that tooth; those panels live outside the sections (`_record/TreatmentPanels.astro`,
+  `NotePanel.astro`, `pickpanel.ts`), because a dialog in a hidden section is not drawn. Treatment done lists
+  that tooth's open plan items as one-tap Mark done forms, so planned work is never recorded twice. A save
+  from the palette posts `back=chart`, lands on the chart with its line, and gives focus back to the tooth.
+  The actions hide offline, on a kept copy, or when the tooth's server check gets no answer. The chart shows
+  a ring under a tooth for open plan items and a dot for work done in the past year, with a legend and a
+  work sentence in each tooth's label. A new note opens with today's treated teeth ticked; an addendum with
+  none. `Odontogram.astro` changes only additively (props `actions` and `work`); its offline logic is
+  untouched.
+- **The chart after a treatment (p01 step 2) is an offer, applied only by a tap.** What a treatment does
+  to the chart is `procedure_catalog.chart_effect` (042; the seven default codes, set by a trigger when an
+  insert says nothing), never guessed from a name. `chart-offer.ts` is the table, pure and shared by page
+  and server. Mark done and Record a treatment land on `?treated=<procedure_done id>#chart-offer`, in the
+  section the post came from, when the offer has something worth a word: "Update the chart?" with one quiet
+  Update the chart (intent `chart-apply`, hidden fields only) and Leave the chart as it is; the uncovered,
+  other and no-surfaces cases say why and open that tooth on the chart; a baby tooth or nothing to change
+  gets no callout. Record a treatment's chart line is never ticked as drawn, and its box and hidden fields
+  are disabled unless it is an `apply` offer on a tooth with nothing waiting. Every write is
+  `chartFromRecord` (`src/lib/chart-write.ts`) inside the record post's transaction, in this order: the
+  page's sign-in (`sid`, else `chartskip=ended`), the chart lock `'chart:' + lower-case patient id` (the
+  same as `/api/chart`), then the check that the tooth still shows what the page showed (else
+  `chartskip=changed`, naming who charted it and when). Applied writes the ledger row with `clinic_id`,
+  `tooth_state` with `change_id` and `procedure_id`, and `chart.update`. Offline or on the kept copy, the
+  button hides and one line says the update needs the connection (`ChartOffer.astro`). A dentist still reads
+  the chart-effect mapping and its sentences before a clinic depends on them.
+- The Treatment record (below) is the PDA's ledger, built from the visits (035); the chart's own history
+  (who charted which teeth, when) is under Chart, "Changes to the chart" (`loadChartChanges`).
 - **Colour-coded by group** (the owner asked that encoders never lose their place): `_record/sections.ts`
-  puts each section in a group with one hue — Patient teal (Overview, Timeline, Visits), Health rose,
+  puts each section in a group with one hue — Patient teal (Overview, Treatment record, Visits), Health rose,
   Clinical blue (Chart, Treatment, Notes, Files), Documents violet (Rx & letters, Consent, Texts),
   Billing green (Money); never amber or red, which keep their meanings. The hue is on the section's
   button in the record's index (`RecordNav.astro`: a sticky column from 1200px, a sideways row below it;
   still the shell's in-place tabs, `rec-rec-<id>-tab`, with up/down arrows when `aria-orientation` is
   vertical), its banner (`Banner.astro`: group, name, one line), its cards' top edge and icons (`.hue-*`
-  classes in record.css) and its lines on the Timeline. Colour is never alone: the words say the group
+  classes in record.css). Colour is never alone: the words say the group
   too. Measured: no line under 4.5:1 in the index or banners, light and dark.
 - **Every detail is its own pill or tile** (the owner: "make each specific detail more visible … their
   own pill"): `.rp` pills (a tooth `rp-tooth` blue, a person `Who.astro` with initials, a day, an amount
@@ -866,7 +1077,7 @@ data behind its login). `src/lib/record.ts` is the whole back end (`loadClinical
 
 ## The record's paperwork (034) — blood pressure, letters, HMO LOA, payment plans
 
-`src/lib/record-extra.ts` (`loadExtra`, `extraAction`, `extraEvents`, `planState`), the same rules as 033
+`src/lib/record-extra.ts` (`loadExtra`, `extraAction`, `planState`), the same rules as 033
 (canEditRecords in the transaction, audited `record.*`, a refused post comes back in its panel).
 Components: `_record/Vitals`, `Letters`, `Loas`, `PayPlans`. The head shows the safety chips (BP today
 or out of range, clearance needed/waiting/cleared, an LOA waiting, a plan behind), each a button to its section.
@@ -889,32 +1100,46 @@ or out of range, clearance needed/waiting/cleared, an LOA waiting, a plan behind
   only with it; anyone with records.edit records an adjustment.
 - `ws:panel-open` now carries `auto: true` when the server drew a panel open (a refused post): a page
   must not refill that form from the first matching opener (`src/components/ws/shell.ts`).
+- **PTR (041).** `staff.ptr_number` / `ptr_year` is the PTR on file. A prescription and a letter take a copy
+  (`prescription.ptr_*`, `clinical_letter.ptr_*`) inside the save's transaction and print only that copy,
+  never the live value: a 2026 paper reprinted in 2027 keeps its 2026 PTR, and a paper from before 041
+  prints the blank line. Never join `staff.ptr_*` into a select that also has `r.*` / `l.*`: node-pg keeps
+  the last column. The year is compared with the paper's own issue day, and the panels compare with today.
+  Amber means none, no year, last year's from 1 February, or a later year outside December; last year's in
+  January and next year's in December are a quiet line. Nothing blocks a save; the PRC still does. The
+  number is taken as the receipt prints it: trimmed, spaces collapsed, upper case; letters, digits, spaces,
+  dots, slashes and dashes, with at least four digits (widen `PTR_RE` if a city's format is refused). A PTR
+  may be saved for last year or this year, and next year from 1 December. Two writers: Edit details on a
+  person's page (`people.manage` and `mayManage`), and My page's own PTR form (`action=ptr`, for
+  `signsPapers`: the one detail a person sets for themself, audited `staff.ptr`, bumping no token). Both post
+  what they were drawn with (`ptr_seen`, `ptr_year_seen`): a form that did not touch the PTR keeps what is
+  on file, and one that changes a PTR changed elsewhere since is refused with what it is now. The fix links
+  in the panels' notes open in a new tab, so a paper being typed is never lost. The code is
+  `src/lib/ptr.ts`; the record's words are `_record/PtrWords.astro`.
 
-## The Timeline's visits and the signed consent (035)
+## The visit panel and the signed consent (035)
 
-The owner: the Timeline is "the full details of the patient's visit" — a visit is clickable and pops out
-the doctor, the consent form, the signature (the patient signs on an iPad), the procedure, the tooth, the
-time and the amount paid.
+The owner asked for "the full details of the patient's visit" — a visit is clickable and pops out the
+doctor, the consent form, the signature (the patient signs on an iPad), the procedure, the tooth, the time
+and the amount paid. (It was drawn as the Timeline's cards; the Timeline is now the Treatment record, below.)
 
-- **A visit is a card, and the card is one button** (`_record/Timeline.astro`): time, status, dentist,
-  what was done and to which tooth, "Consent signed" with a small copy of the signature, Paid / Owes.
-  It opens a side panel (`_record/VisitPanels.astro`, rendered outside the sections so Visits' "See the
-  whole visit" and Consent's "See the visit" open it too): the visit, consent and signature, treatment
-  done, the dentist's notes, BP, Rx and letters (Print), payment (charged, paid, HMO share, still owed,
-  each statement's lines, each payment), files, texts. Chips: Everything · Visits · Between visits.
+- **A visit opens in a side panel** (`_record/VisitPanels.astro`, rendered outside the sections) from its
+  date on the Treatment record, Visits' "See the whole visit" and Consent's "See the visit": the visit,
+  consent and signature, treatment done, the dentist's notes, BP, Rx and letters (Print), payment
+  (charged, paid, HMO share, still owed, each statement's lines, each payment), files, texts.
 - **What belongs to a visit** is `loadVisits()` in `src/lib/visit-record.ts`: its `appointment_id`, else
   the Manila day (the visit that had started by then). Treatment, notes, prescriptions or a statement
   on a day with nothing booked make an "At the clinic" day of their own; BP, files, letters and payments
   only join an existing one; a payment follows its statement. The per-visit balance is
-  `patient_balance()`'s rule, statement by statement. Every Timeline line has a `ref`
-  (`done:<id>`, `pay:<id>` …) so a line a visit holds is not listed twice.
+  `patient_balance()`'s rule, statement by statement. `Visit.bookedAt` (the appointment's `created_at`)
+  is what the Treatment record's Next appt. reads.
 - **The consent is signed by hand on the clinic's tablet** at `/c/<slug>/patients/<id>/sign/<visit>/`, its
   own page (no workspace sidebar for a patient to wander into): step 1 for the clinic (tick the plan's
   open lines the dentist explained, anything else, the dentist), "Hand the tablet to <name>", step 2 for
   the patient (the treatment, `TREATMENT_CONSENT`'s words in force, who signs — only a parent or guardian,
   with relation, when the birth date says under 18 — name, finger signature, one tick). Saved, it shows
   only "Thank you — please hand the tablet back"; the desk's button returns to the record with the visit
-  open (`?visit=<id>#timeline`). Offered for a visit going ahead today or later, or one the patient is
+  open (`?visit=<id>`). Offered for a visit going ahead today or later, or one the patient is
   at now (`canSign`); never for a cancelled, missed or past visit.
 - **`visit_consent` (035) is insert-only for the app** (select, insert; measured: update and delete are
   refused) and a trigger checks the visit is this patient's at this clinic and the version is a
@@ -923,6 +1148,42 @@ time and the amount paid.
 - **The signature is strokes, never an image**: `[[x, y], …]` lines of whole numbers in a 1000 × 400 box
   (`readStrokes`: ≤ 80 strokes, ≤ 6000 points, enough ink to be a signature), drawn back as one SVG path
   (`_record/Signature.astro`) in dark ink on a white slip in both themes, like paper.
+
+## The Treatment record — page 4 of the PDA dental chart
+
+The owner: "rename the timeline to "Treatment record" and make it as such". The record's second section is
+the Philippine treatment record ledger — Date · Tooth no./s · Procedure · Dentist/s · Amount charged ·
+Amount paid · Balance · Next appt. — oldest first, one row per treatment, charge and payment.
+`src/lib/treatment-record.ts` builds it (`buildLedger`, `loadLedgerMoney`, `loadRecallsSet`) for both
+`_record/TreatmentRecord.astro` and the paper at `patients/<id>/treatment-record/` (A4 portrait, the heads
+repeat, black on white; audit `record.treatment_record_print`), so the screen and the paper never differ.
+
+- **Clinical rows come from `loadVisits()`'s placement**, so the ledger and the visit panel agree. A visit
+  with nothing done is still a row (did not come, not marked yet, cancelled with something in it); a
+  statement alone is not a visit. A date opens that visit's panel; "Also <time>" a second visit that day.
+- **Only statements are charges** (a treatment's price is a fee-guide estimate). Every line of a counted
+  statement (issued, partly paid, paid) appears exactly once: on its treatment's row when linked by
+  `procedure_id` and issued that day (or on the visit's row for a one-line statement naming the visit, whose
+  line then names the procedure — "Consultation"), else as a charge row on the statement's day ("done
+  <day>"). Never matched by description. Discounts, the HMO or PhilHealth part and payments are rows; a
+  payment dated before its statement sits on the statement's day ("paid <day>").
+- **Balance is `patient_balance()`'s rule** through `sumsOf()`, on the last row of each day money moved.
+  The last one must equal `patient_balance()`; if not, no balance shows, the section says so and the server
+  logs the patient id (`treatment-record balance mismatch`, no name). Void statements and voided payments
+  are not counted; they stay in Money. The money columns and rows need `finance.bill`, on screen and paper.
+- **Next appt.** (on a day with a visit): the next appointment booked by the end of that day, else a
+  check-up set that day, else a braces adjustment's next date.
+- A table where the section is 54rem or wider (fits at 1440, not at 1366 with a wide system font); below
+  that each day is a card with labelled lines (`@container trec`). Over 14 days, all but the last 10 fold
+  behind "Show N earlier days" (the hidden attribute; `.trec tbody[hidden]` is declared, since a display
+  rule on tbody beats it). An old `#timeline` link lands here and the address is rewritten to
+  `#treatment-record`; `?visit=<id>` opens on the Treatment record when the visit is on it, else on Visits.
+- Measured: the last balance equals `patient_balance()` for every dev patient and a crafted one (a part
+  payment finished later, a senior discount, an HMO share part-paid by the HMO, a statement two days after
+  its treatment, a payment dated before its statement, a void statement, a voided payment, a consultation
+  charged by one line, money on account); every word ≥ 4.5:1 light and dark at 1440 and 390; no target
+  under 44px; no sideways scroll at 1440 · 1366 · 1280 · 1200 · 1024 · 390; the paper fits A4 with no cell
+  overflowing; a dentist without `finance.bill` sees no peso sign on screen or paper.
 - Measured: every line on the cards, the panel, Consent's list and both signing steps ≥ 4.5:1 light and
   dark at 1440 and 390; no target under 44px on the signing page; no sideways scroll at 390.
 
@@ -950,17 +1211,17 @@ patient"). One migration, 036; the pieces in the order of a visit:
   order a visit runs, pills for what is done, "All done" when nothing is. Every chairside form it opens — a
   reading, a note, a treatment (and a plan item's Mark done), a prescription, files, the health form — carries a
   hidden `visit`, read by `visitOf()` in `record.ts` (this patient's, not cancelled, else null) and written to
-  `appointment_id` (036 added it to `prescription`, `vital_sign` and `attachment`), so the Timeline places it
-  under the visit instead of matching it by the day (`visit-record.ts` still falls back to the day for old rows).
+  `appointment_id` (036 added it to `prescription`, `vital_sign` and `attachment`), so the visit panel and the
+  Treatment record place it under the visit instead of matching it by the day (`visit-record.ts` still falls back to the day for old rows).
   "No change" is `intent=health-checked` → `recheckHealth()`: a copy of the latest answers under the person who
   asked (audit `health.checked`), so "last checked" is today; a history over a year old is an amber chip on the
   head. `?open=vitals|note|rx|done|file` opens that panel as the page loads (its section shown behind it); a
   post from the strip comes back with `?visit=` kept, so the strip is still there. A signing comes back to
-  `?visit=<id>` (no hash): today's visit shows the strip, a later one opens on the Timeline.
+  `?visit=<id>` (no hash): today's visit shows the strip, a later one opens on Visits.
 - **Checkout.** `finances/new/?visit=<id>` pre-fills every treatment recorded at the visit (stamped, or that day
   with no visit named) that no non-void statement charges yet, at the price the dentist wrote, the tooth in the
   words; the statement stores `appointment_id` and each line `procedure_id` (`LineIn.procedureId`,
-  `ChargeIn.visitId`, checked to be the patient's own), so the panel's `unbilled` count and the Timeline's Paid
+  `ChargeIn.visitId`, checked to be the patient's own), so the panel's `unbilled` count and the visit panel's Paid
   are right and nothing is charged twice: `createStatement` takes a per-patient advisory lock (`charge:<patient>`)
   and refuses a treatment already on a non-void statement, naming it. A recorded price of 0 is left blank for the
   desk; one outside the fee guide's range is pre-filled as a line of its own, so the save is never refused on a line
@@ -996,6 +1257,81 @@ patient"). One migration, 036; the pieces in the order of a visit:
 - Measured: every new line ≥ 4.5:1 light and dark at 1440 and 390 against its composited background, no target
   under 44 px, no sideways scroll; the strip's done pills sit in 44 px hit boxes (`.vs-go`, as the head's chips).
 
+## Add patient, step by step (039) — phase 1: the consent library and the data
+
+The owner (29 Sep 2026): Add patient by QR or at the clinic, step by step — before the QR the staff tick which
+consent forms the procedure needs; page 1 patient information, then the consent forms, then the profile is
+made. The design is the intake spec (session scratchpad `intake-spec.md`, with the owner's four answers at its
+end: procedure forms are signed only after the named dentist records "I explained this"; the profile is made
+at Send unless the patient looks like one already on file; a fresh signature on every form with initials on
+the risks; the six scheduling features first). **Phase 1** is the library, the data and the shared add path;
+**phase 2** (shipped, fixes in 043) the desk's steps, clinic tablets, the patient's pages (`/f/i/<token>/`,
+`/f/t/`), park/unlock and the record's Consent forms pane; the phone path is phase 3, the record integration
+phase 4.
+
+- **The consent library is data** (`src/lib/consent-library.ts`, no Node imports): ten forms
+  (`anaesthesia-2026-10` … `photos-2026-10`, `consent_version` kind `document`, in force from 1 Oct 2026) and
+  the general consent (`treatment-2026-09`, `TREATMENT_CONSENT` word for word), each a `Template` holding the
+  clinic's part (desk fields; dentist fields the desk may only propose — "to be confirmed by the dentist" until
+  the named dentist attests), the patient's questions and every word a page shows. `readClinicPart`,
+  `readPatientPart`, `renderDocument` (pure: the one renderer) and `consentsForCatalog` live there.
+  **The words are Flossify's plain drafts:** `CONSENT_REVIEWED` is empty, so a production server offers none
+  of them, the general consent included, until a dentist and the owner's lawyer have read each. Filipino shows
+  only where drafted and reviewed.
+- **Words are pinned.** `consent_version.body_sha256` equals `libraryHash(template)` (`npm run consent:hash`); a
+  server offers a template only while the two match (`templatesInForce`), and `npm run test:consent` fails when
+  a word changes. New words are a new version id and a new row, in one change. Tailwind scans these files:
+  after editing words, check the build's CSS is unchanged (the word "shrink" once added a class).
+- **What was signed is frozen** (`src/lib/consent-seal.ts`): the snapshot is the canonical JSON of the rendered
+  page and its facts (keys sorted, no whitespace, NFC, integers only), rendered by the server; the database
+  computes `snapshot_sha256` and the seal (`consent_seal()`, the same sum as `sealHex`) whatever the caller
+  passes; once a form is on a record its seal joins the clinic's chain (`consent_chain`, written only by a
+  definer trigger; `consent_chain_check`, `consent_chain_head`).
+- **039's tables all force row-level security:** `intake` (an intake is not a patient), `intake_link` (26
+  characters, claimed by the first device; tablet and desk links are made already claimed), `clinic_tablet`,
+  `consent_document` (frozen once attested, signed or printed; a signed one is never cancelled), `intake_page`
+  (written by the definers only), and the insert-only records `consent_signing`, `consent_attestation` (only by
+  the named treating dentist with a PRC licence, before any signing), `consent_confirmation`, `capacity_note`,
+  `consent_withdrawal`, `consent_override`, `consent_chain` (select-only for the app) and `intake_event` (never
+  an answer). `patient_consent` gains channel `intake`; `medical_history` gains `intake_id`.
+  `visit_treatment_consented(appointment)` is the one rule for "consent signed for this visit".
+- **The public side has no tenant.** `intake_view`, `intake_claim`, `intake_verify`, `intake_ping`,
+  `tablet_poll`, `intake_save_page1`, `intake_mark_page`, `intake_decide` and `intake_send` are the only way in;
+  all go through `intake_gate` (granted to nobody), which locks **the intake first, then its link** — every
+  desk write locks in that order too. They answer status words and catch every error, so no answer reaches a
+  log.
+- **`retention_purge()`** keeps its signature and also purges intakes (in a block of its own): preparing, out or
+  cancelled after 24 h, and sent over 30 days ago, unless held (a signing, and either a look-alike here or a
+  visit). Forms on a record stay.
+- **The forms' reader is an engine** (`patient-forms-def.ts`: `FormDef`, `indexFields`, `parseForm`,
+  `parseScreen`, `valuesAsForm`); `parsePatientForm` is `parseForm(FORMS_DEF, …)` (9009 fuzzed posts identical
+  to before). Page 1 is `INTAKE_DEF` (`src/lib/intake-def.ts`), built from the forms' FieldDefs by name. The add
+  path is `src/lib/patient-add.ts`, shared by the forms queue and the intake; `src/lib/refused.ts` is the one
+  `Refused` class (four pages keep their own copy until next touched).
+- **Checks:** `npm run test:consent` (units) and `scripts/dev/intake/db-test.mjs` (the database; rolls back,
+  refuses a non-local database). **Deploy:** 039 applies before 040 when shipped together; a database that
+  already has 040–042 takes it with `npm run db:migrate -- --allow-late`, run by hand once — never in
+  `render.yaml` or the Procfile.
+- **Phase 2 (039, fixes in 043).** The desk ticks the consent forms, fills the clinic's part, and the named
+  dentist records "Explain and confirm" (what the patient said is asked of a patient 7 to 17, and while the age
+  is not known unless the desk said 18 or over). The forms then go to a clinic tablet or to the desk's own
+  device ("Hand this device to <name>", `/auth/park/`: the desk is signed out, `fl_idev` is one per browser
+  under `/f/i/`). The patient's pages `/f/i/<token>/` run page 1, then each form, with a quiet Back, "Ask the
+  desk" that keeps what was typed, "Decide later" (the photos too), then Check and send. A clinic device pings
+  every 12 s and leaves when the desk stops, moves or replaces the link; its closed pages say "Please hand the
+  device back to the desk" (`intake_device()`), and the desk's device offers "For the clinic". Unlocking
+  (`/auth/unlock/`) or the next hand-over stops the desk device's link (`endHandover`). A clinic tablet is made
+  at `/auth/tablet/` (a session change for `sw.js`) and never holds a staff session: `/f/t/`, its poll and
+  `/f/i/` end one and log `tablet.signout`. Every standalone workspace page and a record's file view
+  (`files/<id>/view/`) carry `ParkedGuard` and leave when the device is handed over. On the record, a form in
+  forms being filled in cannot be printed or recorded on paper; throwing the forms away or unticking a form
+  puts a record form back as it was. `?paper=1` opens only as "Print for signing on paper" allows, and prints
+  the initials boxes and the patient's questions that "Record a paper signing" asks. Adding forms to a patient
+  on file re-checks who signed against the record's birth date. Dates on consent pages are Manila days. 043
+  applies after 039–042 and only resets a version's fingerprint where no consent form uses that version yet.
+  Stop (not throw away) leaves a record form tied to the paused intake until it is taken out, thrown away or
+  purged; the record links to the open forms and says how to get it back.
+
 ## Open — read before shipping
 
 - The Semaphore provider is written to their v4 API but has not been run
@@ -1015,7 +1351,6 @@ patient"). One migration, 036; the pieces in the order of a visit:
   acknowledgments only: BIR invoices still come from the clinic's registered
   booklet or system. `patient_balance()` is the one balance definition.
 - Live since 24 Sep 2026: flossify.ph on Render (web + worker, Singapore) with DigitalOcean Managed PostgreSQL 17 (SGP1, trusted sources = Render's Singapore ranges).
-- "Any available dentist" slots count chairs, not which days dentists work.
 - Settings → Team cannot edit a staff member's name, email or PRC number after
   the invite, and the clinic's founding year / PDA membership / staff bios
   have no form (the public pages hide them when empty).
@@ -1039,6 +1374,16 @@ patient"). One migration, 036; the pieces in the order of a visit:
   lawyer reads it first. The consent to examination and treatment
   (`treatment-2026-09`) is Flossify's plain summary of the usual Philippine
   dental consent; a dentist and the lawyer read it too.
+- **The consent forms (039) are unreviewed drafts** (`CONSENT_REVIEWED` is empty), in force in the
+  database from 1 Oct 2026; production offers none until a dentist and the owner's lawyer have read each. The
+  Filipino "In short" lines for nine forms and the attestation's Filipino are not written yet.
+- **Before a clinic depends on the scheduling round:** the owner answers p07 §7.1 (should a reminder wait
+  while its visit sits in closed time nobody handled? The default ships reminders unchanged); a dentist reads
+  the chart-effect mapping and its sentences (should a crown over a charted root canal be offered? should one
+  visit's offers be gathered into one?). Turnover between visits stays 0 until the owner sets it.
+- A new web patient's chart number is `W-` + (patients here + 1) (`api/bookings`): the app never deletes a
+  patient, but one deleted by hand makes the next web booking for a new mobile fail on the unique key until
+  another patient is added. Test scripts that share a database archive their patients instead of deleting.
 - Patient forms throttles are estimates: 40 an hour per address and poster,
   8 a day per mobile, 300 a day per poster, 200 missed links an hour per
   address; 500 waiting forms per poster answers "full".
@@ -1052,7 +1397,7 @@ src/pages/c/[clinic]/…         prototype clinic workspace
 src/pages/c/[clinic]/patients/ the Patients tab (Dashboard · Patients · Finances · Clinic settings): every patient + a record check, one query (_list/list.ts)
 src/pages/websites.astro       the clinic-website service, with the sample framed
 src/pages/find/index.astro     patients: find a clinic by symptom, service, HMO, PhilHealth, open now
-src/pages/find/[clinic]/…      the clinic's public page, and its five-step booking (no account)
+src/pages/find/[clinic]/…      the clinic's public page, and its booking (three to five steps, no account)
 src/pages/dentists/[dentist]   dentist profile: PRC licence checked by a person, dated
 src/pages/coverage.astro       PhilHealth's preventive dental benefit and HMO cards, explained
 src/data/directory.ts          services, symptoms, HMOs, dentists, listings — types, and the seed's source
@@ -1080,7 +1425,7 @@ src/pages/[clinic]/            a clinic's own site (index) and its staff sign-in
 src/lib/clinic-door.ts, username.ts  the remembered clinic, Find your clinic; username rules
 src/lib/can.ts                 permission keys, default roles, can(ws, key); roles are clinic_role rows (030)
 src/lib/roles.ts, tasks.ts     the rank rules for people and roles; tasks (032). Pages: settings Roles section, /c/<slug>/tasks/
-src/pages/c/[clinic]/settings/ profile + hours + HMOs + listing, fees, team (invites), photos, privacy (DPO), billing
+src/pages/c/[clinic]/settings/ profile + hours (lunch) + closed days + HMOs + listing, fees, team (invites), photos, privacy (DPO), billing
 src/pages/c/[clinic]/claims/   HMO and PhilHealth claims: file, approve, deny, pay, notes, aging, CSV
 src/pages/me/                  patients: my visits by mobile (code → list; confirm / cancel / calendar)
 src/pages/admin/               Flossify operations: overview, PRC checks, clinics, billing
@@ -1110,7 +1455,9 @@ src/pages/c/[clinic]/account/  My page (details, password, my schedule)
 src/data/migrations/026, 027   patient import (past visits, paper consent), operator aggregates (counts only)
 src/data/migrations/028        patient forms: forms keys, submissions, the treatment consent version, consent channel 'form'
 src/data/migrations/035        visit_consent: the consent signed by hand on the clinic's tablet, per visit
-src/lib/visit-record.ts, visit-consent.ts  the Timeline's visits (everything per visit); signing, strokes → SVG
+src/lib/visit-record.ts, visit-consent.ts  the visits (everything per visit); signing, strokes → SVG
+src/lib/treatment-record.ts    the Treatment record (the PDA ledger): rows, charges, the running balance, next appt.
+src/pages/c/[clinic]/patients/[patient]/treatment-record.astro  the Treatment record on A4 paper
 src/pages/c/[clinic]/patients/[patient]/sign/  the tablet signing page (clinic step, patient step, thank you)
 src/pages/f/[key].astro        patients: the patient forms from the QR code on a clinic's desk (five steps, no account)
 src/lib/patient-forms.ts       forms key, public submit, the "New patient forms" queue, adding a form to the records
@@ -1124,7 +1471,7 @@ src/data/migrations/036, 037, 038  the paperless day: visit links, reminder pass
 src/pages/c/[clinic]/patients/_record/VisitStrip.astro  This visit: today's visit checklist above the record's sections
 src/lib/aftercare.ts           the nine aftercare sheets (en + fil), kindForCatalog, the evening text; printed at patients/<id>/aftercare/<kind>/
 src/lib/text-templates.ts      the eight texts Messages → Text a patient fills in (GSM-safe, no link, no reply asked)
-src/pages/c/[clinic]/calls/    the desk's call list: tomorrow's visits to confirm, a call log, no-shows to call back, a print sheet
+src/pages/c/[clinic]/calls/    the desk's call list: visits in closed time (Keep it), tomorrow's visits to confirm, a call log, no-shows to call back, a print sheet
 src/pages/c/[clinic]/finances/close/  Close the day: payments by method, the drawer count, what is still open, tomorrow
 src/pages/api/recall.ts        POST: the next check-up in one tap from the Dashboard's visit panel (recall-set)
 docs/clinic-operations.md      how a dental clinic runs, front door to archive: the brief the paperless day was built from
@@ -1134,6 +1481,24 @@ src/components/Odontogram.astro  32 teeth, FDI/Universal/Palmer, surface-scoped
 src/data/schema.sql            full multi-tenant Postgres model with RLS
 src/data/lqip.json             blur placeholders, keyed by image name
 src/data/shot-size.json        real screenshot dimensions (generated)
+src/data/migrations/039        the patient intake and the consent library: intakes, links, tablets, consent forms, signings, attestations, the chain
+src/data/migrations/043        the intake's review fixes (phase 2)
+src/pages/f/i/, f/t/, auth/park.ts, auth/unlock.astro, auth/tablet.ts  the patient's intake pages, the clinic tablet, handing a device over
+src/lib/intake.ts, intake-public.ts, consent-docs.ts, park.ts  the desk's intake, its public side, consent documents, hand-over
+src/lib/consent-library.ts, consent-seal.ts  the consent forms as data and the one renderer; canonical JSON, snapshot, seal, chain (npm run consent:hash)
+src/lib/intake-def.ts, patient-add.ts, refused.ts  the intake's page 1; adding a patient's own answers (forms and intakes); the one Refused class
+scripts/dev/intake/db-test.mjs the intake database checks; scripts/ts-register.mjs runs a script that imports src/lib
+src/data/migrations/040        blocked time: lunch, dentist hours, clinic_block, blocked_ok_at, clinic_unavailable(), public_blocked/busy_ranges()
+src/lib/blocks.ts, block-words.ts   blocked time: the desk's reads and writes over clinic_unavailable(), and the words (pure)
+src/lib/schedule-api.ts, reminder-state.ts  the schedule API's gate and body readers; a visit's reminder in words
+src/pages/api/schedule/blocks.ts   add or remove a dated block
+src/pages/c/[clinic]/settings/_lib/closed-days.ts, _ui/ClosedSection.astro  Closed days (040)
+src/components/ws/cal/free.ts, FreeTimes.astro, BlockPanel.astro  free-time chips (p24); the Block time panel (040)
+src/data/migrations/041, src/lib/ptr.ts  the PTR: staff.ptr_year, the copy on prescriptions and letters; reading, checking, words
+src/data/migrations/042        procedure_catalog.chart_effect: what a treatment does to the chart
+src/lib/chart-offer.ts, chart-write.ts  the chart's offer after a treatment (pure), and the write after a tap
+src/pages/c/[clinic]/patients/_ui/ToothPick.astro, toothpick.ts  the tooth picker (p01)
+src/pages/c/[clinic]/patients/_record/TreatmentPanels.astro, NotePanel.astro, pickpanel.ts, ChartOffer.astro  the panels the chart's palette opens; the chart offer
 public/video/                  the tour film + poster
 ```
 

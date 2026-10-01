@@ -1,8 +1,9 @@
 ---
 // One person's page: /c/<slug>/settings/people/<id>/. Everything about one
 // owner, dentist or staff member at this branch, in one place — who they are
-// and how to reach them, their PRC licence and where its check stands, the
-// days they sit here, finance access, their sign-in (a new invitation or
+// and how to reach them, their PRC licence and where its check stands, their
+// PTR (the owner or an admin sets it in Edit details; the dentist can set it
+// on My page too), the days they sit here and, for a dentist, their hours on those days (040), finance access, their sign-in (a new invitation or
 // reset code, disable, enable), and, for someone who sees patients, their
 // coming appointments here (read only; the calendar is where they change).
 //
@@ -32,15 +33,17 @@ import '../_ui/settings.css';
 import { requireWorkspace } from '../../../../../lib/workspace';
 import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
 import { USERNAME_MAX } from '../../../../../lib/username';
-import { DAYS, ago, clinician, dateText, daysText, prcState, treats } from '../_lib/common';
+import { DAYS, DAY_LONG, ago, clinician, dateText, daysText, prcState, signsPapers, spanShort, treats } from '../_lib/common';
 import {
-  member, daysOf, upcomingFor, personAction, personNotice, accountState, reachable, emailOn, prettyPhone,
-  SPECIALTIES, EMAIL_MAX, type ActionRefused, type EditValues,
+  member, scheduleOf, upcomingFor, personAction, personNotice, accountState, reachable, emailOn, prettyPhone,
+  SPECIALTIES, EMAIL_MAX, type ActionRefused, type EditValues, type DaysValues,
 } from '../_lib/people';
 import { can } from '../../../../../lib/can';
 import { listRoles, giveable, mayManage } from '../../../../../lib/roles';
 import { PASSWORD_MIN } from '../../../../../lib/auth';
 import RoleField from '../_ui/RoleField.astro';
+import { ptrChip, ptrDrawn, ptrLine, ptrState, ptrYearOptions, PTR_MAX } from '../../../../../lib/ptr';
+import { manilaToday } from '../../../../../lib/health';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -71,18 +74,40 @@ if (Astro.request.method === 'POST' && t) {
 }
 
 const q = Astro.url.searchParams;
-const [days, upcoming] = t && allowed
-  ? await Promise.all([daysOf(clinic.id, t.id), treats(t.role) ? upcomingFor(clinic.id, t.id) : Promise.resolve(null)])
-  : [[] as number[], null];
+const [sched, upcoming] = t && allowed
+  ? await Promise.all([scheduleOf(clinic.id, t.id), treats(t.role) ? upcomingFor(clinic.id, t.id) : Promise.resolve(null)])
+  : [[] as { dow: number; from_min: number | null; to_min: number | null }[], null];
+const days = sched.map((r) => r.dow);
+// Their own hours on a day here (040), for someone who treats: blank is the clinic's hours that day.
+const hm = (m: number | null) => (m === null ? '' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+const withHours = sched.filter((r) => r.from_min !== null && r.to_min !== null);
+const dv: DaysValues = refused?.days ?? {
+  dows: days,
+  from: Object.fromEntries(sched.map((r) => [r.dow, hm(r.from_min)])),
+  to: Object.fromEntries(sched.map((r) => [r.dow, hm(r.to_min)])),
+};
+const hoursOpen = withHours.length > 0 || !!refused?.days;
+// "Tue, Thu · Tue 1–6 pm": the days, then each day that has hours of its own.
+const daysMeta = withHours.length
+  ? `${daysText(days)} · ${withHours.map((r) => `${DAYS.find(([n]) => n === r.dow)![1]} ${spanShort(r.from_min!, r.to_min!)}`).join(', ')}`
+  : daysText(days);
 const notice = t && allowed && !refused ? personNotice(q, t, session.staffId) : '';
 const doneTo = q.get('done') === 'schedule' ? 'days' : q.get('done') === 'finance' ? 'finance' : ['invite', 'reset', 'password', 'disable', 'enable'].includes(q.get('done') ?? '') ? 'signin' : 'head';
 // Where a refused action's sentence goes: the pane it came from. A refused edit comes back in its panel.
 const errorIn = refused?.edit ? 'edit' : refused?.action === 'finance' ? 'finance' : refused?.action === 'schedule' ? 'days' : ['invite', 'reset', 'password', 'disable', 'enable'].includes(refused?.action ?? '') ? 'signin' : 'head';
 
 // What the edit form shows: what was typed when it came back with an error, else what is on file.
-const v: EditValues | null = t ? (refused?.edit ?? { name: t.full_name, username: t.username, role: t.role, roleId: t.role_id, treats: clinician(t.role), phone: t.phone ? prettyPhone(t.phone) : '', email: t.email ?? '', prc: t.prc_licence ?? '', specialty: t.specialty ?? '' }) : null;
+const today = manilaToday();
+const v: EditValues | null = t ? (refused?.edit ?? { name: t.full_name, username: t.username, role: t.role, roleId: t.role_id, treats: clinician(t.role), phone: t.phone ? prettyPhone(t.phone) : '', email: t.email ?? '', prc: t.prc_licence ?? '', specialty: t.specialty ?? '', ...ptrDrawn({ number: t.ptr_number, year: t.ptr_year }, today) }) : null;
 const roleLocked = !!t && (t.role_owner || self);
 const showPrc = !!t && !!v && (roleLocked ? !!t.slug : v.treats);
+// The PTR fields go with "Treats patients" (RoleField's script shows and hides them with the PRC's); never required.
+const showPtr = !!t && !!v && (roleLocked ? signsPapers(t) : v.treats);
+const ptrYears = t && v ? ptrYearOptions(today, t.ptr_year, Number(v.ptrYear) || null) : [];
+// Their PTR, for the PRC pane: shown to anyone who signs papers, or with a PTR on file.
+const ptrNow = t ? { number: t.ptr_number, year: t.ptr_year } : null;
+const ptrShown = !!t && (signsPapers(t) || !!t.ptr_number);
+const ptrChipNow = ptrNow ? ptrChip(ptrState(ptrNow, today), ptrNow) : null;
 // Only people whose role is below yours (src/lib/roles.ts); your own details you may edit, not your role.
 const manages = !!t && canSetUp && mayManage(clinic, t, self);
 const mayEdit = !!t && canSetUp && (self || manages);
@@ -150,7 +175,7 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
             <Upcoming rows={upcoming.rows} total={upcoming.total} slug={clinic.slug} title="Coming appointments" emptyText={`Nothing booked for ${self ? 'you' : first} at ${clinic.name} yet.`} />
           )}
 
-          <Pane id="days" icon="calendar" title="Days at this branch" meta={daysText(days)} class="set-sec">
+          <Pane id="days" icon="calendar" title="Days at this branch" meta={mayEdit ? daysText(days) : daysMeta} class="set-sec">
             <p class="set-intro mb-4">
               {treats(t.role) ? 'The days patients can book them here.' : 'The days they work here.'}
             </p>
@@ -164,10 +189,30 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
                   <legend class="sr-only">Days {t.full_name} is at {clinic.name}</legend>
                   <div class="set-days">
                     {DAYS.map(([n, label]) => (
-                      <label class="set-day"><input type="checkbox" name="dow" value={n} checked={days.includes(n)} /><span>{label}</span></label>
+                      <label class="set-day"><input type="checkbox" name="dow" value={n} checked={dv.dows.includes(n)} data-days-dow /><span>{label}</span></label>
                     ))}
                   </div>
                 </fieldset>
+                {treats(t.role) && (
+                  <details class="set-more set-days-hours" data-days-hours open={hoursOpen}>
+                    <summary>
+                      <Icon name="clock" />
+                      <span>Hours on those days <span class="set-more-hint">Blank means the clinic’s hours.</span></span>
+                      <Icon name="chevron" />
+                    </summary>
+                    <div class="set-more-body set-dh">
+                      {DAYS.map(([n]) => (
+                        <div class="set-dh-row" data-days-hours-row={n} data-off={dv.dows.includes(n) ? undefined : ''}>
+                          <span class="set-dh-day" aria-hidden="true">{DAY_LONG[n]}</span>
+                          <label class="field"><span class="sr-only">{DAY_LONG[n]}: in from</span><input type="time" name={`from[${n}]`} value={dv.from[n] ?? ''} step="900" /></label>
+                          <span class="set-dh-dash" aria-hidden="true">–</span>
+                          <label class="field"><span class="sr-only">{DAY_LONG[n]}: in until</span><input type="time" name={`to[${n}]`} value={dv.to[n] ?? ''} step="900" /></label>
+                        </div>
+                      ))}
+                      <p class="set-help set-dh-help">Only the days ticked above are saved.</p>
+                    </div>
+                  </details>
+                )}
                 <div><button type="submit" class="ws-btn ws-btn-quiet"><Icon name="check" />Save days</button></div>
               </form>
             ) : (
@@ -181,7 +226,7 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
 
         <div class="set-col">
           {(treats(t.role) || t.prc_licence) && (
-            <Pane id="prc" icon="file" title="PRC licence" class="set-sec">
+            <Pane id="prc" icon="file" title={ptrShown ? 'PRC licence and PTR' : 'PRC licence'} class="set-sec">
               <div class="set-state">
                 <Chip tone={prc!.tone} label={prc!.short} icon={prc!.tone === 'accent' ? 'check' : prc!.tone === 'muted' ? undefined : 'alert'} />
                 {t.prc_licence && <span class="text-[15px] tabular-nums">Licence no. {t.prc_licence}</span>}
@@ -192,6 +237,14 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
                 ? <a href={`/dentists/${t.slug}/`} target="_blank" rel="noopener" class="set-link mt-1">Public profile<span class="sr-only"> (opens in a new tab)</span><Icon name="arrow-right" size={16} class="set-arrow" /></a>
                 : <p class="set-help mt-2">No public profile until they have days here.</p>)}
               {mayEdit && <p class="set-help mt-2">A new number or name goes back for a check. Change them in Edit details.</p>}
+              {ptrShown && ptrChipNow && (
+                <div class="set-state mt-4">
+                  <Chip tone={ptrChipNow.tone} label={ptrChipNow.label} icon={ptrChipNow.tone === 'accent' ? 'check' : ptrChipNow.tone === 'muted' ? undefined : 'alert'} />
+                  {ptrLine(ptrNow!) && <span class="text-[15px] tabular-nums">PTR no. {ptrLine(ptrNow!)}</span>}
+                </div>
+              )}
+              {ptrShown && mayEdit && <p class="set-help mt-2">Change the PTR in Edit details. Flossify does not check it: it prints as it is written.</p>}
+              {self && !canSetUp && signsPapers(t) && <p class="set-help mt-2"><a href={`/c/${clinic.slug}/account/#ptr`} class="inline-flex min-h-[44px] items-center font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">Add yours on My page</a></p>}
             </Pane>
           )}
 
@@ -317,6 +370,23 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
                 {SPECIALTIES.map((s) => <option value={s} selected={v.specialty === s}>{s}</option>)}
               </select>
             </label>
+            {/* The PTR: never required, so not data-prc-required. [hidden] beats the wrapper's grid (the preflight's !important). */}
+            <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_9rem]" data-team-dentist hidden={!showPtr}>
+              <label class="field">
+                <span class="meta">PTR number (optional)</span>
+                <input name="ptr" value={v.ptr} inputmode="text" autocapitalize="characters" spellcheck="false" maxlength={PTR_MAX} autocomplete="off" placeholder="e.g. 8123456" class="tabular-nums" />
+              </label>
+              <label class="field">
+                <span class="meta">For the year</span>
+                <select name="ptr_year">
+                  {v.ptrYear === '' && <option value="" selected>Choose the year…</option>}
+                  {ptrYears.map((y) => <option value={y} selected={String(y) === v.ptrYear}>{y}</option>)}
+                </select>
+              </label>
+              <input type="hidden" name="ptr_seen" value={v.ptrSeen} />
+              <input type="hidden" name="ptr_year_seen" value={v.ptrYearSeen} />
+              <span class="set-help sm:col-span-2">As printed on the receipt, letters included. Renewed by 31 January; one PTR covers the whole country.</span>
+            </div>
             <div><button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save changes</button></div>
           </form>
         </SidePanel>
@@ -363,9 +433,15 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
   const refused = [...document.querySelectorAll<HTMLElement>('[data-set-refused]')].find((n) => !n.closest('dialog'));
   if (refused) { refused.closest<HTMLElement>('.set-sec')?.scrollIntoView({ block: 'start' }); refused.focus({ preventScroll: true }); }
   else if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' });
+  // Hours on those days (040): a day not ticked above is muted (the save reads only the ticked days).
+  for (const box of document.querySelectorAll<HTMLInputElement>('[data-days-dow]')) {
+    box.addEventListener('change', () => {
+      document.querySelector<HTMLElement>(`[data-days-hours-row="${box.value}"]`)?.toggleAttribute('data-off', !box.checked);
+    });
+  }
   // One-shot notices leave the address, so a reload does not say them again.
   const url = new URL(location.href);
   let changed = false;
-  for (const k of ['done', 'via', 'email', 'role', 'prc', 'profile', 'resend']) if (url.searchParams.has(k)) { url.searchParams.delete(k); changed = true; }
+  for (const k of ['done', 'via', 'email', 'role', 'prc', 'profile', 'resend', 'closed']) if (url.searchParams.has(k)) { url.searchParams.delete(k); changed = true; }
   if (changed) history.replaceState(history.state, '', url.pathname + url.search + url.hash);
 </script>

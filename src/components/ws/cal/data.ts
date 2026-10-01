@@ -12,7 +12,10 @@
 //             for finance roles only — the balance (patient_balance(), the
 //             one balance definition)
 //
-// A card is the schedule's Appt plus extras (model.ts). The Appt half uses the
+// A card is the schedule's Appt plus extras (model.ts). Since p25 the extras also carry the patient's desk note
+// (patient.notes less the lines the import writes by itself: deskNoteOf in src/lib/import.ts, which is server-only
+// like this file, so the note is worked out here and never in the browser), the latest added patient form's answer
+// to "nervous about visits", and what every consent signed on the tablet for the visit covered. The Appt half uses the
 // same expressions as APPT_SELECT in src/lib/schedule.ts, so a visit reads the
 // same here as on every /api/schedule answer; /api/schedule adds the extras to
 // its own answers with extrasFor() below.
@@ -27,6 +30,8 @@ import type { Tx } from '../../../lib/db';
 import { withClinic } from '../../../lib/db';
 import { rowToAppt, type Appt } from '../../../lib/schedule';
 import { hmoById } from '../../../data/directory';
+import { loadBlocks, type BlockRange } from '../../../lib/blocks';
+import { deskNoteOf } from '../../../lib/import';
 import type { Card, Extras, Price, Pt, Service, StaffDay } from './model';
 
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
@@ -60,9 +65,13 @@ const BASE = `a.id, a.patient_id, concat_ws(' ', p.first_name, nullif(p.last_nam
        mh.allergies`;
 // The extras (model.ts Extras): the service and its price, who booked, the patient's alerts — and, since 036,
 // what the desk and the chair need at the moment of decision: whether the history was asked and when, blood
-// pressure on the visit's day, a consent signed for this visit, a lab case or a medical clearance still out,
+// pressure on the visit's day, a consent signed for this visit (visit_treatment_consented, 039: the tablet's signing or an
+// agreed general consent form), a lab case or a medical clearance still out,
 // treatments done at the visit with no statement line yet, the visit's statement, the open recall, and the
-// patient's next visit after this one. Each is one small subselect; a day has a few dozen cards.
+// patient's next visit after this one. And since p25: the patient's desk note, the latest added patient form's answer
+// to "nervous about visits" ('little' or 'very'; nothing for 'no'), and the treatment each consent signed for this
+// visit covered, joined with "; " (visit_consent_visit's index). Each is one small subselect; a day has a few dozen
+// cards.
 const MANILA_DAY = (col: string) => `(${col} at time zone 'Asia/Manila')::date`;
 const EXTRA = `coalesce(pc.id, pr.id) as catalog_id, coalesce(pc.name, pr.name) as service, coalesce(pc.code, pr.code) as catalog_code, coalesce(pc.category, pr.category) as catalog_category,
        coalesce(pc.default_price, pr.default_price) as price_min, coalesce(pc.price_max, pr.price_max) as price_max,
@@ -72,7 +81,7 @@ const EXTRA = `coalesce(pc.id, pr.id) as catalog_id, coalesce(pc.name, pr.name) 
        ${PATIENT_HMO} as patient_hmo, nullif(nullif(btrim(p.last_name), '—'), '') as last_name,
        mh.answered_at as health_asked_at,
        exists (select 1 from vital_sign v where v.patient_id = p.id and ${MANILA_DAY('v.taken_at')} = ${MANILA_DAY('a.starts_at')}) as bp_on_day,
-       exists (select 1 from visit_consent vc where vc.appointment_id = a.id) as consent_signed,
+       visit_treatment_consented(a.id) as consent_signed,
        exists (select 1 from lab_order lo where lo.patient_id = p.id and lo.status in ('ordered', 'sent')) as lab_pending,
        exists (select 1 from clinical_letter cl where cl.patient_id = p.id and cl.kind = 'clearance' and cl.answer is null) as clearance_waiting,
        (select count(*) from procedure_done d
@@ -82,7 +91,13 @@ const EXTRA = `coalesce(pc.id, pr.id) as catalog_id, coalesce(pc.name, pr.name) 
        st.id as statement_id, st.series_prefix as statement_prefix, st.number as statement_number, st.status as statement_status,
        (select to_char(r.due_on, 'YYYY-MM-DD') from recall r where r.patient_id = p.id and r.completed_at is null order by r.due_on limit 1) as recall_due,
        (select min(x.starts_at) from appointment x
-         where x.patient_id = p.id and x.id <> a.id and x.starts_at > a.ends_at and x.status not in ('cancelled', 'no_show', 'completed')) as next_visit_at`;
+         where x.patient_id = p.id and x.id <> a.id and x.starts_at > a.ends_at and x.status not in ('cancelled', 'no_show', 'completed')) as next_visit_at,
+       p.notes as desk_note,
+       (select case when f.answers->>'nervous' in ('little', 'very') then f.answers->>'nervous' end
+          from patient_form f where f.patient_id = p.id and f.status = 'added'
+         order by f.submitted_at desc limit 1) as form_nervous,
+       (select string_agg(replace(btrim(vc.treatment), E'\\n', '; '), '; ' order by vc.signed_at)
+          from visit_consent vc where vc.appointment_id = a.id) as consent_for`;
 const FROM = `
   from appointment a
   join patient p on p.id = a.patient_id
@@ -135,6 +150,9 @@ function extrasOf(r: Row): Extras {
     statement: r.statement_id ? { id: r.statement_id as string, no: `${r.statement_prefix}-${String(r.statement_number).padStart(6, '0')}`, status: r.statement_status as string } : null,
     recallDue: (r.recall_due as string | null) ?? null,
     nextVisitAt: iso(r.next_visit_at),
+    deskNote: deskNoteOf((r.desk_note as string | null) ?? null),
+    formNervous: r.form_nervous === 'little' || r.form_nervous === 'very' ? r.form_nervous : null,
+    consentFor: (r.consent_for as string | null) || null,
   };
 }
 /** A visit and its extras as one card. A visit brought in from old records may name a dentist who is not on
@@ -169,6 +187,8 @@ export interface Dashboard {
   toConfirm: Card[];
   collected: { amount: number; count: number } | null;
   patients: PatientRow[];
+  /** Blocked time (040) over the range on screen and over today: lunch, a dentist's time not in, the dated blocks. */
+  blocks: BlockRange[];
 }
 
 /**
@@ -183,8 +203,9 @@ export async function loadDashboard(clinicId: string, o: { from: Date; to: Date;
       `select c.chairs, c.area, c.name,
               staff_can($2, c.id, 'records.edit') as can_edit,
               coalesce((select json_agg(json_build_array(h.dow, h.open_min, h.close_min)) from clinic_hours h), '[]'::json) as hours,
-              coalesce((select json_agg(json_build_object('id', x.id, 'name', x.name, 'days', x.days) order by x.owner desc, x.name)
-                          from (select s.id, s.full_name as name, s.role = 'owner' as owner, array_agg(ss.dow order by ss.dow) as days
+              coalesce((select json_agg(json_build_object('id', x.id, 'name', x.name, 'days', x.days, 'hours', x.hours) order by x.owner desc, x.name)
+                          from (select s.id, s.full_name as name, s.role = 'owner' as owner, array_agg(ss.dow order by ss.dow) as days,
+                                       coalesce(jsonb_object_agg(ss.dow, jsonb_build_array(ss.from_min, ss.to_min)) filter (where ss.from_min is not null), '{}'::jsonb) as hours
                                   from staff s join staff_schedule ss on ss.staff_id = s.id
                                  where ss.clinic_id = c.id and s.disabled_at is null and s.role in ('owner', 'dentist', 'associate')
                                  group by s.id, s.full_name, s.role) x), '[]'::json) as staff,
@@ -245,6 +266,15 @@ export async function loadDashboard(clinicId: string, o: { from: Date; to: Date;
         order by v.next_at nulls last, v.last_at desc nulls last, p.last_name, p.first_name`,
       [o.todayFrom, o.todayTo]);
 
+    // Blocked time: the range on screen, and today when today is not in it (the walk-in and the live board read
+    // today); two reads of a week at most, so a date 18 months ahead still draws its lunch. Merged by identity.
+    const blocks = await loadBlocks(tx, clinicId, o.from, o.to);
+    if (o.todayFrom < o.from || o.todayFrom >= o.to) {
+      const key = (b: BlockRange) => b.id ?? `${b.kind}|${b.dentistId}|${b.chair}|${b.startsAt}`;
+      const seen = new Set(blocks.map(key));
+      for (const b of await loadBlocks(tx, clinicId, o.todayFrom, o.todayTo)) if (!seen.has(key(b))) blocks.push(b);
+    }
+
     const hours: Dashboard['hours'] = { 0: null, 1: null, 2: null, 3: null, 4: null, 5: null, 6: null };
     for (const [dow, open, close] of (m?.hours ?? []) as [number, number, number][]) hours[dow] = [open, close];
     const cards = rows.map((r: Row) => ({ r, c: cardOf(r) }));
@@ -259,6 +289,7 @@ export async function loadDashboard(clinicId: string, o: { from: Date; to: Date;
       toPlace: cards.filter((x) => x.r.to_place).map((x) => x.c),
       toConfirm: cards.filter((x) => x.r.to_confirm).map((x) => x.c),
       collected: collected ? { amount: Number(collected.amount), count: Number(collected.n) } : null,
+      blocks,
       patients: pts.map((r: Row) => ({
         id: r.id, name: r.name, sort: r.sort, chart: r.chart_no, phone: r.phone ?? null, birth: r.birth ?? null,
         allergies: (r.allergies ?? []).filter(Boolean), conditions: (r.conditions ?? []).filter(Boolean),

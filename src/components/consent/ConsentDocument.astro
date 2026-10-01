@@ -1,0 +1,120 @@
+---
+// One consent form as the patient reads it — the one renderer (the intake
+// spec §3.5). It draws a Rendered document (renderDocument in
+// src/lib/consent-library.ts, or a stored snapshot, which has the same shape)
+// in three modes:
+//   patient  the page of /f/i/<token>/: the text, and the initials boxes at the
+//            end of the risks sections (inputs named initials_<section id>);
+//            the page adds its questions, ticks, decision, signer and pad after it.
+//   preview  read-only, in a phone-wide box inside the desk's side panel (not an
+//            iframe: every page sends frame-ancestors 'none').
+//   record   read-only, from the snapshot: what was shown and decided, with the
+//            ticks and the initials as they were. With `paper` (the form printed
+//            for signing on paper), an empty initials box after each section
+//            that asks for them, as the paper signing is recorded.
+// Filipino lines show only when the document's langs include 'fil' (a reviewed
+// translation on a production server) and carry lang="fil".
+import './consent.css';
+import { dateWords, type Rendered } from '../../lib/consent-library';
+
+interface Props {
+  doc: Pick<Rendered, 'title' | 'for' | 'in_short' | 'sections' | 'ticks' | 'patient' | 'dentist' | 'attested' | 'langs' | 'initials' | 'decision' | 'signer' | 'explained_in'> & { date?: string };
+  mode: 'patient' | 'preview' | 'record';
+  /** "Part 3 of 5 · Consent form". */
+  part?: string;
+  /** "Form extraction-2026-10 · CF-7K2FQ". */
+  version: string;
+  ref?: string;
+  /** Patient mode: what was typed in the initials boxes, and the sentence about them. */
+  initials?: { value: string; error?: string } | null;
+  /** The patient's birth date and age, and who signs for a minor ("Maria dela Cruz, mother"). */
+  forLine?: string | null;
+  signedFor?: string | null;
+  /** The language planned (before the dentist confirms). */
+  plannedLang?: string | null;
+  /** Record mode, printed for signing on paper: empty initials boxes to fill in by hand. */
+  paper?: boolean;
+  id?: string;
+}
+const { doc, mode, part, version, ref, initials = null, forLine = null, signedFor = null, plannedLang = null, paper = false, id } = Astro.props;
+const fil = doc.langs.includes('fil');
+// The patient's page has the form as its h1; on the desk and the record it sits under the page's own headings.
+const T = mode === 'patient' ? 'h1' : 'h3';
+const H = mode === 'patient' ? 'h2' : 'h4';
+const dentist = doc.dentist;
+// The words say "Dr {dentist}"; the name is kept without the title (contextFor in src/lib/consent-docs.ts).
+// Before the dentist confirms, it is a plan: who explains it, and the language planned.
+const explained = doc.attested
+  ? `Explained by ${dentist ? `Dr ${dentist.name}` : 'the dentist'}${dentist?.prc ? ` · PRC ${dentist.prc}` : ''} · in ${doc.attested.lang}`
+  : dentist ? `Dr ${dentist.name} explains it${dentist.prc ? ` · PRC ${dentist.prc}` : ''}${plannedLang ? ` · planned in ${plannedLang}` : ''}` : null;
+const shortHead = fil ? 'In short · Sa madaling salita' : 'In short';
+const inputsHere = mode === 'patient' && initials !== null;
+---
+
+<article class="cd" data-mode={mode} id={id} data-cd>
+  <header>
+    {part && <p class="cd-part">{part}</p>}
+    <T class="cd-title" data-cd-title>{doc.title.en}{fil && doc.title.fil && <span class="cd-title-fil" lang="fil">{doc.title.fil}</span>}</T>
+    {explained && <p class="cd-by">{explained}</p>}
+    <p class="cd-ref">Form <span class="cd-mono">{version}</span>{ref && <> · <span class="cd-mono">{ref}</span></>}</p>
+  </header>
+
+  <section class="cd-for" aria-label="Who and what this form is for">
+    <div class="cd-for-who">
+      <p class="cd-for-name">{doc.patient.name}</p>
+      {forLine && <p class="cd-for-line">{forLine}</p>}
+      {signedFor && <p class="cd-for-line">Signed by: {signedFor}</p>}
+    </div>
+    {doc.for.length > 0 && (
+      <ul class="cd-facts">
+        {doc.for.map((f) => (
+          <li class="cd-fact" data-kind={f.kind}>
+            <span class="cd-fact-k">{f.label}:</span> <span>{f.text}</span>{!f.confirmed && <span class="cd-fact-tbc">(to be confirmed by the dentist)</span>}
+          </li>
+        ))}
+        {doc.date && <li class="cd-fact"><span class="cd-fact-k">Date:</span> <span>{dateWords(doc.date)}</span></li>}
+      </ul>
+    )}
+  </section>
+
+  {doc.in_short.length > 0 && (
+    <section class="cd-short" aria-label="In short">
+      <p class="cd-short-head">{shortHead}</p>
+      <ul>
+        {doc.in_short.map((l) => <li>{l.en}{fil && l.fil && <span class="cd-fil" lang="fil">{l.fil}</span>}</li>)}
+      </ul>
+    </section>
+  )}
+
+  {doc.sections.map((s) => (
+    <section class="cd-sec" data-cd-section={s.id}>
+      <H>{s.head.en}{fil && s.head.fil && <span class="cd-fil" lang="fil">{s.head.fil}</span>}</H>
+      {s.list ? (
+        <ul>{s.lines.map((l) => <li>{l.en}{fil && l.fil && <span class="cd-fil" lang="fil">{l.fil}</span>}</li>)}</ul>
+      ) : (
+        s.lines.map((l) => <p>{l.en}{fil && l.fil && <span class="cd-fil" lang="fil">{l.fil}</span>}</p>)
+      )}
+      {s.initials && inputsHere && (
+        <div class="cd-initials">
+          <label class="cd-initials-label" for={`cd-init-${s.id}`}>Initials</label>
+          <input id={`cd-init-${s.id}`} name={`initials_${s.id}`} value={initials!.value} maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false"
+            inputmode="text" required aria-invalid={initials!.error ? 'true' : undefined} aria-describedby={initials!.error ? 'ip-err-initials' : undefined} data-cd-initials />
+        </div>
+      )}
+      {s.initials && mode === 'record' && doc.initials && <p class="cd-initials"><span class="cd-initials-done">Initials: <strong>{doc.initials}</strong></span></p>}
+      {s.initials && mode === 'record' && paper && !doc.initials && <p class="cd-initials cd-initials-paper"><span>Initials</span><span class="cd-initials-blank" aria-hidden="true"></span></p>}
+    </section>
+  ))}
+
+  {mode !== 'patient' && doc.ticks.length > 0 && (
+    <section class="cd-sec" aria-label="What the patient confirms">
+      <H>{mode === 'record' ? 'Confirmed by ticking' : 'They tick'}</H>
+      <ul class="cd-ticks">
+        {doc.ticks.map((k) => (
+          <li><span class="cd-mark" aria-hidden="true">{mode === 'record' ? (k.ticked ? '☑' : '☐') : '☐'}</span><span>{k.text.en}{fil && k.text.fil && <span class="cd-fil" lang="fil">{k.text.fil}</span>}</span></li>
+        ))}
+      </ul>
+    </section>
+  )}
+  <slot />
+</article>

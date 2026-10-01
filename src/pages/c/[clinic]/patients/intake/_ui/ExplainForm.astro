@@ -1,0 +1,82 @@
+---
+// Explain and confirm (the intake spec §1.10): the named dentist sees the page
+// the patient will read, confirms its clinical part (their own fields, with
+// their own required ones), and records "I explained this to <name>" — the
+// language actually used, an interpreter, and for a patient aged 7 to 17 what
+// they said. The post goes to `action` with intent=explain (attestDocument in
+// src/lib/consent-docs.ts checks all of it again, and only the form's own
+// dentist may). Used by an intake's steps and by a form's page on the record.
+import Pane from '../../../../../../components/ws/Pane.astro';
+import Icon from '../../../../../../components/ws/Icon.astro';
+import Csrf from '../../../../../../components/Csrf.astro';
+import ConsentDocument from '../../../../../../components/consent/ConsentDocument.astro';
+import Head from '../../_ui/Head.astro';
+import ClinicFields from './ClinicFields.astro';
+import { EXPLAINED_LANGS, type Rendered, type Template, type RawPart } from '../../../../../../lib/consent-library';
+import { ASSENT, INTERPRETER_MAX } from '../../../../../../lib/consent-docs';
+import type { FeeChip } from '../../../../../../lib/intake';
+
+interface Props {
+  action: string;
+  /** Hidden fields the page needs back (step=explain on an intake). */
+  hidden?: Record<string, string>;
+  doc: { id: string; ref: string; rev: number; versionId: string; explainedIn: string | null; explainedOther: string | null };
+  t: Template;
+  rendered: Rendered;
+  raw: RawPart;
+  /** A post that came back: what was chosen. */
+  posted?: FormData | null;
+  firstName: string;
+  age: number | null;
+  minor: boolean | null;
+  forLine: string | null;
+  planned: string | null;
+  chips?: FeeChip[];
+  cancelHref: string;
+}
+const { action, hidden = {}, doc, t, rendered, raw, posted = null, firstName, age, minor, forLine, planned, chips = [], cancelHref } = Astro.props;
+const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
+const langDefault = val('explained_lang', planned && EXPLAINED_LANGS.some((x) => x.value === planned) ? planned : planned ? 'other' : 'English');
+const askAssent = age === null ? minor !== false : age >= 7 && age <= 17;
+---
+
+<form method="post" action={action} class="grid gap-4" data-ik-explain>
+  <Csrf />
+  <input type="hidden" name="intent" value="explain" />
+  {Object.entries(hidden).map(([k, v]) => <input type="hidden" name={k} value={v} />)}
+  <input type="hidden" name="doc" value={doc.id} /><input type="hidden" name="doc_rev" value={doc.rev} />
+  <Pane as="section" label="What they will read" class="ik-cq">
+    <Head icon="form" title={t.title.en} meta="What they will read" />
+    <div class="ik-preview"><ConsentDocument mode="preview" doc={rendered} version={doc.versionId} ref={doc.ref} forLine={forLine} plannedLang={planned} /></div>
+  </Pane>
+  <Pane as="section" label="Confirm the details" class="ik-cq">
+    <Head icon="pencil" title="Confirm the details" />
+    <ClinicFields t={t} prefix={`d.${doc.id}.`} raw={raw} dentist minor={minor} chips={chips} />
+  </Pane>
+  <Pane as="section" label="How you explained it">
+    <Head icon="message" title="How you explained it" />
+    <div class="grid gap-4">
+      <fieldset class="ik-q">
+        <legend>Explained in</legend>
+        <div class="ik-q-row">
+          {EXPLAINED_LANGS.map((c) => <label class="chip-radio"><input type="radio" name="explained_lang" value={c.value} checked={langDefault === c.value} /><span>{c.label}</span></label>)}
+        </div>
+        <label class="field max-w-sm"><span class="meta">Another language</span><input name="explained_other" value={val('explained_other', doc.explainedIn === 'other' ? doc.explainedOther ?? '' : '')} maxlength="40" autocomplete="off" /></label>
+      </fieldset>
+      <label class="field max-w-md"><span class="meta">Interpreter (optional)</span><input name="interpreter" value={val('interpreter')} maxlength={INTERPRETER_MAX} autocomplete="off" /></label>
+      {askAssent && (
+        <fieldset class="ik-q">
+          <legend>What did {firstName} say?{age === null ? ' (for a patient 7 to 17)' : ''}</legend>
+          <div class="ik-q-row">
+            {ASSENT.map((x) => <label class="chip-radio"><input type="radio" name="assent" value={x.value} checked={val('assent') === x.value} /><span>{x.label}</span></label>)}
+          </div>
+        </fieldset>
+      )}
+      <p class="ik-lede">{rendered.langs && t.words.attest.en.map((r) => (typeof r === 'string' ? r : 'the language above')).join('')}</p>
+      <div class="ik-actions">
+        <button type="submit" class="ws-btn ws-btn-primary"><Icon name="check" />I explained this to {firstName}</button>
+        <a class="ws-btn ws-btn-quiet" href={cancelHref}>Not now</a>
+      </div>
+    </div>
+  </Pane>
+</form>

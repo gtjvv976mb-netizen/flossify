@@ -1,0 +1,48 @@
+---
+// The PTR's words on the record (041), for the prescription and letter panels and their saved callouts:
+//   mode "note"  — under the signer select: an amber callout (no PTR, no year, last year's, a later year's)
+//                  that ends with "This <paper> takes the PTR on file at the moment you press Save.", or a
+//                  quiet ink-2 line (January's last-year PTR, December's next-year one);
+//   mode "saved" — after the green "saved", when the paper's own copy needs attention: write it in by hand.
+// Each carries the fix: the person's own My page, the person's page in Clinic settings when the viewer may
+// change their details (ptrFix, worked out on the server), else plain words. A fix link opens in a new tab,
+// so a prescription or letter being typed is never thrown away. The words are src/lib/ptr.ts's.
+import Callout from '../_ui/Callout.astro';
+import { PTR_SAVED_TEXT, type PtrFix } from '../../../../../lib/ptr';
+
+interface Props {
+  mode: 'note' | 'saved';
+  noun: 'prescription' | 'letter';
+  /** mode "note": ptrWords(). */
+  words?: { tone: 'warn' | 'quiet'; text: string } | null;
+  /** mode "saved": ptrSavedTitle(). */
+  title?: string | null;
+  fix: PtrFix | null;
+}
+const { mode, noun, words, title, fix } = Astro.props;
+const link = 'inline-flex min-h-[44px] items-center font-semibold underline underline-offset-2';
+---
+
+{mode === 'saved' ? (
+  <Callout tone="warn" title={title ?? undefined}>
+    <p>{PTR_SAVED_TEXT}</p>
+    {fix
+      ? <a href={fix.href} target="_blank" rel="noopener" class={link}>{fix.self ? 'Add yours on My page' : 'Add it on their page in Clinic settings'}<span class="sr-only"> (opens in a new tab)</span></a>
+      : <p>They can add it on their My page.</p>}
+  </Callout>
+) : words?.tone === 'warn' ? (
+  <Callout tone="warn" role="none">
+    <p>{words.text}</p>
+    {fix
+      ? <a href={fix.href} target="_blank" rel="noopener" class={link}>{fix.self ? 'Add yours on My page' : 'Add it on their page in Clinic settings'}<span class="sr-only"> (opens in a new tab)</span></a>
+      : <p class="mt-1">They can add it on their My page.</p>}
+    <p class={fix ? '' : 'mt-1'}>This {noun} takes the PTR on file at the moment you press Save.</p>
+  </Callout>
+) : words ? (
+  <div class="text-[13px] leading-snug text-ink-2">
+    <p>{words.text}</p>
+    {fix
+      ? <a href={fix.href} target="_blank" rel="noopener" class={link}>{fix.self ? 'Add yours on My page' : 'Add it on their page in Clinic settings'}<span class="sr-only"> (opens in a new tab)</span></a>
+      : <p class="mt-1">They can add it on their My page.</p>}
+  </div>
+) : null}

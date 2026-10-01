@@ -1,0 +1,18 @@
+---
+// Free times under a booking's or a move's fields (p24): the starts that fit the length on the day chosen and, with a
+// dentist chosen, their next free days. free.ts fills it; hidden until then, and for anyone without schedule.edit.
+interface Props { hook: 'bk' | 'vp' }
+const { hook } = Astro.props;
+const d = (k = '') => ({ [`data-${hook}-slots${k}`]: '' });
+---
+<div class="ft" {...d()} hidden>
+  <p class="ft-head" id={`${hook}-slots-h`} {...d('-head')}></p>
+  <div class="ft-row" role="group" aria-labelledby={`${hook}-slots-h`} {...d('-row')}></div>
+  <p class="ft-say" role="status" {...d('-say')}></p>
+  <div class="ft-next" {...d('-next')} hidden>
+    <p class="ft-head" id={`${hook}-slots-next-h`} {...d('-next-head')}></p>
+    <div class="ft-row" role="group" aria-labelledby={`${hook}-slots-next-h`} {...d('-next-row')}></div>
+    <p class="ft-note" {...d('-next-note')}></p>
+  </div>
+  <p class="ft-note" {...d('-note')}></p>
+</div>

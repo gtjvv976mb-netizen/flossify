@@ -7,6 +7,13 @@
 // this; import THIS file, not that one, from a <script> that runs in the
 // browser (it has no Node or database imports).
 //
+// The reading engine is here too and is not the forms' alone: a form is a
+// FormDef (its steps, indexed by indexFields, and its rules across fields);
+// parseForm reads a whole one and parseScreen one step of it as a draft. The
+// patient forms are FORMS_DEF (parsePatientForm is parseForm over it); the
+// intake's page 1 is INTAKE_DEF in src/lib/intake-def.ts, made of these same
+// FieldDefs by name.
+//
 // Rules kept:
 // - One definition, versioned (FORM_VERSION). A change to the questions is a
 //   new version string; stored forms keep theirs, and answerSections() shows
@@ -251,9 +258,15 @@ export type ShowIf =
   | { all: readonly ShowIf[] }
   | { not: ShowIf };
 
-export interface FieldDef {
-  /** The form field's name, unique across the whole form, and the answer's key in PatientFormValues. */
-  name: keyof PatientFormValues & string;
+/**
+ * One question. `N` is the names a form may use: the patient forms' fields
+ * are the keys of PatientFormValues; another form built on the same engine
+ * (the intake's page 1, src/lib/intake-def.ts) reuses these by name and adds
+ * its own (FieldDef<string>).
+ */
+export interface FieldDef<N extends string = keyof PatientFormValues & string> {
+  /** The form field's name, unique across the whole form, and the answer's key in the stored answers. */
+  name: N;
   kind: FieldKind;
   label: string;
   /** Shown under the label. */
@@ -281,7 +294,7 @@ export interface FieldDef {
   when?: string;
 }
 
-export interface SectionDef {
+export interface SectionDef<N extends string = keyof PatientFormValues & string> {
   id: string;
   title: string;
   help?: string;
@@ -290,18 +303,18 @@ export interface SectionDef {
   when?: string;
   /** Folded away behind these words (a <details>): optional questions most people skip. */
   fold?: string;
-  fields: readonly FieldDef[];
+  fields: readonly FieldDef<N>[];
 }
 
-export interface StepDef {
-  id: StepId;
+export interface StepDef<N extends string = keyof PatientFormValues & string, S extends string = StepId> {
+  id: S;
   /** The stepper's word. */
   short: string;
   /** The step's heading. */
   title: string;
   /** One line under the heading. */
   lede: string;
-  sections: readonly SectionDef[];
+  sections: readonly SectionDef<N>[];
 }
 
 const NOT_MALE = { field: 'sex', in: ['female', 'other', 'undisclosed'] } as const;
@@ -484,14 +497,32 @@ export const STEPS: readonly StepDef[] = [
   },
 ];
 
+/** A form's fields indexed three ways: by name, the step each is on, the section each is in. */
+export interface FormIndex<N extends string = string> {
+  /** Every field, by name. */
+  fields: Readonly<Record<string, FieldDef<N>>>;
+  /** Which step (0-based) a field is on. */
+  fieldStep: Readonly<Record<string, number>>;
+  /** The section a field is in. */
+  fieldSection: Readonly<Record<string, SectionDef<N>>>;
+}
+
+/** Index a form's steps (FormIndex). */
+export function indexFields<N extends string>(steps: readonly StepDef<N, string>[]): FormIndex<N> {
+  return {
+    fields: Object.fromEntries(steps.flatMap((s) => s.sections.flatMap((x) => x.fields.map((f) => [f.name, f])))),
+    fieldStep: Object.fromEntries(steps.flatMap((s, i) => s.sections.flatMap((x) => x.fields.map((f) => [f.name, i])))),
+    fieldSection: Object.fromEntries(steps.flatMap((s) => s.sections.flatMap((x) => x.fields.map((f) => [f.name, x])))),
+  };
+}
+
+const FORMS_INDEX = indexFields(STEPS);
+
 /** Every field, by name. */
-export const FIELDS: Readonly<Record<string, FieldDef>> = Object.fromEntries(STEPS.flatMap((s) => s.sections.flatMap((x) => x.fields.map((f) => [f.name, f]))));
+export const FIELDS: Readonly<Record<string, FieldDef>> = FORMS_INDEX.fields;
 
 /** Which step (0–4) a field is on. */
-export const FIELD_STEP: Readonly<Record<string, number>> = Object.fromEntries(STEPS.flatMap((s, i) => s.sections.flatMap((x) => x.fields.map((f) => [f.name, i]))));
-
-/** The section a field is in. */
-const FIELD_SECTION: Readonly<Record<string, SectionDef>> = Object.fromEntries(STEPS.flatMap((s) => s.sections.flatMap((x) => x.fields.map((f) => [f.name, x]))));
+export const FIELD_STEP: Readonly<Record<string, number>> = FORMS_INDEX.fieldStep;
 
 // ---------------------------------------------------------------------------
 // The answers, typed. The keys are the field names; this is exactly what is
@@ -632,23 +663,125 @@ export function shown(s: ShowIf | undefined, get: (name: string) => Answer, mino
 
 /** Is this field shown, given the answers? Its own condition and its section's. */
 export function fieldShown(f: FieldDef, get: (name: string) => Answer, minor: boolean, age: number | null = null): boolean {
-  return shown(FIELD_SECTION[f.name]?.showIf, get, minor, age) && shown(f.showIf, get, minor, age);
+  return fieldShownIn(FORMS_INDEX, f, get, minor, age);
+}
+
+/** fieldShown for any form's index (the section a field sits in is the form's own). */
+export function fieldShownIn(ix: FormIndex<string>, f: FieldDef<string>, get: (name: string) => Answer, minor: boolean, age: number | null = null): boolean {
+  return shown(ix.fieldSection[f.name]?.showIf, get, minor, age) && shown(f.showIf, get, minor, age);
+}
+
+// ---------------------------------------------------------------------------
+// The engine: one reader for any form made of these steps. The patient forms
+// are FORMS_DEF below; the intake's page 1 is INTAKE_DEF (src/lib/intake-def.ts),
+// built from the same fields by name, so the wording, the ShowIf conditions,
+// the `need` sentences and the reading are shared.
+// ---------------------------------------------------------------------------
+/** What parseForm reads a post from: a FormData, or valuesAsForm(). */
+export interface FormLike {
+  get(name: string): unknown;
+  getAll(name: string): unknown[];
+}
+
+/** What a rule sees: `say` records a field's sentence (the first one said for a field stays), and the patient's age by the birth date read. */
+export interface ParseCtx<O> {
+  say: (name: string, text: string) => void;
+  minor: boolean;
+  age: number | null;
+  today: string;
+  opts: O;
 }
 
 /**
- * Read and check the posted form. `versions` are the consent versions in
- * force now (lookupForms()); the form must have shown those. `today` is
- * Manila's (for the age and "not after today"). Every field is checked on
- * the server whatever the page's script did.
+ * A rule across fields. It runs after every field is read and the shown,
+ * required ones are checked, in the order the form lists its rules, when
+ * every field in `on` was read by this parse (parseForm reads them all;
+ * parseScreen only its screen's). It may change `out` (a list typed in a box
+ * becomes a list; the parent's details are copied as the emergency contact).
  */
-export function parsePatientForm(form: FormData, opts: { versions: { privacy: string | null; treatment: string | null }; today?: string }): ParseResult {
+export interface FormRule<O> {
+  on: readonly string[];
+  run(out: Record<string, unknown>, c: ParseCtx<O>): void;
+}
+
+export interface FormDef<O = unknown, N extends string = string, S extends string = string> extends FormIndex<N> {
+  /** Stored with the answers as `v`. */
+  version: string;
+  steps: readonly StepDef<N, S>[];
+  /** A post must carry NONCE_FIELD (the patient forms). */
+  nonce: boolean;
+  /** The answers as stored, at most, in bytes of JSON. */
+  maxAnswersBytes: number;
+  rules: readonly FormRule<O>[];
+  /** Values every answer set holds once it reads without a problem (the patient forms' two ticks). */
+  fixed: Readonly<Record<string, unknown>>;
+}
+
+/** Per field, the sentence to show under it; '_form' is the form as a whole. */
+export type FormErrors = Record<string, string>;
+
+export type FormParse<V> =
+  | { ok: true; value: V; raw: RawValues; nonce: string | null }
+  | { ok: false; errors: FormErrors; raw: RawValues; step: number; bot: boolean; nonce: string | null };
+
+/**
+ * Read and check a whole form (every step). `opts.today` is Manila's (for
+ * the age and "not after today"); the rest of `opts` is for the form's rules.
+ */
+export function parseForm<V, O extends { today?: string }>(def: FormDef<O>, form: FormLike, opts: O): FormParse<V> {
+  return readFields(def, form, opts, Object.values(def.fields), null, def.nonce);
+}
+
+/**
+ * Read and check one screen (step) of a form, as a draft: only its fields are
+ * read, and only its fields are required. `prior` is what earlier screens
+ * saved, for the conditions that look back (the birth date makes the patient a
+ * minor; a parent ticked as the emergency contact). No nonce is asked for; the
+ * whole form is read again by parseForm before it counts.
+ */
+export function parseScreen<V, O extends { today?: string }>(def: FormDef<O>, form: FormLike, stepId: string, opts: O & { prior?: Readonly<Record<string, unknown>> }): FormParse<V> {
+  const step = def.steps.find((s) => s.id === stepId);
+  if (!step) throw new Error(`parseScreen: no step ${stepId}`);
+  return readFields(def, form, opts, step.sections.flatMap((x) => x.fields), opts.prior ?? {}, false);
+}
+
+/**
+ * Saved answers as a form again (a tick is '1', a list its items, a list
+ * typed in a box one per line), so parseForm can read a whole form from
+ * screens saved one at a time. With `post`, the fields of `post.step` (and
+ * the honeypot and nonce) are read from the post as sent, the rest from the
+ * saved answers: the last screen, read together with the ones before it.
+ */
+export function valuesAsForm(def: Pick<FormIndex<string>, 'fields'> & { steps: readonly StepDef<string, string>[] }, values: Readonly<Record<string, unknown>>, post?: { form: FormLike; step: string }): FormLike {
+  const fromPost = new Set<string>([HONEYPOT_FIELD, NONCE_FIELD]);
+  if (post) {
+    const step = def.steps.find((s) => s.id === post.step);
+    if (!step) throw new Error(`valuesAsForm: no step ${post.step}`);
+    for (const x of step.sections) for (const f of x.fields) fromPost.add(f.name);
+  }
+  const asStrings = (name: string): string[] => {
+    const f = def.fields[name];
+    const v = values[name];
+    if (v === null || v === undefined || v === false) return [];
+    if (v === true) return ['1'];
+    if (Array.isArray(v)) return f?.kind === 'textarea' ? [v.map(String).join('\n')] : v.map(String);
+    return [String(v)];
+  };
+  return {
+    get: (name) => (post && fromPost.has(name) ? post.form.get(name) : asStrings(name)[0] ?? null),
+    getAll: (name) => (post && fromPost.has(name) ? post.form.getAll(name) : asStrings(name)),
+  };
+}
+
+function readFields<V, O extends { today?: string }>(def: FormDef<O>, form: FormLike, opts: O, list: readonly FieldDef<string>[], prior: Readonly<Record<string, unknown>> | null, wantNonce: boolean): FormParse<V> {
   const today = opts.today ?? manilaToday();
-  const errors: FieldErrors = {};
+  const errors: FormErrors = {};
   const raw: RawValues = {};
-  const say = (name: string, text: string) => { if (!(errors as Record<string, string>)[name]) (errors as Record<string, string>)[name] = text; };
+  const say = (name: string, text: string) => { if (!errors[name]) errors[name] = text; };
+  const reading = new Set(list.map((f) => f.name));
 
   // 1. As posted, trimmed. Checks keep only known values.
-  for (const f of Object.values(FIELDS)) {
+  for (const f of list) {
     if (f.kind === 'checks') {
       const known = new Set((f.choices ?? []).map((c) => c.value));
       raw[f.name] = [...new Set(form.getAll(f.name).map((v) => String(v)).filter((v) => known.has(v)))];
@@ -660,12 +793,12 @@ export function parsePatientForm(form: FormData, opts: { versions: { privacy: st
   const bot = String(form.get(HONEYPOT_FIELD) ?? '').trim() !== '';
   const posted = String(form.get(NONCE_FIELD) ?? '');
   const nonce = NONCE_SHAPE.test(posted) ? posted : null;
-  if (!nonce) say('_form', 'The page had gone stale. Check your answers and send them again.');
+  if (wantNonce && !nonce) say('_form', 'The page had gone stale. Check your answers and send them again.');
 
   // 2. Each field on its own.
   const out: Record<string, unknown> = {};
-  const choiceOk = (f: FieldDef, v: string) => (f.choices ?? []).some((c) => c.value === v);
-  for (const f of Object.values(FIELDS)) {
+  const choiceOk = (f: FieldDef<string>, v: string) => (f.choices ?? []).some((c) => c.value === v);
+  for (const f of list) {
     const r = raw[f.name];
     const tooLong = (s: string) => f.max !== undefined && s.length > f.max;
     switch (f.kind) {
@@ -713,13 +846,13 @@ export function parsePatientForm(form: FormData, opts: { versions: { privacy: st
         break;
       }
       case 'checks': {
-        const list = (r as string[]) ?? [];
-        if (f.none && list.includes(f.none) && list.length > 1) {
-          const other = (f.choices ?? []).find((c) => c.value !== f.none && list.includes(c.value));
+        const picked = (r as string[]) ?? [];
+        if (f.none && picked.includes(f.none) && picked.length > 1) {
+          const other = (f.choices ?? []).find((c) => c.value !== f.none && picked.includes(c.value));
           const noneLabel = (f.choices ?? []).find((c) => c.value === f.none)?.label ?? 'None';
           say(f.name, `“${noneLabel}” is ticked, and so is “${other?.label ?? 'another'}”. Untick one.`);
         }
-        out[f.name] = list;
+        out[f.name] = picked;
         break;
       }
       case 'agree':
@@ -728,73 +861,131 @@ export function parsePatientForm(form: FormData, opts: { versions: { privacy: st
     }
   }
 
-  // 3. What is shown, and so required and kept.
-  const birth = (out.birth_date as string | null) ?? null;
+  // 3. What is shown, and so required and kept. A condition on a field this
+  //    parse did not read looks at what earlier screens saved (`prior`).
+  const get = (name: string) => (reading.has(name) || !prior ? out[name] : prior[name]) as Answer;
+  const birth = (get('birth_date') as string | null | undefined) ?? null;
   const minor = isMinorOn(birth, today);
   const age = ageFrom(birth, today);
-  const get = (name: string) => out[name] as Answer;
-  for (const f of Object.values(FIELDS)) {
-    if (!fieldShown(f, get, minor, age)) { out[f.name] = f.kind === 'checks' ? [] : null; delete (errors as Record<string, string>)[f.name]; continue; }
+  for (const f of list) {
+    if (!fieldShownIn(def, f, get, minor, age)) { out[f.name] = f.kind === 'checks' ? [] : null; delete errors[f.name]; continue; }
     if (!f.required) continue;
     const v = out[f.name];
     const empty = v === null || v === false || (Array.isArray(v) && v.length === 0);
     if (empty) say(f.name, f.need ?? (f.kind === 'radio' || f.kind === 'select' ? 'Choose one.' : f.kind === 'checks' ? 'Tick at least one.' : `Fill in: ${f.label.toLowerCase()}.`));
   }
 
-  // 4. Lists typed in a box, each item short enough for the health record.
-  const medicines = out.medicines ? splitList(out.medicines as string) : [];
-  if (medicines.some((m) => m.length > ITEM_MAX)) say('medicines', `Keep each medicine under ${ITEM_MAX} characters, one per line.`);
-  else if (medicines.length > 20) say('medicines', 'Up to 20 medicines here. Tell the dentist the rest.');
-  for (const [name, what] of [['allergy_other', 'allergy'], ['condition_other', 'one']] as const) {
-    const list = splitList(out[name] as string | null);
-    if (list.some((x) => x.length > ITEM_MAX)) say(name, `Keep each ${what} under ${ITEM_MAX} characters, with commas between them.`);
-    else if (list.length > 10) say(name, 'Up to 10 here. Tell the dentist the rest.');
-  }
-
-  // 5. Across fields.
-  if (out.philhealth_pin) {
-    const d = String(out.philhealth_pin).replace(/\D/g, '');
-    if (d.length !== 12) say('philhealth_pin', 'A PhilHealth PIN has 12 digits, like 12-345678901-2. Leave it blank if you do not have it here.');
-    else out.philhealth_pin = `${d.slice(0, 2)}-${d.slice(2, 11)}-${d.slice(11)}`;
-  }
-  if (minor && out.signed_as === 'patient') say('signed_as', 'The patient is under 18, so a parent or guardian signs. Choose “A parent or guardian”.');
-  // The parent or guardian as the emergency contact: their details, as the record keeps an emergency contact.
-  if (minor && out.guardian_is_emergency === true) {
-    out.emergency_name = out.guardian_name;
-    out.emergency_relation = out.guardian_relation;
-    out.emergency_mobile = out.guardian_mobile;
-  }
-  const signed = out.signed_name as string | null;
-  if (signed && signed.length < 2) say('signed_name', 'Type your full name to sign.');
-  const tv = out.treatment_version as string | null, pv = out.privacy_version as string | null;
-  if (!opts.versions.treatment || tv !== opts.versions.treatment || !TREATMENT_CONSENT[tv]) {
-    say('consent_treatment', 'The consent wording was updated while you were filling in. Read it again, and tick it again.');
-  }
-  if (!opts.versions.privacy || pv !== opts.versions.privacy) {
-    say('consent_privacy', 'The privacy notice was updated while you were filling in. Read it again, and tick it again.');
-  }
+  // 4. The form's own rules across fields, those whose fields were all read.
+  const ctx: ParseCtx<O> = { say, minor, age, today, opts };
+  for (const rule of def.rules) if (rule.on.every((n) => reading.has(n))) rule.run(out, ctx);
 
   const failed = Object.keys(errors).length > 0 || bot;
   if (failed) {
     if (bot) say('_form', 'Something in the form did not look right, so it was not sent. Check it and send it again, or ask the desk for help.');
-    const steps = Object.keys(errors).filter((k) => k !== '_form').map((k) => FIELD_STEP[k] ?? 0);
+    const steps = Object.keys(errors).filter((k) => k !== '_form').map((k) => def.fieldStep[k] ?? 0);
     // A robot's filled-in honeypot is never echoed back.
     delete raw[HONEYPOT_FIELD];
     return { ok: false, errors, raw, step: steps.length ? Math.min(...steps) : 0, bot, nonce };
   }
 
-  const value = {
-    ...(out as unknown as PatientFormValues),
-    v: FORM_VERSION,
-    medicines,
-    consent_treatment: true as const,
-    consent_privacy: true as const,
-  };
-  if (new TextEncoder().encode(JSON.stringify(value)).length > MAX_ANSWERS_BYTES) {
+  const value = { ...out, v: def.version, ...def.fixed };
+  if (new TextEncoder().encode(JSON.stringify(value)).length > def.maxAnswersBytes) {
     return { ok: false, errors: { _form: 'The answers are too long to send. Shorten the longest ones.' }, raw, step: 0, bot: false, nonce };
   }
-  return { ok: true, value, raw, nonce: nonce! };
+  return { ok: true, value: value as V, raw, nonce };
 }
+
+// ---------------------------------------------------------------------------
+// The patient forms' own rules, and the forms as a FormDef
+// ---------------------------------------------------------------------------
+/** The health step's lists typed in a box: each item short enough for the health record. Shared with the intake's page 1. */
+export const HEALTH_RULES: readonly FormRule<unknown>[] = [
+  {
+    on: ['medicines'],
+    run(out, { say }) {
+      const medicines = out.medicines ? splitList(out.medicines as string) : [];
+      if (medicines.some((m) => m.length > ITEM_MAX)) say('medicines', `Keep each medicine under ${ITEM_MAX} characters, one per line.`);
+      else if (medicines.length > 20) say('medicines', 'Up to 20 medicines here. Tell the dentist the rest.');
+      out.medicines = medicines;
+    },
+  },
+  ...([['allergy_other', 'allergy'], ['condition_other', 'one']] as const).map(([name, what]): FormRule<unknown> => ({
+    on: [name],
+    run(out, { say }) {
+      const list = splitList(out[name] as string | null);
+      if (list.some((x) => x.length > ITEM_MAX)) say(name, `Keep each ${what} under ${ITEM_MAX} characters, with commas between them.`);
+      else if (list.length > 10) say(name, 'Up to 10 here. Tell the dentist the rest.');
+    },
+  })),
+];
+
+/** A PhilHealth PIN as 12-345678901-2. */
+export const PHILHEALTH_RULE: FormRule<unknown> = {
+  on: ['philhealth_pin'],
+  run(out, { say }) {
+    if (!out.philhealth_pin) return;
+    const d = String(out.philhealth_pin).replace(/\D/g, '');
+    if (d.length !== 12) say('philhealth_pin', 'A PhilHealth PIN has 12 digits, like 12-345678901-2. Leave it blank if you do not have it here.');
+    else out.philhealth_pin = `${d.slice(0, 2)}-${d.slice(2, 11)}-${d.slice(11)}`;
+  },
+};
+
+/** Under 18 with the parent or guardian ticked as the emergency contact: their details, as the record keeps an emergency contact. */
+export const GUARDIAN_EMERGENCY_RULE: FormRule<unknown> = {
+  on: ['guardian_is_emergency', 'guardian_name', 'guardian_relation', 'guardian_mobile', 'emergency_name', 'emergency_relation', 'emergency_mobile'],
+  run(out, { minor }) {
+    if (minor && out.guardian_is_emergency === true) {
+      out.emergency_name = out.guardian_name;
+      out.emergency_relation = out.guardian_relation;
+      out.emergency_mobile = out.guardian_mobile;
+    }
+  },
+};
+
+export interface FormsOpts { versions: { privacy: string | null; treatment: string | null }; today?: string }
+
+/** The patient forms (/f/<key>/) as a FormDef. */
+export const FORMS_DEF: FormDef<FormsOpts, keyof PatientFormValues & string, StepId> = {
+  ...FORMS_INDEX,
+  version: FORM_VERSION,
+  steps: STEPS,
+  nonce: true,
+  maxAnswersBytes: MAX_ANSWERS_BYTES,
+  fixed: { consent_treatment: true, consent_privacy: true },
+  rules: [
+    ...HEALTH_RULES,
+    PHILHEALTH_RULE,
+    {
+      on: ['signed_as'],
+      run(out, { say, minor }) {
+        if (minor && out.signed_as === 'patient') say('signed_as', 'The patient is under 18, so a parent or guardian signs. Choose “A parent or guardian”.');
+      },
+    },
+    GUARDIAN_EMERGENCY_RULE,
+    {
+      on: ['signed_name', 'treatment_version', 'privacy_version'],
+      run(out, { say, opts }) {
+        const signed = out.signed_name as string | null;
+        if (signed && signed.length < 2) say('signed_name', 'Type your full name to sign.');
+        const tv = out.treatment_version as string | null, pv = out.privacy_version as string | null;
+        if (!opts.versions.treatment || tv !== opts.versions.treatment || !TREATMENT_CONSENT[tv]) {
+          say('consent_treatment', 'The consent wording was updated while you were filling in. Read it again, and tick it again.');
+        }
+        if (!opts.versions.privacy || pv !== opts.versions.privacy) {
+          say('consent_privacy', 'The privacy notice was updated while you were filling in. Read it again, and tick it again.');
+        }
+      },
+    },
+  ],
+};
+
+/**
+ * Read and check the posted form. `versions` are the consent versions in
+ * force now (lookupForms()); the form must have shown those. `today` is
+ * Manila's (for the age and "not after today"). Every field is checked on
+ * the server whatever the page's script did.
+ */
+export const parsePatientForm = (form: FormData, opts: FormsOpts): ParseResult => parseForm(FORMS_DEF, form, opts) as ParseResult;
 
 // ---------------------------------------------------------------------------
 // Showing the answers: the review queue, the record, the printout

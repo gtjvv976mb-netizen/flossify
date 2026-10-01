@@ -14,6 +14,14 @@
 //
 // Print call sheet prints this page as one A4 table, black on white with the shell hidden, for the
 // mid-morning routine and for a brownout: the numbers are on paper before the line goes.
+//
+// Blocked time (040). "In closed time", first when it is not empty: every visit ahead that sits in time the
+// clinic is not open for booking (lunch, a closed day, a dentist away or not in, a chair out of use, outside
+// the hours) and that nobody has kept there — src/lib/blocks.ts, visitsInClosedTime — with why, its
+// reminder's state (their texts still go out: nothing here holds or sends one), the number to call, Move
+// (the Dashboard at that visit) and Keep it (intent=keep: the visit stays, marked kept, audited
+// 'appointment.keep_blocked'). The next two open days skip a day a closure covers whole, and a visit kept on
+// such a day before the second open day is still listed to confirm, under its own day.
 export const prerender = false;
 
 import ClinicLayout from '../../../../layouts/Clinic.astro';
@@ -31,7 +39,8 @@ import { can } from '../../../../lib/can';
 import { manilaToday } from '../../../../lib/health';
 import { applyStatus, StatusRefused, DONE, WORDS, timeText, whenText, shortName } from '../../../../lib/schedule';
 import { normalizePhone, prettyPhone, PH_MOBILE } from '../../../../lib/messages';
-import { willRemind } from '../../../../lib/availability';
+import { remindersFor, reminderWords as reminderState } from '../../../../lib/reminder-state';
+import { loadBlocks, visitsInClosedTime, keepInClosedTime, BlockRefused, type InsideVisit } from '../../../../lib/blocks';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -61,6 +70,17 @@ if (Astro.request.method === 'POST') {
   if (!csrfOk(Astro.cookies, form)) error = CSRF_MESSAGE;
   else if (!maySchedule) error = 'Your role here does not include confirming visits or noting calls.';
   else if (!ids.length) error = 'Which visit? The page may have changed; try that once more.';
+  else if (intent === 'keep') {
+    // In closed time → Keep it: the visit stays where it is and leaves the list (src/lib/blocks.ts).
+    const rate = await hit(`calls:s:${session.staffId}`, 240, 60 * 60);
+    if (!rate.allowed) error = `Too many changes at once. ${waitText(rate.retryAfter)}`;
+    else {
+      const out = await withClinic(clinic.id, (tx) => keepInClosedTime(tx, clinic.id, session.staffId, ids[0]).then(() => null))
+        .catch((e) => { if (e instanceof BlockRefused) return e.message; throw e; });
+      if (out === null) return Astro.redirect(`${here}?done=keep&v=${ids[0]}`, 303);
+      error = out;
+    }
+  }
   else if (intent !== 'confirm' && !BUTTONS.includes(intent as (typeof BUTTONS)[number])) error = 'Choose what happened on the call.';
   else {
     const rate = await hit(`calls:s:${session.staffId}`, 240, 60 * 60);
@@ -127,7 +147,6 @@ type Visit = {
   id: string; patientId: string; startsAt: Date; day: string; patientName: string; chartNo: string; phone: string | null;
   dentist: string | null; service: string | null; reason: string | null; source: string;
 };
-type Reminder = { status: string; nextAt: Date; sentAt: Date | null };
 type Attempt = { outcome: string; at: Date };
 type CallBack = { id: string; patientId: string; patientName: string; chartNo: string; phone: string | null; status: string; startsAt: Date; cancelledAt: Date | null; service: string | null; reason: string | null; dentist: string | null };
 
@@ -142,36 +161,53 @@ const VISIT = `
     left join staff s on s.id = a.dentist_id
     left join procedure_catalog c on c.id = a.catalog_id`;
 
+/** Manila midnight of a day, as epoch ms (+08:00 all year). */
+const dayStartMs = (ymd: string) => Date.parse(`${ymd}T00:00:00+08:00`);
+
 const data = await withClinic(clinic.id, async (tx) => {
-  const { rows: hrs } = await tx.query<{ dow: number }>('select dow from clinic_hours');
-  const open = new Set(hrs.map((h) => Number(h.dow)));
+  const { rows: hrs } = await tx.query<{ dow: number; open_min: number; close_min: number }>('select dow, open_min, close_min from clinic_hours');
+  const hoursOn = new Map(hrs.map((h) => [Number(h.dow), [h.open_min, h.close_min] as [number, number]]));
+  // A day is open when its weekday has hours and the clinic's closures (dated blocks of kind closed, 040) do not
+  // cover all of them. Read for the three weeks the search looks at.
+  const closures = (await loadBlocks(tx, clinic.id, new Date(dayStartMs(today)), new Date(dayStartMs(addDays(today, 22)))))
+    .filter((b) => b.kind === 'closed').map((b) => [Date.parse(b.startsAt), Date.parse(b.endsAt)] as [number, number]);
+  const openOn = (ymd: string) => {
+    const h = hoursOn.get(dowOf(ymd));
+    if (!h) return false;
+    const d0 = dayStartMs(ymd);
+    let at = d0 + h[0] * 60_000;
+    const end = d0 + h[1] * 60_000;
+    // Walk the open hours from the start; a closure that starts at or before the walk moves it past its end.
+    for (const [s, e] of [...closures].sort((a, b) => a[0] - b[0])) { if (s <= at && e > at) at = e; }
+    return at < end;
+  };
   const days: string[] = [];
-  for (let i = 1; i <= 21 && days.length < 2; i++) { const d = addDays(today, i); if (open.has(dowOf(d))) days.push(d); }
+  for (let i = 1; i <= 21 && days.length < 2; i++) { const d = addDays(today, i); if (openOn(d)) days.push(d); }
 
   // Still to confirm: 'booked' only (a confirmed visit needs no call; anything further along is at the
   // clinic already), never a request the desk has not placed (no time to confirm yet), never a past
   // visit brought in with its day only.
+  // A visit kept in closed time (Keep it, Book anyway) on a day the clinic is not open, between today and the
+  // second open day, is still one to confirm: listed under its own day, so the call list never drops it.
   const { rows: vs } = await tx.query(
     `${VISIT}
       where a.status = 'booked' and not (a.source = 'request' and a.moved_at is null) and not a.date_only
         and (to_char(a.starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') = any($1::text[])
-             or (to_char(a.starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') = $2 and a.starts_at > now()))
-      order by a.starts_at, patient_name`, [days, today]);
+             or (to_char(a.starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') = $2 and a.starts_at > now())
+             or (a.blocked_ok_at is not null
+                 and to_char(a.starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') > $2
+                 and to_char(a.starts_at at time zone 'Asia/Manila', 'YYYY-MM-DD') < $3))
+      order by a.starts_at, patient_name`, [days, today, days[1] ?? days[0] ?? addDays(today, 22)]);
   const visits: Visit[] = vs.map((r) => ({
     id: r.id, patientId: r.patient_id, startsAt: new Date(r.starts_at), day: r.day, patientName: r.patient_name, chartNo: r.chart_no,
     phone: r.phone ?? null, dentist: r.dentist ?? null, service: r.service ?? null, reason: r.reason ?? null, source: r.source,
   }));
   const ids = visits.map((v) => v.id);
 
-  // The reminder text, the newest row per visit; and every call attempt, oldest first.
-  const reminders = new Map<string, Reminder>();
+  // The reminder text, the newest row per visit (src/lib/reminder-state.ts); and every call attempt, oldest first.
+  const reminders = await remindersFor(tx, ids);
   const attempts = new Map<string, Attempt[]>();
   if (ids.length) {
-    const { rows: ms } = await tx.query(
-      `select distinct on (appointment_id) appointment_id, status, next_attempt_at, sent_at
-         from message_log where kind = 'reminder' and direction = 'out' and appointment_id = any($1::uuid[])
-        order by appointment_id, created_at desc`, [ids]);
-    for (const m of ms) reminders.set(m.appointment_id, { status: m.status, nextAt: new Date(m.next_attempt_at), sentAt: m.sent_at ? new Date(m.sent_at) : null });
     const { rows: cs } = await tx.query(
       `select appointment_id, outcome, at from appointment_contact where appointment_id = any($1::uuid[]) order by at`, [ids]);
     for (const c of cs) {
@@ -197,16 +233,19 @@ const data = await withClinic(clinic.id, async (tx) => {
     startsAt: new Date(r.starts_at), cancelledAt: r.cancelled_at ? new Date(r.cancelled_at) : null,
     service: r.service ?? null, reason: r.reason ?? null, dentist: r.dentist ?? null,
   }));
-  return { days, visits, reminders, attempts, callBack };
+  // In closed time: every visit ahead there that nobody has kept (src/lib/blocks.ts), soonest first.
+  const closedTime = await visitsInClosedTime(tx, clinic.id);
+  return { days, visits, reminders, attempts, callBack, closedTime };
 });
-const { days, visits, reminders, attempts, callBack } = data;
+const { days, visits, reminders, attempts, callBack, closedTime } = data;
 
 // ---------------------------------------------------------------------------
 // Rows: one per number per day, so a family on one mobile is one call. A visit
 // with no number is its own row.
 // ---------------------------------------------------------------------------
 type Row = { key: string; phone: string | null; visits: Visit[]; attempts: Attempt[] };
-const dayOrder = [today, ...days];
+// Today, then the next two open days, and any day in between that a visit kept in closed time is on.
+const dayOrder = [...new Set([today, ...days, ...visits.map((v) => v.day)])].sort();
 const byDay = new Map<string, Row[]>();
 for (const v of visits) {
   const rows = byDay.get(v.day) ?? [];
@@ -228,22 +267,12 @@ const dayList = dayOrder.filter((d) => byDay.has(d)).map((d) => ({ day: d, rows:
 const totalRows = dayList.reduce((n, d) => n + d.rows.length, 0);
 
 // Words.
-const canText = (phone: string | null) => !!phone && PH_MOBILE.test(normalizePhone(phone));
 const telHref = (phone: string) => { const n = normalizePhone(phone); return `tel:${PH_MOBILE.test(n) ? `+63${n.slice(1)}` : n}`; };
 const whatFor = (v: { service: string | null; reason: string | null }) => v.service ?? v.reason ?? 'Visit';
 const whoWith = (d: string | null) => (d ? shortName(d) : 'Any dentist');
 type Tone = 'ok' | 'wait' | 'none';
-function reminderWords(v: Visit): { text: string; tone: Tone; short: string } {
-  if (!canText(v.phone)) return { text: 'No reminder: no mobile on file', tone: 'none', short: 'none, no mobile' };
-  const r = reminders.get(v.id);
-  if (!r) return willRemind(v.startsAt)
-    ? { text: 'Reminder goes the day before', tone: 'wait', short: 'goes the day before' }
-    : { text: 'No reminder: booked too late for one', tone: 'none', short: 'none, booked late' };
-  if (r.status === 'sent' || r.status === 'delivered') { const at = stamp(r.sentAt ?? r.nextAt); return { text: `Reminder sent ${at}`, tone: 'ok', short: `sent ${at}` }; }
-  if (r.status === 'queued' || r.status === 'sending') { const at = stamp(r.nextAt); return { text: `Reminder queued for ${at}`, tone: 'wait', short: `queued ${at}` }; }
-  if (r.status === 'failed') return { text: 'Reminder could not be sent', tone: 'none', short: 'failed' };
-  return { text: 'Reminder withdrawn', tone: 'none', short: 'withdrawn' };
-}
+/** The reminder text's state in words (src/lib/reminder-state.ts, shared with the Block time panel). */
+const reminderWords = (v: Visit) => reminderState(v, reminders.get(v.id));
 function attemptsWords(list: Attempt[]): string | null {
   if (!list.length) return null;
   const last = list[list.length - 1];
@@ -259,8 +288,17 @@ const DONE_WORDS: Record<string, string> = {
   no_answer: 'Noted: no answer. Try again later.',
   will_call_back: 'Noted: they will call back.',
 };
+// Kept: the visit read back for its name and time. "Kept in closed time: Ana Reyes, Thu 2 Apr, 10:00 am."
+const keptId = done === 'keep' ? (Astro.url.searchParams.get('v') ?? '') : '';
+if (UUID.test(keptId)) {
+  const k = await withClinic(clinic.id, async (tx) => (await tx.query<{ patient_name: string; starts_at: Date }>(
+    `select concat_ws(' ', p.first_name, nullif(p.last_name, '—')) as patient_name, a.starts_at
+       from appointment a join patient p on p.id = a.patient_id where a.id = $1`, [keptId])).rows[0]);
+  if (k) DONE_WORDS.keep = `Kept in closed time: ${k.patient_name}, ${whenText(new Date(k.starts_at))}.`;
+}
+const closedMeta = visitWord(closedTime.length);
 const daysMeta = days.length === 2 ? `${relWords(days[0]) ?? dayWords(days[0])} and ${dayWords(days[1])}` : days.map(dayWords).join(', ');
-const visitWord = (n: number) => `${n} ${n === 1 ? 'visit' : 'visits'}`;
+function visitWord(n: number) { return `${n} ${n === 1 ? 'visit' : 'visits'}`; }
 const callWord = (n: number) => `${n} ${n === 1 ? 'call' : 'calls'}`;
 const printedOn = `${longDayWords(today)}, ${timeText(new Date())}`;
 ---
@@ -270,6 +308,53 @@ const printedOn = `${longDayWords(today)}, ${timeText(new Date())}`;
     {error && <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>}
     {done && DONE_WORDS[done] && <p role="status" class="ws-callout" data-tone="success"><Icon name="check" /><span>{DONE_WORDS[done]}</span></p>}
     {!maySchedule && <p class="ws-callout" data-tone="warn"><Icon name="info" /><span>Your role here lets you see the list and print it. Confirming a visit or noting a call is for someone who books and checks in visits.</span></p>}
+
+    {closedTime.length > 0 && (
+      <Pane id="closed-time" icon="clock" title="In closed time" meta={closedMeta} pad="none">
+        <p class="cs-lede">Each of these visits falls in time the clinic is not open: lunch, a closed day, a dentist away or a chair out of use. Their reminder texts still go out. Move the visit, or call the patient; press Keep it when the clinic will see them then anyway.</p>
+        <ul class="cs-list cs-closed" aria-label="Visits in closed time">
+          {closedTime.map((v: InsideVisit) => {
+            const rem = { text: v.reminder, tone: v.reminderTone };
+            const ymd = manilaToday(new Date(v.startsAt));
+            return (
+              <li class="cs-row" data-closed-visit={v.id}>
+                <div class="cs-when">
+                  <span class="cs-time">{timeText(new Date(v.startsAt))}</span>
+                  <span class="cs-time-more">{relWords(ymd) ?? dayWords(ymd)}</span>
+                </div>
+                <div class="cs-who">
+                  <div class="cs-person">
+                    <Avatar name={v.patientName} size="sm" />
+                    <div class="cs-person-words">
+                      <p class="cs-name"><span>{v.patientName}</span> <span class="cs-name-time">({v.chartNo})</span></p>
+                      <p class="cs-line">{whoWith(v.dentistName)}{v.chair ? ` · Chair ${v.chair}` : ' · no chair yet'}</p>
+                      <p class="cs-why"><span class="ws-pill ws-tint-slate">{v.why}</span></p>
+                      <p class:list={['cs-rem', `cs-rem-${rem.tone}`]}><Icon name={REMINDER_ICON[rem.tone]} size={14} />{rem.text}</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="cs-act">
+                  {v.phone
+                    ? <a href={telHref(v.phone)} class="cs-tel"><Icon name="phone" size={18} /><span>{prettyPhone(v.phone)}</span><span class="sr-only">, call {v.patientName}</span></a>
+                    : <p class="cs-nophone"><Icon name="alert" size={16} />No mobile on file</p>}
+                  <div class="cs-forms">
+                    <a href={`/c/${clinic.slug}/?date=${ymd}&booking=${v.id}`} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="calendar" size={16} />Move<span class="sr-only">: {v.patientName}</span></a>
+                    {maySchedule && (
+                      <form method="post" action={here}>
+                        <Csrf />
+                        <input type="hidden" name="intent" value="keep" />
+                        <input type="hidden" name="visit" value={v.id} />
+                        <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="check" size={16} />Keep it<span class="sr-only">: {v.patientName}</span></button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </Pane>
+    )}
 
     <Pane id="confirm" icon="phone" title="Still to confirm" meta={totalRows ? `${visitWord(visits.length)} · ${callWord(totalRows)}` : 'Nothing waiting'} pad="none">
       <Fragment slot="actions">
@@ -386,6 +471,24 @@ const printedOn = `${longDayWords(today)}, ${timeText(new Date())}`;
   <div class="cs-sheet">
     <h1 class="cs-sheet-title">{clinic.name} · Calls to confirm</h1>
     <p class="cs-sheet-meta">Printed {printedOn} · {visitWord(visits.length)}, {callWord(totalRows)}. Outcome: C confirmed · LM left message · NA no answer · CB will call back.</p>
+    {closedTime.length > 0 && (
+      <table class="cs-sheet-table" data-cs-sheet-closed>
+        <caption>In closed time · move the visit or call; their reminder texts still go out</caption>
+        <thead><tr><th scope="col">Time</th><th scope="col">Name</th><th scope="col">Mobile</th><th scope="col">Why</th><th scope="col">Reminder</th><th scope="col" class="cs-sheet-out">Outcome</th></tr></thead>
+        <tbody>
+          {closedTime.map((v) => (
+            <tr>
+              <td>{whenText(new Date(v.startsAt))}</td>
+              <td>{v.patientName} ({v.chartNo})</td>
+              <td>{v.phone ? prettyPhone(v.phone) : '—'}</td>
+              <td>{v.why}</td>
+              <td>{v.reminderShort}</td>
+              <td class="cs-sheet-out"></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
     {dayList.length ? dayList.map(({ day, rows }) => (
       <table class="cs-sheet-table">
         <caption>{relWords(day) ? `${relWords(day)} · ${dayWords(day)}` : dayWords(day)}</caption>
@@ -498,6 +601,9 @@ const printedOn = `${longDayWords(today)}, ${timeText(new Date())}`;
     .cs-yes:hover { background: var(--ws-teal-tint); border-color: var(--ws-teal); }
 
     .cs-row-back .cs-when { padding-top: 0.35rem; }
+    /* In closed time (040): why, on a slate pill that holds its own ink. */
+    .cs-why { margin-top: 0.125rem; }
+    .cs-why .ws-pill { min-height: 26px; padding-inline: 0.625rem; font-size: 13px; white-space: normal; }
 
     @media (max-width: 899px) {
       .cs-row { grid-template-columns: 6.5rem minmax(0, 1fr); }

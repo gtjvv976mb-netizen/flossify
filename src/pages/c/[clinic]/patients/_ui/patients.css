@@ -122,7 +122,7 @@
   .pt-tiles .ws-tile-icon { display: none; }
 }
 /* A section reached by its address (#health, #money) lands under the sticky top, not behind it. */
-[data-rec-panel], [data-rec-panel] .ws-pane { scroll-margin-top: 5.5rem; }
+[data-rec-panel], [data-rec-panel] .ws-pane, [data-chart-offer] { scroll-margin-top: 5.5rem; }
 .rec-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 @media (max-width: 767px) {
   .rec-actions { width: 100%; }
@@ -256,3 +256,51 @@
 /* The line above the chart when an arch scrolls sideways; the swatch beside a finding. */
 .pt-chart-scroll:not([hidden]) { display: flex; align-items: center; gap: 0.375rem; margin: -0.25rem 0 0.75rem; font-size: 13.5px; font-weight: 500; color: var(--c-ink-2); }
 .tooth.pt-find-swatch { border-radius: 6px; }
+
+/* === The tooth picker (.tp-) ===========================================================================
+   ToothPick.astro: FDI tiles in the chart's order, 44×44, in four labelled blocks. From 400px the blocks sit two
+   to a row and the upper-left and lower-right fold the other way (grid-row), so 11|21 and 41|31 meet in the
+   middle while the page's order stays the chart's; narrower, they stack. The chosen tile is the sibling pattern
+   (input:checked + .tp-face). Tokens only; each has its dark value in global.css. */
+.tp { container: tp / inline-size; display: grid; gap: 0.75rem; justify-items: start; min-width: 0; margin: 0; padding: 0; border: 0; }
+.tp > * { min-width: 0; }
+.tp-legend { padding: 0; margin-bottom: 0.375rem; font-size: 14px; font-weight: 500; color: var(--c-ink-2); }
+.tp-optional { font-weight: 400; }
+.tp-mouth { display: grid; grid-template-columns: max-content; gap: 0.75rem; }
+@container tp (width >= 400px) {
+  .tp-mouth[data-tp-set="permanent"] { grid-template-columns: repeat(2, max-content); column-gap: 1rem; }
+  /* Upper left and lower right fold the other way, so both midlines run through the middle. */
+  .tp-q[data-tp-fold] .tp-grid > .tp-t:nth-child(-n + 4) { grid-row: 2; }
+  .tp-q[data-tp-fold] .tp-grid > .tp-t:nth-child(n + 5) { grid-row: 1; }
+}
+@container tp (width >= 500px) { .tp-mouth[data-tp-set="baby"] { grid-template-columns: repeat(2, max-content); column-gap: 1rem; } }
+.tp-mouth[hidden] { display: none; }
+.tp-q-name { display: block; margin-bottom: 0.25rem; font-size: 13px; font-weight: 500; color: var(--c-ink-2); }
+.tp-grid { display: grid; grid-template-columns: repeat(4, 44px); gap: 4px; }
+.tp-mouth[data-tp-set="baby"] .tp-grid { grid-template-columns: repeat(5, 44px); }
+.tp-surf { margin: 0; padding: 0; border: 0; min-width: 0; }
+.tp-surf .tp-grid { grid-template-columns: repeat(5, 44px); gap: 6px; }
+.tp-t { position: relative; display: block; width: 44px; height: 44px; cursor: pointer; }
+.tp-face {
+  display: grid; place-items: center; width: 100%; height: 100%; border: 1px solid var(--ws-field-line); border-radius: 10px;
+  background: var(--ws-field); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--c-ink);
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.tp-t:hover > .tp-face { border-color: var(--ws-field-line-hover); }
+.tp-none { display: inline-block; cursor: pointer; }
+.tp-pill {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 1rem; border: 1px solid var(--ws-field-line); border-radius: 999px;
+  background: var(--ws-field); font-size: 14.5px; font-weight: 600; color: var(--c-ink);
+}
+.tp-t > input:checked + .tp-face, .tp-none > input:checked + .tp-pill { border-color: var(--ws-teal); background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
+.tp-t > input:focus-visible + .tp-face, .tp-none > input:focus-visible + .tp-pill { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+.tp-baby-toggle { min-height: 44px; }
+.tp-typed { width: min(100%, 16rem); }
+.tp-help { margin: 0; font-size: 13px; line-height: 1.4; color: var(--c-ink-2); }
+/* The palette in the record: never taller than the screen. */
+.pt-chart [data-palette] { max-height: calc(100dvh - 16px); overflow-y: auto; }
+/* Record a treatment's chart line (p01 step 2): a quiet inset, the box a full-height row, never ticked as drawn. */
+.tp-chart-line { display: grid; gap: 0.125rem; padding: 0.375rem 0.875rem 0.75rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
+.tp-chart-line[hidden] { display: none; }
+.tp-chart-tick { display: flex; align-items: center; gap: 0.625rem; min-height: 44px; font-size: 15px; font-weight: 600; color: var(--c-ink); cursor: pointer; }
+.tp-chart-tick input { flex: none; width: 20px; height: 20px; accent-color: var(--ws-teal-fill); }

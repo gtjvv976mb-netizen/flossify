@@ -1,6 +1,6 @@
 ---
 // Files: X-rays, photos and documents (a referral, a signed paper form, a lab slip). Drop them on the box or
-// choose them; say what they are with one tap; a tooth, the day taken and a caption are optional. Pictures
+// choose them; say what they are with one tap; a tooth (the tooth picker), the day taken and a caption are optional. Pictures
 // get a small preview; every file opens from ./files/<id>/ beside this record, which only a signed-in member
 // of this branch can reach (never the public /uploads/ route). Remove hides a file from the record and keeps
 // it for the audit.
@@ -13,6 +13,7 @@ import Head from '../_ui/Head.astro';
 import Callout from '../_ui/Callout.astro';
 import Glyph from '../_ui/Glyph.astro';
 import Who from './Who.astro';
+import ToothPick from '../_ui/ToothPick.astro';
 import { FILE_KINDS, type Clinical, type RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
 
@@ -58,7 +59,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
                 <div class="fl-thumb" data-doc={f.thumb ? undefined : ''}>
                   {f.thumb ? <img src={`${fileBase}${f.id}/?thumb=1`} alt="" loading="lazy" decoding="async" /> : <Glyph name="file" size={36} />}
                 </div>
-                <a class="fl-open" href={`${fileBase}${f.id}/`} target="_blank" rel="noopener" aria-label={`Open ${label}${f.caption ? `: ${f.caption}` : ''}`}></a>
+                <a class="fl-open" href={`${fileBase}${f.id}/view/`} target="_blank" rel="noopener" aria-label={`Open ${label}${f.caption ? `: ${f.caption}` : ''}`}></a>
                 <div class="fl-body">
                   <p class="fl-kind"><span class="rk">{label}</span></p>
                   {f.caption && <p class="text-[14.5px] font-semibold text-ink break-words">{f.caption}</p>}
@@ -106,8 +107,8 @@ const help = 'text-[13px] leading-snug text-ink-2';
           {KIND_TILES.map(([k, label]) => <label><input type="radio" name="kind" value={k} class="sr-only" checked={(v.kind ?? 'xray_periapical') === k} />{label}</label>)}
         </div>
       </fieldset>
+      <ToothPick id="tp-file" name="fdi" label="Tooth (FDI)" noneLabel="No tooth" help="FDI numbers. The tooth it shows, if one." value={v.fdi} typed={v.fdi_typed} optional />
       <div class="grid gap-4 sm:grid-cols-2">
-        <label class="field"><span class="meta">Tooth <span class="font-normal">(optional)</span></span><input name="fdi" value={v.fdi ?? ''} inputmode="numeric" maxlength="2" autocomplete="off" placeholder="e.g. 36" /></label>
         <label class="field"><span class="meta">Day taken</span><input type="date" name="taken_on" value={v.taken_on ?? today} max={today} /></label>
       </div>
       <label class="field"><span class="meta">Caption <span class="font-normal">(optional)</span></span><input name="caption" value={v.caption ?? ''} maxlength="200" autocomplete="off" placeholder="e.g. Before root canal" /><span class={help}>With several files and no caption, each keeps its file name.</span></label>

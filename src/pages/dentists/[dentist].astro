@@ -9,13 +9,14 @@ import Avatar from '../../components/ws/Avatar.astro';
 import ClinicBadge from '../find/_ui/ClinicBadge.astro';
 import '../find/_ui/patient.css';
 import { loadDentist } from '../../lib/directory-db';
+import { dentistDaysText } from '../../lib/availability';
 
 // A profile is a set of claims, each with where it came from. "Verified" on
 // its own means nothing; "PRC licence, checked by a person on 15 Sep" does.
 const d = await loadDentist(Astro.params.dentist!);
 if (!d) return new Response('No such dentist', { status: 404 });
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const places = d.clinicsFull.map((c) => ({ days: c.days ?? [], l: { slug: c.slug, name: c.name, area: c.area, workspace: c.bookingMode === 'live' } }));
+// Their days at each clinic with their own hours where they have them: "Tue 1–6 pm · Thu" (040), as the clinic page says it.
+const places = d.clinicsFull.map((c) => ({ days: c.days ?? [], hours: c.hours, l: { slug: c.slug, name: c.name, area: c.area, workspace: c.bookingMode === 'live' } }));
 const checked = d.prcCheckedOn ? new Date(d.prcCheckedOn).toLocaleDateString('en-PH', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
 // A dentist with no listed clinic has no public place to be found; the page waits until there is one.
 if (!places.length) return new Response('No such dentist', { status: 404 });
@@ -84,7 +85,7 @@ const practises = d.practices?.length ? (d.practices.slice(1).join(', ').toLower
                   <p class="text-[14px] text-ink-2">{p.l.area}</p>
                 </div>
               </div>
-              <p class="pt-fact mt-3"><Icon name="clock" size={16} /><span>{p.days.map((n) => DAYS[n]).join(' · ') || 'Days not listed yet'}</span></p>
+              <p class="pt-fact mt-3"><Icon name="clock" size={16} /><span>{dentistDaysText(p.days, p.hours) || 'Days not listed yet'}</span></p>
               <a href={`/find/${p.l.slug}/book/`} class="btn btn-primary mt-3 w-full"><Icon name="calendar" />{p.l.workspace ? 'Book here' : 'Request here'}</a>
             </li>
           ))}

@@ -8,17 +8,27 @@
 // Very simple (the soft template): one teal button, the step the desk most
 // likely takes next (Arrived, In the chair, Done; Confirm for a later day;
 // Place it for a web request; Charge once it is done, for the people who may
-// see money), Move and Open record beside it, and every other step behind
-// More. The move form stays folded until Move (or Place it) is pressed.
+// see money), Move, Edit and Open record beside it, and every other step behind
+// More. The move form stays folded until Move (or Place it) is pressed; under
+// its fields, the free times for that length on that day (p24, free.ts), the
+// visit's own time among them while it is still free.
+//
+// Edit (p25, for schedule.edit, on a visit still to happen that has a time) is
+// the move form's sibling: the service, the length, the reason and the visit's
+// note, changed in place — the time, the chair and the booking ref stay. Only
+// one of the two forms is open at a time, and while either is open its Save is
+// the panel's one teal button (the step above goes quiet until it closes).
 //
 // The status steps follow the server's state machine (NEXT_STATUS in
 // src/lib/schedule.ts, passed to the page), never a list of their own.
 import SidePanel from '../SidePanel.astro';
 import Menu from '../Menu.astro';
 import Icon from '../Icon.astro';
+import FreeTimes from './FreeTimes.astro';
+import { priceShort, type Service } from './model';
 
-interface Props { chairs: number }
-const { chairs } = Astro.props;
+interface Props { chairs: number; catalog: Service[]; canSchedule: boolean }
+const { chairs, catalog, canSchedule } = Astro.props;
 ---
 
 <SidePanel id="visit" title="Visit" meta="Visit" wide>
@@ -79,9 +89,34 @@ const { chairs } = Astro.props;
       <label class="field"><span class="meta">Minutes</span><input type="number" min="5" max="480" step="5" inputmode="numeric" data-vp-minutes required /></label>
       <label class="field vp-wide"><span class="meta">Dentist</span><select data-vp-dentist><option value="">Any dentist</option></select></label>
     </div>
+    <FreeTimes hook="vp" />
     <div class="flex flex-wrap gap-2">
       <button type="submit" class="ws-btn ws-btn-primary" data-vp-move-save><Icon name="check" /><span data-vp-move-save-word>Save new time</span></button>
       <button type="button" class="ws-btn ws-btn-quiet" data-vp-move-close>Not now</button>
     </div>
   </form>
+
+  {/* Edit (p25): the service, length, reason and note of this visit, in place. A visit booked online keeps the
+      patient's own note, shown read-only under "From the booking". For schedule.edit only, like the Edit button. */}
+  {canSchedule && (
+    <form class="vp-move" data-vp-edit novalidate hidden>
+      <h3 class="vp-move-title" id="vp-edit-h" tabindex="-1"><span class="vp-h-icon" aria-hidden="true"><Icon name="pencil" size={16} /></span>Change this visit</h3>
+      <p class="text-[14px] text-ink-2" data-vp-edit-note>The time and the booking ref stay the same. No extra text goes out: a text still waiting to go out is rewritten with the new reason.</p>
+      <div class="vp-fields">
+        <label class="field vp-wide"><span class="meta">Service</span>
+          <select data-vp-edit-service><option value="">No fee-guide service</option>
+            {catalog.map((c) => <option value={c.code} data-minutes={c.minutes} data-name={c.name}>{c.name} · {c.minutes} min{c.price ? ` · ${priceShort(c.price)}` : ''}</option>)}
+          </select><span class="text-[13.5px] text-ink-2" data-vp-edit-price></span></label>
+        <label class="field vp-wide"><span class="meta">Minutes</span><input type="number" min="5" max="480" step="5" inputmode="numeric" data-vp-edit-minutes required /><span class="text-[13.5px] text-ink-2" data-vp-edit-ends></span></label>
+        <label class="field vp-wide"><span class="meta">Reason</span><input maxlength="120" placeholder="What the visit is for" data-vp-edit-reason /></label>
+        <label class="field vp-wide" data-vp-edit-notes-box><span class="meta">Note for this visit</span><textarea rows="2" maxlength="500" data-vp-edit-notes></textarea></label>
+        <div class="field vp-wide" data-vp-edit-booknote hidden><span class="meta">From the booking</span><p class="vp-desknote text-[15px] text-ink" data-vp-edit-booknote-text></p></div>
+      </div>
+      <p class="ws-callout" data-tone="warn" data-vp-edit-consent hidden><Icon name="alert" /><span><span data-vp-edit-consent-text></span> <a class="vp-link" data-vp-edit-consent-sign hidden>Sign on this tablet</a></span></p>
+      <div class="flex flex-wrap gap-2">
+        <button type="submit" class="ws-btn ws-btn-primary" data-vp-edit-save><Icon name="check" />Save changes</button>
+        <button type="button" class="ws-btn ws-btn-quiet" data-vp-edit-close>Not now</button>
+      </div>
+    </form>
+  )}
 </SidePanel>

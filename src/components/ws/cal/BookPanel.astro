@@ -2,11 +2,18 @@
 // A new booking, at the desk: who, what, when, which chair and dentist. The
 // shell's <SidePanel>. Opened by + New → New booking (/c/<slug>/?new=booking),
 // by a free slot on the calendar (the chair or dentist and the time filled
-// in), by "New booking" on a patient, and by the New booking button.
+// in), by "New booking" on a patient, and by the New booking button. The
+// dentist starts on the column tapped, else the dentist the calendar is
+// filtered to, else — at a clinic with one dentist on the calendar — her
+// (p32, as the clinic's web booking does), else Any dentist.
 //
 // Very simple: the patient, the service, the day and time, the chair and the
 // dentist; the length (filled in from the service), the reason and a note are
 // folded under "More details" — opened by itself when one of them needs a word.
+// Under Chair · Dentist, the free times for that length on that day (p24,
+// free.ts): a tap fills Time and Chair; nothing is saved until Save booking.
+// A time in blocked time (040) is said under them before saving, and saving
+// asks to confirm (Book anyway) — except for a walk-in, who is at the desk.
 //
 // The patient comes from the Dashboard's own list (every patient, already on
 // the page, so the answer is instant) and, when nothing there matches, from
@@ -15,6 +22,7 @@
 // Saving is one POST to /api/schedule, which refuses a clash with one sentence.
 import SidePanel from '../SidePanel.astro';
 import Icon from '../Icon.astro';
+import FreeTimes from './FreeTimes.astro';
 import type { Service } from './model';
 import { priceShort } from './model';
 
@@ -74,7 +82,10 @@ const { chairs, catalog, date, addPatient } = Astro.props;
       </label>
       <label class="field"><span class="meta">Dentist</span><select data-bk-dentist><option value="">Any dentist</option></select></label>
     </div>
-    <p class="bk-hint bk-free" data-bk-free></p>
+    <FreeTimes hook="bk" />
+    {/* Blocked time (040), said before saving: lunch, a closure, a dentist away or not in, a chair out of use, or
+        outside the hours. Saving then asks to confirm (Book anyway). Hidden for a walk-in: the patient is here. */}
+    <p class="ws-callout bk-block" data-tone="warn" data-bk-block hidden></p>
 
     <details class="bk-more" data-bk-more>
       <summary class="bk-more-head"><Icon name="chevron" size={16} class="bk-more-chev" />More details <span class="bk-more-hint">length, reason, a note</span></summary>
