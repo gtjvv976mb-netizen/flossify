@@ -8,7 +8,7 @@ check out, and `scripts/dev/resume.sh`.
 
 Read in this order:
 
-1. `CLAUDE.md` on `main`: the record of everything built, the intake's three
+1. `CLAUDE.md` on `main`: the record of everything built, the intake's four
    phases included.
 2. This file, then `docs/intake-design.md` for what the intake's phase 4 is to
    settle with the owner.
@@ -129,14 +129,15 @@ forms backend test, the glass measurements and the booking walk (Tools, below).
 
 1. flossify.ph loads, `/healthz` is `{"ok":true}`, the calendar and a record
    open, the Treatment record, blocked time, the free-time chips and Add patient
-   → *At the clinic, step by step* are there. Screenshots to the owner. (The
-   phone path arrives with the pull request that carries this note; after it
-   merges, the same look at Add patient → *On their phone*.)
+   → *At the clinic, step by step* and *On their phone* are there. Screenshots
+   to the owner. (The record's phase 4 — Mark done anyway, the strip's Go ahead
+   anyway, "Use" per detail after an intake — arrives with the pull request
+   that carries this note; after it merges, the same look at a record.)
 2. If anything is wrong, the Render dashboard's deploy log says whether
    `db:migrate` applied 039 → 043; **never put `--allow-late` in `render.yaml`
    or the Procfile**: it is for a database that somehow has 040–042 without
    039, by hand, once.
-3. Tell the owner, in a few lines, what the two pull requests changed for
+3. Tell the owner, in a few lines, what the recent pull requests changed for
    clinics, and the questions below.
 
 Open with the owner before a clinic depends on it (also in `CLAUDE.md` "Open"):
