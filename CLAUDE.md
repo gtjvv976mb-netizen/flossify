@@ -1,6 +1,6 @@
 # Flossify
 
-> **Continuing work?** `docs/HANDOFF.md` is the older hand-over (26 Sep): the QR forms and all five clinic-sites phases it lists are now shipped (PRs #23, #25–#30).
+> **Continuing work?** Read `docs/HANDOFF.md` (1 Oct 2026) next: where `main` and the open pull request stand, what to do first, and `scripts/dev/resume.sh`, the check to run before changing anything.
 
 
 Marketing site + prototype clinic workspace for dental practice software aimed at
