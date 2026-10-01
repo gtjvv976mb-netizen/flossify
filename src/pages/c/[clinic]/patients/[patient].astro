@@ -418,18 +418,20 @@ const data = await withClinic(clinic.id, async (tx) => {
   for (const d of consentDocs) if (d.template?.attest && d.dentistId === session.staffId && (await mayAttest(tx, clinic.id, session.staffId, d.dentistId))) mayExplainIds.add(d.id);
   const treatsHere = !!(await tx.query<{ prc: string | null }>('select prc from treating_dentist($1, $2)', [session.staffId, clinic.id])).rows[0]?.prc;
   const capacity = await capacityNote(tx, p.id);
-  const canPrepare = (await intakeGates(tx)).templates.length > 0;
+  const gatesNow = await intakeGates(tx);
+  const canPrepare = gatesNow.templates.length > 0;
+  const offeredCodes = new Set(gatesNow.templates.map((t) => t.code as string));
   const intakeQ = q.get('saved') === 'intake' ? q.get('intake') ?? '' : '';
   const intakeDocs = intakeQ && UUID.test(intakeQ) ? (await tx.query<{ id: string; state: string; code: string | null }>(
     `select d.id, consent_document_state(d.id) as state, v.code from consent_document d join consent_version v on v.id = d.version_id
       where d.patient_id = $1 and (d.intake_id = $2 or exists (select 1 from consent_signing s where s.document_id = d.id and s.intake_id = $2)) and d.cancelled_at is null`, [p.id, intakeQ])).rows : [];
-  const fullVisits = await loadVisits(tx, p.id, clinical, extra, signed, money);
+  const fullVisits = await loadVisits(tx, p.id, clinical, extra, signed, money, consentDocs);
   const ledger = buildLedger({ visits: fullVisits, clinical, extra, recalls: await loadRecallsSet(tx, p.id), money: money ? await loadLedgerMoney(tx, p.id) : null, onFile: p.balance, patientId: p.id });
   const chartChanges = await loadChartChanges(tx, p.id);
   // ?treated=<procedure_done id>: the chart's offer for that treatment, as the chart is now (read only; the write re-checks).
   const treatedQ = q.get('treated');
   const offerState = canEdit && treatedQ && UUID.test(treatedQ) ? await offerFor(tx, p.id, treatedQ) : null;
-  return { consentDocs, mayExplainIds, treatsHere, capacity, canPrepare, intakeDocs, offerState, clinical, extra, ledger, chartChanges, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
+  return { consentDocs, mayExplainIds, treatsHere, capacity, canPrepare, offeredCodes, intakeDocs, offerState, clinical, extra, ledger, chartChanges, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers };
 });
 if (!data) return notFound();
 const { me, p: patient, visits, health, canEdit } = data;
@@ -1275,7 +1277,7 @@ const recHere = here;
         paperForms={data.paperForms} paper={{ ...paperState, recorded: saved === 'paper' ? 'saved' : null }} />
     </Pane>
     <ConsentForms docs={data.consentDocs} slug={clinic.slug} patientId={patient.id} firstName={patient.first_name} canEdit={canEdit} mayExplain={data.mayExplainIds}
-      mayCapacity={canEdit && data.treatsHere && !minor && !!patient.birth} capacity={data.capacity} canPrepare={data.canPrepare} />
+      mayCapacity={canEdit && data.treatsHere && !minor && !!patient.birth} capacity={data.capacity} canPrepare={data.canPrepare} offered={data.offeredCodes} />
     <Pane as="section" label="Signed at visits" id="visit-consents">
       <Head icon="pen" title="Signed at visits" meta={data.signed.length === 1 ? 'One consent' : `${data.signed.length} consents`} />
       <p class="-mt-2 mb-3 text-[14px] text-ink-2">The consent to examination and treatment, signed on the clinic’s tablet for a visit: what the dentist explained, and the signature. Open a visit from its date on the Treatment record, or in Visits, to have one signed.</p>

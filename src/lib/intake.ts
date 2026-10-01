@@ -461,7 +461,9 @@ const templateFor = (gates: IntakeGates, code: Code) => gates.templates.find((t)
  * new patient needs page 1 open; a patient on file must be here, not
  * archived, with a birth date on file; a visit must be theirs and going
  * ahead. `documents`: forms on the record to sign again (never signed, or
- * last refused or withdrawn), moved into this intake. Audit intake.start.
+ * last refused or withdrawn), moved into this intake; a form whose words are
+ * no longer in force is prepared again under the words in force instead
+ * (phase 4.2), whether or not it was signed. Audit intake.start.
  */
 export type StartRefusal = 'patient' | 'birth' | 'page1' | 'visit' | 'doc_other' | 'doc_open' | 'doc_signed' | 'doc_words';
 const refuseStart = (code: StartRefusal, text: string) => new Refused<{ code: StartRefusal }>(text, { code });
@@ -490,14 +492,38 @@ export async function startIntake(tx: Tx, a: {
      values ($1, $2, $3, $4, $5, $6, $7) on conflict (clinic_id, ref) do nothing returning id`,
     [a.clinicId, ref, patient ? 'existing' : 'new', patient?.id ?? null, visit?.id ?? null, INTAKE_FORM_VERSION, a.staffId])).rows[0]?.id ?? null);
   for (const docId of docs) {
-    const d = (await tx.query<{ id: string; patient_id: string | null; cancelled: boolean; in_force: boolean; state: string; open_intake: string | null; title: string | null }>(
+    const d = (await tx.query<{
+      id: string; patient_id: string | null; cancelled: boolean; in_force: boolean; state: string; open_intake: string | null; title: string | null;
+      code: string; version_id: string; fields: Fields; dentist_id: string | null; explained_in: string | null; explained_other: string | null;
+      plan_item_id: string | null; appointment_id: string | null; signed: boolean;
+    }>(
       `select d.id, d.patient_id, d.cancelled_at is not null as cancelled, consent_in_force(d.version_id) as in_force, consent_document_state(d.id) as state,
-              (select i.ref from intake i where i.id = d.intake_id and i.status in ('preparing', 'out')) as open_intake, v.title
+              (select i.ref from intake i where i.id = d.intake_id and i.status in ('preparing', 'out')) as open_intake, v.title,
+              coalesce(v.code, 'general') as code, d.version_id, d.fields, d.dentist_id, d.explained_in, d.explained_other, d.plan_item_id, d.appointment_id,
+              exists (select 1 from consent_signing s where s.document_id = d.id) as signed
          from consent_document d join consent_version v on v.id = d.version_id where d.id = $1 for update of d`, [isUuid(docId) ? docId : null])).rows[0];
     if (!d || d.patient_id !== patient!.id || d.cancelled) throw refuseStart('doc_other', 'That form is not this patient’s, or was removed.');
     if (d.open_intake) throw refuseStart('doc_open', `${d.title ?? 'That form'} is in forms being filled in now (${d.open_intake}). Take it out of those forms, or throw them away, first.`);
-    if (!['to_sign', 'refused', 'no_photos', 'withdrawn'].includes(d.state)) throw refuseStart('doc_signed', `${d.title ?? 'That form'} is signed already. Only a form never signed, refused or withdrawn is signed again.`);
-    if (!d.in_force) throw refuseStart('doc_words', `The clinic has newer words for ${d.title ?? 'that form'}. Prepare it again from the record.`);
+    if (!d.in_force) {
+      // Newer words (phase 4.2, "Sign again"): the form is prepared again under the words in force, in this intake —
+      // the clinic's part carried over where the fields are the same, the dentist, the visit and the plan line kept.
+      // An unsigned old form retires as renewed; a signed one stays on the record as history. The named dentist
+      // explains the new words again before they are signed (no attestation is copied).
+      const t = templateFor(a.gates, d.code as Code);
+      if (!t) throw refuseStart('doc_words', `The clinic has newer words for ${d.title ?? 'that form'} that this server does not offer yet.`);
+      const was = TEMPLATES[d.version_id];
+      const sameFields = !!was && JSON.stringify(was.clinicFields.map((f) => [f.name, f.kind])) === JSON.stringify(t.clinicFields.map((f) => [f.name, f.kind]));
+      if (!d.signed) await tx.query(`update consent_document set cancelled_at = now(), cancelled_by = $2, cancel_why = 'renewed' where id = $1`, [d.id, a.staffId]);
+      await insertWithRef(tx, newDocumentRef, async (ref) => (await tx.query<{ id: string }>(
+        `insert into consent_document (clinic_id, ref, version_id, intake_id, patient_id, appointment_id, plan_item_id, fields, dentist_id, explained_in, explained_other, sort, prepared_by)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) on conflict (clinic_id, ref) do nothing returning id`,
+        [a.clinicId, ref, t.version, id, patient!.id, d.appointment_id ?? visit?.id ?? null, d.plan_item_id, JSON.stringify(sameFields ? d.fields : {}),
+          d.dentist_id, d.explained_in, d.explained_other, t.order, a.staffId])).rows[0]?.id ?? null);
+      await event(tx, a.clinicId, id, 'renewed', a.staffId, t.version, d.id);
+      await audit(tx, a.clinicId, a.staffId, 'consent.renew', 'consent_document', d.id);
+      continue;
+    }
+    if (!['to_sign', 'refused', 'no_photos', 'withdrawn'].includes(d.state)) throw refuseStart('doc_signed', `${d.title ?? 'That form'} is signed already under the words in force. Only a form never signed, refused or withdrawn is signed again.`);
     await tx.query('update consent_document set intake_id = $2 where id = $1', [d.id, id]);
   }
   await event(tx, a.clinicId, id, 'started', a.staffId, docs.length ? 'to sign again' : null);

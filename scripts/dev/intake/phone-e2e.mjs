@@ -38,7 +38,9 @@ const ok = (s) => console.log(`  ok  ${s}`);
 
 const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
 const errs = [];
-const watch = (p, who) => { p.on('pageerror', (e) => errs.push(`${who}: ${e.message}`)); p.on('console', (m) => { if (m.type() === 'error') errs.push(`${who}: ${m.text()}`); }); };
+// Astro's dev toolbar audits the page and sometimes cannot fetch its own data: not the app's error.
+const noise = (t) => /Astro background:|dev toolbar|audit's match function/.test(t);
+const watch = (p, who) => { p.on('pageerror', (e) => errs.push(`${who}: ${e.message}`)); p.on('console', (m) => { if (m.type() === 'error' && !noise(m.text())) errs.push(`${who}: ${m.text()}`); }); };
 
 // ---------------------------------------------------------------------------
 // The desk
@@ -292,13 +294,31 @@ await signAllAndSend(phoneA);
 }
 await phoneA.context().close();
 
+/** No sideways scroll, and every visible button at least 44 px tall, on the page as it is (a dialog's buttons too). */
+async function fitsPage(p, what) {
+  const g = await p.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    small: Array.from(document.querySelectorAll('button, a.btn, a.ws-btn, input[type="submit"]')).filter((b) => b.getClientRects().length && b.getBoundingClientRect().height > 0 && b.getBoundingClientRect().height < 44)
+      .map((b) => `${(b.textContent ?? '').trim().slice(0, 30)} ${Math.round(b.getBoundingClientRect().height)}px`),
+  }));
+  assert.equal(g.scroll, 0, `${what}: no sideways scroll (overflow ${g.scroll}px)`);
+  assert.deepEqual(g.small, [], `${what}: every button at least 44 px`);
+  ok(`${what}: fits ${await p.evaluate(() => innerWidth)} px, buttons ≥ 44 px`);
+}
+
 // ---------------------------------------------------------------------------
 // Path B: a patient on file types their birth date first
 // ---------------------------------------------------------------------------
 console.log('\nB. A patient on file, on their own phone');
+// A patient on file with a birth date, by preference one with a visit today, so the signed form's place on the
+// record (phase 4: the Treatment record and the visit panel) can be checked afterwards.
 const onFile = (await q(
-  `select id, first_name, birth_date::text as birth from patient where clinic_id = $1 and birth_date is not null and archived_at is null
-    order by created_at limit 1`, [clinicId]))[0];
+  `select * from (
+     select p.id, p.first_name, p.birth_date::text as birth, p.created_at,
+            (select a.id from appointment a where a.patient_id = p.id and (a.starts_at at time zone 'Asia/Manila')::date = (now() at time zone 'Asia/Manila')::date
+                and a.status not in ('cancelled', 'no_show') order by a.starts_at limit 1) as visit_today
+       from patient p where p.clinic_id = $1 and p.birth_date is not null and p.archived_at is null) x
+    order by (visit_today is null), created_at limit 1`, [clinicId]))[0];
 assert(onFile, 'a seeded patient with a birth date');
 const B = await prepareOnDesk(onFile.id);
 const phoneB = await (await phoneCtx()).newPage();
@@ -335,6 +355,113 @@ await signAllAndSend(phoneB);
   ok(`database: intake ${it.status} for ${onFile.first_name} (verified), link retired as sent`);
 }
 await phoneB.context().close();
+
+// Phase 4: the signed form on the record. With a visit today, the form joins it: a card in the visit panel (where it
+// was signed, by whom, Open the form, Print) and, once the visit has begun, a consent row on the Treatment record
+// and on its paper. Without one, the form stays in Consent only (checked too).
+{
+  const title = (await q(`select v.title from consent_document d join consent_version v on v.id = d.version_id where d.intake_id = $1 and d.cancelled_at is null limit 1`, [B.intakeId]))[0]?.title;
+  const record = `${base}/c/${slug}/patients/${onFile.id}/`;
+  await desk.goto(record, { waitUntil: 'load' });
+  if (onFile.visit_today) {
+    const panel = desk.locator(`#rec-visit-${onFile.visit_today}`);
+    assert.equal(await panel.count(), 1, 'the visit panel for today’s visit is on the record');
+    const card = panel.locator('[data-vx-form]');
+    assert.ok(await card.count() >= 1, 'the signed form has a card in the visit panel');
+    const words = (await card.first().innerText()).replace(/\s+/g, ' ');
+    assert.match(words, /Signed/, words);
+    assert.match(words, /on their phone/, words);
+    assert.ok(words.includes(title), `the card names the form (${title})`);
+    assert.equal(await card.first().locator('a[href$="/print/"]').count(), 1, 'the card has Print');
+    assert.equal(await card.first().locator('svg').count() >= 1, true, 'the card draws the signature');
+    const visit = (await q(`select status, starts_at < now() as begun from appointment where id = $1`, [onFile.visit_today]))[0];
+    const begun = visit.begun || ['arrived', 'in_lobby', 'in_chair', 'completed'].includes(visit.status);
+    const row = desk.locator('tr[data-kind="consent"]');
+    if (begun) {
+      assert.ok(await row.count() >= 1, 'a consent row on the Treatment record once the visit has begun');
+      const rowWords = (await row.first().innerText()).replace(/\s+/g, ' ');
+      assert.match(rowWords, /Signed by .* · on their phone/, rowWords);
+      const paper = await desk.goto(`${record}treatment-record/`, { waitUntil: 'load' });
+      assert.equal(paper.status(), 200);
+      assert.match((await desk.textContent('body')).replace(/\s+/g, ' '), /on their phone/, 'the paper carries the consent row');
+      ok(`record: the form is on the visit panel and the Treatment record (visit ${visit.status}); the paper too`);
+      // The record with that visit's panel open fits a desk and a phone.
+      await desk.goto(`${record}?visit=${onFile.visit_today}`, { waitUntil: 'load' });
+      await desk.waitForTimeout(600);
+      await fitsPage(desk, 'record with the visit panel open at 1440');
+      await desk.setViewportSize({ width: 390, height: 844 });
+      await desk.reload({ waitUntil: 'load' });
+      await desk.waitForTimeout(600);
+      await fitsPage(desk, 'record with the visit panel open at 390');
+      await desk.setViewportSize({ width: 1440, height: 900 });
+    } else {
+      assert.equal(await row.count(), 0, 'no ledger row before the visit begins');
+      ok(`record: the form is on the visit panel; the visit (${visit.status}, not begun) has no ledger row yet`);
+    }
+  } else {
+    assert.equal(await desk.locator('[data-vx-form]').count(), 0, 'with no visit today the form joins no visit');
+    ok('record: no visit today, so the form stays in Consent only');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Path B2 (phase 4.2): a form on the record under older words is signed again under the words in force, from
+// the record, on the patient's phone. An older version of the general consent is planted (a superuser's row,
+// never offered: the words in force stay treatment-2026-09), with an unsigned form on it for the same patient.
+// ---------------------------------------------------------------------------
+console.log('\nB2. Newer words: sign again from the record, on their phone');
+{
+  await q(`insert into consent_version (id, title, summary, effective_from, kind) values ('treatment-2026-01', 'Consent to dental examination and treatment', 'An older wording, for the test.', '2026-01-01', 'treatment') on conflict (id) do nothing`);
+  const staffId = (await q('select id from staff where email = $1', [owner.email]))[0].id;
+  await q(`delete from consent_document where ref = 'CF-TEST2' and clinic_id = $1 and not exists (select 1 from consent_signing s where s.document_id = consent_document.id)`, [clinicId]).catch(() => {});
+  const old = (await q(`insert into consent_document (clinic_id, ref, version_id, patient_id, fields, sort, prepared_by) values ($1, 'CF-TEST2', 'treatment-2026-01', $2, '{}', 1, $3) returning id`, [clinicId, onFile.id, staffId]))[0];
+  assert.equal((await q('select consent_in_force($1) as f', ['treatment-2026-01']))[0].f, false, 'the planted version is not in force');
+  await desk.goto(`${base}/c/${slug}/patients/${onFile.id}/#consent`, { waitUntil: 'load' });
+  // The record shows one section at a time: open Consent.
+  const tab = desk.locator('#rec-rec-consent-tab');
+  if (await tab.count()) await tab.click();
+  const row = desk.locator('li.vx-signed-row', { hasText: 'Newer words: sign again' });
+  assert.equal(await row.count(), 1, 'the record marks the form "Newer words: sign again"');
+  await row.scrollIntoViewIfNeeded();
+  const again = row.locator('form[data-rc-sign="phone"] button');
+  assert.match((await again.textContent()).trim(), /^Sign again on their phone/);
+  await again.click();
+  await desk.waitForLoadState('load');
+  if (!/step=check&via=phone/.test(desk.url())) {
+    const why = await desk.locator('[role="alert"], [data-ik-problems], .ws-callout').allTextContents();
+    throw new Error(`Sign again did not reach the Check step: at ${desk.url()}; ${why.join(' | ').replace(/\s+/g, ' ').trim()}`);
+  }
+  const intakeId = desk.url().match(/\/intake\/([0-9a-f-]+)\//)[1];
+  const here = `${base}/c/${slug}/patients/intake/${intakeId}/`;
+  assert.equal(await desk.locator('input[name="device"][value="phone"]').isChecked(), true, 'the phone is preselected from the record');
+  const renewed = (await q(`select d.version_id, consent_document_state(d.id) as state from consent_document d where d.intake_id = $1 and d.cancelled_at is null`, [intakeId]));
+  assert.deepEqual(renewed.map((r) => r.version_id), ['treatment-2026-09'], 'the intake holds the form under the words in force');
+  assert.equal((await q('select cancel_why from consent_document where id = $1', [old.id]))[0].cancel_why, 'renewed', 'the unsigned old form retired as renewed');
+  ok(`record → intake ${intakeId.slice(0, 8)}…: the form prepared again under treatment-2026-09, the old one renewed`);
+  await Promise.all([desk.waitForURL(/step=out/), desk.click('[data-ik-go]')]);
+  await desk.waitForSelector('[data-ik-qr] svg');
+  const link = (await q(`select token from intake_link where intake_id = $1 and retired_at is null and device = 'phone'`, [intakeId]))[0];
+  const phone = await (await phoneCtx()).newPage();
+  phone.setDefaultTimeout(60_000);
+  watch(phone, 'phone B2');
+  await phone.goto(`${base}/f/i/${link.token}/`, { waitUntil: 'load' });
+  await phone.waitForSelector('[data-ip-start]');
+  await Promise.all([phone.waitForLoadState('load'), phone.click('[data-ip-start] button.btn-primary')]);
+  await phone.waitForSelector('[data-ip-verify]');
+  await phone.fill('#f-birth_date', onFile.birth);
+  await Promise.all([phone.waitForLoadState('load'), phone.click('[data-ip-verify] button.btn-primary')]);
+  await signAllAndSend(phone);
+  await phone.context().close();
+  const after = (await q(`select consent_document_state(d.id) as state, d.version_id from consent_document d where d.intake_id = $1 and d.cancelled_at is null`, [intakeId]))[0];
+  assert.equal(after.state, 'agreed');
+  assert.equal(after.version_id, 'treatment-2026-09');
+  await desk.goto(`${base}/c/${slug}/patients/${onFile.id}/`, { waitUntil: 'load' });
+  assert.equal(await desk.locator('li.vx-signed-row', { hasText: 'Newer words' }).count(), 0, 'nothing on the record is under older words any more');
+  ok('phone B2: signed under the new words; the record shows it Signed, the old form gone from the list');
+  // What the test planted goes (the retired old form was never signed, so nothing restricts it; the database checks count the versions).
+  await q('delete from consent_document where id = $1', [old.id]);
+  await q(`delete from consent_version where id = 'treatment-2026-01'`);
+}
 
 // ---------------------------------------------------------------------------
 // Path C: a phone that walks away; "Show a new code". And the screens fit a phone.

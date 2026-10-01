@@ -71,24 +71,63 @@ Verified by `scripts/dev/intake/phone-e2e.mjs` (two browsers, three paths, the
 database after each, geometry at 390) and `scripts/dev/glass/contrast.mjs` with
 `--keep` (0 fails, lowest 5.30:1).
 
-## Phase 4 — the record integration: to settle with the owner
+## Phase 4 — the record integration
 
-The original spec named phase 4 only as "the record integration". What exists
+The original spec named phase 4 only as "the record integration". What existed
 already on the record: the Consent forms pane (phase 2), the signed consent on
 the visit (035), `visit_treatment_consented()` for the visit panel's checklist.
-The candidates, for the owner to choose from, in the order they seem to matter:
+Four candidates were put to the owner on 1 Oct; they chose the first.
 
-1. **The signed forms on the Timeline and in the visit panel**, beside the
-   tablet-signed consent of 035: one line per form signed through an intake,
-   with its print, so the dentist sees at the chair what was agreed.
-2. **Re-signing from the record**: when a form's words change (a new version),
-   the record offers "Sign again" straight to a phone or tablet, without
-   starting a new intake by hand.
+### 4.1 — the signed forms where the dentist looks (built 1 Oct, no migration)
+
+- **A form belongs to a visit** when it was prepared from one (its
+  `appointment_id`); otherwise a signed form joins the visit of the day it was
+  signed (a paper's own day), the same rule the visit panel uses for blood
+  pressure and files: it joins an existing visit and never makes a day of its
+  own. A form nobody signed and no visit names stays in Consent only.
+- **The visit panel** lists each form as a card in "Consent and signature",
+  beside the tablet-signed consent of 035: the signature (or "Signed on
+  paper"), who signed, the state in a pill, where and when it was signed, the
+  teeth, who explained it, Open the form and Print. A form still to sign shows
+  as "To sign", so the dentist sees at the chair what is outstanding.
+- **The Treatment record** gets one row per signed form, before the work it
+  covers: "Signed by Ana Dimaculangan · on their phone · 2:31 pm" (or "Did not
+  agree · …", "withdrawn <day>"), the form's teeth, the dentist who explained
+  it. No money. The paper draws the same rows. A form still to sign is not
+  history and is no row.
+- Built in `src/lib/visit-record.ts` (`Visit.forms`), `src/lib/treatment-record.ts`
+  (row kind `consent`, `formWords`, `SIGNED_WHERE`) and `_record/VisitPanels.astro`.
+  Checked by `scripts/dev/intake/phone-e2e.mjs` at a clinic with a visit today and
+  measured with the panel open (0 contrast fails, fits 1440 and 390).
+
+### 4.2 — Sign again from the record (built 1 Oct, no migration)
+
+- **Two ways on every form that may be signed**, on the Consent pane and the
+  form's own page: Sign on this tablet, Sign on their phone. The phone way
+  lands on the intake's Check step with the phone preselected, so the desk
+  presses once and shows the QR code.
+- **Newer words.** When a form's version is no longer in force and the version
+  in force for its code is offered here, the record marks it "Newer words: sign
+  again" and offers Sign again both ways. The start prepares the form again
+  under the words in force, inside the new intake: the clinic's part carried
+  over when the fields are the same, the dentist, the visit and the plan line
+  kept, no attestation copied (the dentist explains the new words again). An
+  unsigned old form retires as renewed; a signed one stays as history, so what
+  was agreed under the old words is never lost.
+- Not offered: a form signed under the words in force (nothing to sign again),
+  and words this server does not offer yet (a production server until the new
+  version is reviewed).
+- Built in `src/lib/intake.ts` (`startIntake`), `_record/ConsentForms.astro`
+  and `consents/[document].astro`. Checked by `phone-e2e.mjs` path B2 with an
+  older version planted by the test.
+
+### Still open, for the owner to rank
+
 3. **The health history from page 1 against the one on file**, side by side,
    with "Use" per detail as the QR forms do (`useFormDetail`), where today the
    intake writes a new version.
 4. **Withdrawals and overrides on the record**, which the data holds
    (`consent_withdrawal`, `consent_override`) and no page draws yet.
 
-None of these needs a migration. Ask the owner which first; build it on a branch
-from `main`; write what was decided here.
+None of these needs a migration. Build the next on a branch from `main`; write
+what was decided here.

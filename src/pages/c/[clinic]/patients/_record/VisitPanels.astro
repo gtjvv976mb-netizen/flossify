@@ -19,6 +19,9 @@ import { LETTER_KIND } from '../../../../../lib/record-extra';
 import { TREATMENT_CONSENT } from '../../../../../lib/patient-forms-def';
 import { pesos } from '../../../../../lib/invoices';
 import { canSign, sourceWords, VISIT_STATUS, type Visit } from '../../../../../lib/visit-record';
+import { STATE_WORDS, signerWords } from '../../../../../lib/consent-docs';
+import { SIGNED_WHERE, signedAtOf, docTeeth } from '../../../../../lib/treatment-record';
+const TONE: Record<string, string> = { success: 'rp-ok', warn: 'rp-warn', alert: 'rp-alert', neutral: '', info: '' };
 
 interface Props { visits: Visit[]; slug: string; patientId: string; canEdit: boolean; money: boolean; open: string | null; today: string; firstName: string }
 const { visits, slug, patientId, canEdit, money, open, today, firstName } = Astro.props;
@@ -70,9 +73,36 @@ const NOTE_PARTS = [['complaint', 'Why they came'], ['findings', 'Findings'], ['
         {/* Consent and the signature */}
         <section class="vx-sec hue-violet" aria-labelledby={`vx-${v.key}-consent`}>
           <h3 class="vx-h" id={`vx-${v.key}-consent`}><span class="vx-hi"><Glyph name="shield" size={18} /></span>Consent and signature</h3>
-          {v.consents.length === 0 && v.agreed.length === 0 && (
+          {v.consents.length === 0 && v.agreed.length === 0 && v.forms.length === 0 && (
             <p class="vx-empty">{signable ? `No consent signed for this visit yet. Press “Sign consent on this tablet”, choose what the dentist explained, and hand the tablet to ${firstName}.` : v.id ? 'No consent was signed on the tablet for this visit.' : 'Work recorded without a booking has no consent of its own. Consents signed on paper or on the patient forms are in Consent.'}</p>
           )}
+          {/* The consent forms (039): prepared from this visit, or signed through an intake or on paper on its day. */}
+          {v.forms.map((d) => {
+            const st = STATE_WORDS[d.state];
+            const s = d.latest;
+            const teeth = docTeeth(d);
+            return (
+              <article class="vx-consent vx-form" data-vx-form={d.id}>
+                {s && s.strokes ? <Signature strokes={s.strokes} name={s.signedByName} /> : <span class="sig"><span class="sig-none">{s ? (s.channel === 'paper' ? 'Signed on paper' : 'Not signed') : 'Not signed yet'}</span></span>}
+                <div class="vx-signed">
+                  <p class="vx-signer">{s ? signerWords({ name: s.signedByName, as: s.signedAs, relation: s.relation, method: s.method }) : d.title}</p>
+                  <p class="rp-row">
+                    <span class:list={['rp', TONE[st.tone]]}>{st.tone === 'success' && <Icon name="check" size={14} />}{st.words}</span>
+                    {s && <span class="rp">{SIGNED_WHERE[s.channel]}{s.channel === 'paper' && s.signedOn ? `, ${dateText(s.signedOn)}` : `, ${stamp(signedAtOf(s))}`}</span>}
+                    {s?.withdrawal && <span class="rp rp-alert">Withdrawn {stamp(s.withdrawal.at)}</span>}
+                    {teeth.map((t) => <span class="rp rp-tooth"><Glyph name="tooth" size={14} />{t}</span>)}
+                  </p>
+                </div>
+                <div class="rs-line"><span class="rk">{d.state === 'agreed' ? 'Agreed to' : 'Form'}</span><p class="text-[15px] text-ink">{d.title}</p></div>
+                {d.attestation && <div class="rs-line"><span class="rk">Explained by</span><p><Who name={d.attestation.dentistName} /></p></div>}
+                {!d.attestation && d.dentistName && <div class="rs-line"><span class="rk">Dentist</span><p><Who name={d.dentistName} /></p></div>}
+                <p class="flex flex-wrap gap-2">
+                  <a href={`${base}/consents/${d.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open the form</a>
+                  {s && <a href={`${base}/consents/${d.id}/print/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>}
+                </p>
+              </article>
+            );
+          })}
           {v.consents.map((k) => {
             const words = TREATMENT_CONSENT[k.versionId];
             return (

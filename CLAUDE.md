@@ -1267,7 +1267,8 @@ at Send unless the patient looks like one already on file; a fresh signature on 
 the risks; the six scheduling features first). **Phase 1** is the library, the data and the shared add path;
 **phase 2** (shipped, fixes in 043) the desk's steps, clinic tablets, the patient's pages (`/f/i/<token>/`,
 `/f/t/`), park/unlock and the record's Consent forms pane; **phase 3** (shipped 1 Oct, no migration) the
-patient's own phone; the record integration is phase 4 (`docs/intake-design.md`).
+patient's own phone; **phase 4** (the record integration, `docs/intake-design.md`) began the same day with
+the signed forms on the visit panel and the Treatment record (the owner's first pick).
 
 - **The consent library is data** (`src/lib/consent-library.ts`, no Node imports): ten forms
   (`anaesthesia-2026-10` … `photos-2026-10`, `consent_version` kind `document`, in force from 1 Oct 2026) and
@@ -1356,6 +1357,34 @@ patient's own phone; the record integration is phase 4 (`docs/intake-design.md`)
   new one, the geometry at 390 (no sideways scroll, 44 px), and the database after each; `--keep` leaves a Start
   screen, a birth-date screen and the desk's QR step open with saved states for `contrast.mjs` (`PW_STATE`,
   `PW_CHROMIUM`). Measured 1 Oct: 0 fails, lowest 5.30:1, light and dark, phone and desk.
+- **Phase 4, first piece: the signed forms where the dentist looks (no migration).** `loadVisits()` takes the
+  record's consent forms (`RecordDoc[]`, `Visit.forms`): a form prepared from a visit belongs to it, signed or still
+  to sign; one signed through an intake or on paper with no visit named joins the visit of the day it was signed (a
+  paper's own day), and never makes a day of its own; a form nobody signed and no visit names stays in Consent. The
+  **visit panel**'s "Consent and signature" draws each as a card beside the tablet-signed consent (`[data-vx-form]`:
+  the signature or "Signed on paper", who signed, the state pill, where — `SIGNED_WHERE`: on their phone, the
+  clinic's tablet, a device handed to them, paper — and when, the teeth, who explained, Open the form, Print). The
+  **Treatment record** gets a row of kind `consent` per signed form, before the work it covers (`formWords`:
+  "Signed by Ana Dimaculangan · on their phone · 2:31 pm", or "Did not agree · …", "withdrawn <day>"), with the
+  form's teeth and the dentist who explained it; a form still to sign is no row. The paper draws the same rows.
+  `holds()` counts signed forms, so a visit with nothing else done is still history. Checked by `phone-e2e.mjs` at a
+  clinic with a visit today (the card, the row, the paper, the page fits at 1440 and 390) and measured with the
+  panel open: 0 contrast fails, light and dark, desk and phone.
+- **Phase 4, second piece: Sign again from the record, on a phone or this tablet (no migration).** On the record's
+  Consent pane and a form's own page, a form that may be signed (never signed, refused, withdrawn, no photos) has
+  **Sign on this tablet** and **Sign on their phone**: the same intake start (`intent=start`, `document=<id>`,
+  `way=clinic|phone`); the phone way lands on Check with the phone preselected (`?via=phone`). A form whose
+  **words are no longer in force** (a newer version of its code in `consent_version`, and that version offered
+  here: the pane's `offered` codes) is marked "Newer words: sign again" and offers **Sign again** the same two
+  ways: `startIntake` no longer refuses `doc_words` but prepares the form again under the words in force in the
+  new intake — the clinic's part carried over when the fields are the same (as `renewDocuments`), the dentist,
+  the visit and the plan line kept, no attestation copied (the named dentist explains the new words again). An
+  unsigned old form retires as `renewed`; a signed one stays on the record as history. A form signed under the
+  words in force is still refused (`doc_signed`); words not offered here refuse `doc_words`. Checked by
+  `phone-e2e.mjs` B2: an older general-consent version planted by the test (never offered; the row is a
+  superuser's), an unsigned form on it, the record's pill and button, the intake under `treatment-2026-09`, the
+  old form `renewed`, signed on the phone, the record clean. The pill and buttons reuse measured classes
+  (`rp-warn`, `ws-btn-quiet`, `ik-tag[data-tone=warn]`).
 
 ## Open — read before shipping
 
