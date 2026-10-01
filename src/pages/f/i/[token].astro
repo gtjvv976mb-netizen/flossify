@@ -46,15 +46,17 @@ import '../../find/_ui/patient.css';
 import '../../find/_ui/clinic-glass.css';
 import '../_forms.css';
 import './_intake.css';
-import { clientIp } from '../../../lib/throttle';
+import { clientIp, hit, ipBucket, LIMITS } from '../../../lib/throttle';
 import { csrfOk, csrfToken, CSRF_MESSAGE } from '../../../lib/csrf';
+import { newDeviceSecret, secretHash } from '../../../lib/intake';
+import { setDeviceSecret } from '../../../lib/park';
 import { manilaToday, dateText } from '../../../lib/health';
 import { readCappedForm, newNonce } from '../../../lib/patient-forms';
 import { parseScreen, parseForm, valuesAsForm, shown, isMinorOn, ageFrom, HONEYPOT_FIELD, NONCE_FIELD, PRIVACY_TICK, type FieldDef, type RawValues } from '../../../lib/patient-forms-def';
 import { INTAKE_DEF, INTAKE_STEPS, INTAKE_SCREENS, INTAKE_FIELD_SCREEN, PRIVACY_AS, type IntakeScreen } from '../../../lib/intake-def';
 import {
   lookupIntake, deviceProofs, patientOf, renderPage, faceOf, savePage1, markPage, decidePage, sendIntake, pingIntake, postAllowed, endStaffOnTablet,
-  intakeWords, INTAKE_POST_MAX, type IntakeLook, type IntakePageView,
+  claimIntake, verifyIntake, intakeWords, INTAKE_POST_MAX, type IntakeLook, type IntakePageView,
 } from '../../../lib/intake-public';
 import { EXPLAINED_LANGS, signerChoices, holds, type RawPart, type SignerChoice, type Signer, type Decision } from '../../../lib/consent-library';
 import { bornLine } from '../../../lib/consent-docs';
@@ -158,6 +160,35 @@ if (posted && form && String(form.get('intent') ?? '') === 'ping') {
   if (!r.ok) return reply({ ok: null, status: 'wait' }, 429);
   const st = await pingIntake(token, device);
   return reply({ ok: st === 'open', status: st });
+}
+// The patient's own phone (phase 3). Start: the first phone to press it claims the link with a secret made for
+// this browser (fl_idev, set only once the claim is answered open or verify). A patient on file then types
+// their birth date (intake_verify: three misses lock the code). Both count against the clinic's address limit;
+// neither logs the date. A clinic device's link is made claimed, so it never comes here.
+let startNote = '';
+if (posted && form && (look.status === 'welcome' || look.status === 'verify') && look.clinic) {
+  const intent = String(form.get('intent') ?? '');
+  if (String(form.get(HONEYPOT_FIELD) ?? '').trim() !== '') return Astro.redirect(self, 303);
+  if (!csrfOk(Astro.cookies, form)) {
+    Astro.response.status = 403;
+    startNote = `${CSRF_MESSAGE} Press the button again.`;
+  } else {
+    const lim = await hit(`intake:ip:${look.clinic.id}:${ipBucket(ip)}`, ...LIMITS.intake.ip);
+    if (!lim.allowed) {
+      Astro.response.status = 429;
+      startNote = 'Too many at once. Wait a moment and press the button again.';
+    } else if (intent === 'start' && look.status === 'welcome') {
+      const secret = newDeviceSecret();
+      const r = await claimIntake(token, secretHash(secret));
+      if (r === 'open' || r === 'verify') { setDeviceSecret(Astro.cookies, secret); return Astro.redirect(self, 303); }
+      await reload();
+    } else if (intent === 'verify' && look.status === 'verify' && device) {
+      const r = await verifyIntake(token, device, String(form.get('birth_date') ?? '').trim());
+      if (r === 'open') return Astro.redirect(self, 303);
+      if (r === 'wrong') { Astro.response.status = 422; startNote = 'That is not the date of birth on the clinic’s record. Check it and try again.'; }
+      else await reload();
+    }
+  }
 }
 if (posted && look.status === 'open' && device) {
   const at = form ? String(form.get('at') ?? '') : '';
@@ -291,9 +322,26 @@ const valOf = (name: string): string | string[] | undefined => {
 };
 const get = (name: string) => valOf(name) ?? null;
 const birthNow = typeof valOf('birth_date') === 'string' ? String(valOf('birth_date')) : null;
+// Answers from earlier screens that a condition on this screen reads (the sex, for the pregnancy questions): the
+// page's script gets them, or it would hide a question the server then asks for. Only fields a condition names.
+const conditionFields = (() => {
+  const out = new Set<string>();
+  const walk = (s: unknown): void => {
+    if (!s || typeof s !== 'object') return;
+    const c = s as Record<string, unknown>;
+    if (typeof c.field === 'string') out.add(c.field);
+    if (Array.isArray(c.all)) c.all.forEach(walk);
+    if (c.not) walk(c.not);
+  };
+  for (const st of INTAKE_STEPS) for (const sec of st.sections) { walk(sec.showIf); for (const f of sec.fields) walk(f.showIf); }
+  return out;
+})();
 const minorNow = isMinorOn(birthNow, today);
 const ageNow = ageFrom(birthNow, today);
 const stepDef = screen && (INTAKE_SCREENS as readonly string[]).includes(screen) ? INTAKE_STEPS.find((s) => s.id === screen)! : null;
+const priorNow = stepDef ? Object.fromEntries([...conditionFields]
+  .filter((n) => !stepDef.sections.some((sec) => sec.fields.some((f) => f.name === n)))
+  .map((n) => [n, valOf(n)]).filter(([, v]) => v !== undefined)) : {};
 const privacyChoices = PRIVACY_AS.filter((c) => (minorNow ? c.value !== 'patient' : c.value === 'patient'));
 const fieldFor = (f: FieldDef<string>): FieldDef<string> => (f.name === 'privacy_as' ? { ...f, choices: privacyChoices } : f);
 const errList = Object.entries(errors).filter(([k]) => k !== '_form');
@@ -384,7 +432,50 @@ const fil = (s: { fil?: string }) => s.fil;
       )}
     </header>
 
-    {!open && !done && (
+    {/* ---------------------------------------------------------------- their own phone: Start */}
+    {status === 'welcome' && clinic && (
+      <section class="ws-pane ws-glass pt-card cl-pane pf-done ip-start" aria-labelledby="ip-start-title" data-ip-start>
+        <span class="pt-done-mark" data-tone="info"><Icon name="phone" size={26} /></span>
+        <h1 class="pt-done-title pf-done-title" id="ip-start-title">Your forms from {clinic.name}</h1>
+        <p class="pf-done-lead">{look.parts === 1 ? 'One short part' : `${look.parts ?? 'A few'} short parts`}, on this phone.</p>
+        <p class="pf-done-text">Your answers go only to {clinic.name}. Nothing stays on this phone after you send them. Prefer paper? Ask the desk.</p>
+        {startNote && <p class="ip-banner" data-tone="warn" role="alert" tabindex="-1" data-ip-note><Icon name="alert" /><span>{startNote}</span></p>}
+        <form method="post" action={self} class="pf-done-actions" novalidate autocomplete="off">
+          <Csrf />
+          <input type="hidden" name="intent" value="start" />
+          <div class="pf-hp" aria-hidden="true"><label>Website <input type="text" name={HONEYPOT_FIELD} value="" tabindex="-1" autocomplete="off" /></label></div>
+          <button type="submit" class="btn btn-primary"><span>Start</span><Icon name="arrow-right" /></button>
+        </form>
+      </section>
+    )}
+
+    {/* ---------------------------------------------------------------- their own phone: a patient on file says who they are */}
+    {status === 'verify' && clinic && (
+      <section class="ws-pane ws-glass pt-card cl-pane pf-done ip-start" aria-labelledby="ip-verify-title" data-ip-verify>
+        <span class="pt-done-mark" data-tone="info"><Icon name="user" size={26} /></span>
+        <h1 class="pt-done-title pf-done-title" id="ip-verify-title">First, the patient’s date of birth</h1>
+        <p class="pf-done-lead">So that only the patient can open these forms.</p>
+        {startNote && <p class="ip-banner" data-tone="warn" role="alert" tabindex="-1" data-ip-note><Icon name="alert" /><span>{startNote}</span></p>}
+        <form method="post" action={self} class="cl-form pf-form ip-verify-form" novalidate autocomplete="off">
+          <Csrf />
+          <input type="hidden" name="intent" value="verify" />
+          <div class="pf-hp" aria-hidden="true"><label>Website <input type="text" name={HONEYPOT_FIELD} value="" tabindex="-1" autocomplete="off" /></label></div>
+          <div class="pf-grid">
+            <div class="pf-field">
+              <label class="field" for="f-birth_date"><span class="meta">Date of birth</span>
+                <input id="f-birth_date" type="date" name="birth_date" max={today} autocomplete="bday" aria-required="true" aria-invalid={startNote ? 'true' : undefined} aria-describedby="ip-verify-help" />
+              </label>
+              <p class="pf-help" id="ip-verify-help">As it is on the clinic’s record. Three wrong tries close this code; the desk can make a new one.</p>
+            </div>
+          </div>
+          <div class="pt-nav">
+            <button type="submit" class="btn btn-primary"><span>Continue</span><Icon name="arrow-right" /></button>
+          </div>
+        </form>
+      </section>
+    )}
+
+    {!open && !done && status !== 'welcome' && status !== 'verify' && (
       <section class="ws-pane ws-glass pt-card cl-pane pf-done" aria-labelledby="ip-status-title">
         <h1 class="pt-done-title pf-done-title" id="ip-status-title">{words?.title ?? 'These forms are not open'}</h1>
         <p class="pf-done-lead">{status === 'wait' && look.message ? look.message : words?.lead}</p>
@@ -410,7 +501,7 @@ const fil = (s: { fil?: string }) => s.fil;
           <p class="pf-intro"><Icon name="clock" /><span>{parts === 1 ? '1 part' : `${parts} short parts`}, about {5 + pages().reduce((n, p) => n + (p.template?.minutes ?? 2), 0)} minutes. Your answers go only to {clinic!.name}. Prefer paper? Ask the desk.</span></p>
         )}
         {ageClash() && stepDef.id === 'you' && <p class="ip-banner" data-tone="warn" role="alert"><Icon name="alert" /><span>Please ask the desk before going on: the date of birth and what the desk wrote do not agree.</span></p>}
-        <form class="cl-form pf-form" method="post" action={self} novalidate autocomplete="off" data-ip-page1 data-birth={birthNow ?? ''} data-today={today}>
+        <form class="cl-form pf-form" method="post" action={self} novalidate autocomplete="off" data-ip-page1 data-birth={birthNow ?? ''} data-today={today} data-prior={JSON.stringify(priorNow)}>
           <Csrf />
           <input type="hidden" name="at" value={stepDef.id} />
           <input type="hidden" name="intent" value="page1" />
@@ -715,10 +806,12 @@ const fil = (s: { fil?: string }) => s.fil;
     import { shown, isMinorOn, ageFrom, FIELDS, type ShowIf } from '../../../lib/patient-forms-def';
     const p1 = document.querySelector<HTMLFormElement>('[data-ip-page1]');
     if (p1) {
+      // Answers from earlier screens that a condition here reads (data-prior), and the birth date.
+      const prior = JSON.parse(p1.dataset.prior || '{}') as Record<string, string | string[]>;
       const get = (name: string): string | string[] | null => {
         const f = FIELDS[name];
         const els = p1.querySelectorAll<HTMLInputElement>(`[name="${name}"]`);
-        if (!els.length) return name === 'birth_date' ? (p1.dataset.birth || null) : null;
+        if (!els.length) return name === 'birth_date' ? (p1.dataset.birth || null) : (prior[name] ?? null);
         if (f?.kind === 'checks') return Array.from(els).filter((i) => i.checked).map((i) => i.value);
         if (f?.kind === 'radio') return Array.from(els).find((i) => i.checked)?.value ?? null;
         if (f?.kind === 'agree') return els[0].checked ? '1' : null;

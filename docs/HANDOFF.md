@@ -8,11 +8,10 @@ check out, and `scripts/dev/resume.sh`.
 
 Read in this order:
 
-1. `CLAUDE.md` **on the branch you are going to work on**. The open pull
-   request's branch carries a `CLAUDE.md` about 360 lines longer than `main`'s:
-   it is the record of what that pull request built (blocked time, the Treatment
-   record, the step-by-step intake and the rest). `main`'s copy knows nothing of it.
-2. This file.
+1. `CLAUDE.md` on `main`: the record of everything built, the intake's three
+   phases included.
+2. This file, then `docs/intake-design.md` for what the intake's phase 4 is to
+   settle with the owner.
 3. Run the resume check (below) before changing anything.
 
 ## The owner and how to work with them
@@ -47,18 +46,18 @@ Read in this order:
 
 ## Where everything stands
 
-**`main`** is PR #37, merged 28 Sep (UTC). It carries migrations through
-`038_appointment_contact.sql`: the clinical record (033–035) and the paperless
-day (036–038). It is what flossify.ph runs, so the live database's newest
-migration should be 038. Check that from the Render shell before anything
-merges: `select max(name) from schema_migrations;`.
+**`main`** carries migrations through `043_intake_fixes.sql`. PR #38 (the round
+below) and PR #39 (this handoff and the resume check) were merged by the owner
+on 1 Oct, in that order, and Render deploys `main` with `db:migrate` before each
+version, so the live database should now be at 043. **Not checked from here:**
+the cloud session's network policy refuses flossify.ph, so the post-deploy look
+(the site loads, `/healthz` is `{"ok":true}`, a record and the calendar open, the
+new screens are there) is still owed. Do it first, from a machine that can reach
+the site, and check `select max(name) from schema_migrations;` from the Render
+shell.
 
-**PR #38 is the open work**: a draft,
-<https://github.com/gtjvv976mb-netizen/flossify/pull/38>, branch
-`claude/funny-ritchie-ujucx6`, 47 commits and 144 files past `main`, mergeable
-with no conflict as of 1 Oct. This repository runs no CI, so nothing has checked
-it but its builder and the resume check below. It holds three of the owner's
-requests, built as one round and verified together:
+**PR #38** held three of the owner's requests, built as one round and verified
+together:
 
 1. **The Treatment record**: the patient record's Timeline became page 4 of the
    PDA dental chart (date, teeth, procedure, dentist, charged, paid, balance,
@@ -76,13 +75,21 @@ requests, built as one round and verified together:
    "Hand this device to <name>" (`/auth/park/`), the patient's pages
    `/f/i/<token>/`, and the record's Consent forms pane.
 
-The pull request's description lists each part and the builder's verification:
-desk and schedule suites 719 of 719, `test:consent` 24 of 24, the intake database
-checks 19 of 19, the QR forms backend test 31 of 31, the 7-role snapshot, lowest
+Its description lists each part and the builder's verification: desk and
+schedule suites 719 of 719, `test:consent` 24 of 24, the intake database checks
+19 of 19, the QR forms backend test 31 of 31, the 7-role snapshot, lowest
 contrast 4.75:1, every target 44 px, races and a production start. The resume
 check reproduced what it can on a fresh machine on 1 Oct: 43 files migrate from
 empty in order, the seed runs, `test:consent` 24 of 24, the database checks 19
 of 19, and the build completes.
+
+**The intake's phase 3, the patient's own phone, is built** (1 Oct, after the
+merges; no migration): the QR code on the desk's screen, Start on the first
+phone, the birth date for a patient on file, the live panel, and a page 1 fix
+that stopped a non-male adult on every device. `CLAUDE.md` "Add patient, step by
+step (039)", the Phase 3 bullet, and `docs/intake-design.md`. Verified end to
+end in two browsers (`scripts/dev/intake/phone-e2e.mjs`) and measured (0
+contrast fails, lowest 5.30:1; fits 390 px; 44 px targets).
 
 **Merged since the 26 Sep handoff** (none of this is to be redone): #23 QR
 patient forms; #24 the earlier handoff and the glass tools; #25–#30 clinic sites
@@ -95,15 +102,15 @@ consent; #37 the paperless day.
 ## The resume check — run it first
 
 ```sh
-git fetch origin main claude/funny-ritchie-ujucx6
-git checkout claude/funny-ritchie-ujucx6      # to finish PR #38; main for anything else
-git merge origin/main                         # brings this file and resume.sh onto the branch
+git fetch origin main
 DB=flossify_t scripts/dev/resume.sh            # needs a local PostgreSQL 16 or 17 and Node 22+
+PR_BRANCH=<branch> DB=flossify_t scripts/dev/resume.sh   # also compares with an open pull request's branch
 ```
 
-(This handoff and the script were written on `main`'s side after the pull
-request branched, so the merge is what puts them on that branch; it has no
-other conflict as of 1 Oct.)
+On a machine with no PostgreSQL: `initdb` a cluster under `/tmp` as a non-root
+user, `pg_ctl start` on a spare port, then `PGHOST=<socket dir> PGPORT=<port>
+PGUSER=postgres` in front of the command. Chromium for the browser checks: set
+`PW_CHROMIUM` to its binary when Playwright's own build is not installed.
 
 It prints where the checkout stands against GitHub, installs the packages,
 creates (if missing), migrates and seeds that local database, runs `test:consent`
@@ -118,34 +125,19 @@ forms backend test, the glass measurements and the booking walk (Tools, below).
 
 ## What to do next
 
-### 1. Finish PR #38 (the plan's step 4: the final check, then ready and merge)
+### 1. After the merges: look at the live site, and tell the owner
 
-The build and the suites are done above. What remains is the check the owner
-relies on, on a fresh machine, and then the merge:
-
-1. Run a dev server on the throwaway database (`DATABASE_URL` pointing at it as
-   `flossify_app`, see `.env.example`; `SHOW_DEMO_LOGINS=1` shows the seeded
-   logins) and walk the new screens as the pull request describes them: the
-   Treatment record and its print; blocked time on the calendar, in Settings,
-   on Calls and on `/find/`; the free-time chips; a one-dentist clinic on both
-   sides; Edit a visit; the tooth picker and the chart offer; PTR on a
-   prescription; Add patient → *At the clinic, step by step*, through a hand-over
-   and the patient's pages to Send and the record's Consent forms pane.
-2. Measure: `scripts/dev/glass/contrast.mjs` and `measure-page.mjs` on every
-   new or changed page, light and dark, desk and phone (0 failures, nothing
-   under 4.5:1, no target under 44 px, no sideways scroll at 390). Keyboard order.
-   Emulating Reduce Motion must show the same motion.
-3. Re-read `CLAUDE.md` on the branch against what you saw; fix what disagrees
-   (the branch, not the notes, unless the notes are wrong).
-4. Mark the pull request ready and merge it. Render then runs `db:migrate`,
-   which applies 039 → 043 in order on a database at 038. **Never put
-   `--allow-late` in `render.yaml` or the Procfile**: it is for a database that
-   somehow has 040–042 without 039, by hand, once.
-5. After the deploy: flossify.ph loads, `/healthz` is `{"ok":true}`, the
-   calendar and a record open, and the new screens are there. Screenshots to
-   the owner.
-6. Tell the owner, in a few lines, what the pull request changed for clinics
-   and the questions below.
+1. flossify.ph loads, `/healthz` is `{"ok":true}`, the calendar and a record
+   open, the Treatment record, blocked time, the free-time chips and Add patient
+   → *At the clinic, step by step* are there. Screenshots to the owner. (The
+   phone path arrives with the pull request that carries this note; after it
+   merges, the same look at Add patient → *On their phone*.)
+2. If anything is wrong, the Render dashboard's deploy log says whether
+   `db:migrate` applied 039 → 043; **never put `--allow-late` in `render.yaml`
+   or the Procfile**: it is for a database that somehow has 040–042 without
+   039, by hand, once.
+3. Tell the owner, in a few lines, what the two pull requests changed for
+   clinics, and the questions below.
 
 Open with the owner before a clinic depends on it (also in `CLAUDE.md` "Open"):
 
@@ -163,27 +155,14 @@ Open with the owner before a clinic depends on it (also in `CLAUDE.md` "Open"):
 - The QR patient forms stay closed on the live site until a new privacy notice
   covers what they collect (`FORMS_PRIVACY_VERSIONS`, `CLAUDE.md` "Patient forms").
 
-### 2. The intake's phase 3: the phone path
+### 2. The intake's phase 4: the record integration
 
-The owner's request (29 Sep): Add patient **by QR** or at the clinic, step by
-step; before the QR the staff tick which consent forms the procedure needs;
-page 1 patient information, then the consent forms, then the profile is made.
-Phases 1 and 2 are the clinic-device path. Phase 3 is the same intake on the
-patient's own phone from the QR code on the desk, and phase 4 the record
-integration.
-
-The intake spec (`intake-spec.md`) lived in a session scratchpad and is gone.
-What survives, and is enough to re-derive it: `CLAUDE.md` on the branch, "Add
-patient, step by step (039)", with the owner's four answers (procedure forms
-are signed only after the named dentist records "I explained this"; the profile
-is made at Send unless the patient looks like one already on file; a fresh
-signature on every form with initials on the risks; the six scheduling features
-first); the data model in `039_patient_intake.sql` and `043_intake_fixes.sql`;
-the definers' status words in `scripts/dev/intake/db-test.mjs`; and the phone
-precedent in the QR forms (`src/pages/f/[key].astro`, `CLAUDE.md` "Patient
-forms": throttles, the honeypot, the 64 KB cap, nothing kept between patients).
-**Write the phase 3 design into `docs/` this time** (`docs/intake-design.md`),
-then build it on a branch from `main` after PR #38 is in.
+Phases 1 to 3 are built. The original spec named phase 4 only as "the record
+integration"; `docs/intake-design.md` lists the candidates (the signed forms on
+the Timeline and in the visit panel, re-signing from the record, page 1's
+health history beside the one on file, withdrawals and overrides drawn) and
+says to ask the owner which first. None needs a migration. Build it on a branch
+from `main`; write what was decided into that file.
 
 ### 3. Then
 
@@ -211,6 +190,12 @@ never in a scratchpad: that rule is why this file and `resume.sh` exist.
 - `npm run test:consent` — the consent library and seal units (PR #38 branch).
   `npm run consent:hash` prints the hash of every template's words; new words
   are a new version id and a new row in one change.
+- `scripts/dev/intake/phone-e2e.mjs` — the phone path end to end: a dev server
+  on a throwaway database (`DATABASE_URL` as `flossify_app`, `SESSION_SECRET`,
+  `SMS_PROVIDER=console`, `UPLOAD_DIR`), then `DB=<db> node
+  scripts/dev/intake/phone-e2e.mjs http://127.0.0.1:4610`; `--keep` leaves a
+  Start screen, a birth-date screen and the desk's QR step open and saves the
+  browsers' states (`KEEP_DIR`) for `contrast.mjs` with `PW_STATE`.
 - `scripts/dev/intake/db-test.mjs` — the intake database: row-level security,
   grants, triggers, definers answering status words, seals and the chain,
   retention, races. Rolls back; refuses a database that is not on this machine.

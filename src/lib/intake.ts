@@ -60,12 +60,14 @@ export const TABLET_FRESH_MS = 2 * 60 * 1000;
 /** A tablet link unseen this long is left behind by a patient who walked away (the gate retires it as idle too). */
 export const LINK_IDLE_MS = 20 * 60 * 1000;
 /**
- * The phone path (the QR code only this patient can use, claimed by the first
- * phone, the birth-date check for a patient on file, the live status panel) is
- * phase 3 of the intake. Until it is built the phone card stays closed on
- * every server, whatever the notice says.
+ * The phone path (phase 3, shipped): a QR code only this patient can use,
+ * shown on the desk's screen and claimed by the first phone that opens it
+ * (intake_claim); a patient on file types their birth date first
+ * (intake_verify, three misses lock the link); the desk's live panel follows
+ * it. Page 1 on a phone still needs the privacy notice to cover it
+ * (page1Open), like every device. False closes the phone card on every server.
  */
-export const PHONE_PATH_BUILT = false;
+export const PHONE_PATH_BUILT = true;
 
 /** The first name shown under the code, at most (intake.label). */
 export const LABEL_MAX = 40;
@@ -116,7 +118,7 @@ export interface IntakeGates {
   privacyVersion: string | null;
   /** Page 1 (a new patient's details) on any device: the notice in force names what it collects. */
   page1Open: boolean;
-  /** The QR code for the patient's own phone. */
+  /** The QR code for the patient's own phone (a new patient's page 1 still needs page1Open). */
   phoneOpen: boolean;
   /** The forms that may be offered: in force, words matching their stored hash, reviewed on a production server. */
   templates: Template[];
@@ -127,7 +129,7 @@ export async function intakeGates(q: Q): Promise<IntakeGates> {
   const privacyVersion = (await q.query<{ id: string | null }>('select (current_consent_version()).id as id')).rows[0]?.id ?? null;
   const page1Open = formsNoticeReady(privacyVersion);
   const templates = (await templatesInForce(q)).filter((t) => offered(t, production));
-  return { production, privacyVersion, page1Open, phoneOpen: PHONE_PATH_BUILT && page1Open, templates };
+  return { production, privacyVersion, page1Open, phoneOpen: PHONE_PATH_BUILT, templates };
 }
 
 /** Sent intakes nobody has added yet (with the poster's forms, the "N patients sent their forms" line). */
@@ -207,6 +209,10 @@ export interface DeskIntake {
   /** Page 1's birth date, when the patient gave it (the minor rule). */
   page1Birth: string | null;
   link: DeskLink | null;
+  /** With no live link: the last one and why it ended (a phone's code not scanned in time, locked, idle, stopped). */
+  lastLink: { device: LinkDevice; why: string | null; at: Date } | null;
+  /** A patient on file on their phone: when the birth date matched (the pages open only after). */
+  verifiedAt: Date | null;
   docs: DeskDoc[];
   /** When an unsent intake is purged. */
   expiresAt: Date;
@@ -222,6 +228,8 @@ export async function loadIntake(q: Q, id: string): Promise<DeskIntake | null> {
   const link = (await q.query<Record<string, any>>(
     `select l.token, l.device, l.tablet_id, t.name as tablet_name, l.created_at, l.open_by, l.claimed_at, l.last_seen_at, l.created_by
        from intake_link l left join clinic_tablet t on t.id = l.tablet_id where l.intake_id = $1 and l.retired_at is null`, [id])).rows[0];
+  const last = link ? null : (await q.query<{ device: LinkDevice; retired_why: string | null; retired_at: Date }>(
+    `select device, retired_why, retired_at from intake_link where intake_id = $1 and retired_at is not null order by retired_at desc limit 1`, [id])).rows[0] ?? null;
   const docs = (await q.query<Record<string, any>>(
     `select d.id, d.ref, d.version_id, coalesce(v.code, 'general') as code, d.sort, d.rev, d.fields, d.dentist_id, d.dentist_name, d.dentist_prc,
             d.explained_in, d.explained_other, d.plan_item_id, consent_in_force(d.version_id) as in_force, d.paper_printed_at is not null as printed,
@@ -249,6 +257,8 @@ export async function loadIntake(q: Q, id: string): Promise<DeskIntake | null> {
       token: link.token, device: link.device, tabletId: link.tablet_id, tabletName: link.tablet_name, createdAt: link.created_at, openBy: link.open_by,
       claimedAt: link.claimed_at, lastSeenAt: link.last_seen_at, createdBy: link.created_by,
     } : null,
+    lastLink: last ? { device: last.device, why: last.retired_why, at: last.retired_at } : null,
+    verifiedAt: i.verified_at ?? null,
     docs: docs.map((d) => ({
       id: d.id, ref: d.ref, versionId: d.version_id, code: d.code, template: TEMPLATES[d.version_id] ?? null, sort: d.sort, rev: d.rev, fields: d.fields ?? {},
       dentistId: d.dentist_id, dentistName: d.dentist_name, dentistPrc: d.dentist_prc, explainedIn: d.explained_in, explainedOther: d.explained_other,
@@ -725,6 +735,11 @@ export async function goLive(tx: Tx, a: {
   if (i.status !== 'preparing' && i.status !== 'out') throw refuseLive('sent');
   if (i.target === 'new' && !a.gates.page1Open) throw refuseLive('page1');
   if (a.device === 'phone' && !a.gates.phoneOpen) throw refuseLive('phone');
+  // A patient on file opens their phone's forms with their birth date: without one on record, no code could ever open.
+  if (a.device === 'phone' && i.target === 'existing') {
+    const b = (await tx.query<{ b: string | null }>('select birth_date::text as b from patient where id = $1', [i.patient_id])).rows[0]?.b ?? null;
+    if (!b) throw refuseLive('phone', 'Add their birth date to their record first: they type it on their phone to open the forms.');
+  }
   const docs = (await tx.query<{ n: string; stale: string }>(
     `select count(*) as n, count(*) filter (where not consent_in_force(version_id)) as stale from consent_document where intake_id = $1 and cancelled_at is null`, [i.id])).rows[0];
   if (Number(docs.stale) > 0) throw refuseLive('words');

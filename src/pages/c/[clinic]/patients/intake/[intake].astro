@@ -53,6 +53,8 @@ import {
   type DeskDoc, type DeskIntake, type LiveRefusal,
 } from '../../../../../lib/intake';
 import { attestDocument, mayAttest, clinicFace, contextFor, plannedLanguage, bornLine } from '../../../../../lib/consent-docs';
+import { qrSvg } from '../../../../../lib/qr';
+import { PUBLIC_ORIGIN } from '../../../../../lib/patient-forms-def';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -241,7 +243,10 @@ const seenWords = (d: Date | null) => {
   return s < 60 ? 'seen just now' : s < 3600 ? `seen ${Math.round(s / 60)} min ago` : `seen ${dateText(new Date(d).toISOString().slice(0, 10))}`;
 };
 const tabletOk = (t: (typeof tablets)[number]) => !!t.lastSeenAt && now - new Date(t.lastSeenAt).getTime() <= TABLET_FRESH_MS && (!t.busyWith || t.busyWith === it?.ref);
-const deviceChoice = val('device', tablets.find(tabletOk) ? `tablet:${tablets.find(tabletOk)!.id}` : 'desk');
+// Their phone: open on this server, and a new patient's page 1 covered by the privacy notice. A ready tablet comes
+// first, then the phone (the chooser's "Easiest"; ?via=phone from it preselects the phone), then this device.
+const phoneOk = !!gates?.phoneOpen && (it?.target !== 'new' || !!gates?.page1Open) && (it?.target !== 'existing' || !!it?.patient?.birth);
+const deviceChoice = val('device', phoneOk && url.searchParams.get('via') === 'phone' ? 'phone' : tablets.find(tabletOk) ? `tablet:${tablets.find(tabletOk)!.id}` : phoneOk ? 'phone' : 'desk');
 const stale_docs = (it?.docs ?? []).filter((d) => !d.inForce);
 const page1 = it?.target === 'new';
 const pageRows = [
@@ -259,18 +264,66 @@ const pageRows = [
 const link = it?.link ?? null;
 const linkState = (() => {
   if (!it || it.status !== 'out') return null;
-  if (!link) return { words: 'Stopped: nothing is on a device', tone: 'warn' as const };
+  if (!link) {
+    // A phone's code ends on its own: not scanned in time, left idle, or locked by three wrong birth dates.
+    if (it.lastLink?.device === 'phone') {
+      if (it.lastLink.why === 'locked') return { words: 'Locked: the birth date did not match three times', tone: 'alert' as const };
+      if (it.lastLink.why === 'expired') return { words: 'The code was not scanned in time', tone: 'warn' as const };
+      if (it.lastLink.why === 'idle') return { words: 'Closed after 20 minutes idle', tone: 'warn' as const };
+    }
+    return { words: 'Stopped: nothing is on a device', tone: 'warn' as const };
+  }
   const seen = link.lastSeenAt ?? link.claimedAt;
   const ago = seen ? Math.round((now - new Date(seen).getTime()) / 1000) : null;
-  if (ago === null) return { words: 'Waiting to be opened', tone: 'info' as const };
-  if (ago > 20 * 60) return { words: 'Closed after 20 minutes idle: send it again', tone: 'warn' as const };
+  if (ago === null) {
+    if (link.device !== 'phone') return { words: 'Waiting to be opened', tone: 'info' as const };
+    return now > new Date(link.openBy).getTime()
+      ? { words: 'The code was not scanned in time', tone: 'warn' as const }
+      : { words: `Waiting to be scanned, until ${timeWords(link.openBy)}`, tone: 'info' as const };
+  }
+  if (ago > 20 * 60) return { words: link.device === 'phone' ? 'Closed after 20 minutes idle' : 'Closed after 20 minutes idle: send it again', tone: 'warn' as const };
+  const active = ago < 60 ? `${ago} s ago` : `${Math.round(ago / 60)} min ago`;
+  if (link.device === 'phone' && it.target === 'existing' && !it.verifiedAt) return { words: `On their phone · typing the birth date · ${active}`, tone: 'info' as const };
   if (ago > 5 * 60) return { words: `Idle ${Math.round(ago / 60)} min`, tone: 'warn' as const };
-  return { words: ago < 60 ? `Active ${ago} s ago` : `Active ${Math.round(ago / 60)} min ago`, tone: 'success' as const };
+  return { words: link.device === 'phone' ? `On their phone · active ${active}` : `Active ${active}`, tone: 'success' as const };
 })();
 const where = link?.device === 'tablet' ? `on ${link.tabletName}` : link?.device === 'desk' ? 'on a device handed to them' : link?.device === 'phone' ? 'on their phone' : '';
+// Their phone: the QR code, shown only until a phone claims it (the first phone wins; a second one is told it is
+// taken) and only while it can still be scanned. In development it points at this machine, so a phone on the same
+// network can scan it; live, at flossify.ph like the poster.
+const qrUrl = link?.device === 'phone' && !link.claimedAt && now <= new Date(link.openBy).getTime()
+  ? new URL(`/f/i/${link.token}/`, import.meta.env.DEV ? url.origin : PUBLIC_ORIGIN).href : null;
+const qrCode = qrUrl ? qrSvg(qrUrl, { label: `QR code for ${firstName}’s forms` }) : '';
+// "Show a new code": a phone's code that ended on its own, or one still waiting (the phone could not read it).
+const newCode = !!it && it.status === 'out' && ((link?.device === 'phone' && !link.claimedAt) || (!link && it.lastLink?.device === 'phone'));
+const newCodeTeal = newCode && !qrUrl;
+// Step 4's parts: page 1 (a new patient) and each form, each with its state in words (the live panel sends the same).
+type TagTone = 'info' | 'success' | 'warn' | 'alert' | 'neutral';
+const pageTags: { title: string; note: string | null; tag: { words: string; tone: TagTone }; doc: DeskDoc | null }[] = !it ? [] : [
+  ...(page1 ? [{
+    title: 'Patient information', note: null, doc: null,
+    tag: { words: it.page1DoneAt ? (it.privacyAs === 'none' ? 'Done · privacy not agreed yet' : 'Done') : it.answers ? 'Filling in' : 'Not started',
+           tone: (it.page1DoneAt ? 'success' : it.answers ? 'info' : 'neutral') as TagTone },
+  }] : []),
+  ...it.docs.map((d) => ({
+    title: d.template?.title.en ?? d.versionId, doc: d, tag: partTag(d),
+    note: d.template?.attest && !d.attestation ? `Signed after ${d.dentistName ?? 'the dentist'} explains` : null,
+  })),
+];
 const ageClash = !!(it && it.page1Birth && it.deskMinor && ((it.deskMinor === 'no' && (age ?? 99) < 18) || (it.deskMinor === 'yes' && (age ?? 0) >= 18)));
 const questions = (it?.docs ?? []).filter((d) => d.page?.state === 'question' && !d.signing);
 const refusedDocs = (it?.docs ?? []).filter((d) => (d.page?.state === 'refused' || d.signing?.decision === 'refused') && d.code !== 'photos');
+const needsDesk = { ageClash, questions: questions.length, refused: refusedDocs.length };
+
+// The live panel (step 4): the page asks itself ?step=out&live=1 every few seconds and gets the state words it
+// already draws, as JSON — never a health answer, the mobile or a signature. LIMITS.intake.poll per staff member.
+if (url.searchParams.get('live') === '1' && Astro.request.method === 'GET') {
+  const r = await hit(`intake:poll:${session.staffId}`, ...LIMITS.intake.poll);
+  const body = !r.allowed ? { status: 'wait', retryAfter: r.retryAfter }
+    : !it || !data.canEdit ? { status: 'gone' }
+    : { status: it.status, state: linkState, claimed: !!link?.claimedAt, pages: pageTags.map((p) => p.tag), needs: needsDesk, code: newCode };
+  return new Response(JSON.stringify(body), { status: r.allowed ? 200 : 429, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+}
 
 // Add: the look-alikes; the strongest one teal when it is the same name and birth date, or the visit's own patient.
 const alike = 'alike' in data ? data.alike : [];
@@ -563,10 +616,10 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
             <fieldset class="ik-ways">
               <legend class="sr-only">Where they fill it in</legend>
               <label class="ik-way">
-                <input type="radio" name="device" value="phone" disabled={!gates?.phoneOpen} checked={deviceChoice === 'phone'} data-ik-device data-label="Show the QR code" />
+                <input type="radio" name="device" value="phone" disabled={!phoneOk} checked={deviceChoice === 'phone'} data-ik-device data-label="Show the QR code" />
                 <span class="ik-way-box">
                   <span class="ik-way-icon"><Glyph name="phone" /></span>
-                  <span class="ik-way-words"><span class="ik-way-title">Their phone</span><span class="ik-way-line">{gates?.phoneOpen ? 'A QR code only they can use.' : 'Not open on this server yet.'}</span></span>
+                  <span class="ik-way-words"><span class="ik-way-title">Their phone</span><span class="ik-way-line">{phoneOk ? 'A QR code on this screen that only they can use.' : !gates?.phoneOpen ? 'Not open on this server.' : it.target === 'existing' ? 'Add their birth date to their record first: they type it to open the forms.' : 'Opens when the clinic’s privacy notice covers it.'}</span></span>
                 </span>
               </label>
               {tablets.map((t) => (
@@ -592,7 +645,7 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
             {tablets.length === 0 && can(clinic, 'settings.edit') && <p class="ik-help">No clinic tablets yet. <a class="underline" href={`/c/${slug}/settings/#tablets`}>Make a device a clinic tablet</a> in Clinic settings.</p>}
             <p class="ik-help" data-ik-park-line hidden={deviceChoice !== 'desk' ? true : undefined}>This device opens the clinic’s pages again only after you sign in.</p>
             <div class="ik-actions">
-              <button type="submit" class="ws-btn ws-btn-primary" data-ik-go>{deviceChoice === 'desk' ? `Hand this device to ${firstName}` : deviceChoice.startsWith('tablet:') ? `Send to ${tablets.find((t) => `tablet:${t.id}` === deviceChoice)?.name ?? 'the tablet'}` : 'Hand over'}</button>
+              <button type="submit" class="ws-btn ws-btn-primary" data-ik-go>{deviceChoice === 'desk' ? `Hand this device to ${firstName}` : deviceChoice.startsWith('tablet:') ? `Send to ${tablets.find((t) => `tablet:${t.id}` === deviceChoice)?.name ?? 'the tablet'}` : deviceChoice === 'phone' ? 'Show the QR code' : 'Hand over'}</button>
               {it.status === 'preparing' && <a class="ws-btn ws-btn-quiet" href={`${here}?step=${procedures.length ? 'clinic' : 'consents'}`}>Back</a>}
               {it.status === 'out' && <a class="ws-btn ws-btn-quiet" href={`${here}?step=out`}>Back to where they are</a>}
             </div>
@@ -611,20 +664,36 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
     {step === 'out' && (
       <>
       <Pane as="section" label="Where the forms are">
-        <Head icon="tablet" title={`${who} · ${where || 'not on a device'}`} />
-        {linkState && <p class="ik-actions"><span class="ik-tag" data-tone={linkState.tone}>{linkState.words}</span><a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}?step=out`}><Glyph name="renew" size={16} />Refresh</a></p>}
+        <div data-ik-out data-ik-needs={JSON.stringify(needsDesk)} data-ik-code={String(newCode)}>
+        <Head icon={link?.device === 'phone' || it.lastLink?.device === 'phone' ? 'phone' : 'tablet'} title={`${who} · ${where || 'not on a device'}`} />
+        {linkState && <p class="ik-actions"><span class="ik-tag" data-tone={linkState.tone} data-ik-state>{linkState.words}</span><a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}?step=out`}><Glyph name="renew" size={16} />Refresh</a></p>}
         <p class="sr-only" aria-live="polite" data-ik-live></p>
-        <ol class="ik-pages mt-3">
-          {page1 && <li class="ik-page"><span class="ik-page-no" aria-hidden="true">1</span><span class="ik-page-words"><span class="ik-page-title">Patient information</span></span>
-            <span class="ik-tag" data-tone={it.page1DoneAt ? 'success' : it.answers ? 'info' : 'neutral'}>{it.page1DoneAt ? (it.privacyAs === 'none' ? 'Done · privacy not agreed yet' : 'Done') : it.answers ? 'Filling in' : 'Not started'}</span></li>}
-          {it.docs.map((d, i) => { const tag = partTag(d); return (
-            <li class="ik-page"><span class="ik-page-no" aria-hidden="true">{i + 1 + (page1 ? 1 : 0)}</span>
-              <span class="ik-page-words"><span class="ik-page-title">{d.template?.title.en ?? d.versionId}</span>
-                {d.template?.attest && !d.attestation && <span class="ik-page-note">Signed after {d.dentistName ?? 'the dentist'} explains</span>}</span>
-              <span class="ik-tag" data-tone={tag.tone}>{tag.words}</span>
-              {d.template?.attest && !d.attestation && data.mayExplain?.[d.id] && <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}?step=explain&doc=${d.id}`}>Explain and confirm</a>}
-            </li>); })}
+        {qrUrl && (
+          <div class="ik-qr" data-ik-qr data-ik-qr-url={import.meta.env.DEV ? qrUrl : undefined}>
+            <div class="ik-qr-code" set:html={qrCode} />
+            <div class="ik-qr-words">
+              <p class="ik-qr-title">Scan this with {firstName}’s phone camera</p>
+              <p class="ik-help">Only the first phone that scans it can open the forms, and only until <span class="ik-qr-by">{timeWords(link!.openBy)}</span>. After that, show a new one.</p>
+              <p class="ik-help">The code goes from this screen once their phone has it.</p>
+            </div>
+          </div>
+        )}
+        {newCode && (
+          <form method="post" action={here} class="ik-actions mt-3">
+            <Csrf /><input type="hidden" name="rev" value={rev} /><input type="hidden" name="intent" value="golive" /><input type="hidden" name="step" value="out" /><input type="hidden" name="device" value="phone" />
+            <button type="submit" class:list={['ws-btn ws-btn-sm', newCodeTeal ? 'ws-btn-primary' : 'ws-btn-quiet']}><Glyph name="qr" size={16} />Show a new code</button>
+          </form>
+        )}
+        <ol class="ik-pages mt-3" data-ik-pages>
+          {pageTags.map((r, i) => (
+            <li class="ik-page"><span class="ik-page-no" aria-hidden="true">{i + 1}</span>
+              <span class="ik-page-words"><span class="ik-page-title">{r.title}</span>{r.note && <span class="ik-page-note">{r.note}</span>}</span>
+              <span class="ik-tag" data-tone={r.tag.tone} data-ik-page-tag>{r.tag.words}</span>
+              {r.doc?.template?.attest && !r.doc.attestation && data.mayExplain?.[r.doc.id] && <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}?step=explain&doc=${r.doc.id}`}>Explain and confirm</a>}
+            </li>
+          ))}
         </ol>
+        </div>
       </Pane>
       {(ageClash || questions.length > 0 || refusedDocs.length > 0) && (
         <Pane as="section" label="Needs the desk">
@@ -854,5 +923,39 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
     };
     deviceForm.addEventListener('change', sync);
     sync();
+  }
+
+  // Step 4: the live panel. Every 8 s while this tab is visible the page asks itself (?step=out&live=1, the poll
+  // limit) where the forms are and updates the state words in place and says them (aria-live); the QR code goes
+  // once a phone has claimed it; when what needs the desk changes, or the forms are sent, stopped or thrown away,
+  // the page loads again. Never a health answer, a name or a signature: only the words the page already shows.
+  const out = document.querySelector<HTMLElement>('[data-ik-out]');
+  if (out) {
+    const state = out.querySelector<HTMLElement>('[data-ik-state]');
+    const said = out.querySelector<HTMLElement>('[data-ik-live]');
+    const tags = Array.from(out.querySelectorAll<HTMLElement>('[data-ik-page-tag]'));
+    const qr = out.querySelector<HTMLElement>('[data-ik-qr]');
+    const needs = out.dataset.ikNeeds ?? '', code = out.dataset.ikCode ?? '';
+    type Live = { status: string; state?: { words: string; tone: string } | null; claimed?: boolean; pages?: { words: string; tone: string }[]; needs?: unknown; code?: boolean };
+    let last = '', busy = false;
+    const tick = async () => {
+      if (busy || document.visibilityState !== 'visible') return;
+      busy = true;
+      try {
+        const r = await fetch(`${location.pathname}?step=out&live=1`, { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } });
+        if (!r.ok) return;
+        const j = (await r.json()) as Live;
+        if (j.status !== 'out') { location.replace(`${location.pathname}${j.status === 'sent' ? '?step=add' : j.status === 'preparing' ? '?step=check' : ''}`); return; }
+        if (JSON.stringify(j.needs ?? null) !== needs || String(!!j.code) !== code) { location.reload(); return; }
+        if (state && j.state) { state.textContent = j.state.words; state.dataset.tone = j.state.tone; }
+        (j.pages ?? []).forEach((p, i) => { const el = tags[i]; if (el) { el.textContent = p.words; el.dataset.tone = p.tone; } });
+        if (qr && j.claimed) qr.hidden = true;
+        const sig = JSON.stringify([j.state?.words, (j.pages ?? []).map((p) => p.words)]);
+        if (last && sig !== last && said) said.textContent = [j.state?.words, ...(j.pages ?? []).map((p, i) => `Part ${i + 1}: ${p.words}`)].filter(Boolean).join('. ');
+        last = sig;
+      } catch { /* the next tick asks again */ } finally { busy = false; }
+    };
+    setInterval(tick, 8_000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') tick(); });
   }
 </script>

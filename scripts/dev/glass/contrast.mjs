@@ -22,8 +22,10 @@ const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 
 const lum = (r, g, b) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 const ratio = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 
-const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: vp, colorScheme: scheme, isMobile: vpName === 'phone', hasTouch: vpName === 'phone', deviceScaleFactor: 1 });
+// PW_CHROMIUM: a Chromium binary when Playwright's own is not installed. PW_STATE: a saved storage state (a
+// sign-in, a phone's intake cookie: playwright's storageState JSON), for pages behind one.
+const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
+const ctx = await browser.newContext({ viewport: vp, colorScheme: scheme, isMobile: vpName === 'phone', hasTouch: vpName === 'phone', deviceScaleFactor: 1, storageState: process.env.PW_STATE || undefined });
 const p = await ctx.newPage();
 await p.route('**/video/tour-*.mp4', (r) => r.fulfill({ status: 302, headers: { location: '/video/tour-test.webm' } }));
 await p.goto(`${B}/${{ home: '', start: 'start/', find: 'find/' }[page] ?? page}`, { waitUntil: 'load' });
