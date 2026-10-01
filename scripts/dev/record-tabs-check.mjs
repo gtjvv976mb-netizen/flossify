@@ -611,11 +611,13 @@ function follow(F, a, b, res = { lits: [], covered: [], unresolved: [] }, depth 
       if (!any) res.unresolved.push({ F, text, where: w });
       continue;
     }
-    // An object's property in the record's own files (a.go, o.show): every value that key is given in the file, and
-    // in the files that draw it (keyValues). None found: the check cannot tell.
+    // An object's property in the record's own files (a.go, o.show): every value that key is given in the file, in
+    // the files that draw it, and in the record's own modules it imports by name (./today.ts, where This visit's and
+    // Needs attention's lines are made) (keyValues). None found: the check cannot tell.
     const prop = /^[A-Za-z_$][\w$]*(?:\??\.[\w$]+)*\??\.([\w$]+)$/.exec(text);
     if (prop && RECORD_OWN.has(F.rel)) {
-      const spans = [F, ...importersOf(F)].flatMap((G) => keyValues(G, prop[1]).map(([a, b]) => [G, a, b]));
+      const made = [...new Set([...(F.imports ?? importsOf(F)).values()].map(([G]) => G))].filter((G) => G !== F && RECORD_OWN.has(G.rel));
+      const spans = [F, ...importersOf(F), ...made].flatMap((G) => keyValues(G, prop[1]).map(([a, b]) => [G, a, b]));
       if (!spans.length) res.unresolved.push({ F, text, where: w });
       for (const [G, a, b] of spans) follow(G, a, b, res, depth + 1);
       continue;

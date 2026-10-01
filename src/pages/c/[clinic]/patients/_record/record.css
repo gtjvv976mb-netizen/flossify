@@ -406,10 +406,10 @@ button.rf { display: grid; min-height: 44px; }
 .vx-signed-row { grid-template-columns: minmax(0, 14rem) minmax(0, 1fr); align-items: start; gap: 0.875rem; }
 @media (max-width: 639px) { .vx-signed-row { grid-template-columns: minmax(0, 1fr); } }
 
-/* --- This visit (036): the visit's checklist above the sections. A line for what is still missing, in
-   the tone of how much it matters (plain · amber "needs attention" · red "blocked"), the one action beside
-   it; what is done as one row of teal pills. Ink on the tints is the page's ink, the icon the tint's own
-   ink — both measured pairs. --- */
+/* --- Today (./Today.astro, ./VisitStrip.astro): This visit's checklist, Coming up, Needs attention, Last visit. A line
+   for what is still missing, in the tone of how much it matters (plain · amber "needs attention" · red "blocked"), its
+   own buttons beside it (below it on a phone: one full width, two half width each); what is done is one line of ticked
+   words. Ink on the tints is the page's ink, the icon the tint's own ink — both measured pairs. --- */
 .vs-status { display: flex; align-items: center; gap: 0.5rem; }
 .vs-list { display: grid; gap: 0.375rem; }
 .vs-line {
@@ -427,19 +427,52 @@ button.rf { display: grid; min-height: 44px; }
 .vs-acts form { display: contents; }
 .vs-all { display: flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 0.75rem; border-radius: 12px; background: var(--ws-teal-tint); font-size: 14.5px; font-weight: 600; color: var(--c-ink); }
 .vs-all > .ws-icon { color: var(--ws-teal-ink); }
-.vs-done { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.375rem; margin-top: 0.5rem; }
-/* A done pill is a way to its section: the pill inside a 44px hit box (rec-chip-go), as the head's chips. */
-.vs-go { text-decoration: none; }
-.vs-go > .rp { min-height: 30px; }
-.vs-go:hover > .rp { background: color-mix(in srgb, var(--ws-teal) 22%, var(--ws-teal-tint)); }
+/* Done: one line of ticked words; a prescription and the aftercare sheet stay links (Print), each a 44px target. */
+.vs-done { display: flex; align-items: flex-start; gap: 0.5rem; margin-top: 0.5rem; padding: 0.625rem 0.75rem 0; font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
+.vs-done > .ws-icon { flex: none; margin-top: 3px; color: var(--ws-teal-ink); }
+.vs-done-k, .vs-wrote-k, .td-plan-k { font-weight: 600; color: var(--c-ink); }
+.vs-done-a, .vs-wrote-a { display: inline-flex; align-items: center; min-height: 44px; margin-block: -12px; font-weight: 600; color: var(--ws-teal-ink); text-decoration: underline; text-underline-offset: 3px; }
+.vs-done-a:focus-visible, .vs-wrote-a:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; border-radius: 6px; }
+.vs-wrote { display: flex; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.75rem; font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
+.vs-wrote > .ws-icon { flex: none; margin-top: 3px; }
+.vs-wrote > span { overflow-wrap: anywhere; }
 .vs-also { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ws-hair); font-size: 13.5px; color: var(--c-ink-2); }
-.vs-also .vs-who { margin-left: auto; }
 @media (max-width: 639px) {
   .vs-line { grid-template-columns: auto minmax(0, 1fr); }
   .vs-acts { grid-column: 1 / -1; justify-content: flex-start; }
-  .vs-acts .ws-btn { flex: 1 1 auto; }
-  .vs-also .vs-who { margin-left: 0; }
+  .vs-acts .ws-btn { flex: 1 1 0; min-width: 0; }
+  .vs-acts[data-n="1"] .ws-btn { flex-basis: 100%; }
+  .vs-also .ws-btn { flex: 1 1 0; }
+  /* Two buttons side by side: a long label wraps inside its button rather than running past it. */
+  .vs-acts .ws-btn { white-space: normal; text-align: center; line-height: 1.2; padding-inline: 0.5rem; }
+  /* The status chip stays beside the title, so the first line starts higher. */
+  .vs > .ws-pane-head { flex-wrap: nowrap; align-items: flex-start; margin-bottom: 0.625rem; }
 }
+/* The tab's cards: one column on a phone in the order the desk reads them (This visit, Needs attention, Coming up,
+   Last visit); from 1024px This visit and Last visit on the left (1.35fr), Coming up and Needs attention on the right. */
+.td-grid { display: grid; align-items: start; gap: 1rem; min-width: 0; }
+.td-grid > * { min-width: 0; }
+@media (max-width: 767px) { .td-grid { gap: 0.75rem; } }
+@media (min-width: 1024px) {
+  .td-grid { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); grid-template-areas: "visit coming" "visit needs" "last needs"; grid-template-rows: auto auto 1fr; }
+  .td-grid.td-novisit { grid-template-areas: "last coming" "last needs"; grid-template-rows: auto 1fr; }
+  .td-visit { grid-area: visit; }
+  .td-needs { grid-area: needs; }
+  .td-coming { grid-area: coming; }
+  .td-last { grid-area: last; }
+}
+.td-none { font-size: 15px; color: var(--c-ink-2); }
+.td-list { display: grid; gap: 0.5rem; }
+.td-visit-row { display: grid; gap: 0.125rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--ws-hair); }
+.td-visit-row:last-child { border-bottom: 0; padding-bottom: 0; }
+/* A visit's day: the way to its panel, a 44px text button. */
+.td-when { display: inline-flex; align-items: center; justify-self: start; min-height: 44px; font-size: 15px; font-weight: 600; color: var(--ws-teal-ink); text-decoration: underline; text-underline-offset: 3px; text-align: left; cursor: pointer; }
+.td-when:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; border-radius: 6px; }
+.td-sub { display: flex; align-items: center; gap: 0.375rem; font-size: 14px; line-height: 1.45; color: var(--c-ink-2); overflow-wrap: anywhere; }
+.td-sub > .ws-icon { flex: none; }
+.td-plan { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--ws-hair); font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); overflow-wrap: anywhere; }
+.cu-sub { display: block; margin-top: 0.125rem; font-size: 13.5px; font-weight: 400; color: var(--c-ink-2); }
+.cu-recall .vs-words .ws-chip { margin-left: 0.25rem; vertical-align: 1px; }
 
 /* --- The Treatment record (./TreatmentRecord.astro): the PDA's ledger, oldest first ---------------------------
    A real table where the section is 54rem or wider (eight columns fit at 1440, not at 1366); below that each

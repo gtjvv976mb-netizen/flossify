@@ -1,23 +1,23 @@
 ---
-// The next check-up, on the Overview: when this patient should come back and why. One tap sets it in 3, 6 or
-// 12 months; "Pick a day" for anything else. When it is due the card says so in amber, and overdue in red,
-// with words as well as colour. "Came in" closes it (then set the next); "Clear" takes it away. Its panel
-// (part="panels") is drawn outside the tabs. What a save says is the page's saved line (./SavedLine.astro): a card
-// button lands here (#recall), so the page puts the line in the `saved` slot, under the title.
-import Pane from '../../../../../components/ws/Pane.astro';
+// The next check-up, in Today's Coming up (./Today.astro draws it there): when this patient should come back and why.
+// Not set, one tap sets it in 6 months, and "Other…" opens the panel: in 3 months or a year in one tap, a day and a
+// reason, and — once one is set — "Came in" (it closes; then set the next) and "Clear". Set, the line says the day, how
+// far off it is (amber when due, red when overdue, in words as well as colour), what it is for and when it was texted,
+// with "Change" for the panel. Booking it is the head's New booking. Its panel (part="panels") is drawn outside the
+// tabs. What a save says is the page's saved line (./SavedLine.astro): In 6 months lands here (#recall), so the page
+// puts the line in the `saved` slot; the panel's forms post back=<the tab it was opened over>.
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
 import Icon from '../../../../../components/ws/Icon.astro';
 import Chip from '../../../../../components/ws/Chip.astro';
 import Csrf from '../../../../../components/Csrf.astro';
-import Head from '../_ui/Head.astro';
 import Callout from '../_ui/Callout.astro';
 import { RECALL_REASONS, type Recall, type RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
 
-/** part: the card (in its tab) or the panel (outside the tabs). texts: the clinic texts patients when a check-up is
- *  due (Clinic settings, 036). */
-interface Props { part: 'body' | 'panels'; recall: Recall | null; canEdit: boolean; action: string; problem: RecordProblem | null; today: string; firstName: string; bookHref: string; texts?: boolean }
-const { part, recall, canEdit, action, problem, today, firstName, bookHref, texts = false } = Astro.props;
+/** part: the line (in Today's Coming up) or the panel (outside the tabs). texts: the clinic texts patients when a
+ *  check-up is due (Clinic settings, 036). bookHref is kept for the callers' props (the head has New booking). */
+interface Props { part: 'body' | 'panels'; recall: Recall | null; canEdit: boolean; action: string; problem: RecordProblem | null; today: string; firstName: string; bookHref?: string; texts?: boolean }
+const { part, recall, canEdit, action, problem, today, firstName, texts = false } = Astro.props;
 
 const days = recall ? Math.round((Date.parse(`${recall.dueOn}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 864e5) : 0;
 const state = !recall ? null : days < 0 ? 'overdue' : days <= 14 ? 'due' : 'later';
@@ -26,59 +26,58 @@ const inWords = !recall ? '' : days < 0 ? `${-days === 1 ? 'a day' : -days < 14 
 const v = problem?.intent === 'recall-set' ? problem.values : ({} as Record<string, string>);
 const inline = problem && ['recall-done', 'recall-clear'].includes(problem.intent) ? problem.text : null;
 const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 864e5).toISOString().slice(0, 10);
-const quick = (months: number, label: string) => ({ months, label });
 ---
 
 {part === 'body' && (
-<Pane as="section" label="Next check-up" id="recall">
-  <Head icon="recall" title="Next check-up" />
+<div id="recall" class="cu-recall">
   <slot name="saved" />
-  {inline && <Callout tone="alert" class="mb-3" text={inline} />}
-  {recall ? (
-    <>
-      <p class="rc-due">{dateText(recall.dueOn)}</p>
-      <p class="mt-1 flex flex-wrap items-center gap-2 text-[14.5px] text-ink-2">
-        <Chip tone={state === 'overdue' ? 'alert' : state === 'due' ? 'warn' : 'neutral'} icon={state === 'later' ? undefined : 'alert'} label={inWords.charAt(0).toUpperCase() + inWords.slice(1)} />
-        <span>{recall.reason}</span>
-        {recall.textedOn && <span class="rp"><Icon name="message" size={14} />Texted {dateText(recall.textedOn)}</span>}
-      </p>
-      <p class="mt-2 text-[13.5px] text-ink-2">{texts ? 'When it is due, the patient is texted to call and book (Tuesday or Wednesday morning, once).' : 'Check-up texts are off for this clinic; the desk calls. The owner switches them on in Clinic settings.'}</p>
-      {canEdit && (
-        <div class="rc-when">
-          {state !== 'later' && <a href={bookHref} class="ws-btn ws-btn-quiet"><Icon name="calendar" />Book it</a>}
-          <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-done" /><button class="ws-btn ws-btn-quiet"><Icon name="check" />Came in</button></form>
-          <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-recall-set">Change</button>
-          <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-clear" /><button class="ws-btn ws-btn-quiet">Clear</button></form>
-        </div>
-      )}
-    </>
-  ) : (
-    <>
-      <p class="text-[15px] text-ink-2">{canEdit ? `When should ${firstName} come back?` : 'No check-up set.'}</p>
-      {canEdit && (
-        <div class="rc-when">
-          {[quick(3, 'In 3 months'), quick(6, 'In 6 months'), quick(12, 'In a year')].map((q) => (
-            <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-set" /><input type="hidden" name="months" value={q.months} /><button class="ws-btn ws-btn-quiet">{q.label}</button></form>
-          ))}
-          <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-recall-set"><Icon name="calendar" />Pick a day</button>
-        </div>
-      )}
-    </>
-  )}
-</Pane>
+  {inline && <Callout tone="alert" class="mb-2" text={inline} />}
+  <div class="vs-line" data-tone={state === 'overdue' ? 'alert' : state === 'due' ? 'warn' : 'plain'}>
+    <Icon name={state === 'overdue' || state === 'due' ? 'alert' : 'calendar'} size={18} />
+    {recall ? (
+      <span class="vs-words">Next check-up: {dateText(recall.dueOn)} <Chip tone={state === 'overdue' ? 'alert' : state === 'due' ? 'warn' : 'neutral'} label={inWords.charAt(0).toUpperCase() + inWords.slice(1)} />
+        <span class="cu-sub">{recall.reason}{recall.textedOn ? ` · Texted ${dateText(recall.textedOn)}` : ''}{state !== 'later' ? (texts ? ' · The patient is texted to call and book.' : ' · Check-up texts are off; the desk calls.') : ''}</span>
+      </span>
+    ) : (
+      <span class="vs-words">Next check-up: not set</span>
+    )}
+    {canEdit && (
+      <div class="vs-acts" data-n={recall ? 1 : 2}>
+        {!recall && <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-set" /><input type="hidden" name="months" value="6" /><button class="ws-btn ws-btn-quiet ws-btn-sm">In 6 months</button></form>}
+        <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-recall-set">{recall ? 'Change' : 'Other…'}</button>
+      </div>
+    )}
+  </div>
+</div>
 )}
 
 {part === 'panels' && canEdit && (
   <SidePanel id="rec-recall-set" title="Next check-up" meta={firstName} open={problem?.intent === 'recall-set'}>
     {problem?.intent === 'recall-set' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was set.`} />}
-    <form method="post" action={`${action}#recall`} class="grid gap-4">
+    {recall && <p class="mb-4 text-[15px] text-ink">Set for {dateText(recall.dueOn)}: {recall.reason}.</p>}
+    <p class="meta">In one tap</p>
+    <div class="rc-when mt-2">
+      {[{ months: 3, label: 'In 3 months' }, { months: 6, label: 'In 6 months' }, { months: 12, label: 'In a year' }].map((q) => (
+        <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-set" /><input type="hidden" name="months" value={q.months} /><input type="hidden" name="back" value="" data-rec-back /><button class="ws-btn ws-btn-quiet">{q.label}</button></form>
+      ))}
+    </div>
+    <form method="post" action={`${action}#recall`} class="mt-5 grid gap-4 border-t border-[var(--ws-hair)] pt-5">
       <Csrf /><input type="hidden" name="intent" value="recall-set" /><input type="hidden" name="back" value="" data-rec-back />
-      <label class="field"><span class="meta">Day</span><input type="date" name="due_on" value={v.due_on ?? recall?.dueOn ?? ''} min={tomorrow} required /></label>
+      <label class="field"><span class="meta">Or pick a day</span><input type="date" name="due_on" value={v.due_on ?? recall?.dueOn ?? ''} min={tomorrow} required /></label>
       <label class="field"><span class="meta">For</span>
         <input name="reason" value={v.reason ?? recall?.reason ?? RECALL_REASONS[0]} list="rec-recall-reasons" maxlength="120" autocomplete="off" />
       </label>
       <datalist id="rec-recall-reasons">{RECALL_REASONS.map((r) => <option value={r} />)}</datalist>
       <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Set the check-up</button>
     </form>
+    {recall && (
+      <div class="mt-5 border-t border-[var(--ws-hair)] pt-5">
+        <p class="text-[14px] text-ink-2">Came in closes this check-up (a visit marked done closes it too); Clear takes it away.</p>
+        <div class="rc-when">
+          <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-done" /><input type="hidden" name="back" value="" data-rec-back /><button class="ws-btn ws-btn-quiet"><Icon name="check" />Came in</button></form>
+          <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-clear" /><input type="hidden" name="back" value="" data-rec-back /><button class="ws-btn ws-btn-quiet">Clear</button></form>
+        </div>
+      </div>
+    )}
   </SidePanel>
 )}
