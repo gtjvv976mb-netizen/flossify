@@ -126,10 +126,16 @@ const taxProblem = problems.some((p) => /TIN|BIR|branch code/i.test(p));
 
     <h3 class="set-sub">How you work</h3>
     <div class="mt-4 grid gap-5">
-      <label class="field sm:max-w-[12rem]">
-        <span class="meta">Dental chairs</span>
-        <input type="number" name="chairs" value={v.chairs} min="1" max="12" step="1" required inputmode="numeric" />
-      </label>
+      <div class="grid gap-5 sm:grid-cols-2 sm:max-w-[26rem]">
+        <label class="field">
+          <span class="meta">Dental chairs</span>
+          <input type="number" name="chairs" value={v.chairs} min="1" max="12" step="1" required inputmode="numeric" />
+        </label>
+        <label class="field">
+          <span class="meta">Founded <span class="font-normal">(year, optional)</span></span>
+          <input name="founded" value={v.founded} inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="e.g. 2009" />
+        </label>
+      </div>
       <fieldset>
         <legend class="meta">Walk-ins</legend>
         <div class="set-pills mt-2">

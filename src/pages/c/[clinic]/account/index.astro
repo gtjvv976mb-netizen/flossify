@@ -49,7 +49,7 @@ import { verifyPassword, setPassword, setSession, passwordProblem, authEvent, PA
 import { hit, refund, clientIp, waitText } from '../../../../lib/throttle';
 import { prettyPhone } from '../../../../lib/messages';
 import { DAYS, ago, dateText, daysText, prcState, signsPapers, treats } from '../settings/_lib/common';
-import { daysOf, upcomingFor } from '../settings/_lib/people';
+import { daysOf, upcomingFor, readBio, saveBio, bioOf, BIO_MAX, type BioValues } from '../settings/_lib/people';
 import { can } from '../../../../lib/can';
 import ThemeSwitch from '../../../../components/ThemeSwitch.astro';
 import {
@@ -71,18 +71,35 @@ interface Me {
   full_name: string; role: string; username: string; email: string | null; phone: string | null; prc_licence: string | null; prc_status: string | null; prc_checked_on: Date | null;
   prc_note: string | null; specialty: string | null; slug: string | null; practices: string[] | null; created_at: Date; password_set_at: Date | null; last_seen_at: Date | null;
   ptr_number: string | null; ptr_year: number | null;
+  pda_member: boolean; practising_since: number | null; about: string | null;
 }
 // staff is group data outside row-level security; this is the signed-in person's own row.
 const readMe = async () => (await pool.query(
   `select full_name, role, username::text as username, email::text as email, phone, prc_licence, prc_status, prc_checked_on, prc_note, specialty, slug, practices,
-          created_at, password_set_at, last_seen_at, ptr_number, ptr_year
+          created_at, password_set_at, last_seen_at, ptr_number, ptr_year, pda_member, practising_since, about
      from staff where id = $1`, [session.staffId])).rows[0] as Me;
 
-let error = '', ptrError = '';
+let error = '', ptrError = '', bioError = '';
 let ptrForm: PtrDrawn | null = null;          // what the PTR form draws again after a refusal
+let bioForm: BioValues | null = null;         // the public profile's lines as typed, after a refusal
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  if (String(form.get('action') ?? '') === 'ptr') {
+  if (String(form.get('action') ?? '') === 'bio') {
+    // The public profile's own lines (PDA, practising since, about): the one other detail a person sets for themself.
+    const row = (await pool.query('select slug, must_change_password from staff where id = $1 and disabled_at is null', [session.staffId])).rows[0];
+    const r = readBio(form, manilaToday());
+    bioForm = r.values;
+    if (!csrfOk(Astro.cookies, form)) bioError = CSRF_MESSAGE;
+    else if (!row?.slug) bioError = 'Only a dentist with a public profile has these lines.';
+    else if (row.must_change_password) bioError = 'Choose your own password first.';
+    else if (r.problem) bioError = r.problem;
+    else if (!(await saveBio(session.staffId, r.values))) return Astro.redirect(`${here}?done=bio-same#bio`, 303);
+    else {
+      await withClinic(clinic.id, (tx) => tx.query(
+        `insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'staff.bio', 'staff', $2)`, [clinic.id, session.staffId]));
+      return Astro.redirect(`${here}?done=bio#bio`, 303);
+    }
+  } else if (String(form.get('action') ?? '') === 'ptr') {
     const today = manilaToday();
     const row = (await pool.query('select role, prc_licence, ptr_number, ptr_year, must_change_password from staff where id = $1 and disabled_at is null', [session.staffId])).rows[0];
     const onFile = { number: row?.ptr_number ?? null, year: row?.ptr_year ?? null };
@@ -176,6 +193,8 @@ const ptrSt = ptrState(ptrNow, today);
 const ptrChipNow = ptrChip(ptrSt, ptrNow);
 const ptrDraw = ptrForm ?? ptrDrawn(ptrNow, today);
 const ptrYears = ptrYearOptions(today, me.ptr_year, Number(ptrDraw.ptrYear) || null);
+const BIO_DONE: Record<string, string> = { bio: 'Saved. Your public profile says it now.', 'bio-same': 'Nothing changed on your public profile.' };
+const bioDraw: BioValues = bioForm ?? bioOf(me);
 const PTR_DONE: Record<string, string> = {
   ptr: 'Your PTR is saved. Prescriptions and certificates you sign from now on carry it; papers already written keep what they printed with.',
   'ptr-off': 'Your PTR is taken off. What you sign prints a blank PTR line until you add one.',
@@ -283,6 +302,31 @@ const roleLabel = clinic.role_name;
             {me.slug && (days.length > 0
               ? <a href={`/dentists/${me.slug}/`} target="_blank" rel="noopener" class="set-link mt-1">My public profile<span class="sr-only"> (opens in a new tab)</span><Icon name="arrow-right" size={16} class="set-arrow" /></a>
               : <p class="set-help mt-2">No public profile until you have days here.</p>)}
+            {me.slug && (
+              <div id="bio" class="set-sec mt-5 border-t border-hair pt-5">
+                <h3 class="set-sub">On my public profile</h3>
+                <p class="set-help mt-1">Beside the licence on your page: PDA membership, the year you started, and a few lines about you.</p>
+                {done && BIO_DONE[done] && !bioError && <Note tone="ok" text={BIO_DONE[done]} class="mt-4" />}
+                {bioError && <Note tone="alert" text={bioError} class="mt-4" refused />}
+                {!clinic.must_change && (
+                  <form method="post" action={here} class="mt-4 grid gap-4" data-my-bio-form>
+                    <Csrf />
+                    <input type="hidden" name="action" value="bio" />
+                    <label class="check"><input type="checkbox" name="pda" checked={bioDraw.pda} /><span>Member of the Philippine Dental Association</span></label>
+                    <label class="field sm:max-w-[12rem]">
+                      <span class="meta">Practising since</span>
+                      <input name="since" value={bioDraw.since} inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="e.g. 2012" />
+                    </label>
+                    <label class="field">
+                      <span class="meta">About me <span class="font-normal">(optional)</span></span>
+                      <textarea name="about" rows="4" maxlength={BIO_MAX}>{bioDraw.about}</textarea>
+                      <span class="set-help">A few plain lines: what you do most, where you trained, the languages you speak. Up to {BIO_MAX} characters.</span>
+                    </label>
+                    <div><button type="submit" class="ws-btn ws-btn-quiet"><Icon name="check" />Save my public profile</button></div>
+                  </form>
+                )}
+              </div>
+            )}
             {ptrShown && (
               <div id="ptr" class="set-sec mt-5 border-t border-hair pt-5">
                 <div class="set-state">

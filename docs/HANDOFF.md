@@ -172,7 +172,14 @@ whether the calendar's In the chair step should ask too.
 ### 3. Then
 
 The `CLAUDE.md` "Open" list, in the owner's order when they give one. Email,
-Semaphore's first live send and billing's placeholders are the oldest items.
+Semaphore's first live send and billing's placeholders are the oldest items,
+and every one of them needs something only the owner has (a key, a verified
+domain, the real prices, the lawyer's reading). Done on 1 Oct without them:
+the public profile's own lines (PDA, practising since, about) and the clinic's
+founding year now have forms (`scripts/dev/settings/profile-check.mjs`), and
+the live site answered its checks from a session (`/healthz` ok, every public
+page 200, the intake's routes deployed); screenshots still need a browser that
+trusts the session's proxy, so take them from the owner's machine.
 
 ## What lived only in session scratchpads and is gone
 

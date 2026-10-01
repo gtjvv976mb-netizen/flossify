@@ -92,12 +92,14 @@ export interface Person {
   slug: string | null; practices: string[] | null; has_password: boolean; disabled_at: Date | null; can_view_finance: boolean;
   prc_status: 'pending' | 'checked' | 'mismatch'; prc_checked_on: Date | null; prc_note: string | null;
   ptr_number: string | null; ptr_year: number | null;
+  /** The public profile's own lines (002): PDA membership as the clinic declares it, the year they started practising, a few lines about them. */
+  pda_member: boolean; practising_since: number | null; about: string | null;
   last_seen_at: Date | null; invited_at: Date | null; password_set_at: Date | null; created_at: Date;
 }
 const PERSON = `select s.id, s.full_name, s.role, s.username::text as username, s.phone, s.email::text as email,
                        s.role_id, r.name as role_name, r.rank as role_rank, r.is_owner as role_owner, r.perms as role_perms, s.must_change_password, s.prc_licence, s.specialty, s.slug, s.practices,
                        s.password_hash is not null as has_password, s.disabled_at, a.can_view_finance, s.prc_status, s.prc_checked_on, s.prc_note,
-                       s.ptr_number, s.ptr_year, s.last_seen_at, s.invited_at, s.password_set_at, s.created_at
+                       s.ptr_number, s.ptr_year, s.pda_member, s.practising_since, s.about, s.last_seen_at, s.invited_at, s.password_set_at, s.created_at
                   from staff_access a join staff s on s.id = a.staff_id join clinic_role r on r.id = s.role_id`;
 
 /** Everyone who can open this branch: the owner first, then by name, the disabled last. */
@@ -302,7 +304,36 @@ export interface EditValues {
   /** The PTR fields as drawn, and what the form was drawn with (hidden), so a stale form keeps a PTR saved meanwhile. */
   ptr: string; ptrYear: string; ptrSeen: string; ptrYearSeen: string;
 }
-export interface ActionRefused { error: string; action: string; edit?: EditValues; /** A refused days save, as typed. */ days?: DaysValues }
+export interface ActionRefused { error: string; action: string; edit?: EditValues; /** A refused days save, as typed. */ days?: DaysValues; /** A refused public-profile save, as typed. */ bio?: BioValues }
+
+// --- the public profile's own lines (PDA, practising since, about) ---------------------------------
+/** What /dentists/<slug> says beside the licence: PDA membership as the clinic declares it, the year they started, a few lines about them. */
+export interface BioValues { pda: boolean; since: string; about: string }
+export const BIO_MAX = 600;
+export const bioOf = (p: { pda_member: boolean; practising_since: number | null; about: string | null }): BioValues =>
+  ({ pda: p.pda_member, since: p.practising_since ? String(p.practising_since) : '', about: p.about ?? '' });
+/** Read the public-profile form: the year is this year or earlier, back to 1950; the about is one paragraph of at most BIO_MAX characters. */
+export function readBio(form: FormData, today: string): { values: BioValues; problem: string | null } {
+  const values: BioValues = {
+    pda: form.get('pda') === 'on',
+    since: String(form.get('since') ?? '').trim(),
+    about: String(form.get('about') ?? '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim(),
+  };
+  const year = Number(today.slice(0, 4));
+  let problem: string | null = null;
+  if (values.since && !(/^\d{4}$/.test(values.since) && Number(values.since) >= 1950 && Number(values.since) <= year)) problem = `Practising since is a year between 1950 and ${year}, or blank.`;
+  else if (values.about.length > BIO_MAX) problem = `Keep the lines about them under ${BIO_MAX} characters; it is ${values.about.length} now.`;
+  return { values, problem };
+}
+/** Write the public profile's lines. True when something changed. The row must be enabled. */
+export async function saveBio(staffId: string, v: BioValues): Promise<boolean> {
+  const r = await pool.query(
+    `update staff set pda_member = $2, practising_since = $3, about = $4
+      where id = $1 and disabled_at is null
+        and (pda_member is distinct from $2 or practising_since is distinct from $3::smallint or about is distinct from $4::text)`,
+    [staffId, v.pda, v.since ? Number(v.since) : null, v.about || null]);
+  return (r.rowCount ?? 0) > 0;
+}
 
 /** Everything the person page's forms do. `here` is the person's page. */
 export async function personAction(ctx: Ctx & { here: string }, t: Person, form: FormData): Promise<Response | ActionRefused> {
@@ -519,6 +550,16 @@ export async function personAction(ctx: Ctx & { here: string }, t: Person, form:
     ].filter(Boolean).join('&');
     return see(`${here}?done=edit${flags ? `&${flags}` : ''}`);
   }
+  if (action === 'bio') {
+    // The public profile's own lines, by someone who may edit this person (as Edit details) and only for a profile that exists.
+    if (!manages && !self) return fail(BELOW);
+    if (!t.slug) return fail('Only a dentist with a public profile has these lines.');
+    const { values, problem } = readBio(form, manilaToday());
+    if (problem) return { error: problem, action, bio: values };
+    if (!(await saveBio(t.id, values))) return see(`${here}?done=bio-same#profile`);
+    await withClinic(clinic.id, (tx) => audit(ctx, tx, 'staff.bio', t.id));
+    return see(`${here}?done=bio#profile`);
+  }
   if (action === 'disable') {
     // disabled_at is checked on every workspace request, so they are out at once, at every branch.
     await pool.query('update staff set disabled_at = coalesce(disabled_at, now()) where id = $1', [t.id]);
@@ -599,6 +640,8 @@ export function personNotice(q: URLSearchParams, p: Person, myId: string): strin
     schedule: `Saved ${who}’s days.${closedWords(Number(q.get('closed')))}`,
     password: `Saved. Tell ${who} the new password: they choose their own when they next sign in, and every device they were signed in on is signed out.`,
     finance: `Saved what ${who} can see.`,
+    bio: `Saved ${who}’s public profile.`,
+    'bio-same': `Nothing changed on ${who}’s public profile.`,
   };
   return NOTICES[q.get('done') ?? ''] ?? '';
 }

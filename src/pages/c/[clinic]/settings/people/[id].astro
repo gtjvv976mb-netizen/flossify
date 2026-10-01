@@ -36,7 +36,7 @@ import { USERNAME_MAX } from '../../../../../lib/username';
 import { DAYS, DAY_LONG, ago, clinician, dateText, daysText, prcState, signsPapers, spanShort, treats } from '../_lib/common';
 import {
   member, scheduleOf, upcomingFor, personAction, personNotice, accountState, reachable, emailOn, prettyPhone,
-  SPECIALTIES, EMAIL_MAX, type ActionRefused, type EditValues, type DaysValues,
+  SPECIALTIES, EMAIL_MAX, BIO_MAX, bioOf, type ActionRefused, type EditValues, type DaysValues, type BioValues,
 } from '../_lib/people';
 import { can } from '../../../../../lib/can';
 import { listRoles, giveable, mayManage } from '../../../../../lib/roles';
@@ -92,9 +92,11 @@ const daysMeta = withHours.length
   ? `${daysText(days)} · ${withHours.map((r) => `${DAYS.find(([n]) => n === r.dow)![1]} ${spanShort(r.from_min!, r.to_min!)}`).join(', ')}`
   : daysText(days);
 const notice = t && allowed && !refused ? personNotice(q, t, session.staffId) : '';
-const doneTo = q.get('done') === 'schedule' ? 'days' : q.get('done') === 'finance' ? 'finance' : ['invite', 'reset', 'password', 'disable', 'enable'].includes(q.get('done') ?? '') ? 'signin' : 'head';
+const doneTo = q.get('done') === 'schedule' ? 'days' : q.get('done') === 'finance' ? 'finance' : ['bio', 'bio-same'].includes(q.get('done') ?? '') ? 'profile' : ['invite', 'reset', 'password', 'disable', 'enable'].includes(q.get('done') ?? '') ? 'signin' : 'head';
 // Where a refused action's sentence goes: the pane it came from. A refused edit comes back in its panel.
-const errorIn = refused?.edit ? 'edit' : refused?.action === 'finance' ? 'finance' : refused?.action === 'schedule' ? 'days' : ['invite', 'reset', 'password', 'disable', 'enable'].includes(refused?.action ?? '') ? 'signin' : 'head';
+const errorIn = refused?.edit ? 'edit' : refused?.action === 'finance' ? 'finance' : refused?.action === 'schedule' ? 'days' : refused?.action === 'bio' ? 'profile' : ['invite', 'reset', 'password', 'disable', 'enable'].includes(refused?.action ?? '') ? 'signin' : 'head';
+// The public profile's own lines (PDA, practising since, about): what was typed when a save came back, else what is on file.
+const bio: BioValues | null = t ? (refused?.bio ?? bioOf(t)) : null;
 
 // What the edit form shows: what was typed when it came back with an error, else what is on file.
 const today = manilaToday();
@@ -245,6 +247,38 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
               )}
               {ptrShown && mayEdit && <p class="set-help mt-2">Change the PTR in Edit details. Flossify does not check it: it prints as it is written.</p>}
               {self && !canSetUp && signsPapers(t) && <p class="set-help mt-2"><a href={`/c/${clinic.slug}/account/#ptr`} class="inline-flex min-h-[44px] items-center font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">Add yours on My page</a></p>}
+            </Pane>
+          )}
+
+          {/* The public profile's own lines: PDA membership, practising since, a few lines about them (/dentists/<slug>). */}
+          {t.slug && bio && (
+            <Pane id="profile" icon="user" title="Public profile" meta={t.pda_member ? 'PDA member' : undefined} class="set-sec">
+              <p class="set-intro mb-4">What patients read about {self ? 'you' : first} on {self ? 'your' : 'their'} public page, beside the licence.</p>
+              {notice && doneTo === 'profile' && <Note tone="ok" text={notice} class="mb-4" />}
+              {refused && errorIn === 'profile' && <Note tone="alert" text={refused.error} class="mb-4" refused />}
+              {mayEdit ? (
+                <form method="post" action={here} class="grid gap-4" data-bio-form>
+                  <Csrf />
+                  <input type="hidden" name="action" value="bio" />
+                  <label class="check"><input type="checkbox" name="pda" checked={bio.pda} /><span>Member of the Philippine Dental Association</span></label>
+                  <label class="field sm:max-w-[12rem]">
+                    <span class="meta">Practising since</span>
+                    <input name="since" value={bio.since} inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="e.g. 2012" />
+                  </label>
+                  <label class="field">
+                    <span class="meta">About {self ? 'you' : first} <span class="font-normal">(optional)</span></span>
+                    <textarea name="about" rows="4" maxlength={BIO_MAX}>{bio.about}</textarea>
+                    <span class="set-help">A few plain lines: what {self ? 'you' : 'they'} do most, where {self ? 'you' : 'they'} trained, the languages {self ? 'you' : 'they'} speak. Up to {BIO_MAX} characters.</span>
+                  </label>
+                  <div><button type="submit" class="ws-btn ws-btn-quiet"><Icon name="check" />Save public profile</button></div>
+                </form>
+              ) : (
+                <div class="set-state">
+                  <span class:list={['ws-pill', t.pda_member ? 'ws-tint-teal' : 'ws-tint-slate']}>{t.pda_member ? 'PDA member' : 'PDA membership not on file'}</span>
+                  <p>{t.practising_since ? `Practising since ${t.practising_since}.` : 'No year on file for when they started practising.'}</p>
+                  <p>{t.about ?? 'Nothing written about them yet.'}</p>
+                </div>
+              )}
             </Pane>
           )}
 

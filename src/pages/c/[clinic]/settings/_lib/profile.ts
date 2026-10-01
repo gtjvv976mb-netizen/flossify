@@ -36,6 +36,8 @@ export interface DayRow { closed: boolean; open: string; close: string; lunchFro
 export interface ProfileValues {
   name: string; area: string; address_line: string; phone: string; email: string; maps_url: string; about: string;
   chairs: number; walk_ins: boolean; philhealth_dental: boolean; booking_mode: string;
+  /** The year the clinic opened (002, "since 2009" on its page), as typed; blank for none. */
+  founded: string;
   hmoIds: string[]; noHmos: boolean; listed: boolean; tin: string; branch: string;
   /** Texts to patients (036): a second reminder two days before, and a text when a check-up is due. */
   remind_48h: boolean; recall_texts: boolean;
@@ -48,7 +50,7 @@ export interface ClinicData {
   c: {
     name: string; area: string | null; address_line: string | null; city: string | null; province: string | null; phone: string | null;
     email: string | null; maps_url: string | null; about: string | null; chairs: number; walk_ins: boolean; philhealth_dental: boolean;
-    booking_mode: string; listed: boolean; photo_keys: string[] | null; slug: string; tin: string | null; bir_branch_code: string | null;
+    founded: number | null; booking_mode: string; listed: boolean; photo_keys: string[] | null; slug: string; tin: string | null; bir_branch_code: string | null;
     remind_48h: boolean; recall_texts: boolean;
   };
   hours: Hours;
@@ -62,7 +64,7 @@ export interface ClinicData {
 export async function loadClinic(clinicId: string): Promise<ClinicData> {
   return withClinic(clinicId, async (tx) => ({
     c: (await tx.query(
-      `select name, area, address_line, city, province, phone, email, maps_url, about, chairs, walk_ins, philhealth_dental, booking_mode, listed,
+      `select name, area, address_line, city, province, phone, email, maps_url, about, chairs, walk_ins, philhealth_dental, founded, booking_mode, listed,
               photo_keys, slug::text as slug, tin, bir_branch_code, remind_48h, recall_texts
          from clinic where id = $1`, [clinicId])).rows[0],
     hours: (await tx.query('select dow, open_min, close_min, break_from_min, break_to_min from clinic_hours order by dow')).rows,
@@ -89,7 +91,7 @@ export function savedProfile(d: ClinicData): ProfileValues {
   return {
     name: d.c.name, area: d.c.area ?? '', address_line: d.c.address_line ?? '', phone: d.c.phone ?? '', email: d.c.email ?? '',
     maps_url: d.c.maps_url ?? '', about: d.c.about ?? '', chairs: d.c.chairs, walk_ins: d.c.walk_ins, philhealth_dental: d.c.philhealth_dental,
-    booking_mode: d.c.booking_mode, hmoIds: d.hmoIds, noHmos: d.hmoIds.length === 0 && d.saidNoHmos, listed: d.c.listed,
+    founded: d.c.founded ? String(d.c.founded) : '', booking_mode: d.c.booking_mode, hmoIds: d.hmoIds, noHmos: d.hmoIds.length === 0 && d.saidNoHmos, listed: d.c.listed,
     tin: tax?.tin ?? '', branch: tax?.branch || d.c.bir_branch_code || '00000',
     remind_48h: d.c.remind_48h, recall_texts: d.c.recall_texts,
   };
@@ -125,6 +127,7 @@ export async function saveClinic(
     p = {
       name: s('name'), area: s('area'), address_line: s('address_line'), phone: s('phone'), email: s('email'), maps_url: s('maps_url'), about: s('about'),
       chairs: Number(s('chairs')), walk_ins: s('walk_ins') === 'yes', philhealth_dental: s('philhealth_dental') === 'yes', booking_mode: s('booking_mode'),
+      founded: s('founded'),
       hmoIds: form.getAll('hmo').map(String).filter((id) => hmos.some((h) => h.id === id)),
       noHmos: form.get('hmo_none') === 'on', listed: form.get('listed') === 'on',
       tin: s('tin'), branch: s('bir_branch_code'),
@@ -140,6 +143,7 @@ export async function saveClinic(
     if (p.maps_url && !/^https?:\/\/\S{4,500}$/.test(p.maps_url)) problems.push('The map link needs to be a full web address, starting with https://.');
     if (p.about.length > ABOUT_MAX) problems.push(`Keep the about under ${ABOUT_MAX} characters; it is ${p.about.length} now.`);
     if (!Number.isInteger(p.chairs) || p.chairs < 1 || p.chairs > 12) problems.push('Chairs is a whole number from 1 to 12.');
+    if (p.founded && !(/^\d{4}$/.test(p.founded) && Number(p.founded) >= 1900 && Number(p.founded) <= new Date().getUTCFullYear() + 1)) problems.push('Founded is a four-digit year, or blank.');
     if (p.booking_mode !== 'live' && p.booking_mode !== 'request') problems.push('Pick how patients book.');
     if (p.noHmos && p.hmoIds.length > 0) problems.push('You ticked HMOs and also “We don’t take HMOs”. Keep one.');
     // A form drawn before these fields existed sends neither; it must not clear a saved TIN.
@@ -190,10 +194,13 @@ export async function saveClinic(
       const place = placeOf(p.area);
       await tx.query(
         `update clinic set name = $2, area = $3, address_line = $4, city = $5, province = $6, phone = $7, email = $8, maps_url = $9, about = $10,
-                chairs = $11, walk_ins = $12, philhealth_dental = $13, booking_mode = $14, remind_48h = $15, recall_texts = $16
+                chairs = $11, walk_ins = $12, philhealth_dental = $13, booking_mode = $14, remind_48h = $15, recall_texts = $16,
+                founded = case when $17::boolean then $18::smallint else founded end
          where id = $1`,
         [o.clinicId, p.name, p.area, p.address_line, place.city === undefined ? data.c.city : place.city, place.province === undefined ? data.c.province : place.province,
-         p.phone, p.email || null, p.maps_url || null, p.about || null, p.chairs, p.walk_ins, p.philhealth_dental, p.booking_mode, p.remind_48h, p.recall_texts]);
+         p.phone, p.email || null, p.maps_url || null, p.about || null, p.chairs, p.walk_ins, p.philhealth_dental, p.booking_mode, p.remind_48h, p.recall_texts,
+         // A form drawn before this field existed sends none; it must not clear a saved year.
+         form.has('founded'), p.founded ? Number(p.founded) : null]);
       if (tax) await tx.query('update clinic set tin = $2, bir_branch_code = $3 where id = $1', [o.clinicId, tax.tin, tax.branch]);
       await tx.query('delete from clinic_hmo where clinic_id = $1', [o.clinicId]);
       for (const id of p.noHmos ? [] : p.hmoIds) await tx.query('insert into clinic_hmo (clinic_id, hmo_id) values ($1, $2)', [o.clinicId, id]);

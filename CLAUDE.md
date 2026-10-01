@@ -412,6 +412,18 @@ own site at `/<clinic>/`).
 - A session made stale behind the person's back (a new password, disabled) is
   cleared by `requireWorkspace`, which sends them to `/auth/login/` and so to
   their clinic's door — not to "not for that branch".
+- **The public profile's own lines (1 Oct).** `staff.pda_member`, `practising_since` and `about` (002,
+  shown on `/dentists/<slug>` and the clinic page) are written by a **Public profile** pane on a person's
+  page (for anyone with a slug; action `bio`, the Edit details rule: `mayManage` or yourself, `BioValues`,
+  `readBio` / `saveBio` in `settings/_lib/people.ts`, audit `staff.bio`) and by the same form on **My page**
+  (`#bio`, the person's own, like the PTR). The year is 1950 to this year or blank; the about is one
+  paragraph of at most `BIO_MAX` (600) characters. PDA membership stays "as the clinic declared it; not
+  checked by us" on the public page. **The clinic's founding year** (`clinic.founded`, "since 2009" on its
+  page) is a Founded field beside Dental chairs on Clinic profile; a form drawn without the field keeps the
+  saved year. Checked by `scripts/dev/settings/profile-check.mjs` (a bad year refused, saved and audited,
+  nothing-changed, the public pages, My page, Founded kept, 390 px); measured: the panes' lines reuse
+  measured classes, 0 fails on the phone runs; the desk runs' only fails are inside closed `<details>`
+  (the tool measures hidden content).
 
 ### Tasks (032)
 
@@ -1443,9 +1455,10 @@ page 1 beside the record with "Use" per detail, and withdrawals and overrides as
   acknowledgments only: BIR invoices still come from the clinic's registered
   booklet or system. `patient_balance()` is the one balance definition.
 - Live since 24 Sep 2026: flossify.ph on Render (web + worker, Singapore) with DigitalOcean Managed PostgreSQL 17 (SGP1, trusted sources = Render's Singapore ranges).
-- Settings → Team cannot edit a staff member's name, email or PRC number after
-  the invite, and the clinic's founding year / PDA membership / staff bios
-  have no form (the public pages hide them when empty).
+- A person's page in Clinic settings edits their name, email and PRC number
+  (031), and the public profile's own lines and the clinic's founding year
+  have forms since 1 Oct (below, "Members the owner makes"); what a public
+  page still hides when empty is only what nobody has typed.
 - The privacy notice (consent version privacy-2026-09) says texts let patients
   "confirm or cancel by text" and does not mention the IP address stored with
   consent: a new consent version, reviewed by the owner's lawyer, is needed.
@@ -1585,6 +1598,7 @@ src/lib/intake.ts, intake-public.ts, consent-docs.ts, park.ts  the desk's intake
 src/lib/consent-library.ts, consent-seal.ts  the consent forms as data and the one renderer; canonical JSON, snapshot, seal, chain (npm run consent:hash)
 src/lib/intake-def.ts, patient-add.ts, refused.ts  the intake's page 1; adding a patient's own answers (forms and intakes); the one Refused class
 scripts/dev/intake/db-test.mjs the intake database checks; scripts/ts-register.mjs runs a script that imports src/lib
+scripts/dev/settings/profile-check.mjs  the public profile's lines and the clinic's founding year, end to end
 src/data/migrations/040        blocked time: lunch, dentist hours, clinic_block, blocked_ok_at, clinic_unavailable(), public_blocked/busy_ranges()
 src/lib/blocks.ts, block-words.ts   blocked time: the desk's reads and writes over clinic_unavailable(), and the words (pure)
 src/lib/schedule-api.ts, reminder-state.ts  the schedule API's gate and body readers; a visit's reminder in words
