@@ -1,0 +1,21 @@
+// A screenshot of the close page under print media, as the owner, at A4-ish width (794px ≈ 210mm at 96dpi).
+import { chromium } from '/home/user/flossify/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4412';
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await browser.newContext({ viewport: { width: 794, height: 1123 } });
+const p = await ctx.newPage();
+await p.goto(`${BASE}/auth/login/?any=1`);
+await p.fill('input[name="email"]', 'liwayway.domingo@example.com');
+await p.fill('input[name="password"]', 'flossify');
+await Promise.all([p.waitForNavigation(), p.click('button[type="submit"]')]);
+console.log('after sign-in', p.url());
+const err = await p.locator('#signin-error').count();
+if (err) console.log('sign-in error', await p.locator('#signin-error').textContent());
+console.log('cookies', (await ctx.cookies()).map((c) => c.name));
+const r = await p.goto(`${BASE}/c/session-road/finances/close/`);
+console.log('close page', r.status(), p.url());
+await p.emulateMedia({ media: 'print' });
+const h = await p.evaluate(() => ({ scroll: document.documentElement.scrollHeight, main: document.querySelector('.ws-main')?.scrollHeight, app: getComputedStyle(document.querySelector('.ws-app')).overflow }));
+console.log('print document', h);
+await p.screenshot({ path: '/tmp/claude-0/-home-user-flossify/f4b0cee2-2012-5f9f-a244-94fd3e742817/scratchpad/close-print.png', fullPage: true });
+await browser.close();

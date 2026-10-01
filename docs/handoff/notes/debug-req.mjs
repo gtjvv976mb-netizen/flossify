@@ -1,0 +1,24 @@
+import { chromium } from '/home/user/flossify/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4415';
+const LIST = `${BASE}/c/session-road/patients/`;
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const page = await ctx.newPage();
+await page.goto(`${BASE}/auth/login/?any=1`);
+await page.fill('#email', 'liwayway.domingo@example.com');
+await page.fill('#password', 'flossify');
+await Promise.all([page.waitForNavigation(), page.click('button[type="submit"]')]);
+const r = await page.request.get(`${LIST}?part=list&f=quiet`, { maxRedirects: 0 });
+console.log('status', r.status(), 'url', r.url(), 'headers', JSON.stringify(r.headers()));
+console.log((await r.text()).slice(0, 400));
+const r2 = await ctx.request.get(`${LIST}?f=due`, { maxRedirects: 0 });
+console.log('status', r2.status(), r2.url());
+const t2 = await r2.text();
+console.log(t2.length, [...t2.matchAll(/href="\/c\/session-road\/patients\/\?[^"]*"/g)].map((m) => m[0]).slice(0, 20));
+await page.goto(`${LIST}?f=due`);
+await page.fill('[data-pts-q]', 'zzz');
+await page.waitForFunction(() => document.querySelectorAll('tr.pts-row').length === 0);
+console.log(JSON.stringify(await page.$eval('.pts-empty', (e) => e.textContent.replace(/\s+/g, ' ').trim())));
+// The background chain behind a "Next" label.
+console.log(await page.evaluate(() => { const out = []; for (let e = document.querySelector('.pts-k'); e; e = e.parentElement) out.push(`${e.tagName}.${e.className} ${getComputedStyle(e).backgroundColor}`); return out; }));
+await browser.close();

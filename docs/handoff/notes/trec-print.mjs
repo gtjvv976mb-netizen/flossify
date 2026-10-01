@@ -1,0 +1,14 @@
+import { chromium } from '/home/user/flossify/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4399';
+const ID = process.argv[2] ?? '9ea415bd-4b9e-4725-80e8-391464e2c12e';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await b.newContext({ viewport: { width: 1000, height: 1400 }, colorScheme: 'dark' });
+const p = await ctx.newPage();
+await p.goto(`${BASE}/auth/login/?any=1`);
+await p.fill('#email', 'liwayway.domingo@example.com'); await p.fill('#password', 'flossify');
+await Promise.all([p.waitForNavigation(), p.click('button[type="submit"]')]);
+await p.goto(`${BASE}/c/session-road/patients/${ID}/treatment-record/`, { waitUntil: 'networkidle' });
+await p.screenshot({ path: '/tmp/claude-0/shots/trec-print-screen-dark.png', fullPage: false });
+await p.emulateMedia({ media: 'print', colorScheme: 'dark' });
+await p.pdf({ path: '/tmp/claude-0/shots/trec-print.pdf', format: 'A4', printBackground: true });
+await b.close();

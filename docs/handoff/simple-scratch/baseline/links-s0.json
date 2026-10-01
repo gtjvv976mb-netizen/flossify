@@ -1,0 +1,6517 @@
+{
+ "meta": {
+  "at": "2026-09-30T04:29:37.976Z",
+  "commit": "dced1c6",
+  "base": "http://127.0.0.1:4470",
+  "expect": false
+ },
+ "cases": [
+  {
+   "id": "visit-today",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384",
+   "expect": {
+    "tab": "overview",
+    "strip": true
+   },
+   "src": "sign/[visit].astro back links; Dashboard \"Open record\"",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": null,
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "visit-past-ledger",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=1b9c069c-4521-41fc-b079-559aaa843e6a",
+   "expect": {
+    "tab": "treatment-record",
+    "dialog": "rec-visit-*"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=1b9c069c-4521-41fc-b079-559aaa843e6a",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-visit-1b9c069c-4521-41fc-b079-559aaa843e6a"
+    ],
+    "strip": null,
+    "focus": "h2#rec-visit-1b9c069c-4521-41fc-b079-559aaa843e6a-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "visit-stale-chair",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=2ac3bf8c-6471-4d0e-bff7-ada70b33522f",
+   "expect": {
+    "tab": "treatment-record",
+    "dialog": "rec-visit-*"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=2ac3bf8c-6471-4d0e-bff7-ada70b33522f",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-visit-2ac3bf8c-6471-4d0e-bff7-ada70b33522f"
+    ],
+    "strip": null,
+    "focus": "h2#rec-visit-2ac3bf8c-6471-4d0e-bff7-ada70b33522f-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "visit-cancelled-empty",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=becca4e2-73b5-4ad7-a303-ccf353ba006f",
+   "expect": {
+    "tab": "treatment-record",
+    "dialog": "rec-visit-*"
+   },
+   "note": "§5: a cancelled visit opens the \"Cancelled and missed\" fold (S7)",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=becca4e2-73b5-4ad7-a303-ccf353ba006f",
+    "tab": "visits",
+    "panels": [
+     "visits"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-visit-becca4e2-73b5-4ad7-a303-ccf353ba006f"
+    ],
+    "strip": null,
+    "focus": "h2#rec-visit-becca4e2-73b5-4ad7-a303-ccf353ba006f-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab visits ≠ treatment-record"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": false
+  },
+  {
+   "id": "visit-future",
+   "who": "owner",
+   "patient": "ledger",
+   "url": "?visit=f0ad9227-8747-4fc7-b6de-11fccdff1518",
+   "expect": {
+    "tab": "overview",
+    "dialog": "rec-visit-*"
+   },
+   "got": {
+    "http": 200,
+    "status": "Ledger Test — Session Road Dental — Flossify",
+    "url": "?visit=f0ad9227-8747-4fc7-b6de-11fccdff1518",
+    "tab": "visits",
+    "panels": [
+     "visits"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-visit-f0ad9227-8747-4fc7-b6de-11fccdff1518"
+    ],
+    "strip": null,
+    "focus": "h2#rec-visit-f0ad9227-8747-4fc7-b6de-11fccdff1518-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab visits ≠ overview"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "visit-future-cancelled",
+   "who": "owner",
+   "patient": "ledger",
+   "url": "?visit=0429460e-778c-4c37-811f-5c01373ad245",
+   "expect": {
+    "tab": [
+     "treatment-record",
+     "overview"
+    ],
+    "dialog": "rec-visit-*"
+   },
+   "got": {
+    "http": 200,
+    "status": "Ledger Test — Session Road Dental — Flossify",
+    "url": "?visit=0429460e-778c-4c37-811f-5c01373ad245",
+    "tab": "visits",
+    "panels": [
+     "visits"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-visit-0429460e-778c-4c37-811f-5c01373ad245"
+    ],
+    "strip": null,
+    "focus": "h2#rec-visit-0429460e-778c-4c37-811f-5c01373ad245-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab visits ≠ treatment-record|overview"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "visit-ledger-chair",
+   "who": "owner",
+   "patient": "ledger",
+   "url": "?visit=77d83a8b-2083-47fb-b31d-72c2d146c1bf",
+   "expect": {
+    "tab": "treatment-record",
+    "dialog": "rec-visit-*"
+   },
+   "got": {
+    "http": 200,
+    "status": "Ledger Test — Session Road Dental — Flossify",
+    "url": "?visit=77d83a8b-2083-47fb-b31d-72c2d146c1bf",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-visit-77d83a8b-2083-47fb-b31d-72c2d146c1bf"
+    ],
+    "strip": null,
+    "focus": "h2#rec-visit-77d83a8b-2083-47fb-b31d-72c2d146c1bf-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "visit-rich-today",
+   "who": "owner",
+   "patient": "rich",
+   "url": "?visit=7e57a1c0-0000-4000-8000-0000000000e1",
+   "expect": {
+    "tab": "overview",
+    "strip": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Rich Test — Session Road Dental — Flossify",
+    "url": "?visit=7e57a1c0-0000-4000-8000-0000000000e1",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": null,
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "11:00 am · Dr. Hazel Tabanao · Root canal, tooth 46 · Chair 3"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "Note for the dentist Faints at the sight of needles: lie her back before any injection and keep juic"
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "visit-unknown",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=0f0f0f0f-1111-4222-8333-444444444444",
+   "expect": {
+    "tab": "overview"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=0f0f0f0f-1111-4222-8333-444444444444",
+    "tab": "visits",
+    "panels": [
+     "visits"
+    ],
+    "el": null,
+    "dialogs": [],
+    "strip": null,
+    "focus": null,
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab visits ≠ overview"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "dash-health",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384#health",
+   "expect": {
+    "tab": "patient",
+    "el": true
+   },
+   "src": "panels.ts rec(\"health\")",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384#health",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": {
+     "id": "health",
+     "exists": true,
+     "shown": true,
+     "panel": "health",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1311,
+    "callouts": []
+   },
+   "miss": [
+    "tab health ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "dash-vitals-open",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&open=vitals#vitals",
+   "expect": {
+    "tab": [
+     "overview",
+     "patient"
+    ],
+    "dialog": "rec-vitals-add"
+   },
+   "src": "panels.ts rec(\"vitals\",\"vitals\")",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&open=vitals#vitals",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": {
+     "id": "vitals",
+     "exists": true,
+     "shown": true,
+     "panel": "health",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [
+     "rec-vitals-add"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [
+    "tab health ≠ overview|patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "dash-rx",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384#rx",
+   "expect": {
+    "tab": "treatment-record",
+    "el": true
+   },
+   "src": "panels.ts rec(\"rx\")",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384#rx",
+    "tab": "rx",
+    "panels": [
+     "rx"
+    ],
+    "el": {
+     "id": "rx",
+     "exists": true,
+     "shown": true,
+     "panel": "rx",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [
+    "tab rx ≠ treatment-record"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "dash-treatment",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384#treatment",
+   "expect": {
+    "tab": "chart",
+    "el": true
+   },
+   "src": "panels.ts rec(\"treatment\")",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384#treatment",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "treatment",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "dash-desk-note",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?open=details&dash=5a055ab9-8eaa-42aa-9951-395736601384",
+   "expect": {
+    "tab": "overview",
+    "dialog": "details",
+    "url": "/^[^?]*(\\?(?!.*(open|dash)=)[^#]*)?(#.*)?$/"
+   },
+   "src": "panels.ts:463",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": null,
+    "dialogs": [
+     "details"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": "textarea[name=notes]",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "open-vitals",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?open=vitals",
+   "expect": {
+    "tab": "overview",
+    "dialog": "rec-vitals-add"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?open=vitals",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-vitals-add"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": "h2#rec-vitals-add-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab health ≠ overview"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": false
+  },
+  {
+   "id": "open-vitals-visit",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&open=vitals",
+   "expect": {
+    "tab": "overview",
+    "dialog": "rec-vitals-add",
+    "strip": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&open=vitals",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-vitals-add"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": "h2#rec-vitals-add-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab health ≠ overview"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": false
+  },
+  {
+   "id": "open-note",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?open=note",
+   "expect": {
+    "tab": "overview",
+    "dialog": "rec-note-add"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?open=note",
+    "tab": "notes",
+    "panels": [
+     "notes"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-note-add"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": "h2#rec-note-add-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab notes ≠ overview"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": false
+  },
+  {
+   "id": "open-note-visit",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&open=note",
+   "expect": {
+    "tab": "overview",
+    "dialog": "rec-note-add",
+    "strip": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&open=note",
+    "tab": "notes",
+    "panels": [
+     "notes"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-note-add"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": "h2#rec-note-add-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab notes ≠ overview"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": false
+  },
+  {
+   "id": "open-rx",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?open=rx",
+   "expect": {
+    "tab": "overview",
+    "dialog": "rec-rx-add"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?open=rx",
+    "tab": "rx",
+    "panels": [
+     "rx"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-rx-add"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": "h2#rec-rx-add-title",
+    "scrollY": 0,
+    "callouts": [
+     "Allergies on file: Penicillin Check every medicine against them.",
+     "You have no PTR number on file. It prints with a blank PTR line to write in by hand. Add yours on My"
+    ]
+   },
+   "miss": [
+    "tab rx ≠ overview"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": false
+  },
+  {
+   "id": "open-rx-visit",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&open=rx",
+   "expect": {
+    "tab": "overview",
+    "dialog": "rec-rx-add",
+    "strip": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&open=rx",
+    "tab": "rx",
+    "panels": [
+     "rx"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-rx-add"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": "h2#rec-rx-add-title",
+    "scrollY": 0,
+    "callouts": [
+     "Allergies on file: Penicillin Check every medicine against them.",
+     "You have no PTR number on file. It prints with a blank PTR line to write in by hand. Add yours on My"
+    ]
+   },
+   "miss": [
+    "tab rx ≠ overview"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": false
+  },
+  {
+   "id": "open-done",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?open=done",
+   "expect": {
+    "tab": "overview",
+    "dialog": "rec-done-add"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?open=done",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-done-add"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": "h2#rec-done-add-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab treatment ≠ overview"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": false
+  },
+  {
+   "id": "open-done-visit",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&open=done",
+   "expect": {
+    "tab": "overview",
+    "dialog": "rec-done-add",
+    "strip": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&open=done",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-done-add"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": "h2#rec-done-add-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab treatment ≠ overview"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": false
+  },
+  {
+   "id": "open-file",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?open=file",
+   "expect": {
+    "tab": "overview",
+    "dialog": "rec-file-add"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?open=file",
+    "tab": "files",
+    "panels": [
+     "files"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-file-add"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": "h2#rec-file-add-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab files ≠ overview"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": false
+  },
+  {
+   "id": "open-file-visit",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&open=file",
+   "expect": {
+    "tab": "overview",
+    "dialog": "rec-file-add",
+    "strip": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&open=file",
+    "tab": "files",
+    "panels": [
+     "files"
+    ],
+    "el": null,
+    "dialogs": [
+     "rec-file-add"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": "h2#rec-file-add-title",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab files ≠ overview"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": false
+  },
+  {
+   "id": "open-details",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?open=details",
+   "expect": {
+    "tab": "overview",
+    "dialog": "details"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": null,
+    "dialogs": [
+     "details"
+    ],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": "textarea[name=notes]",
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "open-health",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?open=health",
+   "expect": {
+    "tab": "overview",
+    "dialog": "rec-health"
+   },
+   "note": "rec-health is new in S5",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?open=health",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": null,
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "no dialog rec-health"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-chart",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?back=chart",
+   "expect": {
+    "tab": "chart"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?back=chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": null,
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "treated-rich",
+   "who": "owner",
+   "patient": "rich",
+   "url": "?saved=done&treated=7e57a1c0-0000-4000-8000-0000000000d1#chart-offer",
+   "expect": {
+    "tab": "chart",
+    "el": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Rich Test — Session Road Dental — Flossify",
+    "url": "?saved=done&treated=7e57a1c0-0000-4000-8000-0000000000d1#chart-offer",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "chart-offer",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "11:00 am · Dr. Hazel Tabanao · Root canal, tooth 46 · Chair 3"
+    },
+    "focus": null,
+    "scrollY": 1509,
+    "callouts": [
+     "Note for the dentist Faints at the sight of needles: lie her back before any injection and keep juic",
+     "Treatment recorded.",
+     "Update the chart? Chart 36 O as filled. Now: sound. Update the chart Leave the chart as it is"
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "treated-rich-back-chart",
+   "who": "owner",
+   "patient": "rich",
+   "url": "?saved=done&treated=7e57a1c0-0000-4000-8000-0000000000d1&back=chart#chart-offer",
+   "expect": {
+    "tab": "chart",
+    "el": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Rich Test — Session Road Dental — Flossify",
+    "url": "?saved=done&treated=7e57a1c0-0000-4000-8000-0000000000d1&back=chart#chart-offer",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart-offer",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "11:00 am · Dr. Hazel Tabanao · Root canal, tooth 46 · Chair 3"
+    },
+    "focus": null,
+    "scrollY": 1509,
+    "callouts": [
+     "Note for the dentist Faints at the sight of needles: lie her back before any injection and keep juic",
+     "Treatment recorded.",
+     "Update the chart? Chart 36 O as filled. Now: sound. Update the chart Leave the chart as it is"
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "treated-rich-plain",
+   "who": "owner",
+   "patient": "rich",
+   "url": "?treated=7e57a1c0-0000-4000-8000-0000000000d1#chart-offer",
+   "expect": {
+    "tab": "chart",
+    "el": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Rich Test — Session Road Dental — Flossify",
+    "url": "?treated=7e57a1c0-0000-4000-8000-0000000000d1#chart-offer",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "chart-offer",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "11:00 am · Dr. Hazel Tabanao · Root canal, tooth 46 · Chair 3"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "Note for the dentist Faints at the sight of needles: lie her back before any injection and keep juic"
+    ]
+   },
+   "miss": [
+    "tab overview ≠ chart",
+    "#chart-offer not shown"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": false
+  },
+  {
+   "id": "treated-maria",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=done&treated=c86ef492-8a05-415f-9d43-4f43618cb254#chart-offer",
+   "expect": {
+    "tab": "chart"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=done&treated=c86ef492-8a05-415f-9d43-4f43618cb254#chart-offer",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "chart-offer",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "Treatment recorded."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "chartskip-changed",
+   "who": "owner",
+   "patient": "rich",
+   "url": "?saved=charted&treated=7e57a1c0-0000-4000-8000-0000000000d1&chartskip=changed#chart-offer",
+   "expect": {
+    "tab": "chart",
+    "el": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Rich Test — Session Road Dental — Flossify",
+    "url": "?saved=charted&treated=7e57a1c0-0000-4000-8000-0000000000d1&chartskip=changed#chart-offer",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "chart-offer",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "11:00 am · Dr. Hazel Tabanao · Root canal, tooth 46 · Chair 3"
+    },
+    "focus": null,
+    "scrollY": 1441,
+    "callouts": [
+     "Note for the dentist Faints at the sight of needles: lie her back before any injection and keep juic",
+     "36 changed since this page showed it. The chart was not changed.",
+     "Update the chart? Chart 36 O as filled. Now: sound. Update the chart Leave the chart as it is"
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "chartskip-ended",
+   "who": "owner",
+   "patient": "rich",
+   "url": "?saved=charted&treated=7e57a1c0-0000-4000-8000-0000000000d1&chartskip=ended#chart-offer",
+   "expect": {
+    "tab": "chart",
+    "el": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Rich Test — Session Road Dental — Flossify",
+    "url": "?saved=charted&treated=7e57a1c0-0000-4000-8000-0000000000d1&chartskip=ended#chart-offer",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "chart-offer",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "11:00 am · Dr. Hazel Tabanao · Root canal, tooth 46 · Chair 3"
+    },
+    "focus": null,
+    "scrollY": 1441,
+    "callouts": [
+     "Note for the dentist Faints at the sight of needles: lie her back before any injection and keep juic",
+     "This page belonged to a sign-in that has ended, so the chart was not changed. Below is the chart as ",
+     "Update the chart? Chart 36 O as filled. Now: sound. Update the chart Leave the chart as it is"
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-treatment-old",
+   "who": "owner",
+   "patient": "rich",
+   "url": "?saved=done&treated=7e57a1c0-0000-4000-8000-0000000000d1&back=treatment#chart-offer",
+   "expect": {
+    "tab": "chart"
+   },
+   "note": "§5: an old back=treatment maps to chart",
+   "got": {
+    "http": 200,
+    "status": "Rich Test — Session Road Dental — Flossify",
+    "url": "?saved=done&treated=7e57a1c0-0000-4000-8000-0000000000d1&back=treatment#chart-offer",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "chart-offer",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "11:00 am · Dr. Hazel Tabanao · Root canal, tooth 46 · Chair 3"
+    },
+    "focus": null,
+    "scrollY": 1509,
+    "callouts": [
+     "Note for the dentist Faints at the sight of needles: lie her back before any injection and keep juic",
+     "Treatment recorded.",
+     "Update the chart? Chart 36 O as filled. Now: sound. Update the chart Leave the chart as it is"
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-new",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=new",
+   "expect": {
+    "tab": "overview"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=new",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": null,
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "Added. Maria Liza Dela Cruz is on file as SR-0142; everything from the form is below."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-details",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=details#overview",
+   "expect": {
+    "tab": "overview"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=details#overview",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "overview",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1086,
+    "callouts": [
+     "Details saved."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-form",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=form&form=0f0f0f0f-1111-4222-8333-444444444444",
+   "expect": {
+    "tab": "overview"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=form&form=0f0f0f0f-1111-4222-8333-444444444444",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": null,
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "form-used",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?form=0f0f0f0f-1111-4222-8333-444444444444&used=phone#overview",
+   "expect": {
+    "tab": "overview"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?form=0f0f0f0f-1111-4222-8333-444444444444&used=phone#overview",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "overview",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1086,
+    "callouts": [
+     "The mobile on the record is now the one from the form."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "stale",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?stale=1",
+   "expect": {
+    "tab": "overview"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?stale=1",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": null,
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "The page had gone stale. Try that once more."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-health",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=health#health",
+   "expect": {
+    "tab": "patient",
+    "el": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=health#health",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": {
+     "id": "health",
+     "exists": true,
+     "shown": true,
+     "panel": "health",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1311,
+    "callouts": [
+     "Saved."
+    ]
+   },
+   "miss": [
+    "tab health ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-birth",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=birth#health",
+   "expect": {
+    "tab": [
+     "patient",
+     "overview"
+    ]
+   },
+   "note": "§5: birth moves to Edit details in S5 and then lands on Today",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=birth#health",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": {
+     "id": "health",
+     "exists": true,
+     "shown": true,
+     "panel": "health",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1311,
+    "callouts": [
+     "Saved."
+    ]
+   },
+   "miss": [
+    "tab health ≠ patient|overview"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-nothing",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=nothing#health",
+   "expect": {
+    "tab": "patient",
+    "el": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=nothing#health",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": {
+     "id": "health",
+     "exists": true,
+     "shown": true,
+     "panel": "health",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1311,
+    "callouts": [
+     "Nothing was saved: nothing is ticked or typed yet."
+    ]
+   },
+   "miss": [
+    "tab health ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-checked",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=checked",
+   "expect": {
+    "tab": "overview",
+    "strip": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=checked",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": null,
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "Health history checked with Maria Liza: no change."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-checked-today",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=checked-today",
+   "expect": {
+    "tab": "overview",
+    "strip": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=checked-today",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": null,
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "The health history was already checked today."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-consent",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=consent#consent",
+   "expect": {
+    "tab": "patient",
+    "el": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=consent#consent",
+    "tab": "consent",
+    "panels": [
+     "consent"
+    ],
+    "el": {
+     "id": "consent",
+     "exists": true,
+     "shown": true,
+     "panel": "consent",
+     "top": 96,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1090,
+    "callouts": []
+   },
+   "miss": [
+    "tab consent ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-consent-already",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=consent-already#consent",
+   "expect": {
+    "tab": "patient",
+    "el": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=consent-already#consent",
+    "tab": "consent",
+    "panels": [
+     "consent"
+    ],
+    "el": {
+     "id": "consent",
+     "exists": true,
+     "shown": true,
+     "panel": "consent",
+     "top": 96,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1090,
+    "callouts": []
+   },
+   "miss": [
+    "tab consent ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-paper",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=paper#consent-paper",
+   "expect": {
+    "tab": "patient",
+    "el": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=paper#consent-paper",
+    "tab": "consent",
+    "panels": [
+     "consent"
+    ],
+    "el": {
+     "id": "consent-paper",
+     "exists": true,
+     "shown": true,
+     "panel": "consent",
+     "top": 96,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1380,
+    "callouts": [
+     "Recorded."
+    ]
+   },
+   "miss": [
+    "tab consent ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "consent-paper",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#consent-paper",
+   "expect": {
+    "tab": "patient",
+    "el": true
+   },
+   "src": "DeskConsent.astro:163",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#consent",
+    "tab": "consent",
+    "panels": [
+     "consent"
+    ],
+    "el": {
+     "id": "consent-paper",
+     "exists": true,
+     "shown": true,
+     "panel": "consent",
+     "top": 121,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1355,
+    "callouts": []
+   },
+   "miss": [
+    "tab consent ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-intake",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=intake&intake=0f0f0f0f-1111-4222-8333-444444444444",
+   "expect": {
+    "tab": "overview"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=intake&intake=0f0f0f0f-1111-4222-8333-444444444444",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": null,
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "Maria Liza Dela Cruz is added."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-capacity",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=capacity#consent",
+   "expect": {
+    "tab": "patient",
+    "el": true
+   },
+   "src": "consents/index.astro:35",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=capacity#consent",
+    "tab": "consent",
+    "panels": [
+     "consent"
+    ],
+    "el": {
+     "id": "consent",
+     "exists": true,
+     "shown": true,
+     "panel": "consent",
+     "top": 96,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1159,
+    "callouts": [
+     "Recorded. For 30 days a representative may sign consent forms for them, on a clinic device."
+    ]
+   },
+   "miss": [
+    "tab consent ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "saved-consent-removed",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=consent-removed#consent",
+   "expect": {
+    "tab": "patient",
+    "el": true
+   },
+   "src": "consents/[document].astro:100",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=consent-removed#consent",
+    "tab": "consent",
+    "panels": [
+     "consent"
+    ],
+    "el": {
+     "id": "consent",
+     "exists": true,
+     "shown": true,
+     "panel": "consent",
+     "top": 96,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1159,
+    "callouts": [
+     "The form was removed."
+    ]
+   },
+   "miss": [
+    "tab consent ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "capacity-refused",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?capacity=refused#consent",
+   "expect": {
+    "tab": "patient",
+    "el": true
+   },
+   "src": "consents/index.astro:35",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?capacity=refused#consent",
+    "tab": "consent",
+    "panels": [
+     "consent"
+    ],
+    "el": {
+     "id": "consent",
+     "exists": true,
+     "shown": true,
+     "panel": "consent",
+     "top": 96,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1181,
+    "callouts": [
+     "Nothing was recorded. Only a treating dentist here with a PRC licence records this, for an adult pat"
+    ]
+   },
+   "miss": [
+    "tab consent ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "stale-consent",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?stale=1#consent",
+   "expect": {
+    "tab": "patient",
+    "el": true
+   },
+   "src": "consents/index.astro:23",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?stale=1#consent",
+    "tab": "consent",
+    "panels": [
+     "consent"
+    ],
+    "el": {
+     "id": "consent",
+     "exists": true,
+     "shown": true,
+     "panel": "consent",
+     "top": 96,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1159,
+    "callouts": [
+     "The page had gone stale. Try that once more."
+    ]
+   },
+   "miss": [
+    "tab consent ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-treatment-record",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#treatment-record",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "src": "treatment-record.astro:33",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#treatment-record",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": {
+     "id": "treatment-record",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment-record",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "aftercare-back",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=1b9c069c-4521-41fc-b079-559aaa843e6a#treatment-record",
+   "expect": {
+    "tab": "treatment-record",
+    "dialog": "rec-visit-*"
+   },
+   "src": "aftercare/[kind].astro:35",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=1b9c069c-4521-41fc-b079-559aaa843e6a#treatment-record",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": {
+     "id": "treatment-record",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment-record",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [
+     "rec-visit-1b9c069c-4521-41fc-b079-559aaa843e6a"
+    ],
+    "strip": null,
+    "focus": null,
+    "scrollY": 573,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "aftercare-back-today",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384#treatment-record",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "src": "aftercare/[kind].astro:35 (today)",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384#treatment-record",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": {
+     "id": "treatment-record",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment-record",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-timeline",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#timeline",
+   "expect": {
+    "tab": "treatment-record",
+    "url": "/#treatment-record$/"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#treatment-record",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": {
+     "id": "timeline",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-rx",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#rx",
+   "expect": {
+    "tab": "treatment-record",
+    "el": true
+   },
+   "src": "rx/[rx].astro:27",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#rx",
+    "tab": "rx",
+    "panels": [
+     "rx"
+    ],
+    "el": {
+     "id": "rx",
+     "exists": true,
+     "shown": true,
+     "panel": "rx",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [
+    "tab rx ≠ treatment-record"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-letters",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#letters",
+   "expect": {
+    "tab": "treatment-record",
+    "el": true
+   },
+   "src": "letters/[letter].astro:26",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#rx",
+    "tab": "rx",
+    "panels": [
+     "rx"
+    ],
+    "el": {
+     "id": "letters",
+     "exists": true,
+     "shown": true,
+     "panel": "rx",
+     "top": 420,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1070,
+    "callouts": []
+   },
+   "miss": [
+    "tab rx ≠ treatment-record"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-files",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#files",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "files/[file]/view.astro:26",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#files",
+    "tab": "files",
+    "panels": [
+     "files"
+    ],
+    "el": {
+     "id": "files",
+     "exists": true,
+     "shown": true,
+     "panel": "files",
+     "top": 620,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 485,
+    "callouts": []
+   },
+   "miss": [
+    "tab files ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-treatment",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#treatment",
+   "expect": {
+    "tab": "chart",
+    "el": true
+   },
+   "src": "finances/close:338",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#treatment",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "treatment",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-money",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#money",
+   "expect": {
+    "tab": "treatment-record",
+    "el": true
+   },
+   "src": "finances/close:370",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#money",
+    "tab": "money",
+    "panels": [
+     "money"
+    ],
+    "el": {
+     "id": "money",
+     "exists": true,
+     "shown": true,
+     "panel": "money",
+     "top": 268,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 837,
+    "callouts": []
+   },
+   "miss": [
+    "tab money ≠ treatment-record"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-money-dentist",
+   "who": "dentist",
+   "patient": "maria",
+   "url": "#money",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "note": "no Statements for a dentist without billing: the tab's top",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#money",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "money",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab overview ≠ treatment-record"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": false
+  },
+  {
+   "id": "hash-visits",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#visits",
+   "expect": {
+    "tab": "overview"
+   },
+   "src": "import.astro:572",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#visits",
+    "tab": "visits",
+    "panels": [
+     "visits"
+    ],
+    "el": {
+     "id": "visits",
+     "exists": true,
+     "shown": true,
+     "panel": "visits",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [
+    "tab visits ≠ overview"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-consent",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#consent",
+   "expect": {
+    "tab": "patient",
+    "el": true
+   },
+   "src": "consents/index.astro, [document].astro:170, new/index.astro:107, intake/[intake].astro:709",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#consent",
+    "tab": "consent",
+    "panels": [
+     "consent"
+    ],
+    "el": {
+     "id": "consent",
+     "exists": true,
+     "shown": true,
+     "panel": "consent",
+     "top": 96,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1090,
+    "callouts": []
+   },
+   "miss": [
+    "tab consent ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "anchor-treatment-done",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#treatment-done",
+   "expect": {
+    "tab": "chart"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#treatment",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "treatment-done",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1612,
+    "callouts": []
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "anchor-treatment-lab",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#treatment-lab",
+   "expect": {
+    "tab": "chart"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#treatment",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "treatment-lab",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 140,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 2080,
+    "callouts": []
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "anchor-recall",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#recall",
+   "expect": {
+    "tab": "overview"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#recall",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "recall",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "anchor-vitals",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#vitals",
+   "expect": {
+    "tab": "patient"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#health",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": {
+     "id": "vitals",
+     "exists": true,
+     "shown": true,
+     "panel": "health",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [
+    "tab health ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "anchor-letters",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#letters",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#rx",
+    "tab": "rx",
+    "panels": [
+     "rx"
+    ],
+    "el": {
+     "id": "letters",
+     "exists": true,
+     "shown": true,
+     "panel": "rx",
+     "top": 420,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1070,
+    "callouts": []
+   },
+   "miss": [
+    "tab rx ≠ treatment-record"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "anchor-loas",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#loas",
+   "expect": {
+    "tab": "chart"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#treatment",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "loas",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 388,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 2080,
+    "callouts": []
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "anchor-payplans",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#payplans",
+   "expect": {
+    "tab": "chart"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#treatment",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "payplans",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 620,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 2080,
+    "callouts": []
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "anchor-treatment-lab-rich",
+   "who": "owner",
+   "patient": "rich",
+   "url": "#treatment-lab",
+   "expect": {
+    "tab": "chart",
+    "el": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Rich Test — Session Road Dental — Flossify",
+    "url": "#treatment",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "treatment-lab",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "11:00 am · Dr. Hazel Tabanao · Root canal, tooth 46 · Chair 3"
+    },
+    "focus": null,
+    "scrollY": 2125,
+    "callouts": [
+     "Note for the dentist Faints at the sight of needles: lie her back before any injection and keep juic"
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "anchor-loas-rich",
+   "who": "owner",
+   "patient": "rich",
+   "url": "#loas",
+   "expect": {
+    "tab": "chart",
+    "el": true
+   },
+   "got": {
+    "http": 200,
+    "status": "Rich Test — Session Road Dental — Flossify",
+    "url": "#treatment",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "loas",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 288,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "11:00 am · Dr. Hazel Tabanao · Root canal, tooth 46 · Chair 3"
+    },
+    "focus": null,
+    "scrollY": 2277,
+    "callouts": [
+     "Note for the dentist Faints at the sight of needles: lie her back before any injection and keep juic"
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-overview",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#overview",
+   "expect": {
+    "tab": "overview"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#overview",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "overview",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-health",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#health",
+   "expect": {
+    "tab": "patient"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#health",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": {
+     "id": "health",
+     "exists": true,
+     "shown": true,
+     "panel": "health",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1311,
+    "callouts": []
+   },
+   "miss": [
+    "tab health ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-chart",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#chart",
+   "expect": {
+    "tab": "chart"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-notes",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#notes",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#notes",
+    "tab": "notes",
+    "panels": [
+     "notes"
+    ],
+    "el": {
+     "id": "notes",
+     "exists": true,
+     "shown": true,
+     "panel": "notes",
+     "top": 144,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 961,
+    "callouts": []
+   },
+   "miss": [
+    "tab notes ≠ treatment-record"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-texts",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#texts",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#texts",
+    "tab": "texts",
+    "panels": [
+     "texts"
+    ],
+    "el": {
+     "id": "texts",
+     "exists": true,
+     "shown": true,
+     "panel": "texts",
+     "top": 515,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 590,
+    "callouts": []
+   },
+   "miss": [
+    "tab texts ≠ treatment-record"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-this-visit",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#this-visit",
+   "expect": {
+    "tab": "overview"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#this-visit",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "this-visit",
+     "exists": true,
+     "shown": true,
+     "panel": null,
+     "top": 0,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 544,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-chart-offer",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#chart-offer",
+   "expect": {
+    "tab": "chart"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#chart-offer",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "chart-offer",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab overview ≠ chart"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": false
+  },
+  {
+   "id": "hash-consent-forms",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#consent-forms",
+   "expect": {
+    "tab": "patient"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#consent",
+    "tab": "consent",
+    "panels": [
+     "consent"
+    ],
+    "el": {
+     "id": "consent-forms",
+     "exists": true,
+     "shown": true,
+     "panel": "consent",
+     "top": 215,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1355,
+    "callouts": []
+   },
+   "miss": [
+    "tab consent ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-visit-consents",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#visit-consents",
+   "expect": {
+    "tab": "patient"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#consent",
+    "tab": "consent",
+    "panels": [
+     "consent"
+    ],
+    "el": {
+     "id": "visit-consents",
+     "exists": true,
+     "shown": true,
+     "panel": "consent",
+     "top": 367,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1355,
+    "callouts": []
+   },
+   "miss": [
+    "tab consent ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-patient-forms",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#patient-forms",
+   "expect": {
+    "tab": "patient"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#patient-forms",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "patient-forms",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab overview ≠ patient"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": false
+  },
+  {
+   "id": "hash-details-card",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#details-card",
+   "expect": {
+    "tab": "patient"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#details-card",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "details-card",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab overview ≠ patient"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": false
+  },
+  {
+   "id": "hash-patient",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#patient",
+   "expect": {
+    "tab": "patient"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#patient",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "patient",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": []
+   },
+   "miss": [
+    "tab overview ≠ patient"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": false
+  },
+  {
+   "id": "hash-rec-overview",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#rec-overview",
+   "expect": {
+    "tab": "overview"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#rec-overview",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "rec-overview",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 900,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-rec-health",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#rec-health",
+   "expect": {
+    "tab": "patient"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#health",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": {
+     "id": "rec-health",
+     "exists": true,
+     "shown": true,
+     "panel": "health",
+     "top": -323,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1311,
+    "callouts": []
+   },
+   "miss": [
+    "tab health ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-rec-chart",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#rec-chart",
+   "expect": {
+    "tab": "chart"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "rec-chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": -29,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "hash-rec-treatment-record",
+   "who": "owner",
+   "patient": "maria",
+   "url": "#rec-treatment-record",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#treatment-record",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": {
+     "id": "rec-treatment-record",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment-record",
+     "top": -29,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-plan-add-plan",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=plan#treatment",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post plan-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=plan#treatment",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "treatment",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1086,
+    "callouts": [
+     "Added to the plan."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-plan-add-back-chart",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=plan&back=chart#chart",
+   "expect": {
+    "tab": "chart",
+    "el": true
+   },
+   "src": "palette post plan-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=plan&back=chart#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1086,
+    "callouts": [
+     "Added to the plan. Teeth with planned work have a ring under their number."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-plan-status-plan-accepted",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=plan-accepted#treatment",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post plan-status",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=plan-accepted#treatment",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "treatment",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1086,
+    "callouts": [
+     "Marked accepted. The patient agreed to it."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-plan-status-plan-done",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=plan-done#treatment",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post plan-status",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=plan-done#treatment",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "treatment",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1086,
+    "callouts": [
+     "Marked done, and added to treatments done."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-plan-remove-plan-removed",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=plan-removed#treatment",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post plan-remove",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=plan-removed#treatment",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "treatment",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1086,
+    "callouts": [
+     "Taken off the plan."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-done-add-done",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=done#treatment-done",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post done-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=done#treatment-done",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "treatment-done",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1681,
+    "callouts": [
+     "Treatment recorded."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-done-add-back-chart",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=done&back=chart#chart",
+   "expect": {
+    "tab": "chart",
+    "el": true
+   },
+   "src": "palette post done-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=done&back=chart#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1086,
+    "callouts": [
+     "Treatment recorded."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-lab-add-lab",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=lab#treatment-lab",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post lab-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=lab#treatment-lab",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "treatment-lab",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 140,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 2149,
+    "callouts": [
+     "Lab case added."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-lab-next-lab-moved",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=lab-moved#treatment-lab",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post lab-next",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=lab-moved#treatment-lab",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "treatment-lab",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 140,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 2149,
+    "callouts": [
+     "Lab case moved on."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-note-add-note",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=note#notes",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "src": "post note-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=note#notes",
+    "tab": "notes",
+    "panels": [
+     "notes"
+    ],
+    "el": {
+     "id": "notes",
+     "exists": true,
+     "shown": true,
+     "panel": "notes",
+     "top": 145,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1029,
+    "callouts": [
+     "Note saved under your name."
+    ]
+   },
+   "miss": [
+    "tab notes ≠ treatment-record"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-note-add-back-chart",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=note&back=chart#chart",
+   "expect": {
+    "tab": "chart",
+    "el": true
+   },
+   "src": "palette post note-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=note&back=chart#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1086,
+    "callouts": [
+     "Note saved under your name."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-note-add-addendum",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=addendum#notes",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "src": "post note-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=addendum#notes",
+    "tab": "notes",
+    "panels": [
+     "notes"
+    ],
+    "el": {
+     "id": "notes",
+     "exists": true,
+     "shown": true,
+     "panel": "notes",
+     "top": 145,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1029,
+    "callouts": [
+     "Addendum saved under the note."
+    ]
+   },
+   "miss": [
+    "tab notes ≠ treatment-record"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-rx-add-rx",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=rx%3A5aa8a88b-1059-421d-8ce9-28612789eebd#rx",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "src": "post rx-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=rx%3A5aa8a88b-1059-421d-8ce9-28612789eebd#rx",
+    "tab": "rx",
+    "panels": [
+     "rx"
+    ],
+    "el": {
+     "id": "rx",
+     "exists": true,
+     "shown": true,
+     "panel": "rx",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1266,
+    "callouts": [
+     "Prescription saved. Print it for Maria Liza on the clinic’s paper, with the prescriber’s licence num",
+     "Printed without a PTR number Write it in by hand before signing. Papers written after the PTR is add"
+    ]
+   },
+   "miss": [
+    "tab rx ≠ treatment-record"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-file-add-file",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=file#files",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post file-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=file#files",
+    "tab": "files",
+    "panels": [
+     "files"
+    ],
+    "el": {
+     "id": "files",
+     "exists": true,
+     "shown": true,
+     "panel": "files",
+     "top": 620,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 554,
+    "callouts": [
+     "File added to the record."
+    ]
+   },
+   "miss": [
+    "tab files ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-file-add-files",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=files%3A2#files",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post file-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=files%3A2#files",
+    "tab": "files",
+    "panels": [
+     "files"
+    ],
+    "el": {
+     "id": "files",
+     "exists": true,
+     "shown": true,
+     "panel": "files",
+     "top": 620,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 554,
+    "callouts": [
+     "2 files added to the record."
+    ]
+   },
+   "miss": [
+    "tab files ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-file-remove-file-removed",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=file-removed#files",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post file-remove",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=file-removed#files",
+    "tab": "files",
+    "panels": [
+     "files"
+    ],
+    "el": {
+     "id": "files",
+     "exists": true,
+     "shown": true,
+     "panel": "files",
+     "top": 620,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 554,
+    "callouts": [
+     "File taken off the record. It is kept for the audit."
+    ]
+   },
+   "miss": [
+    "tab files ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-recall-set-recall",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=recall#recall",
+   "expect": {
+    "tab": "overview"
+   },
+   "src": "post recall-set",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=recall#recall",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "recall",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": [
+     "Next check-up set."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-recall-done-recall-done",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=recall-done#recall",
+   "expect": {
+    "tab": "overview"
+   },
+   "src": "post recall-done",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=recall-done#recall",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "recall",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": [
+     "Marked as came in. Set the next one when you are ready."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-recall-clear-recall-cleared",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=recall-cleared#recall",
+   "expect": {
+    "tab": "overview"
+   },
+   "src": "post recall-clear",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=recall-cleared#recall",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "recall",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": [
+     "Next check-up cleared."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-vitals-add-vitals",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=vitals#vitals",
+   "expect": {
+    "tab": "patient"
+   },
+   "src": "post vitals-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=vitals#vitals",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": {
+     "id": "vitals",
+     "exists": true,
+     "shown": true,
+     "panel": "health",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": [
+     "Reading saved."
+    ]
+   },
+   "miss": [
+    "tab health ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-vitals-add-vitals-high",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=vitals-high#vitals",
+   "expect": {
+    "tab": "patient"
+   },
+   "src": "post vitals-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=vitals-high#vitals",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": {
+     "id": "vitals",
+     "exists": true,
+     "shown": true,
+     "panel": "health",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [
+    "tab health ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-letter-add-letter",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=letter%3A66ac700b-43bd-481e-a6a1-39341416ce72#letters",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "src": "post letter-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=letter%3A66ac700b-43bd-481e-a6a1-39341416ce72#letters",
+    "tab": "rx",
+    "panels": [
+     "rx"
+    ],
+    "el": {
+     "id": "letters",
+     "exists": true,
+     "shown": true,
+     "panel": "rx",
+     "top": 420,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1318,
+    "callouts": [
+     "Dental certificate saved. Print it on the clinic’s paper, signed by Dr. Liwayway Domingo.",
+     "Printed without a PTR number Write it in by hand before signing. Papers written after the PTR is add"
+    ]
+   },
+   "miss": [
+    "tab rx ≠ treatment-record"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-letter-answer-answered",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=answered#letters",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "src": "post letter-answer",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=answered#letters",
+    "tab": "rx",
+    "panels": [
+     "rx"
+    ],
+    "el": {
+     "id": "letters",
+     "exists": true,
+     "shown": true,
+     "panel": "rx",
+     "top": 420,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1138,
+    "callouts": [
+     "The physician’s reply is on the record."
+    ]
+   },
+   "miss": [
+    "tab rx ≠ treatment-record"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-loa-add-loa",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=loa#loas",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post loa-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=loa#loas",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "loas",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 388,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 2149,
+    "callouts": [
+     "LOA request noted. Write in the approval code when the HMO answers."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-loa-approve-loa-approved",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=loa-approved#loas",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post loa-approve",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=loa-approved#loas",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "loas",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 388,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 2149,
+    "callouts": [
+     "Approved. The code is on the record."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-loa-deny-loa-denied",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=loa-denied#loas",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post loa-deny",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=loa-denied#loas",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "loas",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 388,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 2149,
+    "callouts": [
+     "Denied. The reason is on the record."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-loa-cancel-loa-cancelled",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=loa-cancelled#loas",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post loa-cancel",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=loa-cancelled#loas",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "loas",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 388,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 2149,
+    "callouts": [
+     "LOA cancelled."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-payplan-add-payplan",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=payplan%3A0f0f0f0f-1111-4222-8333-444444444444#payplans",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post payplan-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=payplan%3A0f0f0f0f-1111-4222-8333-444444444444#payplans",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "payplans",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 620,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 2171,
+    "callouts": [
+     "Plan made, with its statement. Take the down payment on the statement, as with any payment."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-payplan-stop-payplan-stopped",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=payplan-stopped#payplans",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post payplan-stop",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=payplan-stopped#payplans",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "payplans",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 620,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 2149,
+    "callouts": [
+     "Plan stopped. Its statement stays, with whatever is left to pay."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "post-adjust-add-adjusted",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?saved=adjusted%3A2026-10-30#payplans",
+   "expect": {
+    "tab": "chart"
+   },
+   "src": "post adjust-add",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?saved=adjusted%3A2026-10-30#payplans",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "payplans",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment",
+     "top": 620,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 2149,
+    "callouts": [
+     "Adjustment saved. The next one is 30 Oct 2026: book it before they leave."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ chart"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-overview-rx-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=rx%3A5aa8a88b-1059-421d-8ce9-28612789eebd&back=overview#overview",
+   "expect": {
+    "tab": "overview"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=rx%3A5aa8a88b-1059-421d-8ce9-28612789eebd&back=overview#overview",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "overview",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-patient-rx-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=rx%3A5aa8a88b-1059-421d-8ce9-28612789eebd&back=patient#patient",
+   "expect": {
+    "tab": "patient"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=rx%3A5aa8a88b-1059-421d-8ce9-28612789eebd&back=patient#patient",
+    "tab": "rx",
+    "panels": [
+     "rx"
+    ],
+    "el": {
+     "id": "patient",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "Prescription saved. Print it for Maria Liza on the clinic’s paper, with the prescriber’s licence num",
+     "Printed without a PTR number Write it in by hand before signing. Papers written after the PTR is add"
+    ]
+   },
+   "miss": [
+    "tab rx ≠ patient"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": false
+  },
+  {
+   "id": "back-chart-rx-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=rx%3A5aa8a88b-1059-421d-8ce9-28612789eebd&back=chart#chart",
+   "expect": {
+    "tab": "chart"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=rx%3A5aa8a88b-1059-421d-8ce9-28612789eebd&back=chart#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-treatment-record-rx-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=rx%3A5aa8a88b-1059-421d-8ce9-28612789eebd&back=treatment-record#treatment-record",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=rx%3A5aa8a88b-1059-421d-8ce9-28612789eebd&back=treatment-record#treatment-record",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": {
+     "id": "treatment-record",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment-record",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-overview-note-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=note&back=overview#overview",
+   "expect": {
+    "tab": "overview"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=note&back=overview#overview",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "overview",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-patient-note-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=note&back=patient#patient",
+   "expect": {
+    "tab": "patient"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=note&back=patient#patient",
+    "tab": "notes",
+    "panels": [
+     "notes"
+    ],
+    "el": {
+     "id": "patient",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "Note saved under your name."
+    ]
+   },
+   "miss": [
+    "tab notes ≠ patient"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": false
+  },
+  {
+   "id": "back-chart-note-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=note&back=chart#chart",
+   "expect": {
+    "tab": "chart"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=note&back=chart#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1086,
+    "callouts": [
+     "Note saved under your name."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-treatment-record-note-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=note&back=treatment-record#treatment-record",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=note&back=treatment-record#treatment-record",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": {
+     "id": "treatment-record",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment-record",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-overview-vitals-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=vitals&back=overview#overview",
+   "expect": {
+    "tab": "overview"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=vitals&back=overview#overview",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "overview",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-patient-vitals-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=vitals&back=patient#patient",
+   "expect": {
+    "tab": "patient"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=vitals&back=patient#patient",
+    "tab": "health",
+    "panels": [
+     "health"
+    ],
+    "el": {
+     "id": "patient",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "Reading saved."
+    ]
+   },
+   "miss": [
+    "tab health ≠ patient"
+   ],
+   "oldAsNew": "patient",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-chart-vitals-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=vitals&back=chart#chart",
+   "expect": {
+    "tab": "chart"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=vitals&back=chart#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-treatment-record-vitals-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=vitals&back=treatment-record#treatment-record",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=vitals&back=treatment-record#treatment-record",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": {
+     "id": "treatment-record",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment-record",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-overview-letter-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=letter%3A66ac700b-43bd-481e-a6a1-39341416ce72&back=overview#overview",
+   "expect": {
+    "tab": "overview"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=letter%3A66ac700b-43bd-481e-a6a1-39341416ce72&back=overview#overview",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "overview",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-patient-letter-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=letter%3A66ac700b-43bd-481e-a6a1-39341416ce72&back=patient#patient",
+   "expect": {
+    "tab": "patient"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=letter%3A66ac700b-43bd-481e-a6a1-39341416ce72&back=patient#patient",
+    "tab": "rx",
+    "panels": [
+     "rx"
+    ],
+    "el": {
+     "id": "patient",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "Dental certificate saved. Print it on the clinic’s paper, signed by Dr. Liwayway Domingo.",
+     "Printed without a PTR number Write it in by hand before signing. Papers written after the PTR is add"
+    ]
+   },
+   "miss": [
+    "tab rx ≠ patient"
+   ],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": false
+  },
+  {
+   "id": "back-chart-letter-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=letter%3A66ac700b-43bd-481e-a6a1-39341416ce72&back=chart#chart",
+   "expect": {
+    "tab": "chart"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=letter%3A66ac700b-43bd-481e-a6a1-39341416ce72&back=chart#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-treatment-record-letter-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=letter%3A66ac700b-43bd-481e-a6a1-39341416ce72&back=treatment-record#treatment-record",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=letter%3A66ac700b-43bd-481e-a6a1-39341416ce72&back=treatment-record#treatment-record",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": {
+     "id": "treatment-record",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment-record",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-overview-file-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=file&back=overview#overview",
+   "expect": {
+    "tab": "overview"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=file&back=overview#overview",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "overview",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-patient-file-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=file&back=patient#patient",
+   "expect": {
+    "tab": "patient"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=file&back=patient#patient",
+    "tab": "files",
+    "panels": [
+     "files"
+    ],
+    "el": {
+     "id": "patient",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "File added to the record."
+    ]
+   },
+   "miss": [
+    "tab files ≠ patient"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": false
+  },
+  {
+   "id": "back-chart-file-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=file&back=chart#chart",
+   "expect": {
+    "tab": "chart"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=file&back=chart#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-treatment-record-file-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=file&back=treatment-record#treatment-record",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=file&back=treatment-record#treatment-record",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": {
+     "id": "treatment-record",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment-record",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-overview-done-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=done&back=overview#overview",
+   "expect": {
+    "tab": "overview"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=done&back=overview#overview",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "overview",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-patient-done-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=done&back=patient#patient",
+   "expect": {
+    "tab": "patient"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=done&back=patient#patient",
+    "tab": "treatment",
+    "panels": [
+     "treatment"
+    ],
+    "el": {
+     "id": "patient",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "Treatment recorded."
+    ]
+   },
+   "miss": [
+    "tab treatment ≠ patient"
+   ],
+   "oldAsNew": "chart",
+   "sameAsSpec": false
+  },
+  {
+   "id": "back-chart-done-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=done&back=chart#chart",
+   "expect": {
+    "tab": "chart"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=done&back=chart#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1086,
+    "callouts": [
+     "Treatment recorded."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-treatment-record-done-add",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=done&back=treatment-record#treatment-record",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=done&back=treatment-record#treatment-record",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": {
+     "id": "treatment-record",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment-record",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-overview-recall-set",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=recall&back=overview#overview",
+   "expect": {
+    "tab": "overview"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=recall&back=overview#overview",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "overview",
+     "exists": true,
+     "shown": true,
+     "panel": "overview",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": [
+     "Next check-up set."
+    ]
+   },
+   "miss": [],
+   "oldAsNew": "overview",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-patient-recall-set",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=recall&back=patient#patient",
+   "expect": {
+    "tab": "patient"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=recall&back=patient#patient",
+    "tab": "overview",
+    "panels": [
+     "overview"
+    ],
+    "el": {
+     "id": "patient",
+     "exists": false,
+     "shown": false,
+     "panel": null,
+     "top": null,
+     "onScreen": null
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 0,
+    "callouts": [
+     "Next check-up set."
+    ]
+   },
+   "miss": [
+    "tab overview ≠ patient"
+   ],
+   "oldAsNew": "overview",
+   "sameAsSpec": false
+  },
+  {
+   "id": "back-chart-recall-set",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=recall&back=chart#chart",
+   "expect": {
+    "tab": "chart"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=recall&back=chart#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "back-treatment-record-recall-set",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=recall&back=treatment-record#treatment-record",
+   "expect": {
+    "tab": "treatment-record"
+   },
+   "note": "new in S2",
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384&saved=recall&back=treatment-record#treatment-record",
+    "tab": "treatment-record",
+    "panels": [
+     "treatment-record"
+    ],
+    "el": {
+     "id": "treatment-record",
+     "exists": true,
+     "shown": true,
+     "panel": "treatment-record",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "treatment-record",
+   "sameAsSpec": true
+  },
+  {
+   "id": "offline-copy",
+   "who": "owner",
+   "patient": "maria",
+   "url": "",
+   "expect": {
+    "tab": "chart"
+   },
+   "offline": true,
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  },
+  {
+   "id": "offline-copy-visit",
+   "who": "owner",
+   "patient": "maria",
+   "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384",
+   "expect": {
+    "tab": "chart"
+   },
+   "offline": true,
+   "got": {
+    "http": 200,
+    "status": "Maria Liza Dela Cruz — Session Road Dental — Flossify",
+    "url": "?visit=5a055ab9-8eaa-42aa-9951-395736601384#chart",
+    "tab": "chart",
+    "panels": [
+     "chart"
+    ],
+    "el": {
+     "id": "chart",
+     "exists": true,
+     "shown": true,
+     "panel": "chart",
+     "top": 88,
+     "onScreen": true
+    },
+    "dialogs": [],
+    "strip": {
+     "shown": true,
+     "meta": "9:30 am · Dr. Hazel Tabanao · Filling, tooth 36 · Chair 2"
+    },
+    "focus": null,
+    "scrollY": 1017,
+    "callouts": []
+   },
+   "miss": [],
+   "oldAsNew": "chart",
+   "sameAsSpec": true
+  }
+ ],
+ "presses": [
+  {
+   "patient": "maria",
+   "i": 0,
+   "go": null,
+   "show": "notes",
+   "opens": "rec-note-add",
+   "text": "Clinical noteWhat was found and done today",
+   "where": "more",
+   "got": {
+    "tab": "notes",
+    "dialogs": [
+     "rec-note-add"
+    ],
+    "url": "#notes",
+    "focus": "h2#rec-note-add-title"
+   },
+   "want": "treatment-record",
+   "oldAsNew": "treatment-record"
+  },
+  {
+   "patient": "maria",
+   "i": 1,
+   "go": null,
+   "show": "treatment",
+   "opens": "rec-plan-add",
+   "text": "Add to treatment planWith the price from your fee guide",
+   "where": "more",
+   "got": {
+    "tab": "treatment",
+    "dialogs": [
+     "rec-plan-add"
+    ],
+    "url": "#treatment",
+    "focus": "h2#rec-plan-add-title"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  },
+  {
+   "patient": "maria",
+   "i": 2,
+   "go": null,
+   "show": "rx",
+   "opens": "rec-rx-add",
+   "text": "PrescriptionWith the PRC and PTR on file",
+   "where": "more",
+   "got": {
+    "tab": "rx",
+    "dialogs": [
+     "rec-rx-add"
+    ],
+    "url": "#rx",
+    "focus": "h2#rec-rx-add-title"
+   },
+   "want": "treatment-record",
+   "oldAsNew": "treatment-record"
+  },
+  {
+   "patient": "maria",
+   "i": 3,
+   "go": null,
+   "show": "health",
+   "opens": "rec-vitals-add",
+   "text": "Take blood pressureBefore anaesthesia",
+   "where": "more",
+   "got": {
+    "tab": "health",
+    "dialogs": [
+     "rec-vitals-add"
+    ],
+    "url": "#health",
+    "focus": "h2#rec-vitals-add-title"
+   },
+   "want": "patient",
+   "oldAsNew": "patient"
+  },
+  {
+   "patient": "maria",
+   "i": 4,
+   "go": null,
+   "show": "rx",
+   "opens": "rec-letter-add",
+   "text": "Dental certificateOr a referral, or medical clearance",
+   "where": "more",
+   "got": {
+    "tab": "rx",
+    "dialogs": [
+     "rec-letter-add"
+    ],
+    "url": "#rx",
+    "focus": "h2#rec-letter-add-title"
+   },
+   "want": "treatment-record",
+   "oldAsNew": "treatment-record"
+  },
+  {
+   "patient": "maria",
+   "i": 5,
+   "go": null,
+   "show": "files",
+   "opens": "rec-file-add",
+   "text": "Add X-ray or photoOr a document, as a PDF",
+   "where": "more",
+   "got": {
+    "tab": "files",
+    "dialogs": [
+     "rec-file-add"
+    ],
+    "url": "#files",
+    "focus": "h2#rec-file-add-title"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  },
+  {
+   "patient": "maria",
+   "i": 6,
+   "go": "health",
+   "show": null,
+   "opens": null,
+   "text": "Something changed",
+   "where": "this-visit",
+   "got": {
+    "tab": "health",
+    "dialogs": [],
+    "url": "#health",
+    "focus": "button#rec-rec-health-tab"
+   },
+   "want": "patient",
+   "oldAsNew": "patient"
+  },
+  {
+   "patient": "maria",
+   "i": 7,
+   "go": null,
+   "show": "health",
+   "opens": "rec-vitals-add",
+   "text": "Take it",
+   "where": "this-visit",
+   "got": {
+    "tab": "health",
+    "dialogs": [
+     "rec-vitals-add"
+    ],
+    "url": "#health",
+    "focus": "h2#rec-vitals-add-title"
+   },
+   "want": "patient",
+   "oldAsNew": "patient"
+  },
+  {
+   "patient": "maria",
+   "i": 8,
+   "go": "consent",
+   "show": null,
+   "opens": null,
+   "text": "Record it",
+   "where": "this-visit",
+   "got": {
+    "tab": "consent",
+    "dialogs": [],
+    "url": "#consent",
+    "focus": "button#rec-rec-consent-tab"
+   },
+   "want": "patient",
+   "oldAsNew": "patient"
+  },
+  {
+   "patient": "maria",
+   "i": 9,
+   "go": null,
+   "show": "rx",
+   "opens": "rec-rx-add",
+   "text": "Prescription",
+   "where": "this-visit",
+   "got": {
+    "tab": "rx",
+    "dialogs": [
+     "rec-rx-add"
+    ],
+    "url": "#rx",
+    "focus": "h2#rec-rx-add-title"
+   },
+   "want": "treatment-record",
+   "oldAsNew": "treatment-record"
+  },
+  {
+   "patient": "maria",
+   "i": 10,
+   "go": null,
+   "show": "files",
+   "opens": "rec-file-add",
+   "text": "X-ray or photo",
+   "where": "this-visit",
+   "got": {
+    "tab": "files",
+    "dialogs": [
+     "rec-file-add"
+    ],
+    "url": "#files",
+    "focus": "h2#rec-file-add-title"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  },
+  {
+   "patient": "maria",
+   "i": 11,
+   "go": "chart",
+   "show": null,
+   "opens": null,
+   "text": "Chart",
+   "where": "this-visit",
+   "got": {
+    "tab": "chart",
+    "dialogs": [],
+    "url": "#chart",
+    "focus": "button#rec-rec-chart-tab"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  },
+  {
+   "patient": "maria",
+   "i": 12,
+   "go": "visits",
+   "show": null,
+   "opens": null,
+   "text": "See all 6",
+   "where": "overview",
+   "got": {
+    "tab": "visits",
+    "dialogs": [],
+    "url": "#visits",
+    "focus": "button#rec-rec-visits-tab"
+   },
+   "want": "overview",
+   "oldAsNew": "overview"
+  },
+  {
+   "patient": "maria",
+   "i": 13,
+   "go": "health",
+   "show": null,
+   "opens": null,
+   "text": "Update",
+   "where": "overview",
+   "got": {
+    "tab": "health",
+    "dialogs": [],
+    "url": "#health",
+    "focus": "button#rec-rec-health-tab"
+   },
+   "want": "patient",
+   "oldAsNew": "patient"
+  },
+  {
+   "patient": "maria",
+   "i": 14,
+   "go": "treatment",
+   "show": null,
+   "opens": null,
+   "text": "Open",
+   "where": "overview",
+   "got": {
+    "tab": "treatment",
+    "dialogs": [],
+    "url": "#treatment",
+    "focus": "button#rec-rec-treatment-tab"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  },
+  {
+   "patient": "rich",
+   "i": 0,
+   "go": null,
+   "show": "notes",
+   "opens": "rec-note-add",
+   "text": "Clinical noteWhat was found and done today",
+   "where": "more",
+   "got": {
+    "tab": "notes",
+    "dialogs": [
+     "rec-note-add"
+    ],
+    "url": "#notes",
+    "focus": "h2#rec-note-add-title"
+   },
+   "want": "treatment-record",
+   "oldAsNew": "treatment-record"
+  },
+  {
+   "patient": "rich",
+   "i": 1,
+   "go": null,
+   "show": "treatment",
+   "opens": "rec-plan-add",
+   "text": "Add to treatment planWith the price from your fee guide",
+   "where": "more",
+   "got": {
+    "tab": "treatment",
+    "dialogs": [
+     "rec-plan-add"
+    ],
+    "url": "#treatment",
+    "focus": "h2#rec-plan-add-title"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  },
+  {
+   "patient": "rich",
+   "i": 2,
+   "go": null,
+   "show": "rx",
+   "opens": "rec-rx-add",
+   "text": "PrescriptionWith the PRC and PTR on file",
+   "where": "more",
+   "got": {
+    "tab": "rx",
+    "dialogs": [
+     "rec-rx-add"
+    ],
+    "url": "#rx",
+    "focus": "h2#rec-rx-add-title"
+   },
+   "want": "treatment-record",
+   "oldAsNew": "treatment-record"
+  },
+  {
+   "patient": "rich",
+   "i": 3,
+   "go": null,
+   "show": "health",
+   "opens": "rec-vitals-add",
+   "text": "Take blood pressureBefore anaesthesia",
+   "where": "more",
+   "got": {
+    "tab": "health",
+    "dialogs": [
+     "rec-vitals-add"
+    ],
+    "url": "#health",
+    "focus": "h2#rec-vitals-add-title"
+   },
+   "want": "patient",
+   "oldAsNew": "patient"
+  },
+  {
+   "patient": "rich",
+   "i": 4,
+   "go": null,
+   "show": "rx",
+   "opens": "rec-letter-add",
+   "text": "Dental certificateOr a referral, or medical clearance",
+   "where": "more",
+   "got": {
+    "tab": "rx",
+    "dialogs": [
+     "rec-letter-add"
+    ],
+    "url": "#rx",
+    "focus": "h2#rec-letter-add-title"
+   },
+   "want": "treatment-record",
+   "oldAsNew": "treatment-record"
+  },
+  {
+   "patient": "rich",
+   "i": 5,
+   "go": null,
+   "show": "files",
+   "opens": "rec-file-add",
+   "text": "Add X-ray or photoOr a document, as a PDF",
+   "where": "more",
+   "got": {
+    "tab": "files",
+    "dialogs": [
+     "rec-file-add"
+    ],
+    "url": "#files",
+    "focus": "h2#rec-file-add-title"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  },
+  {
+   "patient": "rich",
+   "i": 6,
+   "go": "health",
+   "show": null,
+   "opens": null,
+   "text": "BP 165/102 today · high",
+   "where": "head-chip",
+   "got": {
+    "tab": "health",
+    "dialogs": [],
+    "url": "#health",
+    "focus": "button#rec-rec-health-tab"
+   },
+   "want": "patient",
+   "oldAsNew": "patient"
+  },
+  {
+   "patient": "rich",
+   "i": 7,
+   "go": "rx",
+   "show": null,
+   "opens": null,
+   "text": "Needs medical clearance",
+   "where": "head-chip",
+   "got": {
+    "tab": "rx",
+    "dialogs": [],
+    "url": "#rx",
+    "focus": "button#rec-rec-rx-tab"
+   },
+   "want": "treatment-record",
+   "oldAsNew": "treatment-record"
+  },
+  {
+   "patient": "rich",
+   "i": 8,
+   "go": "treatment",
+   "show": null,
+   "opens": null,
+   "text": "Waiting for an HMO LOA",
+   "where": "head-chip",
+   "got": {
+    "tab": "treatment",
+    "dialogs": [],
+    "url": "#treatment",
+    "focus": "button#rec-rec-treatment-tab"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  },
+  {
+   "patient": "rich",
+   "i": 9,
+   "go": "health",
+   "show": null,
+   "opens": null,
+   "text": "Something changed",
+   "where": "this-visit",
+   "got": {
+    "tab": "health",
+    "dialogs": [],
+    "url": "#health",
+    "focus": "button#rec-rec-health-tab"
+   },
+   "want": "patient",
+   "oldAsNew": "patient"
+  },
+  {
+   "patient": "rich",
+   "i": 10,
+   "go": null,
+   "show": "health",
+   "opens": "rec-vitals-add",
+   "text": "Take again",
+   "where": "this-visit",
+   "got": {
+    "tab": "health",
+    "dialogs": [
+     "rec-vitals-add"
+    ],
+    "url": "#health",
+    "focus": "h2#rec-vitals-add-title"
+   },
+   "want": "patient",
+   "oldAsNew": "patient"
+  },
+  {
+   "patient": "rich",
+   "i": 11,
+   "go": "health",
+   "show": null,
+   "opens": null,
+   "text": "What to do",
+   "where": "this-visit",
+   "got": {
+    "tab": "health",
+    "dialogs": [],
+    "url": "#health",
+    "focus": "button#rec-rec-health-tab"
+   },
+   "want": "patient",
+   "oldAsNew": "patient"
+  },
+  {
+   "patient": "rich",
+   "i": 12,
+   "go": "consent",
+   "show": null,
+   "opens": null,
+   "text": "Record it",
+   "where": "this-visit",
+   "got": {
+    "tab": "consent",
+    "dialogs": [],
+    "url": "#consent",
+    "focus": "button#rec-rec-consent-tab"
+   },
+   "want": "patient",
+   "oldAsNew": "patient"
+  },
+  {
+   "patient": "rich",
+   "i": 13,
+   "go": null,
+   "show": "treatment",
+   "opens": "rec-done-add",
+   "text": "Record it",
+   "where": "this-visit",
+   "got": {
+    "tab": "treatment",
+    "dialogs": [
+     "rec-done-add"
+    ],
+    "url": "#treatment",
+    "focus": "h2#rec-done-add-title"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  },
+  {
+   "patient": "rich",
+   "i": 14,
+   "go": "treatment",
+   "show": null,
+   "opens": null,
+   "text": "The plan",
+   "where": "this-visit",
+   "got": {
+    "tab": "treatment",
+    "dialogs": [],
+    "url": "#treatment",
+    "focus": "button#rec-rec-treatment-tab"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  },
+  {
+   "patient": "rich",
+   "i": 15,
+   "go": null,
+   "show": "notes",
+   "opens": "rec-note-add",
+   "text": "Write it",
+   "where": "this-visit",
+   "got": {
+    "tab": "notes",
+    "dialogs": [
+     "rec-note-add"
+    ],
+    "url": "#notes",
+    "focus": "h2#rec-note-add-title"
+   },
+   "want": "treatment-record",
+   "oldAsNew": "treatment-record"
+  },
+  {
+   "patient": "rich",
+   "i": 16,
+   "go": null,
+   "show": "rx",
+   "opens": "rec-rx-add",
+   "text": "Prescription",
+   "where": "this-visit",
+   "got": {
+    "tab": "rx",
+    "dialogs": [
+     "rec-rx-add"
+    ],
+    "url": "#rx",
+    "focus": "h2#rec-rx-add-title"
+   },
+   "want": "treatment-record",
+   "oldAsNew": "treatment-record"
+  },
+  {
+   "patient": "rich",
+   "i": 17,
+   "go": null,
+   "show": "files",
+   "opens": "rec-file-add",
+   "text": "X-ray or photo",
+   "where": "this-visit",
+   "got": {
+    "tab": "files",
+    "dialogs": [
+     "rec-file-add"
+    ],
+    "url": "#files",
+    "focus": "h2#rec-file-add-title"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  },
+  {
+   "patient": "rich",
+   "i": 18,
+   "go": "chart",
+   "show": null,
+   "opens": null,
+   "text": "Chart",
+   "where": "this-visit",
+   "got": {
+    "tab": "chart",
+    "dialogs": [],
+    "url": "#chart",
+    "focus": "button#rec-rec-chart-tab"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  },
+  {
+   "patient": "rich",
+   "i": 19,
+   "go": "health",
+   "show": null,
+   "opens": null,
+   "text": "Update",
+   "where": "overview",
+   "got": {
+    "tab": "health",
+    "dialogs": [],
+    "url": "#health",
+    "focus": "button#rec-rec-health-tab"
+   },
+   "want": "patient",
+   "oldAsNew": "patient"
+  },
+  {
+   "patient": "rich",
+   "i": 20,
+   "go": "treatment",
+   "show": null,
+   "opens": null,
+   "text": "Open",
+   "where": "overview",
+   "got": {
+    "tab": "treatment",
+    "dialogs": [],
+    "url": "#treatment",
+    "focus": "button#rec-rec-treatment-tab"
+   },
+   "want": "chart",
+   "oldAsNew": "chart"
+  }
+ ]
+}

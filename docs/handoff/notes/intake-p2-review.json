@@ -1,0 +1,301 @@
+{
+ "confirmed": [
+  {
+   "dim": "security",
+   "summary": "On a handed-over desk, an earlier patient's unfinished link stays live after the device is unlocked. Each handover sets its own fl_idev at Path=/f/i/<token>/ for 24 h, and neither /auth/unlock nor the next /auth/park retires the old link or its cookie. The next patient can go Back to the earlier patient's forms and read or change them.",
+   "real": true,
+   "reason": "Confirmed by reading the code paths. unlock.astro, on success (lines 59-64), only sets the session, audits and clears fl_park. goLive (intake.ts:733-737) retires only the old link of the same intake, and the intake_link_guard insert trigger touches no other link. setDeviceSecret (park.ts:61) scopes each secret to its own token's path for 24 h and nothing deletes it. The fl_idev cookie for /f/i/tokA/ is still sent when /f/i/tokA/ is reached again, through Back, the history menu or a typed address. deviceProof then returns A's hash. intake_gate (039:1264) finds the link claimed, the hash matching and last_seen under 20 minutes old, so it answers 'open'. The page draws nextScreen() with A's saved answers (valOf reads look.intake.answers), 'goto' lets B go to the earlier page-1 screens, and savePage1, decidePage and sendIntake all accept B's device proof. The same thing happens if staff sign in at /auth/login instead. The desk page after unlock still shows the intake 'out', with Stop only in a side panel, so nothing forces the link closed.",
+   "file": "src/pages/auth/unlock.astro",
+   "line": 63,
+   "fix": "On a successful unlock, stop park.i's live desk link inside withClinic (set retired_why 'stopped' and put the intake back to 'preparing', as stopLink does, or only retire the link when device = 'desk'), and expire that link's fl_idev. Also keep one handed-over secret per browser: set fl_idev at Path=/f/i/, so the next handover overwrites the last one and an old desk link answers 'taken' on this device.",
+   "severity": "medium"
+  },
+  {
+   "dim": "security",
+   "summary": "'Make this device a clinic tablet' signs the browser out with clearSession inside a POST to /c/<slug>/settings/, then goes to /f/t/. This skips sw.js's session-change handling and sends no 'parked' or {who:null} broadcast. The kept record copy and any other open workspace tab stay on a device patients now hold.",
+   "real": true,
+   "reason": "sw.js runs forgetSession, which deletes the 'flossify-record-v2' cache and posts {who:null}, only for navigation POSTs matching ^/(auth|start)/. It deletes RECORD on navigations to /auth/ pages only (sw.js:67-68, 283, 291). The workspace's own fetch sign-out drops the cache itself (offline-queue.ts dropRecordCopies). tabletsAction (tablets.ts:27-31) posts to /c/<slug>/settings/ and redirects to /f/t/?new=1, and that page's only script is the poll loop, so it runs none of this. A copy kept while a chart was open therefore stays for up to 4 h. With the network down, navigating back to that record's address makes recordNavigation serve the copy. Other tabs are not covered either: shell.ts covers a tab only on {parked:true}, which only the /f/i/ desk page posts. This sign-out path is new in this diff and breaks the rule stated at the top of sw.js ('Gone at every sign-in, sign-out').",
+   "file": "src/pages/c/[clinic]/settings/_lib/tablets.ts",
+   "line": 30,
+   "fix": "Post the registration to an /auth/ route (for example /auth/tablet/), so sw.js runs forgetSession, or have /f/t/?new=1 run a script that deletes every 'flossify-record-' cache and posts {parked:true} and {who:null,sid:null,at} on the 'flossify-offline' BroadcastChannel, as the handed-over /f/i/ page does.",
+   "severity": "medium"
+  },
+  {
+   "dim": "security",
+   "summary": "The design says a clinic tablet never holds a staff session, but only the moment of registration clears one. /f/t/, /f/t/poll/ and /f/i/ with a tablet proof never check for fl_session or clear it, so a staff sign-in made on the tablet after registration stays live while patients use it.",
+   "real": true,
+   "reason": "/f/t/index.astro (line 23 on) reads only tabletProof, and poll.ts reads only fl_ctab. The /f/i/ page reads deviceProof and never reads or clears fl_session. Signing in on the tablet (/auth/login, the clinic's door) is always possible and does not touch fl_ctab (path /f/, 180 days). The tablet then goes back to 'Ready for the next patient' and gets forms normally, with the staff session (12 h when Shared) still in the browser. A patient on the tablet can open /c/<slug>/patients/ and requireWorkspace accepts that session. The spec's \u00a70.13 invariant ('A clinic tablet never holds a staff session') and the page's own comment ('It holds no staff session') are not enforced. This needs a staff member to sign in on the tablet and leave the session open, but the impact is full workspace access, and the code could enforce the invariant cheaply.",
+   "file": "src/pages/f/t/index.astro",
+   "line": 23,
+   "fix": "When a valid tablet proof is present on /f/t/, /f/t/poll/ and /f/i/[token] (proof.tablet), call clearSession(Astro.cookies) if readSession finds a session, and log it. Also have /f/t/ drop the 'flossify-record-' caches and post {parked:true} and {who:null} on 'flossify-offline'.",
+   "severity": "medium"
+  },
+  {
+   "dim": "security",
+   "summary": "The handover's 'other tabs cover themselves' only reaches pages that load shell.ts. Record printouts and file views open in new tabs with their own layout, such as the Rx at patients/<id>/rx/<rx>/, and they stay on screen after 'Hand this device'.",
+   "real": true,
+   "reason": "The 'parked' listener is in src/components/ws/shell.ts (line 547 on), and only Clinic.astro (and Admin.astro) import it. The Rx print page, rx/[rx].astro, is a standalone HTML document whose only script is the inline theme script. Prescriptions.astro line 80 opens it with target=_blank. Letters, the treatment-record paper, aftercare and the consent print pages follow the same pattern, and files are served raw. After /auth/park, those tabs still show the earlier patient's name, age, address and medicines to whoever holds the device. This gap is lower risk than the others, because staff must have left such a tab open.",
+   "file": "src/components/ws/shell.ts",
+   "line": 524,
+   "fix": "Add a small shared inline listener on 'flossify-offline' to every standalone workspace page (the Rx, letter, treatment-record, aftercare and consent/forms print pages). On {parked:true} it should replace the body with the locked card or location.replace('/auth/unlock/'). Serve record file views inside an HTML wrapper that does the same, or open them in the same tab.",
+   "severity": "low"
+  },
+  {
+   "dim": "consent",
+   "summary": "print/?paper=1 draws a blank signable A4 form with no gate. It skips printForPaper's checks: records.edit, attested first, never signed, paper_printed_at set, and not in an open intake.",
+   "real": true,
+   "reason": "Confirmed on 85f6cd9. print.astro only calls requireWorkspace, sets latest = null when paper=1 (line 41), and renders renderDocument over the live fields for any state. For an unattested procedure form, the dentist's fields read '(to be confirmed by the dentist)'. The only link to ?paper=1 is the redirect after a successful paper_print POST ([document].astro:90), so the ungated path needs the URL typed by hand. From browser history it is harmless: a form printed once is already attested and frozen, and a signed form cannot take a paper signing because recordPaperSigning requires state to_sign. The described chain does work end to end, though. Staff open ?paper=1 before the explanation and the patient signs. The dentist then attests with changed teeth, and the desk presses Print for signing, which sets paper_printed_at. The desk uploads the scan afterwards and records it with a date on the same day. Every check in recordPaperSigning and consent_signing_check passes, and the sealed snapshot shows facts the patient never saw. This is a server-side gate missing on a GET, which breaks the rulebook's 'each page refuses on its own'. It needs deliberate URL editing by signed-in staff, so I am downgrading it to low.",
+   "file": "src/pages/c/[clinic]/patients/[patient]/consents/[document]/print.astro",
+   "line": 41,
+   "fix": "When paper=1, check inside the withClinic block before rendering: can(clinic,'records.edit') and canEditRecords; doc.paperPrintedAt set; doc.state === 'to_sign' and doc.signings.length === 0; the intake not open; and doc.attestation present when t.attest. Otherwise redirect to the form page. Never render the unsigned library version for a form that has a signing.",
+   "severity": "low"
+  },
+  {
+   "dim": "consent",
+   "summary": "addIntake('existing') attaches the intake's signed consent forms to the chosen record without checking the signer's authority against the record's birth date. writePrivacyConsent does apply the minor rule for the privacy row.",
+   "real": true,
+   "reason": "Confirmed. The 'existing' branch keeps the record's birth date (planFill only lists it under 'the forms say otherwise'; FILLABLE birth_date is never overwritten when set). writePrivacyConsent (patient-add.ts:290) returns 'minor' for a self-agreed privacy consent. But line 925, `update consent_document set patient_id = $2 where intake_id = $1 ...`, moves every signed form onto the record unchanged. The signings were checked at intake_send by consent_signing_check using consent_birth_date(null, intake), which is page 1's date. The consent_document_chain and guard triggers only append to the chain and check that the patient is on file; nothing re-runs consent_signer_problem. Afterwards consent_birth_date(patient_id, \u2026) returns the record's 2010 date, yet consent_document_state returns 'agreed'. visit_treatment_consented is true because keepVisit keeps appointment_id when the visit is this patient's. The walk-in case is as described: intakeLookAlikes puts the visit's patient first, addAtSend waits, and the Screen F teal button is the visit's patient (strong = m.visit) whatever the birth date. The desk sees the birth-date difference listed but nothing about the consent consequence.",
+   "file": "src/lib/intake.ts",
+   "line": 925,
+   "fix": "In the 'existing' branch, after fillPatientFromAnswers, take birthOnFile and, for each consent_signing on the intake's documents, evaluate consent_signer_problem(isMinor(birthOnFile, Manila day of signed_at), channel, signed_as, method, authority, authority_ground, authority_note, patientId, clinicId). If any fails, refuse the add with a plain sentence ('The birth date on file makes <name> under 18 but they signed for themself: check the birth date first'), or leave those documents off the record (intake_id/patient_id untouched) so they read To sign. This mirrors writePrivacyConsent's 'minor' outcome.",
+   "severity": "medium"
+  },
+  {
+   "dim": "consent",
+   "summary": "A minor's photos form cannot be left undecided: there is no 'later' choice for photos, and 'No, thank you' still needs a signer with authority. With only a yaya or driver present, the page never gets a decision and Send stays blocked.",
+   "real": true,
+   "reason": "Confirmed. readPatientPart (consent-library.ts:1387) maps 'later' to null when t.refuseUnsigned. intake_decide returns 'invalid' for photos + 'later' (039:1611). For 'refused', signing is true, so signer_as must be one of signerChoices(minor, 'clinic') = parent / court_guardian / substitute / written, and consent_signer_problem re-checks it. The page shows only 'Yes, with these choices' and 'No, thank you' for photos, but its minor hint (line 541) tells them to choose 'I want to ask the dentist first', which is not rendered. The page stays 'reading' or 'question'. intake_send returns 'unfinished' for any page in those states (039:1712-1716), and the Send button is disabled. This contradicts spec \u00a72.3 and \u00a78 ('A yaya or driver cannot sign; the form waits as To sign'). The desk has to Stop, untick photos and hand over again.",
+   "file": "src/pages/f/i/[token].astro",
+   "line": 541,
+   "fix": "Give photos an unsigned 'Decide later / wait for a parent' choice that saves state 'later'. Allow 'later' for refuseUnsigned in readPatientPart and drop the photos exception in intake_decide via a new migration, since 039 must not be edited. The form is then To sign after Send. At minimum, make the minor hint on a refuseUnsigned page say to ask the desk rather than name a choice that does not exist.",
+   "severity": "low"
+  },
+  {
+   "dim": "consent",
+   "summary": "cancelIntake cancels every unsigned form in the intake, including a record form moved in by 'Sign on this tablet'. The dentist's attested To-sign form disappears from the record.",
+   "real": true,
+   "reason": "Confirmed. 'Sign on this tablet' posts intent=start with document=<id>. startIntake moves the record's form in (update consent_document set intake_id) and the desk lands on step=check, where 'Stop and throw these forms away' sits. cancelIntake (line 774) sets cancelled_at with cancel_why 'intake' for every doc in the intake with no signing. The guard trigger allows this: cancelled_at is not part of changed_part, and the form is unsigned. loadConsentDocuments filters cancelled_at is null, so the attested extraction form and its explanation vanish from the record. consentGaps also skips cancelled forms. attestDocument refuses a cancelled form, so the form has to be prepared and explained again. retention_purge takes the opposite line: for a stale open intake, 'forms on a record stay (the intake is cleared from them)'. The explicit cancel is therefore the inconsistent path. saveChecklist's untick has the same effect with cancel_why 'removed'.",
+   "file": "src/lib/intake.ts",
+   "line": 774,
+   "fix": "In cancelIntake, and in saveChecklist's untick, first release forms that were already on the record before this intake by setting intake_id = null for docs with patient_id set (for a target 'existing' intake, those not prepared in this intake, e.g. prepared_at < intake.created_at). Cancel only the forms made for this intake.",
+   "severity": "low"
+  },
+  {
+   "dim": "consent",
+   "summary": "When intake_decide answers 'changed', the page reloads the new form but keeps the posted strokes, ticks, answers and decision, and writes the new rev into the hidden field. One tap re-submits the old signature against the changed words.",
+   "real": true,
+   "reason": "Confirmed in code. The 'changed' branch (line 204) calls reload() and sets formNote but, unlike the rev-mismatch branch at line 198, does not clear raw, partRaw or strokes. The redraw uses the reloaded page: hidden rev = page.rev (new), SignPad strokes={strokes} prefills the hidden 'strokes' input, and ticks, decision and answers come from pv(). The next post passes rev === p.rev and intake_decide accepts it. A 'changed' here can only come from a race: the desk's saveClinicPart (allowed while status 'out') commits between this request's lookupIntake and intake_decide. Words going out of force would keep answering 'changed', so that path does no harm. In practice only the photos form's desk fields (photo_types, uses) can change while signable, e.g. adding 'photos of the face'. The window is narrow but the stale-signature outcome is real.",
+   "file": "src/pages/f/i/[token].astro",
+   "line": 204,
+   "fix": "In the 'changed' branch, also set raw = {}; partRaw = {}; strokes = null; as the rev-mismatch branch at line 198 does.",
+   "severity": "low"
+  },
+  {
+   "dim": "consent",
+   "summary": "A photos 'No, thank you' is stored with no signature, but the frozen snapshot's meaning sentence says 'By signing, I, <name>, do not agree to \u2026'. The record and the A4 print show that sentence next to 'No signature'.",
+   "real": true,
+   "reason": "Confirmed. decidePage passes signer = part.signer (always present for 'refused', since readPatientPart requires signer_as) into renderPage with decision 'refused'. renderDocument fills rendered.meaning with meaning_refuse: 'By signing, I, {$signer}, do not agree to \u2026 described above. <date>.' That goes into the snapshot, which is sealed and chained. [document].astro:213 and print.astro:194 print snap.meaning / r.meaning in bold beside 'No signature: an unsigned \u201cNo, thank you\u201d'. On the patient's page the script hides only the pad for data-unsigned; the data-ip-meaning-for span stays visible for refuse:self. The sealed record therefore says a signature was made when none was, contrary to spec \u00a72.3 ('stored as a refusal with no signature').",
+   "file": "src/lib/intake-public.ts",
+   "line": 229,
+   "fix": "For an unsigned refusal (t.refuseUnsigned && decision 'refused'), render without the 'By signing' sentence: pass a flag to renderDocument that sets meaning to null, or use a template-specific unsigned sentence such as 'I said no to these uses. <date>.'. Hide the meaning span in the page's sync() when the chosen decision has data-unsigned. Apply the same rule in recordPaperSigning if paper refusals should match.",
+   "severity": "low"
+  },
+  {
+   "dim": "consent",
+   "summary": "recordPaperSigning does not refuse a form that sits in an open intake, and the page still offers 'Record a paper signing' for it. An agreed paper signing recorded while the form is out on a tablet makes every later Send fail as a whole.",
+   "real": true,
+   "reason": "Confirmed. A form printed for paper (attested, to_sign) can still be moved into an intake: canResign and startIntake do not look at paper_printed_at. The record page's 'Record a paper signing' button (line 190) is gated only on paperPrintedAt && state === 'to_sign', not on openIntake. recordPaperSigning (consent-docs.ts:392-396) has no intake check, unlike printForPaper (373) and cancelDocument (447). The trigger allows it because channel paper nulls intake_id. On Send, intake_send inserts a signing for the tablet page and consent_signing_check raises 'the form is already agreed' (latest is the paper agreed signing). The exception block returns 'invalid', rolling back every page's signing, and the tablet's send branch just reloads with no message. The desk cannot untick the form either: saveChecklist refuses a signed doc ('A form signed before is kept\u2026'). The only way out is to cancel, losing the other pages' signatures. When the paper decision was a refusal instead, both signings stand and the latest counts, which is the normal re-sign path, so the harmful order is the agreed-paper one.",
+   "file": "src/lib/consent-docs.ts",
+   "line": 396,
+   "fix": "In recordPaperSigning, after the `for update`, refuse when doc.intakeStatus is 'preparing' or 'out': throw new Refused('That form is in forms being filled in now. Stop those first.'), as printForPaper does. Also hide the 'Record a paper signing' button and panel on [document].astro when openIntake.",
+   "severity": "low"
+  },
+  {
+   "dim": "correctness",
+   "summary": "attestDocument locks the consent_document row first and only then touches the intake (the intake_event insert's foreign key takes FOR KEY SHARE on the intake). intake_gate-based definers (intake_mark_page, intake_decide, intake_send via the signing trigger) and lockIntake desk writes (saveClinicPart, renewDocuments, cancelIntake) take the intake first and then the form. The two orders are opposite, so the transactions can deadlock.",
+   "real": true,
+   "reason": "Reproduced on a copy of flossify_intake with a new-patient intake out on a tablet and an unattested extraction form. Session 1 did what attestDocument does: SELECT \u2026 FOR UPDATE on the form, UPDATE its fields, then INSERT intake_event. While session 1 held the form, session 2 ran intake_mark_page(token, device, doc, 0, 'opened'). Postgres answered 40P01 'deadlock detected' to session 2. That is the patient's GET of /f/i/, which then 500s, because publicRead throws and the lock wait sits outside the definer's exception block. saveClinicPart racing attest deadlocks the same way (lockIntake, then UPDATE consent_document, against form, then intake_event). The window is a few round trips, so it is a rare race, and a retry succeeds.",
+   "file": "src/lib/consent-docs.ts",
+   "line": 239,
+   "fix": "Lock in the intake-first order in attestDocument. Read the form's intake_id without a lock. If it is set, `select \u2026 from intake where id = $1 for update`, then its live intake_link `for update`. Only then lock the form FOR UPDATE, and re-check that intake_id is unchanged (refuse with the stale sentence if it moved). This also stops a racing saveClinicPart from hitting the frozen-fields trigger (a 500) instead of a Refused.",
+   "severity": "low"
+  },
+  {
+   "dim": "correctness",
+   "summary": "For a new patient whose birth date is not known yet (page 1 not filled), Explain and confirm asks what the patient said (askAssent is true when desk_minor is yes or unsure) but silently stores assent = NULL. consent_birth_date() returns null, so age is null, and line 271 passes null unless 7 <= age <= 17. The DB trigger's 7\u201317 check also passes on a null age.",
+   "real": true,
+   "reason": "The intake desk page offers Explain and confirm on the Check step before hand-over, with age from intakeAge (null without page1Birth) and minor from desk_minor. ExplainForm line 40 is `askAssent = age === null ? minor !== false : \u2026`, so it shows the Agreed/Objected/Not asked radios. attestDocument line 251 gives age = null, line 265 skips the requirement, and line 271 stores null whatever was posted. consent_attestation_check computes years_on(null) = null, and `null between 7 and 17` does not raise. Nothing later (intake_decide, intake_send, consent_signing_check) asks for assent again once page 1 gives a birth date. So a 10-year-old's form explained before hand-over is signed with no assent recorded, although the dentist answered 'Objected'.",
+   "file": "src/lib/consent-docs.ts",
+   "line": 271,
+   "fix": "When the age is unknown and the intake's desk_minor is 'yes' or 'unsure', require and store the posted assent (store it whenever it was asked). Alternatively, refuse to attest a new-patient form until page 1 has a birth date. Mirror the rule in consent_attestation_check (in a new migration), which today accepts a null age.",
+   "severity": "medium"
+  },
+  {
+   "dim": "correctness",
+   "summary": "A clinic tablet or handed-over device keeps showing the previous patient's page, with their saved answers, after the desk stops, cancels, replaces or switches the link. The only background call is a ping every 120 s whose answer is discarded. A ping on a link that is no longer open does not even reach the JSON branch: the page renders the status HTML, which fetch() throws away. The desk's Stop panel still promises 'The device shows \u201cThese forms were stopped\u201d'.",
+   "real": true,
+   "reason": "In [token].astro, the ping branch is inside `if (posted && look.status === 'open' && device)`. On any other status the POST renders the full status page, and the client's `fetch(...).catch(() => {})` has no .then. No other script re-checks the status: data-ip-over only applies when the page is drawn with a non-open status, and the only timers are the done/over redirects. So after stopLink, cancelIntake or goLive's replaced/switched, the device stays on patient A's screen until someone presses a button. Page 1's screens draw A's saved answers from look.intake.answers (address, mobile, health). Also, clinic_tablet.last_seen_at is only touched by tablet_poll, so for 2 minutes after the tablet left /f/t/, goLive accepts sending patient B to it. The tablet then keeps showing A's page and never opens B's link until someone interacts with it.",
+   "file": "src/pages/f/i/[token].astro",
+   "line": 734,
+   "fix": "Answer every ping with JSON: handle intent=ping before the `look.status === 'open'` gate and return {ok:false, status} when the link is not open. In the script, read the answer and `location.replace(location.pathname)` when ok is false, so the device draws stopped or replaced and a tablet returns to /f/t/ through data-ip-over. Ping clinic devices much more often (e.g. every 10\u201315 s) so a Stop takes effect promptly.",
+   "severity": "medium"
+  },
+  {
+   "dim": "correctness",
+   "summary": "cancelIntake ('Stop and throw these forms away') cancels every unsigned form whose intake_id is the intake. That includes forms that were already on the record and were moved in by 'Sign on this tablet' (startIntake with documents), and it discards the dentist's attestation work with them. The alternative, Stop, leaves those forms tied to a 'preparing' intake, and the record hides their actions (Print for paper, Sign on this tablet, Remove) until the 24-hour purge.",
+   "real": true,
+   "reason": "startIntake sets `intake_id = <new intake>` on record forms (to_sign, possibly attested). cancelIntake's UPDATE (lines 773-775) has no distinction by origin: `where d.intake_id = $1 and d.cancelled_at is null and not exists (signing)`. So the record's attested form gets cancel_why 'intake', and loadConsentDocuments (cancelled_at is null) drops it from the Consent section. After stopLink the intake is 'preparing'. ConsentForms.astro line 61 and [document].astro line 141 treat 'preparing' as openIntake and hide the actions, and printForPaper refuses with intake_open. The only ways back are sending again, removing the form (untick, which also cancels it), or waiting for retention_purge. A 'patient prefers paper' abort therefore forces the form to be prepared and explained again, or blocks it for up to 24 h.",
+   "file": "src/lib/intake.ts",
+   "line": 773,
+   "fix": "In cancelIntake (and in stopLink, or in the record's openIntake test), first detach forms that were on a record before this intake started. For example: `update consent_document set intake_id = null where intake_id = $1 and cancelled_at is null and patient_id is not null and prepared_at < (select created_at from intake where id = $1)` (the guard allows intake_id \u2192 null). Then cancel only the forms this intake created. Alternatively, record which documents startIntake moved in and detach exactly those.",
+   "severity": "medium"
+  },
+  {
+   "dim": "correctness",
+   "summary": "recordPaperSigning does not refuse a form that is in an open intake, and the document page shows 'Record a paper signing' whenever the form was printed and is to_sign, even while it says 'In forms being filled in now'. If an agreed paper signing is recorded while the tablet intake is open, intake_send's consent_signing insert hits the trigger's 'the form is already agreed'. The definer's exception handler turns that into 'invalid', and the patient page silently redraws. Send can never succeed for any form in that intake.",
+   "real": true,
+   "reason": "startIntake accepts a printed to_sign form (it checks state and open_intake, not paper_printed_at), and canResign offers Sign on this tablet for it. [document].astro shows the paper button on `canEdit && doc.paperPrintedAt && doc.state === 'to_sign'` with no openIntake check. recordPaperSigning checks the print and to_sign only. consent_signing_check lets the paper signing in (it nulls intake_id for paper). On Send, the loop's insert raises 'already agreed', `exception when others then return 'invalid'` catches it, and [token].astro's send branch falls to `else { await reload(); }` with no message. The whole Send is rolled back every time, so the other forms (the general consent and so on) are never sent either.",
+   "file": "src/lib/consent-docs.ts",
+   "line": 396,
+   "fix": "In recordPaperSigning, select the form's intake status and refuse when it is 'preparing' or 'out' ('That form is in forms being filled in now. Stop those first.'), as printForPaper and cancelDocument do. Hide the button and panel when openIntake. On the patient page, show a message for a Send answer of 'invalid' instead of redrawing silently.",
+   "severity": "low"
+  },
+  {
+   "dim": "correctness",
+   "summary": "The consent print and the form's page show the signing, attestation, withdrawal and tag dates as the UTC day (`new Date(d).toISOString().slice(0,10)`) next to Manila times. Anything signed between 00:00 and 07:59 Manila shows the previous day. signedOn converts a pg `date` (parsed at local midnight) through toISOString, so on a host whose TZ is east of UTC a paper signing's day is one day early.",
+   "real": true,
+   "reason": "print.astro line 64 is `at = (d) => dateText(new Date(d).toISOString().slice(0,10)) + ', ' + timeWords(d)`, and timeWords formats in Asia/Manila. A signing at 07:40 Manila on 30 Sep (23:40 UTC on 29 Sep) prints 'Signed 29 Sep 2026, 7:40 am, Manila'. The same UTC-day pattern is in [document].astro's facts(), the state tag, the attestation line and the withdrawal line. db.ts sets no type parser for OID 1082, so node-pg makes `signed_on` a local-midnight Date, and signingsOf's toISOString shifts it back a day when TZ is e.g. Asia/Manila.",
+   "file": "src/pages/c/[clinic]/patients/[patient]/consents/[document]/print.astro",
+   "line": 64,
+   "fix": "Format the day in Manila time: dateText(manilaToday(new Date(d))), since manilaToday accepts a Date. Apply this in print.astro's at() and in [document].astro's four places. In signingsOf, select `to_char(s.signed_on, 'YYYY-MM-DD')` instead of converting a Date.",
+   "severity": "low"
+  },
+  {
+   "dim": "correctness",
+   "summary": "Page 1's client-side ShowIf sync works out minor status and age from the UTC date (`new Date().toISOString().slice(0,10)`), while the server draws and validates with Manila's date. Between 00:00 and 07:59 Manila on a birthday, the script hides a section the server requires.",
+   "real": true,
+   "reason": "[token].astro lines 683-684 pass the UTC day to isMinorOn and ageFrom, whose default is manilaToday(). The server's parseScreen uses opts.today = manilaToday(). The pregnancy section (ASK_PREGNANCY: not male and minAge 12) has required fields (pregnant, nursing, birth_control). On a girl's 12th birthday before 08:00 Manila, the server treats her as 12 and requires them. The script treats her as 11 and sets data-off, which is display:none under .pf-js, on every sync, including right after the 422 redraw. So the answers can never be given until 8 am. The existing /f/[key] page uses the Manila default.",
+   "file": "src/pages/f/i/[token].astro",
+   "line": 683,
+   "fix": "Use Manila's date on the client: call isMinorOn(birth) and ageFrom(birth) without the second argument (their default is manilaToday()), or pass the server's `today` in a data attribute on the form and use that.",
+   "severity": "low"
+  },
+  {
+   "dim": "ux",
+   "summary": "Paper signing cannot be recorded as the paper says: the ?paper=1 print has no initials boxes and none of the patient's questions, while 'Record a paper signing' has no inputs for t.patientFields and requires initials. An agreed paper signing of whitening or photos can never be recorded, and a procedure form's record gets initials the paper never collected.",
+   "real": true,
+   "reason": "Confirmed from the code. print.astro renders ConsentDocument mode=record with r from renderDocument(no ctx.initials), so r.initials is null. ConsentDocument line 99 draws initials only when doc.initials is set, so the paper has no initials boxes. `answers` is empty for an unsigned print, so no questions table is printed either. The cd-paper panel ([document].astro 283-310) draws ticks and initials inputs for every initials section, ignoring `when`, but no input for t.patientFields. recordPaperSigning calls readPatientPart(t, rawFromForm(form,'')). For whitening (attest, reachable after the dentist explains), 'agree' requires pregnant, smoke_drink and recent_work (required: true), which gives three 'Answer this.' errors. For photos, 'agree' requires one use_* = yes, which gives 'Say yes to at least one use'. Neither can ever be supplied, so the recording is always refused. For extraction and other forms with initials sections, readPatientPart requires initials when agreeing (consent-library.ts:1428). The desk can type some, which gets past the check. The stored snapshot then shows 'Initials: X' under sections that had no box on the paper. Correction: not 'every procedure form is blocked'. Procedure forms go through with invented initials (a record-integrity problem); whitening and photos are hard-blocked.",
+   "file": "src/pages/c/[clinic]/patients/[patient]/consents/[document].astro",
+   "line": 296,
+   "fix": "Print what will be asked. On the ?paper=1 print (latest == null), draw an empty 'Initials ____' box after every rendered section with initials, and print each patient field whose `when` holds with Yes / No / (Not sure) boxes. In the cd-paper panel, filter the initials inputs by holds(s.when, t, doc.fields, minor). Add radio inputs for each holding t.patientFields entry, named exactly as on /f/i/ (pregnant, smoke_drink, recent_work, use_*, face, name), so readPatientPart receives what the paper says.",
+   "severity": "high"
+  },
+  {
+   "dim": "ux",
+   "summary": "'Ask the desk' on a consent form posts a separate form (at/intent/rev only), and the server also clears partRaw. Every unsaved choice on the page is wiped, including the drawn signature.",
+   "real": true,
+   "reason": "The header form (f/i/[token].astro ~352) sends only _csrf, at, intent=question and rev. On intent 'question' with markPage === 'saved', the handler sets asked = true; raw = {}; partRaw = {}, and `strokes` is readStrokes('') = null. The page is re-rendered, not redirected. decisionChosen, answers, ticks, initials, signer name and relation, read_by and the pad all fall back to page.page, which holds nothing for a page not yet decided. The banner then says 'You can keep reading.' with the form emptied.",
+   "file": "src/pages/f/i/[token].astro",
+   "line": 194,
+   "fix": "Submit the question with the consent form's own fields. Give the button form=\"<consent form id>\" and name=\"ask\" value=\"1\" (the hidden intent stays 'decide'), and branch on form.get('ask') before deciding. Or handle intent 'question' without resetting raw, partRaw or strokes: keep partRaw = rawAll(form) and the posted strokes, and set asked = true.",
+   "severity": "medium"
+  },
+  {
+   "dim": "ux",
+   "summary": "The signature pad's error colour is var(--pt-err-ink, #b42318), and --pt-err-ink is defined nowhere. In dark mode the error 'Sign in the box with your finger.' is #b42318 on charcoal paper, about 2.4\u20132.7:1.",
+   "real": true,
+   "reason": "grep finds --pt-err-ink only in SignPad.astro:53, so the fallback #b42318 always applies. .sp-error sits below the white pad, on .ip-paper, whose background is color-mix(var(--c-surface) 97%, transparent). Under .cl-glass in dark mode --c-surface is rgb(22 27 33 / .85) (or #1d232a). Computed: #b42318 against #1d232a is 2.41:1, and against #161b21 it is 2.65:1, both far under the 4.5:1 the project requires. The server does produce errors.strokes (intake-public.ts:224) when someone agrees without signing. .ip-err beside it uses --pf-err, which has both dark twins.",
+   "file": "src/components/consent/SignPad.astro",
+   "line": 53,
+   "fix": "Use color: var(--pf-err, #8a2222) (defined on .pf with both dark twins in f/_forms.css). Or define --pt-err-ink in light mode and under both dark twins (@media (prefers-color-scheme: dark) :root:not([data-theme=\"light\"]) \u2026 and :root[data-theme=\"dark\"] \u2026), e.g. as var(--ws-red-ink).",
+   "severity": "medium"
+  },
+  {
+   "dim": "ux",
+   "summary": "The meaning sentence a guardian signs is wrong for the general consent and the photos form. It reads 'agree for Ana Santos to have be examined, and to treatment\u2026' and, for photos, '\u2026to have the choices on this form about my photos and records'. The words are drawn above the pad and sealed into the snapshot.",
+   "real": true,
+   "reason": "Reproduced by bundling consent-library and calling renderDocument. General plus guardian gives 'By signing, I, Rosa Santos, Mother of Ana Santos, agree for Ana Santos to have be examined, and to treatment once the dentist has explained it as described above.' Photos plus guardian gives '\u2026agree for Ana Santos to have the choices on this form about my photos and records\u2026'. The cause: meaning_agree_for / meaning_refuse_for put 'to have {$what}' in front of templates' `meaning` phrases that are written for the first person. The missing 'as' in meaning_refuse is grammatical for procedure forms ('\u2026by Dr Ana Reyes described above'); it only reads badly for the general consent. The words live in consent-library.ts, which this diff does not change. This phase's /f/i/ page is what shows them to patients, and intake-public writes them into sealed signings, so the failure happens on 85f6cd9. Correction: the file and line are in consent-library.ts, not the page. A new consent_version is not needed: CONSENT_REVIEWED is empty, so nothing is signed in production yet.",
+   "file": "src/lib/consent-library.ts",
+   "line": 250,
+   "fix": "Give each template a guardian-form phrase (e.g. `meaningFor`) that fits after 'agree for {patient} to \u2026'. General: 'be examined, and to have treatment once the dentist has explained it'. Photos: 'the choices on this form about their photos and records'. Use it in meaning_agree_for / meaning_refuse_for (renderDocument ~1596). Optionally restore 'as' in the refuse templates. Fix before the -2026-10 words are reviewed (CONSENT_REVIEWED is empty).",
+   "severity": "medium"
+  },
+  {
+   "dim": "ux",
+   "summary": "A refused 'Hand this device to <name>' redirects to ?step=check&refused=<code>, but the desk intake page never reads `refused`, so no reason is shown.",
+   "real": true,
+   "reason": "park.ts:38/40/49 redirect with &refused=<code> (the header comment promises LIVE_REFUSED). [intake].astro reads stale, explained, stopped, renewed and handover, never `refused`, and LIVE_REFUSED is used nowhere outside intake.ts. The concrete case: the Check page's rev goes stale (a colleague saves the checklist, or another tab does). With JS on, 'This device' posts straight to /auth/park/, lockIntake throws STALE, and the page comes back to Check with no callout. Correction: in that stale case, pressing again works, because the re-rendered page carries the fresh rev. The bounce repeats only for the rate limits (both also sent as 'stale') or 'minor'. 'words' already has its own visible callout. So the impact is a confusing silent bounce rather than a dead end.",
+   "file": "src/pages/c/[clinic]/patients/intake/[intake].astro",
+   "line": 290,
+   "fix": "Read url.searchParams.get('refused'). When it is a LiveRefusal key, render <Callout tone=\"alert\" title=\"Nothing was handed over.\" text={LIVE_REFUSED[code]} /> on the Check step. In park.ts, send the two rate-limit refusals as their own code (e.g. 'busy_staff' with 'Too many at once. Wait a moment and try again.') instead of 'stale'.",
+   "severity": "low"
+  },
+  {
+   "dim": "ux",
+   "summary": "Consent screens have no Back. After 'Save my details', a patient cannot return to page 1 or to a previous form until every form has a decision, and fixing an identity field afterwards clears those signatures.",
+   "real": true,
+   "reason": "The consent form's actions are only Continue / Sign and continue (lines ~454, ~580), plus the header's Ask the desk. The only goto posts are page 1's Back (between page-1 screens) and the Check screen's Change / View or change. Once page1DoneAt is set, nextScreen() skips page 1 and returns 'check' only when needs() is false for every page. Browser Back does not help either: every entry is the same /f/i/<token>/ URL, and the GET recomputes the same screen. Correction: the patient need not sign. They can choose 'ask the dentist first' (or 'No, thank you' on photos) to reach Check, but those choices are then recorded. This is a navigation gap in a UX-judged flow; the spec does not require Back here.",
+   "file": "src/pages/f/i/[token].astro",
+   "line": 454,
+   "fix": "On each consent screen add a quiet Back: a hidden form posting intent=goto with at = the previous screen ('privacy' for the first form of a new patient, else `c:<previous page id>`), and <button form=\"ip-back-c\" class=\"btn btn-quiet\">Back</button> in .ip-actions.",
+   "severity": "low"
+  },
+  {
+   "dim": "ux",
+   "summary": "The 'Check and send' card is div.ws-pane.ws-glass.pt-card.cl-pane.pf-card with no padding rule, so its heading, rows and buttons sit flush against the card's rounded edge.",
+   "real": true,
+   "reason": "No stylesheet has a rule for .pf-card. .ws-pane sets no padding. .pt-card and .cl-pane pad only together with ws-pad-normal. Page 1's card gets its padding from .cl-wizard and the status cards from .pf-done (f/_forms.css:240), and the Check card has neither class. No rule on .ip > / .pf > / .cl-book children pads it either. So its computed padding is 0 at every width and in both themes.",
+   "file": "src/pages/f/i/[token].astro",
+   "line": 590,
+   "fix": "Add cl-wizard to the card's classes (as page 1 does), or add `.ip .pf-card { padding: 0.875rem 0.875rem 1rem } @media (min-width: 640px) { .ip .pf-card { padding: 0.875rem 1.25rem 1.125rem } }` to _intake.css.",
+   "severity": "low"
+  },
+  {
+   "dim": "ux",
+   "summary": "Before the dentist has explained a procedure form, its head already reads 'Explained by Dr <name> \u00b7 PRC \u2026 \u00b7 in English'. It states as done an explanation that has not happened, in a language that is only planned.",
+   "real": true,
+   "reason": "ConsentDocument.astro:42-44: when !doc.attested but a dentist is set, `explained` is still `Explained by Dr ${name} \u00b7 PRC \u2026 \u00b7 in ${plannedLang}`. contextFor sets dentist for every attest template, and /f/i/ passes plannedLang from the desk's explained_in, which defaults to 'en'. So the 'Read before you see the dentist' page shows 'Explained by \u2026' directly under the banner 'You sign after Dr \u2026 has explained it to you'. The same happens in the desk preview and on the record's 'Not signed yet' view. The spec keeps 'explained' claims to attested pages.",
+   "file": "src/components/consent/ConsentDocument.astro",
+   "line": 44,
+   "fix": "When !doc.attested, word it as a plan, e.g. `Dr ${name}${prc} explains it${plannedLang ? ` \u00b7 planned in ${plannedLang}` : ''}`. Keep 'Explained by \u2026 \u00b7 in <language>' for attested documents only.",
+   "severity": "low"
+  },
+  {
+   "dim": "ux",
+   "summary": "On the desk's handed-over device, 'For the clinic' (the way to /auth/unlock/) is an inline text link well under 44px. It is drawn only on the thank-you and on 'finished', so on stopped / replaced / idle / expired the signed-out desk computer offers only 'Call <number>'.",
+   "real": true,
+   "reason": "Lines 360 and 633 render <a class=\"pt-link\"> inside a <p> with no min-height or padding (patient.css:62, which has none; only .pt-link-reach enlarges a hit area). That breaks the project's \u226544px target rule. Line 360 is limited to status === 'finished', so when the desk stops the forms from another computer ('closed'), re-sends them ('replaced'), or the link idles out, the handed-over desk computer, whose session was cleared by /auth/park/, shows no link back. Staff must type /auth/login/ or press browser Back several times.",
+   "file": "src/pages/f/i/[token].astro",
+   "line": 360,
+   "fix": "Draw 'For the clinic' as a quiet 44px button (class=\"btn btn-quiet\") in pf-done-actions. Show it on every closed status on a non-tablet claimed device (proof && !proof.tablet for closed / replaced / idle / expired / finished), not only on 'finished'.",
+   "severity": "low"
+  },
+  {
+   "dim": "ux",
+   "summary": "A new-patient intake with no label is named 'New patient (IN-WHJQ)', and Avatar takes the first letters of its first and last words, so it draws 'N(' on the intake head and in the in-progress list.",
+   "real": true,
+   "reason": "intakeName() returns `New patient (${it.ref})` when there is no patient, no page-1 first name and no label, and the label is optional (readDeskAnswers turns an empty one into null). Avatar splits on whitespace and takes words[0][0] + words[last][0], giving 'N' + '(' = 'N('. It is used at [intake].astro:307 and intake/index.astro:127 (nameOf \u2192 intakeName).",
+   "file": "src/lib/intake.ts",
+   "line": 286,
+   "fix": "Return 'New patient' from intakeName when there is no label (the ref is shown beside it on both pages). Or pass Avatar a separate name without the ref, e.g. it.label ?? 'New patient'.",
+   "severity": "low"
+  },
+  {
+   "dim": "ux",
+   "summary": "On a clinic tablet or a handed-over desk device, the status words talk about a 'code' the patient never had ('This code has expired \u2026 ask the desk for a new one', 'This code was replaced \u2026 ask the desk for the new one').",
+   "real": true,
+   "reason": "INTAKE_WORDS (intake-public.ts:281-289) is one table for every device, and the page shows its title and lead for any status that is not open. In phase 2 the only devices are tablets and the desk's own device, where no code is ever shown. On the desk device (re-sent from another computer \u2192 'replaced', since goLive treats the same device type as the same device; or 20 min idle \u2192 'idle') the words stay on screen. On a tablet they show for 8 s before returning to /f/t/. The instruction 'ask the desk for the new one' makes no sense to someone who was handed a device.",
+   "file": "src/lib/intake-public.ts",
+   "line": 281,
+   "fix": "Choose the words by look.device. For tablet and desk: expired or idle \u2192 'These forms closed' / 'Please hand the device back to the desk'; replaced \u2192 'These forms moved to another device' / 'Please hand the device back to the desk'. Keep the 'code' wording for phone links (phase 3).",
+   "severity": "low"
+  }
+ ],
+ "refuted": [
+  {
+   "dim": "security",
+   "summary": "The /f/t/ and /f/t/poll/ limit is keyed by the tablet secret's hash, so random well-formed fl_ctab values each get a fresh budget, and unknown secrets are not counted per address.",
+   "reason": "There is no wrong result, leak or crash. The secret is 32 random bytes (256 bits), so it cannot be guessed. Each such request costs one throttle upsert and one indexed select, and throttle_hit purges rows older than a day. Every unauthenticated endpoint allows the same kind of load, and existing pages already key throttle rows on attacker-chosen values: login.astro, [clinic]/sign-in and unlock write login:e:/login:u:<value> on every attempt, even past the address limit. The spec's 'unknown tokens count forms:miss' rule is about intake link tokens, which lookupIntake does count. What is described is only a way to generate load, not a defect in this change."
+  }
+ ]
+}

@@ -1,0 +1,11 @@
+import { chromium } from '/home/user/flossify/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4399';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const p = await (await b.newContext()).newPage();
+p.on('response', (r) => { if (r.status() === 404) console.log('404', r.url(), 'on', p.url().replace(BASE, '')); });
+await p.goto(`${BASE}/auth/login/?any=1`);
+await p.fill('#email', 'liwayway.domingo@example.com'); await p.fill('#password', 'flossify');
+await Promise.all([p.waitForNavigation(), p.click('button[type="submit"]')]);
+const M = '1a1d1c5e-ce1a-4d80-801c-f13fb6ef48cb';
+for (const u of [`/c/session-road/patients/${M}/#treatment-record`, `/c/session-road/patients/${M}/aftercare/extraction/`, `/c/session-road/patients/${M}/treatment-record/`]) await p.goto(BASE + u, { waitUntil: 'networkidle' });
+await b.close();

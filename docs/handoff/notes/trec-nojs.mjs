@@ -1,0 +1,17 @@
+import { chromium } from '/home/user/flossify/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4399';
+const ID = '9ea415bd-4b9e-4725-80e8-391464e2c12e';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const a = await b.newContext();
+const p0 = await a.newPage();
+await p0.goto(`${BASE}/auth/login/?any=1`);
+await p0.fill('#email', 'liwayway.domingo@example.com'); await p0.fill('#password', 'flossify');
+await Promise.all([p0.waitForNavigation(), p0.click('button[type="submit"]')]);
+const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, javaScriptEnabled: false });
+await ctx.addCookies(await a.cookies());
+const p = await ctx.newPage();
+await p.goto(`${BASE}/c/session-road/patients/${ID}/#treatment-record`);
+console.log("no-js", await p.evaluate(() => { const bs = [...document.querySelectorAll("#rec-treatment-record tbody")]; const panel = document.querySelector("#rec-treatment-record"); return `panel hidden: ${panel.hidden}; ${bs.filter((x) => !x.hidden).length}/${bs.length} days not hidden; more hidden: ${document.querySelector("[data-trec-more]")?.hidden}`; }));
+await p.goto(`${BASE}/c/session-road/patients/${ID}/?visit=x`);
+console.log("tabs no-js", await p.evaluate(() => [...document.querySelectorAll("[data-rec-panel]")].map((x) => x.dataset.recPanel + ":" + (x.hidden ? "h" : "v")).join(" ")));
+await b.close();

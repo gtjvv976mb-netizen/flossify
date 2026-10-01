@@ -1,0 +1,17 @@
+import { chromium } from '/home/user/flossify/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4399';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const p = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+await p.goto(`${BASE}/auth/login/?any=1`);
+await p.fill('#email', 'liwayway.domingo@example.com'); await p.fill('#password', 'flossify');
+await Promise.all([p.waitForNavigation(), p.click('button[type="submit"]')]);
+const id = process.argv[2] ?? '1a1d1c5e-ce1a-4d80-801c-f13fb6ef48cb';
+await p.goto(`${BASE}/c/session-road/patients/${id}/#treatment-record`, { waitUntil: 'networkidle' });
+await p.waitForTimeout(800);
+const drawer = await p.evaluate(() => [...document.querySelectorAll('dialog[open], [data-open], .ws-drawer')].map((e) => e.tagName + '.' + e.className).join(' | '));
+console.log('open things:', drawer);
+await p.evaluate(() => document.querySelector('#rec-treatment-record').scrollIntoView());
+await p.screenshot({ path: '/tmp/claude-0/shots/trec-390-a.png' });
+await p.evaluate(() => scrollBy(0, 700));
+await p.screenshot({ path: '/tmp/claude-0/shots/trec-390-b.png' });
+await b.close();
