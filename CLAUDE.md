@@ -1266,8 +1266,8 @@ end: procedure forms are signed only after the named dentist records "I explaine
 at Send unless the patient looks like one already on file; a fresh signature on every form with initials on
 the risks; the six scheduling features first). **Phase 1** is the library, the data and the shared add path;
 **phase 2** (shipped, fixes in 043) the desk's steps, clinic tablets, the patient's pages (`/f/i/<token>/`,
-`/f/t/`), park/unlock and the record's Consent forms pane; the phone path is phase 3, the record integration
-phase 4.
+`/f/t/`), park/unlock and the record's Consent forms pane; **phase 3** (shipped 1 Oct, no migration) the
+patient's own phone; the record integration is phase 4 (`docs/intake-design.md`).
 
 - **The consent library is data** (`src/lib/consent-library.ts`, no Node imports): ten forms
   (`anaesthesia-2026-10` … `photos-2026-10`, `consent_version` kind `document`, in force from 1 Oct 2026) and
@@ -1331,6 +1331,31 @@ phase 4.
   applies after 039–042 and only resets a version's fingerprint where no consent form uses that version yet.
   Stop (not throw away) leaves a record form tied to the paused intake until it is taken out, thrown away or
   purged; the record links to the open forms and says how to get it back.
+- **Phase 3: their own phone (no migration; 039's definers already had it).** On Check, "Their phone" is offered
+  (`phoneOk`: `gates.phoneOpen` = `PHONE_PATH_BUILT`, and for a new patient `page1Open`; the chooser's phone card
+  says the same, and a patient on file needs a birth date on record). Step 4 then shows a **QR code on the desk's
+  screen** (`qrSvg` of `/f/i/<token>/`; at flossify.ph live, this machine's origin in development so a phone on
+  the network can scan it), good for 15 minutes (`intake_link.open_by`), with the state in words: waiting to be
+  scanned until hh:mm, on their phone, typing the birth date, idle, not scanned in time, locked. **The first phone
+  to press Start claims the link** (`intake_claim`, the page then sets `fl_idev` under `/f/i/`; `claimIntake`), the
+  QR leaves the desk's screen at once, and a second phone reads "open on another device". **A patient on file
+  types their birth date first** (`intake_verify`, `verifyIntake`: wrong is told, three misses retire the link as
+  locked and the desk says so); nothing of the record is drawn before. A code that ended (not scanned, idle,
+  locked) keeps "Show a new code" (`goLive` again: the old link `replaced`/retired, a new one made;
+  `DeskIntake.lastLink` says why the last one ended). **The live panel**: step 4 asks itself `?step=out&live=1`
+  every 8 s while visible (`LIMITS.intake.poll` per staff member; JSON of the state words, each part's tag, what
+  needs the desk) and updates the words in place and in an aria-live line; a change in what needs the desk, or
+  the forms sent, stopped or thrown away, loads the page again. The phone's own words differ from a clinic
+  device's (`intakeWords`: "Thank you. The clinic has them." rather than "hand the device back").
+  **A page 1 fix found by the phone run (every device):** a condition that reads an earlier screen's answer
+  (the pregnancy questions read `sex` from the first screen) was hidden by the page's script, which could not
+  see that answer, while the server required it, so a non-male adult could not pass the health screen with
+  scripts on. The form now carries `data-prior` (only the fields a condition names, from earlier screens) and
+  the script reads it. **Checks:** `scripts/dev/intake/phone-e2e.mjs` plays the desk and two phones through a
+  new patient, a patient on file (a wrong birth date, then the right one), a second phone, an idle code and a
+  new one, the geometry at 390 (no sideways scroll, 44 px), and the database after each; `--keep` leaves a Start
+  screen, a birth-date screen and the desk's QR step open with saved states for `contrast.mjs` (`PW_STATE`,
+  `PW_CHROMIUM`). Measured 1 Oct: 0 fails, lowest 5.30:1, light and dark, phone and desk.
 
 ## Open — read before shipping
 
@@ -1483,6 +1508,8 @@ src/data/lqip.json             blur placeholders, keyed by image name
 src/data/shot-size.json        real screenshot dimensions (generated)
 src/data/migrations/039        the patient intake and the consent library: intakes, links, tablets, consent forms, signings, attestations, the chain
 src/data/migrations/043        the intake's review fixes (phase 2)
+scripts/dev/intake/phone-e2e.mjs  the phone path end to end in two browsers (phase 3); --keep leaves screens for contrast.mjs
+docs/intake-design.md          the intake as built (phases 1–3) and what phase 4 is to settle with the owner
 src/pages/f/i/, f/t/, auth/park.ts, auth/unlock.astro, auth/tablet.ts  the patient's intake pages, the clinic tablet, handing a device over
 src/lib/intake.ts, intake-public.ts, consent-docs.ts, park.ts  the desk's intake, its public side, consent documents, hand-over
 src/lib/consent-library.ts, consent-seal.ts  the consent forms as data and the one renderer; canonical JSON, snapshot, seal, chain (npm run consent:hash)

@@ -15,7 +15,7 @@
 # with (default: the one in docs/HANDOFF.md). Exit 0 when nothing failed.
 set -u
 cd "$(dirname "$0")/../.."
-PR_BRANCH="${PR_BRANCH:-claude/funny-ritchie-ujucx6}"
+PR_BRANCH="${PR_BRANCH:-}"
 BUILD=1
 for a in "$@"; do
   case $a in
@@ -32,14 +32,16 @@ out=$(mktemp)
 trap 'rm -f "$out"' EXIT
 
 step "1. Where this checkout stands"
-if git fetch -q origin main "$PR_BRANCH" 2>/dev/null; then :; else
+if git fetch -q origin main $PR_BRANCH 2>/dev/null; then :; else
   echo "   (could not fetch from origin; comparing with the refs already here)"
 fi
 echo "   branch: $(git rev-parse --abbrev-ref HEAD) at $(git log -1 --format='%h %cs %s' | cut -c1-96)"
 if git rev-parse -q --verify origin/main >/dev/null; then
   echo "   vs origin/main: $(git rev-list --count origin/main..HEAD) ahead, $(git rev-list --count HEAD..origin/main) behind"
 fi
-if git rev-parse -q --verify "origin/$PR_BRANCH" >/dev/null; then
+if [ -z "$PR_BRANCH" ]; then
+  echo "   (PR_BRANCH=<branch> also compares with an open pull request's branch; docs/HANDOFF.md names any)"
+elif git rev-parse -q --verify "origin/$PR_BRANCH" >/dev/null; then
   echo "   the PR branch $PR_BRANCH is $(git rev-list --count origin/main..origin/"$PR_BRANCH") commits past main;"
   echo "   this checkout is $(git rev-list --count origin/"$PR_BRANCH"..HEAD) ahead of it and $(git rev-list --count HEAD..origin/"$PR_BRANCH") behind it"
 else
