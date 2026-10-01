@@ -159,9 +159,13 @@ Four candidates were put to the owner on 1 Oct; they chose the first, and
   yet") with Open the form and Go ahead anyway, which asks why in a side panel
   and records the override with context `strip`. Once it went ahead today the
   line is a done pill that says so, with who and when.
-- **Not asked:** the calendar's In the chair step (context `in_chair` stays
-  unused). The desk moves a patient to the chair in one tap on the board; the
-  record's strip is where the question belongs, beside the form.
+- **The calendar asks at the chair (added 1 Oct, after the owner's "do it").**
+  In the chair on the board, from the visit panel or Today's patients' one
+  tap, asks the same question when a form prepared from the visit is not
+  agreed and nobody went ahead without it today: the sentence in amber, a box
+  for why and Seat anyway. The seat and the reason are saved together. It
+  needs only the desk's schedule permission: seating is never refused for
+  paperwork.
 - **Drawn everywhere the form is:** the Consent pane's rows (the withdrawal in
   full — who told the clinic, how, who recorded it, the note — and each
   override in one line), the visit panel's cards (a "Went ahead anyway ×2"

@@ -34,6 +34,9 @@ export interface Panels {
   changed: (days: Set<string>) => void;
   /** A dated block, in view mode (the strip's pills): what, when, the note, who added it; Remove for schedule.edit. */
   openBlock: (id: string, opener: Element | null) => void;
+  /** In the chair was refused for a consent form not agreed (Today's patients' one tap): the visit's panel opens with the
+   *  server's sentence, a box for why, and Seat anyway. */
+  askSeat: (id: string, text: string, opener: Element | null) => void;
   /** Block time (040): a closure, a dentist away, a chair out of use, from the day given (schedule.edit only). */
   openBlockNew: (o: { ymd?: string; min?: number }, opener: Element | null) => void;
 }
@@ -518,7 +521,7 @@ export function initPanels(ctx: Ctx): Panels {
 
   /** One PATCH from the panel. `anyway`: what a press of Move (Place, Save) anyway does, offered beside the sentence when
    *  the server's refusal is blocked time (040); a clash (another visit there) never offers it. */
-  async function patch(body: Record<string, unknown>, o: { anyway?: () => void; anywayLabel?: string; anywayHook?: string } = {}): Promise<{ card: Card; texted: boolean; retold: number } | null> {
+  async function patch(body: Record<string, unknown>, o: { anyway?: () => void; anywayLabel?: string; anywayHook?: string; consent?: (why: string) => void } = {}): Promise<{ card: Card; texted: boolean; retold: number } | null> {
     if (busy) return null;
     busy = true; V.panel.setAttribute('aria-busy', 'true');
     vMenu.close();
@@ -528,6 +531,8 @@ export function initPanels(ctx: Ctx): Panels {
     for (const b of V.panel.querySelectorAll<HTMLButtonElement>('button')) b.disabled = false;
     if (!r.ok) {
       hide(V.said);
+      V.err.dataset.tone = 'alert';
+      if (r.consent && o.consent) { seatAsk(r.error, o.consent); return null; }
       if (r.blocked && o.anyway) {
         const run = o.anyway;
         const label = o.anywayLabel ?? (V.saveWord.textContent === 'Place it' ? 'Place anyway' : 'Move anyway');
@@ -544,9 +549,31 @@ export function initPanels(ctx: Ctx): Panels {
     ctx.flash(r.card.id);
     return r;
   }
-  async function setStatus(id: string, to: string, word: string) {
+  /** In the chair, refused for a consent form of this visit not agreed: the sentence in amber, a box for why, and Seat
+   *  anyway, which sends the same step again with the reason (kept against each form: consent_override, in_chair). */
+  function seatAsk(text: string, run: (why: string) => void) {
+    V.err.dataset.tone = 'warn';
+    const box = el('span', 'vp-why');
+    const label = el('label', 'sr-only', 'Why they go into the chair without the consent form');
+    const input = el('input', 'vp-why-in');
+    input.type = 'text'; input.maxLength = 200; input.autocomplete = 'off'; input.id = 'vp-why-in';
+    input.placeholder = 'Why go ahead without it?';
+    label.htmlFor = input.id;
+    const go = anywayBtn('Seat anyway', 'data-vp-seat-anyway', () => {
+      const why = input.value.trim();
+      if (!why) { input.focus(); input.setAttribute('aria-invalid', 'true'); return; }
+      hide(V.err); V.err.dataset.tone = 'alert'; run(why);
+    });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go.click(); } });
+    box.append(label, input, go);
+    callout(V.err, text, [box]);
+    V.err.scrollIntoView({ block: 'nearest' });
+    input.focus();
+  }
+  async function setStatus(id: string, to: string, word: string, why?: string) {
     const was = ctx.card(id);
-    const r = await patch({ id, status: to });
+    const r = await patch(why ? { id, status: to, consentReason: why } : { id, status: to },
+      to === 'in_chair' ? { consent: (w) => void setStatus(id, to, word, w) } : {});
     if (!r) return;
     const c = r.card;
     if (to === 'cancelled') {
@@ -1156,5 +1183,10 @@ export function initPanels(ctx: Ctx): Panels {
       if (V.panel.open && editOpen() && editing && days.has(M.manila(editing.startsAt).ymd)) eEndsFit();
     },
     openBlock, openBlockNew,
+    askSeat: (id, text, opener) => {
+      if (!ctx.card(id)) return;
+      openVisit(id, opener);
+      seatAsk(text, (why) => void setStatus(id, 'in_chair', 'In the chair', why));
+    },
   };
 }

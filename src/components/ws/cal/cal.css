@@ -647,3 +647,11 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
 /* The row itself is no longer one button: the person on the left opens the patient, the side holds the step. */
 .pt-row { grid-template-columns: minmax(0, 1fr) auto; cursor: default; }
 .pt-row > .pt-open:hover .pt-name { color: var(--ws-teal-ink); }
+
+/* In the chair with a consent form not agreed (the schedule API's consent refusal): a box for why and Seat anyway, under
+   the amber sentence in the visit panel's callout. The field keeps the 44 px target and 16 px words of every field. */
+.vp-why { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.625rem; }
+.vp-why-in { flex: 1 1 12rem; min-width: 0; min-height: 44px; padding: 0 0.75rem; border: 1px solid var(--ws-field-line); border-radius: 10px; background: var(--ws-field); font-size: 16px; color: var(--c-ink); }
+.vp-why-in::placeholder { color: var(--c-ink-2); opacity: 1; }
+.vp-why-in[aria-invalid="true"] { border-color: var(--ws-red); }
+.vp-why .ws-btn { min-height: 44px; }

@@ -1424,8 +1424,16 @@ page 1 beside the record with "Use" per detail, and withdrawals and overrides as
   (`appointment_id`) that is not agreed is a line on the This visit strip ("Consent form · <title>: not signed
   yet", Open the form, **Go ahead anyway** → a side panel `rec-ahead-<doc>` with a reason, intent
   `consent-override` on the record page, context `strip`, back to `?saved=consent-ahead&visit=`); once it went
-  ahead today the line becomes a done pill that says so. The calendar's In the chair step (`in_chair`) does not
-  ask: the strip is the record's side of it. **Drawn:** `RecordDoc.overrides` (`overridesOf`, newest first;
+  ahead today the line becomes a done pill that says so. **The calendar's In the chair asks too (1 Oct):**
+  PATCH `/api/schedule` to `in_chair` runs `seatingGaps(tx, visit)` (the visit's forms not agreed that nobody went
+  ahead without today, Manila); with any and no `consentReason` it answers 409 `{ error, consent: true, forms }`
+  and changes nothing; with one it records `overrideConsent(context 'in_chair')` per form in the same transaction
+  as the seat. `in_chair` needs `schedule.edit` only, never `records.edit`: seating is the desk's step and is
+  never refused for paperwork. The board's visit panel (its teal step and More) and Today's patients' one tap
+  (`panels.askSeat`) show the sentence in amber in the panel's callout, a box for why (`.vp-why`, `#vp-why-in`,
+  16 px, 44 px) and **Seat anyway** (`data-vp-seat-anyway`); an empty box is not sent. Checked by
+  `scripts/dev/schedule/seat-check.mjs` (the API's 409 and the today filter, the prompt from one tap, empty not
+  sent, seated and kept, a visit with nothing to ask seated in one tap, contrast light and dark, 390 px). **Drawn:** `RecordDoc.overrides` (`overridesOf`, newest first;
   `overrideWords`: "Went ahead anyway (not signed), treatment marked done · Dr …, 1 Oct 2026, 2:31 pm: “…”") and
   the withdrawal in full (`withdrawalWords`: "Withdrawn 1 Oct 2026: told by …, by phone, recorded by …. “…”")
   on the Consent pane's rows (`[data-rc-withdrawal]`, `[data-rc-override]`), the visit panel's cards (a
@@ -1479,9 +1487,9 @@ page 1 beside the record with "Use" per detail, and withdrawals and overrides as
   lawyer reads it first. The consent to examination and treatment
   (`treatment-2026-09`) is Flossify's plain summary of the usual Philippine
   dental consent; a dentist and the lawyer read it too.
-- **Going ahead without a consent form asks why on the record** (Mark done anyway, the strip's Go ahead
-  anyway; phase 4.4) and the calendar's In the chair step does not: `consent_override.context 'in_chair'` is
-  unused. The owner decides whether the board should ask too (one more field on the status PATCH).
+- **Going ahead without a consent form asks why** on the record (Mark done anyway, the strip's Go ahead
+  anyway) and on the calendar (In the chair → Seat anyway), and never blocks: the owner may want to say whether
+  the board's question should also come at Arrived, or only at the chair as now.
 - **The consent forms (039) are unreviewed drafts** (`CONSENT_REVIEWED` is empty), in force in the
   database from 1 Oct 2026; production offers none until a dentist and the owner's lawyer have read each. The
   Filipino "In short" lines for nine forms and the attestation's Filipino are not written yet.
@@ -1599,6 +1607,7 @@ src/lib/consent-library.ts, consent-seal.ts  the consent forms as data and the o
 src/lib/intake-def.ts, patient-add.ts, refused.ts  the intake's page 1; adding a patient's own answers (forms and intakes); the one Refused class
 scripts/dev/intake/db-test.mjs the intake database checks; scripts/ts-register.mjs runs a script that imports src/lib
 scripts/dev/settings/profile-check.mjs  the public profile's lines and the clinic's founding year, end to end
+scripts/dev/schedule/seat-check.mjs     In the chair asks why for a consent form not agreed (API, Dashboard, 390 px)
 src/data/migrations/040        blocked time: lunch, dentist hours, clinic_block, blocked_ok_at, clinic_unavailable(), public_blocked/busy_ranges()
 src/lib/blocks.ts, block-words.ts   blocked time: the desk's reads and writes over clinic_unavailable(), and the words (pure)
 src/lib/schedule-api.ts, reminder-state.ts  the schedule API's gate and body readers; a visit's reminder in words

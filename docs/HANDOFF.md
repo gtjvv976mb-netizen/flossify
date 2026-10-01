@@ -176,7 +176,9 @@ Semaphore's first live send and billing's placeholders are the oldest items,
 and every one of them needs something only the owner has (a key, a verified
 domain, the real prices, the lawyer's reading). Done on 1 Oct without them:
 the public profile's own lines (PDA, practising since, about) and the clinic's
-founding year now have forms (`scripts/dev/settings/profile-check.mjs`), and
+founding year now have forms (`scripts/dev/settings/profile-check.mjs`), the
+calendar's In the chair asks why when a consent form is not agreed
+(`scripts/dev/schedule/seat-check.mjs`), and
 the live site answered its checks from a session (`/healthz` ok, every public
 page 200, the intake's routes deployed); screenshots still need a browser that
 trusts the session's proxy, so take them from the owner's machine.

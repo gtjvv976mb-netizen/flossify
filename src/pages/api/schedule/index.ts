@@ -50,6 +50,8 @@ import { csrfHeaderOk, CSRF_MESSAGE } from '../../../lib/csrf';
 import { queueText, normalizePhone, PH_MOBILE } from '../../../lib/messages';
 import { loadRange, findClash, applyStatus, dropStaleTexts, retellTexts, readAppt, canText, scheduleTexts, isDentistHere, ALLOWED, DONE, WORDS, type Appt } from '../../../lib/schedule';
 import { findBlock } from '../../../lib/blocks';
+import { seatingGaps, gapWords, overrideConsent } from '../../../lib/consent-docs';
+import { Refused } from '../../../lib/refused';
 import { json, refuse, answer, gate, body, isoDate, chairOf, idOf, text, clinicRow, checkChair } from '../../../lib/schedule-api';
 import { extrasFor, mergeExtras, withExtras } from '../../../components/ws/cal/data';
 import { splitName } from '../../../lib/import';
@@ -227,6 +229,8 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
     // A fee-guide code, or null for "No fee-guide service" (the Edit form sends it with the reason).
     const wantCatalog = has('catalogCode') ? text(b.catalogCode, 60) : undefined;
     const anyway = b.anyway === true;
+    // In the chair with a consent form of this visit not agreed: why it goes ahead (consent_override, context in_chair).
+    const consentReason = has('consentReason') ? text(b.consentReason, 200) : null;
 
     const saved = await withClinic(clinic.id, async (tx) => {
       let texted = false, retold = 0;
@@ -329,6 +333,21 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
         }
       }
 
+      if (status === 'in_chair' && cur.status !== 'in_chair') {
+        // Seating never waits on paperwork, but it asks (as the record's Mark done anyway and Go ahead anyway do): a form
+        // prepared from this visit that is not agreed, and that nobody went ahead without today, needs a reason. The
+        // reason is kept against each form in this transaction, so the seat and the why are saved together or not at all.
+        const gaps = await seatingGaps(tx, id);
+        if (gaps.length && !consentReason) {
+          throw refuse(409, `${gaps.map(gapWords).join('; ')}. Say why they go into the chair without it.`, { consent: true, forms: gaps.map((g) => g.docId) });
+        }
+        try {
+          for (const g of gaps) await overrideConsent(tx, { clinicId: clinic.id, staffId: session.staffId, docId: g.docId, context: 'in_chair', reason: consentReason! });
+        } catch (e) {
+          if (e instanceof Refused) throw refuse(400, e.reasons.join(' '));
+          throw e;
+        }
+      }
       if (status !== null && status !== cur.status) await applyStatus(tx, clinic.id, session.staffId, id, status, cur.status);
       const card = await withExtras(tx, await mustRead(tx, id));
       // "No fee-guide service" while the reason still names one: data.ts would read the service back from the words.

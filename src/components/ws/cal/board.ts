@@ -45,7 +45,8 @@ export interface Boot {
 }
 /** A refusal carries the server's sentence; `blocked` (with its range's `kind`) is the soft stop of blocked time (040):
  *  the same call with anyway: true books it. A clash is a 409 without it, and has no anyway. */
-export type Reply = { ok: true; card: Card; texted: boolean; retold: number } | { ok: false; error: string; status?: number; blocked?: boolean; kind?: string };
+/** consent: In the chair was refused because a consent form of the visit is not agreed — sent again with consentReason, it goes ahead. */
+export type Reply = { ok: true; card: Card; texted: boolean; retold: number } | { ok: false; error: string; status?: number; blocked?: boolean; kind?: string; consent?: boolean };
 /** A range of days as the server answers it: the visits (cancelled left out by the caller) and the blocked time. */
 export type Book = { cards: Card[]; blocks: BlockRange[] };
 
@@ -182,7 +183,7 @@ function start(boot: Boot) {
       if (res.status === 401) return { ok: false, status: 401, error: 'Your sign-in has ended. Sign in again, then try that once more.' };
       return {
         ok: false, status: res.status, error: typeof data?.error === 'string' && data.error ? data.error : OFFLINE,
-        blocked: data?.blocked === true, kind: typeof data?.kind === 'string' ? data.kind : undefined,
+        blocked: data?.blocked === true, kind: typeof data?.kind === 'string' ? data.kind : undefined, consent: data?.consent === true,
       };
     } catch {
       return { ok: false, error: OFFLINE };

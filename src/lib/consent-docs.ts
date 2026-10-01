@@ -547,7 +547,9 @@ export async function consentGapsFor(q: Q, patientId: string): Promise<{ byPlanI
  * record page). Audit consent.override.
  */
 export async function overrideConsent(tx: Tx, a: { clinicId: string; staffId: string; docId: string; context: OverrideContext; reason: string }): Promise<void> {
-  if (!(await canEditRecords(tx, a.staffId, a.clinicId))) throw new Refused(NOT_ALLOWED);
+  // The board's In the chair is the desk's step (schedule.edit, checked by the schedule API): seating a patient is never
+  // refused for want of records.edit, and the reason is kept under the desk's own name. Every other context is the record's.
+  if (a.context !== 'in_chair' && !(await canEditRecords(tx, a.staffId, a.clinicId))) throw new Refused(NOT_ALLOWED);
   const reason = clean(a.reason);
   if (!reason) throw new Refused('Write why you are going ahead.');
   if (reason.length > 200) throw new Refused('Keep the reason under 200 characters.');
@@ -560,6 +562,21 @@ export async function overrideConsent(tx: Tx, a: { clinicId: string; staffId: st
   await tx.query('insert into consent_override (clinic_id, document_id, context, state_then, reason, staff_id) values ($1, $2, $3, $4, $5, $6)',
     [a.clinicId, d.id, a.context, notExplained ? 'not_explained' : d.state, reason, a.staffId]);
   await audit(tx, a.clinicId, a.staffId, 'consent.override', 'consent_document', d.id);
+}
+
+/**
+ * The forms prepared from this visit that are not agreed and that nobody went ahead without today (Manila): what the
+ * board's In the chair asks about (the schedule API, context in_chair). A form the strip's Go ahead anyway, or an
+ * earlier seating, already answered today is not asked again.
+ */
+export async function seatingGaps(q: Q, visitId: string): Promise<ConsentGap[]> {
+  const gaps = await consentGaps(q, { visitId });
+  if (!gaps.length) return gaps;
+  const done = new Set((await q.query<{ document_id: string }>(
+    `select distinct document_id from consent_override
+      where document_id = any($1::uuid[]) and (at at time zone 'Asia/Manila')::date = (now() at time zone 'Asia/Manila')::date`,
+    [gaps.map((g) => g.docId)])).rows.map((r) => r.document_id));
+  return gaps.filter((g) => !done.has(g.docId));
 }
 
 /** Forms linked to one plan line or one visit that are not agreed (the plan's Mark done reads it, record.ts): the same rule as consentGapsFor. */
