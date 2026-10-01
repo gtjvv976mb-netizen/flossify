@@ -47,7 +47,7 @@ import {
   loadConsentDocument, snapshotDoc, signingCheck, attestDocument, confirmSigning, withdrawConsent, printForPaper, recordPaperSigning, cancelDocument,
   mayAttest, clinicFace, contextFor, plannedLanguage, bornLine, signerWords, STATE_WORDS, WITHDRAW_HOW, type RecordSigning,
 } from '../../../../../../lib/consent-docs';
-import { rawFromFields, rawFromForm, feeChips, timeWords } from '../../../../../../lib/intake';
+import { rawFromFields, rawFromForm, feeChips, timeWords, intakeGates } from '../../../../../../lib/intake';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ws = await requireWorkspace(Astro);
@@ -124,10 +124,12 @@ const data = await withClinic(clinic.id, async (tx) => {
   const chips = doc.template ? await feeChips(tx, doc.template, Array.isArray(doc.fields.teeth) ? (doc.fields.teeth as number[]).length : 1) : [];
   const area = (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null;
   await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'consent.view', 'consent_document', $3)`, [clinic.id, session.staffId, doc.id]);
-  return { doc, p, checks, canEdit, mayExplain, face, files, chips, area };
+  // The codes whose words in force are offered here: a form under older words is signed again under them (phase 4.2).
+  const offered = new Set((await intakeGates(tx)).templates.map((x) => x.code as string));
+  return { doc, p, checks, canEdit, mayExplain, face, files, chips, area, offered };
 });
 if (!data) return new Response(null, { status: 404 });
-const { doc, p, checks, canEdit, mayExplain, face, files } = data;
+const { doc, p, checks, canEdit, mayExplain, face, files, offered } = data;
 const t = doc.template;
 const name = [p.first_name, p.middle_name, p.last_name, p.suffix].filter(Boolean).join(' ');
 const age = p.birth ? ageOn(p.birth, today) : null;
@@ -139,7 +141,10 @@ const live = t ? renderDocument(t, doc.fields, contextFor(t, { clinic: face, pat
 const st = STATE_WORDS[doc.state];
 const explaining = mayExplain && t?.attest && !doc.attestation && !latest && !doc.paperPrintedAt && (q.get('explain') === '1' || postedIntent === 'explain');
 const openIntake = doc.intakeStatus === 'preparing' || doc.intakeStatus === 'out';
-const canResign = canEdit && !openIntake && doc.inForce && ['to_sign', 'refused', 'no_photos', 'withdrawn'].includes(doc.state) && (!t?.attest || !!doc.attestation);
+// Newer words in force for this form's code: signed again under them, from here; the old form stays as history.
+const newer = !doc.inForce && offered.has(doc.code);
+const canResign = canEdit && !openIntake && (newer || (doc.inForce && ['to_sign', 'refused', 'no_photos', 'withdrawn'].includes(doc.state) && (!t?.attest || !!doc.attestation)));
+const WAYS = [['clinic', 'tablet', 'on this tablet'], ['phone', 'phone', 'on their phone']] as const;
 const CHANNEL: Record<string, string> = { phone: 'on the patient’s phone', tablet: 'on the clinic’s tablet', desk: 'on a clinic device', paper: 'on paper' };
 const hm = (d: Date) => timeWords(d);
 /** The day on Manila's calendar ("29 Sep 2026"), beside Manila's times. */
@@ -169,7 +174,7 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title={doc.title} section="patients" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
   <a href={`${base}#consent`} class="rec-back ws-glass m-0! w-fit px-3!"><Icon name="chevron-left" />Back to {p.first_name}’s record</a>
   {q.get('stale') === '1' && <Callout tone="alert" text={CSRF_MESSAGE} />}
-  {q.get('refused') && <Callout tone="alert" text="The forms could not be started for signing: this form is in forms being filled in, signed already, or has newer words." />}
+  {q.get('refused') && <Callout tone="alert" text="The forms could not be started for signing: this form is in forms being filled in, signed already under the words in force, or has newer words this server does not offer yet." />}
   {saved && SAVED[saved] && <Callout tone="success" text={SAVED[saved]} />}
   {problems.length > 0 && <Callout tone="alert" focus class="focus:outline-none" data-ik-problems title={`Nothing was saved. ${problems.length === 1 ? 'One thing' : `${problems.length} things`} to fix:`} items={problems} />}
 
@@ -178,17 +183,18 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
       <span class="ik-who-name">{doc.title}</span>
       <span class="ik-ref">{doc.ref}</span>
       <span class:list={['ik-tag']} data-tone={st.tone}>{st.words}{latest && doc.state !== 'to_sign' ? ` ${day(latest.signedAt)}` : ''}</span>
+      {!doc.inForce && <span class="ik-tag" data-tone="warn">{newer ? 'Newer words: sign again' : 'Older words'}</span>}
       <span class="ik-row-meta">{name} · {p.chart_no}</span>
     </div>
     <p class="ik-actions mt-3">
       {latest && <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${here}print/`}><Glyph name="print" size={16} />Print</a>}
-      {canResign && (
-        <form method="post" action={`/c/${clinic.slug}/patients/intake/`}>
-          <Csrf /><input type="hidden" name="intent" value="start" /><input type="hidden" name="way" value="clinic" /><input type="hidden" name="from" value="document" />
+      {canResign && WAYS.map(([way, glyph, where]) => (
+        <form method="post" action={`/c/${clinic.slug}/patients/intake/`} data-rc-sign={way}>
+          <Csrf /><input type="hidden" name="intent" value="start" /><input type="hidden" name="way" value={way} /><input type="hidden" name="from" value="document" />
           <input type="hidden" name="patient" value={patientId} /><input type="hidden" name="document" value={doc.id} />
-          <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="tablet" size={16} />Sign on this tablet</button>
+          <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name={glyph} size={16} />{newer ? 'Sign again' : 'Sign'} {where}</button>
         </form>
-      )}
+      ))}
       {canEdit && doc.state === 'to_sign' && !latest && !openIntake && (!t?.attest || doc.attestation) && (
         <form method="post" action={here}><Csrf /><input type="hidden" name="intent" value="paper_print" /><button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />{doc.paperPrintedAt ? 'Print for signing again' : 'Print for signing on paper'}</button></form>
       )}

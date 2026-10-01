@@ -38,7 +38,9 @@ const ok = (s) => console.log(`  ok  ${s}`);
 
 const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
 const errs = [];
-const watch = (p, who) => { p.on('pageerror', (e) => errs.push(`${who}: ${e.message}`)); p.on('console', (m) => { if (m.type() === 'error') errs.push(`${who}: ${m.text()}`); }); };
+// Astro's dev toolbar audits the page and sometimes cannot fetch its own data: not the app's error.
+const noise = (t) => /Astro background:|dev toolbar|audit's match function/.test(t);
+const watch = (p, who) => { p.on('pageerror', (e) => errs.push(`${who}: ${e.message}`)); p.on('console', (m) => { if (m.type() === 'error' && !noise(m.text())) errs.push(`${who}: ${m.text()}`); }); };
 
 // ---------------------------------------------------------------------------
 // The desk
@@ -400,6 +402,65 @@ await phoneB.context().close();
     assert.equal(await desk.locator('[data-vx-form]').count(), 0, 'with no visit today the form joins no visit');
     ok('record: no visit today, so the form stays in Consent only');
   }
+}
+
+// ---------------------------------------------------------------------------
+// Path B2 (phase 4.2): a form on the record under older words is signed again under the words in force, from
+// the record, on the patient's phone. An older version of the general consent is planted (a superuser's row,
+// never offered: the words in force stay treatment-2026-09), with an unsigned form on it for the same patient.
+// ---------------------------------------------------------------------------
+console.log('\nB2. Newer words: sign again from the record, on their phone');
+{
+  await q(`insert into consent_version (id, title, summary, effective_from, kind) values ('treatment-2026-01', 'Consent to dental examination and treatment', 'An older wording, for the test.', '2026-01-01', 'treatment') on conflict (id) do nothing`);
+  const staffId = (await q('select id from staff where email = $1', [owner.email]))[0].id;
+  await q(`delete from consent_document where ref = 'CF-TEST2' and clinic_id = $1 and not exists (select 1 from consent_signing s where s.document_id = consent_document.id)`, [clinicId]).catch(() => {});
+  const old = (await q(`insert into consent_document (clinic_id, ref, version_id, patient_id, fields, sort, prepared_by) values ($1, 'CF-TEST2', 'treatment-2026-01', $2, '{}', 1, $3) returning id`, [clinicId, onFile.id, staffId]))[0];
+  assert.equal((await q('select consent_in_force($1) as f', ['treatment-2026-01']))[0].f, false, 'the planted version is not in force');
+  await desk.goto(`${base}/c/${slug}/patients/${onFile.id}/#consent`, { waitUntil: 'load' });
+  // The record shows one section at a time: open Consent.
+  const tab = desk.locator('#rec-rec-consent-tab');
+  if (await tab.count()) await tab.click();
+  const row = desk.locator('li.vx-signed-row', { hasText: 'Newer words: sign again' });
+  assert.equal(await row.count(), 1, 'the record marks the form "Newer words: sign again"');
+  await row.scrollIntoViewIfNeeded();
+  const again = row.locator('form[data-rc-sign="phone"] button');
+  assert.match((await again.textContent()).trim(), /^Sign again on their phone/);
+  await again.click();
+  await desk.waitForLoadState('load');
+  if (!/step=check&via=phone/.test(desk.url())) {
+    const why = await desk.locator('[role="alert"], [data-ik-problems], .ws-callout').allTextContents();
+    throw new Error(`Sign again did not reach the Check step: at ${desk.url()}; ${why.join(' | ').replace(/\s+/g, ' ').trim()}`);
+  }
+  const intakeId = desk.url().match(/\/intake\/([0-9a-f-]+)\//)[1];
+  const here = `${base}/c/${slug}/patients/intake/${intakeId}/`;
+  assert.equal(await desk.locator('input[name="device"][value="phone"]').isChecked(), true, 'the phone is preselected from the record');
+  const renewed = (await q(`select d.version_id, consent_document_state(d.id) as state from consent_document d where d.intake_id = $1 and d.cancelled_at is null`, [intakeId]));
+  assert.deepEqual(renewed.map((r) => r.version_id), ['treatment-2026-09'], 'the intake holds the form under the words in force');
+  assert.equal((await q('select cancel_why from consent_document where id = $1', [old.id]))[0].cancel_why, 'renewed', 'the unsigned old form retired as renewed');
+  ok(`record → intake ${intakeId.slice(0, 8)}…: the form prepared again under treatment-2026-09, the old one renewed`);
+  await Promise.all([desk.waitForURL(/step=out/), desk.click('[data-ik-go]')]);
+  await desk.waitForSelector('[data-ik-qr] svg');
+  const link = (await q(`select token from intake_link where intake_id = $1 and retired_at is null and device = 'phone'`, [intakeId]))[0];
+  const phone = await (await phoneCtx()).newPage();
+  phone.setDefaultTimeout(60_000);
+  watch(phone, 'phone B2');
+  await phone.goto(`${base}/f/i/${link.token}/`, { waitUntil: 'load' });
+  await phone.waitForSelector('[data-ip-start]');
+  await Promise.all([phone.waitForLoadState('load'), phone.click('[data-ip-start] button.btn-primary')]);
+  await phone.waitForSelector('[data-ip-verify]');
+  await phone.fill('#f-birth_date', onFile.birth);
+  await Promise.all([phone.waitForLoadState('load'), phone.click('[data-ip-verify] button.btn-primary')]);
+  await signAllAndSend(phone);
+  await phone.context().close();
+  const after = (await q(`select consent_document_state(d.id) as state, d.version_id from consent_document d where d.intake_id = $1 and d.cancelled_at is null`, [intakeId]))[0];
+  assert.equal(after.state, 'agreed');
+  assert.equal(after.version_id, 'treatment-2026-09');
+  await desk.goto(`${base}/c/${slug}/patients/${onFile.id}/`, { waitUntil: 'load' });
+  assert.equal(await desk.locator('li.vx-signed-row', { hasText: 'Newer words' }).count(), 0, 'nothing on the record is under older words any more');
+  ok('phone B2: signed under the new words; the record shows it Signed, the old form gone from the list');
+  // What the test planted goes (the retired old form was never signed, so nothing restricts it; the database checks count the versions).
+  await q('delete from consent_document where id = $1', [old.id]);
+  await q(`delete from consent_version where id = 'treatment-2026-01'`);
 }
 
 // ---------------------------------------------------------------------------

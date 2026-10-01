@@ -1370,6 +1370,21 @@ the signed forms on the visit panel and the Treatment record (the owner's first 
   `holds()` counts signed forms, so a visit with nothing else done is still history. Checked by `phone-e2e.mjs` at a
   clinic with a visit today (the card, the row, the paper, the page fits at 1440 and 390) and measured with the
   panel open: 0 contrast fails, light and dark, desk and phone.
+- **Phase 4, second piece: Sign again from the record, on a phone or this tablet (no migration).** On the record's
+  Consent pane and a form's own page, a form that may be signed (never signed, refused, withdrawn, no photos) has
+  **Sign on this tablet** and **Sign on their phone**: the same intake start (`intent=start`, `document=<id>`,
+  `way=clinic|phone`); the phone way lands on Check with the phone preselected (`?via=phone`). A form whose
+  **words are no longer in force** (a newer version of its code in `consent_version`, and that version offered
+  here: the pane's `offered` codes) is marked "Newer words: sign again" and offers **Sign again** the same two
+  ways: `startIntake` no longer refuses `doc_words` but prepares the form again under the words in force in the
+  new intake — the clinic's part carried over when the fields are the same (as `renewDocuments`), the dentist,
+  the visit and the plan line kept, no attestation copied (the named dentist explains the new words again). An
+  unsigned old form retires as `renewed`; a signed one stays on the record as history. A form signed under the
+  words in force is still refused (`doc_signed`); words not offered here refuse `doc_words`. Checked by
+  `phone-e2e.mjs` B2: an older general-consent version planted by the test (never offered; the row is a
+  superuser's), an unsigned form on it, the record's pill and button, the intake under `treatment-2026-09`, the
+  old form `renewed`, signed on the phone, the record clean. The pill and buttons reuse measured classes
+  (`rp-warn`, `ws-btn-quiet`, `ik-tag[data-tone=warn]`).
 
 ## Open — read before shipping
 

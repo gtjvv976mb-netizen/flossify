@@ -100,11 +100,29 @@ Four candidates were put to the owner on 1 Oct; they chose the first.
   Checked by `scripts/dev/intake/phone-e2e.mjs` at a clinic with a visit today and
   measured with the panel open (0 contrast fails, fits 1440 and 390).
 
+### 4.2 — Sign again from the record (built 1 Oct, no migration)
+
+- **Two ways on every form that may be signed**, on the Consent pane and the
+  form's own page: Sign on this tablet, Sign on their phone. The phone way
+  lands on the intake's Check step with the phone preselected, so the desk
+  presses once and shows the QR code.
+- **Newer words.** When a form's version is no longer in force and the version
+  in force for its code is offered here, the record marks it "Newer words: sign
+  again" and offers Sign again both ways. The start prepares the form again
+  under the words in force, inside the new intake: the clinic's part carried
+  over when the fields are the same, the dentist, the visit and the plan line
+  kept, no attestation copied (the dentist explains the new words again). An
+  unsigned old form retires as renewed; a signed one stays as history, so what
+  was agreed under the old words is never lost.
+- Not offered: a form signed under the words in force (nothing to sign again),
+  and words this server does not offer yet (a production server until the new
+  version is reviewed).
+- Built in `src/lib/intake.ts` (`startIntake`), `_record/ConsentForms.astro`
+  and `consents/[document].astro`. Checked by `phone-e2e.mjs` path B2 with an
+  older version planted by the test.
+
 ### Still open, for the owner to rank
 
-2. **Re-signing from the record**: when a form's words change (a new version),
-   the record offers "Sign again" straight to a phone or tablet, without
-   starting a new intake by hand.
 3. **The health history from page 1 against the one on file**, side by side,
    with "Use" per detail as the QR forms do (`useFormDetail`), where today the
    intake writes a new version.
