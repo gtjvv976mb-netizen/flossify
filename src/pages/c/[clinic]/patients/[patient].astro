@@ -122,6 +122,7 @@ import PayPlans from './_record/PayPlans.astro';
 import RecordNav from './_record/RecordNav.astro';
 import Banner from './_record/Banner.astro';
 import Plus from './_record/Plus.astro';
+import FormCell from './_record/FormCell.astro';
 import Who from './_record/Who.astro';
 import VisitStrip from './_record/VisitStrip.astro';
 import { shellLinks } from '../../../../components/ws/routes';
@@ -762,6 +763,8 @@ const detailRows: [string, string | null][] = [
   ['Chart no.', patient.chart_no],
   ['On file since', `${dateText(manilaDay(patient.created_at))}${patient.imported ? ', from an import' : patient.created_by_name ? `, added by ${patient.created_by_name}` : ''}`],
 ];
+/** How many of the form's four columns each detail takes. */
+const DETAIL_SPAN: Record<string, 1 | 2 | 4> = { 'Full name': 2, Address: 2, HMO: 2, 'Emergency contact': 2 };
 /** Where each detail is changed (the plus beside it): a field of Edit details, the caret put in `field`; or, for the
  *  birth date, the Health form, where its history is kept (`go`). On file since is not changed. */
 const DETAIL_EDIT: Record<string, { field: string; go?: string }> = {
@@ -957,24 +960,16 @@ const recHere = here;
   <!-- Overview -->
   <div id="rec-overview" role="region" aria-labelledby="rec-overview-title" class="rec-sec min-w-0 grid gap-4 content-start" data-rec-panel="overview">
     <Banner id="overview" n={SECTION_NO['overview']} label={SECTION_LABEL['overview']} />
-    <dl class="pp-lines" id="overview">
+    {/* The patient's details boxed as on a printed record's first page, four boxes to a row (two on a phone). */}
+    <dl class="pf-grid" id="overview">
       {detailRows.map(([k, v]) => {
-        const edit = canEdit ? DETAIL_EDIT[k] : undefined;
-        return (
-          <div class:list={['pp-line', !v && 'pp-line-empty']}>
-            <dt>{k}</dt>
-            <dd>{v ?? (edit ? '' : 'Not on file')}</dd>
-            {edit && (edit.go
-              ? <Plus label={`${v ? 'Change' : 'Add'} the ${k.toLowerCase()} (on the medical history)`} text={v ? undefined : 'Add'} go={edit.go} field={edit.field} class="pp-plus" />
-              : <Plus label={`${v ? 'Change' : 'Add'} the ${k === 'HMO' ? 'HMO' : k.toLowerCase()}`} text={v ? undefined : 'Add'} open="details" field={edit.field} class="pp-plus" />)}
-          </div>
-        );
+        const e = canEdit ? DETAIL_EDIT[k] : undefined;
+        const what = k === 'HMO' ? 'HMO' : k.toLowerCase();
+        return <FormCell label={k} value={v} span={DETAIL_SPAN[k] ?? 1}
+          edit={e && { label: `${v ? 'Change' : 'Add'} the ${what}${e.go ? ' (on the medical history)' : ''}`, open: e.go ? undefined : 'details', go: e.go, field: e.field }} />;
       })}
-      <div class:list={['pp-line', !patient.notes && 'pp-line-empty']}>
-        <dt>Desk note</dt>
-        <dd class="whitespace-pre-line">{patient.notes ?? (canEdit ? '' : 'None')}</dd>
-        {canEdit && <Plus label={patient.notes ? 'Change the desk note' : 'Add a desk note'} text={patient.notes ? undefined : 'Add'} open="details" field="notes" class="pp-plus" />}
-      </div>
+      <FormCell label="Desk note" value={patient.notes} span={2} pre
+        edit={canEdit ? { label: patient.notes ? 'Change the desk note' : 'Add a desk note', open: 'details', field: 'notes' } : undefined} />
     </dl>
     <RecallCard recall={clin.recall} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} bookHref={bookHref} texts={me.recall_texts === true} />
     {data.latestForm && (
@@ -997,27 +992,14 @@ const recHere = here;
     <Pane as="section" label="Health" id="health">
       <Head icon="heart" title="Health history" />
       {/* The answers as a paper chart writes them, a plus beside each to change it (the form below opens on it). */}
-      <dl class="pp-lines pp-lines-one">
-        <div class:list={['pp-line', !patient.birth && 'pp-line-empty']}>
-          <dt>Birth date</dt>
-          <dd>{patient.birth ? `${dateText(patient.birth)}${age !== null ? ` · ${ageText(age)}` : ''}` : canEdit ? '' : 'Not on file'}</dd>
-          {canEdit && <Plus label={patient.birth ? 'Change the birth date' : 'Add the birth date'} text={patient.birth ? undefined : 'Add'} go="health-form" field="birth_date" class="pp-plus" />}
-        </div>
+      <dl class="pf-grid">
         {LISTS.map((l) => {
           const v = latest?.[l.key] ?? null;
-          return (
-            <div class:list={['pp-line', v === null && 'pp-line-empty']}>
-              <dt>{l.label}</dt>
-              <dd class:list={[l.key === 'allergies' && v && v.length > 0 && 'pp-alert']}>{listLine(v, l.none)}</dd>
-              {canEdit && <Plus label={`Add to ${l.label.toLowerCase()}`} go="health-form" field={`${l.key}_add`} class="pp-plus" />}
-            </div>
-          );
+          return <FormCell label={l.label} value={listLine(v, l.none)} span={2} alert={l.key === 'allergies' && !!v && v.length > 0}
+            edit={canEdit ? { label: `Add to ${l.label.toLowerCase()}`, go: 'health-form', field: `${l.key}_add` } : undefined} />;
         })}
-        <div class:list={['pp-line', !latest?.note && 'pp-line-empty']}>
-          <dt>Note for the dentist</dt>
-          <dd class="whitespace-pre-line">{latest?.note ?? (canEdit ? '' : 'None')}</dd>
-          {canEdit && <Plus label={latest?.note ? 'Change the note for the dentist' : 'Add a note for the dentist'} text={latest?.note ? undefined : 'Add'} go="health-form" field="note" class="pp-plus" />}
-        </div>
+        <FormCell label="Note for the dentist" value={latest?.note ?? null} span={2} pre
+          edit={canEdit ? { label: latest?.note ? 'Change the note for the dentist' : 'Add a note for the dentist', go: 'health-form', field: 'note' } : undefined} />
       </dl>
       <p class="pp-small mt-2">
         {!latest ? 'Nothing recorded yet. Ask the patient before treatment.'
@@ -1103,7 +1085,7 @@ const recHere = here;
     {showOffer && current === 'chart' && <ChartOffer state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="chart" leaveHref={leaveOffer('chart')} inChart />}
     <Pane as="section" label="Chart" id="chart" class="pt-chart-pane">
       <Head icon="tooth" title="Chart" />
-      <p class="-mt-2 mb-4 text-[14px] text-muted">Every change is saved as you make it, under your name.</p>
+      <p class="pp-small -mt-1 mb-2">Every change is saved as you make it, under your name.</p>
       {/* The odontogram (src/components/Odontogram.astro, its offline logic untouched; the palette's record actions
           for people who may edit records, the plan and done marks for everyone),
           drawn soft by patients.css ("The chart") and laid out by the width of this card: the
@@ -1119,19 +1101,7 @@ const recHere = here;
           note above already says so, once. */}
       {findings.length > 0 && (
         <>
-          <h3 class="mt-8 text-[16px] font-semibold">Findings</h3>
-          <p class="mt-0.5 text-[13.5px] text-muted">As they stood when this page opened.</p>
-          <ul class="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            {findings.map((f) => (
-              <li class="pt-inset flex items-center gap-3 px-4 py-3">
-                <span class="tooth pt-find-swatch h-8! w-6! shrink-0" data-state={f.condition} aria-hidden="true"></span>
-                <div>
-                  <p class="text-[15px] font-semibold tabular-nums">Tooth {f.fdi}{f.codes && <span class="text-accent"> {f.codes}</span>}</p>
-                  <p class="text-[13.5px] text-ink-2">{CONDITION_LABEL[f.condition]}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <p class="pp-findings"><span class="pp-findings-k">Findings</span>{findings.map((f, n) => <span>{n > 0 && <span aria-hidden="true"> · </span>}<strong class="tabular-nums">{f.fdi}{f.codes && ` ${f.codes}`}</strong> {CONDITION_LABEL[f.condition]}</span>)}</p>
         </>
       )}
       {/* The chart's history (tooth_state, grouped by the minute and the person), newest first. */}

@@ -59,7 +59,7 @@ const measure = () => p.evaluate(() => {
   const vis = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden'
     && !(el.closest('details:not([open])') && !el.closest('summary'));
   const sections = [...document.querySelectorAll('[data-rec-panel]')];
-  const plus = [...document.querySelectorAll('.rec-plus')].filter(vis);
+  const plus = [...document.querySelectorAll('.rec-plus, .pf-go')].filter(vis);
   const sheet = document.querySelector('.pp-sheet');
   // Every element on the sheet (and the head's facts) with words of its own, measured against what is behind it.
   const words = [...document.querySelectorAll('.pp-sheet *, .pp-facts *')].filter((el) => vis(el) && !el.closest('dialog') && !el.closest('details:not([open])')
@@ -73,7 +73,8 @@ const measure = () => p.evaluate(() => {
     sections: sections.map((s) => ({ id: s.dataset.recPanel, hidden: s.hidden || !vis(s), title: s.querySelector('.pp-title')?.textContent.trim() })),
     links: [...document.querySelectorAll('[data-rec-link]')].map((a) => a.dataset.recLink),
     plus: plus.length,
-    linesWithout: [...document.querySelectorAll('#overview > .pp-line')].filter((t) => !t.querySelector('.pp-plus') && t.querySelector('dt')?.textContent.trim() !== 'On file since').map((t) => t.querySelector('dt')?.textContent.trim()),
+    linesWithout: [...document.querySelectorAll('#overview > .pf-cell')].filter((t) => !t.querySelector('.pf-go') && t.querySelector('dt')?.textContent.trim() !== 'On file since').map((t) => t.querySelector('dt')?.textContent.trim()),
+    cellsShort: [...document.querySelectorAll('.pf-go')].filter(vis).filter((b) => b.getBoundingClientRect().height < 44 || b.getBoundingClientRect().width < 44).length,
     decoration: { banners: document.querySelectorAll('.rec-banner').length, icons: [...document.querySelectorAll('.pp-sheet .ws-pane-icon')].filter(vis).length, tiles: document.querySelectorAll('.pt-tiles, .rec-nav-item').length },
     teal: [...document.querySelectorAll('.ws-btn-primary')].filter(vis).filter((b) => !b.closest('dialog')).map((b) => b.textContent.trim().slice(0, 20)),
     aligned: Math.abs(top.left - sh.left) < 1 && Math.abs(top.width - sh.width) < 1,
@@ -96,7 +97,8 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
     assert.deepEqual(m.sections.map((x) => x.title.match(/^\d+/)?.[0]), ORDER.map((_, i) => String(i + 1)), 'numbered 1 to 12');
     assert.deepEqual(m.links, ORDER, 'the contents list the parts in order');
     assert.deepEqual(m.decoration, { banners: 0, icons: 0, tiles: 0 }, 'no colour banners, icon tiles or number tiles');
-    assert.deepEqual(m.linesWithout, [], 'a plus on every detail that can be changed');
+    assert.deepEqual(m.linesWithout, [], 'every detail that can be changed is a box that opens it');
+    assert.equal(m.cellsShort, 0, 'every box is a 44 px target');
     assert.ok(m.plus >= 15, `plus signs: ${m.plus}`);
     assert.deepEqual(m.teal, ['New booking'], 'New booking is the one teal button in view');
     assert.ok(m.aligned, 'the head and the sheet line up');
@@ -136,7 +138,7 @@ ok('an address ending #consent opens on Consent');
 
 // 3. The plus signs do what they say.
 await p.goto(record, { waitUntil: 'load' });
-const mobile = p.locator('#overview .pp-line:has(dt:text-is("Mobile")) .pp-plus');
+const mobile = p.locator('#overview .pf-cell:has(dt:text-is("Mobile")) .pf-go');
 if (await mobile.count()) {
   await mobile.click();
   await p.waitForTimeout(400);
@@ -147,7 +149,7 @@ if (await mobile.count()) {
   await p.waitForTimeout(600);
   ok('the plus beside Mobile opens Edit details with the caret in Mobile');
 }
-const allergy = p.locator('.pp-plus[aria-label="Add to allergies"]');
+const allergy = p.locator('.pf-go:has(.sr-only:text-is("Add to allergies"))');
 assert.ok(await allergy.count() || !(await q('select 1 from medical_history where patient_id = $1 and allergies is not null', [pt.id])).length, 'a plus beside Allergies when there are health answers');
 if (await allergy.count()) {
   await allergy.click();
@@ -176,7 +178,7 @@ if (viewer) try {
   await v.goto(`${base}/auth/login/?any=1`); await v.fill('#email', viewer.email); await v.fill('#password', password);
   await Promise.all([v.waitForURL(/\/c\//), v.click('[data-go]')]);
   await v.goto(record, { waitUntil: 'load' });
-  const n = await v.evaluate(() => [...document.querySelectorAll('.rec-plus')].filter((e) => !e.closest('#rec-visits') && !e.closest('#rec-money')).length);
+  const n = await v.evaluate(() => [...document.querySelectorAll('.rec-plus, .pf-go')].filter((e) => !e.closest('#rec-visits') && !e.closest('#rec-money')).length);
   assert.equal(n, 0, 'no plus to change the record for someone who cannot edit');
   ok(`${viewer.email}, records not editable here: no plus sign to change the record (booking and charging follow their own permissions)`);
   await c2.close();

@@ -1,0 +1,21 @@
+---
+// One box of the record's form, as a printed dental record boxes its fields: a small label over the value, the
+// box's own width in the row (`span` of four). When it can be changed the whole box is the button (44 px and up),
+// with a small plus in its corner; it opens Edit details with the caret in `field`, or goes to a part of the page.
+import Icon from '../../../../../components/ws/Icon.astro';
+
+export interface CellEdit { label: string; open?: string; go?: string; field?: string }
+interface Props { label: string; value: string | null; span?: 1 | 2 | 4; edit?: CellEdit; alert?: boolean; pre?: boolean }
+const { label, value, span = 1, edit, alert = false, pre = false } = Astro.props;
+---
+
+<div class:list={['pf-cell', `pf-span-${span}`, !value && 'pf-empty', edit && 'pf-edit']}>
+  <dt class="pf-k">{label}</dt>
+  <dd class:list={['pf-v', alert && 'pf-alert', pre && 'whitespace-pre-line']}>{value ?? (edit ? 'Not on file' : '—')}</dd>
+  {edit && (
+    <button type="button" class="pf-go" data-ws-open={edit.open} data-rec-go={edit.go} data-rec-field={edit.field} aria-haspopup={edit.open ? 'dialog' : undefined}>
+      <span class="sr-only">{edit.label}</span>
+      <span class="rec-plus-mark pf-plus" aria-hidden="true"><Icon name="plus" size={13} /></span>
+    </button>
+  )}
+</div>
