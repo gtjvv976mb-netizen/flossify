@@ -492,9 +492,9 @@ export function withdrawalWords(w: NonNullable<RecordSigning['withdrawal']>): st
   return `Withdrawn ${manilaDayWords(new Date(w.at))}: told by ${w.toldBy}, ${how}, recorded by ${w.byName}${w.note ? `. “${w.note}”` : ''}`;
 }
 
-export type OverrideContext = 'plan_done' | 'in_chair' | 'strip';
-/** Where treatment went ahead without the form: the plan's Mark done, the chair, the This visit strip. */
-export const OVERRIDE_CONTEXT: Record<OverrideContext, string> = { plan_done: 'treatment marked done', in_chair: 'seated in the chair', strip: 'the visit went ahead' };
+export type OverrideContext = 'plan_done' | 'in_chair' | 'strip' | 'arrived';
+/** Where treatment went ahead without the form: the plan's Mark done, the chair, the This visit strip, the door (044). */
+export const OVERRIDE_CONTEXT: Record<OverrideContext, string> = { plan_done: 'treatment marked done', in_chair: 'seated in the chair', strip: 'the visit went ahead', arrived: 'checked in' };
 /** The form's state when treatment went ahead, in words (consent_override.state_then). */
 export const STATE_THEN_WORDS: Record<string, string> = {
   cancelled: 'removed', to_sign: 'not signed', to_confirm: 'not confirmed', agreed: 'agreed', refused: 'not agreed', no_photos: 'no photos',
@@ -549,7 +549,7 @@ export async function consentGapsFor(q: Q, patientId: string): Promise<{ byPlanI
 export async function overrideConsent(tx: Tx, a: { clinicId: string; staffId: string; docId: string; context: OverrideContext; reason: string }): Promise<void> {
   // The board's In the chair is the desk's step (schedule.edit, checked by the schedule API): seating a patient is never
   // refused for want of records.edit, and the reason is kept under the desk's own name. Every other context is the record's.
-  if (a.context !== 'in_chair' && !(await canEditRecords(tx, a.staffId, a.clinicId))) throw new Refused(NOT_ALLOWED);
+  if (a.context !== 'in_chair' && a.context !== 'arrived' && !(await canEditRecords(tx, a.staffId, a.clinicId))) throw new Refused(NOT_ALLOWED);
   const reason = clean(a.reason);
   if (!reason) throw new Refused('Write why you are going ahead.');
   if (reason.length > 200) throw new Refused('Keep the reason under 200 characters.');

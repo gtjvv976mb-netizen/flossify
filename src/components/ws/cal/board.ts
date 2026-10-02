@@ -33,6 +33,10 @@ export interface Boot {
   /** May change Clinic settings (settings.edit): the Block panel says where lunch and a dentist's hours are set. */
   canSettings: boolean;
   chairs: number; hours: Record<number, [number, number] | null>; staff: StaffDay[]; catalog: Service[];
+  /** Minutes the clinic keeps a chair free after each visit (clinic.turnover_min, 044): the suggested times leave it. */
+  turnover: number;
+  /** The clinic holds a reminder while its visit sits in closed time nobody kept (clinic.hold_closed_reminders, 044). */
+  holdsReminders: boolean;
   next: Record<string, string[]>;
   cards: Card[]; todayCards: Card[]; toPlace: Card[]; toConfirm: Card[];
   /** Blocked time (040) over the range on screen and today: lunch, a dentist's time not in, the dated blocks. */

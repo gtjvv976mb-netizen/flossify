@@ -34,9 +34,9 @@ export interface Panels {
   changed: (days: Set<string>) => void;
   /** A dated block, in view mode (the strip's pills): what, when, the note, who added it; Remove for schedule.edit. */
   openBlock: (id: string, opener: Element | null) => void;
-  /** In the chair was refused for a consent form not agreed (Today's patients' one tap): the visit's panel opens with the
-   *  server's sentence, a box for why, and Seat anyway. */
-  askSeat: (id: string, text: string, opener: Element | null) => void;
+  /** In the chair (or Arrived, where the clinic asks at the door) was refused for a consent form not agreed (Today's
+   *  patients' one tap): the visit's panel opens with the server's sentence, a box for why, and Seat / Check in anyway. */
+  askSeat: (id: string, to: string, text: string, opener: Element | null) => void;
   /** Block time (040): a closure, a dentist away, a chair out of use, from the day given (schedule.edit only). */
   openBlockNew: (o: { ymd?: string; min?: number }, opener: Element | null) => void;
 }
@@ -532,7 +532,7 @@ export function initPanels(ctx: Ctx): Panels {
     if (!r.ok) {
       hide(V.said);
       V.err.dataset.tone = 'alert';
-      if (r.consent && o.consent) { seatAsk(r.error, o.consent); return null; }
+      if (r.consent && o.consent) { seatAsk(r.error, o.consent, String(body.status ?? 'in_chair')); return null; }
       if (r.blocked && o.anyway) {
         const run = o.anyway;
         const label = o.anywayLabel ?? (V.saveWord.textContent === 'Place it' ? 'Place anyway' : 'Move anyway');
@@ -549,17 +549,18 @@ export function initPanels(ctx: Ctx): Panels {
     ctx.flash(r.card.id);
     return r;
   }
-  /** In the chair, refused for a consent form of this visit not agreed: the sentence in amber, a box for why, and Seat
-   *  anyway, which sends the same step again with the reason (kept against each form: consent_override, in_chair). */
-  function seatAsk(text: string, run: (why: string) => void) {
+  /** In the chair (or Arrived / In the lobby where the clinic asks at the door, 044), refused for a consent form of this
+   *  visit not agreed: the sentence in amber, a box for why, and Seat anyway (Check in anyway at the door), which sends
+   *  the same step again with the reason (kept against each form: consent_override, in_chair or arrived). */
+  function seatAsk(text: string, run: (why: string) => void, to = 'in_chair') {
     V.err.dataset.tone = 'warn';
     const box = el('span', 'vp-why');
-    const label = el('label', 'sr-only', 'Why they go into the chair without the consent form');
+    const label = el('label', 'sr-only', to === 'in_chair' ? 'Why they go into the chair without the consent form' : 'Why they are checked in without the consent form');
     const input = el('input', 'vp-why-in');
     input.type = 'text'; input.maxLength = 200; input.autocomplete = 'off'; input.id = 'vp-why-in';
     input.placeholder = 'Why go ahead without it?';
     label.htmlFor = input.id;
-    const go = anywayBtn('Seat anyway', 'data-vp-seat-anyway', () => {
+    const go = anywayBtn(to === 'in_chair' ? 'Seat anyway' : 'Check in anyway', 'data-vp-seat-anyway', () => {
       const why = input.value.trim();
       if (!why) { input.focus(); input.setAttribute('aria-invalid', 'true'); return; }
       hide(V.err); V.err.dataset.tone = 'alert'; run(why);
@@ -573,7 +574,7 @@ export function initPanels(ctx: Ctx): Panels {
   async function setStatus(id: string, to: string, word: string, why?: string) {
     const was = ctx.card(id);
     const r = await patch(why ? { id, status: to, consentReason: why } : { id, status: to },
-      to === 'in_chair' ? { consent: (w) => void setStatus(id, to, word, w) } : {});
+      { consent: (w) => void setStatus(id, to, word, w) });
     if (!r) return;
     const c = r.card;
     if (to === 'cancelled') {
@@ -1121,9 +1122,14 @@ export function initPanels(ctx: Ctx): Panels {
     }
     const calls = link('Open Calls', boot.links.calls);
     calls.className = 'bl-inside-calls';
-    callout(L.inside, n === 1
-      ? '1 visit is already booked in this time. Nothing was changed for it, and its reminder text still goes out. Move it or call them.'
-      : `${n} visits are already booked in this time. Nothing was changed for them, and their reminder texts still go out. Move each one or call them.`,
+    // At a clinic that holds reminders in closed time nobody kept (044), they wait until the visit is kept or moved.
+    callout(L.inside, boot.holdsReminders
+      ? (n === 1
+        ? '1 visit is already booked in this time. Nothing was changed for it; its reminder text waits until it is kept or moved. Move it or call them.'
+        : `${n} visits are already booked in this time. Nothing was changed for them; their reminder texts wait until each is kept or moved. Move each one or call them.`)
+      : n === 1
+        ? '1 visit is already booked in this time. Nothing was changed for it, and its reminder text still goes out. Move it or call them.'
+        : `${n} visits are already booked in this time. Nothing was changed for them, and their reminder texts still go out. Move each one or call them.`,
     [ul, calls]);
   }
 
@@ -1183,10 +1189,10 @@ export function initPanels(ctx: Ctx): Panels {
       if (V.panel.open && editOpen() && editing && days.has(M.manila(editing.startsAt).ymd)) eEndsFit();
     },
     openBlock, openBlockNew,
-    askSeat: (id, text, opener) => {
+    askSeat: (id, to, text, opener) => {
       if (!ctx.card(id)) return;
       openVisit(id, opener);
-      seatAsk(text, (why) => void setStatus(id, 'in_chair', 'In the chair', why));
+      seatAsk(text, (why) => void setStatus(id, to, STEP.find(([k]) => k === to)?.[1] ?? 'In the chair', why), to);
     },
   };
 }

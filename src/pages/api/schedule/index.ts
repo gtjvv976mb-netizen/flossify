@@ -333,16 +333,24 @@ export const PATCH: APIRoute = async ({ request, cookies }) => {
         }
       }
 
-      if (status === 'in_chair' && cur.status !== 'in_chair') {
-        // Seating never waits on paperwork, but it asks (as the record's Mark done anyway and Go ahead anyway do): a form
+      // Where the clinic asks (clinic.consent_ask_at, 044): at the chair, or at the door (Arrived or In the lobby) and
+      // then at the chair only for what nobody answered at the door (seatingGaps leaves out a form gone ahead today).
+      const askAt = status !== null && status !== cur.status
+        ? (await tx.query<{ at: string }>('select consent_ask_at as at from clinic where id = $1', [clinic.id])).rows[0]?.at ?? 'chair' : 'chair';
+      const asking = status !== null && status !== cur.status
+        && (status === 'in_chair' || (askAt === 'arrived' && (status === 'arrived' || status === 'in_lobby')));
+      if (asking) {
+        // A visit never waits on paperwork, but it asks (as the record's Mark done anyway and Go ahead anyway do): a form
         // prepared from this visit that is not agreed, and that nobody went ahead without today, needs a reason. The
-        // reason is kept against each form in this transaction, so the seat and the why are saved together or not at all.
+        // reason is kept against each form in this transaction, so the step and the why are saved together or not at all.
+        const atChair = status === 'in_chair';
         const gaps = await seatingGaps(tx, id);
         if (gaps.length && !consentReason) {
-          throw refuse(409, `${gaps.map(gapWords).join('; ')}. Say why they go into the chair without it.`, { consent: true, forms: gaps.map((g) => g.docId) });
+          throw refuse(409, `${gaps.map(gapWords).join('; ')}. ${atChair ? 'Say why they go into the chair without it.' : 'Say why they are checked in without it, or have it signed while they wait.'}`,
+            { consent: true, forms: gaps.map((g) => g.docId) });
         }
         try {
-          for (const g of gaps) await overrideConsent(tx, { clinicId: clinic.id, staffId: session.staffId, docId: g.docId, context: 'in_chair', reason: consentReason! });
+          for (const g of gaps) await overrideConsent(tx, { clinicId: clinic.id, staffId: session.staffId, docId: g.docId, context: atChair ? 'in_chair' : 'arrived', reason: consentReason! });
         } catch (e) {
           if (e instanceof Refused) throw refuse(400, e.reasons.join(' '));
           throw e;

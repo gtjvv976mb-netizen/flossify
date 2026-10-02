@@ -105,6 +105,12 @@ export async function publicBusy(q: Queryable, clinicId: string, from: Date, to:
   return rows.map((r: any) => ({ dentist: (r.dentist_slug as string | null) ?? null, named: !!r.named, s: ms(r.starts_at), e: ms(r.ends_at) }));
 }
 
+/** The minutes a listed clinic keeps a chair free after each visit (044, public_clinic_turnover): 0 when it keeps none. */
+export async function publicTurnover(q: Queryable, clinicId: string): Promise<number> {
+  const { rows } = await (q as Tx).query('select public_clinic_turnover($1) as t', [clinicId]);
+  return Number(rows[0]?.t ?? 0) || 0;
+}
+
 /** The clinic's one dentist, when its public page lists exactly one: there, "any dentist" is her (p32). */
 export const soloDentist = (l: DbListing): string | null => l.dentistProfiles.length === 1 ? l.dentistProfiles[0].slug : null;
 
@@ -126,12 +132,12 @@ export async function openSlots(l: DbListing, opts: { dentist?: string | null; m
   const days = opts.days ?? 14;
   const from = manilaMidnight(now.ymd);
   const to = new Date(from.getTime() + (days + 1) * DAY_MS);
-  const [busy, blocked] = await Promise.all([publicBusy(pool, l.id, from, to), publicBlocked(pool, l.id, from, to)]);
+  const [busy, blocked, turnover] = await Promise.all([publicBusy(pool, l.id, from, to), publicBlocked(pool, l.id, from, to), publicTurnover(pool, l.id)]);
   const dentist = opts.dentist || soloDentist(l);
   const dentistDays = dentist ? l.dentistProfiles.find((d) => d.slug === dentist)?.clinics[0].days : undefined;
   const dentists = l.dentistProfiles.map((d) => d.slug);
   const isTaken = (ymd: string, start: number, end: number) =>
-    !slotOpen({ s: slotMs(ymd, start), e: slotMs(ymd, end), dentist, chairs: l.chairs, dentists, busy, blocked });
+    !slotOpen({ s: slotMs(ymd, start), e: slotMs(ymd, end), dentist, chairs: l.chairs, dentists, busy, blocked, turnover });
   return slotsFor(l.slug, l.hours, { days, dentistDays, minutes: opts.minutes, limit: opts.limit, now, isTaken });
 }
 
@@ -140,8 +146,11 @@ export async function openSlots(l: DbListing, opts: { dentist?: string | null; m
  * for [startsAt, endsAt), and the same rule the offer used.
  */
 export async function slotStillOpen(tx: Tx, l: DbListing, p: { dentist: string | null; startsAt: Date; endsAt: Date }): Promise<boolean> {
-  const [busy, blocked] = [await publicBusy(tx, l.id, p.startsAt, p.endsAt), await publicBlocked(tx, l.id, p.startsAt, p.endsAt)];
-  return slotOpen({ s: p.startsAt.getTime(), e: p.endsAt.getTime(), dentist: p.dentist, chairs: l.chairs, dentists: l.dentistProfiles.map((d) => d.slug), busy, blocked });
+  // The busy read reaches the clinic's gap either side (044), so a visit just before or after the slot counts.
+  const turnover = await publicTurnover(tx, l.id);
+  const pad = turnover * 60_000;
+  const [busy, blocked] = [await publicBusy(tx, l.id, new Date(p.startsAt.getTime() - pad), new Date(p.endsAt.getTime() + pad)), await publicBlocked(tx, l.id, p.startsAt, p.endsAt)];
+  return slotOpen({ s: p.startsAt.getTime(), e: p.endsAt.getTime(), dentist: p.dentist, chairs: l.chairs, dentists: l.dentistProfiles.map((d) => d.slug), busy, blocked, turnover });
 }
 
 /** Clinic-wide closed and lunch ranges as pieces per Manila day, within [from, to). */

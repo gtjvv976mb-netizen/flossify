@@ -24,12 +24,15 @@ export async function remindersFor(tx: Tx, ids: string[]): Promise<Map<string, R
 }
 
 /** A visit's reminder, in words: the line on the screen, its tone (the icon and tint), and the sheet's short form. */
-export function reminderWords(v: { startsAt: Date; phone: string | null }, r: Reminder | undefined, now = new Date()): { text: string; tone: Tone; short: string } {
+export function reminderWords(v: { startsAt: Date; phone: string | null; held?: boolean }, r: Reminder | undefined, now = new Date()): { text: string; tone: Tone; short: string } {
   const today = manilaToday(now);
   /** A time, or the day and time when it was another day. */
   const stamp = (d: Date) => (manilaToday(d) === today ? timeText(d) : whenText(d));
   const canText = (phone: string | null) => !!phone && PH_MOBILE.test(normalizePhone(phone));
   if (!canText(v.phone)) return { text: 'No reminder: no mobile on file', tone: 'none', short: 'none, no mobile' };
+  // In closed time nobody kept, at a clinic that holds reminders then (044): it waits for Keep it or a move. A reminder
+  // already sent stays said as sent.
+  if (v.held && (!r || r.status === 'cancelled')) return { text: 'Reminder held: keep the visit or move it, and it goes', tone: 'wait', short: 'held, in closed time' };
   if (!r) return willRemind(v.startsAt, now)
     ? { text: 'Reminder goes the day before', tone: 'wait', short: 'goes the day before' }
     : { text: 'No reminder: booked too late for one', tone: 'none', short: 'none, booked late' };

@@ -18,7 +18,8 @@
 // Blocked time (040). "In closed time", first when it is not empty: every visit ahead that sits in time the
 // clinic is not open for booking (lunch, a closed day, a dentist away or not in, a chair out of use, outside
 // the hours) and that nobody has kept there — src/lib/blocks.ts, visitsInClosedTime — with why, its
-// reminder's state (their texts still go out: nothing here holds or sends one), the number to call, Move
+// reminder's state (their texts still go out, unless the clinic holds them then: clinic.hold_closed_reminders,
+// 044, Clinic profile → How the day runs), the number to call, Move
 // (the Dashboard at that visit) and Keep it (intent=keep: the visit stays, marked kept, audited
 // 'appointment.keep_blocked'). The next two open days skip a day a closure covers whole, and a visit kept on
 // such a day before the second open day is still listed to confirm, under its own day.
@@ -235,9 +236,12 @@ const data = await withClinic(clinic.id, async (tx) => {
   }));
   // In closed time: every visit ahead there that nobody has kept (src/lib/blocks.ts), soonest first.
   const closedTime = await visitsInClosedTime(tx, clinic.id);
-  return { days, visits, reminders, attempts, callBack, closedTime };
+  const { rows: [hc] } = await tx.query<{ h: boolean }>('select hold_closed_reminders as h from clinic where id = $1', [clinic.id]);
+  return { days, visits, reminders, attempts, callBack, closedTime, holds: !!hc?.h };
 });
-const { days, visits, reminders, attempts, callBack, closedTime } = data;
+const { days, visits, reminders, attempts, callBack, closedTime, holds } = data;
+/** Visits whose reminder waits (044): in closed time nobody kept, at a clinic that holds reminders then. */
+const heldIds = new Set(holds ? closedTime.map((v) => v.id) : []);
 
 // ---------------------------------------------------------------------------
 // Rows: one per number per day, so a family on one mobile is one call. A visit
@@ -272,7 +276,7 @@ const whatFor = (v: { service: string | null; reason: string | null }) => v.serv
 const whoWith = (d: string | null) => (d ? shortName(d) : 'Any dentist');
 type Tone = 'ok' | 'wait' | 'none';
 /** The reminder text's state in words (src/lib/reminder-state.ts, shared with the Block time panel). */
-const reminderWords = (v: Visit) => reminderState(v, reminders.get(v.id));
+const reminderWords = (v: Visit) => reminderState({ ...v, held: heldIds.has(v.id) }, reminders.get(v.id));
 function attemptsWords(list: Attempt[]): string | null {
   if (!list.length) return null;
   const last = list[list.length - 1];
@@ -311,7 +315,7 @@ const printedOn = `${longDayWords(today)}, ${timeText(new Date())}`;
 
     {closedTime.length > 0 && (
       <Pane id="closed-time" icon="clock" title="In closed time" meta={closedMeta} pad="none">
-        <p class="cs-lede">Each of these visits falls in time the clinic is not open: lunch, a closed day, a dentist away or a chair out of use. Their reminder texts still go out. Move the visit, or call the patient; press Keep it when the clinic will see them then anyway.</p>
+        <p class="cs-lede">Each of these visits falls in time the clinic is not open: lunch, a closed day, a dentist away or a chair out of use. {holds ? 'Their reminder texts wait until the visit is kept or moved.' : 'Their reminder texts still go out.'} Move the visit, or call the patient; press Keep it when the clinic will see them then anyway.</p>
         <ul class="cs-list cs-closed" aria-label="Visits in closed time">
           {closedTime.map((v: InsideVisit) => {
             const rem = { text: v.reminder, tone: v.reminderTone };
@@ -473,7 +477,7 @@ const printedOn = `${longDayWords(today)}, ${timeText(new Date())}`;
     <p class="cs-sheet-meta">Printed {printedOn} · {visitWord(visits.length)}, {callWord(totalRows)}. Outcome: C confirmed · LM left message · NA no answer · CB will call back.</p>
     {closedTime.length > 0 && (
       <table class="cs-sheet-table" data-cs-sheet-closed>
-        <caption>In closed time · move the visit or call; their reminder texts still go out</caption>
+        <caption>In closed time · move the visit or call; {holds ? 'their reminder texts wait until it is kept or moved' : 'their reminder texts still go out'}</caption>
         <thead><tr><th scope="col">Time</th><th scope="col">Name</th><th scope="col">Mobile</th><th scope="col">Why</th><th scope="col">Reminder</th><th scope="col" class="cs-sheet-out">Outcome</th></tr></thead>
         <tbody>
           {closedTime.map((v) => (

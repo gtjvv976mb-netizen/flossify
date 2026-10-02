@@ -704,8 +704,8 @@ The rules that live in code:
   out of use its chair, a dentist their days, hours and leave), and every visit
   that holds its slot. They count visits with no chair or no dentist yet against
   the chairs and the day's dentists, as /find/ does, and never put a moved visit
-  in its own way. There is no turnover (`TURNOVER_MIN = 0`; the owner's
-  decision). `nextFree`, which feeds the count line and the walk-in's chair, is a
+  in its own way. The gap after each visit is the clinic's own choice
+  (`clinic.turnover_min`, 044, `boot.turnover`; 0 by default, "How the day runs" below). `nextFree`, which feeds the count line and the walk-in's chair, is a
   wrapper with its old answer when nothing is blocked. A day not on screen is
   read eight days at a time (`ctx.rangeCards`, kept 60 s). After a clash 409
   the board reloads (`ctx.reload`) and the free times read the book again; a
@@ -777,8 +777,9 @@ The rules that live in code:
 The owner's first ask of the round: blocked time that both the calendar and online booking respect.
 The weekly shape lives with the week — lunch is a break on `clinic_hours` (`break_from_min`/`break_to_min`),
 a dentist's hours are `staff_schedule.from_min`/`to_min` (null = the clinic's hours) — and dated exceptions
-live in `clinic_block` (kinds `closed`, `leave`, `chair_out`; no weekly rows, no lunch kind). A turnover
-buffer, a protected emergency hold and a list of Philippine holidays are deferred for the owner.
+live in `clinic_block` (kinds `closed`, `leave`, `chair_out`; no weekly rows, no lunch kind). A protected
+emergency hold and a list of Philippine holidays are deferred for the owner; the turnover gap and holding
+reminders in closed time are each clinic's own choice since 044 (below, "How the day runs").
 
 - **One reader.** `clinic_unavailable(clinic, from, to)` turns all of it into dated ranges: the hours
   (`shut`), lunch, a treating dentist's days and hours (`hours`), and the live blocks. The desk reads it
@@ -807,8 +808,9 @@ buffer, a protected emergency hold and a list of Philippine holidays are deferre
 - **`/api/schedule/blocks`**: POST `{ kind, dentistId?, chair?, startsAt, endsAt, note? }` → 201 `{ block,
   inside }`; PATCH `{ id, remove: true }` → 200 `{ removed }`. It uses the schedule's gate and limit,
   `X-CSRF`, and `schedule.edit`. `inside` lists the visits already booked there with their reminder's
-  state; nothing is done to them, and no text is queued, cancelled or changed by a block (reminders still
-  go: the owner's question p07 §7.1 took its default).
+  state; nothing is done to them, and no text is queued or changed by a block. Reminders still go, unless
+  the clinic holds them (044, below): then a block withdraws the reminders waiting for the visits it puts in
+  closed time, and `inside` says "Reminder held".
 - **The words are `src/lib/block-words.ts`** (pure; the calendar imports it too): `blockSentence`,
   `blockLabel(r, 'chip' | 'strip', { day })`, `blockListed`, `whyWords` (the Calls pill), `blockDone`. Whole
   Manila days are written as days; a block already under way says when it ends.
@@ -857,6 +859,32 @@ buffer, a protected emergency hold and a list of Philippine holidays are deferre
   day says "Closed on: …" and, with a dentist chosen, "Dr. Cariño is not in on: …" (`dentistsAway`).
 - Fewer online slots, on purpose: "any dentist" is offered only while a dentist who is in is free, and the
   named-dentist path now respects chairs, chairs out of use and visits with no dentist.
+
+## How the day runs (044) — the owner's three questions, as each clinic's own choice
+
+Clinic settings → Clinic profile → **How the day runs** (`id="work"`, `settings.edit`). Every default is what
+shipped before, so nothing changes for a clinic until it chooses. The save reads the three only when the form
+carries `has_work_choices` (an older tab keeps what is saved); a gap not on the list is refused.
+
+- **Time between visits** (`clinic.turnover_min`: 0, 5, 10, 15, 20 or 30). Online booking keeps it after each
+  visit on the chair count (`slotOpen`'s `turnover`; `openSlots` and `slotStillOpen` read it through the definer
+  `public_clinic_turnover()`, listed clinics only, and the re-check pads its busy read by it), and so do the
+  calendar's suggested times (`boot.turnover` → `freeStarts` / `freeDays`, the note says so). Dentists and blocked
+  time are never padded, and `findClash` never refuses on it: the desk can still book back to back by hand.
+- **Hold the reminder** (`clinic.hold_closed_reminders`, p07 §7.1). While a visit sits in closed time nobody kept
+  (`appointment_reminder_held()`: the switch, `blocked_ok_at` null, a range of `clinic_unavailable()` in its
+  scope), `sms_enqueue_reminders()` writes neither of its reminders, and `holdClosedReminders()` (blocks.ts)
+  withdraws one already queued — after `addBlock`, after `reopenNewlyClosed`, and when the switch is turned on.
+  Keep it (Calls) or a move out of closed time, and the next pass writes it. Calls (its lede, the line, the sheet)
+  and the Block panel say "Reminder held" (`reminderWords`' `held`); sent texts are never touched.
+- **Ask about a consent form not signed** (`clinic.consent_ask_at`: `chair` or `arrived`). At the door,
+  `PATCH /api/schedule` to `arrived` or `in_lobby` asks as In the chair does (409 `{ consent: true }`, "Say why
+  they are checked in without it, or have it signed while they wait."), the panel's button reads **Check in
+  anyway**, and the reason is kept as `consent_override.context = 'arrived'` ("checked in"); In the chair then asks
+  only about what nobody answered that day (`seatingGaps`). At the chair, as before.
+- Checked by `scripts/dev/schedule/choices-check.mjs` (each choice end to end, the old-form keep, the forged gap,
+  the block → withdrawn → pass → Calls → Keep it → written again round, the door in the API and from one tap, and
+  the new block measured light and dark at 1440 and 390: lowest 4.55:1, targets ≥ 44 px, no sideways scroll).
 
 ## Patient forms — the QR code on the desk (028)
 
@@ -1488,18 +1516,18 @@ page 1 beside the record with "Use" per detail, and withdrawals and overrides as
   (`treatment-2026-09`) is Flossify's plain summary of the usual Philippine
   dental consent; a dentist and the lawyer read it too.
 - **Going ahead without a consent form asks why** on the record (Mark done anyway, the strip's Go ahead
-  anyway) and on the calendar (In the chair → Seat anyway), and never blocks: the owner may want to say whether
-  the board's question should also come at Arrived, or only at the chair as now.
+  anyway) and on the calendar (In the chair → Seat anyway, or Arrived → Check in anyway where the clinic asks at
+  the door, 044), and never blocks.
 - **The review pack** (`npm run review:pack`, `docs/review/review-pack.html`) is what the dentist and the
   lawyer read: re-run it after any change of words and send the new copy; each form's foot is its sign-off,
   and the fingerprint printed with it is what a `CONSENT_REVIEWED` entry is for.
 - **The consent forms (039) are unreviewed drafts** (`CONSENT_REVIEWED` is empty), in force in the
   database from 1 Oct 2026; production offers none until a dentist and the owner's lawyer have read each. The
   Filipino "In short" lines for nine forms and the attestation's Filipino are not written yet.
-- **Before a clinic depends on the scheduling round:** the owner answers p07 §7.1 (should a reminder wait
-  while its visit sits in closed time nobody handled? The default ships reminders unchanged); a dentist reads
-  the chart-effect mapping and its sentences (should a crown over a charted root canal be offered? should one
-  visit's offers be gathered into one?). Turnover between visits stays 0 until the owner sets it.
+- **Before a clinic depends on the scheduling round:** a dentist reads the chart-effect mapping and its
+  sentences (should a crown over a charted root canal be offered? should one visit's offers be gathered into
+  one?). The owner's three scheduling questions (turnover, p07 §7.1's held reminders, where the consent question
+  comes) are each clinic's own setting since 044, defaulting to what shipped.
 - A new web patient's chart number is `W-` + (patients here + 1) (`api/bookings`): the app never deletes a
   patient, but one deleted by hand makes the next web booking for a new mobile fail on the unique key until
   another patient is added. Test scripts that share a database archive their patients instead of deleting.
@@ -1611,6 +1639,8 @@ src/lib/intake-def.ts, patient-add.ts, refused.ts  the intake's page 1; adding a
 scripts/dev/intake/db-test.mjs the intake database checks; scripts/ts-register.mjs runs a script that imports src/lib
 scripts/dev/settings/profile-check.mjs  the public profile's lines and the clinic's founding year, end to end
 scripts/dev/schedule/seat-check.mjs     In the chair asks why for a consent form not agreed (API, Dashboard, 390 px)
+scripts/dev/schedule/choices-check.mjs  How the day runs (044): settings, the gap online and on the calendar, held reminders, the question at the door
+src/data/migrations/044        clinic.turnover_min, hold_closed_reminders, consent_ask_at; public_clinic_turnover(), appointment_reminder_held(), the reminder pass
 scripts/dev/review/review-pack.ts       npm run review:pack → docs/review/review-pack.html: every consent form, the chart's offer, aftercare, the privacy gaps, for the dentist and lawyer
 src/data/migrations/040        blocked time: lunch, dentist hours, clinic_block, blocked_ok_at, clinic_unavailable(), public_blocked/busy_ranges()
 src/lib/blocks.ts, block-words.ts   blocked time: the desk's reads and writes over clinic_unavailable(), and the words (pure)

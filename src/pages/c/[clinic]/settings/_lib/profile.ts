@@ -17,7 +17,7 @@
 // time before, writes, and puts only the visits it newly put there back on Calls → In closed time
 // (reopenNewlyClosed, src/lib/blocks.ts); the note after the save counts them. Nothing is texted or moved.
 import { withClinic } from '../../../../../lib/db';
-import { closedIds, reopenNewlyClosed } from '../../../../../lib/blocks';
+import { closedIds, reopenNewlyClosed, holdClosedReminders } from '../../../../../lib/blocks';
 import { hmos } from '../../../../../data/directory';
 import { AREAS, placeOf } from '../../../../../lib/slug';
 import { parseTin, tinParts } from '../../../../../lib/invoices';
@@ -41,7 +41,13 @@ export interface ProfileValues {
   hmoIds: string[]; noHmos: boolean; listed: boolean; tin: string; branch: string;
   /** Texts to patients (036): a second reminder two days before, and a text when a check-up is due. */
   remind_48h: boolean; recall_texts: boolean;
+  /** How the clinic works (044): minutes kept free after each visit, a reminder that waits while its visit sits in
+   *  closed time nobody kept, and where the board asks about a consent form not agreed. */
+  turnover_min: number; hold_closed_reminders: boolean; consent_ask_at: 'chair' | 'arrived';
 }
+
+/** The gaps a clinic may keep after each visit (clinic_turnover_min_check, 044). */
+export const TURNOVERS = [0, 5, 10, 15, 20, 30] as const;
 export type HoursValues = Record<number, DayRow>;
 
 type Hours = { dow: number; open_min: number; close_min: number; break_from_min: number | null; break_to_min: number | null }[];
@@ -51,7 +57,7 @@ export interface ClinicData {
     name: string; area: string | null; address_line: string | null; city: string | null; province: string | null; phone: string | null;
     email: string | null; maps_url: string | null; about: string | null; chairs: number; walk_ins: boolean; philhealth_dental: boolean;
     founded: number | null; booking_mode: string; listed: boolean; photo_keys: string[] | null; slug: string; tin: string | null; bir_branch_code: string | null;
-    remind_48h: boolean; recall_texts: boolean;
+    remind_48h: boolean; recall_texts: boolean; turnover_min: number; hold_closed_reminders: boolean; consent_ask_at: 'chair' | 'arrived';
   };
   hours: Hours;
   hmoIds: string[];
@@ -65,7 +71,7 @@ export async function loadClinic(clinicId: string): Promise<ClinicData> {
   return withClinic(clinicId, async (tx) => ({
     c: (await tx.query(
       `select name, area, address_line, city, province, phone, email, maps_url, about, chairs, walk_ins, philhealth_dental, founded, booking_mode, listed,
-              photo_keys, slug::text as slug, tin, bir_branch_code, remind_48h, recall_texts
+              photo_keys, slug::text as slug, tin, bir_branch_code, remind_48h, recall_texts, turnover_min, hold_closed_reminders, consent_ask_at
          from clinic where id = $1`, [clinicId])).rows[0],
     hours: (await tx.query('select dow, open_min, close_min, break_from_min, break_to_min from clinic_hours order by dow')).rows,
     hmoIds: (await tx.query('select hmo_id from clinic_hmo order by hmo_id')).rows.map((r) => r.hmo_id as string),
@@ -94,6 +100,7 @@ export function savedProfile(d: ClinicData): ProfileValues {
     founded: d.c.founded ? String(d.c.founded) : '', booking_mode: d.c.booking_mode, hmoIds: d.hmoIds, noHmos: d.hmoIds.length === 0 && d.saidNoHmos, listed: d.c.listed,
     tin: tax?.tin ?? '', branch: tax?.branch || d.c.bir_branch_code || '00000',
     remind_48h: d.c.remind_48h, recall_texts: d.c.recall_texts,
+    turnover_min: d.c.turnover_min, hold_closed_reminders: d.c.hold_closed_reminders, consent_ask_at: d.c.consent_ask_at,
   };
 }
 export function savedHours(d: ClinicData): HoursValues {
@@ -132,6 +139,10 @@ export async function saveClinic(
       noHmos: form.get('hmo_none') === 'on', listed: form.get('listed') === 'on',
       tin: s('tin'), branch: s('bir_branch_code'),
       remind_48h: form.get('remind_48h') === 'on', recall_texts: form.get('recall_texts') === 'on',
+      // A form drawn before 044 sends none of the three (has_work_choices): it keeps what is saved.
+      turnover_min: form.get('has_work_choices') ? Number(s('turnover_min') || '0') : data.c.turnover_min,
+      hold_closed_reminders: form.get('has_work_choices') ? form.get('hold_closed_reminders') === 'on' : data.c.hold_closed_reminders,
+      consent_ask_at: form.get('has_work_choices') ? (s('consent_ask_at') === 'arrived' ? 'arrived' : 'chair') : data.c.consent_ask_at,
     };
     if (!p.name) problems.push('The clinic needs a name.');
     else if (p.name.length > 80) problems.push('Keep the clinic name under 80 characters.');
@@ -145,6 +156,7 @@ export async function saveClinic(
     if (!Number.isInteger(p.chairs) || p.chairs < 1 || p.chairs > 12) problems.push('Chairs is a whole number from 1 to 12.');
     if (p.founded && !(/^\d{4}$/.test(p.founded) && Number(p.founded) >= 1900 && Number(p.founded) <= new Date().getUTCFullYear() + 1)) problems.push('Founded is a four-digit year, or blank.');
     if (p.booking_mode !== 'live' && p.booking_mode !== 'request') problems.push('Pick how patients book.');
+    if (!(TURNOVERS as readonly number[]).includes(p.turnover_min)) problems.push('Pick the time between visits from the list.');
     if (p.noHmos && p.hmoIds.length > 0) problems.push('You ticked HMOs and also “We don’t take HMOs”. Keep one.');
     // A form drawn before these fields existed sends neither; it must not clear a saved TIN.
     tax = form.has('tin') ? parseTin(p.tin, p.branch) : null;
@@ -195,12 +207,13 @@ export async function saveClinic(
       await tx.query(
         `update clinic set name = $2, area = $3, address_line = $4, city = $5, province = $6, phone = $7, email = $8, maps_url = $9, about = $10,
                 chairs = $11, walk_ins = $12, philhealth_dental = $13, booking_mode = $14, remind_48h = $15, recall_texts = $16,
-                founded = case when $17::boolean then $18::smallint else founded end
+                founded = case when $17::boolean then $18::smallint else founded end,
+                turnover_min = $19, hold_closed_reminders = $20, consent_ask_at = $21
          where id = $1`,
         [o.clinicId, p.name, p.area, p.address_line, place.city === undefined ? data.c.city : place.city, place.province === undefined ? data.c.province : place.province,
          p.phone, p.email || null, p.maps_url || null, p.about || null, p.chairs, p.walk_ins, p.philhealth_dental, p.booking_mode, p.remind_48h, p.recall_texts,
          // A form drawn before this field existed sends none; it must not clear a saved year.
-         form.has('founded'), p.founded ? Number(p.founded) : null]);
+         form.has('founded'), p.founded ? Number(p.founded) : null, p.turnover_min, p.hold_closed_reminders, p.consent_ask_at]);
       if (tax) await tx.query('update clinic set tin = $2, bir_branch_code = $3 where id = $1', [o.clinicId, tax.tin, tax.branch]);
       await tx.query('delete from clinic_hmo where clinic_id = $1', [o.clinicId]);
       for (const id of p.noHmos ? [] : p.hmoIds) await tx.query('insert into clinic_hmo (clinic_id, hmo_id) values ($1, $2)', [o.clinicId, id]);
@@ -214,6 +227,10 @@ export async function saveClinic(
       }
     }
     await tx.query('update clinic set listed = $2 where id = $1', [o.clinicId, listed]);
+    // Holding reminders from now: a reminder already waiting for a visit in closed time nobody kept is withdrawn, and
+    // the reminder pass writes it again once someone keeps or moves the visit. (Hours that newly close time are held by
+    // reopenNewlyClosed, below.)
+    if (p && p.hold_closed_reminders && !data.c.hold_closed_reminders) await holdClosedReminders(tx, o.clinicId);
     await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'clinic.settings', 'clinic', $1)`, [o.clinicId, o.staffId]);
     return parts.hours ? (await reopenNewlyClosed(tx, o.clinicId, before)).length : 0;
   });

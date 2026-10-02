@@ -149,13 +149,17 @@ export interface BlockedRange { dentist: string | null; chair: number | null; s:
  *    of those still has someone to see it after this one. A visit whose dentist is not listed here
  *    holds a chair (2) but no listed dentist.
  */
-export function slotOpen(q: { s: number; e: number; dentist: string | null; chairs: number; dentists: string[]; busy: BusyRange[]; blocked: BlockedRange[] }): boolean {
+export function slotOpen(q: { s: number; e: number; dentist: string | null; chairs: number; dentists: string[]; busy: BusyRange[]; blocked: BlockedRange[]; turnover?: number }): boolean {
   const hit = (r: { s: number; e: number }) => r.s < q.e && r.e > q.s;
+  // The clinic's time between visits (044), in ms: a chair is kept that long after each visit, so a visit needs the
+  // gap before the next one on its chair, and after the one before it. Dentists and blocked time are not padded.
+  const gap = Math.max(0, q.turnover ?? 0) * 60_000;
+  const nearChair = (r: { s: number; e: number }) => r.s < q.e + gap && r.e + gap > q.s;
   const blocked = q.blocked.filter(hit);
   if (blocked.some((r) => r.dentist === null && r.chair === null)) return false;
   const out = new Set(blocked.filter((r) => r.chair !== null && r.chair >= 1 && r.chair <= q.chairs).map((r) => r.chair));
   const over = q.busy.filter(hit);
-  if (over.length >= q.chairs - out.size) return false;
+  if (q.busy.filter(nearChair).length >= q.chairs - out.size) return false;
   const taken = (slug: string) => blocked.some((r) => r.dentist === slug) || over.some((r) => r.dentist === slug);
   if (q.dentist !== null && (!q.dentists.includes(q.dentist) || taken(q.dentist))) return false;
   if (!q.dentists.length) return true;

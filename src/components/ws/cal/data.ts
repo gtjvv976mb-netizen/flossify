@@ -175,7 +175,7 @@ export async function withExtras(tx: Tx, a: Appt): Promise<Card> {
 export type PatientRow = Pt;
 
 export interface Dashboard {
-  clinic: { chairs: number; area: string | null; name: string };
+  clinic: { chairs: number; area: string | null; name: string; turnover: number; holdsReminders: boolean };
   /** May this person add and import patients here (staff_access.can_edit_records, canEditRecords())? */
   canEdit: boolean;
   hours: Record<number, [number, number] | null>;
@@ -200,7 +200,7 @@ export async function loadDashboard(clinicId: string, o: { from: Date; to: Date;
     // meta — one row. can_edit is canEditRecords()'s read (src/lib/health.ts): Add patient and Import refuse
     // anyone without it, so the Dashboard does not offer them.
     const { rows: [m] } = await tx.query(
-      `select c.chairs, c.area, c.name,
+      `select c.chairs, c.area, c.name, c.turnover_min, c.hold_closed_reminders,
               staff_can($2, c.id, 'records.edit') as can_edit,
               coalesce((select json_agg(json_build_array(h.dow, h.open_min, h.close_min)) from clinic_hours h), '[]'::json) as hours,
               coalesce((select json_agg(json_build_object('id', x.id, 'name', x.name, 'days', x.days, 'hours', x.hours) order by x.owner desc, x.name)
@@ -279,7 +279,7 @@ export async function loadDashboard(clinicId: string, o: { from: Date; to: Date;
     for (const [dow, open, close] of (m?.hours ?? []) as [number, number, number][]) hours[dow] = [open, close];
     const cards = rows.map((r: Row) => ({ r, c: cardOf(r) }));
     return {
-      clinic: { chairs: Math.max(1, Number(m?.chairs) || 1), area: m?.area ?? null, name: m?.name ?? '' },
+      clinic: { chairs: Math.max(1, Number(m?.chairs) || 1), area: m?.area ?? null, name: m?.name ?? '', turnover: Number(m?.turnover_min) || 0, holdsReminders: m?.hold_closed_reminders === true },
       canEdit: m?.can_edit === true,
       hours,
       staff: (m?.staff ?? []) as StaffDay[],

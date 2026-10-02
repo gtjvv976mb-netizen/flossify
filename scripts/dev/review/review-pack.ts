@@ -7,7 +7,7 @@
 // conditional lines marked with when they show, the clinic's part, the patient's questions, the ticks and the
 // decision words, and each version's fingerprint (what CONSENT_REVIEWED is signed against); the chart's offer
 // after a treatment (src/lib/chart-offer.ts and migration 042's defaults); the nine aftercare sheets in English
-// and Filipino (src/lib/aftercare.ts); what the next privacy notice has to name; and the owner's open questions.
+// and Filipino (src/lib/aftercare.ts); what the next privacy notice has to name; and the three scheduling choices each clinic makes (044).
 // Nothing here is a database read; it needs no server. Re-run it whenever words change, and send the new copy.
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { TEMPLATES, CONSENT_REVIEWED, CODES, type Template, type Line, type Run, type Cond, type Bi } from '../../../src/lib/consent-library.ts';
@@ -189,7 +189,7 @@ a { color: var(--teal); } a:focus-visible { outline: 2px solid var(--teal); outl
     <a href="#chart">3. The chart after a treatment (for the dentist)</a>
     <a href="#care">4. Aftercare sheets (for the dentist)</a>
     <a href="#privacy">5. The next privacy notice (for the lawyer)</a>
-    <a href="#questions">6. The owner’s open questions</a>
+    <a href="#questions">6. How the day runs: each clinic chooses</a>
   </nav>
 
   <h2 id="forms">1. The consent forms</h2>
@@ -223,12 +223,15 @@ a { color: var(--teal); } a:focus-visible { outline: 2px solid var(--teal); outl
     <p class="dim">The general consent to examination and treatment (<span class="mono">treatment-2026-09</span>, form 1 above) is read with it.</p>
   </div>
 
-  <h2 id="questions">6. The owner’s open questions</h2>
-  <div class="card"><ul>
-    <li>Should a reminder text wait while its visit sits in time the clinic has closed and nobody has handled? Today the reminder still goes.</li>
-    <li>Should the calendar ask why a patient goes ahead without a consent form already at Arrived, or only at the chair as now?</li>
-    <li>Time between visits (turnover) is 0 minutes. Should the clinic’s calendar keep a gap?</li>
-  </ul></div>
+  <h2 id="questions">6. How the day runs: each clinic chooses</h2>
+  <div class="card">
+    <p>The owner’s three scheduling questions are now settings every clinic chooses for itself, in Clinic settings → Clinic profile → How the day runs. Each starts as the product worked before, so nothing changes until a clinic picks otherwise. The owner says only whether a starting choice should be different.</p>
+    <ul>
+      <li><strong>Time between visits:</strong> none, or 5 to 30 minutes. Online booking and the calendar’s suggested times leave it after each visit; the desk can still book back to back. Starts at none.</li>
+      <li><strong>Reminders for visits in closed time:</strong> when ticked, a visit that lands in lunch, a closed day or a dentist’s leave after it was booked gets no reminder text until someone keeps it or moves it. Starts unticked: the reminder goes.</li>
+      <li><strong>Ask about a consent form not signed:</strong> at the chair, or at the door (when the patient arrives, so the form can be signed while they wait). The visit is never stopped; the reason is kept with the form. Starts at the chair.</li>
+    </ul>
+  </div>
 </main>
 `;
 mkdirSync(new URL('../../../docs/review/', import.meta.url), { recursive: true });

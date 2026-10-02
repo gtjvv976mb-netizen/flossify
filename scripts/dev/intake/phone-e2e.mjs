@@ -418,6 +418,9 @@ console.log('\nB2. Newer words: sign again from the record, on their phone');
   await q(`delete from consent_document where ref = 'CF-TEST2' and clinic_id = $1 and not exists (select 1 from consent_signing s where s.document_id = consent_document.id)`, [clinicId]).catch(() => {});
   const old = (await q(`insert into consent_document (clinic_id, ref, version_id, patient_id, fields, sort, prepared_by) values ($1, 'CF-TEST2', 'treatment-2026-01', $2, '{}', 1, $3) returning id`, [clinicId, onFile.id, staffId]))[0];
   assert.equal((await q('select consent_in_force($1) as f', ['treatment-2026-01']))[0].f, false, 'the planted version is not in force');
+  // The desk may already be on this record (path B with no visit today): a goto that only changes the hash would not
+  // load the page again, so leave it first.
+  await desk.goto('about:blank');
   await desk.goto(`${base}/c/${slug}/patients/${onFile.id}/#consent`, { waitUntil: 'load' });
   // The record shows one section at a time: open Consent.
   const tab = desk.locator('#rec-rec-consent-tab');
@@ -598,7 +601,10 @@ if (onFile.visit_today) {
   assert.equal(await desk.locator('[data-cd-override]').count(), 2, 'the form’s page lists both');
   assert.match((await desk.locator('section', { hasText: 'Went ahead without this consent' }).first().innerText()).replace(/\s+/g, ' '), /2 times/);
   const visit = (await q(`select status, starts_at < now() as begun from appointment where id = $1`, [onFile.visit_today]))[0];
-  const begun = visit.begun || ['arrived', 'in_lobby', 'in_chair', 'completed'].includes(visit.status);
+  // Mark done above recorded a treatment at the visit, which puts the visit on the ledger whether or not its time has
+  // come (a visit later today, before the desk checks it in).
+  const worked = (await q('select exists (select 1 from procedure_done where appointment_id = $1) as w', [onFile.visit_today]))[0].w;
+  const begun = worked || visit.begun || ['arrived', 'in_lobby', 'in_chair', 'completed'].includes(visit.status);
   await desk.goto(record, { waitUntil: 'load' });
   const rows = (await desk.locator('tr[data-kind="consent"]').allInnerTexts()).map((t) => t.replace(/\s+/g, ' '));
   if (begun) {
