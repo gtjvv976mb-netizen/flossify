@@ -1071,6 +1071,15 @@ details covered, instead).
   `<details>` around its target), and every part's add in its card's heading (Add to plan, Record a treatment, New
   lab case, New note, New prescription, Add files, Take a reading, Ask for an LOA, New plan, Pick a day, New charge,
   Book a visit). New booking is the page's one teal button in view.
+- **Compact, like a printed record** (the owner, 2 Oct: "make it less space consuming and more organized, like a
+  real dental record"). Patient information and the medical history are **boxed form cells** (`_record/FormCell.astro`,
+  `.pf-grid`: four to a row, two on a phone; a small label over the value; Full name, Address, HMO, Emergency
+  contact, the desk note and each health list take two). A box that can be changed is its own 44 px button
+  (`.pf-go`, the whole box) with a small plus in its corner: Edit details with the caret in that field, or the
+  medical history's folded form. A card with nothing in it is one line (its name, the words, its plus: the
+  `:has(> .ws-empty)` rule in record.css); the next check-up is one line with its choices; the chart's findings are
+  one line ("Findings 47 D Caries · 11 Veneer …") instead of tiles; the sheet is 72rem with tighter type, rows,
+  tables and callouts. Measured on one patient: 9082 → 6800 px tall at 1440, 13145 → 11606 at 390.
 - The script is small: measure the workspace bar into `--rec-top` (`scroll-margin-top`), a contents link scrolls its
   part under the bar and puts its name in the address, an address with a part's name or any id opens there, and
   with none the server's choice (`data-rec-start`, the part a post came from).

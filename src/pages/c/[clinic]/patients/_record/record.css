@@ -514,3 +514,86 @@ button.rf { display: grid; min-height: 44px; }
 /* Beside a line on the sheet: at its end. */
 .pp-plus { justify-self: end; }
 .pp-sheet .vs .rec-chip-go { justify-content: flex-start; text-align: left; }
+
+/* --- Compact, as a printed dental record (the owner, 2 Oct 2026: "make it less space consuming and more organized,
+   like a real dental record") ----------------------------------------------------------------------------------------
+   Boxed form cells for the details and the medical history, a part with nothing in it on one line, tighter type and
+   spacing throughout. Targets stay 44 px: a box is its own button, and the small plus in its corner only marks it. */
+.pp-sheet { max-width: 72rem; padding: 1.25rem 1.5rem 1.75rem; }
+.pp-top { max-width: 72rem; }
+@media (max-width: 767px) { .pp-sheet { padding: 1rem 0.75rem 1.25rem; } }
+.pp-contents { gap: 0 0.5rem; padding-bottom: 0.5rem; margin-bottom: 1rem; border-bottom-width: 1px; }
+.pp-contents ol { gap: 0; }
+.pp-contents a { padding: 0 0.4rem; font-size: 13.5px; }
+.rec-sec { gap: 0.625rem; }
+.rec-sec + .rec-sec { margin-top: 1.375rem; }
+.pp-head { padding-bottom: 0.25rem; }
+.pp-title { font-size: 16px; gap: 0.5rem; }
+.pp-title .pp-n { font-size: 15px; min-width: 1rem; }
+.pp-sheet .ws-pane-head { margin-bottom: 0.375rem; gap: 0.25rem 0.75rem; }
+.pp-sheet .ws-pad-none > .ws-pane-head { padding: 0 0 0.375rem; }
+.pp-sheet .ws-pane-title { font-size: 14.5px; }
+.pp-sheet .ws-pane-meta { margin-bottom: 0; font-size: 12.5px; }
+.pp-sheet .ws-pane + .ws-pane { margin-top: 0.25rem; }
+.pp-sheet .rec-plus-text { min-height: 44px; padding: 0 0.75rem 0 0.375rem; font-size: 13.5px; }
+.pp-sheet .rec-plus-text .rec-plus-mark { width: 24px; height: 24px; }
+.pp-sheet .ws-empty { padding: 0; font-size: 14px; }
+.pp-sheet .ws-table th, .pp-sheet .ws-table td { padding-block: 0.4rem; }
+.pp-facts { gap: 0.25rem 1.5rem; padding-top: 0.5rem; }
+.pp-facts dd { font-size: 14.5px; }
+.pp-small { font-size: 12.5px; }
+
+/* A part (or a card in one) with nothing in it yet: its name, the words, and its plus on one line. */
+.pp-sheet .ws-pane:has(> .ws-empty:last-child):not(:has(> :not(.ws-pane-head, .ws-empty))) { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.75rem; min-height: 44px; }
+.pp-sheet .ws-pane:has(> .ws-empty:last-child):not(:has(> :not(.ws-pane-head, .ws-empty))) > .ws-pane-head { display: contents; }
+.pp-sheet .ws-pane:has(> .ws-empty:last-child):not(:has(> :not(.ws-pane-head, .ws-empty))) .ws-pane-heading { order: 1; }
+.pp-sheet .ws-pane:has(> .ws-empty:last-child):not(:has(> :not(.ws-pane-head, .ws-empty))) .ws-pane-meta { display: none; }
+.pp-sheet .ws-pane:has(> .ws-empty:last-child):not(:has(> :not(.ws-pane-head, .ws-empty))) > .ws-empty { order: 2; flex: 1 1 12rem; color: var(--c-ink-2); }
+.pp-sheet .ws-pane:has(> .ws-empty:last-child):not(:has(> :not(.ws-pane-head, .ws-empty))) .ws-pane-actions { order: 3; margin-left: auto; }
+
+/* The form: boxes in a ruled grid, four to a row (two on a phone); a label over the value. */
+.pf-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--ws-hair-strong); border-left: 1px solid var(--ws-hair-strong); }
+@media (max-width: 639px) { .pf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pf-cell { position: relative; min-width: 0; min-height: 48px; padding: 0.3125rem 2rem 0.375rem 0.625rem; border-right: 1px solid var(--ws-hair-strong); border-bottom: 1px solid var(--ws-hair-strong); }
+.pf-span-2 { grid-column: span 2; }
+.pf-span-4 { grid-column: 1 / -1; }
+@media (max-width: 639px) { .pf-span-2, .pf-span-4 { grid-column: 1 / -1; } }
+.pf-k { font-size: 12px; font-weight: 600; line-height: 1.3; color: var(--c-ink-2); }
+.pf-v { margin-top: 0.0625rem; font-size: 14.5px; font-weight: 600; line-height: 1.35; color: var(--c-ink); overflow-wrap: anywhere; }
+.pf-empty .pf-v { font-weight: 400; color: var(--c-ink-2); }
+.pf-alert { color: var(--ws-red-ink); }
+/* A box that can be changed is its own button, the whole box; the plus marks its corner. */
+.pf-go { position: absolute; inset: 0; display: block; width: 100%; border: 0; background: transparent; cursor: pointer; }
+.pf-go:hover { background: color-mix(in srgb, var(--ws-teal-tint) 70%, transparent); }
+.pf-go:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: -2px; }
+.pf-plus { position: absolute; top: 0.375rem; right: 0.375rem; width: 20px; height: 20px; }
+.pf-grid + .pf-grid { margin-top: 0.5rem; }
+
+/* The chart's findings in one line, as written under a paper chart. */
+.pp-findings { margin-top: 0.5rem; font-size: 14px; line-height: 1.6; color: var(--c-ink-2); }
+.pp-findings-k { margin-right: 0.5rem; font-weight: 700; color: var(--c-ink); }
+.pp-findings strong { color: var(--c-ink); }
+
+/* The medical history's change link sits with the line that says who updated it. */
+.pp-sheet .pp-edit { margin-top: 0.25rem; }
+/* The next check-up on one line where it fits: its name, the day or the question, and the choices. */
+.pp-sheet #recall { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; }
+.pp-sheet #recall > .ws-pane-head { margin: 0; }
+.pp-sheet #recall > .ws-callout { flex-basis: 100%; }
+.pp-sheet #recall > p { margin: 0; font-size: 14px; }
+.pp-sheet #recall .rc-due { font-size: 15px; font-weight: 700; }
+.pp-sheet #recall .rc-when { display: flex; flex-wrap: wrap; gap: 0.375rem; margin: 0; }
+.pp-sheet #recall .rc-when .ws-btn { min-height: 44px; padding: 0 0.75rem; font-size: 13.5px; }
+.pp-sheet #recall > p.mt-2 { flex-basis: 100%; font-size: 12.5px; }
+/* The treatment record's table on the sheet: no inset of its own, tighter rows. */
+.pp-sheet .trec-head { padding: 0 0 0.375rem; }
+.pp-sheet .trec-pad { padding: 0 0 0.5rem; }
+.pp-sheet .trec-foot { padding: 0.375rem 0 0; font-size: 12.5px; }
+.pp-sheet .trec thead th, .pp-sheet .trec td, .pp-sheet .trec th[scope="rowgroup"] { padding: 0.3125rem 0.5rem; }
+.pp-sheet .trec thead th:first-child, .pp-sheet .trec th[scope="rowgroup"] { padding-left: 0.5rem; }
+.pp-sheet .trec { font-size: 13.5px; }
+/* Callouts on the sheet: the same tone, a slimmer box. */
+.pp-sheet .ws-callout { padding: 0.5rem 0.75rem; gap: 0.5rem; font-size: 14px; border-radius: 8px; }
+/* Rows of a list (treatments done, notes, prescriptions): tighter. */
+.pp-sheet .tx-row { padding: 0.375rem 0; }
+.pp-sheet .tx-phase-head { padding-bottom: 0.25rem; }
