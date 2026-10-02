@@ -257,9 +257,10 @@ export const colOf = (by: 'chair' | 'dentist', a: Card) => (by === 'chair' ? (a.
 /** A visit that has left the book: it holds no chair, and nothing more happens to it. */
 export const DONE = new Set(['completed', 'no_show', 'cancelled']);
 
-/** Minutes a chair is kept free after each visit in the desk's SUGGESTED times. 0 until the owner sets a clinic
- *  turnover (docs/clinic-operations.md §1 suggests 8–12; the p07 verdict leaves it to the owner). On the quarter-hour
- *  grid a buffer of n leaves n to n+14 minutes. Suggestions only: findClash never refuses on it. */
+/** Minutes a chair is kept free after each visit in the desk's SUGGESTED times when nothing says otherwise. Each clinic
+ *  sets its own (Clinic settings → How the day runs, clinic.turnover_min, 044; the calendar reads boot.turnover). On the
+ *  quarter-hour grid a buffer of n leaves n to n+14 minutes. Suggestions and online booking only: findClash never
+ *  refuses on it, so the desk can still book back to back. */
 export const TURNOVER_MIN = 0;
 
 /** What stands in a start's way, in minutes after the day's midnight.

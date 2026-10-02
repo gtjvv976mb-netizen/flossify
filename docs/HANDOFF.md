@@ -8,7 +8,7 @@ check out, and `scripts/dev/resume.sh`.
 
 Read in this order:
 
-1. `CLAUDE.md` on `main`: the record of everything built, the intake's three
+1. `CLAUDE.md` on `main`: the record of everything built, the intake's four
    phases included.
 2. This file, then `docs/intake-design.md` for what the intake's phase 4 is to
    settle with the owner.
@@ -123,27 +123,50 @@ never drops anything.
 What it cannot do, because they need a running server and a browser: the QR
 forms backend test, the glass measurements and the booking walk (Tools, below).
 
+## The round's eight steps (reconstructed 2 Oct 2026)
+
+The session that built PR #38 worked from an eight-step plan; only "the plan's
+step 4: the final check, then ready and merge" reached the repository, and the
+owner does not have the list. This is the plan as the repository shows it: the
+round's commits, PR #38's own "Before a clinic depends on this" list, and the
+house pattern of earlier handoffs (build, check, merge, then the owner's
+steps). Keep it here; a new step goes at the end, never in place.
+
+| Step | What | Where it stands |
+|---|---|---|
+| 1 | The Treatment record (the owner's "make it as such") | Done, PR #38 |
+| 2 | The six scheduling features: blocked time, free times, the one-dentist clinic, edit a visit, tooth-first charting, PTR | Done, PR #38 |
+| 3 | The step-by-step intake, phases 1 and 2, and the review's fixes (043) | Done, PR #38 |
+| 4 | The combined final check (V1–V6), ready, merge | Done: PR #38 merged 1 Oct |
+| 5 | Deploy (039–043 through `db:migrate`) and look at the live site | Done from a session: `/healthz` ok, every public page 200, the intake's routes live. Screenshots still owed from the owner's machine (a session's browser does not trust its proxy). |
+| 6 | The intake's remaining phases: 3, their own phone; 4, the record integration | Done: PRs #40 and #41; #42 adds 4.3, 4.4 and In the chair (open) |
+| 7 | The reviews: a dentist reads the consent forms, the chart's offer and the aftercare; the lawyer reads the consent forms and the next privacy notice | Ready for them: `npm run review:pack` writes `docs/review/review-pack.html` (published privately for the owner to share). Their sign-off fills `CONSENT_REVIEWED`; a new privacy version opens the QR forms |
+| 8 | The owner's answers: reminders in closed time (p07 §7.1), turnover, In the chair or Arrived; then the Open list in the owner's order | Built as each clinic's own setting (044, Clinic profile → How the day runs; defaults keep what shipped), on PR #42. The owner says only which defaults to change. Then the Open list |
+
 ## What to do next
 
 ### 1. After the merges: look at the live site, and tell the owner
 
 1. flossify.ph loads, `/healthz` is `{"ok":true}`, the calendar and a record
    open, the Treatment record, blocked time, the free-time chips and Add patient
-   → *At the clinic, step by step* are there. Screenshots to the owner. (The
-   phone path arrives with the pull request that carries this note; after it
-   merges, the same look at Add patient → *On their phone*.)
+   → *At the clinic, step by step* and *On their phone* are there. Screenshots
+   to the owner. (The record's phase 4 — Mark done anyway, the strip's Go ahead
+   anyway, "Use" per detail after an intake — arrives with the pull request
+   that carries this note; after it merges, the same look at a record.)
 2. If anything is wrong, the Render dashboard's deploy log says whether
    `db:migrate` applied 039 → 043; **never put `--allow-late` in `render.yaml`
    or the Procfile**: it is for a database that somehow has 040–042 without
    039, by hand, once.
-3. Tell the owner, in a few lines, what the two pull requests changed for
+3. Tell the owner, in a few lines, what the recent pull requests changed for
    clinics, and the questions below.
 
 Open with the owner before a clinic depends on it (also in `CLAUDE.md` "Open"):
 
-- p07 §7.1: should a reminder wait while its visit sits in closed time nobody
-  handled? The default ships reminders unchanged.
-- Turnover between visits stays 0 until the owner sets it.
+- p07 §7.1, turnover, and where the consent question comes are each clinic's
+  own choice since 044 (Clinic profile → How the day runs: hold the reminder,
+  time between visits, at the chair or at the door). The defaults keep what
+  shipped: reminders go, no gap, at the chair. Ask the owner only whether a
+  default should change.
 - Online slots will be fewer, on purpose: "any dentist" is offered only while a
   dentist who is in is free, and a one-dentist clinic cannot be double-booked
   from the web any more.
@@ -157,19 +180,30 @@ Open with the owner before a clinic depends on it (also in `CLAUDE.md` "Open"):
 
 ### 2. The intake's phase 4: the record integration
 
-Phases 1 to 3 are built, and phase 4's first two pieces (1 Oct): the forms
-signed through an intake or on paper sit on the visit panel and the Treatment
-record, and a form is signed again from the record, on a phone or a tablet,
-with newer words prepared again. `docs/intake-design.md` keeps the two
-candidates still open (page 1's health history beside the one on file,
-withdrawals and overrides drawn), for the owner to rank. Neither needs a
-migration. Build the next on a branch from `main`; write what was decided into
-that file.
+Phases 1 to 4 are built (1 Oct): the forms signed through an intake or on
+paper sit on the visit panel and the Treatment record (4.1); a form is signed
+again from the record, on a phone or a tablet, with newer words prepared
+again (4.2); page 1 of an intake added to a patient on file is compared with
+the record, "Use" per detail, and the Health section names the forms (4.3);
+and withdrawals and overrides are asked for first (Mark done anyway, the
+strip's Go ahead anyway) and drawn everywhere the form is (4.4). None needed a
+migration. `docs/intake-design.md` says what each settled. What is left is
+the owner's: the forms' words (`CONSENT_REVIEWED`), the Filipino lines, and
+whether the calendar's In the chair step should ask too.
 
 ### 3. Then
 
 The `CLAUDE.md` "Open" list, in the owner's order when they give one. Email,
-Semaphore's first live send and billing's placeholders are the oldest items.
+Semaphore's first live send and billing's placeholders are the oldest items,
+and every one of them needs something only the owner has (a key, a verified
+domain, the real prices, the lawyer's reading). Done on 1 Oct without them:
+the public profile's own lines (PDA, practising since, about) and the clinic's
+founding year now have forms (`scripts/dev/settings/profile-check.mjs`), the
+calendar's In the chair asks why when a consent form is not agreed
+(`scripts/dev/schedule/seat-check.mjs`), and
+the live site answered its checks from a session (`/healthz` ok, every public
+page 200, the intake's routes deployed); screenshots still need a browser that
+trusts the session's proxy, so take them from the owner's machine.
 
 ## What lived only in session scratchpads and is gone
 

@@ -412,6 +412,18 @@ own site at `/<clinic>/`).
 - A session made stale behind the person's back (a new password, disabled) is
   cleared by `requireWorkspace`, which sends them to `/auth/login/` and so to
   their clinic's door — not to "not for that branch".
+- **The public profile's own lines (1 Oct).** `staff.pda_member`, `practising_since` and `about` (002,
+  shown on `/dentists/<slug>` and the clinic page) are written by a **Public profile** pane on a person's
+  page (for anyone with a slug; action `bio`, the Edit details rule: `mayManage` or yourself, `BioValues`,
+  `readBio` / `saveBio` in `settings/_lib/people.ts`, audit `staff.bio`) and by the same form on **My page**
+  (`#bio`, the person's own, like the PTR). The year is 1950 to this year or blank; the about is one
+  paragraph of at most `BIO_MAX` (600) characters. PDA membership stays "as the clinic declared it; not
+  checked by us" on the public page. **The clinic's founding year** (`clinic.founded`, "since 2009" on its
+  page) is a Founded field beside Dental chairs on Clinic profile; a form drawn without the field keeps the
+  saved year. Checked by `scripts/dev/settings/profile-check.mjs` (a bad year refused, saved and audited,
+  nothing-changed, the public pages, My page, Founded kept, 390 px); measured: the panes' lines reuse
+  measured classes, 0 fails on the phone runs; the desk runs' only fails are inside closed `<details>`
+  (the tool measures hidden content).
 
 ### Tasks (032)
 
@@ -692,8 +704,8 @@ The rules that live in code:
   out of use its chair, a dentist their days, hours and leave), and every visit
   that holds its slot. They count visits with no chair or no dentist yet against
   the chairs and the day's dentists, as /find/ does, and never put a moved visit
-  in its own way. There is no turnover (`TURNOVER_MIN = 0`; the owner's
-  decision). `nextFree`, which feeds the count line and the walk-in's chair, is a
+  in its own way. The gap after each visit is the clinic's own choice
+  (`clinic.turnover_min`, 044, `boot.turnover`; 0 by default, "How the day runs" below). `nextFree`, which feeds the count line and the walk-in's chair, is a
   wrapper with its old answer when nothing is blocked. A day not on screen is
   read eight days at a time (`ctx.rangeCards`, kept 60 s). After a clash 409
   the board reloads (`ctx.reload`) and the free times read the book again; a
@@ -765,8 +777,9 @@ The rules that live in code:
 The owner's first ask of the round: blocked time that both the calendar and online booking respect.
 The weekly shape lives with the week — lunch is a break on `clinic_hours` (`break_from_min`/`break_to_min`),
 a dentist's hours are `staff_schedule.from_min`/`to_min` (null = the clinic's hours) — and dated exceptions
-live in `clinic_block` (kinds `closed`, `leave`, `chair_out`; no weekly rows, no lunch kind). A turnover
-buffer, a protected emergency hold and a list of Philippine holidays are deferred for the owner.
+live in `clinic_block` (kinds `closed`, `leave`, `chair_out`; no weekly rows, no lunch kind). A protected
+emergency hold and a list of Philippine holidays are deferred for the owner; the turnover gap and holding
+reminders in closed time are each clinic's own choice since 044 (below, "How the day runs").
 
 - **One reader.** `clinic_unavailable(clinic, from, to)` turns all of it into dated ranges: the hours
   (`shut`), lunch, a treating dentist's days and hours (`hours`), and the live blocks. The desk reads it
@@ -795,8 +808,9 @@ buffer, a protected emergency hold and a list of Philippine holidays are deferre
 - **`/api/schedule/blocks`**: POST `{ kind, dentistId?, chair?, startsAt, endsAt, note? }` → 201 `{ block,
   inside }`; PATCH `{ id, remove: true }` → 200 `{ removed }`. It uses the schedule's gate and limit,
   `X-CSRF`, and `schedule.edit`. `inside` lists the visits already booked there with their reminder's
-  state; nothing is done to them, and no text is queued, cancelled or changed by a block (reminders still
-  go: the owner's question p07 §7.1 took its default).
+  state; nothing is done to them, and no text is queued or changed by a block. Reminders still go, unless
+  the clinic holds them (044, below): then a block withdraws the reminders waiting for the visits it puts in
+  closed time, and `inside` says "Reminder held".
 - **The words are `src/lib/block-words.ts`** (pure; the calendar imports it too): `blockSentence`,
   `blockLabel(r, 'chip' | 'strip', { day })`, `blockListed`, `whyWords` (the Calls pill), `blockDone`. Whole
   Manila days are written as days; a block already under way says when it ends.
@@ -845,6 +859,32 @@ buffer, a protected emergency hold and a list of Philippine holidays are deferre
   day says "Closed on: …" and, with a dentist chosen, "Dr. Cariño is not in on: …" (`dentistsAway`).
 - Fewer online slots, on purpose: "any dentist" is offered only while a dentist who is in is free, and the
   named-dentist path now respects chairs, chairs out of use and visits with no dentist.
+
+## How the day runs (044) — the owner's three questions, as each clinic's own choice
+
+Clinic settings → Clinic profile → **How the day runs** (`id="work"`, `settings.edit`). Every default is what
+shipped before, so nothing changes for a clinic until it chooses. The save reads the three only when the form
+carries `has_work_choices` (an older tab keeps what is saved); a gap not on the list is refused.
+
+- **Time between visits** (`clinic.turnover_min`: 0, 5, 10, 15, 20 or 30). Online booking keeps it after each
+  visit on the chair count (`slotOpen`'s `turnover`; `openSlots` and `slotStillOpen` read it through the definer
+  `public_clinic_turnover()`, listed clinics only, and the re-check pads its busy read by it), and so do the
+  calendar's suggested times (`boot.turnover` → `freeStarts` / `freeDays`, the note says so). Dentists and blocked
+  time are never padded, and `findClash` never refuses on it: the desk can still book back to back by hand.
+- **Hold the reminder** (`clinic.hold_closed_reminders`, p07 §7.1). While a visit sits in closed time nobody kept
+  (`appointment_reminder_held()`: the switch, `blocked_ok_at` null, a range of `clinic_unavailable()` in its
+  scope), `sms_enqueue_reminders()` writes neither of its reminders, and `holdClosedReminders()` (blocks.ts)
+  withdraws one already queued — after `addBlock`, after `reopenNewlyClosed`, and when the switch is turned on.
+  Keep it (Calls) or a move out of closed time, and the next pass writes it. Calls (its lede, the line, the sheet)
+  and the Block panel say "Reminder held" (`reminderWords`' `held`); sent texts are never touched.
+- **Ask about a consent form not signed** (`clinic.consent_ask_at`: `chair` or `arrived`). At the door,
+  `PATCH /api/schedule` to `arrived` or `in_lobby` asks as In the chair does (409 `{ consent: true }`, "Say why
+  they are checked in without it, or have it signed while they wait."), the panel's button reads **Check in
+  anyway**, and the reason is kept as `consent_override.context = 'arrived'` ("checked in"); In the chair then asks
+  only about what nobody answered that day (`seatingGaps`). At the chair, as before.
+- Checked by `scripts/dev/schedule/choices-check.mjs` (each choice end to end, the old-form keep, the forged gap,
+  the block → withdrawn → pass → Calls → Keep it → written again round, the door in the API and from one tap, and
+  the new block measured light and dark at 1440 and 390: lowest 4.55:1, targets ≥ 44 px, no sideways scroll).
 
 ## Patient forms — the QR code on the desk (028)
 
@@ -1267,8 +1307,9 @@ at Send unless the patient looks like one already on file; a fresh signature on 
 the risks; the six scheduling features first). **Phase 1** is the library, the data and the shared add path;
 **phase 2** (shipped, fixes in 043) the desk's steps, clinic tablets, the patient's pages (`/f/i/<token>/`,
 `/f/t/`), park/unlock and the record's Consent forms pane; **phase 3** (shipped 1 Oct, no migration) the
-patient's own phone; **phase 4** (the record integration, `docs/intake-design.md`) began the same day with
-the signed forms on the visit panel and the Treatment record (the owner's first pick).
+patient's own phone; **phase 4** (the record integration, `docs/intake-design.md`) followed the same day: the
+signed forms on the visit panel and the Treatment record (the owner's first pick), Sign again from the record,
+page 1 beside the record with "Use" per detail, and withdrawals and overrides asked first and drawn.
 
 - **The consent library is data** (`src/lib/consent-library.ts`, no Node imports): ten forms
   (`anaesthesia-2026-10` … `photos-2026-10`, `consent_version` kind `document`, in force from 1 Oct 2026) and
@@ -1385,6 +1426,51 @@ the signed forms on the visit panel and the Treatment record (the owner's first 
   superuser's), an unsigned form on it, the record's pill and button, the intake under `treatment-2026-09`, the
   old form `renewed`, signed on the phone, the record clean. The pill and buttons reuse measured classes
   (`rp-warn`, `ws-btn-quiet`, `ik-tag[data-tone=warn]`).
+- **Phase 4, third piece: page 1 beside the record, "Use" per detail (no migration).** An intake for a new
+  patient added **to a patient on file** (Screen F, `add_to`) lands on `?saved=intake&intake=<id>` as before;
+  the record now says what the QR forms say there — "Added the forms (IN-…) to <name>'s record. Empty details
+  were filled in, and the record has the health history <name> gave on page 1 (sent …). Kept from the record as
+  well: …" — and lists each detail page 1 says differently, or a mobile or email the desk did not tick, with
+  **Use <it>** (intent `intake-use`: `useIntakeDetail` in `intake.ts` → `useAnswerDetail` in `patient-add.ts`,
+  the one writer `useFormDetail` now calls too; `TAKEABLE` only, never a name or the birth date; back with
+  `?intake=<id>&used=<field>`). `intakeAnswers(q, intakeId, patientId)` is the read (an added intake of this
+  patient's with a page 1). The Health section names the forms a version came from: `readHealth` joins the
+  intake (`HealthVersion.intakeRef`, `formSentAt` is the intake's `sent_at` then) and the line reads "from the
+  forms <name> filled in (IN-7K2F, sent 1 Oct 2026)". Checked by `phone-e2e.mjs` D: page 1 with a patient on
+  file's name and birth date, Send waits, Screen F's panel says "Occupation: on file Nurse · on the forms
+  Teacher", the record's callouts, Use Teacher, the Health line.
+- **Phase 4, fourth piece: withdrawals and overrides, asked first and drawn (no migration).** The data of 039
+  (`consent_withdrawal`, `consent_override`) now reaches the pages. **Ask first:** a form linked to a plan line
+  (`consent_document.plan_item_id`) that is not agreed — to sign, to confirm, refused, withdrawn; "No photos" is a
+  decision, not a gap (`consentGapsFor(q, patientId)` → by plan line and by visit; `ConsentGap`, `gapWords`,
+  `gapWhy`; a form nobody explains is never "not explained") — shows the gap in amber under the line (`.tx-gap`)
+  and turns Mark done into **Mark done anyway** with a reason box (`consent_reason`, `.tx-why`), on the Treatment
+  plan and on the tooth panel's one-tap list alike. `plan-status` to `done` in `record.ts` runs `consentGaps`
+  for the line: without a reason it refuses with the gap in words ("…: not signed yet. To mark it done anyway,
+  say why in the box beside Mark done."); with one it records `overrideConsent(context 'plan_done')` for each
+  gapped form in the same transaction, then writes the treatment. A form linked to **today's visit**
+  (`appointment_id`) that is not agreed is a line on the This visit strip ("Consent form · <title>: not signed
+  yet", Open the form, **Go ahead anyway** → a side panel `rec-ahead-<doc>` with a reason, intent
+  `consent-override` on the record page, context `strip`, back to `?saved=consent-ahead&visit=`); once it went
+  ahead today the line becomes a done pill that says so. **The calendar's In the chair asks too (1 Oct):**
+  PATCH `/api/schedule` to `in_chair` runs `seatingGaps(tx, visit)` (the visit's forms not agreed that nobody went
+  ahead without today, Manila); with any and no `consentReason` it answers 409 `{ error, consent: true, forms }`
+  and changes nothing; with one it records `overrideConsent(context 'in_chair')` per form in the same transaction
+  as the seat. `in_chair` needs `schedule.edit` only, never `records.edit`: seating is the desk's step and is
+  never refused for paperwork. The board's visit panel (its teal step and More) and Today's patients' one tap
+  (`panels.askSeat`) show the sentence in amber in the panel's callout, a box for why (`.vp-why`, `#vp-why-in`,
+  16 px, 44 px) and **Seat anyway** (`data-vp-seat-anyway`); an empty box is not sent. Checked by
+  `scripts/dev/schedule/seat-check.mjs` (the API's 409 and the today filter, the prompt from one tap, empty not
+  sent, seated and kept, a visit with nothing to ask seated in one tap, contrast light and dark, 390 px). **Drawn:** `RecordDoc.overrides` (`overridesOf`, newest first;
+  `overrideWords`: "Went ahead anyway (not signed), treatment marked done · Dr …, 1 Oct 2026, 2:31 pm: “…”") and
+  the withdrawal in full (`withdrawalWords`: "Withdrawn 1 Oct 2026: told by …, by phone, recorded by …. “…”")
+  on the Consent pane's rows (`[data-rc-withdrawal]`, `[data-rc-override]`), the visit panel's cards (a
+  "Went ahead anyway ×2" pill and `rk` lines), the form's own page (a "Went ahead without this consent" pane),
+  and the Treatment record: one `consent` row per override, "Went ahead without <title>", on the visit the form
+  belongs to, naming the override's own day when it differs; the paper draws it too. Nothing blocks treatment;
+  nothing hides that it went ahead. Checked by `phone-e2e.mjs` E at a clinic with a visit today (a plan line and
+  an unsigned form planted on it: the strip, the refusal, the override rows, every place it is drawn, then a
+  withdrawal of path B's signed form).
 
 ## Open — read before shipping
 
@@ -1405,9 +1491,10 @@ the signed forms on the visit panel and the Treatment record (the owner's first 
   acknowledgments only: BIR invoices still come from the clinic's registered
   booklet or system. `patient_balance()` is the one balance definition.
 - Live since 24 Sep 2026: flossify.ph on Render (web + worker, Singapore) with DigitalOcean Managed PostgreSQL 17 (SGP1, trusted sources = Render's Singapore ranges).
-- Settings → Team cannot edit a staff member's name, email or PRC number after
-  the invite, and the clinic's founding year / PDA membership / staff bios
-  have no form (the public pages hide them when empty).
+- A person's page in Clinic settings edits their name, email and PRC number
+  (031), and the public profile's own lines and the clinic's founding year
+  have forms since 1 Oct (below, "Members the owner makes"); what a public
+  page still hides when empty is only what nobody has typed.
 - The privacy notice (consent version privacy-2026-09) says texts let patients
   "confirm or cancel by text" and does not mention the IP address stored with
   consent: a new consent version, reviewed by the owner's lawyer, is needed.
@@ -1428,13 +1515,19 @@ the signed forms on the visit panel and the Treatment record (the owner's first 
   lawyer reads it first. The consent to examination and treatment
   (`treatment-2026-09`) is Flossify's plain summary of the usual Philippine
   dental consent; a dentist and the lawyer read it too.
+- **Going ahead without a consent form asks why** on the record (Mark done anyway, the strip's Go ahead
+  anyway) and on the calendar (In the chair → Seat anyway, or Arrived → Check in anyway where the clinic asks at
+  the door, 044), and never blocks.
+- **The review pack** (`npm run review:pack`, `docs/review/review-pack.html`) is what the dentist and the
+  lawyer read: re-run it after any change of words and send the new copy; each form's foot is its sign-off,
+  and the fingerprint printed with it is what a `CONSENT_REVIEWED` entry is for.
 - **The consent forms (039) are unreviewed drafts** (`CONSENT_REVIEWED` is empty), in force in the
   database from 1 Oct 2026; production offers none until a dentist and the owner's lawyer have read each. The
   Filipino "In short" lines for nine forms and the attestation's Filipino are not written yet.
-- **Before a clinic depends on the scheduling round:** the owner answers p07 §7.1 (should a reminder wait
-  while its visit sits in closed time nobody handled? The default ships reminders unchanged); a dentist reads
-  the chart-effect mapping and its sentences (should a crown over a charted root canal be offered? should one
-  visit's offers be gathered into one?). Turnover between visits stays 0 until the owner sets it.
+- **Before a clinic depends on the scheduling round:** a dentist reads the chart-effect mapping and its
+  sentences (should a crown over a charted root canal be offered? should one visit's offers be gathered into
+  one?). The owner's three scheduling questions (turnover, p07 §7.1's held reminders, where the consent question
+  comes) are each clinic's own setting since 044, defaulting to what shipped.
 - A new web patient's chart number is `W-` + (patients here + 1) (`api/bookings`): the app never deletes a
   patient, but one deleted by hand makes the next web booking for a new mobile fail on the unique key until
   another patient is added. Test scripts that share a database archive their patients instead of deleting.
@@ -1537,13 +1630,18 @@ src/data/lqip.json             blur placeholders, keyed by image name
 src/data/shot-size.json        real screenshot dimensions (generated)
 src/data/migrations/039        the patient intake and the consent library: intakes, links, tablets, consent forms, signings, attestations, the chain
 src/data/migrations/043        the intake's review fixes (phase 2)
-scripts/dev/intake/phone-e2e.mjs  the phone path end to end in two browsers (phase 3); --keep leaves screens for contrast.mjs
+scripts/dev/intake/phone-e2e.mjs  the phone path end to end in two browsers (phase 3) and the record's phase 4 (B2, D, E); --keep leaves screens for contrast.mjs
 docs/intake-design.md          the intake as built (phases 1–3) and what phase 4 is to settle with the owner
 src/pages/f/i/, f/t/, auth/park.ts, auth/unlock.astro, auth/tablet.ts  the patient's intake pages, the clinic tablet, handing a device over
 src/lib/intake.ts, intake-public.ts, consent-docs.ts, park.ts  the desk's intake, its public side, consent documents, hand-over
 src/lib/consent-library.ts, consent-seal.ts  the consent forms as data and the one renderer; canonical JSON, snapshot, seal, chain (npm run consent:hash)
 src/lib/intake-def.ts, patient-add.ts, refused.ts  the intake's page 1; adding a patient's own answers (forms and intakes); the one Refused class
 scripts/dev/intake/db-test.mjs the intake database checks; scripts/ts-register.mjs runs a script that imports src/lib
+scripts/dev/settings/profile-check.mjs  the public profile's lines and the clinic's founding year, end to end
+scripts/dev/schedule/seat-check.mjs     In the chair asks why for a consent form not agreed (API, Dashboard, 390 px)
+scripts/dev/schedule/choices-check.mjs  How the day runs (044): settings, the gap online and on the calendar, held reminders, the question at the door
+src/data/migrations/044        clinic.turnover_min, hold_closed_reminders, consent_ask_at; public_clinic_turnover(), appointment_reminder_held(), the reminder pass
+scripts/dev/review/review-pack.ts       npm run review:pack → docs/review/review-pack.html: every consent form, the chart's offer, aftercare, the privacy gaps, for the dentist and lawyer
 src/data/migrations/040        blocked time: lunch, dentist hours, clinic_block, blocked_ok_at, clinic_unavailable(), public_blocked/busy_ranges()
 src/lib/blocks.ts, block-words.ts   blocked time: the desk's reads and writes over clinic_unavailable(), and the words (pure)
 src/lib/schedule-api.ts, reminder-state.ts  the schedule API's gate and body readers; a visit's reminder in words

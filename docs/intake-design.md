@@ -76,7 +76,8 @@ database after each, geometry at 390) and `scripts/dev/glass/contrast.mjs` with
 The original spec named phase 4 only as "the record integration". What existed
 already on the record: the Consent forms pane (phase 2), the signed consent on
 the visit (035), `visit_treatment_consented()` for the visit panel's checklist.
-Four candidates were put to the owner on 1 Oct; they chose the first.
+Four candidates were put to the owner on 1 Oct; they chose the first, and
+"continue everything" built the rest the same day.
 
 ### 4.1 — the signed forms where the dentist looks (built 1 Oct, no migration)
 
@@ -121,13 +122,65 @@ Four candidates were put to the owner on 1 Oct; they chose the first.
   and `consents/[document].astro`. Checked by `phone-e2e.mjs` path B2 with an
   older version planted by the test.
 
-### Still open, for the owner to rank
+### 4.3 — Page 1 beside the record, "Use" per detail (built 1 Oct, no migration)
 
-3. **The health history from page 1 against the one on file**, side by side,
-   with "Use" per detail as the QR forms do (`useFormDetail`), where today the
-   intake writes a new version.
-4. **Withdrawals and overrides on the record**, which the data holds
-   (`consent_withdrawal`, `consent_override`) and no page draws yet.
+- **The same words as the QR forms.** An intake for a new patient that the desk
+  adds to a patient on file (Screen F) lands on the record saying what was
+  done: empty details filled in, the health history from page 1 (and when it
+  was sent), what the record kept that page 1 did not say. Then each detail
+  page 1 says differently — or a mobile or email the desk did not tick — is
+  listed with "Use <it>": one tap writes that one detail, never a name or the
+  birth date (`useAnswerDetail`, the one writer the QR forms' `useFormDetail`
+  now calls too).
+- **The Health section names the forms.** A version from page 1 reads "from
+  the forms <name> filled in (IN-7K2F, sent 1 Oct 2026)", as a QR version reads
+  "from the patient forms (QR-…)". Before, an intake's version said only "from
+  the patient forms" with no reference.
+- Not changed: the intake still writes the health version at the add (a
+  patient on file keeps what they had listed; page 1 adds to it). "Side by
+  side" is the kept list and the per-detail list on the record, not a second
+  health form.
+- Built in `src/lib/intake.ts` (`intakeAnswers`, `useIntakeDetail`),
+  `src/lib/patient-add.ts` (`useAnswerDetail`), `src/lib/health.ts`
+  (`intakeRef`) and the record page. Checked by `phone-e2e.mjs` path D.
 
-None of these needs a migration. Build the next on a branch from `main`; write
-what was decided here.
+### 4.4 — Withdrawals and overrides, asked first and drawn (built 1 Oct, no migration)
+
+- **The record never blocks treatment, and never hides that it went ahead.**
+  A form linked to a plan line that is not agreed (to sign, to confirm, the
+  patient did not agree, withdrawn) shows under the line in amber, and Mark
+  done becomes "Mark done anyway" with a box for why. Without a reason the
+  server refuses with the gap in words; with one, it records the override
+  against each such form (who, when, the form's state then, the reason) and
+  then writes the treatment, in one transaction. The tooth panel's one-tap
+  Mark done does the same.
+- **The This visit strip asks for the visit.** A form prepared from today's
+  visit that is not agreed is a line ("Consent form · <title>: not signed
+  yet") with Open the form and Go ahead anyway, which asks why in a side panel
+  and records the override with context `strip`. Once it went ahead today the
+  line is a done pill that says so, with who and when.
+- **The calendar asks at the chair (added 1 Oct, after the owner's "do it").**
+  In the chair on the board, from the visit panel or Today's patients' one
+  tap, asks the same question when a form prepared from the visit is not
+  agreed and nobody went ahead without it today: the sentence in amber, a box
+  for why and Seat anyway. The seat and the reason are saved together. It
+  needs only the desk's schedule permission: seating is never refused for
+  paperwork.
+- **Drawn everywhere the form is:** the Consent pane's rows (the withdrawal in
+  full — who told the clinic, how, who recorded it, the note — and each
+  override in one line), the visit panel's cards (a "Went ahead anyway ×2"
+  pill and lines), the form's own page (a "Went ahead without this consent"
+  pane), and the Treatment record, where each override is a row — "Went ahead
+  without <title>" — on the visit the form belongs to, naming its own day when
+  that differs; the paper draws it too.
+- Built in `src/lib/consent-docs.ts` (`RecordDoc.overrides`, `consentGapsFor`,
+  `gapWords`, `overrideWords`, `withdrawalWords`), `src/lib/record.ts`
+  (`plan-status` → `done`), `src/lib/treatment-record.ts`, `_record/Treatment`,
+  `TreatmentPanels`, `VisitStrip`, `ConsentForms`, `VisitPanels` and
+  `consents/[document].astro`. Checked by `phone-e2e.mjs` path E.
+
+### Phase 4 is complete
+
+The four candidates put to the owner on 1 Oct are built. What is left for the
+owner is in `CLAUDE.md` "Open": the forms' words (`CONSENT_REVIEWED`), the
+Filipino lines, and whether the calendar's In the chair step should ask too.

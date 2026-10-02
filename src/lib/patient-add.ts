@@ -131,6 +131,27 @@ export function planFill(p: Record<string, string | null>, v: PatientFormValues,
   return { fill, fills, differs, proposed };
 }
 
+/**
+ * "Use <what the answers say>" on the record after a form or an intake was
+ * added to it: one detail (a TAKEABLE column) written from the stored answers,
+ * over what was on file or into an empty field. Names are not among them, nor
+ * the birth date. 'same' when the record already says it. Audit patient.update.
+ * The caller checked canEditRecords and found the answers (useFormDetail in
+ * patient-forms.ts, useIntakeDetail in intake.ts).
+ */
+export async function useAnswerDetail(tx: Tx, a: { clinicId: string; staffId: string; patientId: string; values: PatientFormValues; field: string }): Promise<'saved' | 'same' | 'gone'> {
+  const x = FILLABLE.find((y) => y.col === a.field && TAKEABLE.has(y.col));
+  if (!x || !/^[0-9a-f-]{36}$/i.test(a.patientId)) return 'gone';
+  const want = x.from(a.values);
+  if (!want) return 'gone';
+  const p = (await tx.query<{ v: string | null }>(`select ${x.col}::text as v from patient where id = $1 and archived_at is null for update`, [a.patientId])).rows[0];
+  if (!p) return 'gone';
+  if (p.v !== null && p.v !== '' && sameText(p.v, want)) return 'same';
+  await tx.query(`update patient set ${x.col} = $2, updated_at = now() where id = $1`, [a.patientId, want]);
+  await audit(tx, a.clinicId, a.staffId, 'patient.update', 'patient', a.patientId);
+  return 'saved';
+}
+
 export interface FillResult {
   /** The columns written, by name, and their values. */
   fill: Record<string, string>;

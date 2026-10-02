@@ -83,7 +83,9 @@ export interface HealthVersion extends HealthAnswers {
   answeredBy: 'patient' | 'staff';
   /** The patient forms it came from (QR-7K2F), or null. The form itself: src/lib/patient-forms.ts. */
   formRef: string | null;
-  /** When those forms were sent (the version itself is dated when it was added to the record), or null. */
+  /** The intake's page 1 it came from (IN-7K2F, 039), or null. The intake itself: src/lib/intake.ts. */
+  intakeRef: string | null;
+  /** When those forms (the QR forms or the intake) were sent — the version itself is dated when it was added to the record — or null. */
   formSentAt: Date | null;
   /** Set when this version changed the birth date on file. */
   birthChange: BirthChange | null;
@@ -258,7 +260,7 @@ export const versionChanges = (prev: HealthAnswers | null, v: HealthVersion): st
 // ---------------------------------------------------------------------------
 type Row = {
   id: string; at: Date; by: string | null; allergies: string[] | null; conditions: string[] | null; medications: string[] | null; note: string | null;
-  birth_change: { from?: unknown; to?: unknown } | null; total: number; answered_by: string; form_ref: string | null; form_sent_at: Date | null;
+  birth_change: { from?: unknown; to?: unknown } | null; total: number; answered_by: string; form_ref: string | null; intake_ref: string | null; form_sent_at: Date | null;
 };
 const ymdOrNull = (v: unknown): string | null => (typeof v === 'string' && YMD.test(v) ? v : null);
 
@@ -267,16 +269,18 @@ export async function readHealth(tx: Tx, patientId: string, limit = 12): Promise
   // One extra row, so the oldest one shown can still say what it changed.
   const { rows } = await tx.query<Row>(
     `select h.id, h.answered_at as at, s.full_name as by, h.allergies, h.conditions, h.medications, h.note,
-            h.answers -> 'birth_date' as birth_change, (count(*) over ())::int as total, h.answered_by, f.ref as form_ref, f.submitted_at as form_sent_at
-       from medical_history h left join staff s on s.id = h.recorded_by left join patient_form f on f.id = h.form_id
+            h.answers -> 'birth_date' as birth_change, (count(*) over ())::int as total, h.answered_by, f.ref as form_ref, i.ref as intake_ref,
+            coalesce(f.submitted_at, i.sent_at) as form_sent_at
+       from medical_history h left join staff s on s.id = h.recorded_by left join patient_form f on f.id = h.form_id left join intake i on i.id = h.intake_id
       where h.patient_id = $1
       order by h.answered_at desc, h.id desc
       limit $2`, [patientId, limit + 1]);
-  const versions: HealthVersion[] = rows.map(({ total: _t, birth_change: b, answered_by: ab, form_ref: fr, form_sent_at: fs, ...v }) => ({
+  const versions: HealthVersion[] = rows.map(({ total: _t, birth_change: b, answered_by: ab, form_ref: fr, intake_ref: ir, form_sent_at: fs, ...v }) => ({
     ...v,
     birthChange: b && typeof b === 'object' ? { from: ymdOrNull(b.from), to: ymdOrNull(b.to) } : null,
     answeredBy: ab === 'patient' ? 'patient' : 'staff',
     formRef: fr ?? null,
+    intakeRef: ir ?? null,
     formSentAt: fs ?? null,
   }));
   return { versions: versions.slice(0, limit), total: rows[0]?.total ?? 0, older: versions[limit] ?? null };

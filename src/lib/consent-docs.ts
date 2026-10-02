@@ -16,7 +16,7 @@
 
 import type { Tx } from './db';
 import { Refused } from './refused';
-import { canEditRecords, manilaToday, ageOn, isMinor } from './health';
+import { canEditRecords, manilaToday, ageOn, isMinor, day as manilaDayWords } from './health';
 import { isProduction } from './env';
 import {
   TEMPLATES, langsFor, renderDocument, readClinicPart, readPatientPart, EXPLAINED_LANGS,
@@ -111,6 +111,8 @@ export interface RecordSigning {
   confirmation: { kind: string; staffName: string; at: Date; attachmentId: string | null; note: string | null } | null;
   withdrawal: { toldBy: string; how: string; note: string | null; byName: string; at: Date } | null;
 }
+/** Treatment went ahead although this form was not agreed (consent_override, 039; phase 4.4 asks first): where, the form's state then, why, who, when. */
+export interface RecordOverride { id: string; context: OverrideContext; stateThen: string; reason: string; staffName: string; at: Date }
 export interface RecordDoc {
   id: string; ref: string; versionId: string; code: string; title: string; template: Template | null; state: DocState; fields: Fields;
   patientId: string | null; intakeId: string | null; intakeRef: string | null; intakeStatus: string | null; appointmentId: string | null;
@@ -119,6 +121,8 @@ export interface RecordDoc {
   attestation: Attested | null;
   latest: RecordSigning | null;
   signings: RecordSigning[];
+  /** Every time treatment went ahead without this form agreed, newest first. */
+  overrides: RecordOverride[];
 }
 
 const DOC_SELECT = `
@@ -132,7 +136,7 @@ const DOC_SELECT = `
     left join intake i on i.id = d.intake_id
     left join consent_attestation a on a.document_id = d.id`;
 
-function docOf(r: Record<string, any>, signings: RecordSigning[]): RecordDoc {
+function docOf(r: Record<string, any>, signings: RecordSigning[], overrides: RecordOverride[] = []): RecordDoc {
   return {
     id: r.id, ref: r.ref, versionId: r.version_id, code: r.code, title: TEMPLATES[r.version_id]?.title.en ?? r.title, template: TEMPLATES[r.version_id] ?? null,
     state: r.state, fields: r.fields ?? {}, patientId: r.patient_id, intakeId: r.intake_id, intakeRef: r.intake_ref, intakeStatus: r.intake_status,
@@ -142,7 +146,22 @@ function docOf(r: Record<string, any>, signings: RecordSigning[]): RecordDoc {
     attestation: r.attested_at ? { at: r.attested_at, lang: r.a_lang, interpreter: r.a_interpreter, assent: r.a_assent, dentistName: r.a_name, dentistPrc: r.a_prc } : null,
     latest: signings[0] ?? null,
     signings,
+    overrides,
   };
+}
+
+async function overridesOf(q: Q, docIds: string[]): Promise<Map<string, RecordOverride[]>> {
+  const out = new Map<string, RecordOverride[]>();
+  if (!docIds.length) return out;
+  const rows = (await q.query<{ id: string; document_id: string; context: OverrideContext; state_then: string; reason: string; staff_name: string; at: Date }>(
+    `select o.id, o.document_id, o.context, o.state_then, o.reason, s.full_name as staff_name, o.at
+       from consent_override o join staff s on s.id = o.staff_id where o.document_id = any($1::uuid[]) order by o.at desc, o.id desc`, [docIds])).rows;
+  for (const r of rows) {
+    const list = out.get(r.document_id) ?? [];
+    list.push({ id: r.id, context: r.context, stateThen: r.state_then, reason: r.reason, staffName: r.staff_name, at: r.at });
+    out.set(r.document_id, list);
+  }
+  return out;
 }
 
 async function signingsOf(q: Q, docIds: string[]): Promise<Map<string, RecordSigning[]>> {
@@ -179,8 +198,9 @@ async function signingsOf(q: Q, docIds: string[]): Promise<Map<string, RecordSig
 export async function loadConsentDocuments(q: Q, patientId: string): Promise<RecordDoc[]> {
   if (!isUuid(patientId)) return [];
   const rows = (await q.query<Record<string, any>>(`${DOC_SELECT} where d.patient_id = $1 and d.cancelled_at is null order by d.prepared_at desc`, [patientId])).rows;
-  const s = await signingsOf(q, rows.map((r) => r.id));
-  return rows.map((r) => docOf(r, s.get(r.id) ?? []));
+  const ids = rows.map((r) => r.id);
+  const [s, o] = await Promise.all([signingsOf(q, ids), overridesOf(q, ids)]);
+  return rows.map((r) => docOf(r, s.get(r.id) ?? [], o.get(r.id) ?? []));
 }
 
 /** One form, with every signing (the latest counts; every one is kept). */
@@ -188,8 +208,8 @@ export async function loadConsentDocument(q: Q, docId: string): Promise<RecordDo
   if (!isUuid(docId)) return null;
   const r = (await q.query<Record<string, any>>(`${DOC_SELECT} where d.id = $1`, [docId])).rows[0];
   if (!r) return null;
-  const s = await signingsOf(q, [r.id]);
-  return docOf(r, s.get(r.id) ?? []);
+  const [s, o] = await Promise.all([signingsOf(q, [r.id]), overridesOf(q, [r.id])]);
+  return docOf(r, s.get(r.id) ?? [], o.get(r.id) ?? []);
 }
 
 /** The stored snapshot, parsed (a Rendered-shaped document), or null when it does not parse. */
@@ -466,29 +486,108 @@ export async function cancelDocument(tx: Tx, a: { clinicId: string; staffId: str
   await audit(tx, a.clinicId, a.staffId, 'consent.cancel', 'consent_document', d.id);
 }
 
-/** Going ahead although a linked form is refused, withdrawn, unsigned, unconfirmed or not explained: never blocked, the reason kept. Audit consent.override. (Phase 4 asks with it.) */
-export async function overrideConsent(tx: Tx, a: { clinicId: string; staffId: string; docId: string; context: 'plan_done' | 'in_chair' | 'strip'; reason: string }): Promise<void> {
-  if (!(await canEditRecords(tx, a.staffId, a.clinicId))) throw new Refused(NOT_ALLOWED);
+/** A withdrawal in one line: "Withdrawn 1 Oct 2026: told by Ana Dimaculangan, by phone, recorded by Liwayway Domingo. “…”". */
+export function withdrawalWords(w: NonNullable<RecordSigning['withdrawal']>): string {
+  const how = WITHDRAW_HOW.find((h) => h.value === w.how)?.label.toLocaleLowerCase('en') ?? w.how;
+  return `Withdrawn ${manilaDayWords(new Date(w.at))}: told by ${w.toldBy}, ${how}, recorded by ${w.byName}${w.note ? `. “${w.note}”` : ''}`;
+}
+
+export type OverrideContext = 'plan_done' | 'in_chair' | 'strip' | 'arrived';
+/** Where treatment went ahead without the form: the plan's Mark done, the chair, the This visit strip, the door (044). */
+export const OVERRIDE_CONTEXT: Record<OverrideContext, string> = { plan_done: 'treatment marked done', in_chair: 'seated in the chair', strip: 'the visit went ahead', arrived: 'checked in' };
+/** The form's state when treatment went ahead, in words (consent_override.state_then). */
+export const STATE_THEN_WORDS: Record<string, string> = {
+  cancelled: 'removed', to_sign: 'not signed', to_confirm: 'not confirmed', agreed: 'agreed', refused: 'not agreed', no_photos: 'no photos',
+  withdrawn: 'withdrawn', not_explained: 'not explained',
+};
+/** An override in one line: "Went ahead anyway (not signed), treatment marked done · Dr. Cariño, 1 Oct 2026, 2:31 pm: “…”". */
+export function overrideWords(o: RecordOverride): string {
+  const hm = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }).format(new Date(o.at)).toLowerCase();
+  return `Went ahead anyway (${STATE_THEN_WORDS[o.stateThen] ?? o.stateThen}), ${OVERRIDE_CONTEXT[o.context]} · ${o.staffName}, ${manilaDayWords(new Date(o.at))}, ${hm}: “${o.reason}”`;
+}
+
+/** A form linked to a plan line or a visit that is not agreed: what the record shows beside Mark done, and what an override records.
+ *  explained: its dentist has explained it, or it is a form nobody explains. */
+export interface ConsentGap { docId: string; title: string; state: DocState; explained: boolean }
+/** Why a form is a gap: "not signed yet", "the patient did not agree", "withdrawn". */
+export const gapWhy = (g: ConsentGap): string =>
+  g.state === 'to_sign' ? (g.explained ? 'not signed yet' : 'not explained or signed yet') : g.state === 'to_confirm' ? 'signed, not confirmed yet'
+    : g.state === 'refused' ? 'the patient did not agree' : g.state === 'withdrawn' ? 'withdrawn' : g.state === 'cancelled' ? 'removed' : STATE_WORDS[g.state]?.words.toLocaleLowerCase('en') ?? g.state;
+/** The gap in words: "Extraction consent: not explained yet", "… the patient did not agree", "… withdrawn". */
+export const gapWords = (g: ConsentGap): string => `${g.title}: ${gapWhy(g)}`;
+
+/**
+ * Every consent gap on this patient's record, by the plan line and by the visit
+ * it is linked to (one read for the Treatment section, the tooth panel and the
+ * This visit strip). A form not agreed — to sign, to confirm, refused or
+ * withdrawn — on a line or a visit; "No photos" is a decision, not a gap.
+ */
+export async function consentGapsFor(q: Q, patientId: string): Promise<{ byPlanItem: Map<string, ConsentGap[]>; byVisit: Map<string, ConsentGap[]> }> {
+  const byPlanItem = new Map<string, ConsentGap[]>(), byVisit = new Map<string, ConsentGap[]>();
+  if (!isUuid(patientId)) return { byPlanItem, byVisit };
+  const rows = (await q.query<{ id: string; version_id: string; title: string; plan_item_id: string | null; appointment_id: string | null; state: DocState; explained: boolean }>(
+    `select d.id, d.version_id, v.title, d.plan_item_id, d.appointment_id, consent_document_state(d.id) as state,
+            exists (select 1 from consent_attestation x where x.document_id = d.id) as explained
+       from consent_document d join consent_version v on v.id = d.version_id
+      where d.patient_id = $1 and d.cancelled_at is null and (d.plan_item_id is not null or d.appointment_id is not null)`, [patientId])).rows;
+  for (const r of rows) {
+    if (r.state === 'agreed' || r.state === 'no_photos') continue;
+    // A form no dentist explains (the general consent) is never "not explained".
+    const g: ConsentGap = { docId: r.id, title: TEMPLATES[r.version_id]?.title.en ?? r.title, state: r.state, explained: r.explained || !TEMPLATES[r.version_id]?.attest };
+    if (r.plan_item_id) byPlanItem.set(r.plan_item_id, [...(byPlanItem.get(r.plan_item_id) ?? []), g]);
+    if (r.appointment_id) byVisit.set(r.appointment_id, [...(byVisit.get(r.appointment_id) ?? []), g]);
+  }
+  return { byPlanItem, byVisit };
+}
+
+/**
+ * Going ahead although a linked form is refused, withdrawn, unsigned,
+ * unconfirmed or not explained: never blocked, the reason kept (phase 4.4
+ * asks with it: the plan's Mark done, record.ts; the This visit strip, the
+ * record page). Audit consent.override.
+ */
+export async function overrideConsent(tx: Tx, a: { clinicId: string; staffId: string; docId: string; context: OverrideContext; reason: string }): Promise<void> {
+  // The board's In the chair is the desk's step (schedule.edit, checked by the schedule API): seating a patient is never
+  // refused for want of records.edit, and the reason is kept under the desk's own name. Every other context is the record's.
+  if (a.context !== 'in_chair' && a.context !== 'arrived' && !(await canEditRecords(tx, a.staffId, a.clinicId))) throw new Refused(NOT_ALLOWED);
   const reason = clean(a.reason);
   if (!reason) throw new Refused('Write why you are going ahead.');
   if (reason.length > 200) throw new Refused('Keep the reason under 200 characters.');
-  const d = (await tx.query<{ id: string; state: string; attested: boolean; attest: boolean }>(
-    `select d.id, consent_document_state(d.id) as state, exists (select 1 from consent_attestation x where x.document_id = d.id) as attested, false as attest
+  const d = (await tx.query<{ id: string; version_id: string; state: string; attested: boolean }>(
+    `select d.id, d.version_id, consent_document_state(d.id) as state, exists (select 1 from consent_attestation x where x.document_id = d.id) as attested
        from consent_document d where d.id = $1`, [isUuid(a.docId) ? a.docId : null])).rows[0];
   if (!d) throw new Refused('That form is not here.');
+  // "Not explained" only for a form its dentist explains (the general consent is simply not signed).
+  const notExplained = d.state === 'to_sign' && !d.attested && !!TEMPLATES[d.version_id]?.attest;
   await tx.query('insert into consent_override (clinic_id, document_id, context, state_then, reason, staff_id) values ($1, $2, $3, $4, $5, $6)',
-    [a.clinicId, d.id, a.context, d.state === 'to_sign' && !d.attested ? 'not_explained' : d.state, reason, a.staffId]);
+    [a.clinicId, d.id, a.context, notExplained ? 'not_explained' : d.state, reason, a.staffId]);
   await audit(tx, a.clinicId, a.staffId, 'consent.override', 'consent_document', d.id);
 }
 
-/** Forms linked to a plan line or a visit that are not agreed (phase 4's ask-first reads it): each with its state in words. */
-export async function consentGaps(q: Q, a: { planItemId?: string | null; visitId?: string | null }): Promise<{ docId: string; title: string; state: DocState; explained: boolean }[]> {
+/**
+ * The forms prepared from this visit that are not agreed and that nobody went ahead without today (Manila): what the
+ * board's In the chair asks about (the schedule API, context in_chair). A form the strip's Go ahead anyway, or an
+ * earlier seating, already answered today is not asked again.
+ */
+export async function seatingGaps(q: Q, visitId: string): Promise<ConsentGap[]> {
+  const gaps = await consentGaps(q, { visitId });
+  if (!gaps.length) return gaps;
+  const done = new Set((await q.query<{ document_id: string }>(
+    `select distinct document_id from consent_override
+      where document_id = any($1::uuid[]) and (at at time zone 'Asia/Manila')::date = (now() at time zone 'Asia/Manila')::date`,
+    [gaps.map((g) => g.docId)])).rows.map((r) => r.document_id));
+  return gaps.filter((g) => !done.has(g.docId));
+}
+
+/** Forms linked to one plan line or one visit that are not agreed (the plan's Mark done reads it, record.ts): the same rule as consentGapsFor. */
+export async function consentGaps(q: Q, a: { planItemId?: string | null; visitId?: string | null }): Promise<ConsentGap[]> {
   if (!isUuid(a.planItemId) && !isUuid(a.visitId)) return [];
   const rows = (await q.query<{ id: string; version_id: string; state: DocState; explained: boolean }>(
     `select d.id, d.version_id, consent_document_state(d.id) as state, exists (select 1 from consent_attestation x where x.document_id = d.id) as explained
        from consent_document d where d.cancelled_at is null and (d.plan_item_id = $1 or d.appointment_id = $2)`,
     [isUuid(a.planItemId) ? a.planItemId : null, isUuid(a.visitId) ? a.visitId : null])).rows;
-  return rows.filter((r) => r.state !== 'agreed' && r.state !== 'no_photos').map((r) => ({ docId: r.id, title: TEMPLATES[r.version_id]?.title.en ?? r.version_id, state: r.state, explained: r.explained }));
+  return rows.filter((r) => r.state !== 'agreed' && r.state !== 'no_photos')
+    .map((r) => ({ docId: r.id, title: TEMPLATES[r.version_id]?.title.en ?? r.version_id, state: r.state, explained: r.explained || !TEMPLATES[r.version_id]?.attest }));
 }
 
 export type { Decision, Signer, PatientPart };

@@ -16,7 +16,7 @@ import Head from '../_ui/Head.astro';
 import Glyph from '../_ui/Glyph.astro';
 import Signature from './Signature.astro';
 import Who from './Who.astro';
-import { STATE_WORDS, signerWords, CAPACITY_MAX, type RecordDoc } from '../../../../../lib/consent-docs';
+import { STATE_WORDS, signerWords, withdrawalWords, overrideWords, CAPACITY_MAX, type RecordDoc } from '../../../../../lib/consent-docs';
 
 interface Props {
   docs: RecordDoc[];
@@ -80,6 +80,9 @@ const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.tee
                 {openIntake && <span class="rp">In forms {d.intakeRef} now</span>}
               </p>
               {d.attestation && <p class="text-[14px] text-ink-2">Explained by {d.attestation.dentistName}, PRC {d.attestation.dentistPrc}, in {d.attestation.lang}</p>}
+              {/* Taken back, and treatment that went ahead without it (phase 4.4): plain words, kept with the form. */}
+              {s?.withdrawal && <p class="text-[14px] text-[var(--ws-red-ink)]" data-rc-withdrawal>{withdrawalWords(s.withdrawal)}</p>}
+              {d.overrides.map((o) => <p class="text-[14px] text-[var(--ws-amber-ink)]" data-rc-override={o.id}>{overrideWords(o)}</p>)}
               <p class="flex flex-wrap gap-2">
                 <a href={`${base}${d.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open</a>
                 {canEdit && openIntake && d.intakeId && <a href={`/c/${slug}/patients/intake/${d.intakeId}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open forms {d.intakeRef}</a>}

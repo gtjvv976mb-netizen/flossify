@@ -197,6 +197,9 @@ const boot = {
   me: { id: session.staffId, name: session.name, dentist: isDentist },
   finance, canEdit, canSchedule, canSettings, canText: can(clinic, 'messages.send'),
   chairs: data.clinic.chairs, hours: data.hours, staff: data.staff, catalog: data.catalog,
+  // The clinic's time between visits (044): the suggested times leave it after each visit.
+  turnover: data.clinic.turnover,
+  holdsReminders: data.clinic.holdsReminders,
   // Blocked time (040) over the range on screen and today (data.ts): the hatch, the strip, the count line, the soft stop.
   blocks: data.blocks,
   next: NEXT_STATUS,

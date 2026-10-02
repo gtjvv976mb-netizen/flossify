@@ -9,7 +9,7 @@ import Csrf from '../../../../../components/Csrf.astro';
 import Note from './Note.astro';
 import { hmos } from '../../../../../data/directory';
 import { AREAS } from '../../../../../lib/slug';
-import { ABOUT_MAX, missingForListing, type ClinicData, type ProfileValues } from '../_lib/profile';
+import { ABOUT_MAX, TURNOVERS, missingForListing, type ClinicData, type ProfileValues } from '../_lib/profile';
 import { listWords } from '../_lib/common';
 
 interface Props {
@@ -126,10 +126,16 @@ const taxProblem = problems.some((p) => /TIN|BIR|branch code/i.test(p));
 
     <h3 class="set-sub">How you work</h3>
     <div class="mt-4 grid gap-5">
-      <label class="field sm:max-w-[12rem]">
-        <span class="meta">Dental chairs</span>
-        <input type="number" name="chairs" value={v.chairs} min="1" max="12" step="1" required inputmode="numeric" />
-      </label>
+      <div class="grid gap-5 sm:grid-cols-2 sm:max-w-[26rem]">
+        <label class="field">
+          <span class="meta">Dental chairs</span>
+          <input type="number" name="chairs" value={v.chairs} min="1" max="12" step="1" required inputmode="numeric" />
+        </label>
+        <label class="field">
+          <span class="meta">Founded <span class="font-normal">(year, optional)</span></span>
+          <input name="founded" value={v.founded} inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="e.g. 2009" />
+        </label>
+      </div>
       <fieldset>
         <legend class="meta">Walk-ins</legend>
         <div class="set-pills mt-2">
@@ -163,6 +169,36 @@ const taxProblem = problems.some((p) => /TIN|BIR|branch code/i.test(p));
             <input type="checkbox" name="recall_texts" checked={v.recall_texts} />
             <span><span class="block text-[16px] font-semibold text-ink">Text patients when their check-up is due</span><span class="mt-0.5 block text-[14.5px] text-ink-2">Tuesday or Wednesday morning, from two weeks before it is due until two months after, at most once in 60 days. The text names your number and asks them to call.</span></span>
           </label>
+        </div>
+      </fieldset>
+    </div>
+
+    {/* How the day runs (044): the gap after each visit, reminders for visits in closed time, when the desk is asked
+        about a consent form. has_work_choices tells the save these were on the form (an older form keeps what is saved). */}
+    <h3 class="set-sub" id="work">How the day runs</h3>
+    <input type="hidden" name="has_work_choices" value="1" />
+    <div class="mt-4 grid gap-5">
+      <label class="field sm:max-w-[16rem]">
+        <span class="meta">Time between visits</span>
+        <select name="turnover_min" id="set-turnover">
+          {TURNOVERS.map((n) => <option value={n} selected={v.turnover_min === n}>{n === 0 ? 'None' : `${n} minutes`}</option>)}
+        </select>
+        <span class="mt-1 block text-[14px] text-ink-2">Online booking and the calendar’s suggested times leave this after each visit to ready the chair. The desk can still book back to back.</span>
+      </label>
+      <fieldset>
+        <legend class="meta">Reminders for visits in closed time</legend>
+        <p class="mt-1 text-[14px] text-ink-2">A visit lands in closed time when you add lunch, a closed day or a dentist’s leave after it was booked. It shows on Calls until someone keeps it or moves it.</p>
+        <label class="check set-check items-start mt-2">
+          <input type="checkbox" name="hold_closed_reminders" checked={v.hold_closed_reminders} />
+          <span><span class="block text-[16px] font-semibold text-ink">Hold the reminder until the visit is kept or moved</span><span class="mt-0.5 block text-[14.5px] text-ink-2">So no patient is reminded to come when you are closed. Off: the reminder goes as usual.</span></span>
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend class="meta">Ask about a consent form not signed</legend>
+        <p class="mt-1 text-[14px] text-ink-2">When a visit’s consent form is not agreed, the calendar asks the desk why the visit goes ahead, and keeps the answer with the form. It never stops the visit.</p>
+        <div class="mt-2 grid gap-2 sm:grid-cols-2">
+          <label class="row-radio"><input type="radio" name="consent_ask_at" value="chair" checked={v.consent_ask_at !== 'arrived'} /><span><strong class="font-semibold">At the chair</strong><span class="block text-[14px] text-ink-2">When the patient goes into the chair.</span></span></label>
+          <label class="row-radio"><input type="radio" name="consent_ask_at" value="arrived" checked={v.consent_ask_at === 'arrived'} /><span><strong class="font-semibold">At the door</strong><span class="block text-[14px] text-ink-2">When the patient arrives, so the desk can get it signed while they wait.</span></span></label>
         </div>
       </fieldset>
     </div>

@@ -33,6 +33,10 @@ export interface Boot {
   /** May change Clinic settings (settings.edit): the Block panel says where lunch and a dentist's hours are set. */
   canSettings: boolean;
   chairs: number; hours: Record<number, [number, number] | null>; staff: StaffDay[]; catalog: Service[];
+  /** Minutes the clinic keeps a chair free after each visit (clinic.turnover_min, 044): the suggested times leave it. */
+  turnover: number;
+  /** The clinic holds a reminder while its visit sits in closed time nobody kept (clinic.hold_closed_reminders, 044). */
+  holdsReminders: boolean;
   next: Record<string, string[]>;
   cards: Card[]; todayCards: Card[]; toPlace: Card[]; toConfirm: Card[];
   /** Blocked time (040) over the range on screen and today: lunch, a dentist's time not in, the dated blocks. */
@@ -45,7 +49,8 @@ export interface Boot {
 }
 /** A refusal carries the server's sentence; `blocked` (with its range's `kind`) is the soft stop of blocked time (040):
  *  the same call with anyway: true books it. A clash is a 409 without it, and has no anyway. */
-export type Reply = { ok: true; card: Card; texted: boolean; retold: number } | { ok: false; error: string; status?: number; blocked?: boolean; kind?: string };
+/** consent: In the chair was refused because a consent form of the visit is not agreed — sent again with consentReason, it goes ahead. */
+export type Reply = { ok: true; card: Card; texted: boolean; retold: number } | { ok: false; error: string; status?: number; blocked?: boolean; kind?: string; consent?: boolean };
 /** A range of days as the server answers it: the visits (cancelled left out by the caller) and the blocked time. */
 export type Book = { cards: Card[]; blocks: BlockRange[] };
 
@@ -182,7 +187,7 @@ function start(boot: Boot) {
       if (res.status === 401) return { ok: false, status: 401, error: 'Your sign-in has ended. Sign in again, then try that once more.' };
       return {
         ok: false, status: res.status, error: typeof data?.error === 'string' && data.error ? data.error : OFFLINE,
-        blocked: data?.blocked === true, kind: typeof data?.kind === 'string' ? data.kind : undefined,
+        blocked: data?.blocked === true, kind: typeof data?.kind === 'string' ? data.kind : undefined, consent: data?.consent === true,
       };
     } catch {
       return { ok: false, error: OFFLINE };

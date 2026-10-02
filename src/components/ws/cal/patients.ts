@@ -114,6 +114,8 @@ export function initPatients(ctx: Ctx): PatientsList {
     stepping = true; btn.disabled = true;
     const r = await ctx.call('PATCH', { id, status: to });
     stepping = false; btn.disabled = false;
+    // In the chair with a consent form not agreed: the visit's panel asks why (Seat anyway), as its own button does.
+    if (!r.ok && r.consent) { ctx.panels.askSeat(id, to, r.error, btn); return; }
     if (!r.ok) { ctx.fail(r.error); return; }
     ctx.absorb(r.card);
     ctx.flash(r.card.id);

@@ -162,7 +162,7 @@ export function initFreeTimes(ctx: Ctx, hook: 'bk' | 'vp', f: FreeFields): FreeT
     const ask: M.FreeAsk = {
       open, from, minutes, chairs: boot.chairs, dentistId: f.dentist.value || undefined, pool: true,
       anyOf: boot.staff.filter((s) => s.days.includes(dow)).map((s) => s.id),
-      preferChair: Number(f.chair.value) || null, turnover: M.TURNOVER_MIN,
+      preferChair: Number(f.chair.value) || null, turnover: boot.turnover ?? 0,
     };
     const holds = dayHolds(list, blocks, ymd);
     const all = M.freeStarts(holds, { ...ask, limit: Infinity });
@@ -176,7 +176,7 @@ export function initFreeTimes(ctx: Ctx, hook: 'bk' | 'vp', f: FreeFields): FreeT
       note.textContent = '';
     } else {
       say.textContent = '';
-      note.textContent = [counted && COUNTED, M.TURNOVER_MIN > 0 && turnoverWords(M.TURNOVER_MIN), CHECKS].filter(Boolean).join(' ');
+      note.textContent = [counted && COUNTED, (boot.turnover ?? 0) > 0 && turnoverWords(boot.turnover ?? 0), CHECKS].filter(Boolean).join(' ');
     }
     mark();
   }
@@ -251,7 +251,7 @@ export function initFreeTimes(ctx: Ctx, hook: 'bk' | 'vp', f: FreeFields): FreeT
       const days = M.freeDays(book.cards, {
         after: ymd, today, nowMin: M.manila(Date.now()).min, days: 7, hours: boot.hours, dentist: d, staff: boot.staff,
         at: timeMin(f.time.value), minutes, chairs: boot.chairs, preferChair: Number(f.chair.value) || null, excludeId: f.exclude(),
-        turnover: M.TURNOVER_MIN, max: 2,
+        turnover: boot.turnover ?? 0, max: 2,
         extra: (day) => M.blockHolds(M.blocksOn(book.blocks, day), M.startMs(day)),
       });
       nextHead.textContent = `Next free with ${name}`;

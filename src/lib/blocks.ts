@@ -147,9 +147,12 @@ const visitColumns = (w: string) => `a.id, concat_ws(' ', p.first_name, nullif(p
 /** Rows to InsideVisits, each with the reminder text's state as Calls words it. */
 async function insideVisits(tx: Tx, rows: VisitRow[]): Promise<InsideVisit[]> {
   const reminders = await remindersFor(tx, rows.map((r) => r.id));
+  // Every visit listed here is in closed time nobody kept: at a clinic that holds reminders then (044), its reminder waits.
+  const held = rows.length > 0 && !!(await tx.query<{ h: boolean }>(
+    `select hold_closed_reminders as h from clinic where id = nullif(current_setting('app.clinic_id', true), '')::uuid`)).rows[0]?.h;
   return rows.map((r) => {
     const startsAt = new Date(r.starts_at), phone = r.phone ?? null;
-    const rem = reminderWords({ startsAt, phone }, reminders.get(r.id));
+    const rem = reminderWords({ startsAt, phone, held }, reminders.get(r.id));
     return {
       id: r.id, patientName: r.patient_name, chartNo: r.chart_no, phone, startsAt: iso(startsAt), endsAt: iso(r.ends_at),
       dentistName: r.dentist_name ?? null, chair: r.chair ?? null,
@@ -179,7 +182,24 @@ export async function reopenNewlyClosed(tx: Tx, clinicId: string, before: string
   const was = new Set(before);
   const newly = (await closedIds(tx, clinicId, o)).filter((id) => !was.has(id));
   if (newly.length) await tx.query('update appointment set blocked_ok_at = null where id = any($1::uuid[])', [newly]);
+  if (newly.length) await holdClosedReminders(tx, clinicId);
   return newly;
+}
+
+/**
+ * At a clinic that holds reminders for visits in closed time nobody kept (clinic.hold_closed_reminders, 044): the
+ * reminders still waiting for such visits are withdrawn (status cancelled, dedupe key cleared), so the reminder pass
+ * writes them again once the visit is kept (Calls → Keep it, Book/Move anyway) or moved out. Sent, sending and
+ * held-over texts are left. Nothing at a clinic that does not hold. Returns how many were withdrawn.
+ */
+export async function holdClosedReminders(tx: Tx, clinicId: string): Promise<number> {
+  const r = await tx.query(
+    `update message_log m set status = 'cancelled', dedupe_key = null
+       from appointment a
+      where m.appointment_id = a.id and a.clinic_id = $1 and m.direction = 'out' and m.status = 'queued' and m.kind = 'reminder'
+        and (m.dedupe_key = 'reminder:' || a.id or m.dedupe_key = 'remind48:' || a.id)
+        and appointment_reminder_held(a.id)`, [clinicId]);
+  return r.rowCount ?? 0;
 }
 
 /** Calls → In closed time: closedIds' rule with blocked_ok_at null (nobody has kept it there), soonest first, 200 at
@@ -306,6 +326,7 @@ export async function addBlock(tx: Tx, clinicId: string, staffId: string, b: New
       where a.clinic_id = $2 and ${VISIT_AHEAD_SQL} and ${IN_SCOPE_SQL}
       order by a.starts_at, patient_name
       limit 200`, [row.id, clinicId]);
+  await holdClosedReminders(tx, clinicId);
   return { block, inside: await insideVisits(tx, rows) };
 }
 
