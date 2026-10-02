@@ -1,15 +1,17 @@
-// The patient record as one page (the owner, 2 Oct 2026: "make the patient records one seamless page, where all
-// details are shown, and a plus sign appears next to editable or addable"), measured:
-//   - every section is on the page, none hidden, in the index's order, each with its banner;
-//   - the index's links go to their section, its head just under whatever stays at the top, and the link in view
-//     is marked (aria-current) as the page scrolls; an address with a section's name opens there;
-//   - the plus signs: on every detail tile that can be changed (with the caret in that detail's field once Edit details
-//     opens), on the health summary's lines (to the health form's box), and as each section's add buttons; none for
-//     someone who cannot edit;
-//   - no target under 44 px, no sideways scroll, and every plus and index link ≥ 4.5:1 against what is behind it,
-//     light and dark, 1440 and 390; screenshots of the whole page to the scratch folder.
+// The patient record as a paper chart (the owner, 2 Oct 2026: "one seamless page, where all details are shown, and a
+// plus sign appears next to editable or addable", then "its still too complicated, imagine that the patient records is
+// a paper record, simple, uneventful but effective"), measured:
+//   - one sheet: the contents, then the twelve parts in the paper chart's order, numbered, none hidden; no colour
+//     banners, no icon tiles, no number tiles in the head;
+//   - the contents' links land each part's head just under the workspace bar and put its name in the address; an
+//     address with a part's name opens there;
+//   - a plus beside every detail that can be changed (Edit details opens with the caret in that field), beside each
+//     answer of the medical history (its folded form opens with the caret in that list's box), and at each part's
+//     adds; none for someone who cannot edit records;
+//   - every line on the sheet ≥ 4.5:1 against what is behind it, light and dark, 1440 and 390; no target under 44 px;
+//     no sideways scroll; the head's teal New booking is the only teal button in view.
 //
-//   node scripts/dev/record/one-page-check.mjs [base=http://127.0.0.1:4610] [slug=session-road] [email] [password=flossify]
+//   node scripts/dev/record/paper-check.mjs [base=http://127.0.0.1:4610] [slug=session-road] [email] [password=flossify]
 //   OUT=<folder for screenshots> · PW_CHROMIUM · DB=flossify_t · PGHOST · PGPORT · PGUSER (local only)
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
@@ -53,23 +55,30 @@ const measure = () => p.evaluate(() => {
     for (const c of layers.reverse()) { const a = c[3] ?? 1; out = out.map((v, i) => v * (1 - a) + c[i] * a); }
     return out;
   };
-  const vis = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  // Shown: laid out, not hidden, and not folded inside a closed <details> (Chromium still gives folded content a size).
+  const vis = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden'
+    && !(el.closest('details:not([open])') && !el.closest('summary'));
   const sections = [...document.querySelectorAll('[data-rec-panel]')];
   const plus = [...document.querySelectorAll('.rec-plus')].filter(vis);
-  const marks = [...document.querySelectorAll('.rec-plus-mark')].filter(vis);
-  const words = [...plus, ...document.querySelectorAll('.rec-nav-item')].filter(vis);
-  const fails = words.map((el) => ({ t: (el.getAttribute('aria-label') || el.textContent).trim().slice(0, 30), r: ratio(rgba(getComputedStyle(el).color).slice(0, 3), bg(el)) })).filter((x) => x.r < 4.5);
-  const lowest = Math.min(...words.map((el) => ratio(rgba(getComputedStyle(el).color).slice(0, 3), bg(el))));
-  const small = [...document.querySelectorAll('.rec-main button, .rec-main a, .rec-nav a, .rec-plus')].filter(vis)
-    .filter((el) => !el.closest('dialog') && !el.closest('.rp-row') && !el.closest('p') && el.getBoundingClientRect().height < 44)
+  const sheet = document.querySelector('.pp-sheet');
+  // Every element on the sheet (and the head's facts) with words of its own, measured against what is behind it.
+  const words = [...document.querySelectorAll('.pp-sheet *, .pp-facts *')].filter((el) => vis(el) && !el.closest('dialog') && !el.closest('details:not([open])')
+    && !el.closest('[data-odontogram]') && [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()));
+  const measured = words.map((el) => ({ t: el.textContent.trim().slice(0, 30), r: ratio(rgba(getComputedStyle(el).color).slice(0, 3), bg(el)) }));
+  const small = [...document.querySelectorAll('.pp-sheet button, .pp-sheet a, .pp-sheet summary, .pp-top button, .pp-top a')].filter(vis)
+    .filter((el) => !el.closest('dialog') && !el.closest('details:not([open]) > :not(summary)') && !el.closest('.trec') && !el.closest('[data-odontogram]') && !el.closest('p:not(.rp-row)') && !el.closest('dd') && el.getBoundingClientRect().height < 44)
     .map((el) => `${(el.getAttribute('aria-label') || el.textContent).trim().slice(0, 24)} ${Math.round(el.getBoundingClientRect().height)}`);
+  const top = document.querySelector('.pp-top')?.getBoundingClientRect(), sh = sheet.getBoundingClientRect();
   return {
-    sections: sections.map((s) => ({ id: s.dataset.recPanel, hidden: s.hidden || !vis(s), banner: !!s.querySelector('.rec-banner-title') })),
+    sections: sections.map((s) => ({ id: s.dataset.recPanel, hidden: s.hidden || !vis(s), title: s.querySelector('.pp-title')?.textContent.trim() })),
     links: [...document.querySelectorAll('[data-rec-link]')].map((a) => a.dataset.recLink),
-    plus: plus.length, marks: marks.length, tilesEditable: document.querySelectorAll('.rf-edit .rf-plus').length,
-    tilesWithout: [...document.querySelectorAll('#overview dl.rf-grid > .rf')].filter((t) => !t.querySelector('.rf-plus') && t.querySelector('dt')?.textContent.trim() !== 'On file since').map((t) => t.querySelector('dt')?.textContent.trim()),
+    plus: plus.length,
+    linesWithout: [...document.querySelectorAll('#overview > .pp-line')].filter((t) => !t.querySelector('.pp-plus') && t.querySelector('dt')?.textContent.trim() !== 'On file since').map((t) => t.querySelector('dt')?.textContent.trim()),
+    decoration: { banners: document.querySelectorAll('.rec-banner').length, icons: [...document.querySelectorAll('.pp-sheet .ws-pane-icon')].filter(vis).length, tiles: document.querySelectorAll('.pt-tiles, .rec-nav-item').length },
     teal: [...document.querySelectorAll('.ws-btn-primary')].filter(vis).filter((b) => !b.closest('dialog')).map((b) => b.textContent.trim().slice(0, 20)),
-    fails, lowest, small, scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    aligned: Math.abs(top.left - sh.left) < 1 && Math.abs(top.width - sh.width) < 1,
+    fails: measured.filter((x) => x.r < 4.5), lowest: Math.min(...measured.map((x) => x.r)), n: measured.length,
+    small, scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
   };
 });
 
@@ -81,53 +90,53 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
     await p.goto(record, { waitUntil: 'load' });
     await p.waitForTimeout(400);
     const m = await measure();
-    assert.ok(m.sections.length >= 11, `sections: ${m.sections.length}`);
-    assert.deepEqual(m.sections.filter((s) => s.hidden).map((s) => s.id), [], 'no section hidden');
-    assert.ok(m.sections.every((s) => s.banner), 'each has its banner');
-    assert.deepEqual(m.links, m.sections.map((s) => s.id), 'the index lists the sections in page order');
-    assert.ok(m.plus >= 12, `plus signs: ${m.plus}`);
-    assert.deepEqual(m.tilesWithout, [], 'a plus on every detail that can be changed');
+    const ORDER = ['overview', 'health', 'chart', 'treatment', 'treatment-record', 'notes', 'consent', 'rx', 'files', 'visits', 'money', 'texts'];
+    assert.deepEqual(m.sections.map((x) => x.id), ORDER, 'the parts in the paper chart\'s order');
+    assert.deepEqual(m.sections.filter((x) => x.hidden).map((x) => x.id), [], 'no part hidden');
+    assert.deepEqual(m.sections.map((x) => x.title.match(/^\d+/)?.[0]), ORDER.map((_, i) => String(i + 1)), 'numbered 1 to 12');
+    assert.deepEqual(m.links, ORDER, 'the contents list the parts in order');
+    assert.deepEqual(m.decoration, { banners: 0, icons: 0, tiles: 0 }, 'no colour banners, icon tiles or number tiles');
+    assert.deepEqual(m.linesWithout, [], 'a plus on every detail that can be changed');
+    assert.ok(m.plus >= 15, `plus signs: ${m.plus}`);
+    assert.deepEqual(m.teal, ['New booking'], 'New booking is the one teal button in view');
+    assert.ok(m.aligned, 'the head and the sheet line up');
     assert.deepEqual(m.fails, [], `${w} ${scheme}: contrast`);
     assert.deepEqual(m.small, [], `${w} ${scheme}: targets`);
     assert.equal(m.scroll, 0, `${w} ${scheme}: no sideways scroll`);
-    ok(`${w} ${scheme}: ${m.sections.length} sections on one page, ${m.plus} plus signs (${m.tilesEditable} on details), lowest ${m.lowest.toFixed(2)}:1, teal buttons: ${m.teal.join(' · ')}`);
+    ok(`${w} ${scheme}: one sheet, ${m.sections.length} numbered parts, ${m.plus} plus signs, ${m.n} lines measured, lowest ${m.lowest.toFixed(2)}:1`);
     if (OUT && scheme === 'light') await p.screenshot({ path: `${OUT}/record-${w}.png`, fullPage: true });
   }
 }
 await p.emulateMedia({ colorScheme: 'light' });
 
-// 2. The index goes to each section, just under what stays at the top, and marks it.
+// 2. The contents go to each part, its head just under the workspace bar.
 for (const [w, h] of [[1440, 900], [390, 844]]) {
   await p.setViewportSize({ width: w, height: h });
   await p.goto(record, { waitUntil: 'load' });
-  for (const id of ['chart', 'money', 'consent', 'texts', 'health']) {
-    const link = p.locator(`[data-rec-link="${id}"]`);
-    if (!(await link.count())) continue;
-    await link.click();
+  for (const id of ['chart', 'treatment-record', 'consent', 'visits', 'health']) {
+    await p.locator(`[data-rec-link="${id}"]`).click();
     await p.waitForTimeout(900);
     const r = await p.evaluate((id) => {
       const head = document.getElementById(`rec-${id}`).getBoundingClientRect().top;
       const bar = document.querySelector('[data-ws-top]')?.getBoundingClientRect().bottom ?? 0;
-      const nav = document.querySelector('[data-rec-nav]');
-      const navBottom = window.innerWidth < 1200 ? nav.getBoundingClientRect().bottom : bar;
       const atEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
-      return { head, under: Math.max(bar, navBottom), atEnd, current: document.querySelector('[data-rec-link][aria-current]')?.dataset.recLink, hash: location.hash };
+      return { head, bar, atEnd, hash: location.hash };
     }, id);
     assert.equal(r.hash, `#${id}`);
-    assert.ok(r.head >= r.under - 1 && (r.head <= r.under + 30 || r.atEnd), `${w} ${id}: head at ${Math.round(r.head)}, under ${Math.round(r.under)}`);
-    assert.equal(r.current, id, `${w}: ${id} marked in view`);
+    assert.ok(r.head >= r.bar - 1 && (r.head <= r.bar + 30 || r.atEnd), `${w} ${id}: head at ${Math.round(r.head)}, bar ${Math.round(r.bar)}`);
   }
-  ok(`${w}: the index's links land each section just under the top, the address says it, and the link is marked`);
+  ok(`${w}: the contents land each part just under the bar, and the address says which`);
 }
 await p.setViewportSize({ width: 1440, height: 900 });
 await p.goto(`${record}#consent`, { waitUntil: 'load' });
 await p.waitForTimeout(500);
-assert.equal(await p.evaluate(() => document.querySelector('[data-rec-link][aria-current]')?.dataset.recLink), 'consent');
+const at = await p.evaluate(() => { const h = document.getElementById('rec-consent').getBoundingClientRect().top; return h >= 0 && h < 200; });
+assert.ok(at, 'an address ending #consent opens on Consent');
 ok('an address ending #consent opens on Consent');
 
 // 3. The plus signs do what they say.
 await p.goto(record, { waitUntil: 'load' });
-const mobile = p.locator('.rf-edit:has(dt:text-is("Mobile")) .rf-plus');
+const mobile = p.locator('#overview .pp-line:has(dt:text-is("Mobile")) .pp-plus');
 if (await mobile.count()) {
   await mobile.click();
   await p.waitForTimeout(400);
@@ -138,14 +147,16 @@ if (await mobile.count()) {
   await p.waitForTimeout(600);
   ok('the plus beside Mobile opens Edit details with the caret in Mobile');
 }
-const allergy = p.locator('.rs-plus[aria-label="Add to allergies"]');
+const allergy = p.locator('.pp-plus[aria-label="Add to allergies"]');
 assert.ok(await allergy.count() || !(await q('select 1 from medical_history where patient_id = $1 and allergies is not null', [pt.id])).length, 'a plus beside Allergies when there are health answers');
 if (await allergy.count()) {
   await allergy.click();
   await p.waitForTimeout(400);
   assert.equal(await p.evaluate(() => document.activeElement?.getAttribute('name')), 'allergies_add', 'the allergies box has the caret');
-  ok('the plus beside Allergies goes to the health form with the caret in its box');
+  assert.equal(await p.evaluate(() => document.querySelector('[data-pp-edit]')?.open), true, 'the folded form opened');
+  ok('the plus beside Allergies opens the medical history\'s form with the caret in its box');
 }
+await p.goto(record, { waitUntil: 'load' });
 const note = p.locator('#rec-notes .rec-plus', { hasText: 'New note' });
 await note.click();
 await p.waitForTimeout(300);

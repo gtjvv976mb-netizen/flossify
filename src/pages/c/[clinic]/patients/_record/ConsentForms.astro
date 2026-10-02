@@ -84,7 +84,8 @@ const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.tee
               {/* Taken back, and treatment that went ahead without it (phase 4.4): plain words, kept with the form. */}
               {s?.withdrawal && <p class="text-[14px] text-[var(--ws-red-ink)]" data-rc-withdrawal>{withdrawalWords(s.withdrawal)}</p>}
               {d.overrides.map((o) => <p class="text-[14px] text-[var(--ws-amber-ink)]" data-rc-override={o.id}>{overrideWords(o)}</p>)}
-              <p class="flex flex-wrap gap-2">
+              {/* A div, not a p: a form inside a p closes it, and the buttons fell one under another. */}
+              <div class="flex flex-wrap gap-2">
                 <a href={`${base}${d.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open</a>
                 {canEdit && openIntake && d.intakeId && <a href={`/c/${slug}/patients/intake/${d.intakeId}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open forms {d.intakeRef}</a>}
                 {s && <a href={`${base}${d.id}/print/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>}
@@ -99,7 +100,7 @@ const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.tee
                 {canEdit && d.state === 'to_sign' && !s && !openIntake && (!d.template?.attest || d.attestation) && (
                   <form method="post" action={`${base}${d.id}/`}><Csrf /><input type="hidden" name="intent" value="paper_print" /><button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print for signing on paper</button></form>
                 )}
-              </p>
+              </div>
             </div>
           </li>
         );

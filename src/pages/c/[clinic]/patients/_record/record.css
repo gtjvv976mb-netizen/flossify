@@ -161,67 +161,101 @@
 .hue-violet { --hue-ink: var(--ws-violet-ink); --hue-tint: var(--ws-violet-tint); --hue-bar: var(--ws-violet-ink); }
 .hue-green { --hue-ink: var(--ws-green-ink); --hue-tint: var(--ws-green-tint); --hue-bar: var(--ws-green); }
 
-/* The record's body: the index beside the sections on a wide screen. */
-.rec-body { display: grid; gap: 1rem; min-width: 0; }
-.rec-main { display: grid; gap: 1rem; min-width: 0; align-content: start; }
-@media (max-width: 767px) { .rec-body, .rec-main { gap: 0.75rem; } }
+/* --- The record as a paper chart (the owner, 2 Oct 2026: "imagine that the patient records is a paper record, simple,
+   uneventful but effective") ------------------------------------------------------------------------------------------
+   One sheet: the contents, then the numbered parts one after another, each under a plain heading on a rule. Inside
+   it the workspace's cards are flattened into the sheet (no border, no tint, no icon tile, no colour band), details
+   are label-and-value lines, and pills read as plain words; only what must stand out keeps its colour (an allergy,
+   a warning, money owed). The sheet is the card colour in both themes, so dark mode is the same charcoal page. */
+.rec-body { min-width: 0; }
+.rec-main { display: grid; min-width: 0; align-content: start; }
+.pp-sheet { max-width: 64rem; margin-inline: auto; width: 100%; padding: 2rem 2.5rem 2.5rem; border: 1px solid var(--ws-hair); border-radius: 12px; background: var(--c-surface); color: var(--c-ink); }
+@media (max-width: 767px) { .pp-sheet { padding: 1.25rem 1rem 1.75rem; border-radius: 12px; } }
+.rec-sec, .rec-anchor, [data-rec-panel] [id] { scroll-margin-top: calc(var(--rec-top, 0px) + 0.75rem); }
 
-/* One page (the owner: "make the patient records one seamless page"): every section one after another, the index
-   a set of links. --rec-top is the workspace bar's height and --rec-nav-h the index row's on a narrow screen, both
-   measured by the record's script, so a section gone to lands just under whatever stays at the top. */
-.rec-sec, .rec-anchor, [data-rec-panel] [id] { scroll-margin-top: calc(var(--rec-top, 0px) + var(--rec-nav-h, 0px) + 0.75rem); }
-.rec-sec + .rec-sec { margin-top: 1.25rem; }
-.rec-banner-title:focus { outline: none; }
+/* The contents. */
+.pp-contents { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; padding-bottom: 1rem; margin-bottom: 1.5rem; border-bottom: 2px solid var(--c-ink); }
+.pp-contents-k { font-size: 13px; font-weight: 700; color: var(--c-ink-2); }
+.pp-contents ol { display: flex; flex-wrap: wrap; gap: 0 0.25rem; }
+.pp-contents a { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 44px; padding: 0 0.5rem; border-radius: 8px; font-size: 14.5px; color: var(--ws-teal-ink); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--ws-teal-ink) 40%, transparent); text-underline-offset: 3px; }
+.pp-contents a:hover { background: var(--ws-subtle); }
+.pp-contents a:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 1px; }
+.pp-n { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--c-ink-2); }
+.pp-contents .pp-n::after { content: "."; }
 
-/* The index. Narrow: one row of pills that stays at the top and scrolls sideways, group names hidden (each pill
-   keeps its colour and icon). Wide: a column that stays in view, groups under their names. */
-.rec-nav { min-width: 0; }
-@media (max-width: 1199px) {
-  .rec-nav { position: sticky; top: var(--rec-top, 0px); z-index: 30; margin-inline: -0.25rem; padding: 0.5rem 0.25rem; background: var(--c-bg); border-bottom: 1px solid var(--ws-hair); }
-}
-.rec-nav-list { display: flex; gap: 0.375rem; overflow-x: auto; padding: 0.25rem; margin: -0.25rem; scrollbar-width: thin; }
-.rec-nav-group { display: none; }
-.rec-nav-item {
-  position: relative; display: inline-flex; flex: none; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 0.875rem 0 0.375rem;
-  border: 1px solid var(--ws-hair); border-radius: 999px; background: var(--c-surface); color: var(--c-ink-2); font-size: 14.5px; font-weight: 500;
-  cursor: pointer; transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
-}
-.rec-nav-item:hover { border-color: var(--hue-bar); }
-.rec-nav-item:focus-visible { outline: 2px solid var(--hue-bar); outline-offset: 2px; }
-.rec-nav-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 999px; background: var(--hue-tint); color: var(--hue-ink); flex: none; }
-.rec-nav-count { min-width: 1.5rem; padding: 0 0.375rem; border-radius: 999px; background: var(--ws-subtle); font-size: 12.5px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; color: var(--c-ink-2); }
-.rec-nav-item[aria-current] { border-color: var(--hue-bar); background: var(--hue-tint); color: var(--hue-ink); font-weight: 700; }
-.rec-nav-item[aria-current] .rec-nav-icon { background: var(--c-surface); }
-.rec-nav-item[aria-current] .rec-nav-count { background: var(--c-surface); color: var(--hue-ink); }
-@media (min-width: 1200px) {
-  .rec-body { grid-template-columns: 14.25rem minmax(0, 1fr); align-items: start; }
-  .rec-nav { position: sticky; top: calc(var(--rec-top, 4.5rem) + 1rem); max-height: calc(100vh - var(--rec-top, 4.5rem) - 2rem); overflow-y: auto; padding: 0.75rem; border: 1px solid var(--ws-hair); border-radius: 16px; background: var(--c-surface); }
-  .rec-nav-list { flex-direction: column; gap: 0.125rem; overflow: visible; padding: 0; margin: 0; }
-  .rec-nav-group { display: flex; align-items: center; gap: 0.4rem; margin: 0.75rem 0.5rem 0.25rem; font-size: 12.5px; font-weight: 700; color: var(--hue-ink); }
-  .rec-nav-group:first-child { margin-top: 0.125rem; }
-  .rec-nav-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--hue-bar); }
-  .rec-nav-item { width: 100%; border-color: transparent; border-radius: 10px; padding: 0 0.625rem 0 0.375rem; background: transparent; }
-  .rec-nav-item:hover { border-color: transparent; background: var(--ws-subtle); }
-  .rec-nav-item[aria-current] { border-color: transparent; background: var(--hue-tint); }
-  .rec-nav-item[aria-current]::before { content: ""; position: absolute; left: -0.75rem; top: 8px; bottom: 8px; width: 4px; border-radius: 0 4px 4px 0; background: var(--hue-bar); }
-  .rec-nav-icon { width: 30px; height: 30px; border-radius: 8px; }
-  .rec-nav-label { flex: 1; text-align: left; }
-}
+/* A part: its heading on a rule; parts follow each other on the sheet. */
+.rec-sec { gap: 1rem; }
+.rec-sec + .rec-sec { margin-top: 2.25rem; }
+.pp-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--c-ink-2); }
+.pp-title { display: flex; align-items: baseline; gap: 0.625rem; font-size: 19px; font-weight: 700; line-height: 1.3; color: var(--c-ink); }
+.pp-title:focus { outline: none; }
+.pp-title .pp-n { min-width: 1.25rem; font-size: 17px; }
+.pp-head-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
-/* A section's banner, and its cards: the top edge and the icon in the section's colour. */
-.rec-banner {
-  display: flex; align-items: center; gap: 0.875rem 1rem; flex-wrap: wrap; padding: 1rem 1.25rem; border-radius: 16px;
-  border: 1px solid color-mix(in srgb, var(--hue-bar) 35%, transparent); background: var(--hue-tint);
+/* The facts under the name, written in a line as at the top of a chart. */
+.pp-facts { display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; padding-top: 0.875rem; border-top: 1px solid var(--ws-hair); }
+.pp-facts > div { display: grid; gap: 0.125rem; min-width: 0; }
+.pp-facts dt { font-size: 13px; font-weight: 600; color: var(--c-ink-2); }
+.pp-facts dd { font-size: 15.5px; font-weight: 600; color: var(--c-ink); }
+.pp-facts dd a { color: inherit; text-decoration: underline; text-decoration-color: var(--ws-hair-strong, var(--c-ink-2)); text-underline-offset: 3px; }
+.pp-facts .pp-owed { color: var(--ws-red-ink); }
+.pp-facts-note { font-weight: 400; color: var(--c-ink-2); }
+
+/* Label and value on a ruled line, two to a row where there is room; the plus at the line's end. */
+.pp-lines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 2rem; }
+@media (max-width: 639px) { .pp-lines { grid-template-columns: minmax(0, 1fr); } }
+.pp-line { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr) auto; align-items: center; gap: 0 0.75rem; min-height: 48px; padding: 0.25rem 0; border-bottom: 1px solid var(--ws-hair); }
+.pp-line dt { font-size: 14px; color: var(--c-ink-2); }
+.pp-line dd { min-width: 0; font-size: 15.5px; font-weight: 600; line-height: 1.4; color: var(--c-ink); overflow-wrap: anywhere; }
+.pp-line-empty dd { font-weight: 400; color: var(--c-ink-2); }
+@media (max-width: 479px) { .pp-line { grid-template-columns: 7.5rem minmax(0, 1fr) auto; } }
+.pp-small { font-size: 13px; line-height: 1.5; color: var(--c-ink-2); }
+
+/* The workspace's cards, flattened into the sheet. */
+.pp-sheet .ws-pane.ws-glass { border: 0; border-radius: 0; background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.pp-sheet .ws-pane.ws-glass::before, .pp-sheet .ws-pane.ws-glass::after { content: none; }
+.pp-sheet .ws-pane.ws-pad-normal, .pp-sheet .ws-pane.ws-pad-tight { padding: 0; }
+.pp-sheet .ws-pad-none > .ws-pane-head { padding: 0 0 0.75rem; border-bottom: 0; }
+.pp-sheet .ws-pane-head { margin-bottom: 0.75rem; }
+.pp-sheet .ws-pane-icon { display: none; }
+.pp-sheet .ws-pane-title { font-size: 16px; font-weight: 700; }
+.pp-sheet .ws-pane + .ws-pane { margin-top: 0.5rem; }
+.pp-sheet .ws-pad-none .ws-table th:first-child, .pp-sheet .ws-pad-none .ws-table td:first-child { padding-left: 0; }
+.pp-sheet .ws-pad-none .ws-table th:last-child, .pp-sheet .ws-pad-none .ws-table td:last-child { padding-right: 0; }
+.pp-sheet .ws-pad-none > .px-6 { padding-left: 0; padding-right: 0; }
+.pp-sheet .ws-tile { border: 0; padding: 0; min-height: 0; background: transparent; box-shadow: none; }
+/* Pills as plain words: a fact is a word, not a lozenge. What must stand out keeps its colour. */
+.pp-sheet .rp { min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; font-weight: 500; color: var(--c-ink-2); }
+.pp-sheet .rp .ws-icon { display: none; }
+.pp-sheet .rp-alert { font-weight: 700; color: var(--ws-red-ink); }
+.pp-sheet .rp-warn { font-weight: 600; color: var(--ws-amber-ink); }
+.pp-sheet .rp-ok { color: var(--c-ink-2); }
+.pp-sheet .rp-tooth, .pp-sheet .rp-money { font-weight: 600; color: var(--c-ink); }
+.pp-sheet .rp-row { gap: 0.25rem 0.875rem; }
+.pp-sheet .rk { padding: 0; border: 0; background: transparent; color: var(--c-ink-2); font-weight: 600; }
+.pp-sheet .rs-item { border: 0; border-bottom: 1px solid var(--ws-hair); border-radius: 0; background: transparent; padding: 0.625rem 0; }
+.pp-sheet .rs-list { gap: 0; }
+.pp-sheet .tx-sub > span:not(.ws-chip):not(.tx-tooth):not(.sr-only):not(.rp), .pp-sheet .nt-who {
+  min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; font-weight: 500; color: var(--c-ink-2);
 }
-.rec-banner-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--c-surface); color: var(--hue-ink); flex: none; }
-.rec-banner > .min-w-0 { flex: 1 1 16rem; }
-.rec-banner-group { font-size: 13px; font-weight: 700; color: var(--hue-ink); }
-.rec-banner-title { font-size: 20px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; color: var(--c-ink); }
-.rec-banner-blurb { margin-top: 0.125rem; font-size: 14px; line-height: 1.45; color: var(--c-ink); }
-.rec-banner-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-[data-rec-panel] .ws-pane { border-top: 3px solid var(--hue-bar, var(--ws-hair)); }
-[data-rec-panel] .ws-pane-icon { background: var(--hue-tint); color: var(--hue-ink); }
-@media (max-width: 767px) { .rec-banner { padding: 0.875rem 1rem; } .rec-banner-title { font-size: 18px; } }
+.pp-sheet .tx-tooth { min-height: 0; padding: 0; background: transparent; color: var(--c-ink); font-weight: 700; }
+.pp-sheet .ws-empty-icon { display: none; }
+/* A card titled as its part says its name once, in the part's heading (kept for a screen reader). */
+.pp-sheet :is(#chart, #treatment-record, #notes, #visits, #money, #texts) > .ws-pane-head .ws-pane-title,
+.pp-sheet :is(#chart, #treatment-record, #notes, #visits, #money, #texts) > .trec-head .ws-pane-title {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+/* Today's visit: a note clipped to the front of the chart, set apart from the parts. */
+.pp-sheet .ws-pane.ws-glass.vs { margin-bottom: 2.25rem; padding: 1rem 1.25rem; border: 1px solid var(--ws-hair-strong); border-radius: 12px; background: var(--ws-subtle); }
+/* The head above the sheet keeps the sheet's width, so the name and the chart line up. */
+.pp-top { max-width: 64rem; margin-inline: auto; width: 100%; }
+/* An answer to look at twice. */
+.pp-line .pp-alert { color: var(--ws-red-ink); font-weight: 700; }
+.pp-lines-one { grid-template-columns: minmax(0, 1fr); }
+/* A form folded under its lines (the medical history): its summary is a plus. */
+.pp-edit > summary { list-style: none; width: max-content; max-width: 100%; }
+.pp-edit > summary::-webkit-details-marker { display: none; }
+.pp-edit[open] > summary { color: var(--c-ink-2); }
 
 /* --- details as pills and tiles (the owner: "make each specific detail more visible … their own pill") -----
    .rp a detail pill (a tooth, a person, a day, an amount, an allergy); .rk the label of a part, as a small
@@ -474,20 +508,9 @@ button.rf { display: grid; min-height: 44px; }
 .rec-plus-mark { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 999px; border: 1.5px solid color-mix(in srgb, var(--ws-teal) 55%, transparent); background: var(--ws-teal-tint); color: var(--ws-teal-ink); transition: border-color 160ms ease; }
 .rec-plus-round:hover .rec-plus-mark, .rec-plus-text:hover .rec-plus-mark { border-color: var(--ws-teal); }
 .rec-plus-mark .ws-icon { stroke-width: 2.25; }
-/* Beside a detail: in the tile's right edge. Beside a line of the health summary: at its end. */
-.rf-edit { position: relative; padding-right: 3.25rem; }
-.rf-plus { position: absolute; top: 50%; right: 0.25rem; transform: translateY(-50%); }
-.rf-note-row { position: relative; }
-.rf-note-row .rf-note { padding-right: 3.25rem; }
-.rf-note-row .rf-plus { top: 0.375rem; transform: none; }
+/* In a missing detail's dashed tile (elsewhere in the workspace), the plus beside Add. */
 .rf-v { display: inline-flex; align-items: center; gap: 0.4rem; }
 .rf-v .rec-plus-mark { width: 24px; height: 24px; }
-.rs-line-plus { grid-template-columns: 6.5rem minmax(0, 1fr) auto; }
-.rs-line-plus > .rk { grid-column: 1; grid-row: 1; }
-.rs-line-plus > .rp-row { grid-column: 2; grid-row: 1; }
-.rs-line-plus > .rs-plus { grid-column: 3; grid-row: 1; margin-block: -0.5rem; }
-@media (max-width: 479px) {
-  .rs-line-plus { grid-template-columns: minmax(0, 1fr) auto; }
-  .rs-line-plus > .rs-plus { grid-column: 2; }
-  .rs-line-plus > .rp-row { grid-column: 1 / -1; grid-row: 2; }
-}
+/* Beside a line on the sheet: at its end. */
+.pp-plus { justify-self: end; }
+.pp-sheet .vs .rec-chip-go { justify-content: flex-start; text-align: left; }

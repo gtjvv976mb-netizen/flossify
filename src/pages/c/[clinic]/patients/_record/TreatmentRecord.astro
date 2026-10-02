@@ -35,9 +35,6 @@ const balanceNote = !money ? null
     <Head icon="history" title="Treatment record" meta={ledger.count ? (ledger.count === 1 ? 'One treatment' : `${ledger.count} treatments`) : undefined}>
       <a slot="actions" href={printHref} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>
     </Head>
-    <p class="trec-intro">{money
-      ? 'One line for each treatment, charge and payment, oldest first, as on the paper treatment record. Press a date to see the whole visit: the consent and signature, the dentist’s notes, prescriptions and payments.'
-      : 'One line for each treatment, oldest first, as on the paper treatment record. Press a date to see the whole visit: the consent and signature, the dentist’s notes and prescriptions.'}</p>
   </div>
   {days.length === 0 ? <div class="trec-pad"><Empty icon="clock" text="No treatment recorded yet." /></div> : (
     <>

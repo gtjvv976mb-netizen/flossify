@@ -1,26 +1,17 @@
 ---
-// The head of a record section: its group and name, its icon and one line saying what is in it, on the
-// section's own tint (./sections.ts), so an encoder can tell at a glance which part of the record they are
-// reading as the one page scrolls. `adds` are the section's plus signs (./Plus.astro): what can be added here.
-import Glyph from '../_ui/Glyph.astro';
+// The head of a part of the record, as a paper chart heads its pages: the part's number and name over a rule, and on
+// the right what can be added to it (./Plus.astro). No colour, no icon: the number and the name say where you are.
 import Plus from './Plus.astro';
-import { SECTION_META } from './sections';
 
 export interface Add { label: string; text: string; open?: string; href?: string; go?: string; data?: Record<string, string | undefined> }
-interface Props { id: string; label: string; class?: string; adds?: Add[] }
-const { id, label, class: extra, adds = [] } = Astro.props;
-const m = SECTION_META[id];
+interface Props { id: string; label: string; n?: number; class?: string; adds?: Add[] }
+const { id, label, n, class: extra, adds = [] } = Astro.props;
 ---
 
-<header class:list={['rec-banner', `hue-${m.hue}`, extra]}>
-  <span class="rec-banner-icon" aria-hidden="true"><Glyph name={m.icon} size={22} /></span>
-  <div class="min-w-0">
-    <p class="rec-banner-group">{m.group}</p>
-    <h2 class="rec-banner-title" id={`rec-${id}-title`}>{label}</h2>
-    <p class="rec-banner-blurb">{m.blurb}</p>
-  </div>
+<header class:list={['pp-head', extra]}>
+  <h2 class="pp-title" id={`rec-${id}-title`}>{n !== undefined && <span class="pp-n">{n}</span>}{label}</h2>
   {(adds.length > 0 || Astro.slots.has('default')) && (
-    <div class="rec-banner-actions">
+    <div class="pp-head-actions">
       {adds.map((a) => <Plus label={a.label} text={a.text} open={a.open} href={a.href} go={a.go} data={a.data} />)}
       <slot />
     </div>

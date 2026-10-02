@@ -1038,33 +1038,49 @@ and marked *Easiest*.
 
 ## The clinical record (033) — Treatment record, Treatment, Notes, Prescriptions, Files, next check-up
 
-The patient record (`patients/[patient].astro`) has twelve sections: Overview · Treatment record (the PDA ledger, below) · Visits ·
-Health · Chart · Treatment · Notes · Files · Rx & letters · Consent · Texts · Money. Built from standard dental
-practice — the real SwiftCare admin record the owner linked was **not** opened, twice (another clinic's patient
-data behind its login; on 2 Oct the owner sent `/admin/patients/<id>?tab=workspace` again, and was asked to
-describe it or send screenshots with the patient's details covered instead).
+The patient record (`patients/[patient].astro`) is **a paper chart** (2 Oct 2026). The owner first asked for "one
+seamless page, where all details are shown, and a plus sign appears next to editable or addable", then, on seeing it:
+"its still too complicated, imagine that the patient records is a paper record, simple, uneventful but effective".
+Built from standard dental practice and the PDA's patient record — the real SwiftCare admin record the owner linked
+was **not** opened, twice (another clinic's patient data behind its login; on 2 Oct the owner sent
+`/admin/patients/<id>?tab=workspace` again and was asked to describe it, or send screenshots with the patient's
+details covered, instead).
 
-**One page (2 Oct 2026; the owner: "make the patient records one seamless page, where all details are shown, and
-a plus sign appears next to editable or addable").** Every section is on the page at once, in the index's order
-(grouped Patient · Health · Clinical · Documents · Billing), each a `role="region"` under its banner (`<h2
-id="rec-<id>-title">`); nothing is hidden. The index (`RecordNav.astro`) is links (`#rec-<id>`, `data-rec-link`):
-a column that stays in view from 1200 px, a row that stays under the workspace bar below it. A link scrolls its
-section to just under what stays at the top (the script measures the bar and the row into `--rec-top` /
-`--rec-nav-h`; `scroll-margin-top` in record.css), puts the name in the address (`#chart`), and marks it
-`aria-current="location"`; scrolling marks the section whose head has passed a line under the top (a section gone
-to stays marked while the page glides there, and at the page's foot). An address with a section's name or any id
-opens there; with none, the server's choice (`data-rec-start`, the section a post came from). The Overview keeps
-Details, Next check-up, Health in short (allergies first) and the patient forms' answers; its old Recent visits
-and Treatment in short are the Visits and Treatment sections below. **The plus** (`_record/Plus.astro`, `.rec-plus`:
-a soft teal ring, round 44 px or a quiet pill with words) is beside everything that can be added or changed, for
-someone who may: each detail tile (Edit details, with the caret in that detail's field: `data-rec-field`; the birth
-date goes to the Health form), the desk note, each line of Health in short (to that list's box on the form; BP to a
-reading), the sections' add buttons (Add to plan, Record a treatment, New lab case, New note, Add an addendum, New
-prescription, Add files, Take a reading, Ask for an LOA, New plan, Change / Pick a day, New charge, Edit details) and
-the banners' (Treatment record: Record a treatment; Visits: Book a visit). The page's teal buttons are New booking
-and the Health form's Save (a form's own submit). Checked by `scripts/dev/record/one-page-check.mjs` (every section
-shown in order, the index's links land and mark, `#consent`, the pluses do what they say, none for someone without
-editing at the branch, contrast lowest 5.32:1 light and 7.69:1 dark, 44 px, no sideways scroll at 1440 and 390). `src/lib/record.ts` is the whole back end (`loadClinical`, `loadChartChanges`,
+- **One sheet** (`<article class="pp-sheet">`, 64rem, the card colour in both themes) under the head (`.pp-top`, the
+  same width): the name line, the allergy and safety chips, and one line of facts (Next visit · Last visit · Balance ·
+  Consent: `.pp-facts`, no number tiles). Then **Contents** (`RecordNav.astro`: numbered links `#rec-<id>`,
+  `data-rec-link`, nothing sticky), today's visit as a note set apart (`.vs`), and the **twelve parts in the paper
+  chart's order, numbered**: 1 Patient information · 2 Medical history · 3 Dental chart · 4 Treatment · 5 Treatment
+  record · 6 Clinical notes · 7 Consent · 8 Prescriptions and letters · 9 X-rays and files · 10 Appointments · 11
+  Account (with `finance.bill`'s money view) · 12 Texts. Ids stay (`rec-overview`, `rec-health`, …). Each part is a
+  `role="region"` under `Banner.astro`: its number and name over a rule (`.pp-head`, `h2#rec-<id>-title`), its adds
+  on the right. **No colour groups, no icons, no explanations**: the hue banners, the group colours (`sections.ts`,
+  deleted), the cards' icon tiles and the lines saying what a part is for are gone (the record's colour-coding of
+  27 Sep is reversed by this request); the parts' cards are flattened into the sheet in record.css ("The record as a
+  paper chart"), pills read as plain words, and only what must stand out keeps colour (an allergy in red, a warning
+  in amber, money owed). A card titled as its part keeps its title for a screen reader only.
+- **Lines, not tiles.** Patient information is label-and-value lines (`.pp-lines` / `.pp-line`, two to a row from
+  640 px), the desk note, the next check-up and the patient forms' answers. The medical history is lines too (birth
+  date, allergies, conditions, medicines, the note for the dentist, who updated it); its form is folded under
+  **Change the medical history** (`<details data-pp-edit>`, open after a post that needs it). Health in short,
+  Recent visits and Treatment in short are gone: the parts follow on the same sheet.
+- **The plus** (`_record/Plus.astro`: a soft teal ring, round 44 px beside a value, or a quiet pill with words —
+  "Add" on an empty line) is beside everything that can be added or changed, for someone who may: each detail (Edit
+  details opens with the caret in that field, `data-rec-field`; the birth date goes to the medical history), each
+  medical-history line (its form unfolds with the caret in that list's box; the record's `show()` opens a closed
+  `<details>` around its target), and every part's add in its card's heading (Add to plan, Record a treatment, New
+  lab case, New note, New prescription, Add files, Take a reading, Ask for an LOA, New plan, Pick a day, New charge,
+  Book a visit). New booking is the page's one teal button in view.
+- The script is small: measure the workspace bar into `--rec-top` (`scroll-margin-top`), a contents link scrolls its
+  part under the bar and puts its name in the address, an address with a part's name or any id opens there, and
+  with none the server's choice (`data-rec-start`, the part a post came from).
+- Checked by `scripts/dev/record/paper-check.mjs` (the parts in order and numbered, none hidden, no banners, icon
+  tiles or number tiles, a plus on every changeable detail, the contents land under the bar, `#consent`, the pluses
+  do what they say, none for someone without editing; every line on the sheet ≥ 4.5:1 — lowest 4.75:1 light, 6.27:1
+  dark — 44 px, no sideways scroll at 1440 and 390). A fix found on the way: Consent's buttons sat in a `<p>` that
+  held `<form>`s, which a browser closes, so they fell one under another; it is a `<div>`.
+
+`src/lib/record.ts` is the whole back end (`loadClinical`, `loadChartChanges`,
 `recordAction`, `readRecordFile`); the sections are `patients/_record/*.astro` + `record.css`.
 
 - **Every write is one post** with an `intent` in `RECORD_INTENTS`, checked by `canEditRecords` in the same
@@ -1119,23 +1135,12 @@ editing at the branch, contrast lowest 5.32:1 light and 7.69:1 dark, 44 px, no s
   the chart-effect mapping and its sentences before a clinic depends on them.
 - The Treatment record (below) is the PDA's ledger, built from the visits (035); the chart's own history
   (who charted which teeth, when) is under Chart, "Changes to the chart" (`loadChartChanges`).
-- **Colour-coded by group** (the owner asked that encoders never lose their place): `_record/sections.ts`
-  puts each section in a group with one hue — Patient teal (Overview, Treatment record, Visits), Health rose,
-  Clinical blue (Chart, Treatment, Notes, Files), Documents violet (Rx & letters, Consent, Texts),
-  Billing green (Money); never amber or red, which keep their meanings. The hue is on the section's
-  link in the record's index (`RecordNav.astro`: a sticky column from 1200px, a sticky sideways row below it;
-  links to the sections of the one page, ids still `rec-rec-<id>-tab`), its banner (`Banner.astro`: group, name, one line), its cards' top edge and icons (`.hue-*`
-  classes in record.css). Colour is never alone: the words say the group
-  too. Measured: no line under 4.5:1 in the index or banners, light and dark.
-- **Every detail is its own pill or tile** (the owner: "make each specific detail more visible … their
-  own pill"): `.rp` pills (a tooth `rp-tooth` blue, a person `Who.astro` with initials, a day, an amount
-  `rp-money`, an allergy `rp-alert`, a condition `rp-warn`, "none" `rp-ok`), `.rk` label tags in the
-  section's colour for the parts of a note, the health lines and the forms' answers, and `.rf-grid` tiles
-  for the patient's details (missing ones are dashed "+ Add" tiles that open Edit details). Facts under a
-  Treatment, lab, LOA or plan line become pills by CSS (`.tx-sub > span`). Long lists (treatments done,
-  lab cases) show the newest few and a "Show N more" button (`data-fold-list`; every row shows with
-  scripts off). Measured on 9 sections × light/dark × 1440/390: no pill or tag under 4.5:1, no target
-  under 44px, no sideways scroll.
+- **Colour-coded by group (27 Sep) — reversed on 2 Oct** by the paper chart above: the parts are numbered instead,
+  and the hue classes (`.hue-*` in record.css) survive only where a component still uses one inside a card.
+- **Every detail was its own pill or tile** (the owner, 27 Sep: "make each specific detail more visible … their own
+  pill"): `.rp` pills, `.rk` tags and `.rf-grid` tiles are still the markup inside the cards, and still drawn so in the
+  rest of the workspace; on the record's sheet they read as plain words and ruled lines (the paper chart, above).
+  Long lists (treatments done, lab cases) show the newest few and a "Show N more" button (`data-fold-list`).
 
 ## The record's paperwork (034) — blood pressure, letters, HMO LOA, payment plans
 
@@ -1661,7 +1666,7 @@ src/lib/intake-def.ts, patient-add.ts, refused.ts  the intake's page 1; adding a
 scripts/dev/intake/db-test.mjs the intake database checks; scripts/ts-register.mjs runs a script that imports src/lib
 scripts/dev/settings/profile-check.mjs  the public profile's lines and the clinic's founding year, end to end
 scripts/dev/schedule/seat-check.mjs     In the chair asks why for a consent form not agreed (API, Dashboard, 390 px)
-scripts/dev/record/one-page-check.mjs   the record as one page: sections, the index's links, the plus signs, contrast, 390 px
+scripts/dev/record/paper-check.mjs      the record as a paper chart: the parts in order, contents, plus signs, contrast, 390 px
 scripts/dev/schedule/choices-check.mjs  How the day runs (044): settings, the gap online and on the calendar, held reminders, the question at the door
 src/data/migrations/044        clinic.turnover_min, hold_closed_reminders, consent_ask_at; public_clinic_turnover(), appointment_reminder_held(), the reminder pass
 scripts/dev/review/review-pack.ts       npm run review:pack → docs/review/review-pack.html: every consent form, the chart's offer, aftercare, the privacy gaps, for the dentist and lawyer

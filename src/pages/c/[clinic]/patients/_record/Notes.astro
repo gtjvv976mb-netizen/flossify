@@ -28,11 +28,9 @@ const orphans = c.notes.filter((n) => n.amends && !c.notes.some((r) => r.id === 
 <div class="grid gap-4 max-md:gap-3">
   {(saved === 'note' || saved === 'addendum') && <Callout tone="success" text={saved === 'note' ? 'Note saved under your name.' : 'Addendum saved under the note.'} />}
   <Pane as="section" label="Clinical notes" id="notes">
-    <Head icon="pen" title="Clinical notes" meta={roots.length ? `${roots.length} ${roots.length === 1 ? 'note' : 'notes'}` : undefined} />
-    <div class="rec-lead -mt-2 mb-4">
-      <p>What the dentist saw and did at each visit. A saved note cannot be changed; to correct one, add an addendum.</p>
-      {canEdit && <Plus text="New note" label="Write a clinical note" open="rec-note-add" data={{ amends: '' }} />}
-    </div>
+    <Head icon="pen" title="Clinical notes" meta={roots.length ? `${roots.length} ${roots.length === 1 ? 'note' : 'notes'}` : undefined}>
+      {canEdit && <Plus slot="actions" text="New note" label="Write a clinical note" open="rec-note-add" data={{ amends: '' }} />}
+    </Head>
     {c.notes.length === 0 ? <Empty icon="file" text="No clinical notes yet." /> : (
       <div>
         {[...roots, ...orphans].map((n) => (

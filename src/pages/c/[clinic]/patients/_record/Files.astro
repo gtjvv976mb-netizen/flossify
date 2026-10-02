@@ -40,11 +40,9 @@ const help = 'text-[13px] leading-snug text-ink-2';
   {savedText && <Callout tone="success" text={savedText} />}
   {inline && <Callout tone="alert" text={inline} />}
   <Pane as="section" label="Files" id="files">
-    <Head icon="image" title="X-rays, photos and files" meta={c.files.length ? `${c.files.length} on record` : undefined} />
-    <div class="rec-lead -mt-2 mb-4">
-      <p>Only people who work at this branch can open them. Pictures and PDFs, up to 25 MB each.</p>
-      {canEdit && <Plus text="Add files" label="Add X-rays, photos or papers" open="rec-file-add" />}
-    </div>
+    <Head icon="image" title="X-rays, photos and files" meta={c.files.length ? `${c.files.length} on record` : undefined}>
+      {canEdit && <Plus slot="actions" text="Add files" label="Add X-rays, photos or papers" open="rec-file-add" />}
+    </Head>
     {c.files.length === 0 ? <Empty icon="file" text="No X-rays, photos or files yet." /> : (
       <>
         {FILTERS.length > 2 && (
