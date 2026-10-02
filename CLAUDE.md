@@ -433,7 +433,9 @@ own site at `/<clinic>/`).
   note one for themselves; the person it is for or whoever gave it ticks it
   done or back; only the giver takes it back. Checked in the same transaction.
 - The Dashboard shows "Your tasks" (compact, first three) above the calendar
-  when something is open, or to someone who may assign; `/c/<slug>/tasks/`
+  only while something is open (an empty card pushed the day down; 3 Oct), and
+  **New → Task for the team** (or Task for yourself) opens the Tasks page with its
+  form (`?new=1`); `/c/<slug>/tasks/`
   (Dashboard tab) has all of yours and the ones you gave. Every tick is a
   small form posting to the Tasks page with `back` (this branch's Dashboard
   or the Tasks page only), so it works with scripts off. Tasks hold no
@@ -772,6 +774,32 @@ The rules that live in code:
     `visit_treatment_consented()` (039): the tablet's signing or an agreed general consent form. `LIVE_KEYS`
     include `catalogId`, `deskNote`, `formNervous` and `consentFor`.
 
+## The dentist who runs the clinic (3 Oct) — the Dashboard as a dentist-owner's home
+
+The owner: "imagine you're a dentist who also manages his own clinic, make the clinic site suitable for your
+operations with ease of access and better user experience". The Dashboard is the first screen of every day.
+
+- **Someone who treats** is a dentist or associate, **or an owner or admin with a column here** (`staff_schedule` at
+  this clinic, the calendar's `data.staff`): `treats` in `index.astro`, `boot.me.treats`. Before, an owner who treats
+  never had Mine · Everyone, because only `role` dentist/associate counted. A dentist's Dashboard still opens on their
+  own column (`me.dentist`, `?dentist=` empty); an owner's opens on the whole clinic, and her Mine is
+  `?dentist=<her id>&by=dentist` (`setWhose` and the seg's hrefs in `board.ts` follow `me.dentist`).
+- **Next for you** (`[data-pt-next]`, `renderNext` in `patients.ts`, drawn with Today's patients and kept in step with
+  every change the calendar takes): the patient in your chair, else your next visit today not done — the time (or the
+  minutes waiting), name and age, what for, the chair, every allergy (red) and alert (amber), "Then N more with you
+  today", **Open record** (the record on that visit, `?visit=`, so This visit is there) and the visit's next step (the
+  row's same one press, `stepOf` / `takeStep`; the focus stays on the card). "All done for you today" when every visit
+  of yours is done; away when you have none. Quiet buttons: New booking stays the screen's one teal.
+- **The first screen gives way to the day**: the four numbers are a slim strip (two by two on a phone, no note or
+  icon there); the tasks card only while a task is open; the website's lane only while something waits for the desk
+  (`.cal-lane[data-reqs]:not([data-some]):not(:target)`, so the inbox's `#requests` still shows it). Measured at
+  1440 × 900: the calendar's grid starts at 613 px (it was below the first screen).
+- Checked by `scripts/dev/schedule/dash-check.mjs` (the first screen, Next for you and Open record, Mine · Everyone for
+  the owner, Done on the card moving it on, a dentist, someone with no column, New → Task, `#requests`; the strip and
+  the card ≥ 4.5:1 light and dark at 1440 and 390 — lowest 4.95:1 — 44 px, no sideways scroll). Reseed before it.
+  `choices-check.mjs` now opens tomorrow's weekday for its reminder test when tomorrow is a closed day (a Saturday
+  run), and closes it after.
+
 ## Blocked time (040) — lunch, closed days, a dentist's hours and leave, a chair out of use
 
 The owner's first ask of the round: blocked time that both the calendar and online booking respect.
@@ -1080,6 +1108,19 @@ details covered, instead).
   `:has(> .ws-empty)` rule in record.css); the next check-up is one line with its choices; the chart's findings are
   one line ("Findings 47 D Caries · 11 Veneer …") instead of tiles; the sheet is 72rem with tighter type, rows,
   tables and callouts. Measured on one patient: 9082 → 6800 px tall at 1440, 13145 → 11606 at 390.
+- **Simpler and closer** (the owner, 2 Oct: "make the UI/HUD simpler and less spacious … in the patient records"). No line
+  that explains the page (the chart's "saved as you make it" and how-to, the Treatment record's balance note — the
+  mismatch and the 300 cap still show —, Signed at visits', the patient forms', the letters', the desk hint under
+  privacy consent on the sheet only), and no count lines ("1 on record", "0 about this patient"). Each part's buttons are
+  in its heading: Print on the Treatment record, In Finances and New charge on Account, All messages on Texts, and the
+  letters' three kinds as pluses (Certificate · Referral · Clearance, `data-letter-kind`). The head is one row (‹
+  Patients · chart no. and facts · the actions; no avatar), the facts inline; the contents use short names
+  (`SECTIONS[].short`, the full name for a screen reader) on one line from 1366 px and one sideways-scrolling row on a
+  phone (its links are `position: relative`, or their sr-only words widen the page); This visit's done line and extras
+  share a row; the medical history's updated line, Change and Earlier versions share a row; the Findings line is gone
+  (the chart note lists them). Account is one line. The "every look is logged" line is the sheet's foot. Measured on the
+  same data: 6005 → 4630 px at 1440, 10119 → 8392 at 390; paper-check passes (lowest 4.75:1 light, 5.59:1 dark), and
+  counts the teal button in the first screen only.
 - The script is small: measure the workspace bar into `--rec-top` (`scroll-margin-top`), a contents link scrolls its
   part under the bar and puts its name in the address, an address with a part's name or any id opens there, and
   with none the server's choice (`data-rec-start`, the part a post came from).
@@ -1677,6 +1718,7 @@ scripts/dev/settings/profile-check.mjs  the public profile's lines and the clini
 scripts/dev/schedule/seat-check.mjs     In the chair asks why for a consent form not agreed (API, Dashboard, 390 px)
 scripts/dev/record/paper-check.mjs      the record as a paper chart: the parts in order, contents, plus signs, contrast, 390 px
 scripts/dev/schedule/choices-check.mjs  How the day runs (044): settings, the gap online and on the calendar, held reminders, the question at the door
+scripts/dev/schedule/dash-check.mjs     the Dashboard for a dentist who runs the clinic: first screen, Next for you, Mine · Everyone, tasks, contrast
 src/data/migrations/044        clinic.turnover_min, hold_closed_reminders, consent_ask_at; public_clinic_turnover(), appointment_reminder_held(), the reminder pass
 scripts/dev/review/review-pack.ts       npm run review:pack → docs/review/review-pack.html: every consent form, the chart's offer, aftercare, the privacy gaps, for the dentist and lawyer
 src/data/migrations/040        blocked time: lunch, dentist hours, clinic_block, blocked_ok_at, clinic_unavailable(), public_blocked/busy_ranges()

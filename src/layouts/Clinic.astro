@@ -381,6 +381,11 @@ const BarTitle = heading ? 'h1' : 'p';
                       <span class="ws-menu-words">Add patient<span class="ws-menu-hint">Details, health history and past visits</span></span>
                     </a>
                   )}
+                  {/* A task for the team or a note to yourself (032): the Dashboard shows the tasks card only while one is open. */}
+                  <a class="ws-menu-item" href={`/c/${clinic.slug}/tasks/?new=1`}>
+                    <span class="ws-menu-icon"><Icon name="check" /></span>
+                    <span class="ws-menu-words">{can(access, 'tasks.assign') ? 'Task for the team' : 'Task for yourself'}<span class="ws-menu-hint">{can(access, 'tasks.assign') ? 'For someone at this branch, with a due day' : 'A note of something to do'}</span></span>
+                  </a>
                   {canBill && (
                     <a class="ws-menu-item" href={links.newCharge}>
                       <span class="ws-menu-icon" data-tint="green"><Icon name="money" /></span>

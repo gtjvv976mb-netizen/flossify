@@ -185,6 +185,7 @@ const TONE_ICON: Record<Tone, 'info' | 'alert'> = { plain: 'info', warn: 'alert'
   ) : (
     <p class="vs-all"><Icon name="check" size={18} />{finished ? 'All done for this visit.' : started ? 'Nothing missing so far.' : `Ready to start: nothing missing for ${firstName}.`}</p>
   )}
+  <div class="vs-foot">
   {ok.length > 0 && (
     <p class="vs-done">
       <span class="rk">Done</span>
@@ -194,13 +195,14 @@ const TONE_ICON: Record<Tone, 'info' | 'alert'> = { plain: 'info', warn: 'alert'
   )}
   {canEdit && (
     <p class="vs-also">
-      <span>Also for this visit:</span>
+      <span>Also:</span>
       <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-rx-add"><Glyph name="pill" size={16} />Prescription</button>
       <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-file-add"><Glyph name="image" size={16} />X-ray or photo</button>
       <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="chart"><Glyph name="tooth" size={16} />Chart</button>
       {visit.dentist && <Who name={visit.dentist} class="vs-who" />}
     </p>
   )}
+  </div>
 </Pane>
 
 {/* Going ahead without a consent form (phase 4.4): never blocked, the reason kept against the form (overrideConsent). */}

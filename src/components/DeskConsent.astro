@@ -241,7 +241,7 @@ const givenText = (c: ConsentRow) => (c.channel === 'paper' && c.signed_on ? `Si
             </p>
           ) : (
             <p class="mt-1.5 text-[15px] leading-relaxed text-ink-2">
-              Show the patient the privacy notice. When they have read it and agree, tick the box and record it.
+              Show the patient the notice, and record it when they agree.
               {latest && <> They agreed to an earlier notice on {day(new Date(latest.given_at))}; it has changed since.</>}
             </p>
           )}
@@ -304,7 +304,7 @@ const givenText = (c: ConsentRow) => (c.channel === 'paper' && c.signed_on ? `Si
 
       {notice && canRecord && (
         <>
-          <div class="mt-4 flex flex-wrap items-end gap-3 border-t border-[var(--ws-hair)] pt-5 group-data-[facing]:mt-10">
+          <div class="dc-row mt-4 flex flex-wrap items-end gap-3 border-t border-[var(--ws-hair)] pt-5 group-data-[facing]:mt-10">
             <label class="field w-full max-w-[22rem] group-data-[facing]:max-w-[28rem]">
               {/* The desk reads one label; the patient, facing the screen, reads the other. */}
               <span class="meta group-data-[facing]:hidden">{WHO.map((k) => <span data-who-text={k} hidden={k !== who}>{WORDS[k].name}</span>)}</span>
@@ -326,7 +326,7 @@ const givenText = (c: ConsentRow) => (c.channel === 'paper' && c.signed_on ? `Si
               </div>
             </div>
           )}
-          <p class="mt-2 text-[13.5px] leading-snug text-muted group-data-[facing]:text-[15px]">
+          <p class="dc-hint mt-2 text-[13.5px] leading-snug text-muted group-data-[facing]:text-[15px]">
             <span class="group-data-[facing]:hidden">{WHO.map((k) => <span data-who-text={k} hidden={k !== who}>{WORDS[k].hint}</span>)} Recorded as agreed at the desk, today, under your name{embed ? ', when the patient is saved' : ''}.</span>
             <span class="hidden group-data-[facing]:inline">{WHO.map((k) => <span data-who-text={k} hidden={k !== who}>{WORDS[k].hintFacing}</span>)}</span>
           </p>

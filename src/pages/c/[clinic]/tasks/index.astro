@@ -84,7 +84,7 @@ const addLabel = mayAssign ? 'Assign a task' : 'Add a task';
     )}
   </div>
 
-  <SidePanel id="task-new" title={addLabel} meta="Tasks" open={!!draft.title && !!error}>
+  <SidePanel id="task-new" title={addLabel} meta="Tasks" open={(!!draft.title && !!error) || Astro.url.searchParams.get('new') === '1'}>
     {error && draft.title && <p role="alert" class="ws-callout mb-5" data-tone="alert"><Icon name="alert" /><span>{error}</span></p>}
     <form method="post" action={here} class="grid gap-4">
       <Csrf />

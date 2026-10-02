@@ -76,7 +76,7 @@ const measure = () => p.evaluate(() => {
     linesWithout: [...document.querySelectorAll('#overview > .pf-cell')].filter((t) => !t.querySelector('.pf-go') && t.querySelector('dt')?.textContent.trim() !== 'On file since').map((t) => t.querySelector('dt')?.textContent.trim()),
     cellsShort: [...document.querySelectorAll('.pf-go')].filter(vis).filter((b) => b.getBoundingClientRect().height < 44 || b.getBoundingClientRect().width < 44).length,
     decoration: { banners: document.querySelectorAll('.rec-banner').length, icons: [...document.querySelectorAll('.pp-sheet .ws-pane-icon')].filter(vis).length, tiles: document.querySelectorAll('.pt-tiles, .rec-nav-item').length },
-    teal: [...document.querySelectorAll('.ws-btn-primary')].filter(vis).filter((b) => !b.closest('dialog')).map((b) => b.textContent.trim().slice(0, 20)),
+    teal: [...document.querySelectorAll('.ws-btn-primary')].filter(vis).filter((b) => !b.closest('dialog') && b.getBoundingClientRect().top < innerHeight).map((b) => b.textContent.trim().slice(0, 20)),
     aligned: Math.abs(top.left - sh.left) < 1 && Math.abs(top.width - sh.width) < 1,
     fails: measured.filter((x) => x.r < 4.5), lowest: Math.min(...measured.map((x) => x.r)), n: measured.length,
     small, scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,

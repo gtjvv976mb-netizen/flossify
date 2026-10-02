@@ -47,15 +47,15 @@ const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.tee
 <Pane as="section" label="Consent forms" id="consent-forms">
   <Head icon="form" title="Consent forms" meta={docs.length ? (docs.length === 1 ? 'One form' : `${docs.length} forms`) : undefined}>
     {canEdit && (canPrepare || mayCapacity) && (
-      <span slot="actions" class="flex flex-wrap gap-2">
-        {canPrepare && <a href={`/c/${slug}/patients/new/?patient=${patientId}`} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="plus" size={16} />Prepare consent forms</a>}
-        {mayCapacity && <Plus text="Record that the patient cannot decide" label="Record that the patient cannot decide" open="rec-capacity" />}
+      <span slot="actions" class="flex flex-wrap gap-1.5">
+        {canPrepare && <Plus href={`/c/${slug}/patients/new/?patient=${patientId}`} text="Prepare forms" label={`Prepare consent forms for ${firstName}`} />}
+        {mayCapacity && <Plus text="Cannot decide" label={`Record that ${firstName} cannot decide now`} open="rec-capacity" />}
       </span>
     )}
   </Head>
   {capacity && <p class="mb-3 text-[14.5px] text-ink-2">{capacity.dentistName} recorded on {day(capacity.at)} that {firstName} cannot decide now: “{capacity.reason}” A representative may sign on a clinic device for 30 days.</p>}
   {docs.length === 0 ? (
-    <p class="text-[14.5px] text-ink-2">{canPrepare ? `No consent forms yet. Prepare them before a procedure: ${firstName} reads and signs on the clinic’s tablet.` : 'No consent forms yet. They open here once the clinic’s consent forms are reviewed.'}</p>
+    <p class="ws-empty">{canPrepare ? 'None yet.' : 'None yet. They open here once the clinic’s consent forms are reviewed.'}</p>
   ) : (
     <ul class="rs-list">
       {docs.map((d) => {
