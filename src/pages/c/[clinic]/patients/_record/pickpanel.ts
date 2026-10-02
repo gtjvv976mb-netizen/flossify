@@ -12,8 +12,8 @@ export function aimForm(form: HTMLFormElement, back: string, home: string): void
 }
 
 /** On ws:panel-close. A panel from the chart gives focus back to its tooth (the palette button that opened it is not
- *  on screen any more). Otherwise, when focus did not land (its opener sits in a closed menu or a hidden section):
- *  the shown section's own button for this panel, else that section's tab. */
+ *  on screen any more). Otherwise, when focus did not land (its opener sits in a closed menu): the section's own
+ *  button for this panel that is on screen, else the head of the section the form posts back to. */
 export function focusBack(panelId: string, back: string, fdi: string | undefined): void {
   if (back === 'chart' && fdi) {
     const tooth = document.querySelector<HTMLElement>(`[data-odontogram] button[data-tooth][data-fdi="${fdi}"]`);
@@ -21,9 +21,8 @@ export function focusBack(panelId: string, back: string, fdi: string | undefined
   }
   const at = document.activeElement;
   if (at && at !== document.body) return;
-  const shown = document.querySelector<HTMLElement>('[data-rec-panel]:not([hidden])');
-  if (!shown) return;
-  const own = [...shown.querySelectorAll<HTMLElement>(`[data-ws-open="${panelId}"]`)].find((e) => e.getClientRects().length > 0);
+  const own = [...document.querySelectorAll<HTMLElement>(`[data-rec-panel] [data-ws-open="${panelId}"]`)].find((e) => e.getClientRects().length > 0);
   if (own) { own.focus(); return; }
-  document.getElementById(`rec-rec-${shown.dataset.recPanel}-tab`)?.focus();
+  const head = document.querySelector<HTMLElement>(`#rec-${back === 'chart' ? 'chart' : panelId === 'rec-note-add' ? 'notes' : 'treatment'}-title`);
+  if (head) { head.setAttribute('tabindex', '-1'); head.focus(); }
 }

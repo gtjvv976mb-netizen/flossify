@@ -15,6 +15,7 @@ import Callout from '../_ui/Callout.astro';
 import { peso, type PayPlan } from '../../../../../lib/record-extra';
 import type { RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
+import Plus from './Plus.astro';
 
 interface Props { plans: PayPlan[]; canEdit: boolean; canBill: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; financesBase: string }
 const { plans, canEdit, canBill, action, problem, saved, today, firstName, financesBase } = Astro.props;
@@ -41,7 +42,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
     <Head icon="money" title="Braces and payment plans" meta={running.length ? `${running.length} running` : undefined} />
     <div class="rec-lead -mt-2 mb-4">
       <p>Treatment paid over months: a down payment, then so much a month. Payments are taken on the plan’s statement in Finances.</p>
-      {canEdit && canBill && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-payplan-add"><Icon name="plus" />New plan</button>}
+      {canEdit && canBill && <Plus text="New plan" label="Start a payment plan" open="rec-payplan-add" />}
     </div>
     {plans.length === 0 ? <Empty icon="money" text="No payment plan for this patient." /> : (
       <ul class="grid gap-3">

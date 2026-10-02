@@ -1,9 +1,9 @@
 ---
-// The record's index: its sections grouped under Patient · Health · Clinical · Documents · Billing, each
-// with its colour, icon and count (./sections.ts). On a wide screen a column that stays in view beside the
-// content; on a narrower one a row that scrolls sideways. It is the shell's in-place tabs underneath
-// (data-ws-tabs, role="tab", ids rec-rec-<section>-tab), so the page's script and the arrow keys work as
-// before; the group names are drawn for the eye and said once in each button for a screen reader.
+// The record's index: every section is on the one page, one after another, and these are links to them, grouped
+// under Patient · Health · Clinical · Documents · Billing, each with its colour, icon and count (./sections.ts). On a
+// wide screen a column that stays in view beside the record; on a narrower one a row that stays at the top and
+// scrolls sideways. The record's script marks the section in view (aria-current="location") as the page scrolls; the
+// group names are drawn for the eye and said once in each link for a screen reader.
 import Glyph from '../_ui/Glyph.astro';
 import { GROUPS, SECTION_META } from './sections';
 
@@ -13,23 +13,25 @@ const { items, current, name } = Astro.props;
 const groups = GROUPS.map((g) => ({ ...g, items: items.filter((i) => SECTION_META[i.id]?.group === g.name) })).filter((g) => g.items.length);
 ---
 
-<nav class="rec-nav" aria-label={`Sections of ${name}’s record`}>
-  <div role="tablist" aria-label="Sections of the record" aria-orientation="vertical" class="rec-tabs rec-nav-list" data-ws-tabs>
+<nav class="rec-nav" aria-label={`Sections of ${name}’s record`} data-rec-nav>
+  <ul class="rec-tabs rec-nav-list">
     {groups.map((g) => (
       <>
-        <p class:list={['rec-nav-group', `hue-${g.hue}`]} aria-hidden="true"><span class="rec-nav-dot"></span>{g.name}</p>
+        <li class:list={['rec-nav-group', `hue-${g.hue}`]} aria-hidden="true"><span class="rec-nav-dot"></span>{g.name}</li>
         {g.items.map((i) => {
           const m = SECTION_META[i.id];
           return (
-            <button type="button" role="tab" id={`rec-rec-${i.id}-tab`} aria-controls={`rec-${i.id}`} class:list={['rec-nav-item', `hue-${m.hue}`]}
-              aria-selected={i.id === current ? 'true' : 'false'} tabindex={i.id === current ? 0 : -1}>
-              <span class="rec-nav-icon" aria-hidden="true"><Glyph name={m.icon} size={17} /></span>
-              <span class="rec-nav-label"><span class="sr-only">{g.name}: </span>{i.label}</span>
-              {i.count ? <span class="rec-nav-count">{i.count}</span> : null}
-            </button>
+            <li class="contents">
+              <a href={`#rec-${i.id}`} id={`rec-rec-${i.id}-tab`} data-rec-link={i.id} class:list={['rec-nav-item', `hue-${m.hue}`]}
+                aria-current={i.id === current ? 'location' : undefined}>
+                <span class="rec-nav-icon" aria-hidden="true"><Glyph name={m.icon} size={17} /></span>
+                <span class="rec-nav-label"><span class="sr-only">{g.name}: </span>{i.label}</span>
+                {i.count ? <span class="rec-nav-count">{i.count}<span class="sr-only"> {i.count === 1 ? 'item' : 'items'}</span></span> : null}
+              </a>
+            </li>
           );
         })}
       </>
     ))}
-  </div>
+  </ul>
 </nav>
