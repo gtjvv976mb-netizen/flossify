@@ -1,0 +1,929 @@
+<title>Flossify review pack</title>
+<style>
+/* A reading document: one column of forms, a contents list, print-ready. Flossify's soft clinical palette. */
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --ink: #1f2937; --ink-2: #475467; --hair: #e6e9ee;
+  --teal: #0d706d; --teal-tint: #e3f2f1; --amber-ink: #8a4b06; --amber-tint: #fdf3e2; --slot: #1d4e89; --slot-tint: #e8f0fa;
+  --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15191e; --card: #1d232a; --ink: #e7ebf0; --ink-2: #c3cad4; --hair: #2c343d;
+  --teal: #7fd6cf; --teal-tint: #173533; --amber-ink: #f5c27a; --amber-tint: #3a2a12; --slot: #a9c8f2; --slot-tint: #1b2a3d; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15191e; --card: #1d232a; --ink: #e7ebf0; --ink-2: #c3cad4; --hair: #2c343d;
+  --teal: #7fd6cf; --teal-tint: #173533; --amber-ink: #f5c27a; --amber-tint: #3a2a12; --slot: #a9c8f2; --slot-tint: #1b2a3d; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font: 16px/1.55 var(--sans); }
+.wrap { max-width: 52rem; margin: 0 auto; padding-inline: 16px; padding-block: 32px 64px; display: grid; gap: 24px; }
+h1, h2, h3, h4 { text-wrap: balance; line-height: 1.25; margin: 0; }
+h1 { font-size: 30px; letter-spacing: -0.01em; } h2 { font-size: 22px; margin-top: 16px; } h3 { font-size: 19px; } h4 { font-size: 15px; color: var(--ink); }
+p { margin: 0; } ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.lede { color: var(--ink-2); max-width: 65ch; } .dim { color: var(--ink-2); } .mono { font-family: var(--mono); font-size: 13px; }
+.card, .form, .sheet { background: var(--card); border: 1px solid var(--hair); border-radius: 12px; padding: 20px; display: grid; gap: 14px; min-width: 0; }
+.form-head { display: grid; gap: 8px; } .facts { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 999px; background: var(--teal-tint); color: var(--ink); font-size: 13px; }
+.fp { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.block { display: grid; gap: 6px; border-top: 1px solid var(--hair); padding-top: 12px; }
+.block.initials { border-left: 3px solid var(--amber-ink); padding-left: 12px; }
+.tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--amber-tint); color: var(--amber-ink); margin-left: 6px; vertical-align: middle; }
+.slot { background: var(--slot-tint); color: var(--slot); border-radius: 4px; padding: 0 3px; }
+.when { display: block; font-size: 13px; color: var(--amber-ink); margin-top: 2px; }
+.fil { color: var(--ink-2); font-style: italic; } .fil-inline { color: var(--ink-2); font-style: italic; font-weight: 400; }
+.lang { font-style: normal; font-size: 12px; font-weight: 600; margin-right: 6px; color: var(--teal); }
+.table-wrap { overflow-x: auto; } table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--hair); } th { color: var(--ink-2); font-weight: 600; }
+.fields { font-size: 14px; } td { overflow-wrap: anywhere; }
+.signoff { font-size: 13px; color: var(--ink-2); border-top: 1px dashed var(--hair); padding-top: 10px; }
+.toc { display: grid; gap: 4px; } .toc a { color: var(--teal); }
+a { color: var(--teal); } a:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.cases { display: grid; gap: 8px; } .case { border: 1px solid var(--hair); border-radius: 10px; padding: 10px 12px; display: grid; gap: 4px; }
+.case-q { font-size: 14px; color: var(--ink-2); }
+.ask { background: var(--amber-tint); color: var(--amber-ink); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 16px; } .two > div { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.sub { font-weight: 600; font-size: 14px; margin-top: 4px; }
+.steps { display: grid; gap: 6px; padding-left: 1.3em; margin: 0; }
+@media print { :root { --bg: #fff; --card: #fff; --ink: #000; --ink-2: #333; --hair: #bbb; --slot-tint: #fff; --slot: #000; --teal-tint: #fff; --amber-tint: #fff; --amber-ink: #000; --teal: #000 }
+  .form, .sheet { break-before: page; border: 0; padding: 0; } }
+</style>
+<main class="wrap">
+  <header class="card">
+    <h1>Flossify review pack</h1>
+    <p class="lede">Every word a patient will read and sign before a Philippine dental clinic relies on Flossify, drawn straight from the software on 2 October 2026. A dentist reads the clinical words; the clinic owner’s lawyer reads the consent and privacy words. Nothing in sections 1 and 3 is offered on the live site until both have signed off.</p>
+    <ol class="steps">
+      <li>Read each form. Mark changes on the page; the wording changes as a new version, never in place.</li>
+      <li>Sign off each form at its foot: who read it, when, and in which languages (English, and Filipino where a draft is shown).</li>
+      <li>Send the pack back to Flossify. Each signed-off version is listed in the software (<span class="mono">CONSENT_REVIEWED</span>) with its fingerprint, and only then offered to clinics.</li>
+    </ol>
+    <p class="dim">Words in a blue box are filled in for each patient. An amber line says when a line or a section shows. Filipino lines are drafts and show only where marked.</p>
+  </header>
+
+  <nav class="card toc" aria-label="Contents">
+    <h2 style="margin:0">Contents</h2>
+    <a href="#forms">1. The consent forms (11)</a>
+    <a href="#shared">2. Words every form shares</a>
+    <a href="#chart">3. The chart after a treatment (for the dentist)</a>
+    <a href="#care">4. Aftercare sheets (for the dentist)</a>
+    <a href="#privacy">5. The next privacy notice (for the lawyer)</a>
+    <a href="#questions">6. The owner’s open questions</a>
+  </nav>
+
+  <h2 id="forms">1. The consent forms</h2>
+  <div class="card table-wrap"><table>
+    <thead><tr><th>Form</th><th>Version</th><th>Explained first</th><th>Filipino draft</th><th>Signed off</th></tr></thead>
+    <tbody><tr><td><a href="#form-general">Consent to dental examination and treatment</a></td><td class="mono">treatment-2026-09</td><td>No</td><td>Partly</td><td>Not yet</td></tr><tr><td><a href="#form-anaesthesia">Local anaesthesia</a></td><td class="mono">anaesthesia-2026-10</td><td>Yes</td><td>Partly</td><td>Not yet</td></tr><tr><td><a href="#form-extraction">Tooth extraction and oral surgery</a></td><td class="mono">extraction-2026-10</td><td>Yes</td><td>Partly</td><td>Not yet</td></tr><tr><td><a href="#form-root_canal">Root canal treatment</a></td><td class="mono">root-canal-2026-10</td><td>Yes</td><td>Partly</td><td>Not yet</td></tr><tr><td><a href="#form-restoration">Fillings, crowns, bridges and veneers</a></td><td class="mono">restoration-2026-10</td><td>Yes</td><td>Partly</td><td>Not yet</td></tr><tr><td><a href="#form-periodontal">Deep cleaning and gum treatment</a></td><td class="mono">periodontal-2026-10</td><td>Yes</td><td>Partly</td><td>Not yet</td></tr><tr><td><a href="#form-denture">Dentures</a></td><td class="mono">denture-2026-10</td><td>Yes</td><td>Partly</td><td>Not yet</td></tr><tr><td><a href="#form-implant">Dental implants</a></td><td class="mono">implant-2026-10</td><td>Yes</td><td>Partly</td><td>Not yet</td></tr><tr><td><a href="#form-ortho">Braces and orthodontic treatment</a></td><td class="mono">ortho-2026-10</td><td>Yes</td><td>Partly</td><td>Not yet</td></tr><tr><td><a href="#form-whitening">Tooth whitening</a></td><td class="mono">whitening-2026-10</td><td>Yes</td><td>Partly</td><td>Not yet</td></tr><tr><td><a href="#form-photos">Photos and use of records</a></td><td class="mono">photos-2026-10</td><td>No</td><td>Partly</td><td>Not yet</td></tr></tbody>
+  </table></div>
+  
+<section class="form" id="form-general">
+  <header class="form-head">
+    <h3>Consent to dental examination and treatment</h3>
+    <p class="facts">
+      <span class="pill mono">treatment-2026-09</span>
+      <span class="pill">No dentist explains it first</span>
+      <span class="pill">Under 18: a parent or guardian signs</span>
+      <span class="pill">Covers treatment until withdrawn</span>
+      <span class="pill">About 2 min to read</span>
+    </p>
+    <p class="fp">Fingerprint <span class="mono">GZHE-34R7-6G</span> <span class="mono dim">38af8e19b6ec81ff99ac77d0208c13f8ace2ef64f6d7827fd77f52b67f055e0f</span></p>
+  </header>
+  <div class="block"><h4>In short</h4></div>
+  
+  <div class="block">
+    <h4>Examination</h4>
+    
+    <p class="en">The dentist may look at your teeth, gums and mouth, and take X-rays or photos when they are needed to see what is wrong.</p>
+  </div>
+  <div class="block">
+    <h4>Medicines and numbing</h4>
+    
+    <p class="en">You may be given medicines, or a local anaesthetic to numb the area. Your answers about allergies and medicines help the dentist choose safely.</p>
+  </div>
+  <div class="block">
+    <h4>Your treatment plan</h4>
+    
+    <p class="en">Before any treatment starts, the dentist explains what they suggest and why, the other choices, the cost, and what could go wrong. Nothing starts until you agree to it.</p>
+  </div>
+  <div class="block">
+    <h4>Your answers</h4>
+    
+    <p class="en">What you wrote about your health is true as far as you know. You will tell the clinic if anything changes.</p>
+  </div>
+  <div class="block">
+    <h4>Your rights</h4>
+    
+    <p class="en">You may ask questions at any time, ask for a second opinion, and say no to a treatment or stop it. The dentist will tell you what that may mean for your teeth.</p>
+  </div>
+  <div class="block">
+    <h4>Results</h4>
+    
+    <p class="en">Dental treatment cannot promise a result, and some treatments need more than one visit.</p>
+  </div>
+  
+  <div class="block"><h4>The ticks before signing</h4><ul><li><p class="en">I agree to be examined, and to treatment once the dentist has explained it to me.</p></li></ul></div>
+  <div class="block"><h4>The clinic’s part</h4>
+    <table class="fields"><thead><tr><th>Field</th><th>Filled in by</th><th>Kind</th></tr></thead><tbody>
+    
+    </tbody></table></div>
+  <div class="block"><h4>What signing means</h4><p class="en">be examined, and to treatment once the dentist has explained it</p><p class="dim">The decision and signing words are the shared ones (below).</p></div>
+  <p class="signoff">Reviewed by ______________________ (dentist) on ________ · ______________________ (lawyer) on ________ · Languages: English ☐ Filipino ☐</p>
+</section>
+<section class="form" id="form-anaesthesia">
+  <header class="form-head">
+    <h3>Local anaesthesia</h3>
+    <p class="facts">
+      <span class="pill mono">anaesthesia-2026-10</span>
+      <span class="pill">The named dentist explains it before it can be signed</span>
+      <span class="pill">Under 18: a parent or guardian signs</span>
+      <span class="pill">Covers treatment for 180 days</span>
+      <span class="pill">About 2 min to read</span>
+    </p>
+    <p class="fp">Fingerprint <span class="mono">48VW-PD35-2X</span> <span class="mono dim">8430620514d7d3a09f2ca391b890d17f3be80da6f14a31b86540282b5e3fdb5d</span></p>
+  </header>
+  <div class="block"><h4>In short</h4><p class="en">An injection numbs the area to be treated. Your lips, cheek or tongue stay numb for a few hours.</p><p class="fil"><span class="lang">Filipino draft</span>Pamamanhirin ang bahaging gagamutin gamit ang pampamanhid (local anesthesia). Mananatiling manhid ang labi, pisngi o dila nang ilang oras.</p><p class="en">While you are numb, do not bite, suck or scratch your lip, cheek or tongue, and avoid very hot food and drink.</p><p class="fil"><span class="lang">Filipino draft</span>Habang manhid, huwag kagatin, sipsipin o kamutin ang labi, pisngi o dila, at iwasan ang napakainit na pagkain o inumin.</p><p class="en">It may bruise or ache where the needle went in, your heart may beat faster for a few minutes, or your jaw may be stiff for a few days. Allergy is rare. Numbness that lasts weeks or months is rare too, and very rarely permanent.</p><p class="fil"><span class="lang">Filipino draft</span>Maaaring magkapasa o sumakit ang tinurukan, bumilis ang tibok ng puso, o mahirapang ibuka ang bibig nang ilang araw. Bihira ang allergy. Bihira rin ang pamamanhid na tumatagal nang ilang linggo o buwan, at napakabihirang permanente.</p><p class="en">Other choices: no numbing (the treatment may hurt), numbing gel for minor care, or sedation elsewhere by referral.</p></div>
+  
+  <div class="block">
+    <h4>What we will do</h4>
+    
+    <p class="en">An injection numbs the area around <span class="slot">tooth / teeth [teeth to numb]</span>.<span class="when">Shown when teeth to numb is filled in</span></p><p class="en">An injection numbs <span class="slot">[or the area, in words]</span>.<span class="when">Shown when not (teeth to numb is filled in) and or the area, in words is filled in</span></p><p class="en">How: <span class="slot">[how]</span>.<span class="when">Shown when how is filled in</span></p><p class="en">The medicine: <span class="slot">[the medicine]</span>.<span class="when">Shown when the medicine is filled in</span></p><p class="en">Your lips, cheek and tongue on that side stay numb for a few hours.</p>
+  </div>
+  <div class="block">
+    <h4>Why</h4>
+    
+    <p class="en">So the treatment does not hurt.</p>
+  </div>
+  <div class="block">
+    <h4>Risks</h4>
+    
+    <ul><li><p class="en">Soreness or bruising where the needle went in.</p></li><li><p class="en">A stiff jaw for a few days.</p></li><li><p class="en">A fast heartbeat or feeling shaky for a few minutes, from the epinephrine in the medicine.</p></li><li><p class="en">Feeling faint.</p></li><li><p class="en">The numbing may not work fully, most often on an infected tooth.</p></li></ul>
+  </div>
+  <div class="block initials">
+    <h4>Less common but serious <span class="tag">Initialled by the signer</span></h4>
+    
+    <ul><li><p class="en">Biting or burning the numb lip, cheek or tongue without feeling it (children most of all).</p></li><li><p class="en">Swallowing is harder to control while you are numb.</p></li><li><p class="en">Rarely, an allergic or severe reaction that needs emergency care.</p></li><li><p class="en">Rarely, numbness or tingling that lasts weeks or months, and very rarely for good (a nerve injury).</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>For you</h4>
+    <span class="when">Shown when things that raise the risk for them is filled in and not (things that raise the risk for them is none noted)</span>
+    <p class="en">Noted for you: <span class="slot">[things that raise the risk for them]</span>. These raise some of the risks above.</p>
+  </div>
+  <div class="block">
+    <h4>Other choices</h4>
+    
+    <ul><li><p class="en">No numbing: the treatment may hurt.</p></li><li><p class="en">Numbing gel only, for minor care.</p></li><li><p class="en">Sedation or general anaesthesia elsewhere, by referral.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>If you do not have it</h4>
+    
+    <p class="en">The treatment may hurt, and it may not be possible to finish it.</p>
+  </div>
+  <div class="block">
+    <h4>Before and after</h4>
+    
+    <ul><li><p class="en">While you are numb, do not bite, suck or scratch your lip, cheek or tongue, and avoid very hot food and drink.</p></li><li><p class="en">A child is watched until the numbness wears off.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Cost</h4>
+    
+    <p class="en">The dentist tells you the cost before starting, and nothing starts until you agree to it.</p><p class="fil"><span class="lang">Filipino draft</span>Sasabihin ng dentista ang halaga bago magsimula, at walang sisimulan hangga’t hindi ako pumapayag.</p>
+  </div>
+  <div class="block">
+    <h4>Your rights</h4>
+    
+    <p class="en">You may say no, or change your mind and stop at any time. The dentist will tell you what stopping may mean for your teeth. You may ask for a second opinion.</p><p class="fil"><span class="lang">Filipino draft</span>Maaari akong tumanggi, o magbago ng isip at ipahinto ang gamutan anumang oras; sasabihin sa akin ng dentista kung ano ang maaaring mangyari sa aking ngipin kapag itinigil ito.</p><p class="en">If the dentist finds something unexpected, they stop and explain before doing more, unless stopping would put you at risk.</p><p class="fil"><span class="lang">Filipino draft</span>Kung may matuklasang hindi inaasahan ang dentista, hihinto muna siya at magpapaliwanag bago gumawa ng iba pa, maliban kung makasasama sa akin ang paghinto.</p>
+  </div>
+  
+  <div class="block"><h4>The ticks before signing</h4><ul><li><p class="en">Dr <span class="slot">[the dentist]</span> explained this to me in <span class="slot">[the language]</span>, and my questions were answered.</p><p class="fil"><span class="lang">Filipino draft</span>Ipinaliwanag sa akin ni Dr <span class="slot">[the dentist]</span> sa <span class="slot">[the language]</span> ang gamutang ito, at nasagot ang aking mga tanong.</p></li><li><p class="en">I understand the risks above, and that no one can promise a particular result.</p><p class="fil"><span class="lang">Filipino draft</span>Naiintindihan ko ang mga panganib sa itaas, at na walang makapangangako ng tiyak na resulta.</p></li><li><p class="en">I told the clinic truthfully about my health, medicines and allergies, and will tell them if anything changes.</p><p class="fil"><span class="lang">Filipino draft</span>Tapat kong sinabi sa klinika ang tungkol sa aking kalusugan, mga gamot, at mga allergy, at sasabihin ko kung may magbago.</p></li></ul></div>
+  <div class="block"><h4>The clinic’s part</h4>
+    <table class="fields"><thead><tr><th>Field</th><th>Filled in by</th><th>Kind</th></tr></thead><tbody>
+    <tr><td>Teeth to numb</td><td>The dentist (the desk may propose)</td><td>teeth</td></tr><tr><td>Or the area, in words</td><td>The dentist (the desk may propose)</td><td>text</td></tr><tr><td>How<br><span class="dim">an injection beside the tooth (infiltration) · a nerve block, which numbs a larger area such as half of the lower jaw · decided at the visit</span></td><td>The dentist (the desk may propose)</td><td>choice</td></tr><tr><td>The medicine<br><span class="dim">lidocaine 2% with epinephrine 1:100,000 · mepivacaine 3% plain · articaine 4% with epinephrine 1:100,000</span></td><td>The dentist (the desk may propose)</td><td>choice</td></tr><tr><td>Things that raise the risk for them<br><span class="dim">heart disease · high blood pressure · pregnant, or may be · a reaction to numbing before · blood thinners · none noted</span></td><td>The dentist (the desk may propose)</td><td>choices</td></tr>
+    </tbody></table></div>
+  <div class="block"><h4>What signing means</h4><p class="en">local anaesthesia (numbing) for the treatment</p><p class="en"><span class="dim">meaning agree for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p><p class="en"><span class="dim">meaning refuse for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, do not agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p></div>
+  <p class="signoff">Reviewed by ______________________ (dentist) on ________ · ______________________ (lawyer) on ________ · Languages: English ☐ Filipino ☐</p>
+</section>
+<section class="form" id="form-extraction">
+  <header class="form-head">
+    <h3>Tooth extraction and oral surgery</h3>
+    <p class="facts">
+      <span class="pill mono">extraction-2026-10</span>
+      <span class="pill">The named dentist explains it before it can be signed</span>
+      <span class="pill">Under 18: a parent or guardian signs</span>
+      <span class="pill">Covers treatment for 180 days</span>
+      <span class="pill">About 3 min to read</span>
+    </p>
+    <p class="fp">Fingerprint <span class="mono">T7S6-6WUM-TP</span> <span class="mono dim">769c27f7cf5a77ca87eaa993d7262d812a58d38afde2d1361e86c6a9570607ec</span></p>
+  </header>
+  <div class="block"><h4>In short</h4><p class="en">We will remove <span class="slot">tooth / teeth [teeth]</span>.</p><p class="en">Why: <span class="slot">[reason]</span>.<span class="when">Shown when reason is filled in</span></p><p class="en">For a few days: pain, swelling and some bleeding. Less often: a dry socket, an infection, or numbness of the lip, chin or tongue.</p><p class="en">Other choices include keeping the tooth, a root canal where that is possible, or no treatment.</p><p class="en">Estimated fee: <span class="slot">[estimated fee]</span>.<span class="when">Shown when estimated fee is amount or range</span></p><p class="en">The dentist tells you the cost before starting.<span class="when">Shown when estimated fee is later</span></p></div>
+  
+  <div class="block">
+    <h4>What we will do</h4>
+    
+    <p class="en">We will remove <span class="slot">tooth / teeth [teeth]</span>: <span class="slot">[type]</span>.</p><p class="en">Stitches are placed if needed.</p><p class="en">You get an aftercare sheet to take home.</p>
+  </div>
+  <div class="block">
+    <h4>Why</h4>
+    <span class="when">Shown when reason is filled in</span>
+    <p class="en"><span class="slot">[reason]</span>.</p>
+  </div>
+  <div class="block">
+    <h4>Risks</h4>
+    
+    <ul><li><p class="en">Pain, swelling, bruising and some bleeding for a few days, more if you take blood thinners.</p></li><li><p class="en">A stiff jaw and sore corners of the mouth.</p></li><li><p class="en">Dry socket: the socket becomes painful a few days later. It is more common in smokers and after lower wisdom teeth.</p></li><li><p class="en">Infection.</p></li></ul>
+  </div>
+  <div class="block initials">
+    <h4>Less common but serious <span class="tag">Initialled by the signer</span></h4>
+    
+    <ul><li><p class="en">Damage to a nearby tooth, filling or crown.</p></li><li><p class="en">A small tip of root may be left in the bone when removing it would be riskier.</p></li><li><p class="en">Nerve injury: numbness or tingling of the lip, chin or tongue. It is usually temporary, and rarely permanent.</p></li><li><p class="en">Rarely, a broken jaw.</p></li><li><p class="en">Swallowing or breathing in a piece of tooth.</p></li><li><p class="en">Bone that heals slowly or not at all, with bone medicines or after radiotherapy.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Upper back teeth</h4>
+    <span class="when">Shown when the teeth include 14, 15, 16, 17, 18, 24, 25, 26, 27, 28</span>
+    <p class="en">The roots of upper back teeth are close to the sinus. An opening into the sinus may happen, and may need more treatment.</p>
+  </div>
+  <div class="block initials">
+    <h4>Wisdom teeth <span class="tag">Initialled by the signer</span></h4>
+    <span class="when">Shown when the teeth include 18, 28, 38, 48</span>
+    <ul><li><p class="en">The nerves to the lip, chin and tongue run close to lower wisdom teeth. After a lower wisdom tooth is removed, about 1 in 100 people are left with numbness that does not go away.</p></li><li><p class="en">Dry socket is more likely.</p></li><li><p class="en">A gum pocket may stay behind the next tooth.</p></li><li><p class="en">The risks rise with age.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Found on your X-ray</h4>
+    <span class="when">Shown when found on the x-ray is filled in and not (found on the x-ray is nothing of note)</span>
+    <p class="en"><span class="slot">[found on the x-ray]</span>.</p>
+  </div>
+  <div class="block">
+    <h4>For you</h4>
+    <span class="when">Shown when things that raise the risk for them is filled in and not (things that raise the risk for them is none noted)</span>
+    <p class="en">Noted for you: <span class="slot">[things that raise the risk for them]</span>. These raise some of the risks above.</p>
+  </div>
+  <div class="block">
+    <h4>Other choices</h4>
+    
+    <ul><li><p class="en">Keep the tooth and watch it.</p></li><li><p class="en">A root canal and a crown to save it, where that is possible.</p></li><li><p class="en">Medicine or draining the infection, which helps only for now.</p></li><li><p class="en">For a wisdom tooth on the nerve, removing only its crown (coronectomy).</p></li><li><p class="en">Seeing an oral surgeon.</p></li><li><p class="en">No treatment.</p></li><li><p class="en">After removal, the gap may need an implant, bridge or denture, at extra cost.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>If you do not have it</h4>
+    
+    <ul><li><p class="en">Pain, and an infection or swelling that may spread.</p></li><li><p class="en">A cyst.</p></li><li><p class="en">Damage to the next tooth.</p></li><li><p class="en">Harder surgery later.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Before and after</h4>
+    
+    <ul><li><p class="en">Follow the aftercare sheet.</p></li><li><p class="en">No smoking, spitting or drinking through a straw for 24 to 48 hours.</p></li><li><p class="en"><span class="slot">[follow-up]</span>.<span class="when">Shown when follow-up is filled in</span></p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Cost</h4>
+    
+    <p class="en">The estimated fee is <span class="slot">[estimated fee]</span>. If it changes, the clinic tells you first.<span class="when">Shown when estimated fee is amount or range</span></p><p class="fil"><span class="lang">Filipino draft</span>Sinabi sa akin ang tinatayang bayad na <span class="slot">[estimated fee]</span> at kung ano ang kasama rito. Kung magbabago ang halaga, sasabihin muna ito sa akin ng klinika.</p><p class="en">The dentist tells you the cost before starting, and nothing starts until you agree to it.<span class="when">Shown when estimated fee is later</span></p><p class="fil"><span class="lang">Filipino draft</span>Sasabihin ng dentista ang halaga bago magsimula, at walang sisimulan hangga’t hindi ako pumapayag.</p>
+  </div>
+  <div class="block">
+    <h4>Your rights</h4>
+    
+    <p class="en">You may say no, or change your mind and stop at any time. The dentist will tell you what stopping may mean for your teeth. You may ask for a second opinion.</p><p class="fil"><span class="lang">Filipino draft</span>Maaari akong tumanggi, o magbago ng isip at ipahinto ang gamutan anumang oras; sasabihin sa akin ng dentista kung ano ang maaaring mangyari sa aking ngipin kapag itinigil ito.</p><p class="en">If the dentist finds something unexpected, they stop and explain before doing more, unless stopping would put you at risk.</p><p class="fil"><span class="lang">Filipino draft</span>Kung may matuklasang hindi inaasahan ang dentista, hihinto muna siya at magpapaliwanag bago gumawa ng iba pa, maliban kung makasasama sa akin ang paghinto.</p>
+  </div>
+  <div class="block"><h4>Questions the patient answers</h4><ul><li><p class="en">Do you want to keep the tooth? <span class="fil-inline">· Gusto mo bang itabi ang ngipin?</span> <span class="dim">(yes · no)</span></p></li></ul></div>
+  <div class="block"><h4>The ticks before signing</h4><ul><li><p class="en">Dr <span class="slot">[the dentist]</span> explained this to me in <span class="slot">[the language]</span>, and my questions were answered.</p><p class="fil"><span class="lang">Filipino draft</span>Ipinaliwanag sa akin ni Dr <span class="slot">[the dentist]</span> sa <span class="slot">[the language]</span> ang gamutang ito, at nasagot ang aking mga tanong.</p></li><li><p class="en">I understand the risks above, and that no one can promise a particular result.</p><p class="fil"><span class="lang">Filipino draft</span>Naiintindihan ko ang mga panganib sa itaas, at na walang makapangangako ng tiyak na resulta.</p></li><li><p class="en">I told the clinic truthfully about my health, medicines and allergies, and will tell them if anything changes.</p><p class="fil"><span class="lang">Filipino draft</span>Tapat kong sinabi sa klinika ang tungkol sa aking kalusugan, mga gamot, at mga allergy, at sasabihin ko kung may magbago.</p></li></ul></div>
+  <div class="block"><h4>The clinic’s part</h4>
+    <table class="fields"><thead><tr><th>Field</th><th>Filled in by</th><th>Kind</th></tr></thead><tbody>
+    <tr><td>Teeth</td><td>The dentist (the desk may propose)</td><td>teeth, required</td></tr><tr><td>Type<br><span class="dim">a simple extraction · a surgical extraction, in which the gum is opened, some bone may be removed, the tooth may be cut in parts and stitches are placed</span></td><td>The dentist (the desk may propose)</td><td>choice, required</td></tr><tr><td>Reason<br><span class="dim">decay that cannot be repaired · an infection · gum disease · crowding, or to make room for braces · a wisdom tooth causing problems · a broken tooth</span></td><td>The dentist (the desk may propose)</td><td>choice</td></tr><tr><td>Found on the X-ray<br><span class="dim">the root is near the nerve canal · the root is near the sinus · the roots are curved or joined · nothing of note</span></td><td>The dentist (the desk may propose)</td><td>choices</td></tr><tr><td>Things that raise the risk for them<br><span class="dim">smoking · blood thinners · bone medicines (bisphosphonate or denosumab) · radiotherapy to the head or neck · diabetes · none noted</span></td><td>The dentist (the desk may propose)</td><td>choices</td></tr><tr><td>Follow-up</td><td>The desk</td><td>text</td></tr><tr><td>Estimated fee</td><td>The desk</td><td>money, required</td></tr>
+    </tbody></table></div>
+  <div class="block"><h4>What signing means</h4><p class="en">the extraction of <span class="slot">tooth / teeth [teeth]</span></p><p class="en"><span class="dim">meaning agree for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p><p class="en"><span class="dim">meaning refuse for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, do not agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p></div>
+  <p class="signoff">Reviewed by ______________________ (dentist) on ________ · ______________________ (lawyer) on ________ · Languages: English ☐ Filipino ☐</p>
+</section>
+<section class="form" id="form-root_canal">
+  <header class="form-head">
+    <h3>Root canal treatment</h3>
+    <p class="facts">
+      <span class="pill mono">root-canal-2026-10</span>
+      <span class="pill">The named dentist explains it before it can be signed</span>
+      <span class="pill">Under 18: a parent or guardian signs</span>
+      <span class="pill">Covers treatment for 180 days</span>
+      <span class="pill">About 3 min to read</span>
+    </p>
+    <p class="fp">Fingerprint <span class="mono">CV4X-ZSDH-56</span> <span class="mono dim">be47d164ef70dc21c246b859c9c1428fdf0ea734c04805eed0dce8ea9e01ede9</span></p>
+  </header>
+  <div class="block"><h4>In short</h4><p class="en">We will clean and fill the inside of <span class="slot">tooth / teeth [tooth]</span> over <span class="slot">[visits]</span>.</p><p class="en">To keep the tooth and ease pain or infection.</p><p class="en">It may be sore for a few days. Less often an instrument breaks in a canal, the root is damaged, or the treatment fails and needs more.</p><p class="en">Other choices include removing the tooth, or no treatment.</p><p class="en">Estimated fee: <span class="slot">[estimated fee]</span>.<span class="when">Shown when estimated fee is amount or range</span></p><p class="en">The dentist tells you the cost before starting.<span class="when">Shown when estimated fee is later</span></p></div>
+  
+  <div class="block">
+    <h4>What we will do</h4>
+    
+    <p class="en">We will open <span class="slot">tooth / teeth [tooth]</span>, remove the nerve, clean, medicate and fill the canals, over <span class="slot">[visits]</span>.</p><p class="en">Then <span class="slot">[afterwards]</span>.<span class="when">Shown when afterwards is filled in</span></p>
+  </div>
+  <div class="block">
+    <h4>Why</h4>
+    
+    <p class="en">To keep the tooth and ease pain or infection: <span class="slot">[diagnosis]</span>.<span class="when">Shown when diagnosis is filled in</span></p><p class="en">To keep the tooth and ease pain or infection.<span class="when">Shown when not (diagnosis is filled in)</span></p>
+  </div>
+  <div class="block">
+    <h4>Risks</h4>
+    
+    <ul><li><p class="en">Pain, swelling or tenderness for a few days.</p></li></ul>
+  </div>
+  <div class="block initials">
+    <h4>Less common but serious <span class="tag">Initialled by the signer</span></h4>
+    
+    <ul><li><p class="en">A small instrument may break inside a canal.</p></li><li><p class="en">A hole may be made through the side of the root.</p></li><li><p class="en">A canal may be blocked or too curved to finish.</p></li><li><p class="en">Filling material may pass beyond the end of the root.</p></li><li><p class="en">A crack may be found during treatment.</p></li><li><p class="en">An existing crown or filling may be damaged.</p></li><li><p class="en">It may fail and need redoing, surgery at the root end, or removing the tooth.</p></li><li><p class="en">The tooth is weaker afterwards and may break without a crown.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>How it usually goes</h4>
+    
+    <p class="en">In large studies, about 9 in 10 root-treated teeth are still in place 4 to 10 years later, and a crown afterwards helps most.</p>
+  </div>
+  <div class="block">
+    <h4>A specialist</h4>
+    <span class="when">Shown when offer a root canal specialist (endodontist) is yes</span>
+    <p class="en">You may ask to see a root canal specialist (endodontist).</p>
+  </div>
+  <div class="block">
+    <h4>Other choices</h4>
+    
+    <ul><li><p class="en">Removing the tooth, then an implant, bridge or denture, or leaving a gap.</p></li><li><p class="en">Watching it.</p></li><li><p class="en">Seeing a specialist.</p></li><li><p class="en">No treatment.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>If you do not have it</h4>
+    
+    <ul><li><p class="en">Pain.</p></li><li><p class="en">An abscess.</p></li><li><p class="en">Losing the tooth.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Before and after</h4>
+    
+    <ul><li><p class="en">Come back for <span class="slot">[afterwards]</span>.<span class="when">Shown when afterwards is filled in</span></p></li><li><p class="en">Until then, chew on the other side.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Cost</h4>
+    
+    <p class="en">The root canal: <span class="slot">[estimated fee]</span>. If it changes, the clinic tells you first.<span class="when">Shown when estimated fee is amount or range</span></p><p class="en">The root canal: the dentist tells you the cost before starting, and nothing starts until you agree to it.<span class="when">Shown when estimated fee is later</span></p><p class="en">What comes after it, a separate fee: <span class="slot">[the filling or crown after it, a separate fee]</span>. If it changes, the clinic tells you first.<span class="when">Shown when the filling or crown after it, a separate fee is amount or range</span></p><p class="en">What comes after it, a separate fee: the dentist tells you the cost before starting, and nothing starts until you agree to it.<span class="when">Shown when the filling or crown after it, a separate fee is later</span></p>
+  </div>
+  <div class="block">
+    <h4>Your rights</h4>
+    
+    <p class="en">You may say no, or change your mind and stop at any time. The dentist will tell you what stopping may mean for your teeth. You may ask for a second opinion.</p><p class="fil"><span class="lang">Filipino draft</span>Maaari akong tumanggi, o magbago ng isip at ipahinto ang gamutan anumang oras; sasabihin sa akin ng dentista kung ano ang maaaring mangyari sa aking ngipin kapag itinigil ito.</p><p class="en">If the dentist finds something unexpected, they stop and explain before doing more, unless stopping would put you at risk.</p><p class="fil"><span class="lang">Filipino draft</span>Kung may matuklasang hindi inaasahan ang dentista, hihinto muna siya at magpapaliwanag bago gumawa ng iba pa, maliban kung makasasama sa akin ang paghinto.</p>
+  </div>
+  
+  <div class="block"><h4>The ticks before signing</h4><ul><li><p class="en">Dr <span class="slot">[the dentist]</span> explained this to me in <span class="slot">[the language]</span>, and my questions were answered.</p><p class="fil"><span class="lang">Filipino draft</span>Ipinaliwanag sa akin ni Dr <span class="slot">[the dentist]</span> sa <span class="slot">[the language]</span> ang gamutang ito, at nasagot ang aking mga tanong.</p></li><li><p class="en">I understand the risks above, and that no one can promise a particular result.</p><p class="fil"><span class="lang">Filipino draft</span>Naiintindihan ko ang mga panganib sa itaas, at na walang makapangangako ng tiyak na resulta.</p></li></ul></div>
+  <div class="block"><h4>The clinic’s part</h4>
+    <table class="fields"><thead><tr><th>Field</th><th>Filled in by</th><th>Kind</th></tr></thead><tbody>
+    <tr><td>Tooth</td><td>The dentist (the desk may propose)</td><td>teeth, required</td></tr><tr><td>Diagnosis<br><span class="dim">an inflamed nerve that will not heal · a dead nerve with infection · an abscess · an old root canal that is failing (a redo)</span></td><td>The dentist (the desk may propose)</td><td>choice</td></tr><tr><td>Visits</td><td>The desk</td><td>number</td></tr><tr><td>Afterwards<br><span class="dim">a filling · a crown · a post and crown</span></td><td>The dentist (the desk may propose)</td><td>choice</td></tr><tr><td>Estimated fee</td><td>The desk</td><td>money, required</td></tr><tr><td>The filling or crown after it, a separate fee</td><td>The desk</td><td>money</td></tr><tr><td>Offer a root canal specialist (endodontist)</td><td>The dentist (the desk may propose)</td><td>yesno</td></tr>
+    </tbody></table></div>
+  <div class="block"><h4>What signing means</h4><p class="en">root canal treatment of <span class="slot">tooth / teeth [tooth]</span></p><p class="en"><span class="dim">meaning agree for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p><p class="en"><span class="dim">meaning refuse for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, do not agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p></div>
+  <p class="signoff">Reviewed by ______________________ (dentist) on ________ · ______________________ (lawyer) on ________ · Languages: English ☐ Filipino ☐</p>
+</section>
+<section class="form" id="form-restoration">
+  <header class="form-head">
+    <h3>Fillings, crowns, bridges and veneers</h3>
+    <p class="facts">
+      <span class="pill mono">restoration-2026-10</span>
+      <span class="pill">The named dentist explains it before it can be signed</span>
+      <span class="pill">Under 18: a parent or guardian signs</span>
+      <span class="pill">Covers treatment for 180 days</span>
+      <span class="pill">About 2 min to read</span>
+    </p>
+    <p class="fp">Fingerprint <span class="mono">AWNS-Y56S-XS</span> <span class="mono dim">bb4d10a22176f623e2725974219e8d26e21f90e711d03b467407b764c0105f3a</span></p>
+  </header>
+  <div class="block"><h4>In short</h4><p class="en">We will repair <span class="slot">tooth / teeth [teeth]</span> with <span class="slot">[what]</span>.</p><p class="en">It may be sensitive for days to weeks, or the bite may need a small adjustment. Less often the nerve needs a root canal, or the work chips or comes loose.</p><p class="en">Other choices include another material, or no treatment.</p><p class="en">Estimated fee: <span class="slot">[estimated fee]</span>.<span class="when">Shown when estimated fee is amount or range</span></p><p class="en">The dentist tells you the cost before starting.<span class="when">Shown when estimated fee is later</span></p></div>
+  
+  <div class="block">
+    <h4>What we will do</h4>
+    
+    <p class="en">We will remove decay or the old filling and shape <span class="slot">tooth / teeth [teeth]</span> for <span class="slot">[what]</span>.</p><p class="en">The material: <span class="slot">[material]</span>.<span class="when">Shown when material is filled in</span></p><p class="en">An impression or scan is taken, a temporary is placed, and the final one is fitted after you approve its fit and colour.<span class="when">Shown when what is a crown or a bridge or a veneer or an inlay or onlay</span></p><p class="en">Over <span class="slot">[visits]</span>.<span class="when">Shown when visits is filled in</span></p>
+  </div>
+  <div class="block">
+    <h4>Risks</h4>
+    
+    <ul><li><p class="en">Sensitivity to cold, heat or biting, usually for days to weeks.</p></li><li><p class="en">A high bite or sore jaw that needs a small adjustment.</p></li><li><p class="en">A stiff jaw.</p></li></ul>
+  </div>
+  <div class="block initials">
+    <h4>Less common but serious <span class="tag">Initialled by the signer</span></h4>
+    
+    <ul><li><p class="en">The nerve may get irritated and need a root canal.</p></li><li><p class="en">Deeper decay may be found once work starts, needing a bigger filling or a crown.</p></li><li><p class="en">Chipping, breaking or coming loose.</p></li><li><p class="en">New decay at the edges.</p></li><li><p class="en">A sore gum at the edge.</p></li><li><p class="en">The colour may not match exactly.</p></li><li><p class="en">Swallowing or breathing in a crown during a try-in.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Crowns and bridges</h4>
+    <span class="when">Shown when what is a crown or a bridge</span>
+    <ul><li><p class="en">The temporary can come off, so come back promptly.</p></li><li><p class="en">Delaying the final crown lets teeth move.</p></li><li><p class="en">The teeth holding the bridge (<span class="slot">[teeth holding the bridge]</span>) are shaped down for good.<span class="when">Shown when what is a bridge</span></p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Veneers</h4>
+    <span class="when">Shown when what is a veneer</span>
+    <ul><li><p class="en">Some enamel is removed, and it cannot be put back.</p></li><li><p class="en">A chipped veneer usually cannot be repaired.</p></li><li><p class="en">The colour cannot change after bonding.</p></li><li><p class="en">Biting nails or ice, or grinding, can loosen a veneer; a night guard may be advised.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Other choices</h4>
+    
+    <ul><li><p class="en">No treatment.</p></li><li><p class="en">Another material.</p></li><li><p class="en">A filling instead of a crown, which protects the tooth less.</p></li><li><p class="en">Removing the tooth.</p></li><li><p class="en">For a gap: an implant or a denture.</p></li><li><p class="en">For looks: whitening, bonding or braces.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>If you do not have it</h4>
+    
+    <ul><li><p class="en">Decay spreads.</p></li><li><p class="en">Pain.</p></li><li><p class="en">Losing the tooth.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Before and after</h4>
+    
+    <p class="en">Do not chew on a new filling until the numbness has gone.</p>
+  </div>
+  <div class="block">
+    <h4>Cost</h4>
+    
+    <p class="en">The estimated fee is <span class="slot">[estimated fee]</span>. If it changes, the clinic tells you first.<span class="when">Shown when estimated fee is amount or range</span></p><p class="fil"><span class="lang">Filipino draft</span>Sinabi sa akin ang tinatayang bayad na <span class="slot">[estimated fee]</span> at kung ano ang kasama rito. Kung magbabago ang halaga, sasabihin muna ito sa akin ng klinika.</p><p class="en">The dentist tells you the cost before starting, and nothing starts until you agree to it.<span class="when">Shown when estimated fee is later</span></p><p class="fil"><span class="lang">Filipino draft</span>Sasabihin ng dentista ang halaga bago magsimula, at walang sisimulan hangga’t hindi ako pumapayag.</p>
+  </div>
+  <div class="block">
+    <h4>Your rights</h4>
+    
+    <p class="en">You may say no, or change your mind and stop at any time. The dentist will tell you what stopping may mean for your teeth. You may ask for a second opinion.</p><p class="fil"><span class="lang">Filipino draft</span>Maaari akong tumanggi, o magbago ng isip at ipahinto ang gamutan anumang oras; sasabihin sa akin ng dentista kung ano ang maaaring mangyari sa aking ngipin kapag itinigil ito.</p><p class="en">If the dentist finds something unexpected, they stop and explain before doing more, unless stopping would put you at risk.</p><p class="fil"><span class="lang">Filipino draft</span>Kung may matuklasang hindi inaasahan ang dentista, hihinto muna siya at magpapaliwanag bago gumawa ng iba pa, maliban kung makasasama sa akin ang paghinto.</p>
+  </div>
+  
+  <div class="block"><h4>The ticks before signing</h4><ul><li><p class="en">Dr <span class="slot">[the dentist]</span> explained this to me in <span class="slot">[the language]</span>, and my questions were answered.</p><p class="fil"><span class="lang">Filipino draft</span>Ipinaliwanag sa akin ni Dr <span class="slot">[the dentist]</span> sa <span class="slot">[the language]</span> ang gamutang ito, at nasagot ang aking mga tanong.</p></li><li><p class="en">I understand the risks above, and that no one can promise a particular result.</p><p class="fil"><span class="lang">Filipino draft</span>Naiintindihan ko ang mga panganib sa itaas, at na walang makapangangako ng tiyak na resulta.</p></li></ul></div>
+  <div class="block"><h4>The clinic’s part</h4>
+    <table class="fields"><thead><tr><th>Field</th><th>Filled in by</th><th>Kind</th></tr></thead><tbody>
+    <tr><td>What<br><span class="dim">a filling · a crown · a bridge · a veneer · an inlay or onlay</span></td><td>The dentist (the desk may propose)</td><td>choices, required</td></tr><tr><td>Teeth</td><td>The dentist (the desk may propose)</td><td>teeth, required</td></tr><tr><td>Teeth holding the bridge<br><span class="when">Shown when what is a bridge</span></td><td>The dentist (the desk may propose)</td><td>teeth, required</td></tr><tr><td>Material<br><span class="dim">tooth-coloured composite · glass ionomer · porcelain fused to metal · zirconia · lithium disilicate (a glass ceramic) · full metal</span></td><td>The dentist (the desk may propose)</td><td>choice</td></tr><tr><td>A temporary first<br><span class="when">Shown when what is a crown or a bridge or a veneer or an inlay or onlay</span></td><td>The dentist (the desk may propose)</td><td>yesno</td></tr><tr><td>Visits</td><td>The desk</td><td>number</td></tr><tr><td>Estimated fee</td><td>The desk</td><td>money, required</td></tr>
+    </tbody></table></div>
+  <div class="block"><h4>What signing means</h4><p class="en"><span class="slot">[what]</span> on <span class="slot">tooth / teeth [teeth]</span></p><p class="en"><span class="dim">meaning agree for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p><p class="en"><span class="dim">meaning refuse for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, do not agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p></div>
+  <p class="signoff">Reviewed by ______________________ (dentist) on ________ · ______________________ (lawyer) on ________ · Languages: English ☐ Filipino ☐</p>
+</section>
+<section class="form" id="form-periodontal">
+  <header class="form-head">
+    <h3>Deep cleaning and gum treatment</h3>
+    <p class="facts">
+      <span class="pill mono">periodontal-2026-10</span>
+      <span class="pill">The named dentist explains it before it can be signed</span>
+      <span class="pill">Under 18: a parent or guardian signs</span>
+      <span class="pill">Covers treatment for 180 days</span>
+      <span class="pill">About 2 min to read</span>
+    </p>
+    <p class="fp">Fingerprint <span class="mono">3P8N-QEDB-Y4</span> <span class="mono dim">5349c8fcbe45cb6a1c4921d06105f69fec82d0723d9c9f682fa8d10ca4bb329e</span></p>
+  </header>
+  <div class="block"><h4>In short</h4><p class="en">We will clean below the gums and smooth the roots in <span class="slot">[areas]</span>.</p><p class="en">To reduce the infection and slow bone loss.</p><p class="en">Gums may be sore and bleed for a few days, then pull back, so roots show and teeth feel sensitive.</p><p class="en">Other choices include an ordinary cleaning, a gum specialist, or no treatment.</p><p class="en">Estimated fee: <span class="slot">[estimated fee]</span>.<span class="when">Shown when estimated fee is amount or range</span></p><p class="en">The dentist tells you the cost before starting.<span class="when">Shown when estimated fee is later</span></p></div>
+  
+  <div class="block">
+    <h4>What we will do</h4>
+    
+    <p class="en">We will remove tartar and bacteria below the gum and smooth the roots in <span class="slot">[areas]</span>.</p><p class="en">Over <span class="slot">[visits]</span>.<span class="when">Shown when visits is filled in</span></p><p class="en">With numbing.<span class="when">Shown when with numbing is yes</span></p><p class="en">Also: <span class="slot">[also]</span>.<span class="when">Shown when also is filled in and not (also is nothing else)</span></p>
+  </div>
+  <div class="block">
+    <h4>Why</h4>
+    
+    <p class="en">To reduce the infection and slow bone loss.</p>
+  </div>
+  <div class="block initials">
+    <h4>Risks <span class="tag">Initialled by the signer</span></h4>
+    
+    <ul><li><p class="en">Swelling, soreness and bleeding for a few days.</p></li><li><p class="en">As the swelling goes down the gums pull back: roots show, gaps between teeth look bigger, and food catches.</p></li><li><p class="en">Sensitivity to hot, cold and sweets.</p></li><li><p class="en">Teeth may feel loose at first; most firm up, but not all.</p></li><li><p class="en">Infection.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Results</h4>
+    
+    <ul><li><p class="en">There is no guarantee. Smoking, diabetes and cleaning at home change the result.</p></li><li><p class="en">Without regular maintenance, gum disease usually comes back.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Other choices</h4>
+    
+    <ul><li><p class="en">No treatment: the disease goes on, and teeth can be lost.</p></li><li><p class="en">An ordinary cleaning only, which does not reach deep pockets.</p></li><li><p class="en">Gum surgery, or seeing a periodontist.</p></li><li><p class="en">Removing teeth that cannot be saved.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>If you do not have it</h4>
+    
+    <p class="en">The gum disease goes on, and teeth can loosen and be lost.</p>
+  </div>
+  <div class="block">
+    <h4>Before and after</h4>
+    
+    <ul><li><p class="en">Brush and clean between your teeth every day.</p></li><li><p class="en">A recheck in <span class="slot">[recheck after (weeks)]</span>.<span class="when">Shown when recheck after (weeks) is filled in</span></p></li><li><p class="en">Then maintenance every <span class="slot">[maintenance every]</span>.<span class="when">Shown when maintenance every is filled in</span></p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Cost</h4>
+    
+    <p class="en">The estimated fee is <span class="slot">[estimated fee]</span>. If it changes, the clinic tells you first.<span class="when">Shown when estimated fee is amount or range</span></p><p class="fil"><span class="lang">Filipino draft</span>Sinabi sa akin ang tinatayang bayad na <span class="slot">[estimated fee]</span> at kung ano ang kasama rito. Kung magbabago ang halaga, sasabihin muna ito sa akin ng klinika.</p><p class="en">The dentist tells you the cost before starting, and nothing starts until you agree to it.<span class="when">Shown when estimated fee is later</span></p><p class="fil"><span class="lang">Filipino draft</span>Sasabihin ng dentista ang halaga bago magsimula, at walang sisimulan hangga’t hindi ako pumapayag.</p>
+  </div>
+  <div class="block">
+    <h4>Your rights</h4>
+    
+    <p class="en">You may say no, or change your mind and stop at any time. The dentist will tell you what stopping may mean for your teeth. You may ask for a second opinion.</p><p class="fil"><span class="lang">Filipino draft</span>Maaari akong tumanggi, o magbago ng isip at ipahinto ang gamutan anumang oras; sasabihin sa akin ng dentista kung ano ang maaaring mangyari sa aking ngipin kapag itinigil ito.</p><p class="en">If the dentist finds something unexpected, they stop and explain before doing more, unless stopping would put you at risk.</p><p class="fil"><span class="lang">Filipino draft</span>Kung may matuklasang hindi inaasahan ang dentista, hihinto muna siya at magpapaliwanag bago gumawa ng iba pa, maliban kung makasasama sa akin ang paghinto.</p>
+  </div>
+  
+  <div class="block"><h4>The ticks before signing</h4><ul><li><p class="en">Dr <span class="slot">[the dentist]</span> explained this to me in <span class="slot">[the language]</span>, and my questions were answered.</p><p class="fil"><span class="lang">Filipino draft</span>Ipinaliwanag sa akin ni Dr <span class="slot">[the dentist]</span> sa <span class="slot">[the language]</span> ang gamutang ito, at nasagot ang aking mga tanong.</p></li><li><p class="en">I understand the risks above, and that no one can promise a particular result.</p><p class="fil"><span class="lang">Filipino draft</span>Naiintindihan ko ang mga panganib sa itaas, at na walang makapangangako ng tiyak na resulta.</p></li><li><p class="en">I told the clinic truthfully about my health, medicines and allergies, and will tell them if anything changes.</p><p class="fil"><span class="lang">Filipino draft</span>Tapat kong sinabi sa klinika ang tungkol sa aking kalusugan, mga gamot, at mga allergy, at sasabihin ko kung may magbago.</p></li></ul></div>
+  <div class="block"><h4>The clinic’s part</h4>
+    <table class="fields"><thead><tr><th>Field</th><th>Filled in by</th><th>Kind</th></tr></thead><tbody>
+    <tr><td>Areas<br><span class="dim">the upper right · the upper left · the lower right · the lower left · the whole mouth</span></td><td>The dentist (the desk may propose)</td><td>choices, required</td></tr><tr><td>Visits</td><td>The desk</td><td>number</td></tr><tr><td>With numbing</td><td>The dentist (the desk may propose)</td><td>yesno</td></tr><tr><td>Also<br><span class="dim">a chlorhexidine mouthwash · an antibiotic placed in the gum · nothing else</span></td><td>The dentist (the desk may propose)</td><td>choices</td></tr><tr><td>Recheck after (weeks)</td><td>The desk</td><td>number</td></tr><tr><td>Maintenance every<br><span class="dim">3 months · 4 months · 6 months</span></td><td>The desk</td><td>choice</td></tr><tr><td>Estimated fee</td><td>The desk</td><td>money, required</td></tr>
+    </tbody></table></div>
+  <div class="block"><h4>What signing means</h4><p class="en">deep cleaning and gum treatment of <span class="slot">[areas]</span></p><p class="en"><span class="dim">meaning agree for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p><p class="en"><span class="dim">meaning refuse for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, do not agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p></div>
+  <p class="signoff">Reviewed by ______________________ (dentist) on ________ · ______________________ (lawyer) on ________ · Languages: English ☐ Filipino ☐</p>
+</section>
+<section class="form" id="form-denture">
+  <header class="form-head">
+    <h3>Dentures</h3>
+    <p class="facts">
+      <span class="pill mono">denture-2026-10</span>
+      <span class="pill">The named dentist explains it before it can be signed</span>
+      <span class="pill">Under 18: a parent or guardian signs</span>
+      <span class="pill">Covers treatment for 365 days</span>
+      <span class="pill">About 2 min to read</span>
+    </p>
+    <p class="fp">Fingerprint <span class="mono">RE3W-4ZRU-BS</span> <span class="mono dim">cfa29d6c11b43bc1a27be8c49bbad0011d40a57c0362d0eaa1a2cd0ca404cf03</span></p>
+  </header>
+  <div class="block"><h4>In short</h4><p class="en">We will make <span class="slot">[type]</span> for <span class="slot">[jaw]</span>.</p><p class="en">It takes weeks to get used to: sore spots, speech and eating change at first. Gums get smaller over time, so relines are needed.</p><p class="en">Other choices include a bridge, implants, or no replacement.</p><p class="en">Estimated fee: <span class="slot">[estimated fee]</span>.<span class="when">Shown when estimated fee is amount or range</span></p><p class="en">The dentist tells you the cost before starting.<span class="when">Shown when estimated fee is later</span></p></div>
+  
+  <div class="block">
+    <h4>What we will do</h4>
+    
+    <p class="en">We will make <span class="slot">[type]</span> for <span class="slot">[jaw]</span>.</p><p class="en">Teeth to remove first: <span class="slot">[teeth to remove first]</span>.<span class="when">Shown when teeth to remove first is filled in</span></p><p class="en">The visits: <span class="slot">[visits]</span>.<span class="when">Shown when visits is filled in</span></p>
+  </div>
+  <div class="block initials">
+    <h4>Risks and limits <span class="tag">Initialled by the signer</span></h4>
+    
+    <ul><li><p class="en">It takes weeks to get used to.</p></li><li><p class="en">Sore spots and ulcers that need adjustment visits.</p></li><li><p class="en">Speech changes at first.</p></li><li><p class="en">Learning to eat again.</p></li><li><p class="en">Looseness, most of all with a lower complete denture.</p></li><li><p class="en">Gums and bone get smaller over time, so relines or a new denture are needed.</p></li><li><p class="en">Immediate dentures need more adjustments and relines, and are often temporary.</p></li><li><p class="en">The clasps of a partial denture can raise decay and gum problems on the teeth holding them.</p></li><li><p class="en">It may not support the lips and face as natural teeth did.</p></li><li><p class="en">It can break: do not glue it at home.</p></li><li><p class="en">Smell or stains without daily cleaning.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Other choices</h4>
+    
+    <ul><li><p class="en">No replacement: teeth drift and the bite collapses.</p></li><li><p class="en">A bridge.</p></li><li><p class="en">Implants.</p></li><li><p class="en">A denture held by implants.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>If you do not have it</h4>
+    
+    <p class="en">The teeth next to the gaps drift, the bite changes, and chewing gets harder.</p>
+  </div>
+  <div class="block">
+    <h4>Before and after</h4>
+    
+    <ul><li><p class="en">Come to every fitting and adjustment.</p></li><li><p class="en"><span class="slot">[included]</span>.<span class="when">Shown when included is filled in</span></p></li><li><p class="en"><span class="slot">[relines]</span>.<span class="when">Shown when relines is filled in</span></p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Cost</h4>
+    
+    <p class="en">The estimated fee is <span class="slot">[estimated fee]</span>. If it changes, the clinic tells you first.<span class="when">Shown when estimated fee is amount or range</span></p><p class="fil"><span class="lang">Filipino draft</span>Sinabi sa akin ang tinatayang bayad na <span class="slot">[estimated fee]</span> at kung ano ang kasama rito. Kung magbabago ang halaga, sasabihin muna ito sa akin ng klinika.</p><p class="en">The dentist tells you the cost before starting, and nothing starts until you agree to it.<span class="when">Shown when estimated fee is later</span></p><p class="fil"><span class="lang">Filipino draft</span>Sasabihin ng dentista ang halaga bago magsimula, at walang sisimulan hangga’t hindi ako pumapayag.</p>
+  </div>
+  <div class="block">
+    <h4>Your rights</h4>
+    
+    <p class="en">You may say no, or change your mind and stop at any time. The dentist will tell you what stopping may mean for your teeth. You may ask for a second opinion.</p><p class="fil"><span class="lang">Filipino draft</span>Maaari akong tumanggi, o magbago ng isip at ipahinto ang gamutan anumang oras; sasabihin sa akin ng dentista kung ano ang maaaring mangyari sa aking ngipin kapag itinigil ito.</p><p class="en">If the dentist finds something unexpected, they stop and explain before doing more, unless stopping would put you at risk.</p><p class="fil"><span class="lang">Filipino draft</span>Kung may matuklasang hindi inaasahan ang dentista, hihinto muna siya at magpapaliwanag bago gumawa ng iba pa, maliban kung makasasama sa akin ang paghinto.</p>
+  </div>
+  
+  <div class="block"><h4>The ticks before signing</h4><ul><li><p class="en">Dr <span class="slot">[the dentist]</span> explained this to me in <span class="slot">[the language]</span>, and my questions were answered.</p><p class="fil"><span class="lang">Filipino draft</span>Ipinaliwanag sa akin ni Dr <span class="slot">[the dentist]</span> sa <span class="slot">[the language]</span> ang gamutang ito, at nasagot ang aking mga tanong.</p></li><li><p class="en">I understand the risks above, and that no one can promise a particular result.</p><p class="fil"><span class="lang">Filipino draft</span>Naiintindihan ko ang mga panganib sa itaas, at na walang makapangangako ng tiyak na resulta.</p></li></ul></div>
+  <div class="block"><h4>The clinic’s part</h4>
+    <table class="fields"><thead><tr><th>Field</th><th>Filled in by</th><th>Kind</th></tr></thead><tbody>
+    <tr><td>Jaw<br><span class="dim">the upper jaw · the lower jaw · both jaws</span></td><td>The dentist (the desk may propose)</td><td>choice, required</td></tr><tr><td>Type<br><span class="dim">a complete denture · a partial acrylic denture · a flexible denture · a cast metal partial denture · an immediate denture, worn right after extractions · an overdenture</span></td><td>The dentist (the desk may propose)</td><td>choice, required</td></tr><tr><td>Teeth to remove first</td><td>The dentist (the desk may propose)</td><td>teeth</td></tr><tr><td>Visits</td><td>The desk</td><td>text</td></tr><tr><td>Included</td><td>The desk</td><td>text</td></tr><tr><td>Relines</td><td>The desk</td><td>text</td></tr><tr><td>Estimated fee</td><td>The desk</td><td>money, required</td></tr>
+    </tbody></table></div>
+  <div class="block"><h4>What signing means</h4><p class="en"><span class="slot">[type]</span> for <span class="slot">[jaw]</span></p><p class="en"><span class="dim">meaning agree for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p><p class="en"><span class="dim">meaning refuse for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, do not agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p></div>
+  <p class="signoff">Reviewed by ______________________ (dentist) on ________ · ______________________ (lawyer) on ________ · Languages: English ☐ Filipino ☐</p>
+</section>
+<section class="form" id="form-implant">
+  <header class="form-head">
+    <h3>Dental implants</h3>
+    <p class="facts">
+      <span class="pill mono">implant-2026-10</span>
+      <span class="pill">The named dentist explains it before it can be signed</span>
+      <span class="pill">Under 18: a parent or guardian signs</span>
+      <span class="pill">Covers treatment for 180 days</span>
+      <span class="pill">About 3 min to read</span>
+    </p>
+    <p class="fp">Fingerprint <span class="mono">7WMZ-EPJT-ZD</span> <span class="mono dim">8833584fb3882b77810a32e2ad717107d9497e68736c6b665145a43dce457752</span></p>
+  </header>
+  <div class="block"><h4>In short</h4><p class="en">We will place an implant at <span class="slot">tooth / teeth [implant sites]</span>; after it heals, <span class="slot">[then]</span> is attached.</p><p class="en">For a few days: pain, swelling and bruising. Less often the implant does not take and is removed, or a nerve or the sinus is injured.</p><p class="en">Other choices include a bridge, a denture, or no replacement.</p><p class="en">Estimated fee: <span class="slot">[the surgery]</span>.<span class="when">Shown when the surgery is amount or range</span></p><p class="en">The dentist tells you the cost before starting.<span class="when">Shown when the surgery is later</span></p></div>
+  
+  <div class="block">
+    <h4>What we will do</h4>
+    
+    <p class="en">With numbing, the gum is opened, the bone prepared and an implant placed at <span class="slot">tooth / teeth [implant sites]</span>.</p><p class="en">When: <span class="slot">[when]</span>.<span class="when">Shown when when is filled in</span></p><p class="en">Also: <span class="slot">[graft]</span>.<span class="when">Shown when graft is filled in and not (graft is no graft)</span></p><p class="en">A 3D scan (CBCT) was taken to plan it.<span class="when">Shown when a 3d scan (cbct) was taken is yes</span></p><p class="en">After <span class="slot">[healing (months)]</span>, <span class="slot">[then]</span> is attached.<span class="when">Shown when healing (months) is filled in and then is filled in</span></p><p class="en">Made by: <span class="slot">[made by (laboratory)]</span>.<span class="when">Shown when made by (laboratory) is filled in</span></p>
+  </div>
+  <div class="block">
+    <h4>Risks</h4>
+    
+    <ul><li><p class="en">Pain, swelling and bruising.</p></li><li><p class="en">Infection.</p></li></ul>
+  </div>
+  <div class="block initials">
+    <h4>Less common but serious <span class="tag">Initialled by the signer</span></h4>
+    
+    <ul><li><p class="en">The implant does not join the bone and is removed; trying again may be possible.</p></li><li><p class="en">Nerve injury in the lower jaw: numbness of the lip, chin or tongue, temporary or permanent.</p></li><li><p class="en">An opening into the sinus in the upper jaw.</p></li><li><p class="en">Injury to nearby teeth.</p></li><li><p class="en">A graft that fails.</p></li><li><p class="en">Rarely, a broken jaw.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Later on</h4>
+    
+    <ul><li><p class="en">Gum recession, or a grey edge showing.</p></li><li><p class="en">A loose screw.</p></li><li><p class="en">A chipped crown.</p></li><li><p class="en">Infection around the implant with bone loss (peri-implantitis), in about 1 in 5 patients in studies.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>How it usually goes</h4>
+    
+    <ul><li><p class="en">In studies, about 96 in 100 implants are still in place after 10 years.</p></li><li><p class="en">Smoking, diabetes that is not under control, and some bone medicines raise the risk of failure.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>For you</h4>
+    <span class="when">Shown when things that raise the risk for them is filled in and not (things that raise the risk for them is none noted)</span>
+    <p class="en">Noted for you: <span class="slot">[things that raise the risk for them]</span>. These raise some of the risks above.</p>
+  </div>
+  <div class="block">
+    <h4>Other choices</h4>
+    
+    <ul><li><p class="en">No replacement.</p></li><li><p class="en">A bridge.</p></li><li><p class="en">A removable denture.</p></li><li><p class="en">A resin-bonded bridge.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>If you do not have it</h4>
+    
+    <p class="en">The gap stays, and the teeth next to it may drift.</p>
+  </div>
+  <div class="block">
+    <h4>Before and after</h4>
+    
+    <p class="en">Clean around the implant like a tooth, with regular reviews.</p>
+  </div>
+  <div class="block">
+    <h4>Cost</h4>
+    
+    <p class="en">The surgery: <span class="slot">[the surgery]</span>. If it changes, the clinic tells you first.<span class="when">Shown when the surgery is amount or range</span></p><p class="en">The surgery: the dentist tells you the cost before starting, and nothing starts until you agree to it.<span class="when">Shown when the surgery is later</span></p><p class="en">What is attached to it: <span class="slot">[the crown, bridge or overdenture]</span>. If it changes, the clinic tells you first.<span class="when">Shown when the crown, bridge or overdenture is amount or range</span></p><p class="en">What is attached to it: the dentist tells you the cost before starting, and nothing starts until you agree to it.<span class="when">Shown when the crown, bridge or overdenture is later</span></p>
+  </div>
+  <div class="block">
+    <h4>Your rights</h4>
+    
+    <p class="en">You may say no, or change your mind and stop at any time. The dentist will tell you what stopping may mean for your teeth. You may ask for a second opinion.</p><p class="fil"><span class="lang">Filipino draft</span>Maaari akong tumanggi, o magbago ng isip at ipahinto ang gamutan anumang oras; sasabihin sa akin ng dentista kung ano ang maaaring mangyari sa aking ngipin kapag itinigil ito.</p><p class="en">If the dentist finds something unexpected, they stop and explain before doing more, unless stopping would put you at risk.</p><p class="fil"><span class="lang">Filipino draft</span>Kung may matuklasang hindi inaasahan ang dentista, hihinto muna siya at magpapaliwanag bago gumawa ng iba pa, maliban kung makasasama sa akin ang paghinto.</p>
+  </div>
+  
+  <div class="block"><h4>The ticks before signing</h4><ul><li><p class="en">Dr <span class="slot">[the dentist]</span> explained this to me in <span class="slot">[the language]</span>, and my questions were answered.</p><p class="fil"><span class="lang">Filipino draft</span>Ipinaliwanag sa akin ni Dr <span class="slot">[the dentist]</span> sa <span class="slot">[the language]</span> ang gamutang ito, at nasagot ang aking mga tanong.</p></li><li><p class="en">I understand the risks above, and that no one can promise a particular result.</p><p class="fil"><span class="lang">Filipino draft</span>Naiintindihan ko ang mga panganib sa itaas, at na walang makapangangako ng tiyak na resulta.</p></li><li><p class="en">I told the clinic truthfully about my health, medicines and allergies, and will tell them if anything changes.</p><p class="fil"><span class="lang">Filipino draft</span>Tapat kong sinabi sa klinika ang tungkol sa aking kalusugan, mga gamot, at mga allergy, at sasabihin ko kung may magbago.</p></li></ul></div>
+  <div class="block"><h4>The clinic’s part</h4>
+    <table class="fields"><thead><tr><th>Field</th><th>Filled in by</th><th>Kind</th></tr></thead><tbody>
+    <tr><td>Implant sites</td><td>The dentist (the desk may propose)</td><td>teeth, required</td></tr><tr><td>When<br><span class="dim">right after an extraction · after healing</span></td><td>The dentist (the desk may propose)</td><td>choice</td></tr><tr><td>Graft<br><span class="dim">no graft · a bone graft · a sinus lift · a bone graft and a sinus lift</span></td><td>The dentist (the desk may propose)</td><td>choice</td></tr><tr><td>A 3D scan (CBCT) was taken</td><td>The dentist (the desk may propose)</td><td>yesno</td></tr><tr><td>Healing (months)</td><td>The dentist (the desk may propose)</td><td>number</td></tr><tr><td>Then<br><span class="dim">a crown · a bridge · an overdenture</span></td><td>The dentist (the desk may propose)</td><td>choice</td></tr><tr><td>Made by (laboratory)</td><td>The desk</td><td>text</td></tr><tr><td>The surgery</td><td>The desk</td><td>money, required</td></tr><tr><td>The crown, bridge or overdenture</td><td>The desk</td><td>money</td></tr><tr><td>Things that raise the risk for them<br><span class="dim">smoking · diabetes · bone medicines · grinding · radiotherapy · none noted</span></td><td>The dentist (the desk may propose)</td><td>choices</td></tr>
+    </tbody></table></div>
+  <div class="block"><h4>What signing means</h4><p class="en">a dental implant at <span class="slot">tooth / teeth [implant sites]</span></p><p class="en"><span class="dim">meaning agree for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p><p class="en"><span class="dim">meaning refuse for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, do not agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p></div>
+  <p class="signoff">Reviewed by ______________________ (dentist) on ________ · ______________________ (lawyer) on ________ · Languages: English ☐ Filipino ☐</p>
+</section>
+<section class="form" id="form-ortho">
+  <header class="form-head">
+    <h3>Braces and orthodontic treatment</h3>
+    <p class="facts">
+      <span class="pill mono">ortho-2026-10</span>
+      <span class="pill">The named dentist explains it before it can be signed</span>
+      <span class="pill">Under 18: a parent or guardian signs</span>
+      <span class="pill">Covers treatment for 365 days</span>
+      <span class="pill">About 3 min to read</span>
+    </p>
+    <p class="fp">Fingerprint <span class="mono">WUCJ-7EZU-YF</span> <span class="mono dim">d7bebf490151b61c88462b5814d07b3253e33afdf39ca3a36afbff508da748fd</span></p>
+  </header>
+  <div class="block"><h4>In short</h4><p class="en">We will straighten your teeth with <span class="slot">[appliance]</span>.</p><p class="en">Sore after adjustments; decay and white spots without good cleaning; roots may shorten. Teeth move back without retainers.</p><p class="en">Other choices include limited treatment, crowns or veneers, or no treatment.</p><p class="en">Estimated fee: <span class="slot">[estimated total]</span>.<span class="when">Shown when estimated total is amount or range</span></p><p class="en">The dentist tells you the cost before starting.<span class="when">Shown when estimated total is later</span></p></div>
+  
+  <div class="block">
+    <h4>What we will do</h4>
+    
+    <p class="en">We will straighten your teeth with <span class="slot">[appliance]</span>.</p><p class="en">It takes about <span class="slot">[about how long (months)]</span>.<span class="when">Shown when about how long (months) is filled in</span></p><p class="en">A visit every <span class="slot">[a visit every (weeks)]</span>.<span class="when">Shown when a visit every (weeks) is filled in</span></p><p class="en">Teeth to remove for the treatment: <span class="slot">[teeth to remove for the treatment]</span>.<span class="when">Shown when teeth to remove for the treatment is filled in</span></p><p class="en">Mini-screws are placed in the bone to help move teeth.<span class="when">Shown when mini-screws is yes</span></p><p class="en">Afterwards: <span class="slot">[retainer]</span>.<span class="when">Shown when retainer is filled in</span></p>
+  </div>
+  <div class="block initials">
+    <h4>Risks <span class="tag">Initialled by the signer</span></h4>
+    
+    <ul><li><p class="en">Discomfort after adjustments.</p></li><li><p class="en">White spots and decay if teeth are not cleaned well.</p></li><li><p class="en">Gum disease.</p></li><li><p class="en">Roots may get shorter; this cannot be predicted.</p></li><li><p class="en">A tooth hurt in the past may lose its nerve.</p></li><li><p class="en">Mini-screws can loosen, break or irritate.</p></li><li><p class="en">Jaw joint problems can happen with or without braces.</p></li><li><p class="en">Teeth stuck in the bone (impacted) may not move.</p></li><li><p class="en">Injury from the appliance, or swallowing a part of it.</p></li><li><p class="en">Allergy to a material.</p></li><li><p class="en">Treatment may take longer than planned, and fees may change.</p></li><li><p class="en">Smoking worsens the results.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Results</h4>
+    
+    <ul><li><p class="en">Teeth tend to move back, so retainers are worn long-term.</p></li><li><p class="en">No one can promise perfectly straight teeth for life.</p></li><li><p class="en">Wisdom teeth may push teeth.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Records</h4>
+    
+    <p class="en">X-rays, photos and models before, during and after are part of the treatment.</p>
+  </div>
+  <div class="block">
+    <h4>Other choices</h4>
+    
+    <ul><li><p class="en">No treatment.</p></li><li><p class="en">Limited treatment.</p></li><li><p class="en">Crowns or veneers to hide crooked teeth.</p></li><li><p class="en">Jaw surgery, by a specialist, for a jaw problem.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>If you do not have it</h4>
+    
+    <p class="en">The teeth and bite stay as they are.</p>
+  </div>
+  <div class="block">
+    <h4>Before and after</h4>
+    
+    <p class="en">Clean around the braces carefully every day, and come to every adjustment.</p>
+  </div>
+  <div class="block">
+    <h4>Cost</h4>
+    
+    <p class="en">The estimated fee is <span class="slot">[estimated total]</span>. If it changes, the clinic tells you first.<span class="when">Shown when estimated total is amount or range</span></p><p class="fil"><span class="lang">Filipino draft</span>Sinabi sa akin ang tinatayang bayad na <span class="slot">[estimated total]</span> at kung ano ang kasama rito. Kung magbabago ang halaga, sasabihin muna ito sa akin ng klinika.</p><p class="en">The dentist tells you the cost before starting, and nothing starts until you agree to it.<span class="when">Shown when estimated total is later</span></p><p class="fil"><span class="lang">Filipino draft</span>Sasabihin ng dentista ang halaga bago magsimula, at walang sisimulan hangga’t hindi ako pumapayag.</p><p class="en">Payments: <span class="slot">[down payment and monthly adjustments]</span>.<span class="when">Shown when down payment and monthly adjustments is filled in</span></p><p class="en">If something breaks: <span class="slot">[a broken bracket or lost aligner]</span>.<span class="when">Shown when a broken bracket or lost aligner is filled in</span></p><p class="en">Moving to another dentist may change the fees and the time.</p>
+  </div>
+  <div class="block">
+    <h4>Your rights</h4>
+    
+    <p class="en">You may say no, or change your mind and stop at any time. The dentist will tell you what stopping may mean for your teeth. You may ask for a second opinion.</p><p class="fil"><span class="lang">Filipino draft</span>Maaari akong tumanggi, o magbago ng isip at ipahinto ang gamutan anumang oras; sasabihin sa akin ng dentista kung ano ang maaaring mangyari sa aking ngipin kapag itinigil ito.</p><p class="en">If the dentist finds something unexpected, they stop and explain before doing more, unless stopping would put you at risk.</p><p class="fil"><span class="lang">Filipino draft</span>Kung may matuklasang hindi inaasahan ang dentista, hihinto muna siya at magpapaliwanag bago gumawa ng iba pa, maliban kung makasasama sa akin ang paghinto.</p>
+  </div>
+  
+  <div class="block"><h4>The ticks before signing</h4><ul><li><p class="en">Dr <span class="slot">[the dentist]</span> explained this to me in <span class="slot">[the language]</span>, and my questions were answered.</p><p class="fil"><span class="lang">Filipino draft</span>Ipinaliwanag sa akin ni Dr <span class="slot">[the dentist]</span> sa <span class="slot">[the language]</span> ang gamutang ito, at nasagot ang aking mga tanong.</p></li><li><p class="en">I understand the risks above, and that no one can promise a particular result.</p><p class="fil"><span class="lang">Filipino draft</span>Naiintindihan ko ang mga panganib sa itaas, at na walang makapangangako ng tiyak na resulta.</p></li></ul></div>
+  <div class="block"><h4>The clinic’s part</h4>
+    <table class="fields"><thead><tr><th>Field</th><th>Filled in by</th><th>Kind</th></tr></thead><tbody>
+    <tr><td>Appliance<br><span class="dim">metal braces · ceramic braces · clear aligners · a removable appliance · a functional appliance</span></td><td>The dentist (the desk may propose)</td><td>choice, required</td></tr><tr><td>Teeth to remove for the treatment</td><td>The dentist (the desk may propose)</td><td>teeth</td></tr><tr><td>Mini-screws</td><td>The dentist (the desk may propose)</td><td>yesno</td></tr><tr><td>About how long (months)</td><td>The dentist (the desk may propose)</td><td>range</td></tr><tr><td>A visit every (weeks)</td><td>The desk</td><td>number</td></tr><tr><td>Down payment and monthly adjustments</td><td>The desk</td><td>text</td></tr><tr><td>A broken bracket or lost aligner</td><td>The desk</td><td>text</td></tr><tr><td>Retainer</td><td>The dentist (the desk may propose)</td><td>text</td></tr><tr><td>Estimated total</td><td>The desk</td><td>money, required</td></tr>
+    </tbody></table></div>
+  <div class="block"><h4>What signing means</h4><p class="en">orthodontic treatment with <span class="slot">[appliance]</span></p><p class="en"><span class="dim">meaning agree for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p><p class="en"><span class="dim">meaning refuse for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, do not agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p></div>
+  <p class="signoff">Reviewed by ______________________ (dentist) on ________ · ______________________ (lawyer) on ________ · Languages: English ☐ Filipino ☐</p>
+</section>
+<section class="form" id="form-whitening">
+  <header class="form-head">
+    <h3>Tooth whitening</h3>
+    <p class="facts">
+      <span class="pill mono">whitening-2026-10</span>
+      <span class="pill">The named dentist explains it before it can be signed</span>
+      <span class="pill">Never for a patient under 18</span>
+      <span class="pill">Covers treatment for 90 days</span>
+      <span class="pill">About 2 min to read</span>
+    </p>
+    <p class="fp">Fingerprint <span class="mono">JU5F-YKV8-CK</span> <span class="mono dim">6a11c5e5b38dc27bb707f640a25f5932d05a27565398a4099d2b13fa57d794db</span></p>
+  </header>
+  <div class="block"><h4>In short</h4><p class="en">We will whiten your natural teeth <span class="slot">[how]</span>.</p><p class="en">Teeth and gums may be sensitive for a short time. Fillings, crowns and veneers do not whiten.</p><p class="en">Not for anyone under 18, while pregnant, or within 2 weeks of a filling or crown.</p><p class="en">Other choices include cleaning and polishing, or no treatment.</p><p class="en">Estimated fee: <span class="slot">[estimated fee]</span>.<span class="when">Shown when estimated fee is amount or range</span></p><p class="en">The dentist tells you the cost before starting.<span class="when">Shown when estimated fee is later</span></p></div>
+  
+  <div class="block">
+    <h4>What we will do</h4>
+    
+    <p class="en">We will whiten your natural teeth <span class="slot">[how]</span>.</p><p class="en">Over <span class="slot">[sessions]</span>.<span class="when">Shown when sessions is filled in</span></p><p class="en">The product: <span class="slot">[product]</span>.<span class="when">Shown when product is filled in</span></p><p class="en">Its strength: <span class="slot">[strength]</span>.<span class="when">Shown when strength is filled in</span></p><p class="en">Your shade before: <span class="slot">[shade before]</span>.<span class="when">Shown when shade before is filled in</span></p>
+  </div>
+  <div class="block">
+    <h4>Before</h4>
+    
+    <ul><li><p class="en">An examination, and treatment of decay and gum disease, come first.</p></li><li><p class="en">The product label says it is not for anyone under 18, not while pregnant, not for people who smoke or drink often, and not within 2 weeks of a filling or crown.</p></li></ul>
+  </div>
+  <div class="block initials">
+    <h4>Risks <span class="tag">Initialled by the signer</span></h4>
+    
+    <ul><li><p class="en">Sensitive teeth, usually mild and short.</p></li><li><p class="en">Sore gums from the gel.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Limits</h4>
+    
+    <ul><li><p class="en">Only natural teeth whiten.</p></li><li><p class="en">Fillings, crowns, veneers and dentures do not whiten, and may need replacing to match, at extra cost.</p></li><li><p class="en">These will not change: <span class="slot">[fillings, crowns or veneers that will not whiten]</span>.<span class="when">Shown when fillings, crowns or veneers that will not whiten is filled in</span></p></li><li><p class="en">Results vary, and the shade fades over time.</p></li><li><p class="en">White spots may look more visible for a while.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Other choices</h4>
+    
+    <ul><li><p class="en">No treatment.</p></li><li><p class="en">Cleaning and polishing.</p></li><li><p class="en">Bonding, veneers or crowns.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>If you do not have it</h4>
+    
+    <p class="en">Your teeth stay their present shade.</p>
+  </div>
+  <div class="block">
+    <h4>Cost</h4>
+    
+    <p class="en">The estimated fee is <span class="slot">[estimated fee]</span>. If it changes, the clinic tells you first.<span class="when">Shown when estimated fee is amount or range</span></p><p class="fil"><span class="lang">Filipino draft</span>Sinabi sa akin ang tinatayang bayad na <span class="slot">[estimated fee]</span> at kung ano ang kasama rito. Kung magbabago ang halaga, sasabihin muna ito sa akin ng klinika.</p><p class="en">The dentist tells you the cost before starting, and nothing starts until you agree to it.<span class="when">Shown when estimated fee is later</span></p><p class="fil"><span class="lang">Filipino draft</span>Sasabihin ng dentista ang halaga bago magsimula, at walang sisimulan hangga’t hindi ako pumapayag.</p>
+  </div>
+  <div class="block">
+    <h4>Your rights</h4>
+    
+    <p class="en">You may say no, or change your mind and stop at any time. The dentist will tell you what stopping may mean for your teeth. You may ask for a second opinion.</p><p class="fil"><span class="lang">Filipino draft</span>Maaari akong tumanggi, o magbago ng isip at ipahinto ang gamutan anumang oras; sasabihin sa akin ng dentista kung ano ang maaaring mangyari sa aking ngipin kapag itinigil ito.</p><p class="en">If the dentist finds something unexpected, they stop and explain before doing more, unless stopping would put you at risk.</p><p class="fil"><span class="lang">Filipino draft</span>Kung may matuklasang hindi inaasahan ang dentista, hihinto muna siya at magpapaliwanag bago gumawa ng iba pa, maliban kung makasasama sa akin ang paghinto.</p>
+  </div>
+  <div class="block"><h4>Questions the patient answers</h4><ul><li><p class="en">Are you pregnant, or could you be? <span class="dim">(yes · no · not sure)</span> <span class="tag warn">Answering yes or unsure means they cannot agree</span></p></li><li><p class="en">Do you smoke, or drink alcohol often? <span class="dim">(yes · no)</span> <span class="tag warn">Answering yes means they cannot agree</span></p></li><li><p class="en">Have you had a filling or crown in the last 2 weeks? <span class="dim">(yes · no)</span> <span class="tag warn">Answering yes means they cannot agree</span></p></li></ul></div>
+  <div class="block"><h4>The ticks before signing</h4><ul><li><p class="en">Dr <span class="slot">[the dentist]</span> explained this to me in <span class="slot">[the language]</span>, and my questions were answered.</p><p class="fil"><span class="lang">Filipino draft</span>Ipinaliwanag sa akin ni Dr <span class="slot">[the dentist]</span> sa <span class="slot">[the language]</span> ang gamutang ito, at nasagot ang aking mga tanong.</p></li><li><p class="en">I understand the risks above, and that no one can promise a particular result.</p><p class="fil"><span class="lang">Filipino draft</span>Naiintindihan ko ang mga panganib sa itaas, at na walang makapangangako ng tiyak na resulta.</p></li></ul></div>
+  <div class="block"><h4>The clinic’s part</h4>
+    <table class="fields"><thead><tr><th>Field</th><th>Filled in by</th><th>Kind</th></tr></thead><tbody>
+    <tr><td>How<br><span class="dim">in the clinic · with trays at home · in the clinic and with trays at home</span></td><td>The dentist (the desk may propose)</td><td>choice, required</td></tr><tr><td>Product</td><td>The dentist (the desk may propose)</td><td>text</td></tr><tr><td>Strength</td><td>The dentist (the desk may propose)</td><td>text</td></tr><tr><td>Sessions</td><td>The desk</td><td>number</td></tr><tr><td>Shade before</td><td>The dentist (the desk may propose)</td><td>text</td></tr><tr><td>Fillings, crowns or veneers that will not whiten</td><td>The dentist (the desk may propose)</td><td>teeth</td></tr><tr><td>Estimated fee</td><td>The desk</td><td>money, required</td></tr>
+    </tbody></table></div>
+  <div class="block"><h4>What signing means</h4><p class="en">tooth whitening</p><p class="en"><span class="dim">meaning agree for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p><p class="en"><span class="dim">meaning refuse for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, do not agree for <span class="slot">[the patient]</span> to have <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</p></div>
+  <p class="signoff">Reviewed by ______________________ (dentist) on ________ · ______________________ (lawyer) on ________ · Languages: English ☐ Filipino ☐</p>
+</section>
+<section class="form" id="form-photos">
+  <header class="form-head">
+    <h3>Photos and use of records</h3>
+    <p class="facts">
+      <span class="pill mono">photos-2026-10</span>
+      <span class="pill">No dentist explains it first</span>
+      <span class="pill">Under 18: a parent or guardian signs</span>
+      <span class="pill">Covers treatment until withdrawn</span>
+      <span class="pill">About 1 min to read</span>
+    </p>
+    <p class="fp">Fingerprint <span class="mono">DJ2W-EKXZ-V6</span> <span class="mono dim">ede2cb1245956763860cae58062cfe1f100db54699cc03fe02bec2a20f6a1a07</span></p>
+  </header>
+  <div class="block"><h4>In short</h4><p class="en">The clinic asks your permission to use photos of your teeth for things other than your care.</p><p class="en">Saying no does not change your care.</p><p class="en">You may change your mind at any time.</p></div>
+  
+  <div class="block">
+    <h4>For your record</h4>
+    
+    <p class="en">Photos, X-rays and scans for diagnosis and your record are part of your care. The consent to examination and treatment and the privacy notice cover them.</p>
+  </div>
+  <div class="block">
+    <h4>What the clinic asks</h4>
+    
+    <p class="en">The clinic takes <span class="slot">[photos taken]</span>.<span class="when">Shown when photos taken is filled in</span></p><p class="en">It asks your permission for each of these: <span class="slot">[uses to ask about]</span>.</p>
+  </div>
+  <div class="block">
+    <h4>Your choices</h4>
+    
+    <ul><li><p class="en">Saying no to any of these does not change your care.</p></li><li><p class="en">Each use has its own yes or no. Nothing is ticked for you.</p></li></ul>
+  </div>
+  <div class="block">
+    <h4>Changing your mind</h4>
+    
+    <ul><li><p class="en">To change your mind later, tell the clinic in person, by phone or by text.</p></li><li><p class="en">It stops future use. What was already published or printed may not be recalled.</p></li></ul>
+  </div>
+  <div class="block"><h4>Questions the patient answers</h4><ul><li><p class="en">May the clinic share them with a specialist or laboratory for this treatment? <span class="dim">(yes · no)</span><span class="when">Shown when uses to ask about is sharing with a specialist or laboratory for this treatment</span></p></li><li><p class="en">May they be used for teaching and in journals, without your name? <span class="dim">(yes · no)</span><span class="when">Shown when uses to ask about is teaching and journals, without your name</span></p></li><li><p class="en">May they be shown on the clinic’s website or social media? <span class="dim">(yes · no)</span><span class="when">Shown when uses to ask about is the clinic’s website or social media</span></p></li><li><p class="en">On the website or social media, may your face show? <span class="dim">(yes · no)</span><span class="when">Shown when uses to ask about is the clinic’s website or social media</span></p></li><li><p class="en">On the website or social media, may your name show? <span class="dim">(yes · no)</span><span class="when">Shown when uses to ask about is the clinic’s website or social media</span></p></li></ul></div>
+  <div class="block"><h4>The ticks before signing</h4><ul></ul></div>
+  <div class="block"><h4>The clinic’s part</h4>
+    <table class="fields"><thead><tr><th>Field</th><th>Filled in by</th><th>Kind</th></tr></thead><tbody>
+    <tr><td>Photos taken<br><span class="dim">photos inside the mouth · photos of the face</span></td><td>The desk</td><td>choices</td></tr><tr><td>Uses to ask about<br><span class="dim">sharing with a specialist or laboratory for this treatment · teaching and journals, without your name · the clinic’s website or social media</span></td><td>The desk</td><td>choices, required</td></tr>
+    </tbody></table></div>
+  <div class="block"><h4>What signing means</h4><p class="en">the choices on this form about my photos and records</p><p class="en"><span class="dim">agree:</span> Yes, with these choices.</p><p class="en"><span class="dim">refuse:</span> No, thank you.</p><p class="en"><span class="dim">meaning agree for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, agree to the choices on this form about the photos and records of <span class="slot">[the patient]</span>.</p><p class="en"><span class="dim">meaning refuse:</span> By signing, I, <span class="slot">[the signer’s name]</span>, do not agree to any use of my photos and records beyond my care.</p><p class="en"><span class="dim">meaning refuse for:</span> By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, do not agree to any use of the photos and records of <span class="slot">[the patient]</span> beyond their care.</p></div>
+  <p class="signoff">Reviewed by ______________________ (dentist) on ________ · ______________________ (lawyer) on ________ · Languages: English ☐ Filipino ☐</p>
+</section>
+
+  <h2 id="shared">2. Words every form shares</h2>
+  <div class="card table-wrap"><table><tbody><tr><td class="dim">agree</td><td>I agree to the treatment described above.<br><span class="fil-inline">Pumapayag ako sa gamutang nakasaad sa itaas.</span></td></tr><tr><td class="dim">refuse</td><td>I do not agree to the treatment described above, and I understand what may happen without it.<br><span class="fil-inline">Hindi ako pumapayag sa gamutang nakasaad sa itaas, at naiintindihan ko ang maaaring mangyari kung hindi ako magpapagamot.</span></td></tr><tr><td class="dim">later</td><td>I want to ask the dentist first.</td></tr><tr><td class="dim">read self</td><td>I read this form myself.</td></tr><tr><td class="dim">read to</td><td>This form was read to me by <span class="slot">[who read it aloud]</span>.</td></tr><tr><td class="dim">as parent</td><td>I am the patient’s parent, and I have the right to consent for them.</td></tr><tr><td class="dim">as guardian</td><td>I am the patient’s guardian appointed by a court, and the order is with the clinic.</td></tr><tr><td class="dim">as written</td><td>A parent of the patient authorised me in writing to consent to this treatment, and the letter is with the clinic.</td></tr><tr><td class="dim">as substitute</td><td>The patient’s parents <span class="slot">[the ground]</span>. I am the patient’s <span class="slot">[who they are]</span>, and 21 or older where the law requires it.</td></tr><tr><td class="dim">as representative</td><td>The dentist has recorded that the patient cannot decide for themself. I am their <span class="slot">[their relation]</span>.</td></tr><tr><td class="dim">by mark</td><td>The patient cannot write and made this mark as their signature, in front of the clinic’s staff.</td></tr><tr><td class="dim">attest</td><td>I confirmed the details above, explained them to the patient (or parent or guardian) in <span class="slot">[the language]</span>, answered their questions, and believe they understood.</td></tr><tr><td class="dim">meaning agree</td><td>By signing, I, <span class="slot">[the signer’s name]</span>, agree to <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</td></tr><tr><td class="dim">meaning agree for</td><td>By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, agree for <span class="slot">[the patient]</span> to be examined, and to have treatment once the dentist has explained it, as described above.</td></tr><tr><td class="dim">meaning refuse</td><td>By signing, I, <span class="slot">[the signer’s name]</span>, do not agree to <span class="slot">[what is agreed to]</span><span class="slot">[by whom]</span> as described above.</td></tr><tr><td class="dim">meaning refuse for</td><td>By signing, I, <span class="slot">[the signer’s name]</span>, <span class="slot">[their relation]</span> of <span class="slot">[the patient]</span>, do not agree for <span class="slot">[the patient]</span> to be examined, or to have treatment, as described above.</td></tr><tr><td class="dim">meaning by</td><td> by Dr <span class="slot">[the dentist]</span></td></tr></tbody></table></div>
+
+  <h2 id="chart">3. The chart after a treatment</h2>
+  <div class="card">
+<table class="fields"><thead><tr><th>Fee-guide code</th><th>What it charts</th></tr></thead><tbody>
+<tr><td class="mono">restoration</td><td>filled</td></tr><tr><td class="mono">sealant</td><td>sealant</td></tr><tr><td class="mono">rootcanal</td><td>root canal</td></tr><tr><td class="mono">crown</td><td>crown</td></tr><tr><td class="mono">extraction</td><td>missing</td></tr><tr><td class="mono">wisdom</td><td>missing</td></tr><tr><td class="mono">veneers</td><td>veneer</td></tr>
+</tbody></table>
+<p class="dim">Any other code charts nothing unless the clinic sets it. The effects a code can have: filled, sealant, root canal, crown, missing, veneer.</p>
+<h4>What the record says after the treatment</h4>
+<div class="cases"><div class="case"><p class="case-q">A filling on 26 MO, the chart shows caries on 26 MO</p><p class="case-a"><strong>Update the chart?</strong> Chart 26 MO as filled. Now: caries MO.</p></div><div class="case"><p class="case-q">A filling on 26 O, the chart shows caries on 26 MO</p><p class="case-a">26 still has caries on M, which Composite filling on O does not cover. The chart keeps one finding per tooth, so it was not changed.</p></div><div class="case"><p class="case-q">A crown on 36, the chart shows a root canal on 36</p><p class="case-a">36 shows root canal. The chart keeps one finding per tooth, so crown would hide it. Choose on the chart.</p></div><div class="case"><p class="case-q">An extraction of 48, the chart shows 48 sound</p><p class="case-a"><strong>Update the chart?</strong> Chart 48 as missing. Now: sound.</p></div><div class="case"><p class="case-q">A filling with no surfaces given, on 14</p><p class="case-a">No surfaces were written for this Composite filling, so the chart cannot show it. Chart 14 yourself.</p></div><div class="case"><p class="case-q">A root canal on 11, the chart shows a veneer on 11</p><p class="case-a">11 shows veneer. The chart keeps one finding per tooth, so root canal would hide it. Choose on the chart.</p></div><div class="case"><p class="case-q">An extraction of baby tooth 75</p><p class="case-a">The chart shows permanent teeth only, so 75 is not on it. The treatment is listed in Treatment.</p></div></div>
+<p class="ask">For the dentist: should a crown over a charted root canal be offered? Today it is not: the record asks the dentist to choose on the chart, as in the third case above. Should the offers from one visit be gathered into one question?</p></div>
+
+  <h2 id="care">4. Aftercare sheets</h2>
+  <p class="lede">Printed for the patient after a treatment, and the evening check-in text that follows it. General guidance; the dentist adjusts it to the clinic’s practice.</p>
+  
+<section class="sheet" id="care-extraction">
+  <h3>After a tooth extraction</h3>
+  <p class="dim">The check-in text goes 4 hours after the visit.</p>
+  <div class="two">
+    <div><h4>English</h4><p class="sub">Do</p><ul><li>Bite firmly on the gauze for 30 to 45 minutes, then take it out. If the socket still oozes, fold a fresh piece and bite for another 30 minutes.</li><li>Rest today. Keep your head up on a pillow when you lie down.</li><li>Take the pain reliever your dentist named before the numbness wears off, and as the label says.</li><li>From tomorrow, rinse gently with warm salt water after meals (half a teaspoon of salt in a glass of warm water).</li><li>Eat soft, cool food today: lugaw, soup that is not hot, yogurt, mashed banana.</li><li>Brush your other teeth as usual; go gently near the socket.</li><li>Keep your follow-up visit. If the dentist placed stitches, they come out or dissolve as they said.</li></ul><p class="sub">Avoid</p><ul><li>Do not rinse, spit or drink through a straw for 24 hours. The suction can pull the clot out and start the bleeding again.</li><li>Do not smoke or vape for at least 3 days, and no alcohol for 24 hours.</li><li>Do not touch the socket with your tongue or finger, and do not poke it with a toothpick.</li><li>No hot drinks or hot soup today.</li><li>Do not chew on that side until it feels comfortable.</li><li>Do not do heavy work or exercise today: it raises the blood pressure in the socket.</li></ul><p class="sub">Call the clinic if</p><ul><li>Bleeding that still soaks the gauze after 30 minutes of firm biting.</li><li>Pain that gets worse after 2 to 3 days instead of better, or a bad taste or smell from the socket (this may be dry socket).</li><li>Swelling that keeps growing after the second day, or trouble opening the mouth or swallowing.</li><li>Fever, or numbness that has not gone by the next day.</li><li>A rash, itching or trouble breathing from any medicine you were given (call, or go to the nearest emergency room).</li></ul></div>
+    <div><h4>Filipino</h4><p class="sub">Gawin</p><ul><li>Kagatin nang mahigpit ang gauze sa loob ng 30 hanggang 45 minuto, saka tanggalin. Kung may dugo pa rin, tupiin ang bagong gauze at kagatin ulit ng 30 minuto.</li><li>Magpahinga ngayong araw. Iunan ang ulo nang mas mataas kapag nakahiga.</li><li>Inumin ang pain reliever na sinabi ng dentista bago mawala ang pamamanhid, at sundin ang nakasulat sa label.</li><li>Simula bukas, magmumog nang dahan-dahan ng maligamgam na tubig na may asin pagkatapos kumain (kalahating kutsarita ng asin sa isang basong maligamgam na tubig).</li><li>Malambot at malamig na pagkain ngayong araw: lugaw, sabaw na hindi mainit, yogurt, minasang saging.</li><li>Magsipilyo gaya ng dati sa ibang ngipin; dahan-dahan lang malapit sa binunutan.</li><li>Bumalik sa follow-up. Kung may tahi, tatanggalin o matutunaw ito ayon sa sinabi ng dentista.</li></ul><p class="sub">Iwasan</p><ul><li>Huwag magmumog, dumura o uminom gamit ang straw sa loob ng 24 oras. Maaaring matanggal ang clot at dumugo ulit.</li><li>Huwag manigarilyo o mag-vape sa loob ng 3 araw, at walang alak sa loob ng 24 oras.</li><li>Huwag hawakan ng dila o daliri ang binunutan, at huwag sundutin ng toothpick.</li><li>Walang mainit na inumin o sabaw ngayong araw.</li><li>Huwag ngumuya sa gilid na iyon hangga’t hindi pa komportable.</li><li>Huwag magbuhat ng mabigat o mag-ehersisyo ngayong araw: tumataas ang presyon ng dugo sa binunutan.</li></ul><p class="sub">Tumawag sa klinika kung</p><ul><li>Dugong tumatagos pa rin sa gauze pagkatapos ng 30 minutong mahigpit na pagkagat.</li><li>Sakit na lumalala pagkatapos ng 2 hanggang 3 araw sa halip na humupa, o masamang lasa o amoy mula sa binunutan (maaaring dry socket ito).</li><li>Pamamagang patuloy na lumalaki pagkalipas ng ikalawang araw, o hirap buksan ang bibig o lumunok.</li><li>Lagnat, o pamamanhid na hindi pa nawawala kinabukasan.</li><li>Pantal, pangangati o hirap huminga mula sa gamot na ibinigay (tumawag, o pumunta sa pinakamalapit na emergency room).</li></ul></div>
+  </div>
+</section>
+<section class="sheet" id="care-surgical_extraction">
+  <h3>After a surgical extraction or wisdom tooth removal</h3>
+  <p class="dim">The check-in text goes 4 hours after the visit.</p>
+  <div class="two">
+    <div><h4>English</h4><p class="sub">Do</p><ul><li>Bite firmly on the gauze for 30 to 45 minutes, and change it if the wound still oozes. A little pink in your saliva for a day is normal.</li><li>Put an ice pack (or ice in a towel) on the cheek: 20 minutes on, 20 minutes off, for the first 24 hours. Swelling is largest on day 2 or 3, then goes down.</li><li>Take the pain reliever your dentist named before the numbness wears off, and as the label says. Finish any antibiotic to the last capsule.</li><li>Sleep with your head raised on two pillows the first night.</li><li>Soft, cool food for 2 to 3 days: lugaw, mashed potato, yogurt, scrambled egg, soup that is not hot.</li><li>From the second day, rinse gently with warm salt water after every meal, and brush your other teeth as usual.</li><li>Some stiffness in the jaw and a small bruise on the cheek are normal for up to a week.</li><li>Keep the check-up visit; stitches come out or dissolve as the dentist said.</li></ul><p class="sub">Avoid</p><ul><li>No rinsing, spitting or straws for 24 hours, so the clot stays in.</li><li>No smoking or vaping for at least a week, and no alcohol while on any medicine.</li><li>Do not drive or sign papers today if you were sedated.</li><li>Nothing hot, hard, crunchy or with small seeds (chips, nuts, rice crackers) this week.</li><li>Do not touch the wound with your tongue, a finger or a toothpick.</li><li>Do not do heavy work, sport or long bending over for 2 to 3 days.</li></ul><p class="sub">Call the clinic if</p><ul><li>Bleeding that soaks the gauze after 30 minutes of firm biting, or bright red bleeding that starts again after the first day.</li><li>Pain that gets worse from day 3, or a bad smell or taste from the wound (dry socket, which the clinic can dress).</li><li>Swelling that keeps growing after day 3, is hard and hot, or makes it hard to open the mouth, swallow or breathe (if breathing: go straight to the emergency room).</li><li>Fever of 38 °C or higher, or pus from the wound.</li><li>Numbness of the lip, chin or tongue that is still there the next day.</li><li>A rash, itching or trouble breathing from any medicine.</li></ul></div>
+    <div><h4>Filipino</h4><p class="sub">Gawin</p><ul><li>Kagatin nang mahigpit ang gauze sa loob ng 30 hanggang 45 minuto, at palitan kung may dugo pa rin. Normal ang bahagyang pulang laway sa loob ng isang araw.</li><li>Maglagay ng ice pack (o yelong nakabalot sa tuwalya) sa pisngi: 20 minutong nakalagay, 20 minutong tanggal, sa unang 24 oras. Pinakamalaki ang pamamaga sa ika-2 o ika-3 araw, saka humuhupa.</li><li>Inumin ang pain reliever na sinabi ng dentista bago mawala ang pamamanhid, at ayon sa label. Ubusin ang antibiotic hanggang sa huling kapsula.</li><li>Matulog na nakataas ang ulo sa dalawang unan sa unang gabi.</li><li>Malambot at malamig na pagkain sa loob ng 2 hanggang 3 araw: lugaw, minasang patatas, yogurt, scrambled egg, sabaw na hindi mainit.</li><li>Simula sa ikalawang araw, magmumog nang dahan-dahan ng maligamgam na tubig na may asin pagkatapos ng bawat kain, at magsipilyo gaya ng dati sa ibang ngipin.</li><li>Normal ang paninigas ng panga at kaunting pasa sa pisngi hanggang isang linggo.</li><li>Bumalik sa check-up; tatanggalin o matutunaw ang tahi ayon sa sinabi ng dentista.</li></ul><p class="sub">Iwasan</p><ul><li>Walang pagmumumog, pagdura o straw sa loob ng 24 oras, para hindi matanggal ang clot.</li><li>Huwag manigarilyo o mag-vape sa loob ng isang linggo, at walang alak habang umiinom ng gamot.</li><li>Huwag magmaneho o pumirma ng mga papeles ngayong araw kung binigyan ka ng sedation.</li><li>Walang mainit, matigas, malutong o may maliliit na buto (chips, mani, rice crackers) ngayong linggo.</li><li>Huwag hawakan ang sugat ng dila, daliri o toothpick.</li><li>Huwag magbuhat ng mabigat, mag-sports o yumuko nang matagal sa loob ng 2 hanggang 3 araw.</li></ul><p class="sub">Tumawag sa klinika kung</p><ul><li>Dugong tumatagos sa gauze pagkatapos ng 30 minutong mahigpit na pagkagat, o matingkad na pulang dugong bumalik pagkalipas ng unang araw.</li><li>Sakit na lumalala mula sa ika-3 araw, o masamang amoy o lasa mula sa sugat (dry socket, na malalagyan ng gamot sa clinic).</li><li>Pamamagang patuloy na lumalaki pagkalipas ng ika-3 araw, matigas at mainit, o nagpapahirap sa pagbuka ng bibig, paglunok o paghinga (kung hirap huminga: pumunta agad sa emergency room).</li><li>Lagnat na 38 °C pataas, o nana mula sa sugat.</li><li>Pamamanhid ng labi, baba o dila na naroon pa rin kinabukasan.</li><li>Pantal, pangangati o hirap huminga mula sa alinmang gamot.</li></ul></div>
+  </div>
+</section>
+<section class="sheet" id="care-root_canal">
+  <h3>After root canal treatment</h3>
+  <p class="dim">The check-in text goes 4 hours after the visit.</p>
+  <div class="two">
+    <div><h4>English</h4><p class="sub">Do</p><ul><li>Wait until the numbness wears off before eating, so you do not bite your cheek or tongue.</li><li>Expect the tooth to be tender for a few days, especially when you bite. Take the pain reliever your dentist named, as the label says.</li><li>Chew on the other side until the tooth has its final filling or crown. A tooth with a temporary filling breaks easily.</li><li>Brush and floss as usual, including this tooth; go gently at the gum.</li><li>Keep the next visit. The treatment is not finished until the tooth is sealed with its final filling or crown.</li><li>If the dentist gave an antibiotic, take every dose to the end.</li></ul><p class="sub">Avoid</p><ul><li>No hard, sticky or chewy food on that tooth (nuts, ice, chewing gum, chicharon, hard candy) until it has its final filling or crown.</li><li>Do not chew on that side at all while the temporary filling is in.</li><li>Do not skip the follow-up: an open or unsealed tooth can get infected again.</li><li>Do not push on the tooth with your tongue to test it.</li></ul><p class="sub">Call the clinic if</p><ul><li>Pain or swelling that gets worse after 2 to 3 days instead of better, or pain that the pain reliever does not touch.</li><li>The temporary filling falls out or feels broken, or the bite feels high and you cannot close your teeth together.</li><li>Swelling of the face or gum, fever, or a bad taste from the tooth.</li><li>A rash, itching or trouble breathing from any medicine.</li></ul></div>
+    <div><h4>Filipino</h4><p class="sub">Gawin</p><ul><li>Hintaying mawala ang pamamanhid bago kumain, para hindi makagat ang pisngi o dila.</li><li>Asahang masakit-sakit ang ngipin sa loob ng ilang araw, lalo na kapag kumakagat. Inumin ang pain reliever na sinabi ng dentista ayon sa label.</li><li>Ngumuya sa kabilang gilid hanggang malagyan ang ngipin ng pangwakas na pasta o crown. Madaling mabasag ang ngiping may temporary filling.</li><li>Magsipilyo at mag-floss gaya ng dati, kasama ang ngiping ito; dahan-dahan lang sa gilagid.</li><li>Bumalik sa susunod na appointment. Hindi pa tapos ang gamutan hangga’t hindi naseselyuhan ang ngipin ng pangwakas na pasta o crown.</li><li>Kung binigyan ka ng antibiotic, ubusin ang lahat ng dosis.</li></ul><p class="sub">Iwasan</p><ul><li>Walang matigas, malagkit o makunat na pagkain sa ngiping iyon (mani, yelo, chewing gum, chicharon, matigas na kendi) hangga’t wala pa ang pangwakas na pasta o crown.</li><li>Huwag ngumuya sa gilid na iyon habang nakalagay ang temporary filling.</li><li>Huwag liktawan ang follow-up: maaaring ma-impeksyon ulit ang ngiping bukas o hindi naseselyuhan.</li><li>Huwag itulak ng dila ang ngipin para subukin ito.</li></ul><p class="sub">Tumawag sa klinika kung</p><ul><li>Sakit o pamamagang lumalala pagkatapos ng 2 hanggang 3 araw sa halip na humupa, o sakit na hindi kayang ibsan ng pain reliever.</li><li>Natanggal o nabasag ang temporary filling, o parang mataas ang kagat at hindi mo maipagdikit ang mga ngipin.</li><li>Pamamaga ng mukha o gilagid, lagnat, o masamang lasa mula sa ngipin.</li><li>Pantal, pangangati o hirap huminga mula sa alinmang gamot.</li></ul></div>
+  </div>
+</section>
+<section class="sheet" id="care-filling">
+  <h3>After a filling</h3>
+  <p class="dim">The check-in text goes the evening of the visit.</p>
+  <div class="two">
+    <div><h4>English</h4><p class="sub">Do</p><ul><li>Wait until the numbness wears off (1 to 3 hours) before eating, so you do not bite your cheek, lip or tongue. Children need watching for this.</li><li>A tooth-coloured (composite) filling is set at once; a silver (amalgam) filling needs 24 hours before you chew on it.</li><li>Some sensitivity to cold, sweet or pressure for a few days to a few weeks is normal and should fade.</li><li>Brush and floss as usual, including the filled tooth.</li><li>If the bite feels high once the numbness is gone, come back: a small adjustment fixes it.</li></ul><p class="sub">Avoid</p><ul><li>Do not eat or drink anything hot while numb: you can burn your mouth without feeling it.</li><li>No very hard or sticky food (ice, hard candy, chewing gum) on the filled tooth for a day.</li><li>Do not chew on the side of a silver filling for 24 hours.</li><li>Do not grind or clench on it to test it.</li></ul><p class="sub">Call the clinic if</p><ul><li>Pain that gets worse over days, a throbbing ache, or pain that wakes you at night.</li><li>The bite still feels high or uneven after two days, or the filling feels rough, chipped or has fallen out.</li><li>Sensitivity that is getting worse instead of better after two weeks.</li><li>Swelling of the gum or face around the tooth.</li></ul></div>
+    <div><h4>Filipino</h4><p class="sub">Gawin</p><ul><li>Hintaying mawala ang pamamanhid (1 hanggang 3 oras) bago kumain, para hindi makagat ang pisngi, labi o dila. Bantayan ang mga bata dito.</li><li>Ang kulay-ngiping pasta (composite) ay matigas na agad; ang pilak na pasta (amalgam) ay kailangan ng 24 oras bago ngumuya rito.</li><li>Normal ang pagiging sensitibo sa lamig, matamis o pagdiin sa loob ng ilang araw hanggang ilang linggo, at dapat itong humupa.</li><li>Magsipilyo at mag-floss gaya ng dati, kasama ang ngiping pinastahan.</li><li>Kung parang mataas ang kagat pagkawala ng pamamanhid, bumalik: maliit na pag-aayos lang ang kailangan.</li></ul><p class="sub">Iwasan</p><ul><li>Huwag kumain o uminom ng mainit habang manhid: maaari kang mapaso nang hindi mo nararamdaman.</li><li>Walang napakatigas o malagkit na pagkain (yelo, matigas na kendi, chewing gum) sa ngiping pinastahan sa loob ng isang araw.</li><li>Huwag ngumuya sa gilid ng pilak na pasta sa loob ng 24 oras.</li><li>Huwag ipagngalit o idiin ang mga ngipin para subukin ito.</li></ul><p class="sub">Tumawag sa klinika kung</p><ul><li>Sakit na lumalala sa paglipas ng mga araw, kumikirot, o sakit na gumigising sa iyo sa gabi.</li><li>Mataas o hindi pantay pa rin ang kagat pagkalipas ng dalawang araw, o magaspang, may tipak o natanggal ang pasta.</li><li>Sensitibidad na lumalala sa halip na humupa pagkalipas ng dalawang linggo.</li><li>Pamamaga ng gilagid o mukha sa paligid ng ngipin.</li></ul></div>
+  </div>
+</section>
+<section class="sheet" id="care-cleaning">
+  <h3>After a cleaning</h3>
+  <p class="dim">The check-in text goes the evening of the visit.</p>
+  <div class="two">
+    <div><h4>English</h4><p class="sub">Do</p><ul><li>Your gums may be a little sore and may bleed a bit when you brush for a day or two. That is normal and settles as the gums heal.</li><li>Brush twice a day with a soft brush, and floss or use interdental brushes once a day: keep it up and the next cleaning is easier.</li><li>Rinse with warm salt water if the gums feel tender.</li><li>Teeth may feel sensitive to cold for a few days now that the tartar is off; a toothpaste for sensitive teeth helps.</li><li>If fluoride was applied, wait 30 minutes before eating or drinking.</li><li>Book your next cleaning as the dentist advised, usually every 6 months.</li></ul><p class="sub">Avoid</p><ul><li>Do not skip brushing because the gums bleed a little: gentle brushing is what stops the bleeding.</li><li>No smoking today: it slows gum healing.</li><li>Avoid very hot, very cold or very sweet food and drinks today if your teeth feel sensitive.</li><li>Avoid strongly coloured food and drinks (coffee, tea, soy sauce, red wine) for a few hours if the teeth were polished or stains removed.</li></ul><p class="sub">Call the clinic if</p><ul><li>Bleeding from the gums that does not stop, or is more than a little pink when you spit.</li><li>Gums that get more swollen, red or painful over the next days instead of better.</li><li>Sensitivity that is severe or lasts more than two weeks.</li><li>A tooth or filling that feels loose or has chipped.</li></ul></div>
+    <div><h4>Filipino</h4><p class="sub">Gawin</p><ul><li>Maaaring masakit-sakit ang gilagid at bahagyang dumugo kapag nagsisipilyo sa loob ng isa o dalawang araw. Normal ito at humuhupa habang gumagaling ang gilagid.</li><li>Magsipilyo dalawang beses sa isang araw gamit ang malambot na sipilyo, at mag-floss o gumamit ng interdental brush isang beses sa isang araw: ipagpatuloy at mas magaan ang susunod na paglilinis.</li><li>Magmumog ng maligamgam na tubig na may asin kung masakit-sakit ang gilagid.</li><li>Maaaring maging sensitibo sa lamig ang ngipin sa loob ng ilang araw ngayong tanggal na ang tartar; makakatulong ang toothpaste para sa sensitibong ngipin.</li><li>Kung nilagyan ng fluoride, maghintay ng 30 minuto bago kumain o uminom.</li><li>Magpa-book ng susunod na paglilinis ayon sa payo ng dentista, karaniwang tuwing 6 na buwan.</li></ul><p class="sub">Iwasan</p><ul><li>Huwag liktawan ang pagsisipilyo dahil bahagyang dumudugo ang gilagid: ang marahang pagsisipilyo ang tumitigil sa pagdurugo.</li><li>Walang sigarilyo ngayong araw: pinapabagal nito ang paggaling ng gilagid.</li><li>Iwasan ang napakainit, napakalamig o napakatamis na pagkain at inumin ngayong araw kung sensitibo ang ngipin.</li><li>Iwasan ang matitingkad ang kulay na pagkain at inumin (kape, tsaa, toyo, red wine) sa loob ng ilang oras kung pinakintab o tinanggalan ng mantsa ang ngipin.</li></ul><p class="sub">Tumawag sa klinika kung</p><ul><li>Pagdurugo ng gilagid na hindi tumitigil, o higit pa sa bahagyang kulay-rosas kapag dumudura.</li><li>Gilagid na lalong namamaga, namumula o sumasakit sa susunod na mga araw sa halip na gumaling.</li><li>Sensitibidad na matindi o tumatagal nang higit sa dalawang linggo.</li><li>Ngipin o pastang parang maluwag o natipak.</li></ul></div>
+  </div>
+</section>
+<section class="sheet" id="care-crown">
+  <h3>After a crown, bridge or veneer</h3>
+  <p class="dim">The check-in text goes the evening of the visit.</p>
+  <div class="two">
+    <div><h4>English</h4><p class="sub">Do</p><ul><li>With a temporary crown: chew on the other side, and floss by pulling the floss out sideways rather than up, so it does not lift the temporary off.</li><li>With the final crown: wait until the numbness is gone, then eat normally; avoid the hardest food for 24 hours while the cement sets fully.</li><li>Some sensitivity to hot and cold and a little gum soreness for a few days is normal.</li><li>Brush and floss the crown like a natural tooth, especially at the gum line, where decay can start under a crown.</li><li>If the bite feels high once the numbness has gone, come back for a small adjustment.</li><li>Keep the visit for the final crown: a temporary is not made to last more than a few weeks.</li></ul><p class="sub">Avoid</p><ul><li>Nothing sticky or chewy (chewing gum, caramel, dried mango, toffee) or very hard (ice, nuts, bones) on a temporary crown.</li><li>Do not chew on the crown side while numb.</li><li>Do not use the crown to open packets or bite nails.</li><li>Do not skip the follow-up: a temporary left too long can let decay in.</li></ul><p class="sub">Call the clinic if</p><ul><li>The temporary or the crown comes off: keep it, do not glue it yourself, and call to have it put back.</li><li>Pain when you bite that does not settle in a few days, or a bite that feels high.</li><li>Sensitivity that gets worse or lasts more than a few weeks.</li><li>A crack, chip or rough edge on the crown or veneer, or swelling of the gum around it.</li></ul></div>
+    <div><h4>Filipino</h4><p class="sub">Gawin</p><ul><li>Kung temporary crown: ngumuya sa kabilang gilid, at kapag nagfa-floss, hilahin ang floss pagilid sa halip na paitaas, para hindi maangat ang temporary.</li><li>Kung pangwakas na crown: hintaying mawala ang pamamanhid, saka kumain nang normal; iwasan muna ang pinakamatitigas na pagkain sa loob ng 24 oras habang lubusang tumitigas ang cement.</li><li>Normal ang bahagyang sensitibidad sa init at lamig at kaunting sakit ng gilagid sa loob ng ilang araw.</li><li>Sipilyuhin at i-floss ang crown tulad ng tunay na ngipin, lalo na sa may gilagid, kung saan maaaring magsimula ang sira sa ilalim ng crown.</li><li>Kung parang mataas ang kagat pagkawala ng pamamanhid, bumalik para sa maliit na pag-aayos.</li><li>Bumalik sa appointment para sa pangwakas na crown: hindi ginawa ang temporary para tumagal nang higit sa ilang linggo.</li></ul><p class="sub">Iwasan</p><ul><li>Walang malagkit o makunat (chewing gum, caramel, dried mango, toffee) o napakatigas (yelo, mani, buto) sa temporary crown.</li><li>Huwag ngumuya sa gilid ng crown habang manhid.</li><li>Huwag gamitin ang crown sa pagbukas ng mga pakete o pagkagat ng kuko.</li><li>Huwag liktawan ang follow-up: ang temporary na naiwan nang matagal ay maaaring pasukin ng sira.</li></ul><p class="sub">Tumawag sa klinika kung</p><ul><li>Natanggal ang temporary o ang crown: itago ito, huwag idikit nang mag-isa, at tumawag para maibalik.</li><li>Sakit kapag kumakagat na hindi humuhupa sa loob ng ilang araw, o parang mataas ang kagat.</li><li>Sensitibidad na lumalala o tumatagal nang higit sa ilang linggo.</li><li>Bitak, tipak o magaspang na gilid sa crown o veneer, o pamamaga ng gilagid sa paligid nito.</li></ul></div>
+  </div>
+</section>
+<section class="sheet" id="care-denture">
+  <h3>Your new dentures</h3>
+  <p class="dim">The check-in text goes the evening of the visit.</p>
+  <div class="two">
+    <div><h4>English</h4><p class="sub">Do</p><ul><li>Wear them as much as you can in the first days: a new denture takes a week or two to get used to. Start with soft food cut small, chewing on both sides.</li><li>Take them out at night to let the gums rest, and keep them in water (or a denture solution) so they do not dry out and warp.</li><li>Clean them every day over a basin of water with a soft brush and mild soap or denture cleanser, and brush your gums, tongue and any remaining teeth.</li><li>Read aloud to get used to speaking with them; it comes quickly.</li><li>Sore spots are common at first: come back so the dentist can adjust them. Wear the denture for a few hours before that visit so the sore spot shows.</li><li>Come for a check-up every 6 months: as the gums change, a denture needs relining or adjusting.</li></ul><p class="sub">Avoid</p><ul><li>Do not use toothpaste, bleach or hot water on the denture: they scratch, discolour or warp it.</li><li>Do not sleep with the denture in.</li><li>Do not adjust or file it yourself, and do not use glue on a broken denture.</li><li>No sticky, hard or very chewy food in the first weeks.</li><li>Do not keep wearing a denture that hurts: an ulcer forms under it.</li></ul><p class="sub">Call the clinic if</p><ul><li>A sore spot that has not settled after a day or two, or an ulcer under the denture.</li><li>The denture cracks, a tooth comes off it, or it becomes loose and drops when you speak or eat.</li><li>Bleeding, swelling or pain in the gums that gets worse.</li><li>You still cannot eat or speak with it after two weeks.</li></ul></div>
+    <div><h4>Filipino</h4><p class="sub">Gawin</p><ul><li>Isuot ito hangga’t maaari sa unang mga araw: isa hanggang dalawang linggo bago masanay sa bagong pustiso. Magsimula sa malambot na pagkaing hiniwa nang maliliit, at ngumuya sa magkabilang gilid.</li><li>Tanggalin sa gabi para makapagpahinga ang gilagid, at ibabad sa tubig (o denture solution) para hindi matuyo at mabaluktot.</li><li>Linisin araw-araw sa ibabaw ng palanggana ng tubig gamit ang malambot na sipilyo at banayad na sabon o denture cleanser, at sipilyuhin ang gilagid, dila at natitirang ngipin.</li><li>Magbasa nang malakas para masanay sa pagsasalita; mabilis itong masasanay.</li><li>Karaniwan ang masakit na bahagi sa umpisa: bumalik para maayos ito ng dentista. Isuot ang pustiso ng ilang oras bago ang pagbisita para makita ang masakit na bahagi.</li><li>Magpa-check-up tuwing 6 na buwan: habang nagbabago ang gilagid, kailangang i-reline o ayusin ang pustiso.</li></ul><p class="sub">Iwasan</p><ul><li>Huwag gumamit ng toothpaste, bleach o mainit na tubig sa pustiso: nagagasgas, nangingitim o nababaluktot ito.</li><li>Huwag matulog na nakasuot ang pustiso.</li><li>Huwag ayusin o kikilin ito nang mag-isa, at huwag lagyan ng glue ang sirang pustiso.</li><li>Walang malagkit, matigas o napakakunat na pagkain sa unang mga linggo.</li><li>Huwag ipagpatuloy ang pagsuot ng pustisong masakit: nagkakaroon ng sugat sa ilalim nito.</li></ul><p class="sub">Tumawag sa klinika kung</p><ul><li>Masakit na bahaging hindi humuhupa pagkalipas ng isa o dalawang araw, o sugat sa ilalim ng pustiso.</li><li>Nabitak ang pustiso, natanggal ang isang ngipin nito, o lumuwag at nahuhulog kapag nagsasalita o kumakain.</li><li>Pagdurugo, pamamaga o sakit ng gilagid na lumalala.</li><li>Hindi ka pa rin makakain o makapagsalita nang maayos pagkalipas ng dalawang linggo.</li></ul></div>
+  </div>
+</section>
+<section class="sheet" id="care-braces_adjustment">
+  <h3>After a braces adjustment</h3>
+  <p class="dim">The check-in text goes the evening of the visit.</p>
+  <div class="two">
+    <div><h4>English</h4><p class="sub">Do</p><ul><li>Expect the teeth to be tender for 2 to 4 days after each adjustment. Soft food (lugaw, soup, pasta, mashed banana) helps, and the pain reliever your dentist named if needed.</li><li>Use orthodontic wax on any bracket or wire that rubs the cheek or lip; rinse with warm salt water if a sore forms.</li><li>Brush after every meal, angling the brush above and below each bracket, and clean between the teeth with floss threaders or interdental brushes.</li><li>Wear the elastics (rubber bands) exactly as instructed: they only work when worn all the time.</li><li>Keep every adjustment visit; a missed one adds months to the treatment.</li><li>Use a fluoride toothpaste, and a mouthwash if the dentist recommended one, to prevent white spots around the brackets.</li></ul><p class="sub">Avoid</p><ul><li>No hard, sticky or chewy food: ice, nuts, popcorn, chicharon, hard candy, caramel, chewing gum, corn on the cob.</li><li>Do not bite into whole apples or corn; cut them small.</li><li>Do not chew pens, nails or ice.</li><li>No fizzy drinks and sweets between meals: sugar around the brackets causes white spots and decay.</li><li>Do not try to fix a loose bracket or bend a wire yourself.</li></ul><p class="sub">Call the clinic if</p><ul><li>A bracket, band or wire has come loose or broken (call so it can be fixed; in the meantime cover it with wax).</li><li>A wire is poking the cheek and wax does not help.</li><li>Pain that lasts more than a week, or a tooth that feels very loose.</li><li>Swelling, or a sore in the mouth that is not healing.</li></ul></div>
+    <div><h4>Filipino</h4><p class="sub">Gawin</p><ul><li>Asahang masakit-sakit ang mga ngipin sa loob ng 2 hanggang 4 na araw pagkatapos ng bawat adjustment. Nakakatulong ang malambot na pagkain (lugaw, sabaw, pasta, minasang saging), at ang pain reliever na sinabi ng dentista kung kailangan.</li><li>Gumamit ng orthodontic wax sa bracket o wire na kumakaskas sa pisngi o labi; magmumog ng maligamgam na tubig na may asin kung may sugat.</li><li>Magsipilyo pagkatapos ng bawat kain, nakahilig ang sipilyo sa itaas at ibaba ng bawat bracket, at linisin ang pagitan ng mga ngipin gamit ang floss threader o interdental brush.</li><li>Isuot ang elastics (rubber bands) ayon mismo sa bilin: gumagana lang ang mga ito kapag palaging nakasuot.</li><li>Dumalo sa bawat adjustment; ang isang naliktawan ay nagdaragdag ng mga buwan sa gamutan.</li><li>Gumamit ng fluoride toothpaste, at mouthwash kung inirekomenda ng dentista, para maiwasan ang puting mantsa sa paligid ng bracket.</li></ul><p class="sub">Iwasan</p><ul><li>Walang matigas, malagkit o makunat na pagkain: yelo, mani, popcorn, chicharon, matigas na kendi, caramel, chewing gum, mais sa busal.</li><li>Huwag kagatin nang buo ang mansanas o mais; hiwain nang maliliit.</li><li>Huwag ngatngatin ang ballpen, kuko o yelo.</li><li>Walang softdrinks at matatamis sa pagitan ng mga kain: ang asukal sa paligid ng bracket ay nagdudulot ng puting mantsa at sira.</li><li>Huwag subukang ayusin ang maluwag na bracket o baluktutin ang wire nang mag-isa.</li></ul><p class="sub">Tumawag sa klinika kung</p><ul><li>Lumuwag o nasira ang bracket, band o wire (tumawag para maayos; samantala, takpan ito ng wax).</li><li>May wire na tumutusok sa pisngi at hindi nakakatulong ang wax.</li><li>Sakit na tumatagal nang higit sa isang linggo, o ngiping parang napakaluwag.</li><li>Pamamaga, o sugat sa bibig na hindi gumagaling.</li></ul></div>
+  </div>
+</section>
+<section class="sheet" id="care-whitening">
+  <h3>After teeth whitening</h3>
+  <p class="dim">The check-in text goes the evening of the visit.</p>
+  <div class="two">
+    <div><h4>English</h4><p class="sub">Do</p><ul><li>For 48 hours eat and drink only pale or white food and drinks (rice, chicken, fish, milk, water, white bread): the enamel is open and stains easily.</li><li>Expect some sensitivity to cold for a day or two; a toothpaste for sensitive teeth helps.</li><li>Brush gently with a soft brush and a fluoride toothpaste.</li><li>Use a straw for cold drinks if the teeth are sensitive.</li><li>Keep the shade with good brushing, and ask the dentist about touch-up trays if you have them.</li></ul><p class="sub">Avoid</p><ul><li>No coffee, tea, cola, red wine, soy sauce, adobo, curry, tomato sauce, berries or dark chocolate for 48 hours.</li><li>No smoking or vaping for 48 hours (better still, longer: it is the main cause of stains).</li><li>No coloured mouthwash or coloured toothpaste for 48 hours.</li><li>Nothing very hot or very cold if the teeth are sensitive.</li><li>Do not whiten again sooner than the dentist advised.</li></ul><p class="sub">Call the clinic if</p><ul><li>Sensitivity that is severe or still there after a few days.</li><li>Gums that are white, sore or burning and not better by the next day.</li><li>Uneven or patchy colour that worries you.</li><li>A rash or swelling of the lips or gums.</li></ul></div>
+    <div><h4>Filipino</h4><p class="sub">Gawin</p><ul><li>Sa loob ng 48 oras, kumain at uminom lang ng maputi o mapusyaw na pagkain at inumin (kanin, manok, isda, gatas, tubig, puting tinapay): bukas ang enamel at madaling mamantsa.</li><li>Asahang bahagyang sensitibo sa lamig sa loob ng isa o dalawang araw; makakatulong ang toothpaste para sa sensitibong ngipin.</li><li>Magsipilyo nang marahan gamit ang malambot na sipilyo at fluoride toothpaste.</li><li>Gumamit ng straw sa malalamig na inumin kung sensitibo ang ngipin.</li><li>Panatilihin ang kulay sa mabuting pagsisipilyo, at itanong sa dentista ang tungkol sa touch-up tray kung mayroon ka.</li></ul><p class="sub">Iwasan</p><ul><li>Walang kape, tsaa, cola, red wine, toyo, adobo, curry, tomato sauce, berries o dark chocolate sa loob ng 48 oras.</li><li>Walang sigarilyo o vape sa loob ng 48 oras (mas mabuti kung mas matagal: ito ang pangunahing sanhi ng mantsa).</li><li>Walang may kulay na mouthwash o may kulay na toothpaste sa loob ng 48 oras.</li><li>Walang napakainit o napakalamig kung sensitibo ang ngipin.</li><li>Huwag magpa-whitening ulit nang mas maaga kaysa sa ipinayo ng dentista.</li></ul><p class="sub">Tumawag sa klinika kung</p><ul><li>Sensitibidad na matindi o naroon pa rin pagkalipas ng ilang araw.</li><li>Gilagid na pumuti, masakit o mahapdi, at hindi bumubuti kinabukasan.</li><li>Hindi pantay o batik-batik na kulay na nakababahala sa iyo.</li><li>Pantal o pamamaga ng labi o gilagid.</li></ul></div>
+  </div>
+</section>
+
+  <h2 id="privacy">5. The next privacy notice</h2>
+  <div class="card">
+    <p>The notice in force is <span class="mono">privacy-2026-09</span>. Before the patient forms open on the live site, a new version must name, in plain words, why it is collected, who sees it and how long it is kept:</p>
+    <ul>
+      <li>health and dental history, allergies, conditions and medicines;</li>
+      <li>home address, emergency contact, and a parent’s or guardian’s details for a patient under 18;</li>
+      <li>Facebook name, PhilHealth PIN and HMO card number;</li>
+      <li>that a form nobody adds to the records is deleted 30 days after it is sent;</li>
+      <li>the IP address stored with each consent, which the current notice does not mention;</li>
+      <li>that texts are reminders only (the current notice says patients can “confirm or cancel by text”, which the clinic’s one-way texts cannot do).</li>
+    </ul>
+    <p class="dim">The general consent to examination and treatment (<span class="mono">treatment-2026-09</span>, form 1 above) is read with it.</p>
+  </div>
+
+  <h2 id="questions">6. The owner’s open questions</h2>
+  <div class="card"><ul>
+    <li>Should a reminder text wait while its visit sits in time the clinic has closed and nobody has handled? Today the reminder still goes.</li>
+    <li>Should the calendar ask why a patient goes ahead without a consent form already at Arrived, or only at the chair as now?</li>
+    <li>Time between visits (turnover) is 0 minutes. Should the clinic’s calendar keep a gap?</li>
+  </ul></div>
+</main>

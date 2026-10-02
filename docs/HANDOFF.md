@@ -123,6 +123,26 @@ never drops anything.
 What it cannot do, because they need a running server and a browser: the QR
 forms backend test, the glass measurements and the booking walk (Tools, below).
 
+## The round's eight steps (reconstructed 2 Oct 2026)
+
+The session that built PR #38 worked from an eight-step plan; only "the plan's
+step 4: the final check, then ready and merge" reached the repository, and the
+owner does not have the list. This is the plan as the repository shows it: the
+round's commits, PR #38's own "Before a clinic depends on this" list, and the
+house pattern of earlier handoffs (build, check, merge, then the owner's
+steps). Keep it here; a new step goes at the end, never in place.
+
+| Step | What | Where it stands |
+|---|---|---|
+| 1 | The Treatment record (the owner's "make it as such") | Done, PR #38 |
+| 2 | The six scheduling features: blocked time, free times, the one-dentist clinic, edit a visit, tooth-first charting, PTR | Done, PR #38 |
+| 3 | The step-by-step intake, phases 1 and 2, and the review's fixes (043) | Done, PR #38 |
+| 4 | The combined final check (V1–V6), ready, merge | Done: PR #38 merged 1 Oct |
+| 5 | Deploy (039–043 through `db:migrate`) and look at the live site | Done from a session: `/healthz` ok, every public page 200, the intake's routes live. Screenshots still owed from the owner's machine (a session's browser does not trust its proxy). |
+| 6 | The intake's remaining phases: 3, their own phone; 4, the record integration | Done: PRs #40 and #41; #42 adds 4.3, 4.4 and In the chair (open) |
+| 7 | The reviews: a dentist reads the consent forms, the chart's offer and the aftercare; the lawyer reads the consent forms and the next privacy notice | Ready for them: `npm run review:pack` writes `docs/review/review-pack.html` (published privately for the owner to share). Their sign-off fills `CONSENT_REVIEWED`; a new privacy version opens the QR forms |
+| 8 | The owner's answers: reminders in closed time (p07 §7.1), turnover, In the chair or Arrived; then the Open list in the owner's order | Waiting on the owner (the questions are section 6 of the pack) |
+
 ## What to do next
 
 ### 1. After the merges: look at the live site, and tell the owner

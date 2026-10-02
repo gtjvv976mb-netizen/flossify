@@ -1490,6 +1490,9 @@ page 1 beside the record with "Use" per detail, and withdrawals and overrides as
 - **Going ahead without a consent form asks why** on the record (Mark done anyway, the strip's Go ahead
   anyway) and on the calendar (In the chair → Seat anyway), and never blocks: the owner may want to say whether
   the board's question should also come at Arrived, or only at the chair as now.
+- **The review pack** (`npm run review:pack`, `docs/review/review-pack.html`) is what the dentist and the
+  lawyer read: re-run it after any change of words and send the new copy; each form's foot is its sign-off,
+  and the fingerprint printed with it is what a `CONSENT_REVIEWED` entry is for.
 - **The consent forms (039) are unreviewed drafts** (`CONSENT_REVIEWED` is empty), in force in the
   database from 1 Oct 2026; production offers none until a dentist and the owner's lawyer have read each. The
   Filipino "In short" lines for nine forms and the attestation's Filipino are not written yet.
@@ -1608,6 +1611,7 @@ src/lib/intake-def.ts, patient-add.ts, refused.ts  the intake's page 1; adding a
 scripts/dev/intake/db-test.mjs the intake database checks; scripts/ts-register.mjs runs a script that imports src/lib
 scripts/dev/settings/profile-check.mjs  the public profile's lines and the clinic's founding year, end to end
 scripts/dev/schedule/seat-check.mjs     In the chair asks why for a consent form not agreed (API, Dashboard, 390 px)
+scripts/dev/review/review-pack.ts       npm run review:pack → docs/review/review-pack.html: every consent form, the chart's offer, aftercare, the privacy gaps, for the dentist and lawyer
 src/data/migrations/040        blocked time: lunch, dentist hours, clinic_block, blocked_ok_at, clinic_unavailable(), public_blocked/busy_ranges()
 src/lib/blocks.ts, block-words.ts   blocked time: the desk's reads and writes over clinic_unavailable(), and the words (pure)
 src/lib/schedule-api.ts, reminder-state.ts  the schedule API's gate and body readers; a visit's reminder in words
