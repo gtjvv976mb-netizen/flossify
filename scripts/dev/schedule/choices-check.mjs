@@ -144,6 +144,7 @@ const saveProfile = () => Promise.all([p.waitForLoadState('load'), p.locator('fo
   ok('the Dashboard boot carries the clinic\'s gap (20) for the suggested times');
 }
 
+let restoreHours = async () => {};
 const csrfOf = async () => p.evaluate(() => JSON.parse(document.querySelector('script[data-dash-boot]').textContent).csrf);
 const api = (method, path, body) => p.evaluate(async ([m, u, b, s]) => {
   const c = JSON.parse(document.querySelector('script[data-dash-boot]').textContent).csrf;
@@ -155,8 +156,18 @@ const api = (method, path, body) => p.evaluate(async ([m, u, b, s]) => {
 {
   await p.goto(`${base}/c/${slug}/`, { waitUntil: 'load' });
   await csrfOf();
-  const tomorrowOpen = (await q(`select exists (select 1 from clinic_hours where clinic_id = $1 and dow = extract(dow from (now() at time zone 'Asia/Manila')::date + 1) and open_min <= 600 and close_min >= 720) as y`, [clinicId]))[0].y;
-  assert.ok(tomorrowOpen, 'the clinic is open tomorrow 10 am to noon (the seed: Mon–Sat)');
+  // The reminder pass writes tomorrow's reminders, so the visit is tomorrow, in open time. The seed is open Mon–Sat:
+  // run on a Saturday, tomorrow is a Sunday, so tomorrow's weekday is opened for this check and closed after it.
+  const tomorrowDow = (await q(`select extract(dow from (now() at time zone 'Asia/Manila')::date + 1)::int as d`))[0].d;
+  const hadHours = (await q('select open_min, close_min, break_from_min, break_to_min from clinic_hours where clinic_id = $1 and dow = $2', [clinicId, tomorrowDow]))[0] ?? null;
+  if (!hadHours || hadHours.open_min > 600 || hadHours.close_min < 720) {
+    await q(`insert into clinic_hours (clinic_id, dow, open_min, close_min) values ($1, $2, 540, 1020)
+             on conflict (clinic_id, dow) do update set open_min = 540, close_min = 1020, break_from_min = null, break_to_min = null`, [clinicId, tomorrowDow]);
+    restoreHours = async () => {
+      if (hadHours) await q('update clinic_hours set open_min = $3, close_min = $4, break_from_min = $5, break_to_min = $6 where clinic_id = $1 and dow = $2', [clinicId, tomorrowDow, hadHours.open_min, hadHours.close_min, hadHours.break_from_min, hadHours.break_to_min]);
+      else await q('delete from clinic_hours where clinic_id = $1 and dow = $2', [clinicId, tomorrowDow]);
+    };
+  }
   const startSql = `(((now() at time zone 'Asia/Manila')::date + 1 + time '10:45')::timestamp at time zone 'Asia/Manila')`;
   const v = await visitAt(clinicId, patient.id, startSql, 30, { chair: 4 });
   const remindersOf = async () => q(`select status, dedupe_key from message_log where appointment_id = $1 and kind = 'reminder' order by created_at`, [v.id]);
@@ -304,6 +315,7 @@ const api = (method, path, body) => p.evaluate(async ([m, u, b, s]) => {
 await q(`update appointment set status = 'cancelled' where id = any($1::uuid[]) and status not in ('completed', 'cancelled')`, [planted]);
 await q(`update message_log set status = 'cancelled', dedupe_key = null where appointment_id = any($1::uuid[]) and status = 'queued'`, [planted]);
 await q(`update clinic set ${DEFAULTS} where id = $1`, [clinicId]);
+await restoreHours();
 await db.end();
 await browser.close();
 if (errs.length) { console.log('\nbrowser errors:'); for (const e of errs) console.log('  ' + e); process.exit(1); }

@@ -64,7 +64,6 @@ import {
 import { can } from '../../../lib/can';
 import { tasksFor } from '../../../lib/tasks';
 import TaskList from '../../../components/ws/TaskList.astro';
-import Empty from '../../../components/ws/Empty.astro';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -150,8 +149,12 @@ const todayTo = new Date(startMs(today) + DAY_MS);
 const data = await loadDashboard(clinic.id, { from, to, todayFrom, todayTo, finance, staffId: session.staffId });
 // Add patient and Import refuse anyone without can_edit_records here (canEditRecords): not offered to them.
 const canEdit = data.canEdit;
-// Your open tasks (032), the first three, above the calendar; the Tasks page has the rest. Shown when there
-// is something open, or to someone who may give tasks (so they can find where to).
+// Someone who treats here — a dentist or associate, or an owner or admin with their own column on the calendar (the
+// dentist who also runs the clinic). They get Mine · Everyone and "Next for you"; only a dentist's Dashboard opens on
+// their own column, while an owner's opens on the whole clinic.
+const treats = isDentist || data.staff.some((s: { id: string }) => s.id === session.staffId);
+// Your open tasks (032), the first three, above the calendar; the Tasks page has the rest. Shown only while
+// something is open: an empty card pushed the day's calendar down. New → Task opens the Tasks page's form.
 const mayAssign = can(clinic, 'tasks.assign');
 const myTasks = (await withClinic(clinic.id, (tx) => tasksFor(tx, session.staffId))).filter((t) => !t.doneAt);
 const tasksHref = `/c/${clinic.slug}/tasks/`;
@@ -194,7 +197,7 @@ const canSchedule = can(clinic, 'schedule.edit');
 const canSettings = can(clinic, 'settings.edit');
 const boot = {
   slug: clinic.slug, csrf, today, date, view, by, dentist: dentistParam,
-  me: { id: session.staffId, name: session.name, dentist: isDentist },
+  me: { id: session.staffId, name: session.name, dentist: isDentist, treats },
   finance, canEdit, canSchedule, canSettings, canText: can(clinic, 'messages.send'),
   chairs: data.clinic.chairs, hours: data.hours, staff: data.staff, catalog: data.catalog,
   // The clinic's time between visits (044): the suggested times leave it after each visit.
@@ -244,12 +247,14 @@ const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
     )}
   </div>
 
-  {(myTasks.length > 0 || mayAssign) && (
-    <Pane id="tasks" icon="check" title="Your tasks" meta={myTasks.length ? `${myTasks.length} open` : 'Nothing open'} pad="none" class="dash-tasks">
+  {/* The one who treats: the patient in their chair now, or the next one booked with them, one tap from the record
+      (patients.ts draws it from today's visits and keeps it in step with the calendar). */}
+  {treats && <section class="ws-glass dash-next" data-pt-next aria-label="Your next patient" hidden></section>}
+
+  {myTasks.length > 0 && (
+    <Pane id="tasks" icon="check" title="Your tasks" meta={`${myTasks.length} open`} pad="none" class="dash-tasks">
       <a slot="actions" href={tasksHref} class="ws-btn ws-btn-quiet ws-btn-sm">{mayAssign ? 'Assign or see all' : 'See all'}<Icon name="arrow-right" size={16} /></a>
-      {myTasks.length
-        ? <TaskList tasks={myTasks.slice(0, 3)} me={session.staffId} action={tasksHref} back={`/c/${clinic.slug}/`} kind="mine" label="Your open tasks" compact />
-        : <div class="px-6 py-4 max-md:px-4"><Empty icon="check" text="Nothing open for you. Tasks you give the team are on the Tasks page." /></div>}
+      <TaskList tasks={myTasks.slice(0, 3)} me={session.staffId} action={tasksHref} back={`/c/${clinic.slug}/`} kind="mine" label="Your open tasks" compact />
       {myTasks.length > 3 && <p class="border-t border-[var(--ws-hair)] px-6 py-3 text-[14px] max-md:px-4"><a href={tasksHref} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">{myTasks.length - 3} more</a></p>}
     </Pane>
   )}
@@ -276,10 +281,10 @@ const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
           { id: 'day', label: 'Day', href: calUrl({ view: 'day' }) },
           { id: 'week', label: 'Week', href: calUrl({ view: 'week' }) },
         ]} />
-        {isDentist && (
+        {treats && (
           <Tabs label="Whose visits and patients" current={filter === session.staffId ? 'mine' : 'all'} class="cal-seg" items={[
-            { id: 'mine', label: 'Mine', href: calUrl({ dentist: '', by: 'dentist' }) },
-            { id: 'all', label: 'Everyone', href: calUrl({ dentist: 'all' }) },
+            { id: 'mine', label: 'Mine', href: isDentist ? calUrl({ dentist: '', by: 'dentist' }) : calUrl({ dentist: session.staffId, by: 'dentist' }) },
+            { id: 'all', label: 'Everyone', href: isDentist ? calUrl({ dentist: 'all' }) : calUrl({ dentist: '', by: 'chair' }) },
           ]} />
         )}
         <p class="cal-count" data-cal-count aria-live="off"></p>

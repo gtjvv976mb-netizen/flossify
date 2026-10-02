@@ -64,7 +64,9 @@ export function initPatients(ctx: Ctx): PatientsList {
   const isToday = (c: Card) => c.status !== 'cancelled' && Date.parse(c.startsAt) >= t0 && Date.parse(c.startsAt) < t0 + M.DAY_MS;
   const todays = new Map<string, Card>(boot.todayCards.filter(isToday).map((c) => [c.id, c]));
 
-  const mineOnly = () => boot.me.dentist && ctx.filter() === boot.me.id;
+  // A dentist, or an owner who treats (boot.me.treats): "mine" is their own column on the calendar.
+  const treats = boot.me.dentist || !!boot.me.treats;
+  const mineOnly = () => treats && ctx.filter() === boot.me.id;
 
   /** Each patient once, with the visit that decides their row: the first one still ahead of them today, or — all done —
    *  the last one. In the order of those visits. */
@@ -111,6 +113,7 @@ export function initPatients(ctx: Ctx): PatientsList {
     if (stepping) return;
     const id = btn.dataset.visit!, to = btn.dataset.to!, said = btn.dataset.said!;
     if (!todays.has(id)) return;
+    const from = btn.closest<HTMLElement>('[data-pt-next]') ?? list;
     stepping = true; btn.disabled = true;
     const r = await ctx.call('PATCH', { id, status: to });
     stepping = false; btn.disabled = false;
@@ -120,8 +123,8 @@ export function initPatients(ctx: Ctx): PatientsList {
     ctx.absorb(r.card);
     ctx.flash(r.card.id);
     ctx.say(`${r.card.patientName} ${said}.`);
-    // The list was redrawn: the focus stays with this visit's next step.
-    list.querySelector<HTMLButtonElement>(`.pt-step[data-visit="${id}"]`)?.focus({ preventScroll: true });
+    // The list was redrawn: the focus stays with this visit's next step, where it was pressed (else the first way on).
+    (from.querySelector<HTMLElement>(`.pt-step[data-visit="${id}"]`) ?? from.querySelector<HTMLElement>('a, button'))?.focus({ preventScroll: true });
   }
 
   function row({ p, c }: { p: Pt; c: Card }): HTMLLIElement {
@@ -202,7 +205,67 @@ export function initPatients(ctx: Ctx): PatientsList {
     empty.append(box);
   }
 
+  // --- Next for you: the one who treats, between patients ------------------------------------------------------------
+  // The patient in their chair now, else the next of their visits today not done yet: the time (or the minutes on
+  // the bench), the name, what it is for, the allergies and alerts, then Open record (the record opens on that visit's
+  // This visit strip) and the visit's next step, the same one press as the row. Gone when they have nobody today.
+  const nextBox = $('[data-pt-next]');
+  function renderNext() {
+    if (!nextBox) return;
+    const mine = [...todays.values()].filter((c) => c.dentistId === boot.me.id && !archived.has(c.patientId) && !M.isRequest(c))
+      .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    nextBox.hidden = mine.length === 0;
+    if (!mine.length) { nextBox.replaceChildren(); return; }
+    const now = mine.find((c) => c.status === 'in_chair');
+    const c = now ?? mine.find((x) => !M.DONE.has(x.status));
+    const left = mine.filter((x) => !M.DONE.has(x.status) && x.status !== 'in_chair').length;
+    if (!c) {
+      const done = mine.filter((x) => x.status === 'completed').length;
+      const line = el('p', 'dash-next-done');
+      line.append(icon('check', 18), `All done for you today: ${done === 1 ? 'one patient' : `${done} patients`} seen.`);
+      nextBox.replaceChildren(line);
+      return;
+    }
+    const p = byId.get(c.patientId) ?? stub(c);
+    const age = M.ageOf(p.birth, boot.today);
+    const wait = M.waitMinutes(c);
+    const head = el('p', 'dash-next-k', now ? 'In your chair' : 'Next for you');
+    const who = el('p', 'dash-next-who');
+    const nameEl = el('span', 'dash-next-name', p.name);
+    if (age !== null) nameEl.append(el('span', 'dash-next-age', ` · ${age}`));
+    who.append(el('b', 'dash-next-time', c.dateOnly ? 'Today' : M.timeOf(c.startsAt)), nameEl);
+    const what = M.whatOf(c);
+    const sub = el('p', 'dash-next-sub', [what, c.chair ? `chair ${c.chair}` : '', M.statusWord(c.status)].filter(Boolean).join(' · '));
+    const marks = el('p', 'dash-next-marks');
+    if (p.allergies.length) marks.append(pill(`Allergy: ${p.allergies.join(', ')}`, 'red', 'alert'));
+    for (const x of p.conditions) marks.append(pill(x, 'amber'));
+    if (wait !== null) marks.append(pill(`Waiting ${wait} min`, wait >= M.WAIT_ALERT_MIN ? 'amber' : 'slate', 'clock'));
+    const words = el('div', 'dash-next-words');
+    words.append(head, who, sub);
+    if (marks.childNodes.length) words.append(marks);
+    if (left > (now ? 0 : 1)) words.append(el('p', 'dash-next-then', `Then ${left - (now ? 0 : 1)} more with you today.`));
+    const acts = el('div', 'dash-next-acts');
+    const open = el('a', 'ws-btn ws-btn-quiet ws-btn-sm', 'Open record');
+    open.href = `${boot.links.record}${p.id}/?visit=${c.id}`;
+    open.setAttribute('aria-label', `Open ${p.name}’s record`);
+    acts.append(open);
+    const step = stepOf(c);
+    if (step) {
+      const st = el('button', 'ws-btn ws-btn-quiet ws-btn-sm pt-step');
+      st.type = 'button'; st.dataset.visit = c.id; st.dataset.to = step.to; st.dataset.said = step.said;
+      st.append(icon('check', 16), step.word);
+      st.setAttribute('aria-label', `${step.word}: ${p.name}`);
+      acts.append(st);
+    }
+    nextBox.replaceChildren(words, acts);
+  }
+  nextBox?.addEventListener('click', (e) => {
+    const step = (e.target as Element).closest<HTMLButtonElement>('.pt-step[data-visit]');
+    if (step) void takeStep(step);
+  });
+
   function render() {
+    renderNext();
     const found = people();
     list.replaceChildren(...found.map(row));
     list.hidden = found.length === 0;
@@ -220,7 +283,7 @@ export function initPatients(ctx: Ctx): PatientsList {
     }
     // A dentist's scope, in words, with the other half one click away.
     scopeLine.replaceChildren();
-    if (boot.me.dentist) {
+    if (treats) {
       const b = el('button', '', mineOnly() ? 'Show everyone' : 'Only mine'); b.type = 'button';
       b.addEventListener('click', () => ctx.setWhose(mineOnly() ? 'all' : 'mine'));
       scopeLine.append(mineOnly() ? 'Your patients today. ' : 'Everyone’s patients today. ', b);

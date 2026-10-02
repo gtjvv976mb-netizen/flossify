@@ -21,7 +21,9 @@ import { avatar, callout, icon, pill } from './ui';
 
 export interface Boot {
   slug: string; csrf: string; today: string; date: string; view: 'day' | 'week'; by: 'chair' | 'dentist'; dentist: string;
-  me: { id: string; name: string; dentist: boolean };
+  /** dentist: their Dashboard opens on their own column. treats: they have a column here at all (a dentist, or an
+   *  owner who treats), so Mine · Everyone and "Next for you" are theirs too. */
+  me: { id: string; name: string; dentist: boolean; treats?: boolean };
   finance: boolean;
   /** May add and import patients here (can_edit_records); the links to those pages show only then. */
   canEdit: boolean;
@@ -888,7 +890,9 @@ function start(boot: Boot) {
       links.forEach((a, i) => { const id = ids[i]; a.href = href(id); if (id === current) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
     };
     seg('View', ['day', 'week'], S.view, (id) => calUrl({ view: id }));
-    seg('Whose visits and patients', ['mine', 'all'], filter() === me.id ? 'mine' : 'all', (id) => (id === 'mine' ? calUrl({ dentist: '', by: 'dentist' }) : calUrl({ dentist: 'all' })));
+    seg('Whose visits and patients', ['mine', 'all'], filter() === me.id ? 'mine' : 'all', (id) => (me.dentist
+      ? (id === 'mine' ? calUrl({ dentist: '', by: 'dentist' }) : calUrl({ dentist: 'all' }))
+      : (id === 'mine' ? calUrl({ dentist: me.id, by: 'dentist' }) : calUrl({ dentist: '', by: 'chair' }))));
     // More: the columns and one dentist's visits, as links with the chosen one marked.
     const mark = (a: HTMLAnchorElement, on: boolean) => { if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); };
     for (const a of $$<HTMLAnchorElement>('[data-cal-by]')) { a.href = calUrl({ by: a.dataset.calBy }); mark(a, a.dataset.calBy === S.by); }
@@ -1350,7 +1354,11 @@ function start(boot: Boot) {
     },
     blockById: (id) => [...S.blocks, ...S.todayBlocks, ...[...ahead.values()].flatMap((v) => v.blocks)].find((b) => b.id === id),
     staffById, say, fail, show, flash, filter,
-    setWhose: (whose) => { void go(whose === 'mine' ? { dentist: '', by: 'dentist' } : { dentist: 'all' }); },
+    // A dentist's own column is their default (''); an owner who treats asks for theirs by id, and '' is everyone.
+    setWhose: (whose) => {
+      void go(me.dentist ? (whose === 'mine' ? { dentist: '', by: 'dentist' } : { dentist: 'all' })
+        : whose === 'mine' ? { dentist: me.id, by: 'dentist' } : { dentist: '', by: 'chair' });
+    },
     url: () => calUrl(),
     panels: null as unknown as Panels,
     patients: null as unknown as PatientsList,
