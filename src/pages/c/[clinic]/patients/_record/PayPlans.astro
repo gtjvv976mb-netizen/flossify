@@ -39,11 +39,9 @@ const help = 'text-[13px] leading-snug text-ink-2';
   {saved === 'payplan-stopped' && <Callout tone="success" text="Plan stopped. Its statement stays, with whatever is left to pay." />}
   {inline && <Callout tone="alert" text={inline} />}
   <Pane as="section" label="Braces and payment plans" id="payplans">
-    <Head icon="money" title="Braces and payment plans" meta={running.length ? `${running.length} running` : undefined} />
-    <div class="rec-lead -mt-2 mb-4">
-      <p>Treatment paid over months: a down payment, then so much a month. Payments are taken on the plan’s statement in Finances.</p>
-      {canEdit && canBill && <Plus text="New plan" label="Start a payment plan" open="rec-payplan-add" />}
-    </div>
+    <Head icon="money" title="Braces and payment plans" meta={running.length ? `${running.length} running` : undefined}>
+      {canEdit && canBill && <Plus slot="actions" text="New plan" label="Start a payment plan" open="rec-payplan-add" />}
+    </Head>
     {plans.length === 0 ? <Empty icon="money" text="No payment plan for this patient." /> : (
       <ul class="grid gap-3">
         {plans.map((p) => (

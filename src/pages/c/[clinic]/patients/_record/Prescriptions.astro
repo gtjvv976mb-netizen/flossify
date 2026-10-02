@@ -59,11 +59,9 @@ const savedState = savedRx && savedPtr ? ptrState(savedPtr, manilaToday(new Date
     <PtrWords mode="saved" noun="prescription" title={ptrSavedTitle(savedState, savedPtr)} fix={ptrFix[savedRx.prescriberId] ?? null} />
   )}
   <Pane as="section" label="Prescriptions" id="rx">
-    <Head icon="pill" title="Prescriptions" meta={c.rx.length ? `${c.rx.length} written` : undefined} />
-    <div class="rec-lead -mt-2 mb-4">
-      <p>Medicines prescribed to {firstName}, printed with the dentist’s PRC licence and the PTR on file.</p>
-      {canEdit && <Plus text="New prescription" label="Write a prescription" open="rec-rx-add" />}
-    </div>
+    <Head icon="pill" title="Prescriptions" meta={c.rx.length ? `${c.rx.length} written` : undefined}>
+      {canEdit && <Plus slot="actions" text="New prescription" label="Write a prescription" open="rec-rx-add" />}
+    </Head>
     {c.rx.length === 0 ? <Empty icon="file" text="No prescriptions yet." /> : (
       <div>
         {c.rx.map((r) => (

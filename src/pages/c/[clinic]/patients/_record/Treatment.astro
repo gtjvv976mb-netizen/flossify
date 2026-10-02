@@ -59,11 +59,9 @@ const help = 'text-[13px] leading-snug text-ink-2';
   <slot name="offer" />
 
   <Pane as="section" label="Treatment plan" id="treatment">
-    <Head icon="plan" title="Treatment plan" meta={open.length ? `${open.length} to do` : 'Nothing to do'} />
-    <div class="rec-lead -mt-2 mb-4">
-      <p>What the dentist proposes for {firstName}, in the order to do it. Mark each one when the patient agrees, and when it is done.</p>
-      {canEdit && <Plus text="Add to plan" label="Add to the treatment plan" open="rec-plan-add" />}
-    </div>
+    <Head icon="plan" title="Treatment plan" meta={open.length ? `${open.length} to do` : 'Nothing to do'}>
+      {canEdit && <Plus slot="actions" text="Add to plan" label="Add to the treatment plan" open="rec-plan-add" />}
+    </Head>
     {open.length === 0 ? (
       <Empty icon="file" text={closed.length ? 'Everything on the plan is done or declined.' : 'No treatment planned yet.'} />
     ) : (
@@ -153,11 +151,9 @@ const help = 'text-[13px] leading-snug text-ink-2';
   </Pane>
 
   <Pane as="section" label="Treatments done" id="treatment-done">
-    <Head icon="tooth" title="Treatments done" meta={c.done.length ? `${c.done.length} on record` : undefined} />
-    <div class="rec-lead -mt-2 mb-4">
-      <p>What was done, by whom, on which tooth. Items marked done on the plan land here too.</p>
-      {canEdit && <Plus text="Record a treatment" label="Record a treatment done" open="rec-done-add" />}
-    </div>
+    <Head icon="tooth" title="Treatments done" meta={c.done.length ? `${c.done.length} on record` : undefined}>
+      {canEdit && <Plus slot="actions" text="Record a treatment" label="Record a treatment done" open="rec-done-add" />}
+    </Head>
     {c.done.length === 0 ? <Empty icon="check" text="No treatment recorded yet." /> : (
       <ul data-fold-list data-fold-at="5" data-fold-word="treatments">
         {c.done.map((d) => (
@@ -180,11 +176,9 @@ const help = 'text-[13px] leading-snug text-ink-2';
   </Pane>
 
   <Pane as="section" label="Lab cases" id="treatment-lab">
-    <Head icon="lab" title="Lab cases" meta={labsOpen.length ? `${labsOpen.length} open` : undefined} />
-    <div class="rec-lead -mt-2 mb-4">
-      <p>Crowns, dentures, retainers and other work made by a lab: where each one is, and when it is due back.</p>
-      {canEdit && <Plus text="New lab case" label="Add a lab case" open="rec-lab-add" />}
-    </div>
+    <Head icon="lab" title="Lab cases" meta={labsOpen.length ? `${labsOpen.length} open` : undefined}>
+      {canEdit && <Plus slot="actions" text="New lab case" label="Add a lab case" open="rec-lab-add" />}
+    </Head>
     {c.labs.length === 0 ? <Empty icon="clock" text="No lab cases for this patient." /> : (
       <ul data-fold-list data-fold-at="4" data-fold-word="lab cases">
         {c.labs.map((l) => {
