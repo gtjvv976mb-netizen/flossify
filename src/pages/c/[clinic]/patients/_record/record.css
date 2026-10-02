@@ -166,9 +166,19 @@
 .rec-main { display: grid; gap: 1rem; min-width: 0; align-content: start; }
 @media (max-width: 767px) { .rec-body, .rec-main { gap: 0.75rem; } }
 
-/* The index. Narrow: one row of pills that scrolls sideways, group names hidden (each pill keeps its colour
-   and icon). Wide: a column that stays in view, groups under their names. */
+/* One page (the owner: "make the patient records one seamless page"): every section one after another, the index
+   a set of links. --rec-top is the workspace bar's height and --rec-nav-h the index row's on a narrow screen, both
+   measured by the record's script, so a section gone to lands just under whatever stays at the top. */
+.rec-sec, .rec-anchor, [data-rec-panel] [id] { scroll-margin-top: calc(var(--rec-top, 0px) + var(--rec-nav-h, 0px) + 0.75rem); }
+.rec-sec + .rec-sec { margin-top: 1.25rem; }
+.rec-banner-title:focus { outline: none; }
+
+/* The index. Narrow: one row of pills that stays at the top and scrolls sideways, group names hidden (each pill
+   keeps its colour and icon). Wide: a column that stays in view, groups under their names. */
 .rec-nav { min-width: 0; }
+@media (max-width: 1199px) {
+  .rec-nav { position: sticky; top: var(--rec-top, 0px); z-index: 30; margin-inline: -0.25rem; padding: 0.5rem 0.25rem; background: var(--c-bg); border-bottom: 1px solid var(--ws-hair); }
+}
 .rec-nav-list { display: flex; gap: 0.375rem; overflow-x: auto; padding: 0.25rem; margin: -0.25rem; scrollbar-width: thin; }
 .rec-nav-group { display: none; }
 .rec-nav-item {
@@ -180,20 +190,20 @@
 .rec-nav-item:focus-visible { outline: 2px solid var(--hue-bar); outline-offset: 2px; }
 .rec-nav-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 999px; background: var(--hue-tint); color: var(--hue-ink); flex: none; }
 .rec-nav-count { min-width: 1.5rem; padding: 0 0.375rem; border-radius: 999px; background: var(--ws-subtle); font-size: 12.5px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; color: var(--c-ink-2); }
-.rec-nav-item[aria-selected="true"] { border-color: var(--hue-bar); background: var(--hue-tint); color: var(--hue-ink); font-weight: 700; }
-.rec-nav-item[aria-selected="true"] .rec-nav-icon { background: var(--c-surface); }
-.rec-nav-item[aria-selected="true"] .rec-nav-count { background: var(--c-surface); color: var(--hue-ink); }
+.rec-nav-item[aria-current] { border-color: var(--hue-bar); background: var(--hue-tint); color: var(--hue-ink); font-weight: 700; }
+.rec-nav-item[aria-current] .rec-nav-icon { background: var(--c-surface); }
+.rec-nav-item[aria-current] .rec-nav-count { background: var(--c-surface); color: var(--hue-ink); }
 @media (min-width: 1200px) {
   .rec-body { grid-template-columns: 14.25rem minmax(0, 1fr); align-items: start; }
-  .rec-nav { position: sticky; top: 5.5rem; max-height: calc(100vh - 6.5rem); overflow-y: auto; padding: 0.75rem; border: 1px solid var(--ws-hair); border-radius: 16px; background: var(--c-surface); }
+  .rec-nav { position: sticky; top: calc(var(--rec-top, 4.5rem) + 1rem); max-height: calc(100vh - var(--rec-top, 4.5rem) - 2rem); overflow-y: auto; padding: 0.75rem; border: 1px solid var(--ws-hair); border-radius: 16px; background: var(--c-surface); }
   .rec-nav-list { flex-direction: column; gap: 0.125rem; overflow: visible; padding: 0; margin: 0; }
   .rec-nav-group { display: flex; align-items: center; gap: 0.4rem; margin: 0.75rem 0.5rem 0.25rem; font-size: 12.5px; font-weight: 700; color: var(--hue-ink); }
   .rec-nav-group:first-child { margin-top: 0.125rem; }
   .rec-nav-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--hue-bar); }
   .rec-nav-item { width: 100%; border-color: transparent; border-radius: 10px; padding: 0 0.625rem 0 0.375rem; background: transparent; }
   .rec-nav-item:hover { border-color: transparent; background: var(--ws-subtle); }
-  .rec-nav-item[aria-selected="true"] { border-color: transparent; background: var(--hue-tint); }
-  .rec-nav-item[aria-selected="true"]::before { content: ""; position: absolute; left: -0.75rem; top: 8px; bottom: 8px; width: 4px; border-radius: 0 4px 4px 0; background: var(--hue-bar); }
+  .rec-nav-item[aria-current] { border-color: transparent; background: var(--hue-tint); }
+  .rec-nav-item[aria-current]::before { content: ""; position: absolute; left: -0.75rem; top: 8px; bottom: 8px; width: 4px; border-radius: 0 4px 4px 0; background: var(--hue-bar); }
   .rec-nav-icon { width: 30px; height: 30px; border-radius: 8px; }
   .rec-nav-label { flex: 1; text-align: left; }
 }
@@ -452,4 +462,32 @@ button.rf { display: grid; min-height: 44px; }
   .trec-next { margin-block: -0.5rem; }
   .trec td[data-foot] { padding-top: 0.375rem; border-top: 1px solid var(--ws-hair); }
   .trec td[data-foot]:not([data-none]) ~ td[data-foot]:not([data-none]) { padding-top: 0; border-top: 0; }
+}
+
+/* The plus: beside what can be added or changed (./Plus.astro). A soft teal ring with a plus; with words, a quiet
+   pill. Never the page's teal button: that stays New booking. */
+.rec-plus { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; border-radius: 999px; color: var(--ws-teal-ink); font-size: 14.5px; font-weight: 600; cursor: pointer; text-decoration: none; transition: border-color 160ms ease, background-color 160ms ease; }
+.rec-plus:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+.rec-plus-text { padding: 0 1rem 0 0.4375rem; border: 1px solid var(--ws-hair); background: var(--c-surface); }
+.rec-plus-text:hover { border-color: var(--ws-teal); background: var(--ws-teal-tint); }
+.rec-plus-round { justify-content: center; width: 44px; height: 44px; flex: none; padding: 0; border: 0; background: transparent; }
+.rec-plus-mark { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 999px; border: 1.5px solid color-mix(in srgb, var(--ws-teal) 55%, transparent); background: var(--ws-teal-tint); color: var(--ws-teal-ink); transition: border-color 160ms ease; }
+.rec-plus-round:hover .rec-plus-mark, .rec-plus-text:hover .rec-plus-mark { border-color: var(--ws-teal); }
+.rec-plus-mark .ws-icon { stroke-width: 2.25; }
+/* Beside a detail: in the tile's right edge. Beside a line of the health summary: at its end. */
+.rf-edit { position: relative; padding-right: 3.25rem; }
+.rf-plus { position: absolute; top: 50%; right: 0.25rem; transform: translateY(-50%); }
+.rf-note-row { position: relative; }
+.rf-note-row .rf-note { padding-right: 3.25rem; }
+.rf-note-row .rf-plus { top: 0.375rem; transform: none; }
+.rf-v { display: inline-flex; align-items: center; gap: 0.4rem; }
+.rf-v .rec-plus-mark { width: 24px; height: 24px; }
+.rs-line-plus { grid-template-columns: 6.5rem minmax(0, 1fr) auto; }
+.rs-line-plus > .rk { grid-column: 1; grid-row: 1; }
+.rs-line-plus > .rp-row { grid-column: 2; grid-row: 1; }
+.rs-line-plus > .rs-plus { grid-column: 3; grid-row: 1; margin-block: -0.5rem; }
+@media (max-width: 479px) {
+  .rs-line-plus { grid-template-columns: minmax(0, 1fr) auto; }
+  .rs-line-plus > .rs-plus { grid-column: 2; }
+  .rs-line-plus > .rp-row { grid-column: 1 / -1; grid-row: 2; }
 }

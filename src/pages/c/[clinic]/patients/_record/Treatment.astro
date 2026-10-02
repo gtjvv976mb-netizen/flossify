@@ -18,6 +18,7 @@ import { PLAN_STATUS, LAB_STATUS, LAB_NEXT, type Clinical, type RecordProblem } 
 import { dateText } from '../../../../../lib/health';
 import type { Loa } from '../../../../../lib/record-extra';
 import { gapWhy, type ConsentGap } from '../../../../../lib/consent-docs';
+import Plus from './Plus.astro';
 
 /** visitId: today's visit (036) — a plan item marked done is written against it. gaps: per plan line, the consent forms linked to it
  *  that are not agreed (phase 4.4): Mark done then asks why, and the reason is kept against the form. */
@@ -61,7 +62,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
     <Head icon="plan" title="Treatment plan" meta={open.length ? `${open.length} to do` : 'Nothing to do'} />
     <div class="rec-lead -mt-2 mb-4">
       <p>What the dentist proposes for {firstName}, in the order to do it. Mark each one when the patient agrees, and when it is done.</p>
-      {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-plan-add"><Icon name="plus" />Add to plan</button>}
+      {canEdit && <Plus text="Add to plan" label="Add to the treatment plan" open="rec-plan-add" />}
     </div>
     {open.length === 0 ? (
       <Empty icon="file" text={closed.length ? 'Everything on the plan is done or declined.' : 'No treatment planned yet.'} />
@@ -155,7 +156,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
     <Head icon="tooth" title="Treatments done" meta={c.done.length ? `${c.done.length} on record` : undefined} />
     <div class="rec-lead -mt-2 mb-4">
       <p>What was done, by whom, on which tooth. Items marked done on the plan land here too.</p>
-      {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-done-add"><Icon name="plus" />Record a treatment</button>}
+      {canEdit && <Plus text="Record a treatment" label="Record a treatment done" open="rec-done-add" />}
     </div>
     {c.done.length === 0 ? <Empty icon="check" text="No treatment recorded yet." /> : (
       <ul data-fold-list data-fold-at="5" data-fold-word="treatments">
@@ -182,7 +183,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
     <Head icon="lab" title="Lab cases" meta={labsOpen.length ? `${labsOpen.length} open` : undefined} />
     <div class="rec-lead -mt-2 mb-4">
       <p>Crowns, dentures, retainers and other work made by a lab: where each one is, and when it is due back.</p>
-      {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-lab-add"><Icon name="plus" />New lab case</button>}
+      {canEdit && <Plus text="New lab case" label="Add a lab case" open="rec-lab-add" />}
     </div>
     {c.labs.length === 0 ? <Empty icon="clock" text="No lab cases for this patient." /> : (
       <ul data-fold-list data-fold-at="4" data-fold-word="lab cases">

@@ -15,6 +15,7 @@ import { LOA_STATUS, peso, type Loa } from '../../../../../lib/record-extra';
 import type { PlanItem, RecordProblem } from '../../../../../lib/record';
 import type { PayorOption } from '../../../../../lib/invoices';
 import { dateText } from '../../../../../lib/health';
+import Plus from './Plus.astro';
 
 interface Props { loas: Loa[]; plan: PlanItem[]; payors: PayorOption[]; hmoName: string | null; memberNo: string | null; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; settingsHref: string }
 const { loas, plan, payors, hmoName, memberNo, canEdit, action, problem, saved, today, firstName, settingsHref } = Astro.props;
@@ -36,7 +37,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
     <Head icon="shield" title="HMO approvals (LOA)" meta={loas.filter((a) => a.status === 'requested').length ? `${loas.filter((a) => a.status === 'requested').length} waiting` : undefined} />
     <div class="rec-lead -mt-2 mb-4">
       <p>{hmoName ? `${firstName} has ${hmoName}. ` : ''}Ask the HMO for a letter of authorization before treatment, and write in its approval code here.</p>
-      {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-loa-add"><Icon name="plus" />Ask for an LOA</button>}
+      {canEdit && <Plus text="Ask for an LOA" label="Ask an HMO for a letter of authorisation" open="rec-loa-add" />}
     </div>
     {loas.length === 0 ? <Empty icon="file" text="No LOA asked for yet." /> : (
       <ul>

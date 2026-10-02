@@ -17,6 +17,7 @@ import Glyph from '../_ui/Glyph.astro';
 import Signature from './Signature.astro';
 import Who from './Who.astro';
 import { STATE_WORDS, signerWords, withdrawalWords, overrideWords, CAPACITY_MAX, type RecordDoc } from '../../../../../lib/consent-docs';
+import Plus from './Plus.astro';
 
 interface Props {
   docs: RecordDoc[];
@@ -48,7 +49,7 @@ const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.tee
     {canEdit && (canPrepare || mayCapacity) && (
       <span slot="actions" class="flex flex-wrap gap-2">
         {canPrepare && <a href={`/c/${slug}/patients/new/?patient=${patientId}`} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="plus" size={16} />Prepare consent forms</a>}
-        {mayCapacity && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-capacity">Record that the patient cannot decide</button>}
+        {mayCapacity && <Plus text="Record that the patient cannot decide" label="Record that the patient cannot decide" open="rec-capacity" />}
       </span>
     )}
   </Head>

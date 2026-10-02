@@ -1,8 +1,7 @@
 ---
 // Add to plan and Record a treatment: the two side panels of Treatment, rendered outside the record's sections
-// (as VisitPanels is) so the chart's palette can open them over the Chart section — a <dialog> inside a section
-// with the `hidden` attribute is not drawn. Their openers elsewhere (Treatment's buttons, the More menu, the This
-// visit strip) still bring Treatment forward behind them (data-rec-show).
+// (as VisitPanels is) so the chart's palette can open them over the Chart section. Every section is on the one
+// page, so their openers elsewhere (Treatment's plus signs, the More menu, the This visit strip) open them in place.
 //
 // The tooth is a ToothPick (FDI tiles, baby teeth, the typed box, the surface toggles); the server reads it with
 // pickedTooth() in src/lib/record.ts. Opened from a tooth (the palette's data-pick-open buttons), the panel starts

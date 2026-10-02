@@ -96,7 +96,6 @@ const link = 'inline-flex min-h-[44px] items-center px-1 font-semibold underline
 <script>
   // Open <tooth> on the chart: the Chart section, then the palette on that tooth.
   document.querySelectorAll<HTMLButtonElement>('[data-chart-open]').forEach((b) => b.addEventListener('click', () => {
-    document.getElementById('rec-rec-chart-tab')?.click();
     const t = document.querySelector<HTMLButtonElement>(`[data-odontogram] button[data-tooth][data-fdi="${b.dataset.chartOpen}"]`);
     t?.scrollIntoView({ block: 'center' });
     t?.click();

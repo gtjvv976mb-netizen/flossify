@@ -17,6 +17,7 @@ import PtrWords from './PtrWords.astro';
 import { RX_ROWS, type Clinical, type RecordProblem, type RxItem } from '../../../../../lib/record';
 import { when, manilaToday } from '../../../../../lib/health';
 import { ptrState, ptrWords, ptrSavedTitle, ptrLine, PTR_AMBER, type PtrFix } from '../../../../../lib/ptr';
+import Plus from './Plus.astro';
 
 /** visitId: today's visit (036) — a new prescription is written against it. openNow: the page opens the panel as it loads (?open=rx).
  *  today: the Manila day (the PTR note compares with it); ptrFix: where each clinician's PTR is fixed, or null (the record page). */
@@ -61,7 +62,7 @@ const savedState = savedRx && savedPtr ? ptrState(savedPtr, manilaToday(new Date
     <Head icon="pill" title="Prescriptions" meta={c.rx.length ? `${c.rx.length} written` : undefined} />
     <div class="rec-lead -mt-2 mb-4">
       <p>Medicines prescribed to {firstName}, printed with the dentist’s PRC licence and the PTR on file.</p>
-      {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-rx-add"><Icon name="plus" />New prescription</button>}
+      {canEdit && <Plus text="New prescription" label="Write a prescription" open="rec-rx-add" />}
     </div>
     {c.rx.length === 0 ? <Empty icon="file" text="No prescriptions yet." /> : (
       <div>

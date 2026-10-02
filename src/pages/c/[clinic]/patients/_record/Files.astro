@@ -16,6 +16,7 @@ import Who from './Who.astro';
 import ToothPick from '../_ui/ToothPick.astro';
 import { FILE_KINDS, type Clinical, type RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
+import Plus from './Plus.astro';
 
 /** visitId: today's visit (036) — files added are written against it. openNow: the page opens Add files as it loads (?open=file). */
 interface Props { c: Clinical; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; fileBase: string; visitId?: string | null; openNow?: boolean }
@@ -42,7 +43,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
     <Head icon="image" title="X-rays, photos and files" meta={c.files.length ? `${c.files.length} on record` : undefined} />
     <div class="rec-lead -mt-2 mb-4">
       <p>Only people who work at this branch can open them. Pictures and PDFs, up to 25 MB each.</p>
-      {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-file-add"><Icon name="upload" />Add files</button>}
+      {canEdit && <Plus text="Add files" label="Add X-rays, photos or papers" open="rec-file-add" />}
     </div>
     {c.files.length === 0 ? <Empty icon="file" text="No X-rays, photos or files yet." /> : (
       <>

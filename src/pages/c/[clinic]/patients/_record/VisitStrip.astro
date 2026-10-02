@@ -173,7 +173,7 @@ const TONE_ICON: Record<Tone, 'info' | 'alert'> = { plain: 'info', warn: 'alert'
                 ) : a.href ? (
                   <a href={a.href} class="ws-btn ws-btn-quiet ws-btn-sm">{a.label}</a>
                 ) : a.open ? (
-                  <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open={a.open} data-rec-show={a.show} data-amends={a.amends ? '' : undefined}>{a.label}</button>
+                  <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open={a.open} data-amends={a.amends ? '' : undefined}>{a.label}</button>
                 ) : (
                   <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go={a.go}>{a.label}</button>
                 ))}
@@ -195,8 +195,8 @@ const TONE_ICON: Record<Tone, 'info' | 'alert'> = { plain: 'info', warn: 'alert'
   {canEdit && (
     <p class="vs-also">
       <span>Also for this visit:</span>
-      <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-rx-add" data-rec-show="rx"><Glyph name="pill" size={16} />Prescription</button>
-      <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-file-add" data-rec-show="files"><Glyph name="image" size={16} />X-ray or photo</button>
+      <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-rx-add"><Glyph name="pill" size={16} />Prescription</button>
+      <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-file-add"><Glyph name="image" size={16} />X-ray or photo</button>
       <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="chart"><Glyph name="tooth" size={16} />Chart</button>
       {visit.dentist && <Who name={visit.dentist} class="vs-who" />}
     </p>

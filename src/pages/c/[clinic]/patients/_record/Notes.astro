@@ -13,6 +13,7 @@ import Glyph from '../_ui/Glyph.astro';
 import Who from './Who.astro';
 import type { Clinical, Note } from '../../../../../lib/record';
 import { dateText, when } from '../../../../../lib/health';
+import Plus from './Plus.astro';
 
 interface Props { c: Clinical; canEdit: boolean; saved: string | null }
 const { c, canEdit, saved } = Astro.props;
@@ -30,7 +31,7 @@ const orphans = c.notes.filter((n) => n.amends && !c.notes.some((r) => r.id === 
     <Head icon="pen" title="Clinical notes" meta={roots.length ? `${roots.length} ${roots.length === 1 ? 'note' : 'notes'}` : undefined} />
     <div class="rec-lead -mt-2 mb-4">
       <p>What the dentist saw and did at each visit. A saved note cannot be changed; to correct one, add an addendum.</p>
-      {canEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="rec-note-add" data-amends=""><Icon name="plus" />New note</button>}
+      {canEdit && <Plus text="New note" label="Write a clinical note" open="rec-note-add" data={{ amends: '' }} />}
     </div>
     {c.notes.length === 0 ? <Empty icon="file" text="No clinical notes yet." /> : (
       <div>
@@ -50,7 +51,7 @@ const orphans = c.notes.filter((n) => n.amends && !c.notes.some((r) => r.id === 
               </div>
               <footer class="nt-foot">
                 <span>Written {when(new Date(n.at))}{n.by ? ` by ${n.by}` : ''}</span>
-                {canEdit && !n.amends && <button type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-ws-open="rec-note-add" data-amends={n.id} data-amends-day={dateText(n.visitOn)}><Icon name="plus" />Add an addendum</button>}
+                {canEdit && !n.amends && <Plus text="Add an addendum" label={`Add an addendum to the note of ${dateText(n.visitOn)}`} open="rec-note-add" data={{ amends: n.id, 'amends-day': dateText(n.visitOn) }} />}
               </footer>
             </article>
             {!n.amends && addenda(n.id).map((a) => (

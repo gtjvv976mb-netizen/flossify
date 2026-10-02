@@ -1,0 +1,34 @@
+---
+// The record's one sign for "you can add or change this": a plus in a soft teal ring, beside the thing it adds to or
+// changes (the owner: "a plus sign appears next to editable or addable"). With `text` it is a small pill with the
+// words ("+ Note"); without, a round 44 px button named by `label` for a screen reader and a tooltip. It opens a side
+// panel (`open`, the shell's data-ws-open), goes to a page (`href`) or to a part of this page (`go`, a section or an
+// element id). `field` names the input the panel puts the caret in (the record's script, data-rec-field). Only drawn
+// for someone who may make the change: the caller decides.
+import Icon from '../../../../../components/ws/Icon.astro';
+
+interface Props {
+  label: string;
+  text?: string;
+  open?: string;
+  href?: string;
+  go?: string;
+  field?: string;
+  data?: Record<string, string | undefined>;
+  class?: string;
+}
+const { label, text, open, href, go, field, data = {}, class: extra } = Astro.props;
+const attrs: Record<string, string | undefined> = { ...Object.fromEntries(Object.entries(data).map(([k, v]) => [`data-${k}`, v])) };
+const cls = ['rec-plus', text ? 'rec-plus-text' : 'rec-plus-round', extra];
+---
+
+{href ? (
+  <a href={href} class:list={cls} aria-label={text ? undefined : label} title={label} {...attrs}>
+    <span class="rec-plus-mark" aria-hidden="true"><Icon name="plus" size={16} /></span>{text && <span>{text}</span>}
+  </a>
+) : (
+  <button type="button" class:list={cls} aria-label={text ? undefined : label} title={label}
+    data-ws-open={open} data-rec-go={go} data-rec-field={field} aria-haspopup={open ? 'dialog' : undefined} {...attrs}>
+    <span class="rec-plus-mark" aria-hidden="true"><Icon name="plus" size={16} /></span>{text && <span>{text}</span>}
+  </button>
+)}

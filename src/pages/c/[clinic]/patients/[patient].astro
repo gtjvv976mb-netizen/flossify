@@ -121,6 +121,7 @@ import Loas from './_record/Loas.astro';
 import PayPlans from './_record/PayPlans.astro';
 import RecordNav from './_record/RecordNav.astro';
 import Banner from './_record/Banner.astro';
+import Plus from './_record/Plus.astro';
 import Who from './_record/Who.astro';
 import VisitStrip from './_record/VisitStrip.astro';
 import { shellLinks } from '../../../../components/ws/routes';
@@ -642,19 +643,20 @@ const CHART_SAVED: Record<string, string> = {
   done: 'Treatment recorded.',
   note: 'Note saved under your name.',
 };
+// In the order the one page runs, which is the index's: Patient, Health, Clinical, Documents, Billing (./_record/sections.ts).
 const SECTIONS = [
   { id: 'overview', label: 'Overview' },
   { id: 'treatment-record', label: 'Treatment record' },
+  { id: 'visits', label: 'Visits', count: visits.length || null },
   { id: 'health', label: 'Health' },
   { id: 'chart', label: 'Chart' },
   { id: 'treatment', label: 'Treatment', count: planOpen.length || null },
   { id: 'notes', label: 'Notes', count: clin.notes.filter((n) => !n.amends).length || null },
-  { id: 'rx', label: 'Rx & letters', count: (clin.rx.length + ext.letters.length) || null },
   { id: 'files', label: 'Files', count: clin.files.length || null },
-  { id: 'visits', label: 'Visits', count: visits.length || null },
-  ...(money ? [{ id: 'money', label: 'Money', count: data.statements.filter((s) => s.status === 'issued' || s.status === 'partly_paid').length || null }] : []),
+  { id: 'rx', label: 'Rx & letters', count: (clin.rx.length + ext.letters.length) || null },
   { id: 'consent', label: 'Consent' },
   { id: 'texts', label: 'Texts', count: data.texts.length || null },
+  ...(money ? [{ id: 'money', label: 'Money', count: data.statements.filter((s) => s.status === 'issued' || s.status === 'partly_paid').length || null }] : []),
 ];
 const savedTo: Record<string, string> = { intake: 'overview', 'consent-ahead': 'overview', capacity: 'consent', 'consent-removed': 'consent', health: 'health', birth: 'health', nothing: 'health', consent: 'consent', 'consent-already': 'consent', paper: 'consent', details: 'overview', new: 'overview', form: 'overview' };
 
@@ -757,6 +759,13 @@ const detailRows: [string, string | null][] = [
   ['Chart no.', patient.chart_no],
   ['On file since', `${dateText(manilaDay(patient.created_at))}${patient.imported ? ', from an import' : patient.created_by_name ? `, added by ${patient.created_by_name}` : ''}`],
 ];
+/** Where each detail is changed (the plus beside it): a field of Edit details, the caret put in `field`; or, for the
+ *  birth date, the Health form, where its history is kept (`go`). On file since is not changed. */
+const DETAIL_EDIT: Record<string, { field: string; go?: string }> = {
+  'Full name': { field: 'last_name' }, 'Birth date': { field: 'birth_date', go: 'health-form' }, Sex: { field: 'sex' },
+  Mobile: { field: 'mobile' }, Email: { field: 'email' }, Address: { field: 'address' }, HMO: { field: 'hmo_name' },
+  'Emergency contact': { field: 'emergency_name' }, 'Chart no.': { field: 'chart_no' },
+};
 // Only what is on file is listed; what is missing is one line, with the way to add it.
 const present = detailRows.filter(([, v]) => v);
 const missing = detailRows.filter(([, v]) => !v).map(([k]) => (k === 'HMO' ? k : k.toLowerCase()));
@@ -792,33 +801,33 @@ const recHere = here;
       </div>
       <div class="rec-actions">
         <a href={bookHref} class="ws-btn ws-btn-primary md:order-last"><Icon name="calendar" />New booking</a>
-        {canEdit && <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="details"><Icon name="user" />Edit details</button>}
+        {canEdit && <Plus text="Edit details" label={`Edit ${patient.first_name}’s details`} open="details" />}
         {moreItems > 0 && (
           <Menu id="rec-more" label={`More for ${shortName}`} buttonClass="ws-btn ws-btn-quiet" align="right">
             <Fragment slot="button">More <Icon name="chevron" size={16} /></Fragment>
             {canEdit && (
               <>
-                <button type="button" class="ws-menu-item" data-ws-open="rec-note-add" data-amends="" data-rec-show="notes">
+                <button type="button" class="ws-menu-item" data-ws-open="rec-note-add" data-amends="">
                   <span class="ws-menu-icon" data-tint="blue"><Glyph name="pen" /></span>
                   <span class="ws-menu-words">Clinical note<span class="ws-menu-hint">What was found and done today</span></span>
                 </button>
-                <button type="button" class="ws-menu-item" data-ws-open="rec-plan-add" data-rec-show="treatment">
+                <button type="button" class="ws-menu-item" data-ws-open="rec-plan-add">
                   <span class="ws-menu-icon" data-tint="green"><Glyph name="plan" /></span>
                   <span class="ws-menu-words">Add to treatment plan<span class="ws-menu-hint">With the price from your fee guide</span></span>
                 </button>
-                <button type="button" class="ws-menu-item" data-ws-open="rec-rx-add" data-rec-show="rx">
+                <button type="button" class="ws-menu-item" data-ws-open="rec-rx-add">
                   <span class="ws-menu-icon" data-tint="blue"><Glyph name="pill" /></span>
                   <span class="ws-menu-words">Prescription<span class="ws-menu-hint">With the PRC and PTR on file</span></span>
                 </button>
-                <button type="button" class="ws-menu-item" data-ws-open="rec-vitals-add" data-rec-show="health">
+                <button type="button" class="ws-menu-item" data-ws-open="rec-vitals-add">
                   <span class="ws-menu-icon" data-tint="red"><Glyph name="heart" /></span>
                   <span class="ws-menu-words">Take blood pressure<span class="ws-menu-hint">Before anaesthesia</span></span>
                 </button>
-                <button type="button" class="ws-menu-item" data-ws-open="rec-letter-add" data-letter-kind="certificate" data-rec-show="rx">
+                <button type="button" class="ws-menu-item" data-ws-open="rec-letter-add" data-letter-kind="certificate">
                   <span class="ws-menu-icon" data-tint="blue"><Glyph name="form" /></span>
                   <span class="ws-menu-words">Dental certificate<span class="ws-menu-hint">Or a referral, or medical clearance</span></span>
                 </button>
-                <button type="button" class="ws-menu-item" data-ws-open="rec-file-add" data-rec-show="files">
+                <button type="button" class="ws-menu-item" data-ws-open="rec-file-add">
                   <span class="ws-menu-icon" data-tint="blue"><Glyph name="image" /></span>
                   <span class="ws-menu-words">Add X-ray or photo<span class="ws-menu-hint">Or a document, as a PDF</span></span>
                 </button>
@@ -925,7 +934,7 @@ const recHere = here;
   </Pane>
 
   {/* The record's body: its colour-coded index beside the sections (./_record/RecordNav.astro). */}
-  <div class="rec-body">
+  <div class="rec-body" data-rec-start={current}>
   <RecordNav items={SECTIONS.map((x) => ({ id: x.id, label: x.label, count: 'count' in x ? x.count : null }))} current={current} name={shortName} />
   <div class="rec-main">
 
@@ -943,60 +952,58 @@ const recHere = here;
   )}
 
   <!-- Overview -->
-  <div id="rec-overview" role="tabpanel" aria-labelledby="rec-rec-overview-tab" hidden={current !== 'overview'} class="min-w-0 grid items-start gap-4 max-md:gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] content-start hue-teal" data-rec-panel="overview">
+  <div id="rec-overview" role="region" aria-labelledby="rec-overview-title" class="rec-sec min-w-0 grid items-start gap-4 max-md:gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] content-start hue-teal" data-rec-panel="overview">
     <Banner id="overview" label={SECTION_LABEL.overview} class="lg:col-span-2" />
     <div class="grid content-start gap-4 max-md:gap-3">
     <Pane title="Details" icon="user" id="overview">
       <dl class="rf-grid">
-        {present.map(([k, v]) => <div class:list={['rf', (k === 'Address' || k === 'Emergency contact' || k === 'HMO') && 'rf-wide']}><dt>{k}</dt><dd>{v}</dd></div>)}
+        {present.map(([k, v]) => {
+          const edit = canEdit ? DETAIL_EDIT[k] : undefined;
+          return (
+            <div class:list={['rf', (k === 'Address' || k === 'Emergency contact' || k === 'HMO') && 'rf-wide', edit && 'rf-edit']}>
+              <dt>{k}</dt><dd>{v}</dd>
+              {edit && (edit.go
+                ? <Plus label={`Change the ${k.toLowerCase()} (on Health)`} go={edit.go} field={edit.field} class="rf-plus" />
+                : <Plus label={`Change the ${k === 'HMO' ? 'HMO' : k.toLowerCase()}`} open="details" field={edit.field} class="rf-plus" />)}
+            </div>
+          );
+        })}
         {!canEdit && missing.map((k) => <div class="rf rf-missing"><dt>{capitalise(k)}</dt><dd>Not on file</dd></div>)}
       </dl>
       {canEdit && missing.length > 0 && (
         <div class="rf-grid mt-2" aria-label="Not on file yet">
-          {missing.map((k) => <button type="button" class="rf rf-missing" data-ws-open="details"><span class="rf-k">{capitalise(k)}</span><span class="rf-v">+ Add</span></button>)}
+          {missing.map((k) => {
+            const edit = DETAIL_EDIT[k === 'HMO' ? k : capitalise(k)];
+            return edit?.go
+              ? <button type="button" class="rf rf-missing" data-rec-go={edit.go} data-rec-field={edit.field}><span class="rf-k">{capitalise(k)}</span><span class="rf-v"><span class="rec-plus-mark" aria-hidden="true"><Icon name="plus" size={14} /></span>Add</span></button>
+              : <button type="button" class="rf rf-missing" data-ws-open="details" data-rec-field={edit?.field}><span class="rf-k">{capitalise(k)}</span><span class="rf-v"><span class="rec-plus-mark" aria-hidden="true"><Icon name="plus" size={14} /></span>Add</span></button>;
+          })}
         </div>
       )}
-      {patient.notes && <p class="rf-note mt-3"><strong>Notes</strong>{patient.notes}</p>}
+      {patient.notes && <div class="rf-note-row mt-3"><p class="rf-note"><strong>Notes</strong>{patient.notes}</p>{canEdit && <Plus label="Change the notes" open="details" field="notes" class="rf-plus" />}</div>}
+      {!patient.notes && canEdit && <p class="mt-3"><Plus text="Add a note for the desk" label="Add a note for the desk" open="details" field="notes" /></p>}
       <p class="mt-4 flex items-start gap-2 border-t border-[var(--ws-hair)] pt-3 text-[13px] leading-relaxed text-ink-2">
         <Icon name="info" size={16} class="mt-0.5 shrink-0" />
         <span>Every look at this record, and every change to it, is logged under the person’s name.</span>
       </p>
-    </Pane>
-    <Pane title="Recent visits" icon="calendar">
-      {visits.length > 4 && <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="visits">See all {visits.length}</button>}
-      {visits.length === 0 ? <Empty icon="calendar" text="No visits yet." action={{ label: 'Book the first one', href: bookHref }} /> : (
-        <ul class="rs-list">
-          {visits.slice(0, 4).map((v) => (
-            <li class="rs-item">
-              <p class="rs-what">{v.reason ?? 'Visit'}</p>
-              <p class="rp-row">
-                <span class="rp"><Icon name="calendar" size={14} />{visitText(v)}</span>
-                <Chip status={v.status} />
-                {v.source === 'import' && <Chip tone="neutral" label="Imported" />}
-                <Who name={v.dentist} />
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
     </Pane>
     </div>
     <div class="grid content-start gap-4 max-md:gap-3">
       <RecallCard recall={clin.recall} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} bookHref={bookHref} texts={me.recall_texts === true} />
       <Pane as="section" label="Health, in short" class="hue-rose">
         <Head icon="heart" title="Health">
-          <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="health">{canEdit ? 'Update' : 'Open'}</button>
+          {canEdit ? <Plus slot="actions" text="Update" label="Update the health history" go="health-form" /> : <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="health">Open</button>}
         </Head>
         {latest && answered(latest) ? (
           <>
             <div>
-              <div class="rs-line"><span class="rk">Allergies</span>
+              <div class="rs-line rs-line-plus"><span class="rk">Allergies</span>{canEdit && <Plus label="Add to allergies" go="health-form" field="allergies_add" class="rs-plus" />}
                 <p class="rp-row">{latest.allergies === null ? <span class="rp">Not asked yet</span> : latest.allergies.length ? latest.allergies.map((a) => <span class="rp rp-alert"><Icon name="alert" size={14} />{a}</span>) : <span class="rp rp-ok"><Icon name="check" size={14} />None known</span>}</p></div>
-              <div class="rs-line"><span class="rk">Conditions</span>
+              <div class="rs-line rs-line-plus"><span class="rk">Conditions</span>{canEdit && <Plus label="Add to conditions" go="health-form" field="conditions_add" class="rs-plus" />}
                 <p class="rp-row">{latest.conditions === null ? <span class="rp">Not asked yet</span> : latest.conditions.length ? latest.conditions.map((c) => <span class="rp rp-warn">{c}</span>) : <span class="rp rp-ok"><Icon name="check" size={14} />None</span>}</p></div>
-              <div class="rs-line"><span class="rk">Medicines</span>
+              <div class="rs-line rs-line-plus"><span class="rk">Medicines</span>{canEdit && <Plus label="Add to medicines" go="health-form" field="medications_add" class="rs-plus" />}
                 <p class="rp-row">{latest.medications === null ? <span class="rp">Not asked yet</span> : latest.medications.length ? latest.medications.map((m) => <span class="rp">{m}</span>) : <span class="rp rp-ok"><Icon name="check" size={14} />None</span>}</p></div>
-              {latestBp && bpNow && <div class="rs-line"><span class="rk">Blood pressure</span>
+              {latestBp && bpNow && <div class="rs-line rs-line-plus"><span class="rk">Blood pressure</span>{canEdit && <Plus label="Take a blood pressure reading" open="rec-vitals-add" class="rs-plus" />}
                 <p class="rp-row"><span class:list={['rp', bpNow.tone === 'alert' ? 'rp-alert' : bpNow.tone === 'warn' ? 'rp-warn' : 'rp-ok']}>{latestBp.sys}/{latestBp.dia} · {bpNow.label.toLowerCase()}</span><span class="rp">{dateText(bpDay)}</span></p></div>}
             </div>
             <p class="mt-2 text-[13px] text-ink-2">Updated {byLine(latest)}.</p>
@@ -1005,35 +1012,6 @@ const recHere = here;
           <Empty icon="info" text="No health answers yet. Ask the patient before treatment." />
         )}
       </Pane>
-      {(planOpen.length > 0 || clin.labs.some((l) => l.status !== 'fitted')) && (
-        <Pane as="section" label="Treatment, in short" class="hue-blue">
-          <Head icon="plan" title="Treatment plan" meta={planOpen.length ? `${planOpen.length} to do` : undefined}>
-            <button slot="actions" type="button" class="ws-btn ws-btn-quiet ws-btn-sm" data-rec-go="treatment">Open</button>
-          </Head>
-          {planOpen.length > 0 ? (
-            <ul class="rs-list">
-              {planOpen.slice(0, 4).map((i) => (
-                <li class="rs-item">
-                  <p class="rs-what">{i.name}</p>
-                  <p class="rp-row">
-                    {i.fdi && <span class="rp rp-tooth"><Glyph name="tooth" size={14} />{i.fdi}{i.surface ? ` ${i.surface}` : ''}</span>}
-                    <Chip tone={i.status === 'accepted' ? 'warn' : 'neutral'} label={i.status === 'accepted' ? 'Agreed' : 'Planned'} />
-                    <span class="rp">Phase {i.phase}</span>
-                  </p>
-                </li>
-              ))}
-            </ul>
-          ) : <p class="text-[15px] text-ink-2">Nothing left on the plan.</p>}
-          {planOpen.length > 4 && <p class="mt-2 text-[13.5px] text-ink-2">And {planOpen.length - 4} more.</p>}
-          {(() => { const open = clin.labs.filter((l) => l.status !== 'fitted'); return open.length > 0 && (
-            <div class="mt-3 grid gap-1.5">
-              <span class="rk">Lab cases</span>
-              {open.slice(0, 3).map((l) => <p class="rp-row text-[14px]"><span class="font-semibold">{l.description}</span><span class="rp">{l.lab}</span>{l.dueOn && !l.receivedOn && <span class:list={['rp', l.dueOn < today ? 'rp-alert' : '']}>{l.dueOn < today ? 'Late · ' : 'Due '}{dateText(l.dueOn)}</span>}</p>)}
-              {open.length > 3 && <p class="text-[13.5px] text-ink-2">And {open.length - 3} more.</p>}
-            </div>
-          ); })()}
-        </Pane>
-      )}
       {data.latestForm && (
         <Pane as="section" label="From the patient forms" class="hue-violet">
           <Head icon="form" title="From the patient forms" meta={`Sent ${day(data.latestForm.submittedAt)} · ${data.latestForm.ref}`}>
@@ -1048,13 +1026,53 @@ const recHere = here;
   </div>
 
   <!-- Treatment record -->
-  <div id="rec-treatment-record" role="tabpanel" aria-labelledby="rec-rec-treatment-record-tab" hidden={current !== 'treatment-record'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-teal" data-rec-panel="treatment-record">
-    <Banner id="treatment-record" label={SECTION_LABEL['treatment-record']} />
+  <div id="rec-treatment-record" role="region" aria-labelledby="rec-treatment-record-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start hue-teal" data-rec-panel="treatment-record">
+    <Banner id="treatment-record" label={SECTION_LABEL['treatment-record']} adds={canEdit ? [{ label: 'Record a treatment done', text: 'Record a treatment', open: 'rec-done-add' }] : []} />
     <TreatmentRecord ledger={data.ledger} money={money} today={today} printHref={`${here}treatment-record/`} name={shortName} />
   </div>
 
+  <!-- Visits -->
+  <div id="rec-visits" role="region" aria-labelledby="rec-visits-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start hue-teal" data-rec-panel="visits">
+    <Banner id="visits" label={SECTION_LABEL.visits} adds={[{ label: `Book a visit for ${patient.first_name}`, text: 'Book a visit', href: bookHref }]} />
+    <Pane title="Visits" icon="calendar" id="visits" meta={visits.length === 200 ? 'The newest 200' : `${visits.length} on record`} pad="none">
+      {visits.length === 0 ? (
+        <div class="px-6 py-3 max-md:px-4"><Empty icon="calendar" text="No visits yet." action={canEdit ? { label: 'Bring in past visits from a spreadsheet', href: importHref } : { label: 'Book the first one', href: bookHref }} /></div>
+      ) : (
+        <table class="ws-table">
+          <caption class="sr-only">Visits of {shortName}, newest first</caption>
+          <thead>
+            <tr>
+              <th scope="col" class="meta">When</th>
+              <th scope="col" class="meta">Service</th>
+              <th scope="col" class="meta">Dentist</th>
+              <th scope="col" class="meta">Teeth</th>
+              <th scope="col" class="meta">Status</th>
+              {money && <th scope="col" class="meta text-right">Charged</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {visits.map((v) => (
+              <tr>
+                <td class="text-[14.5px] whitespace-nowrap tabular-nums">
+                  <span class="font-semibold">{visitText(v)}</span>
+                  <span class="block text-[13px] text-muted">{SOURCE[v.source] ?? v.source}{v.chair ? ` · chair ${v.chair}` : ''}</span>
+                  <button type="button" class="vx-link" data-ws-open={`rec-visit-${v.id}`} aria-haspopup="dialog">See the whole visit</button>
+                </td>
+                <td class="text-[15px]"><span class="meta ws-cell-label">Service</span>{v.reason ?? '—'}{v.notes && <span class="block max-w-[40ch] text-[13.5px] text-ink-2 max-lg:max-w-none">{v.notes}</span>}</td>
+                <td class="text-[15px]"><span class="meta ws-cell-label">Dentist</span>{v.dentist ? <Who name={v.dentist} /> : <span class="text-ink-2">—</span>}{v.dentist_free && <span class="block text-[13px] text-muted">As the old record has it</span>}</td>
+                <td class="text-[15px] tabular-nums"><span class="meta ws-cell-label">Teeth</span>{v.teeth?.length ? <span class="rp-row">{v.teeth.map((t: number) => <span class="rp rp-tooth">{t}</span>)}</span> : <span class="text-ink-2">—</span>}</td>
+                <td><span class="meta ws-cell-label">Status</span><Chip status={v.status} /></td>
+                {money && <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Charged</span>{v.charged ? pesos(v.charged) : <span class="text-muted">—</span>}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Pane>
+  </div>
+
   <!-- Health -->
-  <div id="rec-health" role="tabpanel" aria-labelledby="rec-rec-health-tab" hidden={current !== 'health'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-rose" data-rec-panel="health">
+  <div id="rec-health" role="region" aria-labelledby="rec-health-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start hue-rose" data-rec-panel="health">
     <Banner id="health" label={SECTION_LABEL.health} />
     <Vitals vitals={ext.vitals} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'vitals'} />
     <Pane as="section" label="Health" id="health">
@@ -1081,7 +1099,7 @@ const recHere = here;
       {healthProblems.length > 0 && <Callout tone="alert" class="mt-4" title={`Nothing was saved. ${healthProblems.length === 1 ? 'One thing' : 'A few things'} to fix:`} items={healthProblems} />}
 
       {canEdit ? (
-        <form method="post" action={`${here}#health`} class="mt-5" data-health-form data-health-unsaved={posted ? '' : undefined}>
+        <form method="post" action={`${here}#health`} class="mt-5 rec-anchor" id="health-form" data-health-form data-health-unsaved={posted ? '' : undefined}>
           <Csrf />
           <input type="hidden" name="intent" value="health" />
           <input type="hidden" name="base" value={base} />
@@ -1140,7 +1158,7 @@ const recHere = here;
   </div>
 
   <!-- Chart -->
-  <div id="rec-chart" role="tabpanel" aria-labelledby="rec-rec-chart-tab" hidden={current !== 'chart'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="chart">
+  <div id="rec-chart" role="region" aria-labelledby="rec-chart-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="chart">
     <Banner id="chart" label={SECTION_LABEL.chart} />
     {fromChart && saved && CHART_SAVED[saved] && <Callout tone="success" text={CHART_SAVED[saved]} />}
     {showOffer && current === 'chart' && <ChartOffer state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="chart" leaveHref={leaveOffer('chart')} inChart />}
@@ -1195,7 +1213,7 @@ const recHere = here;
   </div>
 
   <!-- Treatment -->
-  <div id="rec-treatment" role="tabpanel" aria-labelledby="rec-rec-treatment-tab" hidden={current !== 'treatment'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="treatment">
+  <div id="rec-treatment" role="region" aria-labelledby="rec-treatment-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="treatment">
     <Banner id="treatment" label={SECTION_LABEL.treatment} />
     <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} gaps={data.gaps.byPlanItem} consentsBase={`${here}consents/`}>
       {showOffer && current === 'treatment' && <ChartOffer slot="offer" state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="treatment" leaveHref={leaveOffer('treatment')} inChart={false} />}
@@ -1207,13 +1225,19 @@ const recHere = here;
   </div>
 
   <!-- Notes -->
-  <div id="rec-notes" role="tabpanel" aria-labelledby="rec-rec-notes-tab" hidden={current !== 'notes'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="notes">
+  <div id="rec-notes" role="region" aria-labelledby="rec-notes-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="notes">
     <Banner id="notes" label={SECTION_LABEL.notes} />
     <Notes c={clin} canEdit={canEdit} saved={saved} />
   </div>
 
+  <!-- Files -->
+  <div id="rec-files" role="region" aria-labelledby="rec-files-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="files">
+    <Banner id="files" label={SECTION_LABEL.files} />
+    <Files c={clin} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} fileBase={`${here}files/`} visitId={thisVisit?.id ?? null} openNow={openNow === 'file'} />
+  </div>
+
   <!-- Prescriptions -->
-  <div id="rec-rx" role="tabpanel" aria-labelledby="rec-rec-rx-tab" hidden={current !== 'rx'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="rx">
+  <div id="rec-rx" role="region" aria-labelledby="rec-rx-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="rx">
     <Banner id="rx" label={SECTION_LABEL.rx} />
     <Prescriptions c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} firstName={patient.first_name} printBase={`${here}rx/`} allergies={allergies} typedRows={rxTyped} visitId={thisVisit?.id ?? null} openNow={openNow === 'rx'} today={today} ptrFix={ptrFix} />
     <div class="mt-4 max-md:mt-3">
@@ -1221,106 +1245,8 @@ const recHere = here;
     </div>
   </div>
 
-  <!-- Files -->
-  <div id="rec-files" role="tabpanel" aria-labelledby="rec-rec-files-tab" hidden={current !== 'files'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-blue" data-rec-panel="files">
-    <Banner id="files" label={SECTION_LABEL.files} />
-    <Files c={clin} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} fileBase={`${here}files/`} visitId={thisVisit?.id ?? null} openNow={openNow === 'file'} />
-  </div>
-
-  <!-- Visits -->
-  <div id="rec-visits" role="tabpanel" aria-labelledby="rec-rec-visits-tab" hidden={current !== 'visits'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-teal" data-rec-panel="visits">
-    <Banner id="visits" label={SECTION_LABEL.visits} />
-    <Pane title="Visits" icon="calendar" id="visits" meta={visits.length === 200 ? 'The newest 200' : `${visits.length} on record`} pad="none">
-      {visits.length === 0 ? (
-        <div class="px-6 py-3 max-md:px-4"><Empty icon="calendar" text="No visits yet." action={canEdit ? { label: 'Bring in past visits from a spreadsheet', href: importHref } : { label: 'Book the first one', href: bookHref }} /></div>
-      ) : (
-        <table class="ws-table">
-          <caption class="sr-only">Visits of {shortName}, newest first</caption>
-          <thead>
-            <tr>
-              <th scope="col" class="meta">When</th>
-              <th scope="col" class="meta">Service</th>
-              <th scope="col" class="meta">Dentist</th>
-              <th scope="col" class="meta">Teeth</th>
-              <th scope="col" class="meta">Status</th>
-              {money && <th scope="col" class="meta text-right">Charged</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {visits.map((v) => (
-              <tr>
-                <td class="text-[14.5px] whitespace-nowrap tabular-nums">
-                  <span class="font-semibold">{visitText(v)}</span>
-                  <span class="block text-[13px] text-muted">{SOURCE[v.source] ?? v.source}{v.chair ? ` · chair ${v.chair}` : ''}</span>
-                  <button type="button" class="vx-link" data-ws-open={`rec-visit-${v.id}`} aria-haspopup="dialog">See the whole visit</button>
-                </td>
-                <td class="text-[15px]"><span class="meta ws-cell-label">Service</span>{v.reason ?? '—'}{v.notes && <span class="block max-w-[40ch] text-[13.5px] text-ink-2 max-lg:max-w-none">{v.notes}</span>}</td>
-                <td class="text-[15px]"><span class="meta ws-cell-label">Dentist</span>{v.dentist ? <Who name={v.dentist} /> : <span class="text-ink-2">—</span>}{v.dentist_free && <span class="block text-[13px] text-muted">As the old record has it</span>}</td>
-                <td class="text-[15px] tabular-nums"><span class="meta ws-cell-label">Teeth</span>{v.teeth?.length ? <span class="rp-row">{v.teeth.map((t: number) => <span class="rp rp-tooth">{t}</span>)}</span> : <span class="text-ink-2">—</span>}</td>
-                <td><span class="meta ws-cell-label">Status</span><Chip status={v.status} /></td>
-                {money && <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Charged</span>{v.charged ? pesos(v.charged) : <span class="text-muted">—</span>}</td>}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Pane>
-  </div>
-
-  <!-- Money -->
-  {money && (
-    <div id="rec-money" role="tabpanel" aria-labelledby="rec-rec-money-tab" hidden={current !== 'money'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-green" data-rec-panel="money">
-    <Banner id="money" label={SECTION_LABEL.money} />
-      <Pane title="Money" icon="money" id="money" pad="none">
-        <Fragment slot="actions">
-          <a href={`${links.finances}?patient=${patient.id}&view=all`} class="ws-btn ws-btn-quiet ws-btn-sm">In Finances <Icon name="arrow-right" size={16} /></a>
-          <a href={chargeHref} class="ws-btn ws-btn-quiet ws-btn-sm"><Icon name="plus" />New charge</a>
-        </Fragment>
-        <p class="border-b border-[var(--ws-hair)] px-6 py-4 text-[15px] text-ink-2 max-md:px-4">
-          {balance > 0n ? <>Owes <span class="font-semibold text-caries tabular-nums">{pesos(balance)}</span>{openCount ? ` on ${openCount} ${openCount === 1 ? 'statement' : 'statements'}` : ''}.</>
-            : balance < 0n ? <>In credit <span class="font-semibold tabular-nums">{pesos(-balance)}</span>.</>
-            : <>Nothing owed.</>}
-          {' '}Paid <span class="font-semibold tabular-nums">{pesos(paidAll)}</span> in all.
-          <span class="mt-0.5 block text-[13px] text-muted">Statements of account, not BIR receipts.</span>
-        </p>
-        {stmts.length === 0 ? (
-          <div class="px-6 py-3 max-md:px-4"><Empty icon="money" text="No statements for this patient yet." action={{ label: 'New charge', href: chargeHref }} /></div>
-        ) : (
-          <table class="ws-table">
-            <caption class="sr-only">Statements of {shortName}, newest first</caption>
-            <thead>
-              <tr>
-                <th scope="col" class="meta">Statement</th>
-                <th scope="col" class="meta">For</th>
-                <th scope="col" class="meta text-right">Total</th>
-                <th scope="col" class="meta text-right">Paid</th>
-                <th scope="col" class="meta text-right">Left</th>
-                <th scope="col" class="meta">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stmts.map((s) => {
-                const st = BILL_STATUS[s.status] ?? BILL_STATUS.issued;
-                return (
-                  <tr>
-                    <td class="whitespace-nowrap"><a href={`${links.finances}${s.id}/`} class="inline-flex min-h-11 items-center font-mono text-[14px] font-medium text-accent underline-offset-4 hover:underline">{statementNo(s.series_prefix, s.number)}</a><span class="block text-[13px] text-muted tabular-nums">{dateText(manilaDay(s.issued_at))}{s.imported_at ? ' · brought in' : ''}</span></td>
-                    <td class="text-[14.5px]"><span class="meta ws-cell-label">For</span>{s.first_line ?? '—'}{s.n_lines > 1 && <span class="text-muted"> and {s.n_lines - 1} more</span>}{s.payor_name && <span class="block text-[13px] text-muted">{s.payor_name} part {pesos(fromDb(s.payor_share))}</span>}</td>
-                    <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Total</span>{pesos(s.total)}</td>
-                    <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Paid</span>{pesos(s.paid)}</td>
-                    <td class="text-right text-[15px] font-semibold tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Left</span>{pesos(s.left)}</td>
-                    <td><span class="meta ws-cell-label">Status</span><span class:list={['ws-chip', STMT_TINT[s.status] ?? 'ws-tint-slate']}>{st.label}</span></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </Pane>
-    </div>
-  )}
-
   <!-- Consent -->
-  <div id="rec-consent" role="tabpanel" aria-labelledby="rec-rec-consent-tab" hidden={current !== 'consent'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="consent">
+  <div id="rec-consent" role="region" aria-labelledby="rec-consent-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="consent">
     <Banner id="consent" label={SECTION_LABEL.consent} />
     <Pane as="section" label="Privacy consent">
       <Head icon="shield" title="Privacy consent" />
@@ -1384,7 +1310,7 @@ const recHere = here;
   </div>
 
   <!-- Texts -->
-  <div id="rec-texts" role="tabpanel" aria-labelledby="rec-rec-texts-tab" hidden={current !== 'texts'} class="min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="texts">
+  <div id="rec-texts" role="region" aria-labelledby="rec-texts-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start hue-violet" data-rec-panel="texts">
     <Banner id="texts" label={SECTION_LABEL.texts} />
     <Pane title="Texts" icon="message" id="texts" meta={data.texts.length === 50 ? 'The newest 50' : `${data.texts.length} about this patient`} pad="none">
       <a slot="actions" href={links.messages} class="ws-btn ws-btn-quiet ws-btn-sm">All messages <Icon name="arrow-right" size={16} /></a>
@@ -1410,6 +1336,58 @@ const recHere = here;
       )}
     </Pane>
   </div>
+
+  <!-- Money -->
+  {money && (
+    <div id="rec-money" role="region" aria-labelledby="rec-money-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start hue-green" data-rec-panel="money">
+    <Banner id="money" label={SECTION_LABEL.money} />
+      <Pane title="Money" icon="money" id="money" pad="none">
+        <Fragment slot="actions">
+          <a href={`${links.finances}?patient=${patient.id}&view=all`} class="ws-btn ws-btn-quiet ws-btn-sm">In Finances <Icon name="arrow-right" size={16} /></a>
+          <Plus href={chargeHref} text="New charge" label={`A new statement for ${patient.first_name}`} />
+        </Fragment>
+        <p class="border-b border-[var(--ws-hair)] px-6 py-4 text-[15px] text-ink-2 max-md:px-4">
+          {balance > 0n ? <>Owes <span class="font-semibold text-caries tabular-nums">{pesos(balance)}</span>{openCount ? ` on ${openCount} ${openCount === 1 ? 'statement' : 'statements'}` : ''}.</>
+            : balance < 0n ? <>In credit <span class="font-semibold tabular-nums">{pesos(-balance)}</span>.</>
+            : <>Nothing owed.</>}
+          {' '}Paid <span class="font-semibold tabular-nums">{pesos(paidAll)}</span> in all.
+          <span class="mt-0.5 block text-[13px] text-muted">Statements of account, not BIR receipts.</span>
+        </p>
+        {stmts.length === 0 ? (
+          <div class="px-6 py-3 max-md:px-4"><Empty icon="money" text="No statements for this patient yet." action={{ label: 'New charge', href: chargeHref }} /></div>
+        ) : (
+          <table class="ws-table">
+            <caption class="sr-only">Statements of {shortName}, newest first</caption>
+            <thead>
+              <tr>
+                <th scope="col" class="meta">Statement</th>
+                <th scope="col" class="meta">For</th>
+                <th scope="col" class="meta text-right">Total</th>
+                <th scope="col" class="meta text-right">Paid</th>
+                <th scope="col" class="meta text-right">Left</th>
+                <th scope="col" class="meta">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stmts.map((s) => {
+                const st = BILL_STATUS[s.status] ?? BILL_STATUS.issued;
+                return (
+                  <tr>
+                    <td class="whitespace-nowrap"><a href={`${links.finances}${s.id}/`} class="inline-flex min-h-11 items-center font-mono text-[14px] font-medium text-accent underline-offset-4 hover:underline">{statementNo(s.series_prefix, s.number)}</a><span class="block text-[13px] text-muted tabular-nums">{dateText(manilaDay(s.issued_at))}{s.imported_at ? ' · brought in' : ''}</span></td>
+                    <td class="text-[14.5px]"><span class="meta ws-cell-label">For</span>{s.first_line ?? '—'}{s.n_lines > 1 && <span class="text-muted"> and {s.n_lines - 1} more</span>}{s.payor_name && <span class="block text-[13px] text-muted">{s.payor_name} part {pesos(fromDb(s.payor_share))}</span>}</td>
+                    <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Total</span>{pesos(s.total)}</td>
+                    <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Paid</span>{pesos(s.paid)}</td>
+                    <td class="text-right text-[15px] font-semibold tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Left</span>{pesos(s.left)}</td>
+                    <td><span class="meta ws-cell-label">Status</span><span class:list={['ws-chip', STMT_TINT[s.status] ?? 'ws-tint-slate']}>{st.label}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </Pane>
+    </div>
+  )}
 
   </div>
   </div>
@@ -1461,34 +1439,97 @@ const recHere = here;
 <script>
   import { ageOn, ageText, capitalise } from '../../../../lib/health';
 
-  // --- the sections: in the address, so a reload or a post lands where it was ---
-  const list = document.querySelector<HTMLElement>('.rec-tabs');
-  const tabFor = (name: string) => document.getElementById(`rec-rec-${name}-tab`) as HTMLButtonElement | null;
-  const panelOf = (el: Element | null) => el?.closest<HTMLElement>('[data-rec-panel]')?.dataset.recPanel ?? null;
-  const show = (name: string, focus = false) => {
-    const t = tabFor(name);
-    if (!t) return false;
-    if (t.getAttribute('aria-selected') !== 'true') t.click();
-    t.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    if (focus) t.focus();
+  // --- the sections: all on one page; the address says which one, so a reload or a post lands where it was ---
+  const nav = document.querySelector<HTMLElement>('[data-rec-nav]');
+  // What stays at the top of the screen: the workspace bar, and on a narrow screen the index's row under it.
+  // Measured, so a section gone to lands just below them (record.css, scroll-margin-top).
+  const topBar = document.querySelector<HTMLElement>('[data-ws-top]');
+  const measureTop = () => {
+    const root = document.documentElement.style;
+    root.setProperty('--rec-top', `${topBar && getComputedStyle(topBar).position === 'sticky' ? topBar.offsetHeight : 0}px`);
+    root.setProperty('--rec-nav-h', `${nav && getComputedStyle(nav).position === 'sticky' && nav.offsetWidth > 0 && window.innerWidth < 1200 ? nav.offsetHeight : 0}px`);
+  };
+  measureTop();
+  const sized = new ResizeObserver(measureTop);
+  if (topBar) sized.observe(topBar);
+  if (nav) sized.observe(nav);
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('[data-rec-link]')];
+  const sections = [...document.querySelectorAll<HTMLElement>('[data-rec-panel]')];
+  const sectionOf = (el: Element | null) => el?.closest<HTMLElement>('[data-rec-panel]')?.dataset.recPanel ?? null;
+  /** Mark a section's link as the one in view, and keep it in the sideways row's view on a narrow screen. */
+  const mark = (name: string | null) => {
+    for (const a of links) {
+      const on = a.dataset.recLink === name;
+      if (on) a.setAttribute('aria-current', 'location'); else a.removeAttribute('aria-current');
+      if (on && nav && nav.scrollWidth > nav.clientWidth + 1) {
+        const l = a.offsetLeft - nav.clientWidth / 2 + a.clientWidth / 2;
+        nav.querySelector('ul')?.scrollTo({ left: Math.max(0, l), behavior: 'smooth' });
+      }
+    }
+  };
+  // A section gone to stays the marked one while the page glides there (the scroll in between passes others), until
+  // the person scrolls themself.
+  let pin: { name: string; at: number } | null = null;
+  for (const ev of ['wheel', 'touchstart', 'keydown'] as const) window.addEventListener(ev, () => { pin = null; }, { passive: true });
+  /** Bring a section, or an element in one, to the top; with `field`, put the caret in that field. */
+  const show = (name: string, o: { field?: string; focus?: boolean; smooth?: boolean } = {}) => {
+    const sec = document.getElementById(`rec-${name}`);
+    const el = sec?.matches('[data-rec-panel]') ? sec : document.getElementById(name) ?? sec;
+    if (!el) return false;
+    el.scrollIntoView({ block: 'start', behavior: o.smooth ? 'smooth' : 'auto' });
+    const inView = sectionOf(el);
+    mark(inView);
+    pin = inView ? { name: inView, at: performance.now() } : null;
+    const box = o.field ? el.querySelector<HTMLElement>(`[name="${o.field}"]`) : null;
+    if (box) box.focus({ preventScroll: true });
+    else if (o.focus) {
+      const head = el.matches('[data-rec-panel]') ? el.querySelector<HTMLElement>('.rec-banner-title') : el;
+      if (head) { if (!head.hasAttribute('tabindex')) head.setAttribute('tabindex', '-1'); head.focus({ preventScroll: true }); }
+    }
     return true;
   };
+  const say = (name: string) => { if (location.hash !== `#${name}`) history.replaceState(null, '', `${location.pathname}${location.search}#${name}`); };
   const fromHash = () => {
-    let id = decodeURIComponent(location.hash.slice(1));
-    if (!id) return;
+    let id = decodeURIComponent(location.hash.slice(1)).replace(/^rec-/, '');
+    if (!id) return false;
     // The Timeline became the Treatment record: an old #timeline link lands there, and the address says so.
-    if (id === 'timeline') { id = 'treatment-record'; history.replaceState(null, '', `${location.pathname}${location.search}#${id}`); }
-    const target = document.getElementById(id);
-    const name = panelOf(target) ?? id.replace(/^rec-/, '');
-    if (show(name) && target && !target.matches('[data-rec-panel]')) requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
+    if (id === 'timeline') { id = 'treatment-record'; say(id); }
+    // A section's own name goes to its head; any other id (a card, a form, #chart-offer) to that element.
+    requestAnimationFrame(() => show(id));
+    return true;
   };
-  list?.addEventListener('ws:tab', (e) => {
-    const id = String((e as CustomEvent).detail?.id ?? '').replace(/^rec-/, '');
-    if (id && location.hash !== `#${id}`) history.replaceState(null, '', `${location.pathname}${location.search}#${id}`);
-    tabFor(id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  for (const a of links) a.addEventListener('click', (e) => {
+    e.preventDefault();
+    const name = a.dataset.recLink!;
+    show(name, { focus: true, smooth: true });
+    say(name);
   });
   window.addEventListener('hashchange', fromHash);
-  fromHash();
+  // No address to go to: a post comes back to the section it came from (the server's choice, data-rec-start).
+  if (!fromHash()) {
+    const start = document.querySelector<HTMLElement>('[data-rec-start]')?.dataset.recStart;
+    if (start && start !== 'overview') requestAnimationFrame(() => show(start));
+  }
+  // The section in view: the last one whose head has passed a line a little below the top of the screen.
+  let ticking = false;
+  const spy = () => {
+    ticking = false;
+    if (pin && performance.now() - pin.at < 1500) { mark(pin.name); return; }
+    const stuck = (topBar?.offsetHeight ?? 0) + (window.innerWidth < 1200 ? nav?.offsetHeight ?? 0 : 0);
+    const line = stuck + Math.min(window.innerHeight * 0.25, 160);
+    let at: string | null = sections[0]?.dataset.recPanel ?? null;
+    for (const sec of sections) if (sec.getBoundingClientRect().top <= line) at = sec.dataset.recPanel ?? at;
+    // At the foot of the page the last sections cannot reach the line: one already marked and in view stays marked
+    // (the one gone to), else the last one.
+    const was = links.find((a) => a.getAttribute('aria-current'))?.dataset.recLink ?? null;
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
+      const top = was ? document.getElementById(`rec-${was}`)?.getBoundingClientRect().top ?? -1 : -1;
+      at = top >= stuck - 1 && top < window.innerHeight ? was : sections[sections.length - 1]?.dataset.recPanel ?? at;
+    }
+    if (was !== at) mark(at);
+  };
+  window.addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(spy); } }, { passive: true });
+  spy();
 
   // ?open=details (the Dashboard's desk note, "Edit"): the caret waits at the end of Notes, once the shell has opened
   // the panel and focused its title; then the address drops open and dash, so Back does not open the panel again.
@@ -1503,18 +1544,32 @@ const recHere = here;
       history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
     }));
   }
-  document.querySelectorAll<HTMLElement>('[data-rec-go]').forEach((b) => b.addEventListener('click', () => { show(b.dataset.recGo!, true); }));
-  // A quick action in More (a note, a plan item, a prescription, a file) brings its section forward behind its panel.
-  document.querySelectorAll<HTMLElement>('[data-rec-show]').forEach((b) => b.addEventListener('click', () => { show(b.dataset.recShow!); }));
+  // A plus (or a "See …") that goes to a part of this page: there, with the caret in its field when it names one.
+  document.querySelectorAll<HTMLElement>('[data-rec-go]').forEach((b) => b.addEventListener('click', () => {
+    show(b.dataset.recGo!, { field: b.dataset.recField, focus: true, smooth: !b.dataset.recField });
+  }));
+  // A plus that opens Edit details beside one detail: the caret goes to that detail's field once the panel is open.
+  document.querySelectorAll<HTMLElement>('[data-ws-open][data-rec-field]').forEach((b) => b.addEventListener('click', () => {
+    const panel = document.getElementById(b.dataset.wsOpen!);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const box = panel?.querySelector<HTMLInputElement>(`[name="${b.dataset.recField}"]`);
+      if (box) { box.focus(); if (box.type !== 'radio' && box.select) box.select(); }
+    }));
+  }));
 
   // The chart speaks up: a copy of this page kept for a brownout opens on the Chart, and a
   // notice the chart raises (a colleague's newer finding, changes waiting on this device)
   // brings the Chart forward, wherever the person was.
   if (document.documentElement.dataset.offlineCopy) show('chart');
   const notices = document.querySelectorAll<HTMLElement>('[data-hold-note], [data-sync-notice], [data-copy-note]');
-  const watch = new MutationObserver(() => { if ([...notices].some((n) => !n.hidden)) show('chart'); });
+  let told = [...notices].some((n) => !n.hidden);
+  const watch = new MutationObserver(() => {
+    const now = [...notices].some((n) => !n.hidden);
+    if (now && !told) show('chart');
+    told = now;
+  });
   notices.forEach((n) => watch.observe(n, { attributes: true, attributeFilter: ['hidden'] }));
-  if ([...notices].some((n) => !n.hidden)) show('chart');
+  if (told) show('chart');
 
   // The chart in its card (the look and the layout are patients.css, "The chart"). The
   // component's empty line was written for a demo chart; a record says what to do. Where an

@@ -11,6 +11,7 @@ import Head from '../_ui/Head.astro';
 import Callout from '../_ui/Callout.astro';
 import { RECALL_REASONS, type Recall, type RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
+import Plus from './Plus.astro';
 
 /** texts: the clinic texts patients when a check-up is due (Clinic settings, 036). */
 interface Props { recall: Recall | null; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; bookHref: string; texts?: boolean }
@@ -44,7 +45,7 @@ const quick = (months: number, label: string) => ({ months, label });
         <div class="rc-when">
           {state !== 'later' && <a href={bookHref} class="ws-btn ws-btn-quiet"><Icon name="calendar" />Book it</a>}
           <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-done" /><button class="ws-btn ws-btn-quiet"><Icon name="check" />Came in</button></form>
-          <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-recall-set">Change</button>
+          <Plus text="Change" label="Change the next check-up" open="rec-recall-set" />
           <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-clear" /><button class="ws-btn ws-btn-quiet">Clear</button></form>
         </div>
       )}
@@ -57,7 +58,7 @@ const quick = (months: number, label: string) => ({ months, label });
           {[quick(3, 'In 3 months'), quick(6, 'In 6 months'), quick(12, 'In a year')].map((q) => (
             <form method="post" action={`${action}#recall`}><Csrf /><input type="hidden" name="intent" value="recall-set" /><input type="hidden" name="months" value={q.months} /><button class="ws-btn ws-btn-quiet">{q.label}</button></form>
           ))}
-          <button type="button" class="ws-btn ws-btn-quiet" data-ws-open="rec-recall-set"><Icon name="calendar" />Pick a day</button>
+          <Plus text="Pick a day" label="Set the next check-up" open="rec-recall-set" />
         </div>
       )}
     </>
