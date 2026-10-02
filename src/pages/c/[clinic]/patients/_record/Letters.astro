@@ -16,6 +16,7 @@ import Head from '../_ui/Head.astro';
 import Callout from '../_ui/Callout.astro';
 import Glyph from '../_ui/Glyph.astro';
 import PtrWords from './PtrWords.astro';
+import Plus from './Plus.astro';
 import { LETTER_KIND, ANSWER, type Letter } from '../../../../../lib/record-extra';
 import type { Clinician, RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
@@ -63,17 +64,17 @@ const summary = (l: Letter) =>
   )}
   {saved === 'answered' && <Callout tone="success" text="The physician’s reply is on the record." />}
   <Pane as="section" label="Certificates and letters" id="letters">
-    <Head icon="form" title="Certificates and letters" meta={letters.length ? `${letters.length} written` : undefined} />
-    <p class="-mt-2 mb-4 text-[14px] text-ink-2">Printed on the clinic’s paper with the dentist’s PRC licence and the PTR on file. A letter is never changed once saved.</p>
-    {canEdit && (
-      <div class="lt-kinds">
-        <button type="button" class="lt-kind" data-ws-open="rec-letter-add" data-letter-kind="certificate"><Glyph name="form" size={20} /><span><strong>Dental certificate</strong><span>For school or work</span></span></button>
-        <button type="button" class="lt-kind" data-ws-open="rec-letter-add" data-letter-kind="referral"><Glyph name="arrow-right" size={20} /><span><strong>Referral</strong><span>To a specialist</span></span></button>
-        <button type="button" class="lt-kind" data-ws-open="rec-letter-add" data-letter-kind="clearance"><Glyph name="shield" size={20} /><span><strong>Medical clearance</strong><span>Ask the patient’s physician</span></span></button>
-      </div>
-    )}
+    <Head icon="form" title="Certificates and letters">
+      {canEdit && (
+        <Fragment slot="actions">
+          <Plus text="Certificate" label="Write a dental certificate, for school or work" open="rec-letter-add" data={{ 'letter-kind': 'certificate' }} />
+          <Plus text="Referral" label="Write a referral to a specialist" open="rec-letter-add" data={{ 'letter-kind': 'referral' }} />
+          <Plus text="Clearance" label="Ask the patient’s physician for medical clearance" open="rec-letter-add" data={{ 'letter-kind': 'clearance' }} />
+        </Fragment>
+      )}
+    </Head>
     {waiting.length > 0 && <Callout tone="warn" class="mt-4" title={waiting.length === 1 ? 'Waiting for the physician’s clearance' : `${waiting.length} clearance requests waiting`} text="Write the reply in when it comes back, before the treatment." />}
-    {letters.length === 0 ? <Empty class="mt-3" icon="file" text="No certificates or letters yet." /> : (
+    {letters.length === 0 ? <Empty icon="file" text="None yet." /> : (
       <ul class="mt-4 grid gap-3">
         {letters.map((l) => (
           <li class="rx-card">

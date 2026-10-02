@@ -52,7 +52,7 @@ const lv = v('lab-add');
 const help = 'text-[13px] leading-snug text-ink-2';
 ---
 
-<div class="grid gap-4 max-md:gap-3">
+<div class="grid">
   {saved && SAVED[saved] && <Callout tone="success" text={SAVED[saved]} />}
   {inline && <Callout tone="alert" text={inline} />}
   {/* The chart's offer after a treatment was recorded or marked done here (_record/ChartOffer.astro, p01 step 2). */}

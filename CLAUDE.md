@@ -1080,6 +1080,19 @@ details covered, instead).
   `:has(> .ws-empty)` rule in record.css); the next check-up is one line with its choices; the chart's findings are
   one line ("Findings 47 D Caries · 11 Veneer …") instead of tiles; the sheet is 72rem with tighter type, rows,
   tables and callouts. Measured on one patient: 9082 → 6800 px tall at 1440, 13145 → 11606 at 390.
+- **Simpler and closer** (the owner, 2 Oct: "make the UI/HUD simpler and less spacious … in the patient records"). No line
+  that explains the page (the chart's "saved as you make it" and how-to, the Treatment record's balance note — the
+  mismatch and the 300 cap still show —, Signed at visits', the patient forms', the letters', the desk hint under
+  privacy consent on the sheet only), and no count lines ("1 on record", "0 about this patient"). Each part's buttons are
+  in its heading: Print on the Treatment record, In Finances and New charge on Account, All messages on Texts, and the
+  letters' three kinds as pluses (Certificate · Referral · Clearance, `data-letter-kind`). The head is one row (‹
+  Patients · chart no. and facts · the actions; no avatar), the facts inline; the contents use short names
+  (`SECTIONS[].short`, the full name for a screen reader) on one line from 1366 px and one sideways-scrolling row on a
+  phone (its links are `position: relative`, or their sr-only words widen the page); This visit's done line and extras
+  share a row; the medical history's updated line, Change and Earlier versions share a row; the Findings line is gone
+  (the chart note lists them). Account is one line. The "every look is logged" line is the sheet's foot. Measured on the
+  same data: 6005 → 4630 px at 1440, 10119 → 8392 at 390; paper-check passes (lowest 4.75:1 light, 5.59:1 dark), and
+  counts the teal button in the first screen only.
 - The script is small: measure the workspace bar into `--rec-top` (`scroll-margin-top`), a contents link scrolls its
   part under the bar and puts its name in the address, an address with a part's name or any id opens there, and
   with none the server's choice (`data-rec-start`, the part a post came from).

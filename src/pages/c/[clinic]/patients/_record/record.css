@@ -128,18 +128,6 @@
 .vt-bp { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; gap: 0.5rem; }
 .vt-slash { padding-bottom: 0.75rem; font-size: 22px; color: var(--c-ink-2); }
 
-/* --- certificates and letters (034) ---------------------------------------------------------------- */
-.lt-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.5rem; }
-.lt-kind {
-  display: flex; align-items: center; gap: 0.75rem; min-height: 60px; padding: 0.625rem 0.875rem; border: 1px solid var(--ws-field-line);
-  border-radius: 12px; background: var(--c-surface); text-align: left; color: var(--ws-teal-ink); cursor: pointer; transition: background-color 160ms ease, border-color 160ms ease;
-}
-.lt-kind:hover { border-color: var(--ws-teal); background: var(--ws-teal-tint); }
-.lt-kind:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
-.lt-kind > span { display: grid; gap: 0.0625rem; }
-.lt-kind strong { font-size: 15px; color: var(--c-ink); }
-.lt-kind span span { font-size: 13px; color: var(--c-ink-2); }
-
 /* --- HMO approvals (034) --------------------------------------------------------------------------- */
 .lo-item { min-height: 44px; }
 
@@ -597,3 +585,75 @@ button.rf { display: grid; min-height: 44px; }
 /* Rows of a list (treatments done, notes, prescriptions): tighter. */
 .pp-sheet .tx-row { padding: 0.375rem 0; }
 .pp-sheet .tx-phase-head { padding-bottom: 0.25rem; }
+
+/* --- Simpler and closer (the owner, 2 Oct 2026: "make the UI/HUD simpler and less spacious … in the patient records") ---
+   No lines that explain the page, each part's buttons in its heading, related lines on one row, and the gaps between
+   parts and rows halved. Targets stay 44 px and fields 16 px. */
+.pp-top.ws-pad-normal { padding: 0.75rem 1.25rem 0.875rem; }
+@media (max-width: 767px) { .pp-top.ws-pad-normal { padding: 0.5rem 0.75rem 0.75rem; } }
+.pp-top-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem 1rem; }
+.pp-top .rec-who { gap: 0.25rem 0.75rem; flex-wrap: wrap; }
+.pp-top .rec-back { margin: 0 0 0 -0.375rem; padding: 0 0.5rem 0 0.25rem; border-right: 1px solid var(--ws-hair); border-radius: 0; }
+.pp-top .rec-alerts { gap: 0 0.375rem; }
+.pp-facts { gap: 0 1.5rem; padding-top: 0.375rem; }
+.pp-facts > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.375rem; min-height: 28px; }
+.pp-facts dt { font-size: 13px; }
+.pp-facts dd { font-size: 14px; }
+
+.pp-sheet { padding: 0.75rem 1.25rem 1.25rem; }
+@media (max-width: 767px) { .pp-sheet { padding: 0.5rem 0.75rem 1rem; } }
+.pp-contents { padding-bottom: 0; margin-bottom: 0.625rem; }
+.pp-contents ol { column-gap: 0; }
+.pp-contents a { gap: 0.2rem; padding: 0 0.3125rem; font-size: 13.5px; }
+.rec-sec { gap: 0.375rem; }
+.rec-sec + .rec-sec { margin-top: 1rem; }
+.pp-head { padding-bottom: 0.125rem; }
+.pp-head-actions { gap: 0.375rem; }
+.pp-sheet .ws-pane-head { margin-bottom: 0.25rem; }
+.pp-sheet .ws-pane + .ws-pane { margin-top: 0; }
+.pp-sheet .ws-callout { padding: 0.375rem 0.625rem; }
+
+/* Today's visit: a slim note; what is missing as ruled rows, what is done and the extras on one line under them. */
+.pp-sheet .ws-pane.ws-glass.vs { margin-bottom: 1rem; padding: 0.5rem 0.75rem 0.375rem; }
+.pp-sheet .vs .ws-pane-head { margin-bottom: 0.25rem; }
+.pp-sheet .vs-list { gap: 0.1875rem; }
+.pp-sheet .vs-line { min-height: 44px; padding: 0 0 0 0.625rem; border-radius: 8px; font-size: 14px; }
+.pp-sheet .vs-all { min-height: 40px; border-radius: 8px; font-size: 14px; }
+.vs-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0 1rem; margin-top: 0.125rem; }
+.vs-foot > .vs-done { margin: 0; }
+.vs-foot > .vs-also { flex: 1 1 auto; margin: 0; padding: 0; border: 0; }
+
+/* The medical history: who updated it, the change and the earlier versions on one line. */
+.pp-hist-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.75rem; margin-top: 0.125rem; }
+.pp-hist-foot > .pp-small { margin-right: auto; }
+.pp-hist-foot > details[open] { flex-basis: 100%; }
+.pp-sheet .pp-hist-foot > .pp-earlier { margin: 0; padding: 0; border: 0; }
+
+/* The chart: the odontogram's own how-to line is for the first visit, not every page. */
+.pp-sheet .pt-chart .odo-help { display: none; }
+
+/* The account's one line; the record's foot. */
+.pp-money { font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
+.pp-foot { margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid var(--ws-hair); }
+.pp-sheet .pp-chart-changes { margin-top: 0; }
+
+/* Privacy consent on the sheet (the shared ./DeskConsent): its heading at the sheet's size, the form straight under it,
+   the desk's hint left out. Never while the patient is reading it full screen ([data-facing]). */
+.pp-sheet [data-desk-consent]:not([data-facing]) #consent-title { font-size: 15px; }
+.pp-sheet [data-desk-consent]:not([data-facing]) #consent-title + p { margin-top: 0.125rem; font-size: 14px; }
+.pp-sheet [data-desk-consent]:not([data-facing]) .dc-row { margin-top: 0.25rem; padding-top: 0.5rem; }
+.pp-sheet [data-desk-consent]:not([data-facing]) .dc-hint { display: none; }
+.pp-sheet #consent-paper { margin-top: 0.25rem; padding-top: 0; border-top: 0; }
+
+/* The contents on one line from 1366 px: smaller words, the number without its full stop. */
+.pp-contents a { gap: 0.25rem; padding: 0 0.25rem; font-size: 13px; }
+.pp-contents .pp-n::after { content: none; }
+.pp-contents li + li { margin-left: 0.125rem; }
+/* A card whose title is the part's (kept for a screen reader) takes no room on its line. */
+.pp-sheet :is(#chart, #notes, #visits, #money, #texts) > .ws-pane-head > .ws-pane-heading { position: absolute; }
+/* On a phone the contents is one row that scrolls sideways inside itself (the page never does). */
+@media (max-width: 767px) {
+  .pp-contents ol { flex: 1 1 100%; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding-bottom: 0.125rem; }
+  .pp-contents li { flex: none; }
+  .pp-contents a { position: relative; white-space: nowrap; }
+}

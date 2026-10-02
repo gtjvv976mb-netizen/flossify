@@ -19,22 +19,20 @@ import { balanceWords, amountWords, type Ledger } from '../../../../../lib/treat
 import { pesos } from '../../../../../lib/invoices';
 import { VISIT_STATUS } from '../../../../../lib/visit-record';
 
-interface Props { ledger: Ledger; money: boolean; today: string; printHref: string; name: string }
-const { ledger, money, today, printHref, name } = Astro.props;
+interface Props { ledger: Ledger; money: boolean; today: string; name: string }
+const { ledger, money, today, name } = Astro.props;
 const { days } = ledger;
 const FOLD_OVER = 14, KEEP = 10;
 const folded = days.length > FOLD_OVER ? days.length - KEEP : 0;
 const balanceNote = !money ? null
   : ledger.balance === 'mismatch' ? `The running balance did not match the balance on file (${pesos(ledger.onFile < 0n ? -ledger.onFile : ledger.onFile)}${ledger.onFile < 0n ? ' credit' : ''}). Check Money.`
   : ledger.balance === 'too-many' ? `Too many entries to count a balance here; the balance now is ${balanceWords(ledger.onFile)} (Money).`
-  : 'Balance is what the patient owes at the end of that day: charges less payments, less what an HMO or PhilHealth is still expected to pay. It is the same count as the Balance at the top. Void statements and voided payments are not counted; they stay in Money.';
+  : null;
 ---
 
 <Pane as="section" label="Treatment record" id="treatment-record" pad="none">
   <div class="trec-head">
-    <Head icon="history" title="Treatment record" meta={ledger.count ? (ledger.count === 1 ? 'One treatment' : `${ledger.count} treatments`) : undefined}>
-      <a slot="actions" href={printHref} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>
-    </Head>
+    <Head icon="history" title="Treatment record" />
   </div>
   {days.length === 0 ? <div class="trec-pad"><Empty icon="clock" text="No treatment recorded yet." /></div> : (
     <>
@@ -45,7 +43,7 @@ const balanceNote = !money ? null
           <thead>
             <tr>
               <th scope="col" class="meta trec-c-date">Date</th>
-              <th scope="col" class="meta trec-c-tooth"><span aria-hidden="true">Tooth no./s</span><span class="sr-only">Tooth numbers</span></th>
+              <th scope="col" class="meta trec-c-tooth"><span aria-hidden="true" title="FDI numbers">Tooth no./s</span><span class="sr-only">Tooth numbers, FDI</span></th>
               <th scope="col" class="meta trec-c-proc">Procedure</th>
               <th scope="col" class="meta trec-c-who"><span aria-hidden="true">Dentist/s</span><span class="sr-only">Dentist</span></th>
               {money && <th scope="col" class="meta trec-c-amt">Amount charged</th>}
@@ -98,10 +96,12 @@ const balanceNote = !money ? null
           ))}
         </table>
       </div>
-      <div class="trec-foot">
-        {balanceNote && <p>{balanceNote}</p>}
-        <p>Teeth in FDI numbers.{ledger.capped && ' Only the newest 300 treatments and visits are listed.'}</p>
-      </div>
+      {(balanceNote || ledger.capped) && (
+        <div class="trec-foot">
+          {balanceNote && <p>{balanceNote}</p>}
+          {ledger.capped && <p>Only the newest 300 treatments and visits are listed.</p>}
+        </div>
+      )}
     </>
   )}
 </Pane>

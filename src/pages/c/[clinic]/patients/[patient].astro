@@ -95,7 +95,6 @@ import Chip from '../../../../components/ws/Chip.astro';
 import Empty from '../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../components/ws/SidePanel.astro';
 import Icon from '../../../../components/ws/Icon.astro';
-import Avatar from '../../../../components/ws/Avatar.astro';
 import Menu from '../../../../components/ws/Menu.astro';
 import Head from './_ui/Head.astro';
 import Callout from './_ui/Callout.astro';
@@ -648,18 +647,18 @@ const CHART_SAVED: Record<string, string> = {
 // details, the medical history, the dental chart, the plan, the treatment record), then the papers, the appointments,
 // the account and the texts. Numbered on the page as on paper.
 const SECTIONS = [
-  { id: 'overview', label: 'Patient information' },
-  { id: 'health', label: 'Medical history' },
-  { id: 'chart', label: 'Dental chart' },
-  { id: 'treatment', label: 'Treatment' },
-  { id: 'treatment-record', label: 'Treatment record' },
-  { id: 'notes', label: 'Clinical notes' },
-  { id: 'consent', label: 'Consent' },
-  { id: 'rx', label: 'Prescriptions and letters' },
-  { id: 'files', label: 'X-rays and files' },
-  { id: 'visits', label: 'Appointments' },
-  ...(money ? [{ id: 'money', label: 'Account' }] : []),
-  { id: 'texts', label: 'Texts' },
+  { id: 'overview', label: 'Patient information', short: 'Patient' },
+  { id: 'health', label: 'Medical history', short: 'Medical history' },
+  { id: 'chart', label: 'Dental chart', short: 'Chart' },
+  { id: 'treatment', label: 'Treatment', short: 'Treatment' },
+  { id: 'treatment-record', label: 'Treatment record', short: 'Treatment record' },
+  { id: 'notes', label: 'Clinical notes', short: 'Notes' },
+  { id: 'consent', label: 'Consent', short: 'Consent' },
+  { id: 'rx', label: 'Prescriptions and letters', short: 'Rx and letters' },
+  { id: 'files', label: 'X-rays and files', short: 'X-rays' },
+  { id: 'visits', label: 'Appointments', short: 'Visits' },
+  ...(money ? [{ id: 'money', label: 'Account', short: 'Account' }] : []),
+  { id: 'texts', label: 'Texts', short: 'Texts' },
 ];
 const savedTo: Record<string, string> = { intake: 'overview', 'consent-ahead': 'overview', capacity: 'consent', 'consent-removed': 'consent', health: 'health', birth: 'health', nothing: 'health', consent: 'consent', 'consent-already': 'consent', paper: 'consent', details: 'overview', new: 'overview', form: 'overview' };
 
@@ -794,15 +793,14 @@ const recHere = here;
       person's page and a statement: this card is who they are beside it — the avatar, the few
       facts, the actions and the four numbers — with no second name. */}
   <Pane as="div" label={`${shortName}, patient record`} class="pp-top">
-    <a href={`/c/${clinic.slug}/patients/`} class="rec-back" data-pts-back><Icon name="chevron-left" />Back to patients</a>
     <script>
       // Back to the list as it was left: the same search, filter and sort (./_list/back.ts).
       import { restoreBackLinks } from './_list/back';
       restoreBackLinks();
     </script>
-    <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+    <div class="pp-top-row">
       <div class="rec-who">
-        <Avatar name={shortName} size="lg" />
+        <a href={`/c/${clinic.slug}/patients/`} class="rec-back" data-pts-back><Icon name="chevron-left" /><span class="sr-only">Back to </span>Patients</a>
         <p class="rec-facts min-w-0"><span class="rec-facts-in"><span><span class="pt-ref" title="Chart no."><span class="sr-only">Chart no. </span>{patient.chart_no}</span></span>{facts.map((f) => <span>{f}</span>)}</span></p>
       </div>
       <div class="rec-actions">
@@ -857,7 +855,7 @@ const recHere = here;
     </div>
 
     {(allergies.length > 0 || conditions.length > 0 || medications.length > 0 || minor || bpChip || clearance || behindPlans.length > 0 || loaWaiting > 0 || staleHealth) && (
-      <div role="alert" class="rec-alerts mt-5">
+      <div role="alert" class="rec-alerts mt-2">
         {allergies.map((a) => <Chip tone="alert" icon="alert">Allergy: {a}</Chip>)}
         {conditions.map((c) => <Chip tone="warn">{c}</Chip>)}
         {medications.map((m) => <Chip tone="neutral">Takes {m}</Chip>)}
@@ -931,7 +929,7 @@ const recHere = here;
       </Callout>
     )}
 
-    <dl class="pp-facts mt-4">
+    <dl class="pp-facts mt-2">
       <div><dt>{hereNow ? 'Today, now' : 'Next visit'}</dt><dd>{nextValue}{nextNote && <span class="pp-facts-note"> · {nextNote}</span>}</dd></div>
       <div><dt>Last visit</dt><dd>{lastVisit ? dateText(manilaDay(lastVisit.starts_at)) : 'None yet'}{lastVisit && [lastVisit.reason, lastVisit.dentist].filter(Boolean).length > 0 && <span class="pp-facts-note"> · {[lastVisit.reason, lastVisit.dentist].filter(Boolean).join(' · ')}</span>}</dd></div>
       {money && <div><dt>Balance</dt><dd><a href="#money" data-rec-go="money" class:list={[balance > 0n && 'pp-owed']}>{balance > 0n ? `${pesos(balance)} owed` : balance < 0n ? `${pesos(-balance)} in credit` : 'Nothing owed'}</a></dd></div>}
@@ -941,7 +939,7 @@ const recHere = here;
 
   {/* The record's body: one sheet, as a paper chart is, its contents at the top (./_record/RecordNav.astro). */}
   <article class="rec-body pp-sheet" data-rec-start={current} aria-label={`${shortName}, patient record`}>
-  <RecordNav items={SECTIONS.map((x, i) => ({ id: x.id, label: x.label, n: i + 1 }))} name={shortName} />
+  <RecordNav items={SECTIONS.map((x, i) => ({ id: x.id, label: x.short, full: x.label, n: i + 1 }))} name={shortName} />
   <div class="rec-main">
 
   {/* Every visit's panel, outside the sections so it opens from the Treatment record's dates and from Visits alike. */}
@@ -982,7 +980,6 @@ const recHere = here;
         ) : <p class="text-[15px] text-ink-2">Nothing about this visit on the form.</p>}
       </Pane>
     )}
-    <p class="pp-small">Every look at this record, and every change to it, is logged under the person’s name.</p>
   </div>
 
   <!-- Health -->
@@ -1001,12 +998,6 @@ const recHere = here;
         <FormCell label="Note for the dentist" value={latest?.note ?? null} span={2} pre
           edit={canEdit ? { label: latest?.note ? 'Change the note for the dentist' : 'Add a note for the dentist', go: 'health-form', field: 'note' } : undefined} />
       </dl>
-      <p class="pp-small mt-2">
-        {!latest ? 'Nothing recorded yet. Ask the patient before treatment.'
-          : answered(latest) ? `Updated ${byLine(latest)}.`
-          : `No health answers yet. Ask the patient before treatment. Last saved ${byLine(latest)}.`}
-      </p>
-
       {(saved === 'health' || saved === 'birth') && <Callout tone="success" class="mt-4" text="Saved." />}
       {saved === 'nothing' && <Callout tone="info" class="mt-4" text="Nothing was saved: nothing is ticked or typed yet." />}
       {conflict && (
@@ -1022,8 +1013,15 @@ const recHere = here;
       )}
       {healthProblems.length > 0 && <Callout tone="alert" class="mt-4" title={`Nothing was saved. ${healthProblems.length === 1 ? 'One thing' : 'A few things'} to fix:`} items={healthProblems} />}
 
+      {/* Who updated it, the change and the earlier versions on one line; an opened form takes the whole width. */}
+      <div class="pp-hist-foot">
+      <p class="pp-small">
+        {!latest ? 'Nothing recorded yet. Ask the patient before treatment.'
+          : answered(latest) ? `Updated ${byLine(latest)}.`
+          : `No health answers yet. Ask the patient before treatment. Last saved ${byLine(latest)}.`}
+      </p>
       {canEdit && (
-        <details class="pp-edit mt-4" open={posted || !!conflict || healthProblems.length > 0 || undefined} data-pp-edit>
+        <details class="pp-edit" open={posted || !!conflict || healthProblems.length > 0 || undefined} data-pp-edit>
         <summary class="rec-plus rec-plus-text"><span class="rec-plus-mark" aria-hidden="true"><Icon name="plus" size={16} /></span>Change the medical history</summary>
         <form method="post" action={`${here}#health`} class="mt-5 rec-anchor" id="health-form" data-health-form data-health-unsaved={posted ? '' : undefined}>
           <Csrf />
@@ -1057,7 +1055,7 @@ const recHere = here;
       )}
 
       {health.total > 0 && (
-        <details class="pt-more mt-5 border-t border-[var(--ws-hair)] pt-2">
+        <details class="pt-more pp-earlier">
           <summary>Earlier versions ({health.total}) <Icon name="chevron" size={16} class="pt-chev" /></summary>
           <ol class="pt-list mt-1">
             {health.versions.map((v, i) => {
@@ -1075,6 +1073,7 @@ const recHere = here;
           {health.total > health.versions.length && <p class="mt-2 text-[13.5px] text-muted">The {health.versions.length} newest are shown.</p>}
         </details>
       )}
+      </div>
     </Pane>
   </div>
 
@@ -1085,7 +1084,6 @@ const recHere = here;
     {showOffer && current === 'chart' && <ChartOffer state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="chart" leaveHref={leaveOffer('chart')} inChart />}
     <Pane as="section" label="Chart" id="chart" class="pt-chart-pane">
       <Head icon="tooth" title="Chart" />
-      <p class="pp-small -mt-1 mb-2">Every change is saved as you make it, under your name.</p>
       {/* The odontogram (src/components/Odontogram.astro, its offline logic untouched; the palette's record actions
           for people who may edit records, the plan and done marks for everyone),
           drawn soft by patients.css ("The chart") and laid out by the width of this card: the
@@ -1097,16 +1095,9 @@ const recHere = here;
       </div>
       {babyWork && <p class="mt-3 text-[13.5px] text-ink-2">Work on baby teeth is in Treatment; this chart shows permanent teeth only.</p>}
 
-      {/* The findings as the server had them, newest concern first. When there are none the chart
-          note above already says so, once. */}
-      {findings.length > 0 && (
-        <>
-          <p class="pp-findings"><span class="pp-findings-k">Findings</span>{findings.map((f, n) => <span>{n > 0 && <span aria-hidden="true"> · </span>}<strong class="tabular-nums">{f.fdi}{f.codes && ` ${f.codes}`}</strong> {CONDITION_LABEL[f.condition]}</span>)}</p>
-        </>
-      )}
       {/* The chart's history (tooth_state, grouped by the minute and the person), newest first. */}
       {data.chartChanges.length > 0 && (
-        <details class="pt-more mt-5 border-t border-[var(--ws-hair)] pt-2">
+        <details class="pt-more pp-chart-changes">
           <summary>Changes to the chart ({data.chartChanges.length}) <Icon name="chevron" size={16} class="pt-chev" /></summary>
           <ol class="pt-list mt-1">
             {data.chartChanges.map((ch) => (
@@ -1127,7 +1118,7 @@ const recHere = here;
     <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} gaps={data.gaps.byPlanItem} consentsBase={`${here}consents/`}>
       {showOffer && current === 'treatment' && <ChartOffer slot="offer" state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="treatment" leaveHref={leaveOffer('treatment')} inChart={false} />}
     </Treatment>
-    <div class="mt-4 grid gap-4 max-md:mt-3 max-md:gap-3">
+    <div class="grid">
       <Loas loas={ext.loas} plan={clin.plan} payors={ext.hmoPayors} hmoName={patient.hmo_name} memberNo={patient.hmo_member_no} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} settingsHref={`/c/${clinic.slug}/settings/`} />
       <PayPlans plans={ext.plans} canEdit={canEdit} canBill={money} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} financesBase={links.finances} />
     </div>
@@ -1135,8 +1126,10 @@ const recHere = here;
 
   <!-- Treatment record -->
   <div id="rec-treatment-record" role="region" aria-labelledby="rec-treatment-record-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="treatment-record">
-    <Banner id="treatment-record" n={SECTION_NO['treatment-record']} label={SECTION_LABEL['treatment-record']} adds={canEdit ? [{ label: 'Record a treatment done', text: 'Record a treatment', open: 'rec-done-add' }] : []} />
-    <TreatmentRecord ledger={data.ledger} money={money} today={today} printHref={`${here}treatment-record/`} name={shortName} />
+    <Banner id="treatment-record" n={SECTION_NO['treatment-record']} label={SECTION_LABEL['treatment-record']} adds={canEdit ? [{ label: 'Record a treatment done', text: 'Record a treatment', open: 'rec-done-add' }] : []}>
+      {data.ledger.count > 0 && <a href={`${here}treatment-record/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>}
+    </Banner>
+    <TreatmentRecord ledger={data.ledger} money={money} today={today} name={shortName} />
   </div>
 
   <!-- Notes -->
@@ -1157,9 +1150,8 @@ const recHere = here;
     <ConsentForms docs={data.consentDocs} slug={clinic.slug} patientId={patient.id} firstName={patient.first_name} canEdit={canEdit} mayExplain={data.mayExplainIds}
       mayCapacity={canEdit && data.treatsHere && !minor && !!patient.birth} capacity={data.capacity} canPrepare={data.canPrepare} offered={data.offeredCodes} />
     <Pane as="section" label="Signed at visits" id="visit-consents">
-      <Head icon="pen" title="Signed at visits" meta={data.signed.length === 1 ? 'One consent' : `${data.signed.length} consents`} />
-      <p class="-mt-2 mb-3 text-[14px] text-ink-2">The consent to examination and treatment, signed on the clinic’s tablet for a visit: what the dentist explained, and the signature. Open a visit from its date on the Treatment record, or in Visits, to have one signed.</p>
-      {data.signed.length === 0 ? <p class="text-[14.5px] text-ink-2">None signed on the tablet yet.</p> : (
+      <Head icon="pen" title="Signed at visits" />
+      {data.signed.length === 0 ? <Empty icon="pen" text="None yet. Open a visit to have it signed on the tablet." /> : (
         <ul class="rs-list">
           {data.signed.map((k) => {
             const v = data.fullVisits.find((x) => x.id === k.visitId);
@@ -1180,8 +1172,7 @@ const recHere = here;
     </Pane>
     {data.forms.length > 0 && (
       <Pane as="section" label="Patient forms" id="patient-forms" class="mt-4 max-md:mt-3">
-        <Head icon="form" title="Patient forms" meta={`${data.forms.length === 1 ? 'One form' : `${data.forms.length} forms`} from the QR code`} />
-        <p class="-mt-2 mb-3 text-[14px] text-ink-2">Filled in on the patient’s own phone: their details, health and dental history, the consent to examination and treatment, and the privacy notice.</p>
+        <Head icon="form" title="Patient forms" meta="From the QR code" />
         <ul class="pt-list fm-rec-list">
           {data.forms.map((f) => (
             <li>
@@ -1213,7 +1204,7 @@ const recHere = here;
   <div id="rec-rx" role="region" aria-labelledby="rec-rx-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="rx">
     <Banner id="rx" n={SECTION_NO['rx']} label={SECTION_LABEL['rx']} />
     <Prescriptions c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} firstName={patient.first_name} printBase={`${here}rx/`} allergies={allergies} typedRows={rxTyped} visitId={thisVisit?.id ?? null} openNow={openNow === 'rx'} today={today} ptrFix={ptrFix} />
-    <div class="mt-4 max-md:mt-3">
+    <div>
       <Letters letters={ext.letters} clinicians={clin.clinicians} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} printBase={`${here}letters/`} lastVisit={lastVisit ? manilaDay(lastVisit.starts_at) : null} conditions={conditions} ptrFix={ptrFix} />
     </div>
   </div>
@@ -1227,7 +1218,7 @@ const recHere = here;
   <!-- Visits -->
   <div id="rec-visits" role="region" aria-labelledby="rec-visits-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="visits">
     <Banner id="visits" n={SECTION_NO['visits']} label={SECTION_LABEL['visits']} adds={[{ label: `Book a visit for ${patient.first_name}`, text: 'Book a visit', href: bookHref }]} />
-    <Pane title="Visits" icon="calendar" id="visits" meta={visits.length === 200 ? 'The newest 200' : `${visits.length} on record`} pad="none">
+    <Pane title="Visits" icon="calendar" id="visits" meta={visits.length === 200 ? 'The newest 200' : undefined} pad="none">
       {visits.length === 0 ? (
         <div class="px-6 py-3 max-md:px-4"><Empty icon="calendar" text="No visits yet." action={canEdit ? { label: 'Bring in past visits from a spreadsheet', href: importHref } : { label: 'Book the first one', href: bookHref }} /></div>
       ) : (
@@ -1267,22 +1258,19 @@ const recHere = here;
   <!-- Money -->
   {money && (
     <div id="rec-money" role="region" aria-labelledby="rec-money-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="money">
-    <Banner id="money" n={SECTION_NO['money']} label={SECTION_LABEL['money']} />
+    <Banner id="money" n={SECTION_NO['money']} label={SECTION_LABEL['money']} adds={[{ label: `A new statement for ${patient.first_name}`, text: 'New charge', href: chargeHref }]}>
+      <a href={`${links.finances}?patient=${patient.id}&view=all`} class="ws-btn ws-btn-quiet ws-btn-sm">In Finances <Icon name="arrow-right" size={16} /></a>
+    </Banner>
       <Pane title="Money" icon="money" id="money" pad="none">
-        <Fragment slot="actions">
-          <a href={`${links.finances}?patient=${patient.id}&view=all`} class="ws-btn ws-btn-quiet ws-btn-sm">In Finances <Icon name="arrow-right" size={16} /></a>
-          <Plus href={chargeHref} text="New charge" label={`A new statement for ${patient.first_name}`} />
-        </Fragment>
-        <p class="border-b border-[var(--ws-hair)] px-6 py-4 text-[15px] text-ink-2 max-md:px-4">
+        <p class="pp-money">
           {balance > 0n ? <>Owes <span class="font-semibold text-caries tabular-nums">{pesos(balance)}</span>{openCount ? ` on ${openCount} ${openCount === 1 ? 'statement' : 'statements'}` : ''}.</>
             : balance < 0n ? <>In credit <span class="font-semibold tabular-nums">{pesos(-balance)}</span>.</>
             : <>Nothing owed.</>}
           {' '}Paid <span class="font-semibold tabular-nums">{pesos(paidAll)}</span> in all.
-          <span class="mt-0.5 block text-[13px] text-muted">Statements of account, not BIR receipts.</span>
+          {stmts.length === 0 ? ' No statements yet.' : ''}
+          <span class="pp-small"> Statements of account, not BIR receipts.</span>
         </p>
-        {stmts.length === 0 ? (
-          <div class="px-6 py-3 max-md:px-4"><Empty icon="money" text="No statements for this patient yet." action={{ label: 'New charge', href: chargeHref }} /></div>
-        ) : (
+        {stmts.length > 0 && (
           <table class="ws-table">
             <caption class="sr-only">Statements of {shortName}, newest first</caption>
             <thead>
@@ -1318,11 +1306,12 @@ const recHere = here;
 
   <!-- Texts -->
   <div id="rec-texts" role="region" aria-labelledby="rec-texts-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="texts">
-    <Banner id="texts" n={SECTION_NO['texts']} label={SECTION_LABEL['texts']} />
-    <Pane title="Texts" icon="message" id="texts" meta={data.texts.length === 50 ? 'The newest 50' : `${data.texts.length} about this patient`} pad="none">
-      <a slot="actions" href={links.messages} class="ws-btn ws-btn-quiet ws-btn-sm">All messages <Icon name="arrow-right" size={16} /></a>
+    <Banner id="texts" n={SECTION_NO['texts']} label={SECTION_LABEL['texts']}>
+      <a href={links.messages} class="ws-btn ws-btn-quiet ws-btn-sm">All messages <Icon name="arrow-right" size={16} /></a>
+    </Banner>
+    <Pane title="Texts" icon="message" id="texts" meta={data.texts.length === 50 ? 'The newest 50' : undefined} pad="none">
       {data.texts.length === 0 ? (
-        <div class="px-6 py-3 max-md:px-4"><Empty icon="message" text="No texts to or from this patient yet. Booking confirmations and reminders show here." /></div>
+        <Empty icon="message" text="No texts yet. Confirmations and reminders show here." />
       ) : (
         <table class="ws-table">
           <caption class="sr-only">Texts to and from {shortName}, newest first</caption>
@@ -1344,7 +1333,7 @@ const recHere = here;
     </Pane>
   </div>
 
-
+  <p class="pp-small pp-foot">Every look at this record, and every change to it, is logged under the person’s name.</p>
   </div>
   </article>
 
