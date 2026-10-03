@@ -33,6 +33,11 @@
 // (recordPaperConsent in src/lib/health.ts). The clinic's own forms on file
 // are listed with the consents.
 //
+// line: the record's paper page 2 (src/pages/c/[clinic]/patients/[patient].astro). Consent on record is one ruled
+// line there, beside the paper's paragraphs ("Privacy notice · Agreed 25 Sep 2026, at the desk · agreed by …"), not
+// the green callout; every other state is the desk's form, as everywhere. The paper forms on file are listed by the
+// record's own page 2, so they are not listed here.
+//
 // embed: the same choices inside Add patient's one form (no form of its own,
 // no CSRF field, no intent): not now, at the desk now (the notice, "Show the
 // patient", the name, the tick), or signed on paper. The page posts it all
@@ -76,6 +81,8 @@ interface Props {
   paperForms?: PaperForm[];
   /** The paper part: open (a refused post came back), its sentence, what was typed, and a paper just recorded. */
   paper?: { open?: boolean; problem?: string | null; values?: Partial<PaperIn>; recorded?: 'saved' | 'already' | null };
+  /** On the record's paper page 2: consent on record as one ruled line (record.css, .cf-para). */
+  line?: boolean;
   /** Inside Add patient's form: the three choices, no form of its own. */
   embed?: boolean;
   /** embed: the choice shown first. */
@@ -84,7 +91,7 @@ interface Props {
   ticked?: boolean;
 }
 const { notice, consents, canRecord, minor, birthKnown, dpo, action, problem = null, givenBy = '', agreedAs = null, recorded = null,
-  paperForms = [], paper = {}, embed = false, how = 'later', ticked = false } = Astro.props;
+  paperForms = [], paper = {}, line = false, embed = false, how = 'later', ticked = false } = Astro.props;
 const today = manilaToday();
 const pv = paper.values ?? {};
 // The day the notice came into force, for the paper's hint: "a paper signed before it cannot be consent to it".
@@ -141,9 +148,11 @@ const WORDS = {
 } as const;
 const WHO = ['patient', 'guardian', 'unknown'] as const;
 
+/** How it was given, in words; the intake's page 1 (039) is the forms they filled in. */
+const howGiven = (channel: string) => CONSENT_HOW[channel] ?? (channel === 'intake' ? 'on the forms they filled in' : channel);
 /** "at the desk, recorded by Liwayway Domingo, agreed by Lorna Reyes (parent or guardian)" — the parts that are known. */
 const agreedBy = (c: ConsentRow) => c.given_by_name && `agreed by ${c.given_by_name}${c.agreed_as === 'guardian' ? ' (parent or guardian)' : ''}`;
-const channelText = (c: ConsentRow) => (c.channel === 'paper' && c.signed_on ? `signed on paper ${dateText(c.signed_on)}` : CONSENT_HOW[c.channel] ?? c.channel);
+const channelText = (c: ConsentRow) => (c.channel === 'paper' && c.signed_on ? `signed on paper ${dateText(c.signed_on)}` : howGiven(c.channel));
 const howText = (c: ConsentRow) =>
   [channelText(c), c.recorded_by_name && `recorded by ${c.recorded_by_name}`, agreedBy(c)].filter(Boolean).join(', ');
 /** A paper consent's time of day is not known: it shows its day only. */
@@ -169,7 +178,7 @@ const HOW_CHOICES = [
 /** A sentence's first letter up ("recorded by Dr. …" → "Recorded by Dr. …"). */
 const upFirst = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 /** "25 Sep 2026, at the desk" or "signed on paper 3 Mar 2024": when and how the consent in force was given. */
-const givenText = (c: ConsentRow) => (c.channel === 'paper' && c.signed_on ? `Signed on paper ${dateText(c.signed_on)}` : `Agreed ${day(new Date(c.given_at))}, ${CONSENT_HOW[c.channel] ?? c.channel}`);
+const givenText = (c: ConsentRow) => (c.channel === 'paper' && c.signed_on ? `Signed on paper ${dateText(c.signed_on)}` : `Agreed ${day(new Date(c.given_at))}, ${howGiven(c.channel)}`);
 ---
 
 {embed && (
@@ -186,7 +195,29 @@ const givenText = (c: ConsentRow) => (c.channel === 'paper' && c.signed_on ? `Si
   </fieldset>
 )}
 
-{!embed && notice && inForce && !needsGuardian ? (
+{line && notice && inForce && !needsGuardian ? (
+  <section id="consent" class="cf-para scroll-mt-24" aria-labelledby="consent-title">
+    <h3 id="consent-title" class="cf-k">Privacy notice</h3>
+    <div class="cf-v">
+      <p class="cf-text">
+        <span class="font-semibold text-ink">{givenText(inForce)}</span>{(inForce.recorded_by_name || inForce.given_by_name) && ` · ${[agreedBy(inForce), inForce.recorded_by_name && `recorded by ${inForce.recorded_by_name}`].filter(Boolean).join(', ')}`}
+        {' '}· <span class="font-mono text-[13px] whitespace-nowrap">{inForce.version_id}</span>
+      </p>
+      {recorded === 'saved' && <p role="status" class="cf-text font-semibold text-ink">Recorded just now.</p>}
+      {recorded === 'already' && <p role="status" class="cf-text">Already on record: {inForce.recorded_by_name ? `${inForce.recorded_by_name} recorded it` : `given ${howGiven(inForce.channel)}`} {whenText(inForce)}, so yours was not added.</p>}
+      {earlier.length > 0 && (
+        <details class="pt-more">
+          <summary>Earlier consents ({earlier.length}) <Icon name="chevron" size={16} class="pt-chev" /></summary>
+          <ul class="pt-list mt-1">
+            {earlier.map((c) => (
+              <li class="!block text-[14.5px]">{whenText(c)} · {howText(c)} <span class="font-mono text-[13px] text-ink-2">{c.version_id}</span></li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  </section>
+) : !embed && notice && inForce && !needsGuardian ? (
   <section id="consent" class="scroll-mt-24" aria-labelledby="consent-title">
     <div class="ws-callout" data-tone="success">
       <Icon name="check" />
@@ -200,7 +231,7 @@ const givenText = (c: ConsentRow) => (c.channel === 'paper' && c.signed_on ? `Si
     {recorded === 'already' && (
       <p role="status" class="ws-callout mt-3">
         <Icon name="info" />
-        <span>Already on record: {inForce.recorded_by_name ? `${inForce.recorded_by_name} recorded it` : `given ${CONSENT_HOW[inForce.channel] ?? inForce.channel}`} {whenText(inForce)}, so yours was not added.</span>
+        <span>Already on record: {inForce.recorded_by_name ? `${inForce.recorded_by_name} recorded it` : `given ${howGiven(inForce.channel)}`} {whenText(inForce)}, so yours was not added.</span>
       </p>
     )}
     {earlier.length > 0 && (
@@ -236,7 +267,7 @@ const givenText = (c: ConsentRow) => (c.channel === 'paper' && c.signed_on ? `Si
             <p class="mt-1.5 text-[15px] leading-relaxed text-ink-2">
               {inForce.channel === 'desk'
                 ? `On ${day(new Date(inForce.given_at))} it was recorded as the patient’s own agreement, but the birth date on file makes them under 18.`
-                : `It was given ${CONSENT_HOW[inForce.channel] ?? inForce.channel} on ${day(new Date(inForce.given_at))}${inForce.given_by_name ? ` by ${inForce.given_by_name}` : ''}, and the patient is under 18.`}
+                : `It was given ${howGiven(inForce.channel)} on ${day(new Date(inForce.given_at))}${inForce.given_by_name ? ` by ${inForce.given_by_name}` : ''}, and the patient is under 18.`}
               {' '}Show a parent or guardian the notice, and record their agreement here.
             </p>
           ) : (

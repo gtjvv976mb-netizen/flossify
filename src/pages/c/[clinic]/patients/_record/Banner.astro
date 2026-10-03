@@ -1,15 +1,18 @@
 ---
-// The head of a part of the record, as a paper chart heads its pages: the part's number and name over a rule, and on
-// the right what can be added to it (./Plus.astro). No colour, no icon: the number and the name say where you are.
+// The head of a part of the record, as the paper record heads its blocks: the part's name over a rule, and on the
+// right what can be added to it (./Plus.astro). No colour, no icon, no number (the pages are numbered, not the parts).
+// `level` 3 is a block inside a page's part (the Medical history under the Patient information record): the name in
+// the small heading the paper's Basic information and Dental history use, no rule.
 import Plus from './Plus.astro';
 
 export interface Add { label: string; text: string; open?: string; href?: string; go?: string; data?: Record<string, string | undefined> }
-interface Props { id: string; label: string; n?: number; class?: string; adds?: Add[] }
-const { id, label, n, class: extra, adds = [] } = Astro.props;
+interface Props { id: string; label: string; class?: string; adds?: Add[]; level?: 2 | 3 }
+const { id, label, class: extra, adds = [], level = 2 } = Astro.props;
+const H = level === 3 ? 'h3' : 'h2';
 ---
 
-<header class:list={['pp-head', extra]}>
-  <h2 class="pp-title" id={`rec-${id}-title`}>{n !== undefined && <span class="pp-n">{n}</span>}{label}</h2>
+<header class:list={['pp-head', level === 3 && 'pp-head-sub', extra]}>
+  <H class="pp-title" id={`rec-${id}-title`}>{label}</H>
   {(adds.length > 0 || Astro.slots.has('default')) && (
     <div class="pp-head-actions">
       {adds.map((a) => <Plus label={a.label} text={a.text} open={a.open} href={a.href} go={a.go} data={a.data} />)}

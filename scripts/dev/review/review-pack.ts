@@ -5,7 +5,8 @@
 //
 // What is in it: the ten consent forms and the general consent (src/lib/consent-library.ts) with every line,
 // conditional lines marked with when they show, the clinic's part, the patient's questions, the ticks and the
-// decision words, and each version's fingerprint (what CONSENT_REVIEWED is signed against); the chart's offer
+// decision words, and each version's fingerprint (what CONSENT_REVIEWED is signed against); the chart's codes, as the
+// paper chart writes them and the four of ours (src/data/demo.ts, migration 045), and the chart's offer
 // after a treatment (src/lib/chart-offer.ts and migration 042's defaults); the nine aftercare sheets in English
 // and Filipino (src/lib/aftercare.ts); what the next privacy notice has to name; and the three scheduling choices each clinic makes (044).
 // Nothing here is a database read; it needs no server. Re-run it whenever words change, and send the new copy.
@@ -13,6 +14,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { TEMPLATES, CONSENT_REVIEWED, CODES, type Template, type Line, type Run, type Cond, type Bi } from '../../../src/lib/consent-library.ts';
 import { libraryHash, shortSeal } from '../../../src/lib/consent-seal.ts';
 import { chartOffer, offerWords, CHART_EFFECTS } from '../../../src/lib/chart-offer.ts';
+import { CONDITION_CODE, CODE_LEGEND, CONDITION_LABEL, SURFACE_SCOPED } from '../../../src/data/demo.ts';
 import { AFTERCARE } from '../../../src/lib/aftercare.ts';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -99,7 +101,20 @@ const CASES: { label: string; effect: string; fdi: number; letters: string | nul
   { label: 'A filling with no surfaces given, on 14', effect: 'filled', fdi: 14, letters: null, now: null, treatment: 'Composite filling' },
   { label: 'A root canal on 11, the chart shows a veneer on 11', effect: 'root_canal', fdi: 11, letters: null, now: { condition: 'veneer', surfaces: [] }, treatment: 'Root canal treatment' },
   { label: 'An extraction of baby tooth 75', effect: 'missing', fdi: 75, letters: null, now: null, treatment: 'Tooth extraction' },
+  // The paper chart's findings (045).
+  { label: 'An extraction of 46, the chart shows 46 to be extracted (Ex)', effect: 'missing', fdi: 46, letters: null, now: { condition: 'extraction', surfaces: [] }, treatment: 'Tooth extraction' },
+  { label: 'An extraction of 15, the chart shows a root fragment on 15 (RF)', effect: 'missing', fdi: 15, letters: null, now: { condition: 'root_fragment', surfaces: [] }, treatment: 'Tooth extraction' },
+  { label: 'A crown on 26, the chart shows amalgam on 26 MOD (Am)', effect: 'crown', fdi: 26, letters: null, now: { condition: 'amalgam', surfaces: ['mesial', 'occlusal', 'distal'] }, treatment: 'Crown' },
+  { label: 'A filling on 36 O, the chart shows amalgam on 36 O (Am)', effect: 'filled', fdi: 36, letters: 'O', now: { condition: 'amalgam', surfaces: ['occlusal'] }, treatment: 'Composite filling' },
+  { label: 'A crown on 24, the chart shows 24 as a bridge abutment (Ab)', effect: 'crown', fdi: 24, letters: null, now: { condition: 'abutment', surfaces: [] }, treatment: 'Crown' },
 ];
+// The chart's codes: the paper's legend in its order, then ours (the last four).
+const OURS = new Set(['filled', 'root_canal', 'implant', 'veneer']);
+const codes = `
+<div class="table-wrap"><table class="fields"><thead><tr><th>Code</th><th>On the chart’s legend</th><th>The finding in the palette</th><th>Recorded</th><th>From</th></tr></thead><tbody>
+${CODE_LEGEND.map(([c, words]) => `<tr><td class="mono">${esc(CONDITION_CODE[c])}</td><td>${esc(words)}</td><td>${esc(CONDITION_LABEL[c])}</td><td>${(SURFACE_SCOPED as string[]).includes(c) ? 'On surfaces' : 'Whole tooth'}</td><td>${OURS.has(c) ? 'Flossify (no code on the paper)' : 'The paper chart'}</td></tr>`).join('')}
+</tbody></table></div>
+<p class="ask">For the dentist: Ex is charted as a tooth to be extracted; a tooth already out is M, and an extraction recorded as done offers M. Is that how the clinic reads Ex? Am and I are surface findings like a filling (C, Am, I, S and F each say which surfaces); J is a jacket crown, Fx a bridge, Ab and P a bridge’s abutment and pontic, Rm a tooth replaced by a removable denture. The paper has no code for a filling of another material, a root canal, an implant or a veneer: are F, RCT, Impl and V right? (Not Imp, which some charts use for impacted.)</p>`;
 const chart = `
 <table class="fields"><thead><tr><th>Fee-guide code</th><th>What it charts</th></tr></thead><tbody>
 ${DEFAULTS.map(([c, e]) => `<tr><td class="mono">${c}</td><td>${e.replace('_', ' ')}</td></tr>`).join('')}
@@ -186,7 +201,7 @@ a { color: var(--teal); } a:focus-visible { outline: 2px solid var(--teal); outl
     <h2 style="margin:0">Contents</h2>
     <a href="#forms">1. The consent forms (${forms.length})</a>
     <a href="#shared">2. Words every form shares</a>
-    <a href="#chart">3. The chart after a treatment (for the dentist)</a>
+    <a href="#chart">3. The chart’s codes, and the chart after a treatment (for the dentist)</a>
     <a href="#care">4. Aftercare sheets (for the dentist)</a>
     <a href="#privacy">5. The next privacy notice (for the lawyer)</a>
     <a href="#questions">6. How the day runs: each clinic chooses</a>
@@ -202,7 +217,8 @@ a { color: var(--teal); } a:focus-visible { outline: 2px solid var(--teal); outl
   <h2 id="shared">2. Words every form shares</h2>
   <div class="card table-wrap"><table><tbody>${sharedBlock}</tbody></table></div>
 
-  <h2 id="chart">3. The chart after a treatment</h2>
+  <h2 id="chart">3. The chart’s codes, and the chart after a treatment</h2>
+  <div class="card"><h4>The chart’s codes</h4>${codes}</div>
   <div class="card">${chart}</div>
 
   <h2 id="care">4. Aftercare sheets</h2>
@@ -218,8 +234,11 @@ a { color: var(--teal); } a:focus-visible { outline: 2px solid var(--teal); outl
       <li>Facebook name, PhilHealth PIN and HMO card number;</li>
       <li>that a form nobody adds to the records is deleted 30 days after it is sent;</li>
       <li>the IP address stored with each consent, which the current notice does not mention;</li>
-      <li>that texts are reminders only (the current notice says patients can “confirm or cancel by text”, which the clinic’s one-way texts cannot do).</li>
+      <li>that texts are reminders only (the current notice says patients can “confirm or cancel by text”, which the clinic’s one-way texts cannot do);</li>
+      <li>what the desk writes on the record’s dental and medical history, as the clinic’s paper patient record asks it: pregnancy, nursing and birth control pills; a blood transfusion and when; other serious illnesses or operations; the patient’s brushing and flossing, their last dental care and X-ray, and the dental problems they have or had;</li>
+      <li>other people’s names and numbers on the record: the patient’s former dentist (name, where, contact number) and their physician (name, where, the last visit).</li>
     </ul>
+    <p class="ask">For the lawyer: the notice in force does not name the health history the desk already records at the clinic (allergies, conditions, medicines, a note for the dentist), with or without the patient forms. Which basis covers the clinic’s own clinical record, and does the notice need to say it? Nothing on a page states a basis until you have said which.</p>
     <p class="dim">The general consent to examination and treatment (<span class="mono">treatment-2026-09</span>, form 1 above) is read with it.</p>
   </div>
 
@@ -236,4 +255,4 @@ a { color: var(--teal); } a:focus-visible { outline: 2px solid var(--teal); outl
 `;
 mkdirSync(new URL('../../../docs/review/', import.meta.url), { recursive: true });
 writeFileSync(OUT, html);
-console.log(`wrote docs/review/review-pack.html: ${forms.length} forms, ${Object.keys(AFTERCARE).length} aftercare sheets, ${CASES.length} chart cases`);
+console.log(`wrote docs/review/review-pack.html: ${forms.length} forms, ${CODE_LEGEND.length} chart codes, ${Object.keys(AFTERCARE).length} aftercare sheets, ${CASES.length} chart cases`);

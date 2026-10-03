@@ -29,7 +29,7 @@ const quick = (months: number, label: string) => ({ months, label });
 ---
 
 <Pane as="section" label="Next check-up" id="recall">
-  <Head icon="recall" title="Next check-up" />
+  <Head level={4} icon="recall" title="Next check-up" />
   {saved && SAVED[saved] && <Callout tone="success" class="mb-3" text={SAVED[saved]} />}
   {inline && <Callout tone="alert" class="mb-3" text={inline} />}
   {recall ? (

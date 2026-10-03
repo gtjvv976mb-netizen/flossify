@@ -64,7 +64,7 @@ const summary = (l: Letter) =>
   )}
   {saved === 'answered' && <Callout tone="success" text="The physician’s reply is on the record." />}
   <Pane as="section" label="Certificates and letters" id="letters">
-    <Head icon="form" title="Certificates and letters">
+    <Head level={4} icon="form" title="Certificates and letters">
       {canEdit && (
         <Fragment slot="actions">
           <Plus text="Certificate" label="Write a dental certificate, for school or work" open="rec-letter-add" data={{ 'letter-kind': 'certificate' }} />

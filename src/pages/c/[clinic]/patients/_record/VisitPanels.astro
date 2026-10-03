@@ -157,7 +157,7 @@ const NOTE_PARTS = [['complaint', 'Why they came'], ['findings', 'Findings'], ['
                 </li>
               ))}
               {v.adjustments.map((a) => (
-                <li class="rs-item"><p class="rs-what">Braces adjustment</p><p class="rp-row">{a.by && <Who name={a.by} />}{a.note && <span class="rp">{a.note}</span>}</p></li>
+                <li class="rs-item"><p class="rs-what">Braces adjustment</p><p class="rp-row">{a.wire && <span class="rp">Wire {a.wire}</span>}{a.by && <Who name={a.by} />}{a.note && <span class="rp">{a.note}</span>}</p></li>
               ))}
             </ul>
           )}

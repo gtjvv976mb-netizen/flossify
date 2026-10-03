@@ -59,7 +59,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
   <slot name="offer" />
 
   <Pane as="section" label="Treatment plan" id="treatment">
-    <Head icon="plan" title="Treatment plan" meta={open.length ? `${open.length} to do` : 'Nothing to do'}>
+    <Head level={4} icon="plan" title="Treatment plan" meta={open.length ? `${open.length} to do` : 'Nothing to do'}>
       {canEdit && <Plus slot="actions" text="Add to plan" label="Add to the treatment plan" open="rec-plan-add" />}
     </Head>
     {open.length === 0 ? (
@@ -70,7 +70,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
           const items = open.filter((i) => i.phase === ph);
           return (
             <div class="tx-phase">
-              <h3 class="tx-phase-head">{phases.length > 1 || ph !== 1 ? `Phase ${ph}` : 'To do'}<span>{peso(sum(items))}</span></h3>
+              <h5 class="tx-phase-head">{phases.length > 1 || ph !== 1 ? `Phase ${ph}` : 'To do'}<span>{peso(sum(items))}</span></h5>
               <ul>
                 {items.map((i) => (
                   <li class="tx-row" data-status={i.status}>
@@ -151,7 +151,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
   </Pane>
 
   <Pane as="section" label="Treatments done" id="treatment-done">
-    <Head icon="tooth" title="Treatments done" meta={c.done.length ? `${c.done.length} on record` : undefined}>
+    <Head level={4} icon="tooth" title="Treatments done" meta={c.done.length ? `${c.done.length} on record` : undefined}>
       {canEdit && <Plus slot="actions" text="Record a treatment" label="Record a treatment done" open="rec-done-add" />}
     </Head>
     {c.done.length === 0 ? <Empty icon="check" text="No treatment recorded yet." /> : (
@@ -176,7 +176,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
   </Pane>
 
   <Pane as="section" label="Lab cases" id="treatment-lab">
-    <Head icon="lab" title="Lab cases" meta={labsOpen.length ? `${labsOpen.length} open` : undefined}>
+    <Head level={4} icon="lab" title="Lab cases" meta={labsOpen.length ? `${labsOpen.length} open` : undefined}>
       {canEdit && <Plus slot="actions" text="New lab case" label="Add a lab case" open="rec-lab-add" />}
     </Head>
     {c.labs.length === 0 ? <Empty icon="clock" text="No lab cases for this patient." /> : (

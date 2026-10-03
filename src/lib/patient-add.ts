@@ -22,7 +22,10 @@
 //   goes on the record (answered_at now) so it is the current one; when the
 //   answers were sent is in its `answers`. For a patient on file the
 //   allergies, conditions and medicines already listed stay: something the
-//   patient did not tick is not evidence it is gone.
+//   patient did not tick is not evidence it is gone. The paper record's other
+//   answers on file (answers.paper, src/lib/paper-history.ts) are carried into
+//   the new version too, less any the patient has now answered themselves
+//   (paperAfterOwn): their newer answer is the one the record shows.
 // - One consent row per version per patient (a parent's or guardian's may be
 //   added beside the patient's own).
 // - Nothing here logs an answer.
@@ -31,6 +34,7 @@ import type { Tx } from './db';
 import { lockClinic, nextChartNos } from './import';
 import { isMinor, type HealthAnswers } from './health';
 import { prettyPhone } from './messages';
+import { paperAfterOwn, paperFromStored, paperToStored } from './paper-history';
 import { FIELDS, answerText, healthLists, hmoName, stepAnswers, type PatientFormValues } from './patient-forms-def';
 
 /** Where the answers came from: a poster's patient form (028), or an intake (039). */
@@ -198,7 +202,7 @@ export async function fillPatientFromAnswers(tx: Tx, a: { clinicId: string; staf
  * wrote it; an intake's page 1 asks no teeth or cards step and no Facebook or
  * civil status, so those are left out.
  */
-function historyAnswers(v: PatientFormValues, source: AnswerSource, birthChange: { from: string | null; to: string } | null): Record<string, unknown> {
+function historyAnswers(v: PatientFormValues, source: AnswerSource, birthChange: { from: string | null; to: string } | null, paper: Record<string, unknown> | null = null): Record<string, unknown> {
   const head = { id: source.id, ref: source.ref, version: source.version, [source.kind === 'form' ? 'submitted_at' : 'sent_at']: source.sentAt };
   const rest = source.kind === 'form'
     ? {
@@ -213,7 +217,7 @@ function historyAnswers(v: PatientFormValues, source: AnswerSource, birthChange:
       cards: { hmo: v.hmo ?? null, hmo_other: v.hmo_other ?? null, hmo_card_no: v.hmo_card_no ?? null },
       emergency: { name: v.emergency_name, relation: v.emergency_relation, mobile: v.emergency_mobile },
     };
-  return { [source.kind]: head, ...rest, ...(birthChange ? { birth_date: birthChange } : {}) };
+  return { [source.kind]: head, ...rest, ...(birthChange ? { birth_date: birthChange } : {}), ...(paper ? { paper } : {}) };
 }
 
 export interface HealthKept { allergiesKept: string[]; conditionsKept: string[]; medicationsKept: string[] }
@@ -223,7 +227,8 @@ export interface HealthKept { allergiesKept: string[]; conditionsKept: string[];
  * 'patient', recorded_by null, answered_at now, naming its form or intake).
  * `merge`: a patient on file — the lists on the latest version on file, by
  * whoever and whenever, stay unless the answers list them too, and its note
- * carries over; returned as `…Kept`. `birthChange`: a birth date filled in on
+ * and the paper record's other answers carry over (less what the patient has
+ * now answered: paperAfterOwn); returned as `…Kept`. `birthChange`: a birth date filled in on
  * the record from the answers ({"from": null, "to": …}, health.ts's rule;
  * audit patient.birth_date). Audit health.update.
  */
@@ -243,8 +248,9 @@ export async function writeHealthFromAnswers(tx: Tx, a: {
     return { allergiesKept: [], conditionsKept: [], medicationsKept: [] };
   }
   // The latest version on file, whoever wrote it and whenever: what it lists stays unless the answers list it too.
-  const latest = (await tx.query<HealthAnswers>(
-    `select allergies, conditions, medications, note from medical_history where patient_id = $1 order by answered_at desc, id desc limit 1`, [a.patientId])).rows[0] ?? null;
+  const latest = (await tx.query<HealthAnswers & { paper: unknown }>(
+    `select allergies, conditions, medications, note, answers -> 'paper' as paper from medical_history where patient_id = $1 order by answered_at desc, id desc limit 1`, [a.patientId])).rows[0] ?? null;
+  const paper = paperToStored(paperAfterOwn(paperFromStored(latest?.paper ?? null), stepAnswers(a.values, 'health'), a.source.kind === 'form' ? stepAnswers(a.values, 'teeth') : null));
   const low = (s: string) => s.toLocaleLowerCase('en');
   const notIn = (had: string[] | null | undefined, now: string[]) => (had ?? []).filter((x) => !now.some((y) => low(y) === low(x)));
   const allergiesKept = notIn(latest?.allergies, lists.allergies);
@@ -254,7 +260,7 @@ export async function writeHealthFromAnswers(tx: Tx, a: {
     `insert into medical_history (clinic_id, patient_id, answered_at, answered_by, recorded_by, allergies, conditions, medications, note, answers, ${col})
      values ($1, $2, now(), 'patient', null, $3, $4, $5, $6, $7, $8)`,
     [a.clinicId, a.patientId, [...lists.allergies, ...allergiesKept], [...lists.conditions, ...conditionsKept], [...lists.medications, ...medicationsKept],
-      latest?.note ?? null, JSON.stringify(historyAnswers(a.values, a.source, birthChange)), a.source.id]);
+      latest?.note ?? null, JSON.stringify(historyAnswers(a.values, a.source, birthChange, paper)), a.source.id]);
   await audit(tx, a.clinicId, a.staffId, 'health.update', 'patient', a.patientId);
   if (birthChange) await audit(tx, a.clinicId, a.staffId, 'patient.birth_date', 'patient', a.patientId);
   return { allergiesKept, conditionsKept, medicationsKept };

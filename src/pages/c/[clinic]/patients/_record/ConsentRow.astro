@@ -1,0 +1,86 @@
+---
+// One consent form on page 2 of the record (039), as a line under its paragraph: the patient's signature (a small copy
+// of the strokes, "Signed on paper", or "Not signed yet"), the form's own title, where it stands in words (Signed · To
+// sign · To confirm · Did not agree · No photos · Withdrawn) and its date (a paper's own date, not the day it was
+// recorded; a withdrawal's own day), who signed, the teeth, who explained it (the dentist's confirmation, never called a
+// signature), and a withdrawal or treatment that went ahead without it in full. Then Open (its page: ../[patient]/consents/[document]),
+// Print, and for someone who can edit records, Explain and confirm (its named dentist only), Sign on this tablet or
+// their phone (the same intake start; Sign again under newer words), and Print for signing on paper.
+// The hooks the checks read stay as they were: li.vx-signed-row, a[href$="/consents/<id>/"], form[data-rc-sign],
+// [data-rc-withdrawal], [data-rc-override], and the words "Newer words: sign again".
+import Csrf from '../../../../../components/Csrf.astro';
+import Glyph from '../_ui/Glyph.astro';
+import Signature from './Signature.astro';
+import { day, dateText } from '../../../../../lib/health';
+import { STATE_WORDS, signerWords, withdrawalWords, overrideWords, type RecordDoc } from '../../../../../lib/consent-docs';
+import { docTeeth } from '../../../../../lib/treatment-record';
+
+interface Props {
+  doc: RecordDoc;
+  slug: string;
+  patientId: string;
+  canEdit: boolean;
+  /** The person signed in is its named dentist, with a PRC licence: Explain and confirm. */
+  mayExplain: boolean;
+  /** Its code's words in force are offered here (a form under older words is signed again under them). */
+  offered: boolean;
+  /** Say the form's title (not where the paragraph's heading is the title already). */
+  titled?: boolean;
+}
+const { doc: d, slug, patientId, canEdit, mayExplain, offered, titled = true } = Astro.props;
+/** Sign on this tablet / on their phone: the same start, the way chosen (the Check step preselects the phone from ?via=phone). */
+const WAYS = [['clinic', 'tablet', 'on this tablet'], ['phone', 'phone', 'on their phone']] as const;
+const base = `/c/${slug}/patients/${patientId}/consents/`;
+const TONE: Record<string, string> = { success: 'rp-ok', warn: 'rp-warn', alert: 'rp-alert', neutral: '', info: '' };
+const st = STATE_WORDS[d.state];
+const s = d.latest;
+const teeth = docTeeth(d);
+// The day it was signed: a paper's own date (signed_on), else the Manila day it was signed on the device. The pill names
+// the day of its own word: a withdrawn form the day it was withdrawn (as the withdrawal's line under it does).
+const signedDay = s ? (s.channel === 'paper' && s.signedOn ? dateText(s.signedOn) : day(new Date(s.signedAt))) : null;
+const stateDay = d.state === 'withdrawn' && s?.withdrawal ? day(new Date(s.withdrawal.at)) : signedDay;
+const toSign = d.state === 'to_sign' || d.state === 'refused' || d.state === 'withdrawn' || d.state === 'no_photos';
+const openIntake = d.intakeStatus === 'preparing' || d.intakeStatus === 'out';
+// Newer words in force for this form's code: it is signed again under them, from here (the old form stays as history).
+const newer = !d.inForce && offered;
+const resign = canEdit && !openIntake && (newer || (toSign && d.inForce && (!d.template?.attest || !!d.attestation)));
+---
+
+<li class="rs-item vx-signed-row cf-doc" id={`cf-${d.id}`}>
+  {s && s.strokes ? <Signature strokes={s.strokes} name={s.signedByName} class="cf-slip" />
+    : <span class="sig cf-slip"><span class="sig-none">{s ? (s.channel === 'paper' ? 'Signed on paper' : 'Not signed') : 'Not signed yet'}</span></span>}
+  <div class="min-w-0 grid gap-1">
+    <p class="rp-row">
+      {titled && <span class="cf-title">{d.title}</span>}
+      <span class:list={['rp', TONE[st.tone]]}>{st.words}{stateDay && d.state !== 'to_sign' ? ` ${stateDay}` : ''}</span>
+      {teeth.map((n) => <span class="rp rp-tooth">Tooth {n}</span>)}
+      {!d.inForce && <span class="rp rp-warn">{newer ? 'Newer words: sign again' : 'Older words'}</span>}
+      {openIntake && <span class="rp">In forms {d.intakeRef} now</span>}
+    </p>
+    <p class="cf-by">
+      {s && <span>{s.decision === 'refused' ? 'Answered by' : 'Signed by'} {signerWords({ name: s.signedByName, as: s.signedAs, relation: s.relation, method: s.method })}</span>}
+      {d.attestation && <span>Explained by {d.attestation.dentistName}, PRC {d.attestation.dentistPrc}, in {d.attestation.lang}</span>}
+      {!d.attestation && d.template?.attest && d.state === 'to_sign' && d.inForce && <span>Waiting for {d.dentistName ?? 'the dentist'} to explain</span>}
+    </p>
+    {/* Taken back, and treatment that went ahead without it (phase 4.4): plain words, kept with the form. */}
+    {s?.withdrawal && <p class="cf-note text-[var(--ws-red-ink)]" data-rc-withdrawal>{withdrawalWords(s.withdrawal)}</p>}
+    {d.overrides.map((o) => <p class="cf-note text-[var(--ws-amber-ink)]" data-rc-override={o.id}>{overrideWords(o)}</p>)}
+    {/* A div, not a p: a form inside a p closes it, and the buttons fell one under another. */}
+    <div class="cf-acts">
+      <a href={`${base}${d.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open</a>
+      {canEdit && openIntake && d.intakeId && <a href={`/c/${slug}/patients/intake/${d.intakeId}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open forms {d.intakeRef}</a>}
+      {s && <a href={`${base}${d.id}/print/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>}
+      {canEdit && toSign && !openIntake && mayExplain && !d.attestation && d.state === 'to_sign' && <a href={`${base}${d.id}/?explain=1`} class="ws-btn ws-btn-quiet ws-btn-sm">Explain and confirm</a>}
+      {resign && WAYS.map(([way, glyph, where]) => (
+        <form method="post" action={`/c/${slug}/patients/intake/`} data-rc-sign={way}>
+          <Csrf /><input type="hidden" name="intent" value="start" /><input type="hidden" name="way" value={way} /><input type="hidden" name="from" value="document" />
+          <input type="hidden" name="patient" value={patientId} /><input type="hidden" name="document" value={d.id} />
+          <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name={glyph} size={16} />{newer ? 'Sign again' : 'Sign'} {where}</button>
+        </form>
+      ))}
+      {canEdit && d.state === 'to_sign' && !s && !openIntake && (!d.template?.attest || d.attestation) && (
+        <form method="post" action={`${base}${d.id}/`}><Csrf /><input type="hidden" name="intent" value="paper_print" /><button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print for signing on paper</button></form>
+      )}
+    </div>
+  </div>
+</li>

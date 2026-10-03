@@ -15,9 +15,11 @@
 //                          else uncovered
 //   the same finding       union of surfaces: offer,     nothing nothing     nothing nothing
 //                          or nothing if already shown
-//   filled ↔ sealant       other                         offer   offer       other   offer
+//   another surface        other                         offer   offer       other   offer
+//   finding (filled, sealant, amalgam, inlay), a different one
 //   any other whole-tooth  other                         other   other       other   offer
-//   finding (crown, root canal, veneer, bridge, implant, unerupted, impacted, missing), a different one
+//   finding (crown, root canal, veneer, bridge, implant, unerupted, impacted, missing, and 045's extraction,
+//   root fragment, abutment, pontic, denture), a different one
 //   a baby tooth (51–85)   baby everywhere: the chart draws permanent teeth only
 //
 // A filling or sealant with no surfaces is always no-surfaces. What a treatment does is procedure_catalog's
@@ -27,7 +29,7 @@ import { CONDITION_LABEL, SURFACE_SCOPED, surfaceSummary, type Surface, type Too
 
 export const CHART_EFFECTS = ['filled', 'sealant', 'root_canal', 'crown', 'missing', 'veneer'] as const;
 export type ChartEffect = (typeof CHART_EFFECTS)[number];
-/** One tooth as the chart draws it: a condition, and for caries, filled and sealant its surfaces. Null = sound. */
+/** One tooth as the chart draws it: a condition, and for a surface finding (SURFACE_SCOPED) its surfaces. Null = sound. */
 export interface LiveMark { condition: ToothCondition; surfaces: Surface[] }
 
 /** The 32 teeth the chart draws. */

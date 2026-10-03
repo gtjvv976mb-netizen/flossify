@@ -1,0 +1,165 @@
+---
+// The health form's questions in the paper record's order (3 Oct 2026): the Dental history (the former dentist,
+// the last dental care and X-ray, brushing and flossing, the problems the patient has or had), then the Medical
+// history (the physician, a blood transfusion, pregnancy, nursing and the pill where they apply, the conditions,
+// other serious illnesses or operations, current medications, allergies). The three lists are the shared chips
+// (_ui/HealthLists.astro), drawn where the paper asks them; everything else is read by paper-history.ts
+// (readPaperHistory, through health.ts readHealthForm) only because the form carries `has_paper`: a form drawn before
+// these questions keeps what is saved. The pregnancy questions carry their own `has_paper_pregnancy`, so a form that
+// did not draw them leaves those answers as they are.
+// Pregnancy is one question here: the Pregnant answer puts "Pregnancy" on the conditions list or takes it off when
+// it is saved (paper-history.ts pregnancyTwin), so its chip is not drawn beside it. The question starts from the
+// desk's own answer; where the desk has none and the patient answered it on their forms (the box above shows their
+// words), it starts unanswered and a list that has "Pregnancy" keeps its chip, ticked: a Save for anything else then
+// changes nothing about pregnancy. Only where nobody answered does a list that has it start the question at Yes.
+// Dates are written as on paper: a year, a month and year, or a day. Nothing here explains itself; the labels are
+// the paper's. The page's script marks the form unsaved on any change (it listens on the form).
+import { NONE_SUFFIX, HAS_PAPER, HAS_PAPER_PREGNANCY, FIELD, paperTyped, PREGNANCY, type PaperAnswers, type PaperTyped, type PaperKey } from '../../../../../lib/paper-history';
+import HealthLists from '../_ui/HealthLists.astro';
+import './paper-history.css';
+
+interface Props {
+  /** The answers on file (the newest version's `paper`). */
+  paper: PaperAnswers | null;
+  /** What was posted, when a post came back to the form (readHealthForm's `paperTyped`). */
+  typed?: PaperTyped | null;
+  /** HealthLists' chips, none and typed: the page's own (healthChips, healthNone). */
+  chips: Record<string, { value: string; on: boolean }[]>;
+  none: Record<string, boolean>;
+  typedLists?: Record<string, string>;
+  /** Draw the pregnancy questions (paper-history.ts showsPregnancy: where they apply, or wherever one is answered). */
+  ask: boolean;
+  /** The patient's own health answers on file (readHealth's own.health), or null. */
+  own?: Record<string, unknown> | null;
+}
+const { paper, typed = null, chips, none, typedLists = {}, ask, own = null } = Astro.props;
+
+const low = (s: string) => s.toLocaleLowerCase('en');
+// "Pregnancy" on the list is the Pregnant answer's twin: its chip goes, and a list that has it answers Yes until the
+// desk says otherwise.
+const listed = (chips.conditions ?? []).some((c) => c.on && low(c.value) === low(PREGNANCY));
+const ownPregnant = own?.pregnant !== null && own?.pregnant !== undefined && own?.pregnant !== '';
+const v: PaperTyped = typed ?? paperTyped(paper);
+if (!typed && ask && !paper?.pregnant && listed && !ownPregnant) v.ph_pregnant = 'yes';
+const val = (k: PaperKey) => String(v[FIELD[k].name] ?? '');
+const conditionChips = ask && !(listed && !val('pregnant')) ? { ...chips, conditions: (chips.conditions ?? []).filter((c) => low(c.value) !== low(PREGNANCY)) } : chips;
+const ticked = (k: PaperKey) => (Array.isArray(v[FIELD[k].name]) ? (v[FIELD[k].name] as string[]) : []);
+const DATE_HINT = 'For example, Mar 2024';
+---
+
+<input type="hidden" name={HAS_PAPER} value="1" />
+{ask && <input type="hidden" name={HAS_PAPER_PREGNANCY} value="1" />}
+
+<fieldset class="ph-set" data-ph-set="dental">
+  <legend>Dental history</legend>
+  <div>
+    <div class="ph-fields">
+      <label class="field ph-wide"><span class="meta">{FIELD.dentist_name.label}</span>
+        <input name={FIELD.dentist_name.name} value={val('dentist_name')} maxlength={FIELD.dentist_name.max} autocomplete="off" /></label>
+      <label class="field"><span class="meta">{FIELD.dentist_place.label}</span>
+        <input name={FIELD.dentist_place.name} value={val('dentist_place')} maxlength={FIELD.dentist_place.max} autocomplete="off" /></label>
+      <label class="field"><span class="meta">{FIELD.dentist_phone.label}</span>
+        <input type="tel" name={FIELD.dentist_phone.name} value={val('dentist_phone')} maxlength={FIELD.dentist_phone.max} autocomplete="off" /></label>
+      {(['last_care', 'last_xray'] as const).map((k) => (
+        <label class="field"><span class="meta">{FIELD[k].label}</span>
+          <input name={FIELD[k].name} value={val(k)} maxlength="20" autocomplete="off" placeholder={DATE_HINT} /></label>
+      ))}
+      {(['flossing', 'brushing'] as const).map((k) => (
+        <label class="field"><span class="meta">{FIELD[k].label}</span>
+          <select name={FIELD[k].name}>
+            <option value="" selected={!val(k)}>Not asked</option>
+            {FIELD[k].choices!.map((c) => <option value={c.value} selected={val(k) === c.value}>{c.label}</option>)}
+          </select></label>
+      ))}
+    </div>
+    <fieldset class="ph-q" data-ph-checks>
+      <legend>{FIELD.problems.label}</legend>
+      <div class="pk-row">
+        <label class="pk" data-tone="slate">
+          <input type="checkbox" name={FIELD.problems.name + NONE_SUFFIX} value="1" checked={v[FIELD.problems.name + NONE_SUFFIX] === '1'} data-ph-none />
+          <span>None of these</span>
+        </label>
+        {FIELD.problems.choices!.map((c) => (
+          <label class="pk">
+            <input type="checkbox" name={FIELD.problems.name} value={c.value} checked={ticked('problems').includes(c.value)} />
+            <span>{c.label}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  </div>
+</fieldset>
+
+<fieldset class="ph-set" data-ph-set="medical">
+  <legend>Medical history</legend>
+  <div>
+    <div class="ph-fields">
+      <label class="field ph-wide"><span class="meta">{FIELD.physician_name.label}</span>
+        <input name={FIELD.physician_name.name} value={val('physician_name')} maxlength={FIELD.physician_name.max} autocomplete="off" /></label>
+      <label class="field"><span class="meta">{FIELD.physician_place.label}</span>
+        <input name={FIELD.physician_place.name} value={val('physician_place')} maxlength={FIELD.physician_place.max} autocomplete="off" /></label>
+      <label class="field"><span class="meta">{FIELD.physician_visit.label}</span>
+        <input name={FIELD.physician_visit.name} value={val('physician_visit')} maxlength="20" autocomplete="off" placeholder={DATE_HINT} /></label>
+    </div>
+    <div class="ph-row">
+      <fieldset class="ph-q">
+        <legend>{FIELD.transfusion.label}</legend>
+        <div class="pk-row">
+          {[{ value: '', label: 'Not asked' }, ...FIELD.transfusion.choices!].map((c) => (
+            <label class="pk pk-radio" data-tone={c.value ? undefined : 'slate'}>
+              <input type="radio" name={FIELD.transfusion.name} value={c.value} checked={val('transfusion') === c.value} data-ph-transfusion />
+              <span>{c.label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <label class="field" data-ph-when hidden={val('transfusion') !== 'yes' && !val('transfusion_when') ? true : undefined}>
+        <span class="meta">{FIELD.transfusion_when.label}</span>
+        <input name={FIELD.transfusion_when.name} value={val('transfusion_when')} maxlength="20" autocomplete="off" placeholder={DATE_HINT} />
+      </label>
+    </div>
+    {ask && (
+      <div class="ph-row">
+        {(['pregnant', 'nursing', 'pill'] as const).map((k) => (
+          <fieldset class="ph-q">
+            <legend>{FIELD[k].label}</legend>
+            <div class="pk-row">
+              {[{ value: '', label: 'Not asked' }, ...FIELD[k].choices!].map((c) => (
+                <label class="pk pk-radio" data-tone={c.value ? undefined : 'slate'}>
+                  <input type="radio" name={FIELD[k].name} value={c.value} checked={val(k) === c.value} />
+                  <span>{c.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        ))}
+      </div>
+    )}
+    <div class="ph-lists"><HealthLists chips={conditionChips} none={none} typed={typedLists} only={['conditions']} /></div>
+    <label class="field">
+      <span class="meta">{FIELD.illnesses.label}</span>
+      <textarea name={FIELD.illnesses.name} rows="2" maxlength={FIELD.illnesses.max}>{val('illnesses')}</textarea>
+    </label>
+    <div class="ph-lists"><HealthLists chips={chips} none={none} typed={typedLists} only={['medications', 'allergies']} /></div>
+  </div>
+</fieldset>
+
+<script>
+  // "None of these" and the problems untick each other; the transfusion's date shows beside a Yes. Without a script
+  // the date is drawn whenever one is on file or Yes is, and the server keeps a date only beside a Yes.
+  document.querySelectorAll<HTMLElement>('[data-ph-checks]').forEach((set) => {
+    const none = set.querySelector<HTMLInputElement>('[data-ph-none]');
+    set.addEventListener('change', (e) => {
+      const t = e.target as HTMLInputElement;
+      if (!none || t.type !== 'checkbox') return;
+      if (t === none) { if (t.checked) set.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((i) => { if (i !== none) i.checked = false; }); }
+      else if (t.checked) none.checked = false;
+    });
+  });
+  document.querySelectorAll<HTMLElement>('[data-ph-set="medical"]').forEach((set) => {
+    const when = set.querySelector<HTMLElement>('[data-ph-when]');
+    const radios = [...set.querySelectorAll<HTMLInputElement>('[data-ph-transfusion]')];
+    const sync = () => { if (when) when.hidden = !radios.some((r) => r.checked && r.value === 'yes'); };
+    radios.forEach((r) => r.addEventListener('change', sync));
+  });
+</script>

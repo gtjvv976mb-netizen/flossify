@@ -34,7 +34,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
   {saved && SAVED[saved] && <Callout tone="success" text={SAVED[saved]} />}
   {inline && <Callout tone="alert" text={inline} />}
   <Pane as="section" label="HMO approvals" id="loas">
-    <Head icon="shield" title="HMO approvals (LOA)" meta={loas.filter((a) => a.status === 'requested').length ? `${loas.filter((a) => a.status === 'requested').length} waiting` : undefined}>
+    <Head level={4} icon="shield" title="HMO approvals (LOA)" meta={loas.filter((a) => a.status === 'requested').length ? `${loas.filter((a) => a.status === 'requested').length} waiting` : undefined}>
       {canEdit && <Plus slot="actions" text="Ask for an LOA" label="Ask an HMO for a letter of authorisation" open="rec-loa-add" />}
     </Head>
     {loas.length === 0 ? <Empty icon="file" text="No LOA asked for yet." /> : (

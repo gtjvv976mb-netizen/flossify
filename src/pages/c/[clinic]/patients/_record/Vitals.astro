@@ -27,7 +27,7 @@ const recent = vitals.slice(1, 6);
 ---
 
 <Pane as="section" label="Blood pressure and pulse" id="vitals">
-  <Head icon="heart" title="Blood pressure and pulse" meta={latest ? `Taken ${when(new Date(latest.at))}` : undefined}>
+  <Head level={4} icon="heart" title="Blood pressure and pulse" meta={latest ? `Taken ${when(new Date(latest.at))}` : undefined}>
     {canEdit && <Plus slot="actions" text="Take a reading" label="Take a blood pressure reading" open="rec-vitals-add" />}
   </Head>
   {savedWords && <Callout tone="success" class="mb-3" text={savedWords} />}

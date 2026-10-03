@@ -3,7 +3,8 @@
 // braces, the adjustment visits. The money is the statement the plan made (paid on the Finances page like
 // any other), so this card only reads it: what should be paid by now, what is behind (in words and amber,
 // never colour alone), the next payment and the next adjustment. Amounts show to people who may bill;
-// anyone who may edit records writes an adjustment. On the Treatment section.
+// anyone who may edit records writes an adjustment, with the wire placed (the Treatment record's Wire, 045).
+// On the Treatment section.
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
@@ -39,7 +40,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
   {saved === 'payplan-stopped' && <Callout tone="success" text="Plan stopped. Its statement stays, with whatever is left to pay." />}
   {inline && <Callout tone="alert" text={inline} />}
   <Pane as="section" label="Braces and payment plans" id="payplans">
-    <Head icon="money" title="Braces and payment plans" meta={running.length ? `${running.length} running` : undefined}>
+    <Head level={4} icon="money" title="Braces and payment plans" meta={running.length ? `${running.length} running` : undefined}>
       {canEdit && canBill && <Plus slot="actions" text="New plan" label="Start a payment plan" open="rec-payplan-add" />}
     </Head>
     {plans.length === 0 ? <Empty icon="money" text="No payment plan for this patient." /> : (
@@ -74,7 +75,10 @@ const help = 'text-[13px] leading-snug text-ink-2';
               <details class="mt-2">
                 <summary class="inline-flex min-h-11 cursor-pointer items-center text-[14px] font-semibold text-ink-2">Adjustments</summary>
                 <ul class="pt-list">
-                  {p.adjustments.map((a) => <li><span class="min-w-0 text-[14.5px]"><span class="font-semibold tabular-nums">{dateText(a.on)}</span><span class="block text-ink-2">{[a.note, a.by].filter(Boolean).join(' · ') || '—'}</span></span></li>)}
+                  {p.adjustments.map((a) => {
+                    const rest = [a.note, a.by].filter(Boolean).join(' · ');
+                    return <li><span class="min-w-0 text-[14.5px]"><span class="font-semibold tabular-nums">{dateText(a.on)}</span>{a.wire && <span class="block">Wire {a.wire}</span>}{(rest || !a.wire) && <span class="block text-ink-2">{rest || '—'}</span>}</span></li>;
+                  })}
                 </ul>
               </details>
             )}
@@ -131,7 +135,8 @@ const help = 'text-[13px] leading-snug text-ink-2';
       <Csrf /><input type="hidden" name="intent" value="adjust-add" />
       <input type="hidden" name="plan" value={av.plan ?? ''} data-adjust-plan />
       <label class="field"><span class="meta">Day</span><input type="date" name="done_on" value={av.done_on ?? today} max={today} data-adjust-on /></label>
-      <label class="field"><span class="meta">What was done <span class="font-normal">(optional)</span></span><input name="note" value={av.note ?? ''} maxlength="300" autocomplete="off" placeholder="e.g. Upper 0.016 NiTi, new elastics" /></label>
+      <label class="field"><span class="meta">Wire <span class="font-normal">(optional)</span></span><input name="wire" value={av.wire ?? ''} maxlength="60" autocomplete="off" placeholder="e.g. U 0.016 NiTi · L 0.014 NiTi" /></label>
+      <label class="field"><span class="meta">What was done <span class="font-normal">(optional)</span></span><input name="note" value={av.note ?? ''} maxlength="300" autocomplete="off" placeholder="e.g. New elastics" /></label>
       <label class="field"><span class="meta">Next adjustment</span><input type="date" name="next_on" value={av.next_on ?? ''} min={today} data-adjust-next /><span class={help}>Filled in from the plan’s interval; change it to suit.</span></label>
       <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save</button>
     </form>

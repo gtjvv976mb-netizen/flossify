@@ -1,16 +1,24 @@
 ---
-// The record's contents, as on the first page of a paper chart: the numbered parts in the order they follow, each a
-// link to its part further down the one page. Plain words on one line where it fits (short names; the part's full name
-// for a screen reader); nothing stays on screen.
-interface Item { id: string; label: string; full?: string; n: number }
-interface Props { items: Item[]; name: string }
-const { items, name } = Astro.props;
+// The record's contents: the paper record's three pages, then what is attached to it, each part a link to its place
+// further down the one page (an attached sheet opens as it is gone to). Plain words on one line where it fits (short
+// names; the part's full name for a screen reader); nothing stays on screen.
+interface Item { id: string; label: string; full?: string }
+interface Group { label: string; items: Item[] }
+interface Props { groups: Group[]; name: string }
+const { groups, name } = Astro.props;
 ---
 
 <nav class="pp-contents" aria-label={`Parts of ${name}’s record`} data-rec-nav>
   <ol class="rec-tabs">
-    {items.map((i) => (
-      <li><a href={`#rec-${i.id}`} id={`rec-rec-${i.id}-tab`} data-rec-link={i.id}><span class="pp-n">{i.n}</span><span aria-hidden={i.full && i.full !== i.label ? 'true' : undefined}>{i.label}</span>{i.full && i.full !== i.label && <span class="sr-only">{i.full}</span>}</a></li>
+    {groups.map((g) => (
+      <li class="pp-contents-g">
+        <span class="pp-contents-k">{g.label}</span>
+        <ul>
+          {g.items.map((i) => (
+            <li><a href={`#rec-${i.id}`} id={`rec-rec-${i.id}-tab`} data-rec-link={i.id}><span aria-hidden={i.full && i.full !== i.label ? 'true' : undefined}>{i.label}</span>{i.full && i.full !== i.label && <span class="sr-only">{i.full}</span>}</a></li>
+          ))}
+        </ul>
+      </li>
     ))}
   </ol>
 </nav>

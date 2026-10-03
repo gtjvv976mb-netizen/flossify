@@ -1,0 +1,81 @@
+---
+// The Dental history and the Medical history as the paper patient record boxes them (3 Oct 2026, the owner: "a
+// digital copy of the real form"): the paper's labels in its order, four boxes to a row (two on a phone), a small
+// label over each answer. What each box says is worked out in src/lib/paper-history.ts (paperBoxes): the desk's
+// answer; where the desk has none, the patient's own words, with a line naming the forms they came from; a
+// checklist as the boxes ticked, each a tick and the paper's words. A box that can be changed is its own 44 px
+// button (record.css's .pf-go), with a small plus in its corner: it opens the folded health form with the caret in
+// that box's field (data-rec-go="health-form", data-rec-field), as the record's other boxes do. Allergies are red.
+// `part`: one band or both (the page may put the Dental history with the Basic information and the Medical history
+// in its own part).
+import Icon from '../../../../../components/ws/Icon.astro';
+import { day, type HealthVersion } from '../../../../../lib/health';
+import { paperBoxes, asksPregnancy, type OwnWords, type Box } from '../../../../../lib/paper-history';
+import { FIELDS, answerText } from '../../../../../lib/patient-forms-def';
+import './paper-history.css';
+
+interface Props {
+  /** The newest health version (readHealth's versions[0]), or null. */
+  latest: HealthVersion | null;
+  /** The patient's own words on file (readHealth's `own`). */
+  own: OwnWords | null;
+  /** Today's visit, when there is one: its reason. */
+  visit: { reason: string | null } | null;
+  /** The patient row's sex and the age today: the pregnancy questions are drawn where they apply, or where answered. */
+  sex: string | null;
+  age: number | null;
+  /** The newest X-ray taken here (YYYY-MM-DD), or null. */
+  xrayHere?: string | null;
+  canEdit: boolean;
+  part?: 'dental' | 'medical' | 'both';
+  /** Draw each band's title ("Dental history", "Medical history"). */
+  titles?: boolean;
+}
+const { latest, own, visit, sex, age, xrayHere = null, canEdit, part = 'both', titles = true } = Astro.props;
+
+const boxes = paperBoxes({
+  latest, own, reason: visit?.reason ?? null, visitToday: !!visit, ask: asksPregnancy(sex, age), xrayHere,
+  ownText: (name, v) => (FIELDS[name] ? answerText(FIELDS[name], v) : null),
+});
+const bands: [string, string, Box[]][] = [
+  ...(part !== 'medical' ? [['dental', 'Dental history', boxes.dental] as [string, string, Box[]]] : []),
+  ...(part !== 'dental' ? [['medical', 'Medical history', boxes.medical] as [string, string, Box[]]] : []),
+];
+// Which forms, as the record's health line names them: the patient forms from the QR code (QR-…), or an intake's page 1 (IN-…).
+const fromWords = (b: Box) => {
+  if (!b.from) return null;
+  const ref = [b.from.ref, b.from.at && `sent ${day(new Date(b.from.at))}`].filter(Boolean).join(', ');
+  return `${b.from.what === 'intake' ? 'From the forms the patient filled in' : 'From the patient forms'}${ref ? ` (${ref})` : ''}`;
+};
+---
+
+{bands.map(([key, title, list]) => (
+  <section class="ph-band" aria-labelledby={titles ? `ph-${key}-title` : undefined} aria-label={titles ? undefined : title} data-paper-history={key}>
+    {titles && <h3 class="ph-title" id={`ph-${key}-title`}>{title}</h3>}
+    <dl class="pf-grid ph-grid">
+      {list.map((b) => {
+        const edit = canEdit && b.field;
+        const value = b.text ?? b.empty ?? (edit ? 'Not on file' : '—');
+        return (
+          <div class:list={['pf-cell', `pf-span-${b.span}`, !b.text && 'pf-empty', edit && 'pf-edit']} data-ph-box={b.key}>
+            <dt class="pf-k">{b.label}</dt>
+            <dd class:list={['pf-v', b.alert && 'pf-alert', b.pre && 'whitespace-pre-line']}>
+              {b.ticks ? (
+                <ul class="ph-ticks">
+                  {[...b.ticks, ...(b.also ?? [])].map((w) => <li><span class="ph-tick" aria-hidden="true"></span>{w}</li>)}
+                </ul>
+              ) : value}
+              {b.from && <span class="ph-from">{fromWords(b)}</span>}
+            </dd>
+            {edit && (
+              <button type="button" class="pf-go" data-rec-go="health-form" data-rec-field={b.field}>
+                <span class="sr-only">{b.edit}</span>
+                <span class="rec-plus-mark pf-plus" aria-hidden="true"><Icon name="plus" size={13} /></span>
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </dl>
+  </section>
+))}

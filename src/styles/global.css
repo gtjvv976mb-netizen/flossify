@@ -828,6 +828,22 @@ table tr.is-today th::after {
 .tooth[data-state="unerupted"],
 .tooth[data-state="impacted"]   { background: transparent; border-style: dashed; }
 
+/* The paper chart's findings we had no look for (045). A tooth to be taken out is crossed in the caries red; a root
+   fragment is hatched in it; an abutment carries the crown, as the bridge does, and a pontic is the crown's pale
+   tint on a dashed crown edge; a removable denture is the acrylic's pink. Amalgam and inlay are surface pips:
+   grey metal and gold. Tokens where the theme changes the hue, mid-tones that read on both grounds otherwise. */
+.tooth[data-state="extraction"] {
+  background:
+    linear-gradient(to top right, transparent calc(50% - 1.5px), var(--c-caries) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)),
+    linear-gradient(to bottom right, transparent calc(50% - 1.5px), var(--c-caries) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)),
+    var(--c-tooth-sound);
+  border-color: var(--c-caries);
+}
+.tooth[data-state="root_fragment"] { background: repeating-linear-gradient(135deg, var(--c-caries) 0 3px, var(--c-tooth-sound) 3px 7px); border-color: var(--c-caries); }
+.tooth[data-state="abutment"]      { background: var(--c-crown); border-color: var(--c-crown); }
+.tooth[data-state="pontic"]        { background: color-mix(in srgb, var(--c-crown) 28%, var(--c-tooth-sound)); border-color: var(--c-crown); border-style: dashed; }
+.tooth[data-state="denture"]       { background: #c74b77; border-color: #c74b77; }
+
 .swatch { width: 12px; height: 12px; border-radius: 0; flex-shrink: 0; border: 1px solid var(--c-tooth-line); }
 
 /* Surface marks. A filling on the mesial is not a filling on the whole tooth,
@@ -846,6 +862,56 @@ table tr.is-today th::after {
 .tooth[data-surface-condition="caries"]  .pip[data-on] { background: var(--c-caries); }
 .tooth[data-surface-condition="filled"]  .pip[data-on] { background: var(--c-accent); }
 .tooth[data-surface-condition="sealant"] .pip[data-on] { background: #0b7fb5; }
+.tooth[data-surface-condition="amalgam"] .pip[data-on] { background: #7b8591; }
+.tooth[data-surface-condition="inlay"]   .pip[data-on] { background: #a87a12; }
+
+/* The paper's code beside each finding (Odontogram's `codes`, src/data/demo.ts CONDITION_CODE: keep the two in
+   step). On the outer side of the tooth, where the paper writes it — above an upper tooth, below a lower one — in
+   ink on the card, never on a fill, so it reads the same over every finding in both themes. ::before, because
+   ::after is the "kept on this device" corner. The codes tell apart what the fills do not (unerupted from
+   impacted, an abutment from a bridge), and a missing tooth fades its fill, not the whole tooth, so its M stays
+   full ink. */
+[data-codes] .tooth[data-tooth]::before {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 5px);
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--c-ink);
+  pointer-events: none;
+}
+[data-codes] .tooth--lower[data-tooth]::before { bottom: auto; top: calc(100% + 5px); }
+[data-codes] .tooth[data-state="missing"] {
+  opacity: 1;
+  background: color-mix(in srgb, var(--c-tooth-missing) 60%, transparent);
+  border-color: color-mix(in srgb, var(--c-tooth-line) 60%, transparent);
+}
+[data-codes] .tooth[data-surface-condition="caries"]::before  { content: 'C'; }
+[data-codes] .tooth[data-state="extraction"]::before          { content: 'Ex'; }
+[data-codes] .tooth[data-state="root_fragment"]::before       { content: 'RF'; }
+[data-codes] .tooth[data-state="missing"]::before             { content: 'M'; }
+[data-codes] .tooth[data-state="unerupted"]::before           { content: 'Un'; }
+[data-codes] .tooth[data-state="impacted"]::before            { content: 'Im'; }
+[data-codes] .tooth[data-state="crown"]::before               { content: 'J'; }
+[data-codes] .tooth[data-surface-condition="amalgam"]::before { content: 'Am'; }
+[data-codes] .tooth[data-state="abutment"]::before            { content: 'Ab'; }
+[data-codes] .tooth[data-state="pontic"]::before              { content: 'P'; }
+[data-codes] .tooth[data-surface-condition="inlay"]::before   { content: 'I'; }
+[data-codes] .tooth[data-state="bridge"]::before              { content: 'Fx'; }
+[data-codes] .tooth[data-surface-condition="sealant"]::before { content: 'S'; }
+[data-codes] .tooth[data-state="denture"]::before             { content: 'Rm'; }
+[data-codes] .tooth[data-surface-condition="filled"]::before  { content: 'F'; }
+[data-codes] .tooth[data-state="root_canal"]::before          { content: 'RCT'; }
+[data-codes] .tooth[data-state="implant"]::before             { content: 'Impl'; }
+[data-codes] .tooth[data-state="veneer"]::before              { content: 'V'; }
+/* Printed, the chart keeps its fills and pips: a pip is the only mark of which surface a finding is on. */
+@media print {
+  [data-codes] .tooth[data-tooth], [data-codes] .tooth[data-tooth] .pip { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
 
 /* The popover is placed against the clicked tooth, so the centring the
    browser applies by default has to be cleared. */

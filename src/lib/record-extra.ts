@@ -49,7 +49,8 @@ export interface Loa {
 export interface PayPlan {
   id: string; kind: 'braces' | 'installment'; title: string; total: number; down: number; monthly: number; months: number; startOn: string; adjustWeeks: number | null;
   status: string; note: string | null; invoiceId: string; invoiceStatus: string; paid: number; at: Date;
-  adjustments: { id: string; on: string; note: string | null; nextOn: string | null; by: string | null }[];
+  /** wire: the archwire placed (045), the Treatment record's Wire; by: who recorded it, its Sign. */
+  adjustments: { id: string; on: string; wire: string | null; note: string | null; nextOn: string | null; by: string | null }[];
   // Worked out from the schedule and what was paid on the statement:
   dueNow: number; behind: number; missed: number; nextDueOn: string | null; nextDueAmount: number; nextAdjustOn: string | null; lastOn: string;
 }
@@ -98,7 +99,7 @@ export async function loadExtra(tx: Tx, patientId: string, hmoNames: Map<string,
     tx.query(`select p.*, to_char(p.start_on, 'YYYY-MM-DD') as start, i.status as invoice_status,
                      (select coalesce(sum(y.amount), 0) from payment y where y.invoice_id = p.invoice_id and y.voided_at is null) as paid
                 from payment_plan p join invoice i on i.id = p.invoice_id where p.patient_id = $1 order by (p.status = 'active') desc, p.created_at desc`, [patientId]),
-    tx.query(`select a.id, a.plan_id, to_char(a.done_on, 'YYYY-MM-DD') as done, a.note, to_char(a.next_on, 'YYYY-MM-DD') as next, s.full_name
+    tx.query(`select a.id, a.plan_id, to_char(a.done_on, 'YYYY-MM-DD') as done, a.wire, a.note, to_char(a.next_on, 'YYYY-MM-DD') as next, s.full_name
                 from plan_adjustment a left join staff s on s.id = a.done_by where a.patient_id = $1 order by a.done_on desc, a.created_at desc`, [patientId]),
     payorOptions(tx, hmoNames),
   ]);
@@ -120,7 +121,7 @@ export async function loadExtra(tx: Tx, patientId: string, hmoNames: Map<string,
         id: r.id, kind: r.kind, title: r.title, total: Number(r.total), down: Number(r.down_payment), monthly: Number(r.monthly), months: r.months, startOn: r.start,
         adjustWeeks: r.adjust_weeks, status: r.invoice_status === 'paid' && r.status === 'active' ? 'finished' : r.status, note: r.note, invoiceId: r.invoice_id,
         invoiceStatus: r.invoice_status, paid: Number(r.paid), at: r.created_at,
-        adjustments: adj.rows.filter((a) => a.plan_id === r.id).map((a) => ({ id: a.id, on: a.done, note: a.note, nextOn: a.next, by: a.full_name })),
+        adjustments: adj.rows.filter((a) => a.plan_id === r.id).map((a) => ({ id: a.id, on: a.done, wire: a.wire ?? null, note: a.note, nextOn: a.next, by: a.full_name })),
       };
       return { ...base, ...planState(base, today) };
     }),
@@ -321,9 +322,14 @@ export async function extraAction(tx: Tx, c: ExtraCtx, intent: string, form: For
       if (on > today) return fail('An adjustment cannot be dated in the future.');
       const next = dayOf(form.get('next_on')) ?? addDays(on, (p.adjust_weeks ?? 4) * 7);
       if (next <= on) return fail('The next adjustment comes after this one.');
+      // The archwire, as the paper ledger's Wire writes it ("U 0.016 NiTi · L 0.014 NiTi"): one line with nothing invisible,
+      // 60 characters at most (045).
+      const wire = oneLine(text(form.get('wire'), 120));
+      if (wire.length > 60) return fail('Write the wire in 60 characters or fewer, like U 0.016 NiTi · L 0.014 NiTi.');
       const note = line(form.get('note'), 300);
-      const { rows: [a] } = await tx.query(`insert into plan_adjustment (clinic_id, plan_id, patient_id, done_on, note, next_on, done_by) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-        [c.clinicId, p.id, c.patientId, on, note || null, next, c.staffId]);
+      if (note.length > 300) return fail('Keep what was done under 300 characters.');
+      const { rows: [a] } = await tx.query(`insert into plan_adjustment (clinic_id, plan_id, patient_id, done_on, wire, note, next_on, done_by) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+        [c.clinicId, p.id, c.patientId, on, wire || null, note || null, next, c.staffId]);
       await audit(tx, c, 'record.adjust_add', 'plan_adjustment', a.id);
       return { ok: true, section, saved: `adjusted:${next}` };
     }

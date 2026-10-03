@@ -83,7 +83,8 @@ export const RX_ROWS = 6;
 
 // --- shapes ------------------------------------------------------------------------------------
 export interface PlanItem { id: string; loaId: string | null; name: string; fdi: number | null; surface: string | null; price: string; phase: number; status: string; note: string | null; createdAt: Date; decidedAt: Date | null; by: string | null }
-export interface Done { id: string; visitId: string | null; name: string; code: string | null; category: string | null; fdi: number | null; surface: string | null; price: string; at: Date; dentist: string | null; note: string | null; fromPlan: boolean }
+/** recordedBy: who entered it, signed in under their own name (procedure_done.created_by): the Treatment record's Sign. */
+export interface Done { id: string; visitId: string | null; name: string; code: string | null; category: string | null; fdi: number | null; surface: string | null; price: string; at: Date; dentist: string | null; note: string | null; fromPlan: boolean; recordedBy: string | null }
 export interface Note { id: string; visitId: string | null; visitOn: string; dentist: string | null; complaint: string | null; findings: string | null; diagnosis: string | null; treatment: string | null; plan: string | null; teeth: number[]; amends: string | null; by: string | null; at: Date }
 export interface RxItem { drug: string; strength: string; qty: string; sig: string }
 /** ptr / ptrYear: the copy of the prescriber's PTR taken when it was saved (041), never the live staff value. */
@@ -104,8 +105,9 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
   const [plan, done, notes, rx, files, recall, labs, clinicians, catalog] = await Promise.all([
     tx.query(`select i.*, s.full_name as by_name from treatment_plan_item i left join staff s on s.id = i.created_by
                where i.patient_id = $1 order by (i.status in ('done', 'declined')), i.phase, i.created_at`, [patientId]),
-    tx.query(`select d.id, d.appointment_id, coalesce(d.name, c.name, 'Treatment') as name, c.code, c.category, d.fdi, d.surface, d.price, d.performed_at, s.full_name as dentist, d.clinical_note, d.plan_id is not null as from_plan
-                from procedure_done d left join procedure_catalog c on c.id = d.catalog_id left join staff s on s.id = d.performed_by
+    tx.query(`select d.id, d.appointment_id, coalesce(d.name, c.name, 'Treatment') as name, c.code, c.category, d.fdi, d.surface, d.price, d.performed_at, s.full_name as dentist, d.clinical_note, d.plan_id is not null as from_plan,
+                     rb.full_name as recorded_by_name
+                from procedure_done d left join procedure_catalog c on c.id = d.catalog_id left join staff s on s.id = d.performed_by left join staff rb on rb.id = d.created_by
                where d.patient_id = $1 order by d.performed_at desc limit 300`, [patientId]),
     tx.query(`select n.*, to_char(n.visit_on, 'YYYY-MM-DD') as day, d.full_name as dentist, c.full_name as by_name
                 from clinical_note n left join staff d on d.id = n.dentist_id left join staff c on c.id = n.created_by
@@ -125,7 +127,7 @@ export async function loadClinical(tx: Tx, clinicId: string, patientId: string):
   ]);
   return {
     plan: plan.rows.map((r) => ({ id: r.id, loaId: r.loa_id ?? null, name: r.name, fdi: r.fdi, surface: r.surface, price: r.price, phase: r.phase, status: r.status, note: r.note, createdAt: r.created_at, decidedAt: r.decided_at, by: r.by_name })),
-    done: done.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, name: r.name, code: r.code ?? null, category: r.category ?? null, fdi: r.fdi, surface: r.surface, price: r.price, at: r.performed_at, dentist: r.dentist, note: r.clinical_note, fromPlan: r.from_plan })),
+    done: done.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, name: r.name, code: r.code ?? null, category: r.category ?? null, fdi: r.fdi, surface: r.surface, price: r.price, at: r.performed_at, dentist: r.dentist, note: r.clinical_note, fromPlan: r.from_plan, recordedBy: r.recorded_by_name ?? null })),
     notes: notes.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, visitOn: r.day, dentist: r.dentist, complaint: r.complaint, findings: r.findings, diagnosis: r.diagnosis, treatment: r.treatment, plan: r.plan, teeth: r.teeth ?? [], amends: r.amends_id, by: r.by_name, at: r.created_at })),
     rx: rx.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, at: r.issued_at, prescriber: r.full_name, prescriberId: r.prescriber_id, prc: r.prc_licence, ptr: r.ptr_number, ptrYear: r.ptr_year ?? null, items: Array.isArray(r.items) ? r.items : [], notes: r.notes })),
     files: files.rows.map((r) => ({ id: r.id, visitId: r.appointment_id ?? null, kind: r.kind, mime: r.mime, bytes: Number(r.bytes), takenAt: r.taken, fdi: r.fdi, caption: r.caption, by: r.by_name, at: r.created_at, thumb: String(r.storage_key).includes('|thumb') })),
