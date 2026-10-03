@@ -1,0 +1,38 @@
+---
+// The head of the paper record's first page (3 Oct 2026, the owner: "a digital copy of the real form"): THIS clinic's
+// own letterhead — its name, address, phone and email as Settings → Clinic profile has them, never another clinic's
+// and no logo — and on the right, ruled as on the paper, Chart # (the patient's chart no., changed in Edit details)
+// and Date (the day the chart was opened: the first visit on file, or the day the patient was added, whichever is
+// earlier). A part of the address an earlier part already says ("Baguio City" in the street line) is not said again,
+// as on every printed paper (consent-docs.ts clinicFace).
+import FormCell from './FormCell.astro';
+import { prettyPhone } from '../../../../../lib/messages';
+import { dateText } from '../../../../../lib/health';
+
+interface Props {
+  clinic: { name: string; address_line: string | null; barangay: string | null; city: string | null; province: string | null; phone: string | null; email: string | null };
+  chartNo: string;
+  /** YYYY-MM-DD, Manila. */
+  opened: string | null;
+  /** Who added the patient, or that they came from an import: the date's tooltip. */
+  openedBy?: string;
+  canEdit: boolean;
+}
+const { clinic, chartNo, opened, openedBy, canEdit } = Astro.props;
+const parts = [clinic.address_line, clinic.barangay, clinic.city, clinic.province].map((x) => (x ?? '').trim()).filter(Boolean);
+const address = parts.filter((part, i) => !parts.slice(0, i).some((prev) => prev.toLowerCase().includes(part.toLowerCase()))).join(', ');
+const reach = [clinic.phone ? prettyPhone(clinic.phone) : null, clinic.email].filter(Boolean).join(' · ');
+---
+
+<header class="pp-lh">
+  <div class="pp-lh-clinic">
+    <p class="pp-lh-name">{clinic.name}</p>
+    {address && <p class="pp-lh-line">{address}</p>}
+    {reach && <p class="pp-lh-line">{reach}</p>}
+  </div>
+  <dl class="pf-grid pp-lh-ids">
+    <FormCell label="Chart #" value={chartNo} mono
+      edit={canEdit ? { label: 'Change the chart no.', open: 'details', field: 'chart_no' } : undefined} />
+    <FormCell label="Date" value={dateText(opened)} title={openedBy} />
+  </dl>
+</header>

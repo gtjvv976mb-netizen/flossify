@@ -1,8 +1,10 @@
-// The Treatment record: the ledger on page 4 of the Philippine Dental Association's dental chart
-// (https://pda.com.ph/docs/pda-dental-chart/) — Date · Tooth no./s · Procedure · Dentist/s · Amount charged ·
-// Amount paid · Balance · Next appt. — one row per treatment, oldest first, drawn from what the record
-// already holds. The record's section (patients/_record/TreatmentRecord.astro) and its print
-// (patients/[patient]/treatment-record.astro) both build it here, so the screen and the paper never differ.
+// The Treatment record: page 3 of the clinic's paper patient record (the owner, 3 Oct 2026: "a digital copy of the
+// real form") — Date · Procedure · Wire · Next visit · Dentist · Amount · Balance · Sign — one row per treatment,
+// braces adjustment, charge and payment, oldest first, drawn from what the record already holds. The record's part
+// (patients/_record/TreatmentRecord.astro) and its print (patients/[patient]/treatment-record.astro) both build it
+// here, so the screen and the paper never differ. Before that it was the PDA dental chart's page 4 (Tooth no./s and
+// the amounts charged and paid in columns of their own): the teeth are now written first in the Procedure, as on the
+// paper, and a charge, a discount and a payment share one Amount, since no row ever carries two.
 //
 // Clinical rows come from loadVisits()'s placement (src/lib/visit-record.ts), so the ledger and the visit
 // panel always agree on which visit a treatment belongs to. Money rows come from this module's own complete
@@ -11,10 +13,17 @@
 // appears exactly once, on its treatment's row when the statement was issued that day, else as a charge row
 // of its own on the statement's day.
 //
+// Wire is the archwire a braces adjustment placed (plan_adjustment.wire, 045); nothing is read out of old notes.
+// Sign is who entered the line, signed in under their own name (the treatment's recorder, the adjustment's, the
+// statement's maker, whoever took the payment, whoever went ahead without a consent) — never the visit's dentist or
+// the person reading, and blank when nobody is on file (imports, old rows). A drawn signature appears only on a
+// consent line, where the patient or guardian signed that form: they never signed for a treatment or an amount.
+//
 // The running balance is patient_balance()'s rule (022), statement by statement, through sumsOf() in
 // src/lib/invoices.ts — never a second definition. The last day's balance must equal patient_balance(); when
 // it does not, no balance is shown and the section says so (and the server logs the patient id, no name).
-// Money is only read, and only shown, for people who may bill (the page passes `money`).
+// Money is only read, and only shown, for people who may bill (the page passes `money`): the names in Sign on
+// money rows come from the same read, so nobody without finance.bill learns that a statement exists.
 import type { Tx } from './db';
 import type { Clinical, Done } from './record';
 import type { Extra } from './record-extra';
@@ -22,18 +31,25 @@ import type { Visit } from './visit-record';
 import { STATE_WORDS, signerWords, overrideWords, type RecordDoc, type RecordSigning } from './consent-docs';
 import { dateText } from './health';
 import { sumsOf, fromDb, pesos, statementNo, methodLabel, DISCOUNTS, PAYOR_METHODS, type Cents } from './invoices';
+import type { Strokes } from './visit-consent';
 
 const TZ = 'Asia/Manila';
 const dayKey = (d: Date | string) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(d));
 const timeWords = (d: Date | string) => new Intl.DateTimeFormat('en-PH', { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(new Date(d)).toLowerCase();
-/** The first instant after a Manila day: "end of the day" for Next appt. */
+/** The first instant after a Manila day: "end of the day" for Next visit. */
 const endOfDay = (day: string) => new Date(Date.parse(`${day}T00:00:00+08:00`) + 864e5);
 const LIMIT = 2000;
 
 export type RowKind = 'done' | 'adjust' | 'visit' | 'consent' | 'charge' | 'discount' | 'other' | 'payor' | 'payment';
+/** The Sign cell: who entered the line (their full name; the cell shows signName()), or, on a consent line only,
+ *  the signer's own strokes, or "On paper" for a form signed on paper. */
+export type LedgerSign =
+  | { kind: 'entered'; name: string }
+  | { kind: 'signature'; name: string; strokes: Strokes }
+  | { kind: 'paper'; name: string };
 export interface LedgerRow {
   kind: RowKind;
-  /** Tooth pills: "36 MO", "11". */
+  /** The teeth, FDI, written first in the Procedure: "36 MO", "11". */
   teeth: string[];
   /** The procedure column's words, and a smaller line under them. */
   words: string;
@@ -42,14 +58,18 @@ export interface LedgerRow {
   status: string | null;
   /** A missed or cancelled visit: its words in ink-2. */
   quiet: boolean;
+  /** The archwire placed: braces adjustments only (plan_adjustment.wire). */
+  wire: string | null;
   dentist: string | null;
-  /** Centavos; a discount is negative. Null = the cell is empty. */
+  /** Centavos; a discount is negative. Null = the cell is empty. The Amount column shows whichever is set (never
+   *  both today); a payment reads "Paid ₱…". */
   charged: Cents | null;
   paid: Cents | null;
   /** Only on the last row of a day where money moved. */
   balance: Cents | null;
   /** Only on the last row of a day with a visit. */
   next: { text: string; visitKey: string | null } | null;
+  sign: LedgerSign | null;
 }
 export interface LedgerDay {
   day: string;
@@ -67,13 +87,14 @@ export interface Ledger {
   onFile: Cents;
   /** Loaders keep the newest 300 treatments and 300 visits. */
   capped: boolean;
-  /** Every visit key a date or a Next appt. opens: `?visit=` of another day lands on this section only for these. */
+  /** Every visit key a date or a Next visit opens: `?visit=` of another day lands on this section only for these. */
   openKeys: Set<string>;
 }
 
-interface StatementRow { id: string; appointment_id: string | null; issued_at: Date | string; series_prefix: string; number: string; total: string; discount: string; discount_kind: string | null; payor_name: string | null; payor_share: string; status: string }
+/** by_name: who made the statement (invoice.created_by) and who took the payment (payment.received_by), for Sign. */
+interface StatementRow { id: string; appointment_id: string | null; issued_at: Date | string; series_prefix: string; number: string; total: string; discount: string; discount_kind: string | null; payor_name: string | null; payor_share: string; status: string; by_name: string | null }
 interface LineRow { id: string; invoice_id: string; procedure_id: string | null; description: string; amount: string; line_no: number | null }
-interface PaymentRow { id: string; invoice_id: string | null; amount: string; method: string; paid_on: string | null; received_at: Date | string }
+interface PaymentRow { id: string; invoice_id: string | null; amount: string; method: string; paid_on: string | null; received_at: Date | string; by_name: string | null }
 export interface LedgerMoney { statements: StatementRow[]; lines: LineRow[]; payments: PaymentRow[]; complete: boolean; balance: string }
 
 /** Every statement patient_balance() counts, their lines, every payment it counts, and patient_balance() itself — in
@@ -86,8 +107,9 @@ export async function loadLedgerMoney(tx: Tx, patientId: string): Promise<Ledger
        (select coalesce(json_agg(x order by x.ord), '[]'::json) from (
           select row_number() over (order by i.issued_at, i.number) as ord, i.id, i.appointment_id, i.issued_at, i.series_prefix,
                  i.number::text as number, i.total::text as total, i.discount::text as discount, i.discount_kind, i.payor_name,
-                 i.payor_share::text as payor_share, i.status
-            from invoice i where i.patient_id = $1 and i.status in ${counted} order by i.issued_at, i.number limit ${LIMIT + 1}) x) as statements,
+                 i.payor_share::text as payor_share, i.status, cs.full_name as by_name
+            from invoice i left join staff cs on cs.id = i.created_by
+           where i.patient_id = $1 and i.status in ${counted} order by i.issued_at, i.number limit ${LIMIT + 1}) x) as statements,
        (select coalesce(json_agg(x order by x.ord), '[]'::json) from (
           select row_number() over (order by l.line_no nulls last, l.id) as ord, l.id, l.invoice_id, l.procedure_id, l.description,
                  l.amount::text as amount, l.line_no
@@ -95,8 +117,8 @@ export async function loadLedgerMoney(tx: Tx, patientId: string): Promise<Ledger
            where i.patient_id = $1 and i.status in ${counted} order by l.line_no nulls last, l.id limit ${LIMIT + 1}) x) as lines,
        (select coalesce(json_agg(x order by x.ord), '[]'::json) from (
           select row_number() over (order by y.received_at) as ord, y.id, y.invoice_id, y.amount::text as amount, y.method,
-                 to_char(y.paid_on, 'YYYY-MM-DD') as paid_on, y.received_at
-            from payment y left join invoice i on i.id = y.invoice_id
+                 to_char(y.paid_on, 'YYYY-MM-DD') as paid_on, y.received_at, rs.full_name as by_name
+            from payment y left join invoice i on i.id = y.invoice_id left join staff rs on rs.id = y.received_by
            where y.patient_id = $1 and y.voided_at is null and (y.invoice_id is null or i.status in ${counted})
            order by y.received_at limit ${LIMIT + 1}) x) as payments,
        coalesce(patient_balance($1), 0)::text as balance`, [patientId]);
@@ -104,7 +126,7 @@ export async function loadLedgerMoney(tx: Tx, patientId: string): Promise<Ledger
   return { statements: r.statements.slice(0, LIMIT), lines: r.lines.slice(0, LIMIT), payments: r.payments.slice(0, LIMIT), complete, balance: r.balance };
 }
 
-/** Recalls with the day each was set (033: recall.created_at), for Next appt. */
+/** Recalls with the day each was set (033: recall.created_at), for Next visit. */
 export async function loadRecallsSet(tx: Tx, patientId: string): Promise<{ due: string; setOn: string }[]> {
   const { rows } = await tx.query(
     `select to_char(due_on, 'YYYY-MM-DD') as due, to_char(created_at at time zone 'Asia/Manila', 'YYYY-MM-DD') as set_on from recall where patient_id = $1`, [patientId]);
@@ -129,7 +151,23 @@ export function formWords(d: RecordDoc, s: RecordSigning): string {
   return [head, SIGNED_WHERE[s.channel], s.channel === 'paper' ? null : when, s.withdrawal ? `withdrawn ${dateText(dayKey(s.withdrawal.at))}` : null].filter(Boolean).join(' · ');
 }
 const tooth = (fdi: number | null, surface: string | null) => (fdi ? [`${fdi}${surface ? ` ${surface}` : ''}`] : []);
-const blank = (kind: RowKind, words: string): LedgerRow => ({ kind, teeth: [], words, detail: null, status: null, quiet: false, dentist: null, charged: null, paid: null, balance: null, next: null });
+const blank = (kind: RowKind, words: string): LedgerRow => ({ kind, teeth: [], words, detail: null, status: null, quiet: false, wire: null, dentist: null, charged: null, paid: null, balance: null, next: null, sign: null });
+const entered = (name: string | null | undefined): LedgerSign | null => (name ? { kind: 'entered', name } : null);
+/** A consent line's Sign: the signer's own strokes, "On paper", or nothing when no strokes were kept. */
+const signed = (s: RecordSigning): LedgerSign | null =>
+  s.channel === 'paper' ? { kind: 'paper', name: s.signedByName } : s.strokes?.length ? { kind: 'signature', name: s.signedByName, strokes: s.strokes } : null;
+/** The Sign cell's name, short as initials on paper are: "Dr. Ramon Cariño" → "Dr. Cariño" (the calendar's rule), and
+ *  anyone else "M. Santos", a particle or a suffix kept with the surname ("A. Dela Cruz", "J. Reyes Jr."). */
+export function signName(full: string): string {
+  const w = full.trim().split(/\s+/);
+  const suffix = w.length > 2 && /^(jr\.?|sr\.?|ii|iii|iv)$/i.test(w[w.length - 1]) ? w.pop()! : null;
+  const title = /^dra?\.?$/i.test(w[0]) ? w.shift()!.replace(/\.?$/, '.') : null;
+  if (w.length < 2) return [title, ...w, suffix].filter(Boolean).join(' ');
+  let at = w.length - 1;
+  for (let k = 1; k < w.length - 1; k++) if (/^(de|del|dela|della|delas|delos|di|da|van|von|san|santa|sta\.?|sto\.?|santo|la|las|los)$/i.test(w[k])) { at = k; break; }
+  const last = w.slice(at).join(' ');
+  return [title ?? `${w[0].charAt(0)}.`, last, suffix].filter(Boolean).join(' ');
+}
 const clip = (s: string | null | undefined, n: number) => (s ? (s.length > n ? `${s.slice(0, n).trimEnd()}…` : s) : null);
 
 /** What a visit holds besides treatment, in words, for a visit row's detail. */
@@ -209,6 +247,7 @@ export function buildLedger(i: BuildIn): Ledger {
       r.detail = [clip(d.note, 140), doneDay !== v.day ? `done ${dateText(doneDay)}` : null].filter(Boolean).join(' · ') || null;
       r.dentist = d.dentist;
       r.charged = chargedFor(d, v.day);
+      r.sign = entered(d.recordedBy);
       slot(v.day).clinical.push({ row: r, at: +new Date(d.at), order: 0 });
       count++;
     }
@@ -221,6 +260,7 @@ export function buildLedger(i: BuildIn): Ledger {
         r.teeth = docTeeth(d).map(String);
         r.detail = formWords(d, s);
         r.dentist = d.attestation?.dentistName ?? d.dentistName ?? v.dentist;
+        r.sign = signed(s);
         slot(v.day).clinical.push({ row: r, at: +signedAtOf(s), order: -1 });
       }
       // Treatment went ahead without this form agreed (phase 4.4): one row each, on the visit the form belongs to, naming
@@ -231,6 +271,7 @@ export function buildLedger(i: BuildIn): Ledger {
         const oDay = dayKey(o.at);
         r.detail = [overrideWords(o), oDay !== v.day ? `on ${dateText(oDay)}` : null].filter(Boolean).join(' · ');
         r.dentist = d.attestation?.dentistName ?? d.dentistName ?? v.dentist;
+        r.sign = entered(o.staffName);
         slot(v.day).clinical.push({ row: r, at: +new Date(o.at), order: -1 });
       }
     }
@@ -256,7 +297,7 @@ export function buildLedger(i: BuildIn): Ledger {
       const l = s ? linesOf.get(s.id)![0] : null;
       // The charged line names what was done (a consultation, an emergency visit): it is the procedure's words.
       if (l && !used.has(l.id) && !(l.procedure_id && procById.has(l.procedure_id))) {
-        r.charged = fromDb(l.amount); used.add(l.id);
+        r.charged = fromDb(l.amount); used.add(l.id); r.sign = entered(s!.by_name);
         if (v.status === 'completed' || !v.status) { r.words = l.description; r.detail = [v.reason !== l.description ? v.reason : null, sentence(what)].filter(Boolean).join(' · ') || null; }
         else r.detail = [r.detail, `Charged: ${l.description}`].filter(Boolean).join(' · ');
       }
@@ -268,7 +309,9 @@ export function buildLedger(i: BuildIn): Ledger {
     if (!a.on) continue;
     const r = blank('adjust', 'Braces adjustment');
     r.detail = clip(a.note, 140);
+    r.wire = a.wire;
     r.dentist = dentistOnDay(a.on);
+    r.sign = entered(a.by);
     slot(a.on).clinical.push({ row: r, at: Date.parse(`${a.on}T12:00:00+08:00`), order: 0 });
     count++;
   }
@@ -291,12 +334,13 @@ export function buildLedger(i: BuildIn): Ledger {
         const doneDay = d ? dayKey(d.at) : null;
         r.detail = [no, doneDay && doneDay !== day ? `done ${dateText(doneDay)}` : null].filter(Boolean).join(' · ');
         r.charged = fromDb(l.amount);
+        r.sign = entered(s.by_name);
         slot(day).money.push({ row: r, at, order: n++ });
       }
       const discount = fromDb(s.discount);
       if (discount > 0n) {
         const r = blank('discount', (s.discount_kind && DISCOUNTS[s.discount_kind as keyof typeof DISCOUNTS]?.line) || 'Discount');
-        r.detail = no; r.charged = -discount;
+        r.detail = no; r.charged = -discount; r.sign = entered(s.by_name);
         slot(day).money.push({ row: r, at, order: n++ });
       }
       const linesTotal = lines.reduce((t, l) => t + fromDb(l.amount), 0n);
@@ -305,13 +349,13 @@ export function buildLedger(i: BuildIn): Ledger {
         // A statement with no lines at all (an opening balance) is one charge; otherwise the difference is its own row.
         const r = lines.length ? blank('other', `Other change on ${no}`) : blank('charge', `Statement ${no}`);
         if (!lines.length) r.detail = 'No items listed on it';
-        r.charged = other;
+        r.charged = other; r.sign = entered(s.by_name);
         slot(day).money.push({ row: r, at, order: n++ });
       }
       const share = fromDb(s.payor_share);
       if (share > 0n) {
         const r = blank('payor', `${s.payor_name ?? 'HMO'}’s part: ${pesos(share)}`);
-        r.detail = `${no} · not owed by the patient`;
+        r.detail = `${no} · not owed by the patient`; r.sign = entered(s.by_name);
         slot(day).money.push({ row: r, at, order: n++ });
       }
     }
@@ -325,6 +369,7 @@ export function buildLedger(i: BuildIn): Ledger {
       const r = blank('payment', payor ? `Payment from ${s?.payor_name ?? methodLabel(y.method)}` : `Payment · ${methodLabel(y.method)}`);
       r.detail = [payor ? 'its part' : null, s ? stmtNo.get(s.id) : null, day !== own ? `paid ${dateText(own)}` : null].filter(Boolean).join(' · ') || null;
       r.paid = fromDb(y.amount);
+      r.sign = entered(y.by_name);
       slot(day).money.push({ row: r, at: +new Date(y.received_at) + 1e12, order: n++ });
     }
   }
@@ -364,7 +409,7 @@ export function buildLedger(i: BuildIn): Ledger {
     // Balance on a day where money moved.
     const moved = rows.some((r) => r.charged !== null || r.paid !== null) || (!!m && m.statements.some((s) => stmtDay.get(s.id) === day));
     if (balance === 'ok' && moved) last.balance = balanceAt(day);
-    // Next appt. on a day with a visit: the appointment set by the end of that day, else a check-up set that day,
+    // Next visit on a day with a visit: the appointment set by the end of that day, else a check-up set that day,
     // else a braces adjustment's next date set that day.
     if (here.length) {
       const end = endOfDay(day);
@@ -378,8 +423,9 @@ export function buildLedger(i: BuildIn): Ledger {
       } else {
         const rc = recalls.filter((r) => r.setOn === day).sort((a, b) => (a.due < b.due ? -1 : 1))[0];
         const adj = x.plans.flatMap((p) => p.adjustments).find((a) => a.on === day && a.nextOn);
-        if (rc) last.next = { text: `Check-up due ${dateText(rc.due)}`, visitKey: null };
-        else if (adj) last.next = { text: `Adjustment due ${dateText(adj.nextOn)}`, visitKey: null };
+        // The date first, as the paper's Next visit holds a date; what it is for after it.
+        if (rc) last.next = { text: `${dateText(rc.due)} · check-up`, visitKey: null };
+        else if (adj) last.next = { text: `${dateText(adj.nextOn)} · adjustment`, visitKey: null };
       }
     }
     return { day, open, rows };

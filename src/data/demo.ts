@@ -7,7 +7,9 @@
 
 export type ToothCondition =
   | 'sound' | 'caries' | 'filled' | 'crown' | 'bridge' | 'implant'
-  | 'root_canal' | 'sealant' | 'veneer' | 'missing' | 'unerupted' | 'impacted';
+  | 'root_canal' | 'sealant' | 'veneer' | 'missing' | 'unerupted' | 'impacted'
+  // The paper chart's codes we had no finding for (045): Ex, RF, Ab, P, Rm, and the surface restorations Am and I.
+  | 'extraction' | 'root_fragment' | 'abutment' | 'pontic' | 'denture' | 'amalgam' | 'inlay';
 
 export type Notation = 'fdi' | 'universal' | 'palmer';
 
@@ -23,7 +25,7 @@ export interface ToothMark {
 
 /** Which conditions are recorded per surface and which apply to the whole
  *  tooth. Drives the palette: picking "missing" disables the surface row. */
-export const SURFACE_SCOPED: ToothCondition[] = ['caries', 'filled', 'sealant'];
+export const SURFACE_SCOPED: ToothCondition[] = ['caries', 'filled', 'amalgam', 'inlay', 'sealant'];
 
 export const SURFACE_LABEL: Record<Surface, string> = {
   mesial: 'Mesial',
@@ -199,7 +201,29 @@ export const CONDITION_LABEL: Record<ToothCondition, string> = {
   bridge: 'Bridge', implant: 'Implant', root_canal: 'Root canal',
   sealant: 'Sealant', veneer: 'Veneer', missing: 'Missing',
   unerupted: 'Unerupted', impacted: 'Impacted',
+  extraction: 'Extraction', root_fragment: 'Root fragment', abutment: 'Abutment',
+  pontic: 'Pontic', denture: 'Denture', amalgam: 'Amalgam', inlay: 'Inlay',
 };
+
+/** The code a clinic's paper chart writes beside a tooth (C, Ex, RF, M, Un, Im, J, Am, Ab, P, I, Fx, S, Rm), and
+ *  for the four findings the paper has no code for, codes of ours that are none of the paper's: F, RCT, Impl, V
+ *  (a dentist confirms them; not Imp, which some charts use for impacted). Ex is a tooth to be taken out; a tooth
+ *  already out is M. Drawn on the tooth by global.css, from the data-state and data-surface-condition paint()
+ *  sets, when the chart has `codes`. */
+export const CONDITION_CODE: Record<Exclude<ToothCondition, 'sound'>, string> = {
+  caries: 'C', extraction: 'Ex', root_fragment: 'RF', missing: 'M', unerupted: 'Un', impacted: 'Im', crown: 'J',
+  amalgam: 'Am', abutment: 'Ab', pontic: 'P', inlay: 'I', bridge: 'Fx', sealant: 'S', denture: 'Rm',
+  filled: 'F', root_canal: 'RCT', implant: 'Impl', veneer: 'V',
+};
+
+/** The legend under the chart, as the paper writes it and in its order (in sentence case), then ours. */
+export const CODE_LEGEND: [Exclude<ToothCondition, 'sound'>, string][] = [
+  ['caries', 'Caries'], ['extraction', 'Extraction'], ['root_fragment', 'Root fragment'], ['missing', 'Missing'],
+  ['unerupted', 'Unerupted tooth'], ['impacted', 'Impacted tooth'], ['crown', 'Jacket'], ['amalgam', 'Amalgam'],
+  ['abutment', 'Abutment'], ['pontic', 'Pontic'], ['inlay', 'Inlay'], ['bridge', 'Fixed bridge'], ['sealant', 'Sealant'],
+  ['denture', 'Removable denture'],
+  ['filled', 'Filled'], ['root_canal', 'Root canal'], ['implant', 'Implant'], ['veneer', 'Veneer'],
+];
 
 export const peso = (n: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 }).format(n);

@@ -1,23 +1,35 @@
 ---
-// The record's consent forms (039): every form prepared for this patient,
-// newest first — its title and teeth, where it stands (a pill with words:
-// Signed · Did not agree · No photos · To sign · To confirm · Withdrawn), who
-// signed and a small copy of the signature, and who explains it — each with
-// Open (its page: src/pages/c/[clinic]/patients/[patient]/consents/[document].astro)
-// and Print. A form still to sign also has, for someone who can edit records,
-// Explain and confirm (its named dentist only), Sign on this tablet, and Print
-// for signing on paper. The head has Prepare consent forms and, for a treating
-// dentist, Record that the patient cannot decide.
-import Pane from '../../../../../components/ws/Pane.astro';
-import Icon from '../../../../../components/ws/Icon.astro';
+// Page 2 of the record, Informed consent, as the paper's page 2 lays it out (3 Oct 2026, the owner: "a digital copy of
+// the real form"), under the privacy notice (../../../../../components/DeskConsent, drawn by the page):
+//   - the clinic's own paper consent forms on file (026), where a clinic's real page 2 is recorded;
+//   - the paper's ten paragraphs in its order, each with our forms for it (./ConsentRow: the patient's signature or
+//     where it stands, who explained it, the date). The three the library has no form for point to the general
+//     consent's own point, by its head ("See “Examination” in …"), read from the words in force; a form that belongs
+//     under two paragraphs (a filling and a crown) is drawn once, and the other paragraph names it. Our forms the paper
+//     has no paragraph for (implants, whitening, photos) follow, only when there is one;
+//   - the general paragraph: the consent to dental examination and treatment, its words folded (and printed), and the
+//     paper's foot as three boxes: the patient's signature (a parent or guardian for a minor), the dentist who explained
+//     it (never called a signature: no dentist's signature is kept), the date. The foot is the newest agreement still
+//     standing, from any of the three ways it is signed: at a visit on the tablet (035), as a form (039), or typed on the
+//     patient forms from the QR code (028). Its forms still to act on follow, the older ones folded;
+//   - the history under it: signed at visits, and the patient forms.
+// The paper's headings are its own (sentence case); the words a patient signs are always ours, from the library, never
+// the paper's. Which paragraph holds which form is this page's map (PARAS), not the library's.
+// The head's Prepare consent forms and Cannot decide are the part's pluses (the page's Banner); the Cannot decide panel
+// is drawn here.
 import Csrf from '../../../../../components/Csrf.astro';
+import Icon from '../../../../../components/ws/Icon.astro';
+import Chip from '../../../../../components/ws/Chip.astro';
 import SidePanel from '../../../../../components/ws/SidePanel.astro';
-import Head from '../_ui/Head.astro';
 import Glyph from '../_ui/Glyph.astro';
 import Signature from './Signature.astro';
-import Who from './Who.astro';
-import { STATE_WORDS, signerWords, withdrawalWords, overrideWords, CAPACITY_MAX, type RecordDoc } from '../../../../../lib/consent-docs';
-import Plus from './Plus.astro';
+import ConsentRow from './ConsentRow.astro';
+import { day, dateText, type PaperForm } from '../../../../../lib/health';
+import { signerWords, CAPACITY_MAX, type RecordDoc } from '../../../../../lib/consent-docs';
+import { SIGNED_WHERE, signedAtOf } from '../../../../../lib/treatment-record';
+import type { TreatmentConsent, VisitConsent, Strokes } from '../../../../../lib/visit-consent';
+import type { PatientFormLine } from '../../../../../lib/patient-forms';
+import { signedText } from '../_forms/words';
 
 interface Props {
   docs: RecordDoc[];
@@ -30,88 +42,247 @@ interface Props {
   /** A treating dentist here with a PRC licence, and the patient an adult: may record that they cannot decide. */
   mayCapacity: boolean;
   capacity: { at: Date; dentistName: string; reason: string } | null;
-  /** Consent forms are offered on this server (none on a production server until reviewed): Prepare consent forms shows. */
+  /** Consent forms are offered on this server (none on a production server until reviewed). */
   canPrepare: boolean;
   /** The codes whose words in force are offered here: a form under older words can be signed again under them (phase 4.2). */
   offered: ReadonlySet<string>;
+  /** The consent to dental examination and treatment in force, with its words (treatmentInForce), or null. */
+  general: TreatmentConsent | null;
+  /** The general consent signed at visits on the clinic's tablet (035), newest first. */
+  signed: VisitConsent[];
+  /** The record's visits, for "See the visit" (their side panels, rec-visit-<key>). */
+  visits: readonly { id: string | null; key: string; day: string }[];
+  /** The clinic's own paper consent forms on file (026). */
+  paperForms: PaperForm[];
+  /** The patient forms from the QR code added to this record (028), newest first. */
+  forms: PatientFormLine[];
+  /** Where a patient form opens: …/patients/forms/. */
+  formsBase: string;
 }
-const { docs, slug, patientId, firstName, canEdit, mayExplain, mayCapacity, capacity, canPrepare, offered } = Astro.props;
-/** Sign on this tablet / on their phone: the same start, the way chosen (the Check step preselects the phone from ?via=phone). */
-const WAYS = [['clinic', 'tablet', 'on this tablet'], ['phone', 'phone', 'on their phone']] as const;
-const base = `/c/${slug}/patients/${patientId}/consents/`;
-const TONE: Record<string, string> = { success: 'rp-ok', warn: 'rp-warn', alert: 'rp-alert', neutral: '', info: '' };
-const day = (d: Date) => new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(new Date(d));
-const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.teeth as number[]) : Array.isArray(d.fields.area) ? (d.fields.area as number[]) : []);
+const { docs, slug, patientId, firstName, canEdit, mayExplain, mayCapacity, capacity, canPrepare, offered, general, signed, visits, paperForms, forms, formsBase } = Astro.props;
+
+// --- the paper's ten paragraphs, in its order, and the forms each holds --------------------------------------------------
+// `codes`: our forms under it (consent-library.ts's codes); `kinds`: only a restoration form naming one of these (a form
+// is a filling, a crown, a bridge, a veneer or an inlay, or several); `point`: the head of the general consent's point
+// that speaks to it, where the library has no form of its own.
+interface Para { key: string; label: string; codes?: readonly string[]; kinds?: readonly string[]; point?: string }
+const PARAS: readonly Para[] = [
+  { key: 'ortho', label: 'Orthodontic treatment', codes: ['ortho'] },
+  { key: 'changes', label: 'Changes in treatment plan', point: 'Your treatment plan' },
+  { key: 'radiograph', label: 'Radiograph', point: 'Examination' },
+  { key: 'removal', label: 'Removal of teeth', codes: ['extraction'] },
+  { key: 'crowns', label: 'Crowns (caps) and bridges', codes: ['restoration'], kinds: ['crown', 'bridge', 'veneer', 'inlay'] },
+  { key: 'endo', label: 'Endodontics (root canal)', codes: ['root_canal'] },
+  { key: 'perio', label: 'Periodontal disease', codes: ['periodontal'] },
+  { key: 'fillings', label: 'Fillings', codes: ['restoration'], kinds: ['filling'] },
+  { key: 'dentures', label: 'Dentures', codes: ['denture'] },
+  { key: 'drugs', label: 'Drugs and medications', codes: ['anaesthesia'], point: 'Medicines and numbing' },
+];
+const kindsOf = (d: RecordDoc): string[] => { const k = d.fields.kind; return Array.isArray(k) ? k.map(String) : typeof k === 'string' ? [k] : []; };
+const fits = (p: Para, d: RecordDoc) => !!p.codes?.includes(d.code) && (!p.kinds || kindsOf(d).some((k) => p.kinds!.includes(k)));
+const procedures = docs.filter((d) => d.code !== 'general');
+// Each form under every paragraph it fits, drawn in full under the first (its home); one that fits none of its code's
+// paragraphs (no kind on file) goes home to the first paragraph of its code.
+const homeOf = new Map<string, string>();
+for (const d of procedures) {
+  const home = PARAS.find((p) => fits(p, d)) ?? PARAS.find((p) => p.codes?.includes(d.code));
+  if (home) homeOf.set(d.id, home.key);
+}
+const paras = PARAS.map((p) => ({
+  ...p,
+  rows: procedures.filter((d) => homeOf.get(d.id) === p.key),
+  same: procedures.filter((d) => homeOf.get(d.id) !== p.key && fits(p, d)),
+}));
+const labelOf = (key: string | undefined) => PARAS.find((p) => p.key === key)?.label ?? '';
+// Our forms the paper has no paragraph for, each under its own title, in the library's order.
+const others = [...new Map(procedures.filter((d) => !homeOf.has(d.id)).map((d) => [d.code, d])).values()]
+  .sort((a, b) => (a.template?.order ?? 999) - (b.template?.order ?? 999))
+  .map((first) => ({ key: first.code, label: first.title, rows: procedures.filter((d) => !homeOf.has(d.id) && d.code === first.code) }));
+
+// --- the general paragraph -----------------------------------------------------------------------------------------------
+const generalTitle = general?.title ?? docs.find((d) => d.code === 'general')?.title ?? 'Consent to dental examination and treatment';
+const generalName = `the ${generalTitle.charAt(0).toLocaleLowerCase('en')}${generalTitle.slice(1)}`;
+const pointId = (head: string) => `consent-point-${head.toLocaleLowerCase('en').replace(/[^a-z]+/g, '-').replace(/^-|-$/g, '')}`;
+const hasPoint = (head: string | undefined) => !!head && !!general?.points.some((x) => x.head === head);
+
+// The foot: the newest agreement still standing, whichever way it was signed.
+interface Foot { at: Date; strokes: Strokes | null; name: string; how: string; dentist: string | null; day: string; version: string }
+const generalDocs = docs.filter((d) => d.code === 'general');
+/** "Lorna Reyes, mother" or "Ana Dimaculangan". */
+const visitSigner = (k: VisitConsent) => signerWords({ name: k.signedBy, as: k.signedAs, relation: k.signedAs === 'guardian' ? (k.relation ?? 'parent or guardian').toLocaleLowerCase('en') : null });
+const feet: Foot[] = [
+  ...signed.map((k) => ({
+    at: new Date(k.at), strokes: k.strokes, name: visitSigner(k),
+    how: `${SIGNED_WHERE.tablet}, at a visit`, dentist: k.dentist, day: day(new Date(k.at)), version: k.versionId,
+  })),
+  ...generalDocs.filter((d) => d.state === 'agreed' && d.latest).map((d) => {
+    const s = d.latest!;
+    return {
+      at: signedAtOf(s), strokes: s.channel === 'paper' ? null : s.strokes, name: signerWords({ name: s.signedByName, as: s.signedAs, relation: s.relation, method: s.method }),
+      how: SIGNED_WHERE[s.channel], dentist: d.attestation?.dentistName ?? null,
+      day: s.channel === 'paper' && s.signedOn ? dateText(s.signedOn)! : day(new Date(s.signedAt)), version: d.versionId,
+    };
+  }),
+  // Typed on the patient forms: a name, no strokes.
+  ...forms.filter((f) => f.consentState.treatment === 'form').map((f) => ({
+    at: new Date(f.submittedAt), strokes: null, name: signedText(f.signedByName, f.signedAs), how: `typed on the patient forms (${f.ref})`,
+    dentist: null, day: day(new Date(f.submittedAt)), version: f.treatmentVersion,
+  })),
+];
+const foot = feet.sort((a, b) => b.at.getTime() - a.at.getTime())[0] ?? null;
+// The general consent's forms: those to act on (to sign, not agreed, withdrawn, newer words, went ahead without) under the
+// foot; the signed ones, the foot's among them, folded (each still opens and prints).
+const openIntake = (d: RecordDoc) => d.intakeStatus === 'preparing' || d.intakeStatus === 'out';
+const settled = (d: RecordDoc) => d.state === 'agreed' && (d.inForce || !offered.has(d.code)) && !d.overrides.length && !openIntake(d);
+const generalShown = generalDocs.filter((d) => !settled(d));
+const generalFolded = generalDocs.filter(settled);
+
+// --- the history: signed at visits (the newest three, the rest folded), the patient forms -------------------------------
+const VISITS_SHOWN = 3;
+const visitOf = new Map(visits.filter((v) => v.id).map((v) => [v.id!, v]));
+const formLine = (f: PaperForm) => [
+  `${f.form_name}, signed on paper ${dateText(f.signed_on)}`,
+  f.signed_by_name && `by ${f.signed_by_name}${f.agreed_as === 'guardian' ? ' (parent or guardian)' : ''}`,
+  f.imported ? 'brought in from an import' : f.recorded_by_name && `recorded by ${f.recorded_by_name}`,
+].filter(Boolean).join(' · ');
+const rowProps = (d: RecordDoc) => ({ doc: d, slug, patientId, canEdit, mayExplain: mayExplain.has(d.id), offered: offered.has(d.code) });
 ---
 
-<Pane as="section" label="Consent forms" id="consent-forms">
-  <Head icon="form" title="Consent forms" meta={docs.length ? (docs.length === 1 ? 'One form' : `${docs.length} forms`) : undefined}>
-    {canEdit && (canPrepare || mayCapacity) && (
-      <span slot="actions" class="flex flex-wrap gap-1.5">
-        {canPrepare && <Plus href={`/c/${slug}/patients/new/?patient=${patientId}`} text="Prepare forms" label={`Prepare consent forms for ${firstName}`} />}
-        {mayCapacity && <Plus text="Cannot decide" label={`Record that ${firstName} cannot decide now`} open="rec-capacity" />}
-      </span>
-    )}
-  </Head>
-  {capacity && <p class="mb-3 text-[14.5px] text-ink-2">{capacity.dentistName} recorded on {day(capacity.at)} that {firstName} cannot decide now: “{capacity.reason}” A representative may sign on a clinic device for 30 days.</p>}
-  {docs.length === 0 ? (
-    <p class="ws-empty">{canPrepare ? 'None yet.' : 'None yet. They open here once the clinic’s consent forms are reviewed.'}</p>
-  ) : (
-    <ul class="rs-list">
-      {docs.map((d) => {
-        const st = STATE_WORDS[d.state];
-        const s = d.latest;
-        const teeth = teethOf(d);
-        const toSign = d.state === 'to_sign' || d.state === 'refused' || d.state === 'withdrawn' || d.state === 'no_photos';
-        const openIntake = d.intakeStatus === 'preparing' || d.intakeStatus === 'out';
-        // Newer words in force for this form's code: it is signed again under them, from here (the old form stays as history).
-        const newer = !d.inForce && offered.has(d.code);
-        const resign = canEdit && !openIntake && (newer || (toSign && d.inForce && (!d.template?.attest || !!d.attestation)));
+{capacity && <p class="cf-capacity">{capacity.dentistName} recorded on {day(new Date(capacity.at))} that {firstName} cannot decide now: “{capacity.reason}” A representative may sign on a clinic device for 30 days.</p>}
+
+{paperForms.length > 0 && (
+  <div class="cf-para">
+    <h3 class="cf-k">Paper forms on file</h3>
+    <ul class="cf-v cf-paper">{paperForms.map((f) => <li>{formLine(f)}</li>)}</ul>
+  </div>
+)}
+
+<ol id="consent-forms" class="cf-paras" aria-label="Consent forms">
+  {!canPrepare && procedures.length === 0 && <li class="cf-reviewed">Consent forms open here once the clinic’s consent forms are reviewed.</li>}
+  {paras.map((p) => {
+    // In words when there is no form here: none of its own in the library, or none prepared yet; then the general
+    // consent's point that speaks to it, when the words in force have one.
+    const none = !p.codes ? 'No form of its own.' : p.rows.length === 0 && p.same.length === 0 ? 'No form yet.' : null;
+    const see = hasPoint(p.point) ? p.point! : null;
+    return (
+      <li class="cf-para" id={`consent-${p.key}`} data-cf-para={p.key}>
+        <h3 class="cf-k">{p.label}</h3>
+        <div class="cf-v">
+          {p.rows.length > 0 && <ul class="rs-list cf-docs">{p.rows.map((d) => <ConsentRow {...rowProps(d)} />)}</ul>}
+          {p.same.map((d) => (
+            <p class="cf-text">The same form as under {labelOf(homeOf.get(d.id))}: <a href={`#cf-${d.id}`} class="cf-see">{d.title}</a></p>
+          ))}
+          {(none || see) && (
+            <p class="cf-text">{none}{none && see && ' '}{see && <>See <a href={`#${pointId(see)}`} class="cf-see">“{see}”</a> in {generalName}.</>}</p>
+          )}
+        </div>
+      </li>
+    );
+  })}
+  {others.map((o) => (
+    <li class="cf-para" id={`consent-${o.key}`} data-cf-para={o.key}>
+      <h3 class="cf-k">{o.label}</h3>
+      <div class="cf-v"><ul class="rs-list cf-docs">{o.rows.map((d) => <ConsentRow {...rowProps(d)} titled={false} />)}</ul></div>
+    </li>
+  ))}
+</ol>
+
+<section id="consent-general" class="cf-general" aria-labelledby="consent-general-title">
+  <h3 class="pp-band-title" id="consent-general-title">{generalTitle}</h3>
+  {general && (
+    <>
+      <details class="pt-more cf-words">
+        <summary>Read the words <Icon name="chevron" size={16} class="pt-chev" /></summary>
+        <ol class="cf-points">
+          {general.points.map((x) => <li id={pointId(x.head)}><strong>{x.head}.</strong> {x.body}</li>)}
+          <li class="cf-tick">{general.tick}</li>
+        </ol>
+      </details>
+      {/* The paper prints the paragraph itself: the same words, shown only on paper (record.css, "Printed"). */}
+      <ol class="cf-points cf-points-paper" aria-hidden="true">
+        {general.points.map((x) => <li><strong>{x.head}.</strong> {x.body}</li>)}
+        <li class="cf-tick">{general.tick}</li>
+      </ol>
+    </>
+  )}
+  <dl class="pf-grid cf-signoff">
+    <div class:list={['pf-cell pf-span-2', !foot && 'pf-empty']}>
+      <dt class="pf-k">Patient’s signature (parent or guardian if a minor)</dt>
+      <dd class="pf-v">
+        {foot ? (
+          <span class="cf-signoff-sig">
+            {foot.strokes ? <Signature strokes={foot.strokes} name={foot.name} class="cf-slip" /> : null}
+            <span>{foot.name}<span class="cf-signoff-how">{foot.how}{general && foot.version !== general.id ? ', under older words' : ''}</span></span>
+          </span>
+        ) : 'Not signed'}
+      </dd>
+    </div>
+    <div class:list={['pf-cell', !foot?.dentist && 'pf-empty']}><dt class="pf-k">Dentist who explained</dt><dd class="pf-v">{foot?.dentist ?? '—'}</dd></div>
+    <div class:list={['pf-cell', !foot && 'pf-empty']}><dt class="pf-k">Date</dt><dd class="pf-v">{foot?.day ?? '—'}</dd></div>
+  </dl>
+  {generalShown.length > 0 && <ul class="rs-list cf-docs cf-general-docs">{generalShown.map((d) => <ConsentRow {...rowProps(d)} titled={false} />)}</ul>}
+  {generalFolded.length > 0 && (
+    <details class="pt-more cf-more">
+      <summary>Signed forms ({generalFolded.length}) <Icon name="chevron" size={16} class="pt-chev" /></summary>
+      <ul class="rs-list cf-docs">{generalFolded.map((d) => <ConsentRow {...rowProps(d)} titled={false} />)}</ul>
+    </details>
+  )}
+</section>
+
+{signed.length > 0 && (
+  <section id="visit-consents" class="cf-block" aria-labelledby="visit-consents-title">
+    <h3 class="pp-band-title" id="visit-consents-title">Signed at visits</h3>
+    <ul class="cf-hist">
+      {signed.map((k, i) => {
+        const v = visitOf.get(k.visitId);
         return (
-          <li class="rs-item vx-signed-row">
-            {s && s.strokes ? <Signature strokes={s.strokes} name={s.signedByName} /> : <span class="sig"><span class="sig-none">{s ? (s.channel === 'paper' ? 'Signed on paper' : 'Not signed') : 'Not signed yet'}</span></span>}
-            <div class="min-w-0 grid gap-1.5">
-              <p class="rs-what">{d.title}</p>
-              <p class="rp-row">
-                <span class:list={['rp', TONE[st.tone]]}>{st.words}{s && d.state !== 'to_sign' ? ` ${day(s.signedAt)}` : ''}</span>
-                {teeth.map((n) => <span class="rp rp-tooth">Tooth {n}</span>)}
-                {s && <Who name={signerWords({ name: s.signedByName, as: s.signedAs, relation: s.relation, method: s.method })} />}
-                {!d.attestation && d.template?.attest && d.state === 'to_sign' && d.inForce && <span class="rp">Waiting for {d.dentistName ?? 'the dentist'} to explain</span>}
-                {!d.inForce && <span class="rp rp-warn">{newer ? 'Newer words: sign again' : 'Older words'}</span>}
-                {openIntake && <span class="rp">In forms {d.intakeRef} now</span>}
-              </p>
-              {d.attestation && <p class="text-[14px] text-ink-2">Explained by {d.attestation.dentistName}, PRC {d.attestation.dentistPrc}, in {d.attestation.lang}</p>}
-              {/* Taken back, and treatment that went ahead without it (phase 4.4): plain words, kept with the form. */}
-              {s?.withdrawal && <p class="text-[14px] text-[var(--ws-red-ink)]" data-rc-withdrawal>{withdrawalWords(s.withdrawal)}</p>}
-              {d.overrides.map((o) => <p class="text-[14px] text-[var(--ws-amber-ink)]" data-rc-override={o.id}>{overrideWords(o)}</p>)}
-              {/* A div, not a p: a form inside a p closes it, and the buttons fell one under another. */}
-              <div class="flex flex-wrap gap-2">
-                <a href={`${base}${d.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open</a>
-                {canEdit && openIntake && d.intakeId && <a href={`/c/${slug}/patients/intake/${d.intakeId}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open forms {d.intakeRef}</a>}
-                {s && <a href={`${base}${d.id}/print/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>}
-                {canEdit && toSign && !openIntake && mayExplain.has(d.id) && !d.attestation && d.state === 'to_sign' && <a href={`${base}${d.id}/?explain=1`} class="ws-btn ws-btn-quiet ws-btn-sm">Explain and confirm</a>}
-                {resign && WAYS.map(([way, glyph, where]) => (
-                  <form method="post" action={`/c/${slug}/patients/intake/`} data-rc-sign={way}>
-                    <Csrf /><input type="hidden" name="intent" value="start" /><input type="hidden" name="way" value={way} /><input type="hidden" name="from" value="document" />
-                    <input type="hidden" name="patient" value={patientId} /><input type="hidden" name="document" value={d.id} />
-                    <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name={glyph} size={16} />{newer ? 'Sign again' : 'Sign'} {where}</button>
-                  </form>
-                ))}
-                {canEdit && d.state === 'to_sign' && !s && !openIntake && (!d.template?.attest || d.attestation) && (
-                  <form method="post" action={`${base}${d.id}/`}><Csrf /><input type="hidden" name="intent" value="paper_print" /><button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print for signing on paper</button></form>
-                )}
-              </div>
-            </div>
+          <li hidden={i >= VISITS_SHOWN || undefined} data-cf-later={i >= VISITS_SHOWN || undefined}>
+            <Signature strokes={k.strokes} name={k.signedBy} class="cf-slip cf-slip-sm" />
+            <p class="cf-hist-words">
+              <span class="font-semibold">Signed {day(new Date(k.at))}</span> · {visitSigner(k)}{k.dentist && <> · explained by {k.dentist}</>}
+              <span class="cf-hist-what">{k.treatment.split('\n').join(' · ')}</span>
+            </p>
+            {v && <button type="button" class="vx-link" data-ws-open={`rec-visit-${v.key}`} aria-haspopup="dialog">See the visit, {dateText(v.day)}</button>}
           </li>
         );
       })}
     </ul>
-  )}
-</Pane>
+    {signed.length > VISITS_SHOWN && <button type="button" class="vx-link" data-cf-show-later aria-expanded="false">Show {signed.length - VISITS_SHOWN} earlier</button>}
+  </section>
+)}
+
+{forms.length > 0 && (
+  <section id="patient-forms" class="cf-block" aria-labelledby="patient-forms-title">
+    <h3 class="pp-band-title" id="patient-forms-title">Patient forms <span class="cf-band-meta">From the QR code</span></h3>
+    <ul class="pt-list fm-rec-list">
+      {forms.map((f) => (
+        <li>
+          <div class="min-w-0 text-[14.5px]">
+            <p><span class="font-semibold">Sent {day(new Date(f.submittedAt))}</span> <span class="pt-ref ml-1">{f.ref}</span></p>
+            <p class="text-ink-2">Signed by {signedText(f.signedByName, f.signedAs)}. Added {f.addedAs === 'new' ? 'as a new patient' : 'to this record'}{f.addedByName ? ` by ${f.addedByName}` : ''}, {day(new Date(f.addedAt))}.</p>
+            <p class="fm-rec-consents">
+              {(['treatment', 'privacy'] as const).map((k) => {
+                const what = k === 'treatment' ? 'Examination and treatment' : 'Privacy notice';
+                const st = f.consentState[k];
+                return st === 'form' ? <Chip tone="accent" icon="check">{what}</Chip>
+                  : st === 'on-file' ? <Chip tone="neutral" label={`${what}: already on file`} />
+                  : <Chip tone="warn" icon="alert">{`${what}: not recorded (a guardian must agree)`}</Chip>;
+              })}
+            </p>
+          </div>
+          <span class="flex flex-wrap gap-2">
+            <a href={`${formsBase}${f.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">See answers</a>
+            <a href={`${formsBase}${f.id}/print/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" />Print</a>
+          </span>
+        </li>
+      ))}
+    </ul>
+  </section>
+)}
 
 {mayCapacity && (
   <SidePanel id="rec-capacity" title="The patient cannot decide now" meta={firstName}>
-    <form method="post" action={base} class="grid gap-4">
+    <form method="post" action={`/c/${slug}/patients/${patientId}/consents/`} class="grid gap-4">
       <Csrf /><input type="hidden" name="intent" value="capacity" />
       <p class="text-[15px] text-ink-2">Record it only when {firstName} cannot understand or decide about treatment now. For 30 days a representative (a court-appointed guardian, or a relative with authority) may sign for them, on a clinic device.</p>
       <label class="field"><span class="meta">Why they cannot decide now</span><textarea name="reason" rows="3" maxlength={CAPACITY_MAX} required></textarea></label>
@@ -119,3 +290,13 @@ const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.tee
     </form>
   </SidePanel>
 )}
+
+<script>
+  // Signed at visits: the newest three, and "Show N earlier" for the rest (hidden, not a fold, so the visits' own
+  // "See the visit" buttons stay where they were).
+  document.querySelectorAll<HTMLButtonElement>('[data-cf-show-later]').forEach((b) => b.addEventListener('click', () => {
+    b.closest('section')?.querySelectorAll<HTMLElement>('[data-cf-later]').forEach((li) => { li.hidden = false; });
+    b.setAttribute('aria-expanded', 'true');
+    b.hidden = true;
+  }));
+</script>

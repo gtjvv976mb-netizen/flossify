@@ -34,34 +34,39 @@
 //   consent to that version, and the age rule is the one on the day it was
 //   signed. The clinic's own paper form: a patient_paper_consent row, kept on
 //   the record as a fact, never counted as consent to the notice.
+// - The paper patient record's dental and medical history (3 Oct 2026,
+//   src/lib/paper-history.ts): the three lists keep their columns, the paper's
+//   other answers are answers.paper on the same version, and every writer here
+//   (saveHealth, recheckHealth) carries them, as patient-add.ts and import.ts
+//   do. A form drawn before them carries no `has_paper` and keeps what is saved.
 
 import type { Tx } from './db';
+import {
+  pickWords, canonicalWord, labelOf, readPaperHistory, mergePaper, samePaper, paperToStored, paperFromStored, paperChanges, pregnancyTwin,
+  type PaperAnswers, type PaperAnswersIn, type PaperTyped, type OwnWords,
+} from './paper-history';
 
 // ---------------------------------------------------------------------------
 // The three lists and their quick picks. Picks are shortcuts for spelling,
 // nothing more: anything can be typed. A typed value that matches a pick in
 // any case is stored with the pick's spelling, so "penicillin" and
-// "Penicillin" are one allergy.
+// "Penicillin" are one allergy. The picks are the paper record's boxes in the
+// paper's order, then the desk's own (paper-history.ts LIST_WORDS): stored as
+// the words the record has always used ("Hypertension"), drawn with the
+// paper's ("High blood pressure"), and what the desk types is read through
+// the same table ("high blood pressure" is stored "Hypertension").
 // ---------------------------------------------------------------------------
 export const LISTS = [
-  {
-    key: 'allergies', label: 'Allergies', one: 'allergy', none: 'None known',
-    picks: ['Penicillin', 'Amoxicillin', 'Latex', 'Local anaesthetic', 'Ibuprofen', 'Aspirin', 'Sulfa drugs', 'Iodine'],
-  },
-  {
-    key: 'conditions', label: 'Conditions', one: 'condition', none: 'None',
-    picks: ['Hypertension', 'Diabetes', 'Pregnancy', 'Bleeding disorder', 'Heart condition', 'Asthma', 'Epilepsy', 'Hepatitis'],
-  },
-  {
-    key: 'medications', label: 'Medicines taken now', one: 'medicine', none: 'None',
-    picks: ['Blood thinner', 'Aspirin', 'Insulin', 'Metformin', 'Blood pressure maintenance'],
-  },
+  { key: 'allergies', label: 'Allergies', one: 'allergy', none: 'None known', picks: pickWords('allergies') },
+  { key: 'conditions', label: 'Conditions', one: 'condition', none: 'None', picks: pickWords('conditions') },
+  { key: 'medications', label: 'Current medications', one: 'medication', none: 'None', picks: pickWords('medications') },
 ] as const;
 
 export type ListKey = (typeof LISTS)[number]['key'];
 
 export const ITEM_MAX = 60;
-export const ITEMS_MAX = 20;
+/** Every one of the paper's 23 conditions can be ticked, with room for more. */
+export const ITEMS_MAX = 30;
 export const NOTE_MAX = 500;
 export const NAME_MAX = 120;
 
@@ -76,6 +81,8 @@ export interface BirthChange { from: string | null; to: string | null }
 
 export interface HealthVersion extends HealthAnswers {
   id: string;
+  /** The paper record's other answers on this version (answers.paper, paper-history.ts), or null when none is answered. */
+  paper: PaperAnswers | null;
   at: Date;
   /** The staff member's name, or null for a row nobody on the team typed (the development seed, the patient forms). */
   by: string | null;
@@ -155,12 +162,16 @@ const lower = (s: string) => s.toLocaleLowerCase('en');
 /** "mango" → "Mango". Anything typed with a capital somewhere ("NSAIDs", "iPhone") is left as typed. */
 export const capitalise = (v: string): string => (v === lower(v) ? v.charAt(0).toLocaleUpperCase('en') + v.slice(1) : v);
 
-/** Trimmed, de-duplicated in any case, spelled like the pick when it is one. Order kept. */
-export function cleanList(raw: unknown[], picks: readonly string[] = []): string[] {
+/**
+ * Trimmed, de-duplicated in any case, spelled like the pick when it is one. Order kept. `canon`: another
+ * spelling of a pick to its stored word ("High blood pressure" → "Hypertension"; paper-history.ts canonicalWord).
+ */
+export function cleanList(raw: unknown[], picks: readonly string[] = [], canon?: (v: string) => string | null): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const r of raw) {
-    const v = oneLine(r);
+    const t = oneLine(r);
+    const v = (t && canon?.(t)) || t;
     if (!v || seen.has(lower(v))) continue;
     seen.add(lower(v));
     out.push(picks.find((p) => lower(p) === lower(v)) ?? capitalise(v));
@@ -172,16 +183,22 @@ export function cleanList(raw: unknown[], picks: readonly string[] = []): string
  * The health form, as posted. Per list: ticked chips (`allergies`), what is
  * still in the "add" box (`allergies_add`, commas split it, so nothing typed
  * is lost when Save is pressed before Add), and the none chip
- * (`allergies_none`). Plus `birth_date` (YYYY-MM-DD or empty) and `note`.
- * Returns the answers, the birth date, and every problem in one list.
+ * (`allergies_none`). Plus `birth_date` (YYYY-MM-DD or empty) and `note`, and
+ * the paper record's other answers (`ph_*`, read only when the form carries
+ * `has_paper`: paper-history.ts readPaperHistory; `paper` is undefined without it,
+ * and the save keeps what is on file).
+ * Returns the answers, the birth date, the paper's answers and what was typed
+ * in them, and every problem in one list.
  */
-export function readHealthForm(form: FormData, today = manilaToday()): { answers: HealthAnswers; birth: string | null; problems: string[] } {
+export function readHealthForm(form: FormData, today = manilaToday()): {
+  answers: HealthAnswers; birth: string | null; paper: PaperAnswersIn | undefined; paperTyped: PaperTyped; problems: string[];
+} {
   const problems: string[] = [];
   const answers: HealthAnswers = { allergies: null, conditions: null, medications: null, note: null };
 
   for (const l of LISTS) {
     const typed = String(form.get(`${l.key}_add`) ?? '').split(/[,;\n]/);
-    const list = cleanList([...form.getAll(l.key), ...typed], l.picks);
+    const list = cleanList([...form.getAll(l.key), ...typed], l.picks, (v) => canonicalWord(l.key, v));
     const none = form.get(`${l.key}_none`) === '1';
     const long = list.find((v) => v.length > ITEM_MAX);
     if (long) problems.push(`${l.label}: keep each one under ${ITEM_MAX} characters (“${long.slice(0, 24)}…”).`);
@@ -204,7 +221,9 @@ export function readHealthForm(form: FormData, today = manilaToday()): { answers
     else if (raw < '1900-01-01') problems.push('The birth date is before 1900. Check the year.');
     else birth = raw;
   }
-  return { answers, birth, problems };
+  const paper = readPaperHistory(form, today);
+  problems.push(...paper.problems);
+  return { answers, birth, paper: paper.paper, paperTyped: paper.typed, problems };
 }
 
 // ---------------------------------------------------------------------------
@@ -235,8 +254,9 @@ export function changes(prev: HealthAnswers | null, next: HealthAnswers): string
     if (b === null) { out.push(`${l.label}: answer cleared`); continue; }
     if (b.length === 0) { out.push(`${l.label}: ${lower(l.none)}`); continue; }
     const had = new Set((a ?? []).map(lower)), has = new Set(b.map(lower));
-    const added = b.filter((v) => !had.has(lower(v)));
-    const removed = (a ?? []).filter((v) => !has.has(lower(v)));
+    // In the paper's words where it has them ("High blood pressure" for the stored "Hypertension").
+    const added = b.filter((v) => !had.has(lower(v))).map((v) => labelOf(l.key, v));
+    const removed = (a ?? []).filter((v) => !has.has(lower(v))).map((v) => labelOf(l.key, v));
     out.push(`${l.label}: ${[added.length && `added ${added.join(', ')}`, removed.length && `removed ${removed.join(', ')}`].filter(Boolean).join('; ')}`);
   }
   if ((prev?.note ?? null) !== next.note) out.push(next.note === null ? 'Note removed' : prev?.note ? 'Note changed' : 'Note added');
@@ -251,9 +271,9 @@ export function birthChangeText(c: BirthChange): string {
   return `Birth date: ${from} → ${to}`;
 }
 
-/** What one version changed: the birth date first, then the answers. [] means nothing did. */
-export const versionChanges = (prev: HealthAnswers | null, v: HealthVersion): string[] =>
-  [...(v.birthChange ? [birthChangeText(v.birthChange)] : []), ...(prev ? changes(prev, v) : [])];
+/** What one version changed: the birth date first, then the answers, then the paper record's other answers. [] means nothing did. */
+export const versionChanges = (prev: (HealthAnswers & { paper?: PaperAnswers | null }) | null, v: HealthVersion): string[] =>
+  [...(v.birthChange ? [birthChangeText(v.birthChange)] : []), ...(prev ? [...changes(prev, v), ...paperChanges(prev.paper ?? null, v.paper)] : [])];
 
 // ---------------------------------------------------------------------------
 // The database. Every function takes the caller's withClinic() transaction.
@@ -261,29 +281,53 @@ export const versionChanges = (prev: HealthAnswers | null, v: HealthVersion): st
 type Row = {
   id: string; at: Date; by: string | null; allergies: string[] | null; conditions: string[] | null; medications: string[] | null; note: string | null;
   birth_change: { from?: unknown; to?: unknown } | null; total: number; answered_by: string; form_ref: string | null; intake_ref: string | null; form_sent_at: Date | null;
+  paper: unknown;
 };
 const ymdOrNull = (v: unknown): string | null => (typeof v === 'string' && YMD.test(v) ? v : null);
 
-/** Newest first, up to `limit` versions, plus how many there are in all. */
-export async function readHealth(tx: Tx, patientId: string, limit = 12): Promise<{ versions: HealthVersion[]; total: number; older: HealthVersion | null }> {
+/**
+ * Newest first, up to `limit` versions, plus how many there are in all. With `withOwn` (the record's read, by
+ * default whenever more than one version is asked for), also the patient's own answers on file (readOwnWords),
+ * which the paper record's boxes show where the desk has none.
+ */
+export async function readHealth(tx: Tx, patientId: string, limit = 12, withOwn = limit > 1): Promise<{ versions: HealthVersion[]; total: number; older: HealthVersion | null; own: OwnWords | null }> {
   // One extra row, so the oldest one shown can still say what it changed.
   const { rows } = await tx.query<Row>(
     `select h.id, h.answered_at as at, s.full_name as by, h.allergies, h.conditions, h.medications, h.note,
             h.answers -> 'birth_date' as birth_change, (count(*) over ())::int as total, h.answered_by, f.ref as form_ref, i.ref as intake_ref,
-            coalesce(f.submitted_at, i.sent_at) as form_sent_at
+            coalesce(f.submitted_at, i.sent_at) as form_sent_at, h.answers -> 'paper' as paper
        from medical_history h left join staff s on s.id = h.recorded_by left join patient_form f on f.id = h.form_id left join intake i on i.id = h.intake_id
       where h.patient_id = $1
       order by h.answered_at desc, h.id desc
       limit $2`, [patientId, limit + 1]);
-  const versions: HealthVersion[] = rows.map(({ total: _t, birth_change: b, answered_by: ab, form_ref: fr, intake_ref: ir, form_sent_at: fs, ...v }) => ({
+  const versions: HealthVersion[] = rows.map(({ total: _t, birth_change: b, answered_by: ab, form_ref: fr, intake_ref: ir, form_sent_at: fs, paper, ...v }) => ({
     ...v,
+    paper: paperFromStored(paper),
     birthChange: b && typeof b === 'object' ? { from: ymdOrNull(b.from), to: ymdOrNull(b.to) } : null,
     answeredBy: ab === 'patient' ? 'patient' : 'staff',
     formRef: fr ?? null,
     intakeRef: ir ?? null,
     formSentAt: fs ?? null,
   }));
-  return { versions: versions.slice(0, limit), total: rows[0]?.total ?? 0, older: versions[limit] ?? null };
+  const own = withOwn && rows.length ? await readOwnWords(tx, patientId) : null;
+  return { versions: versions.slice(0, limit), total: rows[0]?.total ?? 0, older: versions[limit] ?? null, own };
+}
+
+/**
+ * The patient's own words on file: answers.health of the newest version the patient answered that has one (the
+ * patient forms, or an intake's page 1), and answers.teeth of the newest that has one (the patient forms only),
+ * each with when it was sent. Null when the patient never answered. Only the record draws them.
+ */
+export async function readOwnWords(tx: Tx, patientId: string): Promise<OwnWords | null> {
+  const part = (key: 'health' | 'teeth') => `(
+    select jsonb_build_object('v', h.answers -> '${key}', 'at', coalesce(f.submitted_at, i.sent_at, h.answered_at))
+      from medical_history h left join patient_form f on f.id = h.form_id left join intake i on i.id = h.intake_id
+     where h.patient_id = $1 and h.answered_by = 'patient' and jsonb_typeof(h.answers -> '${key}') = 'object'
+     order by h.answered_at desc, h.id desc limit 1)`;
+  const r = (await tx.query<{ health: { v: Record<string, unknown>; at: string } | null; teeth: { v: Record<string, unknown>; at: string } | null }>(
+    `select ${part('health')} as health, ${part('teeth')} as teeth`, [patientId])).rows[0];
+  if (!r?.health && !r?.teeth) return null;
+  return { health: r.health?.v ?? null, healthAt: r.health?.at ?? null, teeth: r.teeth?.v ?? null, teethAt: r.teeth?.at ?? null };
 }
 
 /**
@@ -311,8 +355,10 @@ export type SaveResult =
  * something is answered (a Save that says "checked with the patient, still
  * true"). A birth date change updates the patient row and is written into
  * the version's `answers` as {"birth_date": {"from", "to"}}, so the old value
- * is never lost. Audit rows: health.update for the answers (or the check),
- * patient.birth_date for the birth date.
+ * is never lost. The paper record's other answers go into the same `answers`
+ * as "paper", posted over the saved ones (paper-history.ts mergePaper), and
+ * count as answers here. Audit rows: health.update for the answers (or the
+ * check), patient.birth_date for the birth date.
  *
  * `base` is the version the page opened with and `birthWas` the birth date it
  * showed. If a newer version exists, or this person changed the birth date
@@ -322,6 +368,8 @@ export type SaveResult =
  */
 export async function saveHealth(tx: Tx, a: {
   clinicId: string; staffId: string; patientId: string; base: string; answers: HealthAnswers; birth: string | null; birthWas: string | null;
+  /** The paper record's other answers as posted (readHealthForm's `paper`). Undefined: the form did not carry them, and the saved ones stay. */
+  paper?: PaperAnswersIn;
 }): Promise<SaveResult> {
   const p = (await tx.query<{ birth: string | null }>(
     `select to_char(birth_date, 'YYYY-MM-DD') as birth from patient where id = $1 and archived_at is null for update`, [a.patientId])).rows[0];
@@ -333,8 +381,13 @@ export async function saveHealth(tx: Tx, a: {
   if ((latest?.id ?? 'none') !== a.base || (birthEdited && stored !== a.birthWas)) return { kind: 'conflict', latest, birth: stored };
 
   const birthChanged = birthEdited && a.birth !== stored;
-  const answersChanged = !sameAnswers(latest, a.answers);
-  const checked = !answersChanged && !birthChanged && answered(a.answers);
+  // The paper's answers as posted over the saved ones (a question the form did not draw stays as saved), and,
+  // when this form asked about pregnancy, "Pregnancy" on the conditions list beside the answer (the list is what the
+  // alerts read; the form draws no Pregnancy chip beside the question). A form that did not ask keeps its list as posted.
+  const paper = mergePaper(latest?.paper ?? null, a.paper);
+  const answers: HealthAnswers = a.paper?.pregnant !== undefined ? { ...a.answers, conditions: pregnancyTwin(a.answers.conditions, a.paper.pregnant) } : a.answers;
+  const answersChanged = !sameAnswers(latest, answers) || !samePaper(latest?.paper ?? null, paper);
+  const checked = !answersChanged && !birthChanged && (answered(answers) || paper !== null);
   if (!answersChanged && !birthChanged && !checked) return { kind: 'unchanged' };
 
   const audit = (action: string) => tx.query(
@@ -344,8 +397,8 @@ export async function saveHealth(tx: Tx, a: {
   await tx.query(
     `insert into medical_history (clinic_id, patient_id, answered_by, recorded_by, allergies, conditions, medications, note, answers)
      values ($1, $2, 'staff', $3, $4, $5, $6, $7, $8)`,
-    [a.clinicId, a.patientId, a.staffId, a.answers.allergies, a.answers.conditions, a.answers.medications, a.answers.note,
-      JSON.stringify(birthChanged ? { birth_date: { from: stored, to: a.birth } } : {})]);
+    [a.clinicId, a.patientId, a.staffId, answers.allergies, answers.conditions, answers.medications, answers.note,
+      JSON.stringify({ ...(birthChanged ? { birth_date: { from: stored, to: a.birth } } : {}), ...(paper ? { paper: paperToStored(paper) } : {}) })]);
   if (answersChanged || checked) await audit('health.update');
   if (birthChanged) {
     await tx.query('update patient set birth_date = $2, updated_at = now() where id = $1', [a.patientId, a.birth]);
@@ -367,10 +420,12 @@ export async function recheckHealth(tx: Tx, a: { clinicId: string; staffId: stri
   const latest = (await readHealth(tx, a.patientId, 1)).versions[0] ?? null;
   if (!latest || !answered(latest)) return 'none';
   if (manilaToday(new Date(latest.at)) === manilaToday()) return 'today';
+  // The paper record's other answers are carried too: "no change" is no change to any of them.
   await tx.query(
     `insert into medical_history (clinic_id, patient_id, answered_by, recorded_by, allergies, conditions, medications, note, answers)
-     values ($1, $2, 'staff', $3, $4, $5, $6, $7, '{}'::jsonb)`,
-    [a.clinicId, a.patientId, a.staffId, latest.allergies, latest.conditions, latest.medications, latest.note]);
+     values ($1, $2, 'staff', $3, $4, $5, $6, $7, $8)`,
+    [a.clinicId, a.patientId, a.staffId, latest.allergies, latest.conditions, latest.medications, latest.note,
+      JSON.stringify(latest.paper ? { paper: paperToStored(latest.paper) } : {})]);
   await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'health.checked', 'patient', $3)`, [a.clinicId, a.staffId, a.patientId]);
   return 'saved';
 }

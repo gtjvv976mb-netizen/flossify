@@ -414,14 +414,16 @@ button.rf { display: grid; min-height: 44px; }
   .vs-also .vs-who { margin-left: 0; }
 }
 
-/* --- The Treatment record (./TreatmentRecord.astro): the PDA's ledger, oldest first ---------------------------
-   A real table where the section is 54rem or wider (eight columns fit at 1440, not at 1366); below that each
-   day is a card with labelled lines. The date and the next appointment are teal-ink links (buttons that open
-   the visit); amount paid is money-in green with its heading; a missed or cancelled visit says so in a chip,
-   its words in ink-2. Folded days use the hidden attribute, so a display rule on tbody must not beat it. The
-   wrapper scrolls sideways only if a row's amounts ever outgrow the table (the page itself never does). */
+/* --- The Treatment record (./TreatmentRecord.astro): page 3 of the paper record, oldest first ------------------
+   Date · Procedure · Wire · Next visit · Dentist · Amount · Balance · Sign, in the paper's order. A real table where
+   the section is 54rem or wider; below that each day is a card with labelled lines. The date and the next visit are
+   teal-ink links (buttons that open the visit); a payment reads "Paid" in money-in green; a missed or cancelled visit
+   says so in a chip, its words in ink-2. Sign is a short name in ink-2, or, on a consent line, the signer's strokes on
+   a small white slip (thicker ink, no dashed line: at this size they would vanish). Folded days use the hidden
+   attribute, so a display rule on tbody must not beat it. The wrapper scrolls sideways only if a row's amounts ever
+   outgrow the table (the page itself never does). Printed, the wrapper stops being a container, so the paper always
+   gets the table, every day of it, black on white. */
 .trec-head { padding: 1.25rem 1.5rem 0; }
-.trec-intro { margin-top: -0.5rem; padding-bottom: 1rem; max-width: 72ch; font-size: 14.5px; line-height: 1.5; color: var(--c-ink-2); }
 .trec-pad { padding: 0 1.5rem 1rem; }
 .trec-foot { display: grid; gap: 0.25rem; padding: 0.875rem 1.5rem 1.25rem; border-top: 1px solid var(--ws-hair); font-size: 13.5px; line-height: 1.5; color: var(--c-ink-2); }
 .trec-wrap { container-type: inline-size; container-name: trec; overflow-x: auto; }
@@ -436,18 +438,27 @@ button.rf { display: grid; min-height: 44px; }
 .trec th[scope="rowgroup"] { font-weight: 600; text-align: left; background: var(--c-surface); }
 .trec-nw { white-space: nowrap; }
 .trec-c-amt { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-/* Room for the words: the procedure and the dentist take their share first, the dates and amounts what they need. */
-.trec thead .trec-c-proc { width: 27%; }
-.trec thead .trec-c-who { width: 15%; }
+/* Room for the words: the procedure, the dentist and the wire take their share first, the dates and amounts what
+   they need, Sign a short name. */
+.trec thead .trec-c-proc { width: 25%; }
+.trec thead .trec-c-wire { width: 9%; }
+.trec thead .trec-c-who { width: 13%; }
+.trec thead .trec-c-sign { width: 9.5%; }
 .trec thead .trec-c-amt { text-align: right; }
+.trec-amt { display: grid; justify-items: end; }
 .trec-paid { color: var(--ws-green-ink); font-weight: 600; }
 .trec-bal { font-weight: 600; }
 .trec-l { display: none; }
 .trec-words { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; font-weight: 600; overflow-wrap: anywhere; }
 .trec tr[data-quiet] .trec-words, .trec tr[data-kind="payor"] .trec-words { color: var(--c-ink-2); font-weight: 500; }
+.trec-tooth { font-variant-numeric: tabular-nums; }
 .trec-detail { display: block; margin-top: 0.125rem; font-size: 13px; line-height: 1.45; color: var(--c-ink-2); overflow-wrap: anywhere; }
-.trec-teeth { display: flex; flex-wrap: wrap; gap: 0.25rem; }
-.trec-c-tooth .rp { white-space: nowrap; }
+/* The wire as written on the paper: the upper and the lower each on a line of their own ("U 0.016 NiTi · L 0.014 NiTi"). */
+.trec-wire { display: grid; font-size: 13.5px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.trec-sign { font-size: 13px; color: var(--c-ink-2); white-space: nowrap; }
+.trec-sig { width: 5.5rem; max-width: 100%; border-radius: 6px; }
+.trec-sig .sig-ink { stroke-width: 16; }
+.trec-sig .sig-line { display: none; }
 .trec-date, .trec-also, .trec-next {
   display: inline-flex; align-items: center; gap: 0.375rem; min-height: 44px; text-align: left; cursor: pointer;
   color: var(--ws-teal-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px;
@@ -455,11 +466,15 @@ button.rf { display: grid; min-height: 44px; }
 .trec-date { margin-block: -0.625rem; }
 .trec-next { margin-block: -0.625rem; font-size: 13.5px; flex-wrap: wrap; column-gap: 0.25rem; }
 .trec-next-tail { font-weight: 500; }
+.trec-next-plain .trec-next-tail { font-weight: inherit; }
 /* A second visit that day sits under the date, clear of it: no negative margin, its own 44px. */
 .trec-also { display: flex; margin-top: 0.875rem; font-size: 13.5px; white-space: nowrap; }
 .trec-date:focus-visible, .trec-also:focus-visible, .trec-next:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; border-radius: 6px; }
 .trec-date-go { display: none; }
 .trec-date-plain { display: inline-block; padding-block: 0.125rem; }
+/* A card: the date, the procedure, the dentist, then labelled lines (wire, amount, sign) and, under a rule, the
+   day's next visit and its balance. The foot's rule sits on whichever of the two comes first (next visit is first
+   in the markup and in the card). */
 @container trec (width < 54rem) {
   .trec, .trec tbody, .trec tr, .trec td, .trec th[scope="rowgroup"] { display: block; }
   .trec tbody[hidden] { display: none; }
@@ -476,11 +491,14 @@ button.rf { display: grid; min-height: 44px; }
   .trec-date-go { display: inline-flex; align-items: center; gap: 0.125rem; font-size: 13.5px; }
   .trec-also { margin-block: 0 0.25rem; }
   .trec-c-proc { order: -2; }
-  .trec-c-tooth, .trec-c-who { order: -1; }
-  .trec-c-tooth .trec-l, .trec-c-who .trec-l { display: none; }
-  .trec td.trec-c-amt, .trec td.trec-c-next { display: flex; justify-content: space-between; align-items: center; gap: 1rem; text-align: right; }
+  .trec-c-who { order: -1; }
+  .trec-c-who .trec-l { display: none; }
+  .trec .trec-c-sign { order: 1; }
+  .trec .trec-c-next { order: 2; }
+  .trec .trec-bal { order: 3; }
+  .trec td:is(.trec-c-wire, .trec-c-amt, .trec-c-next, .trec-c-sign) { display: flex; justify-content: space-between; align-items: center; gap: 1rem; text-align: right; }
   .trec td[data-none] { display: none; }
-  .trec-c-amt .trec-l, .trec-c-next .trec-l { display: inline; color: var(--c-ink-2); font-weight: 500; }
+  .trec :is(.trec-c-wire, .trec-c-amt, .trec-c-next, .trec-c-sign) .trec-l { display: inline; flex: none; color: var(--c-ink-2); font-weight: 500; }
   .trec-next { margin-block: -0.5rem; }
   .trec td[data-foot] { padding-top: 0.375rem; border-top: 1px solid var(--ws-hair); }
   .trec td[data-foot]:not([data-none]) ~ td[data-foot]:not([data-none]) { padding-top: 0; border-top: 0; }
@@ -580,6 +598,43 @@ button.rf { display: grid; min-height: 44px; }
 .pp-sheet .trec thead th, .pp-sheet .trec td, .pp-sheet .trec th[scope="rowgroup"] { padding: 0.3125rem 0.5rem; }
 .pp-sheet .trec thead th:first-child, .pp-sheet .trec th[scope="rowgroup"] { padding-left: 0.5rem; }
 .pp-sheet .trec { font-size: 13.5px; }
+/* The record printed (D8: the three paper pages): this part is the paper's table, as the A4 Treatment record prints
+   it (patients/[patient]/treatment-record.astro): every day (folded ones too), no buttons, black on white. After the
+   sheet's own .trec rules, which it overrides. */
+@media print {
+  .trec-wrap { container-type: normal; overflow: visible; }
+  .trec-pad:has(> [data-trec-more]) { display: none; }
+  .trec-wrap .trec { table-layout: fixed; font-size: 9pt; line-height: 1.35; color: #111827; }
+  /* The A4 paper's columns (186 mm inside the margins), with and without the money. */
+  .trec-wrap .trec thead th.trec-c-date { width: 10.5%; }
+  .trec-wrap .trec thead th.trec-c-proc { width: 23%; }
+  .trec-wrap .trec thead th.trec-c-wire { width: 11%; }
+  .trec-wrap .trec thead th.trec-c-next { width: 10.5%; }
+  .trec-wrap .trec thead th.trec-c-who { width: 11.5%; }
+  .trec-wrap .trec thead th.trec-c-amt { width: 12%; }
+  .trec-wrap .trec thead th.trec-c-sign { width: 9.5%; }
+  .trec-wrap .trec:not([data-money]) thead th.trec-c-date { width: 12%; }
+  .trec-wrap .trec:not([data-money]) thead th.trec-c-proc { width: 34%; }
+  .trec-wrap .trec:not([data-money]) thead th.trec-c-wire { width: 13%; }
+  .trec-wrap .trec:not([data-money]) thead th.trec-c-next { width: 13%; }
+  .trec-wrap .trec:not([data-money]) thead th.trec-c-who { width: 16%; }
+  .trec-wrap .trec:not([data-money]) thead th.trec-c-sign { width: 12%; }
+  .trec-wrap .trec :is(.trec-c-amt, .trec-sign, .trec-nw, .trec-also) { white-space: normal; }
+  .trec-wrap .trec :is(td, th) { overflow-wrap: anywhere; }
+  .trec thead { display: table-header-group; }
+  .trec tbody[hidden] { display: table-row-group; }
+  .trec tbody + tbody { border-top: 0; }
+  .trec tr { break-inside: avoid; }
+  .trec-wrap .trec :is(thead th, td, th[scope="rowgroup"]) { padding: 1.2mm 1.4mm !important; border: 0.6pt solid #98a2b3; background: #fff; color: #111827; }
+  .trec-wrap .trec thead th { border-color: #667085; background: #f2f4f7; font-weight: 600; }
+  .trec-date, .trec-also, .trec-next { display: inline; min-height: 0; margin: 0; color: inherit; text-decoration: none; }
+  .trec-also { margin-top: 1mm; }
+  .trec-detail, .trec-sign, .trec tr[data-quiet] .trec-words, .trec tr[data-kind="payor"] .trec-words { color: #344054; }
+  .trec-wrap .trec :is(.trec-detail, .trec-sign) { font-size: 8pt; }
+  .trec-wrap .trec :is(.trec-wire, .trec-next, .trec-also) { font-size: inherit; }
+  .trec-paid { color: inherit; }
+  .trec-foot { border-top: 0; color: #344054; }
+}
 /* Callouts on the sheet: the same tone, a slimmer box. */
 .pp-sheet .ws-callout { padding: 0.5rem 0.75rem; gap: 0.5rem; font-size: 14px; border-radius: 8px; }
 /* Rows of a list (treatments done, notes, prescriptions): tighter. */
@@ -656,4 +711,226 @@ button.rf { display: grid; min-height: 44px; }
   .pp-contents ol { flex: 1 1 100%; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding-bottom: 0.125rem; }
   .pp-contents li { flex: none; }
   .pp-contents a { position: relative; white-space: nowrap; }
+}
+
+/* --- The paper record (the owner, 3 Oct 2026: "make the patient records as simple as this, better a digital copy of the
+   real form", then "make it a better but still simple like that") ---------------------------------------------------------
+   Three sheets as the paper has them (page 1: the letterhead, the patient's chart, the patient information record; page 2:
+   informed consent; page 3: the treatment record), each numbered at its foot, then the sheets attached to the record, each
+   folded to one line. The contents sit in the head above the paper. Sentence case, the sheet's own tokens, no colour of
+   its own; dark mode comes from the tokens. */
+.rec-main { gap: 1rem; }
+.pp-page-no { margin-top: 1rem; text-align: right; font-size: 12.5px; line-height: 1.4; color: var(--c-ink-2); }
+
+/* The contents, in the head: "Page 1" Chart · Patient information · Medical history | "Page 2" Consent | … */
+.pp-top .pp-contents { margin: 0.375rem 0 0; padding: 0.125rem 0 0; border-top: 1px solid var(--ws-hair); border-bottom: 0; }
+.pp-contents > ol { align-items: center; column-gap: 1.25rem; }
+.pp-contents-g { display: flex; flex-wrap: wrap; align-items: center; }
+.pp-contents-g > ul { display: flex; flex-wrap: wrap; }
+.pp-contents li + li { margin-left: 0; }
+.pp-contents-k { margin-right: 0.125rem; font-size: 12.5px; font-weight: 700; color: var(--c-ink-2); white-space: nowrap; }
+@media (max-width: 767px) {
+  .pp-contents-g { flex-wrap: nowrap; }
+  .pp-contents-g > ul { flex-wrap: nowrap; }
+}
+
+/* The letterhead: the clinic on the left, Chart # and Date boxed on the right, a firm rule under it as on paper. */
+.pp-lh { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.5rem 1.5rem; margin-bottom: 0.875rem; padding-bottom: 0.625rem; border-bottom: 2px solid var(--c-ink); }
+.pp-lh-clinic { min-width: 0; flex: 1 1 18rem; }
+.pp-lh-name { font-size: 18px; font-weight: 700; line-height: 1.3; color: var(--c-ink); overflow-wrap: anywhere; }
+.pp-lh-line { font-size: 13.5px; line-height: 1.45; color: var(--c-ink-2); overflow-wrap: anywhere; }
+.pp-lh-ids { flex: 0 1 20rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 639px) { .pp-lh-ids { flex-basis: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pf-mono { font-family: var(--font-mono); font-weight: 500; letter-spacing: 0; }
+
+/* Basic information: the paper's rows divide in sixes (Patient name | Occupation; five boxes; Address | Parent's or
+   guardian's name). Two to a row on a phone, the wide boxes the whole row. */
+.pf-span-3 { grid-column: span 3; }
+.pf-grid-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.pf-grid-6 > .pf-span-4 { grid-column: span 4; }
+@media (max-width: 639px) {
+  .pf-grid-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pf-grid-6 > :is(.pf-span-2, .pf-span-3, .pf-span-4), .pf-span-3 { grid-column: 1 / -1; }
+}
+/* A block's title inside the patient information record: Basic information, Dental history, Medical history. */
+.pp-band-title, .pp-head-sub .pp-title { margin: 0 0 0.375rem; font-size: 14px; font-weight: 700; line-height: 1.3; color: var(--c-ink); }
+.pp-head-sub { padding-bottom: 0; border-bottom: 0; }
+.pp-head-sub .pp-title { margin: 0; }
+.pp-band + .ph-band { margin-top: 0.5rem; }
+#rec-overview + #rec-health { margin-top: 0.625rem; }
+#rec-chart + #rec-overview { margin-top: 1.25rem; }
+/* Blood pressure under the medical history: the reading at the history's size. */
+.pp-sheet #vitals .vt-big { font-size: 20px; }
+.pp-sheet #vitals .vt-pulse { font-size: 15px; }
+
+/* Attached to this record: a sheet for each, folded to its name and where it stands; the chevron says it opens. */
+.pp-attached, .pp-foot { max-width: 72rem; margin-inline: auto; width: 100%; }
+.pp-attached { display: grid; gap: 0.5rem; }
+.pp-attached-title { margin-top: 0.5rem; font-size: 15px; font-weight: 700; line-height: 1.3; color: var(--c-ink); }
+.pp-sheet.pp-att { padding: 0; }
+.rec-sec.pp-att + .rec-sec.pp-att { margin-top: 0; }
+.pp-fold-sum { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.75rem; min-height: 48px; padding: 0.25rem 1.25rem; border-radius: 12px; cursor: pointer; list-style: none; }
+.pp-fold-sum::-webkit-details-marker { display: none; }
+.pp-fold-sum:hover { background: var(--ws-hover); }
+.pp-fold-sum:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: -2px; }
+.pp-fold-sum .pp-title { font-size: 15px; }
+.pp-fold-st { flex: 1 1 14rem; min-width: 0; font-size: 14px; line-height: 1.4; color: var(--c-ink-2); }
+.pp-fold-st.pp-owed { font-weight: 600; color: var(--ws-red-ink); }
+.pp-fold-chev { flex: none; margin-left: auto; color: var(--c-ink-2); transition: transform 200ms ease; }
+.pp-fold[open] > .pp-fold-sum { border-radius: 12px 12px 0 0; border-bottom: 1px solid var(--ws-hair); }
+.pp-fold[open] > .pp-fold-sum .pp-fold-chev { transform: rotate(180deg); }
+.pp-fold-body { display: grid; gap: 0.375rem; min-width: 0; padding: 0.5rem 1.25rem 1rem; }
+.pp-fold-adds { justify-content: flex-end; }
+@media (max-width: 767px) {
+  .pp-fold-sum { padding: 0.25rem 0.75rem; }
+  .pp-fold-body { padding: 0.5rem 0.75rem 0.75rem; }
+}
+
+/* --- Printed (Print the record): the paper's three pages, as the paper is -------------------------------------------
+   Black on white whatever the screen's theme (the tokens reset to the light ones, the words darker), the letterhead, no
+   workspace (global.css hides the shell), no head, contents, This visit, pluses, buttons, folded forms or attached
+   sheets; each page on its own sheet of paper, numbered at its foot. The chart prints its fills and pips and its codes
+   (patients.css, global.css), the ledger the paper's table (.trec, above). @page is the page's own (A4). */
+@media print {
+  :root:root:has(.rec-main) {
+    color-scheme: light;
+    --c-bg: #ffffff; --c-bg-soft: #ffffff; --c-surface: #ffffff; --c-ink: #111827; --c-ink-2: #344054; --c-muted: #475467; --c-faint: #475467;
+    --c-line: #d0d5dd; --c-line-2: #e4e7ec; --c-accent: #0d706d; --c-accent-deep: #0b5d5b; --c-caries: #ac3232; --c-crown: #8a4604;
+    --c-tooth-sound: #ffffff; --c-tooth-line: #c6c6c0; --c-tooth-missing: #e4e4de;
+    --ws-card: #ffffff; --ws-glass: #ffffff; --ws-glass-strong: #ffffff; --ws-subtle: #ffffff; --ws-field: #ffffff;
+    --ws-hair: #d0d5dd; --ws-hair-strong: #98a2b3; --ws-field-line: #98a2b3;
+    --ws-teal: #14908f; --ws-teal-ink: #0d706d; --ws-teal-fill: #0e7471; --ws-teal-tint: #e8f6f5;
+    --ws-green: #1f9d63; --ws-green-ink: #16734a; --ws-green-tint: #e9f7ef;
+    --ws-amber: #d97706; --ws-amber-ink: #8a4604; --ws-amber-tint: #fff5e6;
+    --ws-blue: #3b82f6; --ws-blue-ink: #2359c9; --ws-blue-tint: #eef4ff;
+    --ws-red: #dc4c4c; --ws-red-ink: #ac3232; --ws-red-tint: #fdeeee;
+    --ws-violet-ink: #5b3fc4; --ws-violet-tint: #f1eefd; --ws-rose-ink: #a3294f; --ws-rose-tint: #fdeef4;
+  }
+  html:has(.rec-main), html:has(.rec-main) body, .ws-col:has(.rec-main), .ws-main:has(.rec-main) { background: #fff !important; color: #111827; }
+  .ws-main:has(.rec-main) { max-width: none; margin: 0; padding: 0; }
+  .ws-col:has(.rec-main) > :not(.ws-main) { display: none !important; }
+  .ws-phone-title, .pp-top, .pp-attached, .pp-foot, #this-visit, .rec-plus, .pf-go, .pf-plus, .pp-head-actions, .pp-hist-foot, .pt-chart-scroll,
+  .pp-chart-changes, [data-chart-offer], .pp-page .ws-btn, .pp-page .vx-link, .pp-page details:not([open]),
+  .pp-page :is(.rec-sec, #health, #chart) > .ws-callout, #vitals:has(> .ws-empty) { display: none !important; }
+  .rec-main { display: block; }
+  .pp-sheet.pp-page { max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
+  .pp-page + .pp-page { break-before: page; }
+  .pp-page-no { margin-top: 1.5mm; color: #344054; }
+  .pp-lh { border-bottom-color: #111827; }
+  .pp-head { break-after: avoid; }
+  /* Page 1 on one sheet, as the paper's is: the boxes at a form's print size. */
+  .pp-lh { margin-bottom: 3mm; padding-bottom: 2mm; }
+  .pp-lh-name { font-size: 13pt; }
+  .pp-lh-line { font-size: 8.5pt; }
+  .pp-page .pp-title { font-size: 11pt; }
+  .pp-page :is(.pp-band-title, .ph-title, .pp-head-sub .pp-title) { margin-bottom: 1mm; font-size: 9.5pt; }
+  .pp-page .rec-sec { gap: 1mm; }
+  .pp-page .rec-sec + .rec-sec, .pp-page #rec-chart + #rec-overview, .pp-page #rec-overview + #rec-health { margin-top: 2.5mm; }
+  .pp-page .pp-band + .ph-band, .pp-page .ph-band + .ph-band { margin-top: 2mm; }
+  .pf-cell { min-height: 0; padding: 0.5mm 1.6mm 0.7mm; break-inside: avoid; }
+  .pf-k { font-size: 6.8pt; line-height: 1.25; }
+  .pf-v, .pf-v .ph-ticks { font-size: 8.6pt; line-height: 1.25; }
+  .pf-v .ph-from { font-size: 6.8pt; }
+  .pf-grid + .pf-grid { margin-top: 1.5mm; }
+  .pp-page-no { font-size: 8pt; }
+  /* The chart at the paper's size: no notation row, the arches closer, the legend in small print. */
+  .pp-page .pt-chart [data-codes] { padding: 0; gap: 0; border: 0; }
+  .pp-page .pt-chart [data-codes] :has(> fieldset) { display: none !important; }
+  .pp-page .pt-chart [data-codes] .overflow-x-auto { margin-top: 0; }
+  .pp-page .pt-chart [data-codes] :has(> .meta) { margin-block: 1mm; }
+  .pp-page .pt-chart [data-codes] [data-code-legend] { margin-top: 1.5mm; font-size: 7.5pt; line-height: 1.4; }
+  .pp-page .pt-chart [data-codes] .tooth { height: 40px; }
+}
+
+/* --- Page 2, informed consent (./ConsentForms, ./ConsentRow, and DeskConsent's line) ----------------------------------
+   The paper's paragraphs as ruled rows: its heading on the left, our forms for it on the right — the patient's signature
+   as a small slip (dark ink on white in either theme, like paper), the form's title, where it stands, who signed, who
+   explained it, the date; the general paragraph's words folded (printed in full), its foot as three boxes; the history
+   under it. Words in ink and ink-2; amber and red only where a form says so. Tokens only, so dark mode needs nothing. */
+.cf-para { display: grid; grid-template-columns: 13rem minmax(0, 1fr); align-items: start; gap: 0.125rem 1rem; padding: 0.5rem 0; border-bottom: 1px solid var(--ws-hair); }
+@media (max-width: 639px) { .cf-para { grid-template-columns: minmax(0, 1fr); padding: 0.4375rem 0; } }
+.cf-paras { display: grid; }
+.cf-k { font-size: 14px; font-weight: 700; line-height: 1.5; color: var(--c-ink); overflow-wrap: anywhere; }
+.cf-v { display: grid; gap: 0.25rem; min-width: 0; }
+.cf-text { font-size: 14px; line-height: 1.5; color: var(--c-ink-2); overflow-wrap: anywhere; }
+.cf-none { color: var(--c-ink-2); }
+.cf-see { font-weight: 600; color: var(--ws-teal-ink); text-decoration: underline; text-underline-offset: 3px; }
+.cf-see:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; border-radius: 4px; }
+.cf-reviewed { padding: 0.5rem 0; border-bottom: 1px solid var(--ws-hair); font-size: 14px; color: var(--c-ink-2); }
+.cf-capacity { font-size: 14px; line-height: 1.5; color: var(--c-ink-2); }
+.cf-paper { display: grid; gap: 0.125rem; font-size: 14px; line-height: 1.5; color: var(--c-ink); }
+/* The privacy notice: its line is the first row; the paper's "Signed on paper? Record it" under its words. */
+.cf-privacy { display: grid; padding-bottom: 0.25rem; border-bottom: 1px solid var(--ws-hair); }
+.cf-privacy > .cf-para { padding-bottom: 0; border-bottom: 0; }
+@media (min-width: 640px) { .cf-privacy > .cf-para + #consent-paper:not([open]) { margin-left: 14rem; } }
+.pp-sheet .cf-privacy > .cf-para + #consent-paper { margin-top: 0; }
+
+/* A form under its paragraph: the slip, then its words and actions. */
+.cf-docs > .cf-doc { grid-template-columns: 8rem minmax(0, 1fr); gap: 0.25rem 0.75rem; }
+/* On a phone the slip sits beside the words, and the actions take the whole width under both. */
+@media (max-width: 639px) {
+  .cf-docs > .cf-doc { grid-template-columns: 5.5rem minmax(0, 1fr); }
+  .cf-docs > .cf-doc > div { display: contents; }
+  .cf-docs > .cf-doc > .cf-slip { grid-row: 1 / span 2; }
+  .cf-docs > .cf-doc > div > :not(.cf-acts) { grid-column: 2; }
+  .cf-docs > .cf-doc > div > .cf-acts { grid-column: 1 / -1; }
+}
+.pp-sheet .cf-docs > .cf-doc { padding: 0.5rem 0; }
+.pp-sheet .cf-docs > .cf-doc:first-child { padding-top: 0.125rem; }
+.pp-sheet .cf-docs > .cf-doc:last-child { padding-bottom: 0.125rem; border-bottom: 0; }
+.cf-slip { border-radius: 8px; }
+.cf-slip .sig-ink { stroke-width: 12; }
+.cf-slip .sig-none { padding: 0.75rem 0.5rem; font-size: 13px; line-height: 1.3; text-align: center; }
+.cf-title { font-size: 14.5px; font-weight: 600; line-height: 1.4; color: var(--c-ink); }
+.cf-by { display: flex; flex-wrap: wrap; gap: 0 0.875rem; font-size: 13.5px; line-height: 1.45; color: var(--c-ink-2); }
+.cf-by:empty { display: none; }
+.cf-note { font-size: 13.5px; line-height: 1.45; }
+.cf-acts { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.125rem; }
+.cf-acts form { display: contents; }
+
+/* The general paragraph and the paper's foot. */
+.cf-general { display: grid; gap: 0.25rem; margin-top: 0.75rem; }
+.cf-general > .pp-band-title { margin: 0; }
+.cf-points { display: grid; gap: 0.25rem; max-width: 80ch; padding: 0 0 0.5rem; font-size: 14px; line-height: 1.5; color: var(--c-ink); }
+.cf-points strong { font-weight: 700; }
+.cf-tick { font-weight: 600; }
+.cf-points-paper { display: none; }
+.cf-signoff { margin-top: 0.25rem; }
+.cf-signoff .pf-cell { padding-right: 0.625rem; }
+.cf-signoff-sig { display: flex; align-items: center; gap: 0.75rem; }
+.cf-signoff-sig .cf-slip { flex: none; width: 8rem; }
+.cf-signoff-how { display: block; font-size: 12.5px; font-weight: 400; line-height: 1.4; color: var(--c-ink-2); }
+.cf-general-docs { margin-top: 0.375rem; }
+.cf-more > .cf-docs { margin-top: 0.125rem; }
+
+/* The history: signed at visits, the patient forms. */
+.cf-block { display: grid; gap: 0.125rem; margin-top: 0.75rem; }
+.cf-block > .pp-band-title { margin: 0; }
+.cf-band-meta { margin-left: 0.5rem; font-size: 12.5px; font-weight: 500; color: var(--c-ink-2); }
+.cf-hist { display: grid; }
+.cf-hist > li { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) auto; align-items: center; gap: 0.125rem 0.75rem; padding: 0.375rem 0; border-bottom: 1px solid var(--ws-hair); }
+.cf-hist > li[hidden] { display: none; }
+@media (max-width: 639px) { .cf-hist > li { grid-template-columns: 5rem minmax(0, 1fr); } .cf-hist > li > .vx-link { grid-column: 2; } }
+.cf-slip-sm .sig-line { display: none; }
+.cf-slip-sm .sig-ink { stroke-width: 16; }
+.cf-hist-words { font-size: 14px; line-height: 1.45; color: var(--c-ink); overflow-wrap: anywhere; }
+.cf-hist-what { display: block; font-size: 13.5px; color: var(--c-ink-2); }
+
+/* Page 2 printed (Print the record): the paragraphs, the general paragraph's words in full, the foot; no actions, no
+   folds, no desk form's fields. */
+@media print {
+  .cf-acts, .cf-words, .cf-privacy #consent-paper, .cf-more, [data-cf-show-later], .cf-reviewed,
+  .pp-page [data-desk-consent] :is(.dc-row, [data-desk-consent-who], [data-desk-consent-held], .dc-hint) { display: none !important; }
+  .cf-points-paper { display: grid; gap: 0.6mm; max-width: none; padding: 0 0 1.5mm; font-size: 8.6pt; line-height: 1.35; color: #111827; }
+  .cf-para { grid-template-columns: 42mm minmax(0, 1fr); gap: 0.5mm 3mm; padding: 1.2mm 0; break-inside: avoid; }
+  .cf-k, .cf-title { font-size: 9pt; }
+  .cf-text, .cf-by, .cf-note, .cf-paper, .cf-capacity, .cf-hist-words, .cf-doc .rp-row .rp, .pp-page [data-desk-consent] #consent-title + p { font-size: 8.6pt; }
+  .pp-page [data-desk-consent]:not([data-facing]) #consent-title { font-size: 10pt; }
+  .cf-slip .sig-none { padding: 2mm 1mm; font-size: 7.6pt; }
+  .cf-hist-what, .cf-signoff-how { font-size: 7.6pt; }
+  .cf-see { color: inherit; font-weight: inherit; text-decoration: none; }
+  .cf-docs > .cf-doc { grid-template-columns: 26mm minmax(0, 1fr); break-inside: avoid; }
+  .cf-signoff-sig .cf-slip { width: 30mm; }
+  .cf-signoff, .cf-hist > li { break-inside: avoid; }
+  .cf-general, .cf-block { margin-top: 2.5mm; }
 }

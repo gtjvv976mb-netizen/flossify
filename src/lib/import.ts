@@ -1338,11 +1338,14 @@ export async function fillPatients(tx: Tx, ctx: Ctx, list: { id: string; p: Pati
             city text, province text, hmo_name text, hmo_member_no text, emergency_name text, emergency_relation text, emergency_phone text, notes text)
       where p.id = x.id`, [JSON.stringify(data)]);
   if (births.length) {
+    // The latest version's answers carried over, the paper record's other answers too (answers.paper, src/lib/paper-history.ts).
     await tx.query(
       `insert into medical_history (clinic_id, patient_id, answered_by, recorded_by, allergies, conditions, medications, note, answers)
-       select $1, x.id, 'staff', $2, h.allergies, h.conditions, h.medications, h.note, jsonb_build_object('birth_date', jsonb_build_object('from', null, 'to', x.birth))
+       select $1, x.id, 'staff', $2, h.allergies, h.conditions, h.medications, h.note,
+              jsonb_build_object('birth_date', jsonb_build_object('from', null, 'to', x.birth))
+                || case when jsonb_typeof(h.paper) = 'object' then jsonb_build_object('paper', h.paper) else '{}'::jsonb end
          from jsonb_to_recordset($3::jsonb) as x(id uuid, birth text)
-         left join lateral (select m.allergies, m.conditions, m.medications, m.note from medical_history m where m.patient_id = x.id
+         left join lateral (select m.allergies, m.conditions, m.medications, m.note, m.answers -> 'paper' as paper from medical_history m where m.patient_id = x.id
                              order by m.answered_at desc, m.id desc limit 1) h on true`, [ctx.clinicId, ctx.staffId, JSON.stringify(births)]);
   }
   await auditMany(tx, ctx, [
@@ -1534,7 +1537,14 @@ export interface PersonIn {
   phone: string | null; email: string | null; address: string | null; city: string | null; province: string | null;
   hmoName: string | null; hmoMemberNo: string | null; emergencyName: string | null; emergencyRelation: string | null; emergencyPhone: string | null;
   notes: string | null;
+  /** The paper record's own lines (3 Oct 2026): Occupation, and the Parent's or guardian's name with their relation and
+   *  mobile. Read only from a form that drew them (`has_paper_fields`), else undefined, so updateDetails leaves what is
+   *  saved: an Edit details opened before these fields, or Add patient (which never sends the flag), changes none of it. */
+  occupation?: string | null; guardianName?: string | null; guardianRelation?: string | null; guardianPhone?: string | null;
 }
+
+/** The longest occupation, guardian's name and relation kept, as the patient forms keep them. */
+export const OCCUPATION_MAX = 80, GUARDIAN_NAME_MAX = 120, RELATION_MAX = 40;
 
 /** The person fields as posted, and every problem with them in plain words. The birth date is the health form's (readHealthForm). */
 export function readPersonForm(form: FormData): { person: PersonIn; problems: string[] } {
@@ -1573,12 +1583,28 @@ export function readPersonForm(form: FormData): { person: PersonIn; problems: st
   if (relation && relation.length > 40) problems.push('Keep the relation under 40 characters.');
   const hmoName = g('hmo_name', 81), hmoNo = g('hmo_member_no', 41);
   if ((hmoName?.length ?? 0) > 80 || (hmoNo?.length ?? 0) > 40) problems.push('The HMO name or member no. is too long.');
+  // The paper record's lines, only from a form that drew them. The guardian's mobile is kept as the patient's is (09…).
+  const paper: Pick<PersonIn, 'occupation' | 'guardianName' | 'guardianRelation' | 'guardianPhone'> = {};
+  if (form.get('has_paper_fields') === '1') {
+    const occupation = g('occupation', OCCUPATION_MAX + 1), gName = g('guardian_name', GUARDIAN_NAME_MAX + 1), gRelation = g('guardian_relation', RELATION_MAX + 1);
+    if ((occupation?.length ?? 0) > OCCUPATION_MAX) problems.push(`Keep the occupation under ${OCCUPATION_MAX} characters.`);
+    if ((gName?.length ?? 0) > GUARDIAN_NAME_MAX) problems.push(`Keep the parent’s or guardian’s name under ${GUARDIAN_NAME_MAX} characters.`);
+    if ((gRelation?.length ?? 0) > RELATION_MAX) problems.push(`Keep the parent’s or guardian’s relation under ${RELATION_MAX} characters.`);
+    const gTyped = oneLine(form.get('guardian_phone'));
+    let gPhone: string | null = null;
+    if (gTyped) {
+      const n = normalizePhone(gTyped);
+      if (PH_MOBILE.test(n)) gPhone = n; else problems.push('The parent’s or guardian’s mobile is a Philippine mobile, like 0917 555 0142, or leave it blank.');
+    }
+    Object.assign(paper, { occupation: occupation?.slice(0, OCCUPATION_MAX) ?? null, guardianName: gName?.slice(0, GUARDIAN_NAME_MAX) ?? null, guardianRelation: gRelation?.slice(0, RELATION_MAX) ?? null, guardianPhone: gPhone });
+  }
   return {
     person: {
       chartNo, first, middle: middle?.slice(0, NAME_PART_MAX) ?? null, last, suffix, sex, phone, email,
       address: g('address'), city: g('city', 80), province: g('province', 80), hmoName: hmoName?.slice(0, 80) ?? null, hmoMemberNo: hmoNo?.slice(0, 40) ?? null,
       emergencyName: g('emergency_name', 120), emergencyRelation: relation?.slice(0, 40) ?? null, emergencyPhone: ePhone?.slice(0, 20) ?? null,
       notes: notes ? notes.slice(0, NOTES_MAX) : null,
+      ...paper,
     },
     problems,
   };
@@ -1593,13 +1619,16 @@ export async function updateDetails(tx: Tx, a: { clinicId: string; staffId: stri
     const other = (await tx.query<{ name: string }>(`select concat_ws(' ', first_name, last_name) as name from patient where upper(replace(chart_no, ' ', '')) = $1 and id <> $2`, [chartKey(chart), a.patientId])).rows[0];
     if (other) return { taken: `Chart no. ${chart} is ${other.name}’s.` };
   }
+  // The paper record's lines are written only when the form carried them (readPersonForm: has_paper_fields).
+  const more = ([['occupation', a.p.occupation], ['guardian_name', a.p.guardianName], ['guardian_relation', a.p.guardianRelation], ['guardian_phone', a.p.guardianPhone]] as const)
+    .filter(([, v]) => v !== undefined);
   await tx.query(
     `update patient set chart_no = $2, first_name = $3, middle_name = $4, last_name = $5, suffix = $6, sex = $7, phone = $8, email = $9, address_line = $10,
             city = $11, province = $12, hmo_name = $13, hmo_member_no = $14, emergency_name = $15, emergency_relation = $16, emergency_phone = $17, notes = $18,
-            updated_at = now()
+            ${more.map(([col], i) => `${col} = $${19 + i}, `).join('')}updated_at = now()
       where id = $1`,
     [a.patientId, chart, a.p.first, a.p.middle, a.p.last, a.p.suffix, a.p.sex, a.p.phone, a.p.email, a.p.address, a.p.city, a.p.province,
-     a.p.hmoName, a.p.hmoMemberNo, a.p.emergencyName, a.p.emergencyRelation, a.p.emergencyPhone, a.p.notes]);
+     a.p.hmoName, a.p.hmoMemberNo, a.p.emergencyName, a.p.emergencyRelation, a.p.emergencyPhone, a.p.notes, ...more.map(([, v]) => v ?? null)]);
   await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'patient.update', 'patient', $3)`, [a.clinicId, a.staffId, a.patientId]);
   return 'saved';
 }

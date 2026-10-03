@@ -1,0 +1,34 @@
+---
+// A sheet attached to the paper record (3 Oct 2026): what the paper does not have — the treatment plan, clinical
+// notes, prescriptions and letters, X-rays and files, appointments, the account, texts — each folded to one line, its
+// name and a few words of where it stands. It opens from that line, from the contents, from an address with its name
+// or any id in it (#notes, #money, #recall …), from a post that lands in it and from a side panel drawn open in it:
+// the server draws it open for those it knows of (`open`), the record's script opens it for the rest (show(), and
+// ws:panel-open for a panel opened from outside it: a dialog in a closed <details> is not drawn). The part keeps its
+// region, ids and title (#rec-<id>, #rec-<id>-title); its adds are the first row inside.
+import Icon from '../../../../../components/ws/Icon.astro';
+import Plus from './Plus.astro';
+import type { Add } from './Banner.astro';
+
+interface Props { id: string; label: string; status: string; adds?: Add[]; open?: boolean; owed?: boolean }
+const { id, label, status, adds = [], open = false, owed = false } = Astro.props;
+---
+
+<div id={`rec-${id}`} role="region" aria-labelledby={`rec-${id}-title`} class="pp-sheet pp-att rec-sec min-w-0" data-rec-panel={id}>
+  <details class="pp-fold" data-rec-fold open={open || undefined}>
+    <summary class="pp-fold-sum">
+      <h3 class="pp-title" id={`rec-${id}-title`}>{label}</h3>
+      <span class:list={['pp-fold-st', owed && 'pp-owed']}>{status}</span>
+      <Icon name="chevron" size={18} class="pp-fold-chev" />
+    </summary>
+    <div class="pp-fold-body">
+      {(adds.length > 0 || Astro.slots.has('actions')) && (
+        <div class="pp-head-actions pp-fold-adds">
+          {adds.map((a) => <Plus label={a.label} text={a.text} open={a.open} href={a.href} go={a.go} data={a.data} />)}
+          <slot name="actions" />
+        </div>
+      )}
+      <slot />
+    </div>
+  </details>
+</div>

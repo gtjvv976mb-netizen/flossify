@@ -37,8 +37,8 @@ const BASE_SLACK_MS = 60_000;
 export interface Ctx { clinicId: string; staffId: string; patientId: string; sid: string }
 
 /** The tooth as the chart draws it (one mark; 'incisal' rows land in the occlusal slot), or null when sound. The
- *  same reading as the record page and chartNow: the live rows' condition, and for caries, filled and sealant the
- *  surfaces, in chart order. */
+ *  same reading as the record page and chartNow: the live rows' condition, and for a surface finding
+ *  (SURFACE_SCOPED) the surfaces, in chart order. */
 export async function liveTooth(tx: Tx, patientId: string, fdi: number): Promise<LiveMark | null> {
   const { rows } = await tx.query(
     'select surface, condition from tooth_state where patient_id = $1 and fdi = $2 and superseded_at is null order by noted_at, id',

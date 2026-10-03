@@ -1,23 +1,27 @@
 ---
-// One patient's record, in the workspace (the Patients tab lit): a head
-// of the facts that decide the next step — name, age, mobile, HMO, alerts,
-// balance (finance roles), next and last visit, consent — then the
-// sections switched in place: Overview · Treatment record · Health · Chart ·
-// Treatment · Notes · Rx & letters · Files · Visits · Money · Consent · Texts
-// (docs/workspace-redesign.md, "Patients"). The section is in
-// the address (#health, #chart, …), so a reload, a post that comes back and
-// a link all land on it. Money is shown only to people who may bill here
-// (canBill in src/lib/invoices.ts), like the Finances tab.
+// One patient's record, in the workspace (the Patients tab lit), as a digital copy of a Philippine clinic's paper
+// patient record (the owner, 3 Oct 2026: "make the patient records as simple as this, better a digital copy of the
+// real form", then "make it a better but still simple like that"). The paper's layout, labels and order, kept as
+// plain; better only where a screen is plainly better: a box you tap to change it, the age worked out from the birth
+// date, allergies in red, the balance computed, the letterhead filled in.
 //
-// Drawn in the soft, very simple template (docs/workspace-redesign.md, "The
-// soft template" and "Very simple"): the patient's avatar, name and a few facts
-// with the chart no. as a small reference pill; one teal main action, New
-// booking (the Dashboard's booking panel, the patient filled in), Edit details
-// beside it and the rest under More (New charge, Bring in past visits); the
-// alert chips; at most four numbers (next visit, last visit, balance, consent
-// — the last two open their sections); the sections as one segmented control.
-// The pages' own pieces are in ./_ui/ (patients.css, HealthLists, Callout,
-// Head, Glyph).
+//   The head (above the paper): ‹ Patients, the actions (New booking, the one teal button; Edit details; Print the
+//   record; More), the safety chips, the note for the dentist, what a post did, and the contents (./_record/RecordNav).
+//   Page 1 of 3: today's visit as a note clipped to the front (./_record/VisitStrip), the letterhead (THIS clinic's
+//   own name, address, phone and email; Chart # and Date: ./_record/Letterhead), the Patient's chart (the
+//   odontogram with the paper's codes and legend), the Patient information record: Basic information in the paper's
+//   order and words, HMO, emergency contact and the desk note under it, the Dental history, the Medical history
+//   (./_record/PaperHistory) and blood pressure.
+//   Page 2 of 3: Informed consent: the privacy notice (DeskConsent, one ruled line once it is on record), then the
+//   paper's ten paragraphs with our forms for each, the general consent with the paper's foot, and the history under it
+//   (./_record/ConsentForms). Page 3 of 3: the Treatment record (the paper's ledger, ./_record/TreatmentRecord).
+//   Attached to this record (./_record/Attached): Treatment, Clinical notes, Prescriptions and letters, X-rays and
+//   files, Appointments (with the next check-up), Account (finance.bill only), Texts, each folded to one line until
+//   it is opened, gone to by its address or contents link, or a post lands in it (the server draws it open).
+// Every part keeps its region and ids (#rec-<id>, #overview, #health, #chart, #notes, #money …), so every address,
+// post landing and side panel of before still lands. A post comes back to its part (data-rec-start). Money is shown
+// only to people who may bill here (can(clinic, 'finance.bill')), like the Finances tab. "Print the record" prints the
+// three pages as the paper is (record.css, "Printed"): black on white, each page on its own sheet, nothing else.
 //
 // Every query runs inside withClinic(), so row-level security decides whether
 // this patient exists here; a patient of another clinic (or a made-up id) is
@@ -25,7 +29,8 @@
 // patient.view to the audit log.
 //
 // The odontogram is src/components/Odontogram.astro. It gains the palette's
-// record actions and the plan/done marks (props `actions`, `work`); its
+// record actions, the plan/done marks and the paper's codes and legend (props
+// `actions`, `work`, `codes`); its
 // offline logic (the kept copy of this page, changes waiting on the device)
 // is untouched. A copy served offline opens on the Chart, and a notice the
 // chart raises (a colleague's newer finding, changes waiting) brings the
@@ -36,7 +41,9 @@
 //
 // Four forms post back to this page, each with the CSRF token, checked before
 // anything else (a miss comes back with ?stale=1):
-//   intent=health   birth date, allergies, conditions, medicines, a note.
+//   intent=health   birth date, the paper's dental and medical history
+//                   (answers.paper, src/lib/paper-history.ts), allergies,
+//                   conditions, medicines, a note.
 //                   saveHealth() in src/lib/health.ts: a new medical_history
 //                   version under the person who saved it (a birth date
 //                   change is kept in it, from and to), audit health.update /
@@ -53,15 +60,19 @@
 //                   copy of the notice in force, dated on a day it was in
 //                   force, or the clinic's own form (026). Audit consent.paper
 //                   / consent.paper_form.
-//   intent=details  Edit details (a side panel): name, chart no., sex, mobile,
-//                   email, address, HMO, emergency contact, notes —
-//                   updateDetails() in src/lib/import.ts, audit patient.update.
+//   intent=details  Edit details (a side panel): name, chart no., sex, occupation,
+//                   mobile, email, address, the parent or guardian, HMO,
+//                   emergency contact, notes — updateDetails() in src/lib/import.ts,
+//                   audit patient.update. Occupation and the guardian are read
+//                   only from a form that drew them (has_paper_fields).
 //                   The birth date stays with the health form, which keeps its
 //                   history. Opened from the Dashboard's desk note
 //                   (?open=details&dash=<visit>), the form carries the visit in
 //                   a hidden dash, and a save goes back to the Dashboard with that
 //                   visit open (only a visit of this patient's).
-// All need staff_access.can_edit_records for this branch (every role has it
+//   intent=printed  sent by the page as it prints (Print the record, or the
+//                   browser's own Print): audit record.print, nothing else.
+// All but the last need staff_access.can_edit_records for this branch (every role has it
 // today; see canEditRecords()). On success the page redirects to itself
 // (?saved=…) so a reload does not post again; on a problem it renders again
 // with what was typed.
@@ -77,8 +88,8 @@
 // &used=<field>). Names and the birth date are never offered. The page
 // says what went on the record and, for a patient already on file, what the
 // form says differently (kept as on file; Edit details changes it). The
-// Overview shows what the latest form says about this visit (the reason, what
-// is bothering them); Consent lists every form added here — when it was sent,
+// Dental history shows what the patient's own forms say where the desk has no
+// answer (the reason for the visit, what is bothering them); Consent lists every form added here — when it was sent,
 // who signed, the consents it wrote — with its answers and a printout
 // (../forms/<id>/). A health version from a form reads "from the patient
 // forms (QR-7K2F)".
@@ -90,7 +101,6 @@ import DeskConsent from '../../../../components/DeskConsent.astro';
 import ConsentForms from './_record/ConsentForms.astro';
 import Odontogram from '../../../../components/Odontogram.astro';
 import Pane from '../../../../components/ws/Pane.astro';
-import Tile from '../../../../components/ws/Tile.astro';
 import Chip from '../../../../components/ws/Chip.astro';
 import Empty from '../../../../components/ws/Empty.astro';
 import SidePanel from '../../../../components/ws/SidePanel.astro';
@@ -98,7 +108,6 @@ import Icon from '../../../../components/ws/Icon.astro';
 import Menu from '../../../../components/ws/Menu.astro';
 import Head from './_ui/Head.astro';
 import Callout from './_ui/Callout.astro';
-import HealthLists from './_ui/HealthLists.astro';
 import Glyph from './_ui/Glyph.astro';
 import './_ui/patients.css';
 import './_forms/forms.css';
@@ -108,7 +117,6 @@ import VisitPanels from './_record/VisitPanels.astro';
 import TreatmentPanels from './_record/TreatmentPanels.astro';
 import ChartOffer from './_record/ChartOffer.astro';
 import NotePanel from './_record/NotePanel.astro';
-import Signature from './_record/Signature.astro';
 import Treatment from './_record/Treatment.astro';
 import Notes from './_record/Notes.astro';
 import Prescriptions from './_record/Prescriptions.astro';
@@ -124,6 +132,10 @@ import Plus from './_record/Plus.astro';
 import FormCell from './_record/FormCell.astro';
 import Who from './_record/Who.astro';
 import VisitStrip from './_record/VisitStrip.astro';
+import Letterhead from './_record/Letterhead.astro';
+import Attached from './_record/Attached.astro';
+import PaperHistory from './_record/PaperHistory.astro';
+import PaperHistoryFields from './_record/PaperHistoryFields.astro';
 import { shellLinks } from '../../../../components/ws/routes';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { withClinic } from '../../../../lib/db';
@@ -135,19 +147,19 @@ import {
   consentInForce, readPaperForms, readPaperForm, recordPaperConsent, PAPER_WORDS, recheckHealth,
   type HealthAnswers, type HealthVersion, type AgreedAs, type PaperIn,
 } from '../../../../lib/health';
-import { readPersonForm, updateDetails, hmoSuggestions, SEXES, NOTES_MAX, type PersonIn } from '../../../../lib/import';
+import { readPersonForm, updateDetails, hmoSuggestions, SEXES, NOTES_MAX, OCCUPATION_MAX, GUARDIAN_NAME_MAX, RELATION_MAX, type PersonIn } from '../../../../lib/import';
+import { asksPregnancy, type PaperTyped } from '../../../../lib/paper-history';
 import { pesos, statementNo, STATUS as BILL_STATUS, fromDb } from '../../../../lib/invoices';
 import { prettyPhone } from '../../../../lib/messages';
 import { hmos } from '../../../../data/directory';
-import { CONDITION_LABEL, surfaceSummary, type ToothCondition, type ToothMark, type Surface, type Notation } from '../../../../data/demo';
-import { patientForms, getForm, compareWithRecord, useFormDetail, healthLists, answerText, FIELDS, TAKEABLE, type FormConsentState } from '../../../../lib/patient-forms';
-import { signedText } from './_forms/words';
+import { type ToothCondition, type ToothMark, type Surface, type Notation } from '../../../../data/demo';
+import { patientForms, getForm, compareWithRecord, useFormDetail, healthLists, TAKEABLE, type FormConsentState } from '../../../../lib/patient-forms';
 import { can } from '../../../../lib/can';
 import { mayManage } from '../../../../lib/roles';
 import type { PtrFix } from '../../../../lib/ptr';
 import { loadClinical, loadChartChanges, recordAction, RECORD_INTENTS, RX_ROWS, type Outcome, type RecordProblem, type RxItem } from '../../../../lib/record';
 import { loadExtra, extraAction, bpWords, EXTRA_INTENTS, EXTRA_ANCHOR } from '../../../../lib/record-extra';
-import { loadVisitConsents } from '../../../../lib/visit-consent';
+import { loadVisitConsents, treatmentInForce } from '../../../../lib/visit-consent';
 import { Refused } from '../../../../lib/refused';
 import { loadConsentDocuments, mayAttest, capacityNote, consentGapsFor, overrideConsent } from '../../../../lib/consent-docs';
 import { intakeGates, intakeAnswers, useIntakeDetail } from '../../../../lib/intake';
@@ -175,7 +187,7 @@ const chartSid = chartSession(session);
 
 // What a post left behind for the page to show.
 let healthProblems: string[] = [];
-let posted: { answers: HealthAnswers; birth: string; birthWas: string; base: string } | null = null;
+let posted: { answers: HealthAnswers; birth: string; birthWas: string; base: string; paperTyped: PaperTyped } | null = null;
 let conflict: { latest: HealthVersion | null; birth: string | null; versionMoved: boolean; birthMoved: boolean } | null = null;
 let consentProblem: string | null = null;
 let givenBy = '';
@@ -197,6 +209,14 @@ let stripProblem: string | null = null;
 let backTo: string | null = null;
 // Where on the page a clinical-record post lands again.
 const ANCHOR: Record<string, string> = { 'done-add': 'treatment-done', 'lab-add': 'treatment-lab', 'lab-next': 'treatment-lab', 'recall-set': 'recall', 'recall-done': 'recall', 'recall-clear': 'recall' };
+/** The part of the record a clinical-record intent or saved word belongs to, by its first word (plan-done, rx:<id>, files:3,
+ *  recall-cleared …): where a post lands, and the attached sheet the server draws open for it (a refused post's panel is in
+ *  it, and a dialog in a closed sheet is not drawn). The next check-up is on Appointments. */
+const PART_OF: Record<string, string> = {
+  plan: 'treatment', done: 'treatment', lab: 'treatment', loa: 'treatment', payplan: 'treatment', adjust: 'treatment', adjusted: 'treatment', charted: 'treatment',
+  note: 'notes', addendum: 'notes', rx: 'rx', letter: 'rx', answered: 'rx', file: 'files', files: 'files', recall: 'visits', vitals: 'health', chart: 'chart',
+};
+const partOf = (s: string | null | undefined) => PART_OF[(s ?? '').split(/[-:]/)[0]] ?? null;
 /** A refused clinical-record post (src/lib/refused.ts): thrown out of the transaction so nothing half-done is kept, its outcome as the detail. */
 type RecordRefusal = Extract<Outcome, { ok: false }>;
 
@@ -212,9 +232,17 @@ if (Astro.request.method === 'POST') {
   const postedVisit = UUID.test(String(form.get('visit') ?? '')) ? String(form.get('visit')) : null;
   const to = (qs: string, hash: string) => `${here}?${[postedVisit ? `visit=${postedVisit}` : '', qs].filter(Boolean).join('&')}${hash ? `#${hash}` : ''}`;
 
-  if (intent === 'health') {
+  if (intent === 'printed') {
+    // The page as it prints (Print the record, or the browser's own Print): who printed this record, and when. Sent by
+    // the page's script with navigator.sendBeacon, which reads no answer.
+    if (rate.allowed) await withClinic(clinic.id, async (tx) => {
+      if ((await tx.query('select 1 from patient where id = $1', [patientId])).rowCount)
+        await tx.query(`insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'record.print', 'patient', $3)`, [clinic.id, session.staffId, patientId]);
+    });
+    return new Response(null, { status: 204 });
+  } else if (intent === 'health') {
     backTo = 'health';
-    const { answers, birth, problems } = readHealthForm(form);
+    const { answers, birth, paper, paperTyped, problems } = readHealthForm(form);
     let base = String(form.get('base') ?? '');
     // The birth date this page opened with: a save changes the birth date only when this person changed it.
     let birthWas = oneLine(form.get('birth_was'));
@@ -223,7 +251,7 @@ if (Astro.request.method === 'POST') {
     if (problems.length === 0) {
       const r = await withClinic(clinic.id, async (tx) =>
         (await canEditRecords(tx, session.staffId, clinic.id))
-          ? saveHealth(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, base, answers, birth, birthWas: birthWas || null })
+          ? saveHealth(tx, { clinicId: clinic.id, staffId: session.staffId, patientId, base, answers, birth, birthWas: birthWas || null, paper })
           : ({ kind: 'denied' } as const));
       if (r.kind === 'none') return notFound();
       if (r.kind === 'saved') return Astro.redirect(to(`saved=${r.answers ? 'health' : 'birth'}`, 'health'), 303);
@@ -239,7 +267,7 @@ if (Astro.request.method === 'POST') {
       }
     }
     healthProblems = problems;
-    posted = { answers, birth: birthShown, birthWas, base };
+    posted = { answers, birth: birthShown, birthWas, base, paperTyped };
   } else if (intent === 'consent') {
     backTo = 'consent';
     givenBy = oneLine(form.get('given_by_name'));
@@ -322,8 +350,8 @@ if (Astro.request.method === 'POST') {
       const hash = outcome.qs?.treated ? 'chart-offer' : postedBack === 'chart' ? 'chart' : ANCHOR[intent] ?? EXTRA_ANCHOR[intent] ?? outcome.section;
       return Astro.redirect(to(qs, hash), 303);
     }
-    // Refused (the rate limit too): back to the section the form was posted from.
-    backTo = postedBack ?? (slow ? null : outcome.section);
+    // Refused (the rate limit too): back to the part the form was posted from (partOf: the next check-up is on Appointments now).
+    backTo = postedBack ?? (slow ? null : partOf(intent) ?? outcome.section);
     recordProblem = { intent, text: outcome.problem, values: outcome.values };
     if (intent === 'rx-add') {
       const col = (k: string) => form.getAll(k).map((x) => String(x));
@@ -387,11 +415,16 @@ if (Astro.request.method === 'POST') {
 }
 
 const data = await withClinic(clinic.id, async (tx) => {
-  const me = (await tx.query('select area, notation, recall_texts from clinic where id = $1', [clinic.id])).rows[0];
+  // The clinic's own letterhead (Settings → Clinic profile), the chart's notation, the check-up texts switch.
+  const me = (await tx.query('select name, address_line, barangay, city, province, phone, email::text as email, area, notation, recall_texts from clinic where id = $1', [clinic.id])).rows[0];
   const p = (await tx.query(
     `select p.id, p.chart_no, p.first_name, p.middle_name, p.last_name, p.suffix, p.sex, p.phone, p.email::text as email,
             p.address_line, p.city, p.province, p.hmo_name, p.hmo_member_no, p.emergency_name, p.emergency_relation, p.emergency_phone, p.notes,
+            p.occupation, p.guardian_name, p.guardian_relation, p.guardian_phone,
             to_char(p.birth_date, 'YYYY-MM-DD') as birth, p.created_at, p.import_id is not null as imported, cs.full_name as created_by_name,
+            -- The paper's Date: the day the chart was opened, the first visit on file when it is older than the row (an import).
+            to_char(least(p.created_at, (select min(a.starts_at) from appointment a where a.patient_id = p.id and a.status not in ('cancelled', 'no_show') and a.starts_at <= now()))
+                    at time zone 'Asia/Manila', 'YYYY-MM-DD') as opened,
             patient_balance(p.id) as balance
        from patient p left join staff cs on cs.id = p.created_by
       where p.id = $1 and p.archived_at is null`, [patientId])).rows[0];
@@ -429,10 +462,9 @@ const data = await withClinic(clinic.id, async (tx) => {
             case when m.kind in ('reset', 'invite') then null else m.body end as body
        from message_log m where m.patient_id = $1 and m.channel = 'sms' order by m.created_at desc limit 50`, [p.id])).rows;
   const hmoNames = canEdit ? await hmoSuggestions(tx, new Map(hmos.map((h) => [h.id, h.name]))) : [];
-  // The patient forms added to this record, the newest one's answers (this visit's reason), and — just after
-  // "Add to <patient>" — what that form says differently from the record now.
+  // The patient forms added to this record, and — just after "Add to <patient>" — what that form says differently
+  // from the record now. (Their words on the visit and the patient's history are in readHealth's `own`.)
   const forms = await patientForms(tx, p.id);
-  const latestForm = forms[0] ? await getForm(tx, forms[0].id) : null;
   // Just after a form was added (?saved=form), or one of its details used (?used=): that form.
   const addedId = q.get('saved') === 'form' || q.has('used') || formUseProblem ? q.get('form') ?? '' : '';
   const addedLine = addedId && UUID.test(addedId) ? forms.find((f) => f.id === addedId) ?? null : null;
@@ -450,6 +482,8 @@ const data = await withClinic(clinic.id, async (tx) => {
   const clinical = await loadClinical(tx, clinic.id, p.id);
   const extra = await loadExtra(tx, p.id, HMO_NAMES);
   const signed = await loadVisitConsents(tx, p.id);
+  // The consent to dental examination and treatment in force, with its words: page 2's general paragraph.
+  const general = await treatmentInForce(tx);
   // The consent forms (039): the list, who may explain which, a capacity note, and just after an intake was added, its forms.
   const consentDocs = await loadConsentDocuments(tx, p.id);
   const mayExplainIds = new Set<string>();
@@ -471,7 +505,7 @@ const data = await withClinic(clinic.id, async (tx) => {
   // ?treated=<procedure_done id>: the chart's offer for that treatment, as the chart is now (read only; the write re-checks).
   const treatedQ = q.get('treated');
   const offerState = canEdit && treatedQ && UUID.test(treatedQ) ? await offerFor(tx, p.id, treatedQ) : null;
-  return { consentDocs, mayExplainIds, treatsHere, capacity, canPrepare, offeredCodes, intakeDocs, gaps, offerState, clinical, extra, ledger, chartChanges, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, latestForm, added, addedLine, addedDiffers, addedIntake, intakeDiffers };
+  return { general, consentDocs, mayExplainIds, treatsHere, capacity, canPrepare, offeredCodes, intakeDocs, gaps, offerState, clinical, extra, ledger, chartChanges, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, added, addedLine, addedDiffers, addedIntake, intakeDiffers };
 });
 if (!data) return notFound();
 const { me, p: patient, visits, health, canEdit } = data;
@@ -496,6 +530,15 @@ const minor = age !== null && age < 18;
 // The consent that counts for the notice in force, and whether a minor still needs a parent's or guardian's.
 const consentNow = consentInForce(data.notice?.id, data.consents);
 const guardianNeeded = minor && consentNow?.agreed_as !== 'guardian';
+// Page 2: the privacy notice on record reads as one ruled line (DeskConsent's line); else the desk's form, under its name.
+const privacyLine = !!data.notice && !!consentNow && !guardianNeeded;
+// A treating dentist here with a PRC licence, the patient an adult on file: may record that they cannot decide now.
+const mayCapacity = canEdit && data.treatsHere && !minor && !!patient.birth;
+// Informed consent's pluses: prepare the forms (only where they are offered) and, for that dentist, Cannot decide.
+const consentAdds = canEdit ? [
+  ...(data.canPrepare ? [{ label: `Prepare consent forms for ${patient.first_name}`, text: 'Prepare forms', href: `/c/${clinic.slug}/patients/new/?patient=${patient.id}` }] : []),
+  ...(mayCapacity ? [{ label: `Record that ${patient.first_name} cannot decide now`, text: 'Cannot decide', open: 'rec-capacity' }] : []),
+] : [];
 const latest = health.versions[0] ?? null;
 // The alert strip is what is saved; the form shows what was typed when a post came back.
 const allergies: string[] = latest?.allergies ?? [];
@@ -508,12 +551,6 @@ const formAge = birthValue ? ageOn(birthValue, today) : null;
 const base = posted?.base ?? latest?.id ?? 'none';
 const saved = q.get('saved');
 const stale = q.get('stale') === '1';
-
-// Existing findings, newest concern first so the dentist reads problems before completed work.
-const ORDER: ToothCondition[] = ['caries', 'missing', 'impacted', 'unerupted', 'root_canal', 'crown', 'bridge', 'implant', 'veneer', 'filled', 'sealant', 'sound'];
-const findings = Object.entries(marks)
-  .map(([fdi, m]) => ({ fdi: Number(fdi), condition: m!.condition, codes: surfaceSummary(Number(fdi), m!.surfaces) }))
-  .sort((a, b) => ORDER.indexOf(a.condition) - ORDER.indexOf(b.condition) || a.fdi - b.fdi);
 
 // The same way every date on the record reads: "Fri 25 Sep 2026, 9:00 am".
 const visitWhen = (d: Date) => when(d);
@@ -561,21 +598,13 @@ const byLine = (v: HealthVersion) =>
 const stateLine = (v: HealthAnswers) =>
   [...LISTS.map((l) => `${l.label} ${listText(v[l.key], l.key === 'allergies' ? 'none known' : 'none')}`), v.note && `Note: ${v.note}`].filter(Boolean).join(' · ');
 const birthLine = (b: string | null) => `Birth date ${dateText(b) ?? 'not on file'}`;
-/** A list as one plain line: "Penicillin, Latex", "None known", "Not asked yet". */
-const listLine = (v: string[] | null, none: string) => (v === null ? 'Not asked yet' : capitalise(listText(v, none)));
 
 // --- the head ---------------------------------------------------------------
 const fullName = [patient.first_name, patient.middle_name, patient.last_name, patient.suffix].filter(Boolean).join(' ');
 const shortName = `${patient.first_name} ${patient.last_name}`;
 const titleName = patient.suffix ? `${shortName} ${patient.suffix}` : shortName;
-const SEX: Record<string, string> = { female: 'Female', male: 'Male', other: 'Other', undisclosed: 'Sex not said' };
-// Under the name: the few facts the desk reads out. The chart no. sits beside them as a small reference pill.
-const facts = [
-  age !== null ? ageText(age) : null,
-  patient.sex ? SEX[patient.sex] : null,
-  patient.phone ? prettyPhone(patient.phone) : null,
-  patient.hmo_name ? patient.hmo_name : null,
-].filter(Boolean) as string[];
+// The paper's Gender box, in Edit details' words.
+const SEX: Record<string, string> = Object.fromEntries(SEXES.map((x) => [x.id, x.label]));
 const balance = fromDb(patient.balance);
 const lastVisit = visits.find((v) => v.status === 'completed') ?? null;
 const nextVisit = data.next;
@@ -583,12 +612,8 @@ const nextParts = (d: Date) => new Intl.DateTimeFormat('en-US', { weekday: 'shor
 // A visit under way (arrived, waiting, in the chair) is the one that matters now.
 const HERE: Record<string, string> = { arrived: 'Arrived', in_lobby: 'Waiting', in_chair: 'In the chair' };
 const hereNow = nextVisit ? HERE[nextVisit.status] ?? null : null;
-const nextValue = hereNow ?? (nextVisit ? (() => { const x = nextParts(nextVisit.starts_at); return `${x.weekday} ${x.day} ${x.month}`; })() : 'None');
-const nextNote = nextVisit ? (() => { const x = nextParts(nextVisit.starts_at); return [`${x.hour}:${x.minute} ${String(x.dayPeriod).toLowerCase()}`, nextVisit.reason, nextVisit.dentist].filter(Boolean).join(' · '); })() : 'Nothing on the calendar yet';
-const consentValue = !data.notice ? '—' : consentNow && !guardianNeeded ? 'On record' : guardianNeeded && consentNow ? 'Guardian needed' : 'Not yet';
-const consentNote = !data.notice ? 'No notice in force'
-  : consentNow && !guardianNeeded ? (consentNow.channel === 'paper' && consentNow.signed_on ? `Signed on paper ${dateText(consentNow.signed_on)}` : `Given ${day(new Date(consentNow.given_at))}`)
-  : data.paperForms.length ? 'Clinic’s own form on file; ask for the notice' : 'Ask at the desk';
+// The next visit in a few words, for the Appointments sheet's line: "Today, in the chair", "Thu 8 Oct, 9:00 am".
+const nextWords = nextVisit ? hereNow ? `Today, ${hereNow.toLowerCase()}` : (() => { const x = nextParts(nextVisit.starts_at); return `${x.weekday} ${x.day} ${x.month}, ${x.hour}:${x.minute} ${String(x.dayPeriod).toLowerCase()}`; })() : null;
 const bookHref = `${links.newBooking}&patient=${patient.id}`;
 const chargeHref = `${links.newCharge}?patient=${patient.id}`;
 const importHref = `/c/${clinic.slug}/patients/import/`;
@@ -643,24 +668,27 @@ const CHART_SAVED: Record<string, string> = {
   done: 'Treatment recorded.',
   note: 'Note saved under your name.',
 };
-// The parts of the record, in the order a paper dental chart keeps them (the PDA's patient record: the patient's
-// details, the medical history, the dental chart, the plan, the treatment record), then the papers, the appointments,
-// the account and the texts. Numbered on the page as on paper.
-const SECTIONS = [
-  { id: 'overview', label: 'Patient information', short: 'Patient' },
-  { id: 'health', label: 'Medical history', short: 'Medical history' },
-  { id: 'chart', label: 'Dental chart', short: 'Chart' },
-  { id: 'treatment', label: 'Treatment', short: 'Treatment' },
-  { id: 'treatment-record', label: 'Treatment record', short: 'Treatment record' },
-  { id: 'notes', label: 'Clinical notes', short: 'Notes' },
-  { id: 'consent', label: 'Consent', short: 'Consent' },
-  { id: 'rx', label: 'Prescriptions and letters', short: 'Rx and letters' },
-  { id: 'files', label: 'X-rays and files', short: 'X-rays' },
-  { id: 'visits', label: 'Appointments', short: 'Visits' },
-  ...(money ? [{ id: 'money', label: 'Account', short: 'Account' }] : []),
-  { id: 'texts', label: 'Texts', short: 'Texts' },
+// The parts of the record, in the paper record's order: page 1 the chart and the patient information record (its
+// basic information, dental and medical history), page 2 the informed consent, page 3 the treatment record; then
+// what is attached to it (page 0), folded. The pages are numbered, not the parts.
+const SECTIONS: { id: string; label: string; short: string; page: 0 | 1 | 2 | 3 }[] = [
+  { id: 'chart', label: 'Patient’s chart', short: 'Chart', page: 1 },
+  { id: 'overview', label: 'Patient information record', short: 'Patient information', page: 1 },
+  { id: 'health', label: 'Medical history', short: 'Medical history', page: 1 },
+  { id: 'consent', label: 'Informed consent', short: 'Consent', page: 2 },
+  { id: 'treatment-record', label: 'Treatment record', short: 'Treatment record', page: 3 },
+  { id: 'treatment', label: 'Treatment', short: 'Treatment', page: 0 },
+  { id: 'notes', label: 'Clinical notes', short: 'Notes', page: 0 },
+  { id: 'rx', label: 'Prescriptions and letters', short: 'Rx and letters', page: 0 },
+  { id: 'files', label: 'X-rays and files', short: 'X-rays', page: 0 },
+  { id: 'visits', label: 'Appointments', short: 'Appointments', page: 0 },
+  ...(money ? [{ id: 'money', label: 'Account', short: 'Account', page: 0 as const }] : []),
+  { id: 'texts', label: 'Texts', short: 'Texts', page: 0 },
 ];
-const savedTo: Record<string, string> = { intake: 'overview', 'consent-ahead': 'overview', capacity: 'consent', 'consent-removed': 'consent', health: 'health', birth: 'health', nothing: 'health', consent: 'consent', 'consent-already': 'consent', paper: 'consent', details: 'overview', new: 'overview', form: 'overview' };
+const PAGES = 3;
+const contents = [1, 2, 3, 0].map((n) => ({ label: n ? `Page ${n}` : 'Attached', items: SECTIONS.filter((x) => x.page === n).map((x) => ({ id: x.id, label: x.short, full: x.label })) }));
+// Where a save lands: Go ahead anyway on This visit lands on the strip, at the front of page 1.
+const savedTo: Record<string, string> = { intake: 'overview', 'consent-ahead': 'this-visit', capacity: 'consent', 'consent-removed': 'consent', health: 'health', birth: 'health', nothing: 'health', consent: 'consent', 'consent-already': 'consent', paper: 'consent', details: 'overview', new: 'overview', form: 'overview' };
 
 // --- a patient form just added ------------------------------------------------
 // The consents as the record has them now, in words (never a claim the rows do not make).
@@ -692,14 +720,10 @@ const usedLabel = used ? ({ phone: 'mobile', email: 'email', address_line: 'addr
   emergency_name: 'emergency contact', emergency_relation: 'emergency contact’s relation', emergency_phone: 'emergency contact’s number',
   guardian_name: 'parent or guardian', guardian_relation: 'parent or guardian’s relation', guardian_phone: 'parent or guardian’s mobile',
   hmo_name: 'HMO', hmo_member_no: 'HMO card number', middle_name: 'middle name', suffix: 'suffix' } as Record<string, string>)[used] ?? 'detail' : null;
-// A clinical-record save names its section by its first word (plan-done, rx:<id>, files:3, recall-cleared …).
-const recordSaved = (s: string | null) => {
-  const w = (s ?? '').split(/[-:]/)[0];
-  return ({ plan: 'treatment', done: 'treatment', lab: 'treatment', note: 'notes', addendum: 'notes', rx: 'rx', file: 'files', files: 'files', recall: 'overview',
-    vitals: 'health', letter: 'rx', answered: 'rx', loa: 'treatment', payplan: 'treatment', adjusted: 'treatment', charted: 'treatment' } as Record<string, string>)[w] ?? null;
-};
-// The section showing first: where a post came back to, the section of what was just saved, the section of a
-// panel to open, the Treatment record (or Visits) for another day's visit (?visit=), else the Overview.
+// A clinical-record save names its part by its first word (plan-done, rx:<id>, files:3, recall-cleared …).
+const recordSaved = partOf;
+// The part the page opens on: where a post came back to, the part of what was just saved, the part of a panel to
+// open, the Treatment record (or Appointments) for another day's visit (?visit=), else the top of the paper ('').
 // ?back=chart: a save from a panel the chart's palette opened lands on the Chart.
 const fromChart = q.get('back') === 'chart';
 // The chart's offer after a treatment (p01 step 2): its state, a write that was skipped (the tooth changed, or the page's
@@ -708,7 +732,11 @@ const offerState = data.offerState;
 const chartSkip = q.get('chartskip') === 'changed' || q.get('chartskip') === 'ended' ? (q.get('chartskip') as 'changed' | 'ended') : null;
 const offerProblem = recordProblem?.intent === 'chart-apply' ? recordProblem : null;
 const showOffer = canEdit && (!!offerProblem || !!chartSkip || !!(offerState && (offerState.applied || calloutWorthy(offerState.offer))));
-const current = backTo ?? (fromChart ? 'chart' : null) ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? (openNow ? OPEN_PANEL[openNow] : openVisit && !thisVisit ? (data.ledger.openKeys.has(openVisit) ? 'treatment-record' : 'visits') : 'overview');
+const current = backTo ?? (fromChart ? 'chart' : null) ?? savedTo[saved ?? ''] ?? recordSaved(saved) ?? (openNow ? OPEN_PANEL[openNow] : openVisit && !thisVisit ? (data.ledger.openKeys.has(openVisit) ? 'treatment-record' : 'visits') : '');
+// The attached sheets drawn open: the one the page opens on, and the one holding a side panel the server draws open (a
+// refused post's, a rate-limited one's too, or ?open=…): a dialog in a closed sheet is not drawn, and the page behind
+// it would still be inert.
+const openSheets = new Set([current, partOf(recordProblem?.intent), openNow ? OPEN_PANEL[openNow] : null].filter(Boolean));
 // "Leave the chart as it is": the same address without the offer (and without the saved line it came with).
 const leaveOffer = (section: string) => {
   const u = new URLSearchParams(q);
@@ -721,7 +749,6 @@ const privacyState = { ok: !data.notice || (!!consentNow && !guardianNeeded), wo
 // A health history over a year old is asked again (the head says so; the strip offers "No change").
 const staleHealth = !!latest && answered(latest) && Date.now() - +new Date(latest.at) > 365 * 864e5;
 const SECTION_LABEL = Object.fromEntries(SECTIONS.map((x) => [x.id, x.label])) as Record<string, string>;
-const SECTION_NO = Object.fromEntries(SECTIONS.map((x, i) => [x.id, i + 1])) as Record<string, number>;
 
 // --- money --------------------------------------------------------------------
 const stmts = data.statements.map((s) => {
@@ -744,45 +771,61 @@ const textStatus = (m: { direction: string; status: string }) =>
   : { label: 'Waiting to send', tone: 'neutral' as const };
 
 // --- details -------------------------------------------------------------------
-const d = detailsPosted ?? {
+const d: PersonIn = detailsPosted ?? {
   chartNo: patient.chart_no, first: patient.first_name, middle: patient.middle_name, last: patient.last_name, suffix: patient.suffix, sex: patient.sex,
   phone: patient.phone, email: patient.email, address: patient.address_line, city: patient.city, province: patient.province, hmoName: patient.hmo_name,
   hmoMemberNo: patient.hmo_member_no, emergencyName: patient.emergency_name, emergencyRelation: patient.emergency_relation, emergencyPhone: patient.emergency_phone, notes: patient.notes,
+  occupation: patient.occupation, guardianName: patient.guardian_name, guardianRelation: patient.guardian_relation, guardianPhone: patient.guardian_phone,
 };
 const address = [patient.address_line, patient.city, patient.province].filter(Boolean).join(', ');
-const detailRows: [string, string | null][] = [
-  ['Full name', fullName],
-  ['Birth date', patient.birth ? `${dateText(patient.birth)}${age !== null ? ` · ${ageText(age)}` : ''}` : null],
-  ['Sex', patient.sex ? SEX[patient.sex] : null],
-  ['Mobile', patient.phone ? prettyPhone(patient.phone) : null],
-  ['Email', patient.email],
-  ['Address', address || null],
-  ['HMO', patient.hmo_name ? `${patient.hmo_name}${patient.hmo_member_no ? ` · member no. ${patient.hmo_member_no}` : ''}` : null],
-  ['Emergency contact', patient.emergency_name ? [patient.emergency_name, patient.emergency_relation, patient.emergency_phone && prettyPhone(patient.emergency_phone)].filter(Boolean).join(' · ') : null],
-  ['Chart no.', patient.chart_no],
-  ['On file since', `${dateText(manilaDay(patient.created_at))}${patient.imported ? ', from an import' : patient.created_by_name ? `, added by ${patient.created_by_name}` : ''}`],
+/** One box of the paper's Basic information: its label, the value, its width (of six), and where it is changed (the
+ *  plus): a field of Edit details, the caret put in `field`; or, for the birth date and the age, the medical history's
+ *  form, where the birth date's history is kept (`go`). `what` names it for a screen reader. */
+interface Box { label: string; value: string | null; span: 1 | 2 | 3 | 4; field: string; go?: string; what: string; empty?: string }
+// The paper's rows, in its order and words: Patient name | Occupation; Date of birth | Age | Gender | Contact number |
+// Email address; Address | Parent's or guardian's name.
+const basic: Box[] = [
+  { label: 'Patient name', value: fullName, span: 4, field: 'last_name', what: 'name' },
+  { label: 'Occupation', value: patient.occupation, span: 2, field: 'occupation', what: 'occupation' },
+  { label: 'Date of birth', value: dateText(patient.birth), span: 1, field: 'birth_date', go: 'health-form', what: 'date of birth' },
+  { label: 'Age', value: age === null ? null : age < 1 ? 'Under 1' : String(age), span: 1, field: 'birth_date', go: 'health-form', what: 'birth date' },
+  { label: 'Gender', value: patient.sex ? SEX[patient.sex] : null, span: 1, field: 'sex', what: 'gender' },
+  { label: 'Contact number', value: patient.phone ? prettyPhone(patient.phone) : null, span: 1, field: 'mobile', what: 'contact number' },
+  { label: 'Email address', value: patient.email, span: 2, field: 'email', what: 'email address' },
+  { label: 'Address', value: address || null, span: 4, field: 'address', what: 'address' },
+  // An adult's line stays blank, as on paper: no "Not on file" asking for a guardian nobody needs.
+  { label: 'Parent’s or guardian’s name', value: [patient.guardian_name, patient.guardian_relation, patient.guardian_phone && prettyPhone(patient.guardian_phone)].filter(Boolean).join(' · ') || null,
+    span: 2, field: 'guardian_name', what: 'parent or guardian', empty: minor || age === null ? undefined : '—' },
 ];
-/** How many of the form's four columns each detail takes. */
-const DETAIL_SPAN: Record<string, 1 | 2 | 4> = { 'Full name': 2, Address: 2, HMO: 2, 'Emergency contact': 2 };
-/** Where each detail is changed (the plus beside it): a field of Edit details, the caret put in `field`; or, for the
- *  birth date, the Health form, where its history is kept (`go`). On file since is not changed. */
-const DETAIL_EDIT: Record<string, { field: string; go?: string }> = {
-  'Full name': { field: 'last_name' }, 'Birth date': { field: 'birth_date', go: 'health-form' }, Sex: { field: 'sex' },
-  Mobile: { field: 'mobile' }, Email: { field: 'email' }, Address: { field: 'address' }, HMO: { field: 'hmo_name' },
-  'Emergency contact': { field: 'emergency_name' }, 'Chart no.': { field: 'chart_no' },
-};
-// Only what is on file is listed; what is missing is one line, with the way to add it.
-const present = detailRows.filter(([, v]) => v);
-const missing = detailRows.filter(([, v]) => !v).map(([k]) => (k === 'HMO' ? k : k.toLowerCase()));
+// What the paper does not ask and the clinic needs, in a second row of boxes under it.
+const more: Box[] = [
+  { label: 'HMO', value: patient.hmo_name ? `${patient.hmo_name}${patient.hmo_member_no ? ` · member no. ${patient.hmo_member_no}` : ''}` : null, span: 2, field: 'hmo_name', what: 'HMO' },
+  { label: 'Emergency contact', value: patient.emergency_name ? [patient.emergency_name, patient.emergency_relation, patient.emergency_phone && prettyPhone(patient.emergency_phone)].filter(Boolean).join(' · ') : null, span: 2, field: 'emergency_name', what: 'emergency contact' },
+];
+const editOf = (b: Box) => (canEdit ? { label: `${b.value ? 'Change' : 'Add'} the ${b.what}${b.go ? ' (on the medical history)' : ''}`, open: b.go ? undefined : 'details', go: b.go, field: b.field } : undefined);
+// The paper's Date: who opened the chart, for its tooltip.
+const openedBy = patient.imported ? 'From an import' : patient.created_by_name ? `Added by ${patient.created_by_name}` : undefined;
 const help = 'text-[13px] leading-snug text-muted';
-// The latest patient form's words about this visit, for the Overview.
-const lf = data.latestForm?.values ?? null;
-const visitFromForm: [string, string][] = lf ? ([
-  ['Reason for the visit', lf.reason],
-  ['Bothering them', answerText(FIELDS.concerns, lf.concerns) ? [answerText(FIELDS.concerns, lf.concerns), lf.concern_other].filter(Boolean).join(', ') : null],
-  ['Last dental visit', answerText(FIELDS.last_visit, lf.last_visit)],
-  ['Nervous about visits', answerText(FIELDS.nervous, lf.nervous)],
-] as [string, string | null][]).filter((r): r is [string, string] => !!r[1]) : [];
+// The newest X-ray taken here, beside the paper's "Date of last dental X-ray".
+const xrayHere = clin.files.filter((f) => f.kind.startsWith('xray_') || f.kind === 'cbct').map((f) => f.takenAt ?? manilaDay(f.at)).sort().at(-1) ?? null;
+
+// --- the attached sheets: each folded to its name and a few words of where it stands ---------------------------
+const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+const labsOpen = clin.labs.filter((l) => l.status !== 'fitted').length;
+const plansActive = ext.plans.filter((x) => x.status === 'active').length;
+const STATUS: Record<string, string> = {
+  treatment: [planOpen.length && `${planOpen.length} on the plan`, labsOpen && n(labsOpen, 'lab case open', 'lab cases open'),
+    loaWaiting && n(loaWaiting, 'LOA waiting', 'LOAs waiting'), plansActive && n(plansActive, 'payment plan', 'payment plans')].filter(Boolean).join(' · ')
+    || (clin.done.length ? n(clin.done.length, 'treatment done', 'treatments done') : 'Nothing yet'),
+  notes: clin.notes.length ? `${n(clin.notes.length, 'note', 'notes')} · latest ${dateText(clin.notes[0].visitOn)}` : 'None yet',
+  rx: [clin.rx.length && n(clin.rx.length, 'prescription', 'prescriptions'), ext.letters.length && n(ext.letters.length, 'letter', 'letters')].filter(Boolean).join(' · ') || 'None yet',
+  files: clin.files.length ? n(clin.files.length, 'file', 'files') : 'None yet',
+  visits: [nextWords && `Next ${nextWords}`, clin.recall && `check-up due ${dateText(clin.recall.dueOn)}`].filter(Boolean).join(' · ')
+    || (lastVisit ? `Last ${dateText(manilaDay(lastVisit.starts_at))}` : visits.length ? n(visits.length, 'visit', 'visits') : 'None yet'),
+  money: balance > 0n ? `${pesos(balance)} owed` : balance < 0n ? `${pesos(-balance)} in credit` : 'Nothing owed',
+  texts: data.texts.length ? `${n(data.texts.length, 'text', 'texts')} · latest ${dateText(manilaDay(new Date(data.texts[0].created_at)))}` : 'None yet',
+};
+STATUS.visits = STATUS.visits.charAt(0).toUpperCase() + STATUS.visits.slice(1);
 const formsBase = `/c/${clinic.slug}/patients/forms/`;
 const moreItems = (money ? 1 : 0) + (canEdit ? 7 : 0);
 const recHere = here;
@@ -790,8 +833,8 @@ const recHere = here;
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: me.area }} title={titleName} section="patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
   {/* The patient's name is the page's title, in the top bar (the layout's heading), as on a
-      person's page and a statement: this card is who they are beside it — the avatar, the few
-      facts, the actions and the four numbers — with no second name. */}
+      person's page and a statement. This card is what the paper does not say: the way back, the
+      actions, the safety chips and the contents. Every fact is on the paper below, once. */}
   <Pane as="div" label={`${shortName}, patient record`} class="pp-top">
     <script>
       // Back to the list as it was left: the same search, filter and sort (./_list/back.ts).
@@ -801,11 +844,12 @@ const recHere = here;
     <div class="pp-top-row">
       <div class="rec-who">
         <a href={`/c/${clinic.slug}/patients/`} class="rec-back" data-pts-back><Icon name="chevron-left" /><span class="sr-only">Back to </span>Patients</a>
-        <p class="rec-facts min-w-0"><span class="rec-facts-in"><span><span class="pt-ref" title="Chart no."><span class="sr-only">Chart no. </span>{patient.chart_no}</span></span>{facts.map((f) => <span>{f}</span>)}</span></p>
       </div>
       <div class="rec-actions">
         <a href={bookHref} class="ws-btn ws-btn-primary md:order-last"><Icon name="calendar" />New booking</a>
         {canEdit && <Plus text="Edit details" label={`Edit ${patient.first_name}’s details`} open="details" />}
+        {/* The three pages as the paper is (record.css, "Printed"); the page tells the audit log as it prints. */}
+        <button type="button" class="ws-btn ws-btn-quiet" data-rec-print={csrf}><Glyph name="print" size={16} />Print<span class="max-sm:sr-only"> the record</span></button>
         {moreItems > 0 && (
           <Menu id="rec-more" label={`More for ${shortName}`} buttonClass="ws-btn ws-btn-quiet" align="right">
             <Fragment slot="button">More <Icon name="chevron" size={16} /></Fragment>
@@ -871,429 +915,392 @@ const recHere = here;
     {stale && <Callout tone="alert" class="mt-4" text={CSRF_MESSAGE} />}
     {/* A refused post whose form is not on this page for this person (no records.edit, or a payment plan without finance.bill): its sentence here. */}
     {recordProblem && (!canEdit || (recordProblem.intent === 'payplan-add' && !money)) && <Callout tone="alert" class="mt-4" text={`${recordProblem.text} Nothing was saved.`} />}
-    {saved === 'new' && <Callout tone="success" class="mt-4" text={`Added. ${shortName} is on file as ${patient.chart_no}; everything from the form is below.`} />}
-    {saved === 'details' && <Callout tone="success" class="mt-4" text="Details saved." />}
-    {saved === 'capacity' && <Callout tone="success" class="mt-4" text="Recorded. For 30 days a representative may sign consent forms for them, on a clinic device." />}
-    {saved === 'consent-removed' && <Callout tone="success" class="mt-4" text="The form was removed." />}
-    {q.get('capacity') === 'refused' && <Callout tone="alert" class="mt-4" text="Nothing was recorded. Only a treating dentist here with a PRC licence records this, for an adult patient with a birth date on file, and with a reason of at most 300 characters." />}
-    {saved === 'intake' && (() => {
-      // Just added from an intake (039): what its forms came to, each part a way to the Consent section; added to a patient on file,
-      // what page 1 did to the record (empty details filled, the health history, what the record kept), as the QR forms say it (4.3).
-      const n = (st: string[]) => data.intakeDocs.filter((d) => st.includes(d.state)).length;
-      const signedN = n(['agreed']), toSign = n(['to_sign']), toConfirm = n(['to_confirm']), refused = data.intakeDocs.filter((d) => d.state === 'refused' && d.code !== 'photos').length;
-      const parts = [signedN && `${signedN === 1 ? 'one consent form' : `${signedN} consent forms`} signed`, toSign && `${toSign} to sign at the chair`, toConfirm && `${toConfirm} to confirm`, refused && `${refused} not agreed`].filter(Boolean) as string[];
-      const onFile = data.addedIntake?.addedAs === 'existing';
-      return (
-        <Callout tone="success" class="mt-4" title={onFile ? `Added the forms (${data.addedIntake!.ref}) to ${patient.first_name}’s record.` : `${shortName} is added.`}>
-          {onFile && <p>Empty details were filled in, and the record has the health history {patient.first_name} gave on page 1{data.addedIntake!.sentAt ? ` (sent ${day(data.addedIntake!.sentAt)})` : ''}.{keptFromRecord.length > 0 && ` Kept from the record as well: ${keptFromRecord.join(', ')}.`}</p>}
-          {parts.length > 0 && <p>{capitalise(parts.join(' · '))}. <a href="#consent" class="font-semibold underline underline-offset-2" data-rec-go="consent">See Consent</a></p>}
-        </Callout>
-      );
-    })()}
-    {saved === 'form' && data.added && addedConsents && (
-      <Callout tone="success" class="mt-4" title={data.added.addedAs === 'new' ? `Added from the patient forms (${data.added.ref}).` : `Added the patient forms (${data.added.ref}) to ${patient.first_name}’s record.`}>
-        <p>
-          {data.added.addedAs === 'new' ? `${shortName} is on file as ${patient.chart_no}, with the health history from the form` : 'Empty details were filled in, and the record has the health history from the form'}{addedConsents.from.length ? ` and ${andList(addedConsents.from)}` : ''}.
-          {addedConsents.onFile.length > 0 && ` ${capitalise(andList(addedConsents.onFile))} ${addedConsents.onFile.length === 1 ? 'was' : 'were'} already on file.`}
-          {keptFromRecord.length > 0 && ` Kept from the record as well: ${keptFromRecord.join(', ')}.`}
-          {' '}<a href={`${formsBase}${data.added.id}/`} class="font-semibold underline underline-offset-2">See the form’s answers</a>
-        </p>
-      </Callout>
-    )}
-    {saved === 'form' && addedConsents && addedConsents.none.length > 0 && (
-      <Callout tone="warn" role="alert" class="mt-3" title="No consent was recorded from this form.">
-        <p>The birth date on the record makes {patient.first_name} under 18 on the day the form was signed, and {patient.first_name} signed it themself. A parent or guardian needs to agree: record it in <a href="#consent" class="font-semibold underline underline-offset-2" data-rec-go="consent">Consent</a>.</p>
-      </Callout>
-    )}
-    {usedLabel && !formUseProblem && <Callout tone="success" class="mt-4" text={`The ${usedLabel} on the record is now the one from ${differs?.from ?? 'the form'}.`} />}
-    {formUseProblem && <Callout tone="alert" class="mt-4" text={formUseProblem} />}
-    {differs && differs.list.length > 0 && (
-      <Callout tone="warn" role={saved === 'form' || saved === 'intake' ? 'alert' : undefined} class="mt-3" title={`${differs.says} something the record does not. The record kept what it had:`} data-rec-differs={differs.kind}>
-        <ul class="fm-diff">
-          {differs.list.map((d) => (
-            <li class="fm-diff-use">
-              <span class="min-w-0"><span class="fm-diff-k">{d.label}</span>On file: {d.onFile || 'nothing'}<br />On {differs.kind === 'form' ? 'the form' : 'their forms'}: {d.onForm}</span>
-              {canEdit && TAKEABLE.has(d.field) && (
-                <form method="post" action={`${here}?${differs.param}=${differs.id}#overview`}>
-                  <Csrf />
-                  <input type="hidden" name="intent" value={differs.intent} />
-                  <input type="hidden" name={differs.param} value={differs.id} />
-                  <input type="hidden" name="field" value={d.field} />
-                  <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm">Use {d.onForm.length > 24 ? (differs.kind === 'form' ? 'the form’s' : 'theirs') : d.onForm}</button>
-                </form>
-              )}
-            </li>
-          ))}
-        </ul>
-        {canEdit && <p class="mt-2">{differs.list.some((d) => d.field === 'phone' || d.field === 'email') ? 'Check a mobile or email with the patient before you use it: visits and reminders go by mobile. ' : ''}A birth date changes in the Health section.</p>}
-      </Callout>
-    )}
 
-    <dl class="pp-facts mt-2">
-      <div><dt>{hereNow ? 'Today, now' : 'Next visit'}</dt><dd>{nextValue}{nextNote && <span class="pp-facts-note"> · {nextNote}</span>}</dd></div>
-      <div><dt>Last visit</dt><dd>{lastVisit ? dateText(manilaDay(lastVisit.starts_at)) : 'None yet'}{lastVisit && [lastVisit.reason, lastVisit.dentist].filter(Boolean).length > 0 && <span class="pp-facts-note"> · {[lastVisit.reason, lastVisit.dentist].filter(Boolean).join(' · ')}</span>}</dd></div>
-      {money && <div><dt>Balance</dt><dd><a href="#money" data-rec-go="money" class:list={[balance > 0n && 'pp-owed']}>{balance > 0n ? `${pesos(balance)} owed` : balance < 0n ? `${pesos(-balance)} in credit` : 'Nothing owed'}</a></dd></div>}
-      <div><dt>Consent</dt><dd><a href="#consent" data-rec-go="consent">{consentValue}</a></dd></div>
-    </dl>
+    {/* The contents (./_record/RecordNav.astro): the three pages, then what is attached. */}
+    <RecordNav groups={contents} name={shortName} />
   </Pane>
 
-  {/* The record's body: one sheet, as a paper chart is, its contents at the top (./_record/RecordNav.astro). */}
-  <article class="rec-body pp-sheet" data-rec-start={current} aria-label={`${shortName}, patient record`}>
-  <RecordNav items={SECTIONS.map((x, i) => ({ id: x.id, label: x.short, full: x.label, n: i + 1 }))} name={shortName} />
+  {/* The record's body: the paper record's three pages, then what is attached to it (data-rec-start: the part a post
+      comes back to). The side panels that open over any part sit first, outside the pages. */}
+  <div class="rec-body" data-rec-start={current}>
   <div class="rec-main">
 
-  {/* Every visit's panel, outside the sections so it opens from the Treatment record's dates and from Visits alike. */}
+  {/* Every visit's panel, outside the parts so it opens from the Treatment record's dates and from Appointments alike. */}
   <VisitPanels visits={data.fullVisits} slug={clinic.slug} patientId={patient.id} canEdit={canEdit} money={money} open={thisVisit && openVisit === thisVisit.id ? null : openVisit} today={today} firstName={patient.first_name} />
-  {/* Add to plan, Record a treatment and the note, outside the sections too, so the chart's palette can open them over the Chart. */}
+  {/* Add to plan, Record a treatment and the note, outside the parts too, so the chart's palette can open them over the Chart. */}
   {canEdit && <TreatmentPanels c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'done'} chartSid={chartSid} gaps={data.gaps.byPlanItem} />}
   {canEdit && <NotePanel c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'note'} defaultTeeth={noteTeeth} />}
 
-  {/* Today's visit, above the sections: what is still to do at it and what is done (036). */}
-  {thisVisit && (
-    <VisitStrip visit={thisVisit} c={clin} x={ext} signed={data.signed} health={latest} privacy={privacyState} minor={minor} laterVisitAt={laterVisitAt}
-      canEdit={canEdit} money={money} today={today} firstName={patient.first_name} action={here} chargeHref={`${chargeHref}&visit=${thisVisit.id}`} printBase={`${here}rx/`}
-      saved={saved} problem={stripProblem} forms={data.fullVisits.find((v) => v.id === thisVisit.id)?.forms ?? []} consentsBase={`${here}consents/`} aheadDoc={aheadDoc} />
-  )}
-
-  <!-- Overview -->
-  <div id="rec-overview" role="region" aria-labelledby="rec-overview-title" class="rec-sec min-w-0 grid gap-4 content-start" data-rec-panel="overview">
-    <Banner id="overview" n={SECTION_NO['overview']} label={SECTION_LABEL['overview']} />
-    {/* The patient's details boxed as on a printed record's first page, four boxes to a row (two on a phone). */}
-    <dl class="pf-grid" id="overview">
-      {detailRows.map(([k, v]) => {
-        const e = canEdit ? DETAIL_EDIT[k] : undefined;
-        const what = k === 'HMO' ? 'HMO' : k.toLowerCase();
-        return <FormCell label={k} value={v} span={DETAIL_SPAN[k] ?? 1}
-          edit={e && { label: `${v ? 'Change' : 'Add'} the ${what}${e.go ? ' (on the medical history)' : ''}`, open: e.go ? undefined : 'details', go: e.go, field: e.field }} />;
-      })}
-      <FormCell label="Desk note" value={patient.notes} span={2} pre
-        edit={canEdit ? { label: patient.notes ? 'Change the desk note' : 'Add a desk note', open: 'details', field: 'notes' } : undefined} />
-    </dl>
-    <RecallCard recall={clin.recall} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} bookHref={bookHref} texts={me.recall_texts === true} />
-    {data.latestForm && (
-      <Pane as="section" label="From the patient forms">
-        <Head icon="form" title="From the patient forms" meta={`Sent ${day(data.latestForm.submittedAt)} · ${data.latestForm.ref}`}>
-          <a slot="actions" href={`${formsBase}${data.latestForm.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">All answers</a>
-        </Head>
-        {visitFromForm.length ? (
-          <dl class="pp-lines">{visitFromForm.map(([k, v]) => <div class="pp-line"><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
-        ) : <p class="text-[15px] text-ink-2">Nothing about this visit on the form.</p>}
-      </Pane>
+  <!-- Page 1: the letterhead, the patient's chart, the patient information record -->
+  <article class="pp-sheet pp-page" aria-label={`Page 1 of ${PAGES}`}>
+    {/* Today's visit, a note clipped to the front of the paper: what is still to do at it and what is done (036). */}
+    {thisVisit && (
+      <VisitStrip visit={thisVisit} c={clin} x={ext} signed={data.signed} health={latest} privacy={privacyState} minor={minor} laterVisitAt={laterVisitAt}
+        canEdit={canEdit} money={money} today={today} firstName={patient.first_name} action={here} chargeHref={`${chargeHref}&visit=${thisVisit.id}`} printBase={`${here}rx/`}
+        saved={saved} problem={stripProblem} forms={data.fullVisits.find((v) => v.id === thisVisit.id)?.forms ?? []} consentsBase={`${here}consents/`} aheadDoc={aheadDoc} />
     )}
-  </div>
+    <Letterhead clinic={me} chartNo={patient.chart_no} opened={patient.opened} openedBy={openedBy} canEdit={canEdit} />
 
-  <!-- Health -->
-  <div id="rec-health" role="region" aria-labelledby="rec-health-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="health">
-    <Banner id="health" n={SECTION_NO['health']} label={SECTION_LABEL['health']} />
-    <Vitals vitals={ext.vitals} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'vitals'} />
-    <Pane as="section" label="Health" id="health">
-      <Head icon="heart" title="Health history" />
-      {/* The answers as a paper chart writes them, a plus beside each to change it (the form below opens on it). */}
-      <dl class="pf-grid">
-        {LISTS.map((l) => {
-          const v = latest?.[l.key] ?? null;
-          return <FormCell label={l.label} value={listLine(v, l.none)} span={2} alert={l.key === 'allergies' && !!v && v.length > 0}
-            edit={canEdit ? { label: `Add to ${l.label.toLowerCase()}`, go: 'health-form', field: `${l.key}_add` } : undefined} />;
-        })}
-        <FormCell label="Note for the dentist" value={latest?.note ?? null} span={2} pre
-          edit={canEdit ? { label: latest?.note ? 'Change the note for the dentist' : 'Add a note for the dentist', go: 'health-form', field: 'note' } : undefined} />
-      </dl>
-      {(saved === 'health' || saved === 'birth') && <Callout tone="success" class="mt-4" text="Saved." />}
-      {saved === 'nothing' && <Callout tone="info" class="mt-4" text="Nothing was saved: nothing is ticked or typed yet." />}
-      {conflict && (
-        <Callout tone="warn" role="alert" class="mt-4">
-          <p class="font-semibold">
-            {conflict.versionMoved && conflict.latest ? `${conflict.latest.by ?? 'Someone'} saved this record ${when(new Date(conflict.latest.at))}, after you opened it.`
-              : conflict.birthMoved ? `The birth date on file changed to ${dateText(conflict.birth) ?? 'none'} after you opened this page.`
-              : 'This record changed after you opened it.'} Nothing of yours was saved yet.
+    <!-- The patient's chart -->
+    <div id="rec-chart" role="region" aria-labelledby="rec-chart-title" class="rec-sec min-w-0 grid content-start" data-rec-panel="chart">
+      <Banner id="chart" label={SECTION_LABEL['chart']} />
+      {fromChart && saved && CHART_SAVED[saved] && <Callout tone="success" text={CHART_SAVED[saved]} />}
+      {showOffer && current === 'chart' && <ChartOffer state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="chart" leaveHref={leaveOffer('chart')} inChart />}
+      <Pane as="section" label="Chart" id="chart" class="pt-chart-pane">
+        <Head icon="tooth" title="Chart" />
+        {/* The odontogram (src/components/Odontogram.astro, its offline logic untouched): the paper's codes over each
+            tooth and its legend under the arches (`codes`), the palette's record actions for people who may edit
+            records, the plan and done marks for everyone; drawn soft by patients.css ("The chart") and laid out by
+            the width of this card. Where a whole arch still cannot fit (a phone) the line below says so. */}
+        <p class="pt-chart-scroll" data-pt-chart-scroll hidden>Scroll sideways to see every tooth <Icon name="arrow-right" size={16} /></p>
+        <div class="pt-chart" data-pt-chart>
+          <Odontogram codes marks={marks} notation={me.notation as Notation} saveUrl="/api/chart" patientId={patient.id} clinic={clinic.slug} csrf={csrf} actions={canEdit} work={chartWork} />
+        </div>
+        {babyWork && <p class="mt-3 text-[13.5px] text-ink-2">Work on baby teeth is in Treatment; this chart shows permanent teeth only.</p>}
+
+        {/* The chart's history (tooth_state, grouped by the minute and the person), newest first. */}
+        {data.chartChanges.length > 0 && (
+          <details class="pt-more pp-chart-changes">
+            <summary>Changes to the chart ({data.chartChanges.length}) <Icon name="chevron" size={16} class="pt-chev" /></summary>
+            <ol class="pt-list mt-1">
+              {data.chartChanges.map((ch) => (
+                <li class="!block">
+                  <p class="text-[14.5px] font-semibold">{when(new Date(ch.at))}{ch.by ? ` · ${ch.by}` : ''}</p>
+                  <p class="mt-0.5 text-[14px] text-ink-2">{ch.n === 1 ? 'One change' : `${ch.n} changes`} · {ch.teeth.includes(',') ? `teeth ${ch.teeth}` : `tooth ${ch.teeth}`}</p>
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
+      </Pane>
+    </div>
+
+    <!-- The patient information record: basic information, dental history -->
+    <div id="rec-overview" role="region" aria-labelledby="rec-overview-title" class="rec-sec min-w-0 grid content-start" data-rec-panel="overview">
+      <Banner id="overview" label={SECTION_LABEL['overview']} />
+      {/* What a save of the details, an added form or intake, or a detail taken from one did: here, where it lands (#overview). */}
+      {saved === 'new' && <Callout tone="success" class="mb-1" text={`Added. ${shortName} is on file as ${patient.chart_no}; everything from the form is below.`} />}
+      {saved === 'details' && <Callout tone="success" class="mb-1" text="Details saved." />}
+      {saved === 'intake' && (() => {
+        // Just added from an intake (039): what its forms came to, each part a way to the Consent section; added to a patient on file,
+        // what page 1 did to the record (empty details filled, the health history, what the record kept), as the QR forms say it (4.3).
+        const n = (st: string[]) => data.intakeDocs.filter((d) => st.includes(d.state)).length;
+        const signedN = n(['agreed']), toSign = n(['to_sign']), toConfirm = n(['to_confirm']), refused = data.intakeDocs.filter((d) => d.state === 'refused' && d.code !== 'photos').length;
+        const parts = [signedN && `${signedN === 1 ? 'one consent form' : `${signedN} consent forms`} signed`, toSign && `${toSign} to sign at the chair`, toConfirm && `${toConfirm} to confirm`, refused && `${refused} not agreed`].filter(Boolean) as string[];
+        const onFile = data.addedIntake?.addedAs === 'existing';
+        return (
+          <Callout tone="success" class="mb-1" title={onFile ? `Added the forms (${data.addedIntake!.ref}) to ${patient.first_name}’s record.` : `${shortName} is added.`}>
+            {onFile && <p>Empty details were filled in, and the record has the health history {patient.first_name} gave on page 1{data.addedIntake!.sentAt ? ` (sent ${day(data.addedIntake!.sentAt)})` : ''}.{keptFromRecord.length > 0 && ` Kept from the record as well: ${keptFromRecord.join(', ')}.`}</p>}
+            {parts.length > 0 && <p>{capitalise(parts.join(' · '))}. <a href="#consent" class="font-semibold underline underline-offset-2" data-rec-go="consent">See Consent</a></p>}
+          </Callout>
+        );
+      })()}
+      {saved === 'form' && data.added && addedConsents && (
+        <Callout tone="success" class="mb-1" title={data.added.addedAs === 'new' ? `Added from the patient forms (${data.added.ref}).` : `Added the patient forms (${data.added.ref}) to ${patient.first_name}’s record.`}>
+          <p>
+            {data.added.addedAs === 'new' ? `${shortName} is on file as ${patient.chart_no}, with the health history from the form` : 'Empty details were filled in, and the record has the health history from the form'}{addedConsents.from.length ? ` and ${andList(addedConsents.from)}` : ''}.
+            {addedConsents.onFile.length > 0 && ` ${capitalise(andList(addedConsents.onFile))} ${addedConsents.onFile.length === 1 ? 'was' : 'were'} already on file.`}
+            {keptFromRecord.length > 0 && ` Kept from the record as well: ${keptFromRecord.join(', ')}.`}
+            {' '}<a href={`${formsBase}${data.added.id}/`} class="font-semibold underline underline-offset-2">See the form’s answers</a>
           </p>
-          <p class="mt-1.5 text-ink-2">On file now: {birthLine(conflict.birth)}{conflict.latest && <> · {stateLine(conflict.latest)}</>}.</p>
-          <p class="mt-1.5 text-ink-2">Your answers are still below. Check them against what is on file, then press Save again.</p>
         </Callout>
       )}
-      {healthProblems.length > 0 && <Callout tone="alert" class="mt-4" title={`Nothing was saved. ${healthProblems.length === 1 ? 'One thing' : 'A few things'} to fix:`} items={healthProblems} />}
-
-      {/* Who updated it, the change and the earlier versions on one line; an opened form takes the whole width. */}
-      <div class="pp-hist-foot">
-      <p class="pp-small">
-        {!latest ? 'Nothing recorded yet. Ask the patient before treatment.'
-          : answered(latest) ? `Updated ${byLine(latest)}.`
-          : `No health answers yet. Ask the patient before treatment. Last saved ${byLine(latest)}.`}
-      </p>
-      {canEdit && (
-        <details class="pp-edit" open={posted || !!conflict || healthProblems.length > 0 || undefined} data-pp-edit>
-        <summary class="rec-plus rec-plus-text"><span class="rec-plus-mark" aria-hidden="true"><Icon name="plus" size={16} /></span>Change the medical history</summary>
-        <form method="post" action={`${here}#health`} class="mt-5 rec-anchor" id="health-form" data-health-form data-health-unsaved={posted ? '' : undefined}>
-          <Csrf />
-          <input type="hidden" name="intent" value="health" />
-          <input type="hidden" name="base" value={base} />
-          <input type="hidden" name="birth_was" value={birthWas} />
-          {thisVisit && <input type="hidden" name="visit" value={thisVisit.id} />}
-
-          <div class="field border-b border-[var(--ws-hair)] pb-5">
-            <label for="birth_date" class="meta">Birth date</label>
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <input id="birth_date" type="date" name="birth_date" value={birthValue} min="1900-01-01" max={today} class="w-[13.5rem]" data-health-birth data-today={today} />
-              <span class="text-[15px] text-ink-2" aria-live="polite" data-health-age>{formAge !== null && formAge >= 0 ? ageText(formAge) : birthValue ? '' : 'Not on file yet'}</span>
-            </div>
-          </div>
-
-          <HealthLists chips={healthChips} none={healthNone} />
-
-          <label class="field border-t border-[var(--ws-hair)] pt-5">
-            <span class="meta">Note for the dentist</span>
-            <textarea name="note" rows="2" maxlength={NOTE_MAX} placeholder="Anything to know before starting. For example: faints at injections.">{shown.note ?? ''}</textarea>
-          </label>
-
-          <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <button type="submit" class="ws-btn ws-btn-primary min-w-[9rem]" data-health-save><Icon name="check" />Save</button>
-            <span class="ws-pill ws-tint-amber" data-health-dirty hidden={!posted}>Not saved yet</span>
-            <span class="text-[13.5px] text-muted">Saved as a new version under your name. Earlier versions stay.</span>
-          </div>
-        </form>
-        </details>
+      {saved === 'form' && addedConsents && addedConsents.none.length > 0 && (
+        <Callout tone="warn" role="alert" class="mb-1" title="No consent was recorded from this form.">
+          <p>The birth date on the record makes {patient.first_name} under 18 on the day the form was signed, and {patient.first_name} signed it themself. A parent or guardian needs to agree: record it in <a href="#consent" class="font-semibold underline underline-offset-2" data-rec-go="consent">Consent</a>.</p>
+        </Callout>
       )}
-
-      {health.total > 0 && (
-        <details class="pt-more pp-earlier">
-          <summary>Earlier versions ({health.total}) <Icon name="chevron" size={16} class="pt-chev" /></summary>
-          <ol class="pt-list mt-1">
-            {health.versions.map((v, i) => {
-              const prev = health.versions[i + 1] ?? health.older;
-              const what = versionChanges(prev, v);
-              return (
-                <li class="!block">
-                  <p class="text-[14.5px] font-semibold">{byLine(v)}</p>
-                  <p class="mt-0.5 text-[14.5px] text-ink-2">{!prev ? [...what, 'First record.'].join(' · ') : what.length ? what.join(' · ') : 'Checked, no change.'}</p>
-                  <p class="mt-0.5 text-[13.5px] text-muted">{stateLine(v)}</p>
-                </li>
-              );
-            })}
-          </ol>
-          {health.total > health.versions.length && <p class="mt-2 text-[13.5px] text-muted">The {health.versions.length} newest are shown.</p>}
-        </details>
-      )}
-      </div>
-    </Pane>
-  </div>
-
-  <!-- Chart -->
-  <div id="rec-chart" role="region" aria-labelledby="rec-chart-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="chart">
-    <Banner id="chart" n={SECTION_NO['chart']} label={SECTION_LABEL['chart']} />
-    {fromChart && saved && CHART_SAVED[saved] && <Callout tone="success" text={CHART_SAVED[saved]} />}
-    {showOffer && current === 'chart' && <ChartOffer state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="chart" leaveHref={leaveOffer('chart')} inChart />}
-    <Pane as="section" label="Chart" id="chart" class="pt-chart-pane">
-      <Head icon="tooth" title="Chart" />
-      {/* The odontogram (src/components/Odontogram.astro, its offline logic untouched; the palette's record actions
-          for people who may edit records, the plan and done marks for everyone),
-          drawn soft by patients.css ("The chart") and laid out by the width of this card: the
-          teeth fit the card's width, the chart note goes under the arches when there is no room
-          beside them, and where a whole arch still cannot fit (a phone) the line below says so. */}
-      <p class="pt-chart-scroll" data-pt-chart-scroll hidden>Scroll sideways to see every tooth <Icon name="arrow-right" size={16} /></p>
-      <div class="pt-chart" data-pt-chart>
-        <Odontogram marks={marks} notation={me.notation as Notation} saveUrl="/api/chart" patientId={patient.id} clinic={clinic.slug} csrf={csrf} actions={canEdit} work={chartWork} />
-      </div>
-      {babyWork && <p class="mt-3 text-[13.5px] text-ink-2">Work on baby teeth is in Treatment; this chart shows permanent teeth only.</p>}
-
-      {/* The chart's history (tooth_state, grouped by the minute and the person), newest first. */}
-      {data.chartChanges.length > 0 && (
-        <details class="pt-more pp-chart-changes">
-          <summary>Changes to the chart ({data.chartChanges.length}) <Icon name="chevron" size={16} class="pt-chev" /></summary>
-          <ol class="pt-list mt-1">
-            {data.chartChanges.map((ch) => (
-              <li class="!block">
-                <p class="text-[14.5px] font-semibold">{when(new Date(ch.at))}{ch.by ? ` · ${ch.by}` : ''}</p>
-                <p class="mt-0.5 text-[14px] text-ink-2">{ch.n === 1 ? 'One change' : `${ch.n} changes`} · {ch.teeth.includes(',') ? `teeth ${ch.teeth}` : `tooth ${ch.teeth}`}</p>
+      {usedLabel && !formUseProblem && <Callout tone="success" class="mb-1" text={`The ${usedLabel} on the record is now the one from ${differs?.from ?? 'the form'}.`} />}
+      {formUseProblem && <Callout tone="alert" class="mb-1" text={formUseProblem} />}
+      {differs && differs.list.length > 0 && (
+        <Callout tone="warn" role={saved === 'form' || saved === 'intake' ? 'alert' : undefined} class="mb-1" title={`${differs.says} something the record does not. The record kept what it had:`} data-rec-differs={differs.kind}>
+          <ul class="fm-diff">
+            {differs.list.map((d) => (
+              <li class="fm-diff-use">
+                <span class="min-w-0"><span class="fm-diff-k">{d.label}</span>On file: {d.onFile || 'nothing'}<br />On {differs.kind === 'form' ? 'the form' : 'their forms'}: {d.onForm}</span>
+                {canEdit && TAKEABLE.has(d.field) && (
+                  <form method="post" action={`${here}?${differs.param}=${differs.id}#overview`}>
+                    <Csrf />
+                    <input type="hidden" name="intent" value={differs.intent} />
+                    <input type="hidden" name={differs.param} value={differs.id} />
+                    <input type="hidden" name="field" value={d.field} />
+                    <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm">Use {d.onForm.length > 24 ? (differs.kind === 'form' ? 'the form’s' : 'theirs') : d.onForm}</button>
+                  </form>
+                )}
               </li>
             ))}
-          </ol>
-        </details>
+          </ul>
+          {canEdit && <p class="mt-2">{differs.list.some((d) => d.field === 'phone' || d.field === 'email') ? 'Check a mobile or email with the patient before you use it: visits and reminders go by mobile. ' : ''}A birth date changes in the Health section.</p>}
+        </Callout>
       )}
-    </Pane>
-  </div>
-
-  <!-- Treatment -->
-  <div id="rec-treatment" role="region" aria-labelledby="rec-treatment-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="treatment">
-    <Banner id="treatment" n={SECTION_NO['treatment']} label={SECTION_LABEL['treatment']} />
-    <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} gaps={data.gaps.byPlanItem} consentsBase={`${here}consents/`}>
-      {showOffer && current === 'treatment' && <ChartOffer slot="offer" state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="treatment" leaveHref={leaveOffer('treatment')} inChart={false} />}
-    </Treatment>
-    <div class="grid">
-      <Loas loas={ext.loas} plan={clin.plan} payors={ext.hmoPayors} hmoName={patient.hmo_name} memberNo={patient.hmo_member_no} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} settingsHref={`/c/${clinic.slug}/settings/`} />
-      <PayPlans plans={ext.plans} canEdit={canEdit} canBill={money} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} financesBase={links.finances} />
+      {/* Basic information, boxed in the paper's rows (six to a row; two on a phone), each box a button to change it. */}
+      <section class="pp-band" aria-labelledby="pp-basic-title">
+        <h3 class="pp-band-title" id="pp-basic-title">Basic information</h3>
+        <dl class="pf-grid pf-grid-6" id="overview">
+          {basic.map((b) => <FormCell label={b.label} value={b.value} span={b.span} empty={b.empty} edit={editOf(b)} />)}
+        </dl>
+        <dl class="pf-grid" aria-label="More details">
+          {more.map((b) => <FormCell label={b.label} value={b.value} span={b.span} edit={editOf(b)} />)}
+          <FormCell label="Desk note" value={patient.notes} span={4} pre
+            edit={canEdit ? { label: patient.notes ? 'Change the desk note' : 'Add a desk note', open: 'details', field: 'notes' } : undefined} />
+        </dl>
+      </section>
+      <PaperHistory part="dental" latest={latest} own={health.own} visit={thisVisit ? { reason: thisVisit.reason } : null} sex={patient.sex} age={age} xrayHere={xrayHere} canEdit={canEdit} />
     </div>
-  </div>
 
-  <!-- Treatment record -->
-  <div id="rec-treatment-record" role="region" aria-labelledby="rec-treatment-record-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="treatment-record">
-    <Banner id="treatment-record" n={SECTION_NO['treatment-record']} label={SECTION_LABEL['treatment-record']} adds={canEdit ? [{ label: 'Record a treatment done', text: 'Record a treatment', open: 'rec-done-add' }] : []}>
-      {data.ledger.count > 0 && <a href={`${here}treatment-record/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>}
-    </Banner>
-    <TreatmentRecord ledger={data.ledger} money={money} today={today} name={shortName} />
-  </div>
+    <!-- The medical history, and blood pressure -->
+    <div id="rec-health" role="region" aria-labelledby="rec-health-title" class="rec-sec min-w-0 grid content-start" data-rec-panel="health">
+      <Banner id="health" label={SECTION_LABEL['health']} level={3} />
+      <Pane as="section" label={SECTION_LABEL['health']} id="health">
+        {/* The paper's medical history, a box for each question (./_record/PaperHistory.astro); a box opens the folded form
+            with the caret in its field. */}
+        <PaperHistory part="medical" titles={false} latest={latest} own={health.own} visit={thisVisit ? { reason: thisVisit.reason } : null} sex={patient.sex} age={age} xrayHere={xrayHere} canEdit={canEdit} />
+        {(saved === 'health' || saved === 'birth') && <Callout tone="success" class="mt-4" text="Saved." />}
+        {saved === 'nothing' && <Callout tone="info" class="mt-4" text="Nothing was saved: nothing is ticked or typed yet." />}
+        {conflict && (
+          <Callout tone="warn" role="alert" class="mt-4">
+            <p class="font-semibold">
+              {conflict.versionMoved && conflict.latest ? `${conflict.latest.by ?? 'Someone'} saved this record ${when(new Date(conflict.latest.at))}, after you opened it.`
+                : conflict.birthMoved ? `The birth date on file changed to ${dateText(conflict.birth) ?? 'none'} after you opened this page.`
+                : 'This record changed after you opened it.'} Nothing of yours was saved yet.
+            </p>
+            <p class="mt-1.5 text-ink-2">On file now: {birthLine(conflict.birth)}{conflict.latest && <> · {stateLine(conflict.latest)}</>}.</p>
+            <p class="mt-1.5 text-ink-2">Your answers are still below. Check them against what is on file, then press Save again.</p>
+          </Callout>
+        )}
+        {healthProblems.length > 0 && <Callout tone="alert" class="mt-4" title={`Nothing was saved. ${healthProblems.length === 1 ? 'One thing' : 'A few things'} to fix:`} items={healthProblems} />}
 
-  <!-- Notes -->
-  <div id="rec-notes" role="region" aria-labelledby="rec-notes-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="notes">
-    <Banner id="notes" n={SECTION_NO['notes']} label={SECTION_LABEL['notes']} />
-    <Notes c={clin} canEdit={canEdit} saved={saved} />
-  </div>
-
-  <!-- Consent -->
-  <div id="rec-consent" role="region" aria-labelledby="rec-consent-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="consent">
-    <Banner id="consent" n={SECTION_NO['consent']} label={SECTION_LABEL['consent']} />
-    <Pane as="section" label="Privacy consent">
-      <Head icon="shield" title="Privacy consent" />
-      <DeskConsent notice={data.notice} consents={data.consents} canRecord={canEdit} minor={minor} birthKnown={!!patient.birth} dpo={data.dpo} action={`${here}#consent`}
-        problem={consentProblem} givenBy={givenBy} agreedAs={agreedAs} recorded={saved === 'consent' ? 'saved' : saved === 'consent-already' ? 'already' : null}
-        paperForms={data.paperForms} paper={{ ...paperState, recorded: saved === 'paper' ? 'saved' : null }} />
-    </Pane>
-    <ConsentForms docs={data.consentDocs} slug={clinic.slug} patientId={patient.id} firstName={patient.first_name} canEdit={canEdit} mayExplain={data.mayExplainIds}
-      mayCapacity={canEdit && data.treatsHere && !minor && !!patient.birth} capacity={data.capacity} canPrepare={data.canPrepare} offered={data.offeredCodes} />
-    <Pane as="section" label="Signed at visits" id="visit-consents">
-      <Head icon="pen" title="Signed at visits" />
-      {data.signed.length === 0 ? <Empty icon="pen" text="None yet. Open a visit to have it signed on the tablet." /> : (
-        <ul class="rs-list">
-          {data.signed.map((k) => {
-            const v = data.fullVisits.find((x) => x.id === k.visitId);
-            return (
-              <li class="rs-item vx-signed-row">
-                <Signature strokes={k.strokes} name={k.signedBy} />
-                <div class="min-w-0 grid gap-1.5">
-                  <p class="rs-what">{k.signedBy}{k.signedAs === 'guardian' ? `, ${(k.relation ?? 'parent or guardian').toLocaleLowerCase('en')}` : ''}</p>
-                  <p class="rp-row"><span class="rp">Signed {when(k.at)}</span>{k.dentist && <Who name={k.dentist} />}</p>
-                  <p class="text-[14.5px] text-ink">{k.treatment.split('\n').join(' · ')}</p>
-                  {v && <button type="button" class="vx-link" data-ws-open={`rec-visit-${v.key}`} aria-haspopup="dialog">See the visit, {dateText(v.day)}</button>}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </Pane>
-    {data.forms.length > 0 && (
-      <Pane as="section" label="Patient forms" id="patient-forms" class="mt-4 max-md:mt-3">
-        <Head icon="form" title="Patient forms" meta="From the QR code" />
-        <ul class="pt-list fm-rec-list">
-          {data.forms.map((f) => (
-            <li>
-              <div class="min-w-0 text-[14.5px]">
-                <p><span class="font-semibold">Sent {when(f.submittedAt)}</span> <span class="pt-ref ml-1">{f.ref}</span></p>
-                <p class="text-ink-2">Signed by {signedText(f.signedByName, f.signedAs)}. Added {f.addedAs === 'new' ? 'as a new patient' : 'to this record'}{f.addedByName ? ` by ${f.addedByName}` : ''}, {day(f.addedAt)}.</p>
-                <p class="fm-rec-consents">
-                  {(['treatment', 'privacy'] as const).map((k) => {
-                    const what = k === 'treatment' ? 'Examination and treatment' : 'Privacy notice';
-                    const st = f.consentState[k];
-                    return st === 'form' ? <Chip tone="accent" icon="check">{what}</Chip>
-                      : st === 'on-file' ? <Chip tone="neutral" label={`${what}: already on file`} />
-                      : <Chip tone="warn" icon="alert">{`${what}: not recorded (a guardian must agree)`}</Chip>;
-                  })}
-                </p>
-              </div>
-              <span class="flex flex-wrap gap-2">
-                <a href={`${formsBase}${f.id}/`} class="ws-btn ws-btn-quiet ws-btn-sm">See answers</a>
-                <a href={`${formsBase}${f.id}/print/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" />Print</a>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Pane>
-    )}
-  </div>
-
-  <!-- Prescriptions -->
-  <div id="rec-rx" role="region" aria-labelledby="rec-rx-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="rx">
-    <Banner id="rx" n={SECTION_NO['rx']} label={SECTION_LABEL['rx']} />
-    <Prescriptions c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} firstName={patient.first_name} printBase={`${here}rx/`} allergies={allergies} typedRows={rxTyped} visitId={thisVisit?.id ?? null} openNow={openNow === 'rx'} today={today} ptrFix={ptrFix} />
-    <div>
-      <Letters letters={ext.letters} clinicians={clin.clinicians} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} printBase={`${here}letters/`} lastVisit={lastVisit ? manilaDay(lastVisit.starts_at) : null} conditions={conditions} ptrFix={ptrFix} />
-    </div>
-  </div>
-
-  <!-- Files -->
-  <div id="rec-files" role="region" aria-labelledby="rec-files-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="files">
-    <Banner id="files" n={SECTION_NO['files']} label={SECTION_LABEL['files']} />
-    <Files c={clin} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} fileBase={`${here}files/`} visitId={thisVisit?.id ?? null} openNow={openNow === 'file'} />
-  </div>
-
-  <!-- Visits -->
-  <div id="rec-visits" role="region" aria-labelledby="rec-visits-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="visits">
-    <Banner id="visits" n={SECTION_NO['visits']} label={SECTION_LABEL['visits']} adds={[{ label: `Book a visit for ${patient.first_name}`, text: 'Book a visit', href: bookHref }]} />
-    <Pane title="Visits" icon="calendar" id="visits" meta={visits.length === 200 ? 'The newest 200' : undefined} pad="none">
-      {visits.length === 0 ? (
-        <div class="px-6 py-3 max-md:px-4"><Empty icon="calendar" text="No visits yet." action={canEdit ? { label: 'Bring in past visits from a spreadsheet', href: importHref } : { label: 'Book the first one', href: bookHref }} /></div>
-      ) : (
-        <table class="ws-table">
-          <caption class="sr-only">Visits of {shortName}, newest first</caption>
-          <thead>
-            <tr>
-              <th scope="col" class="meta">When</th>
-              <th scope="col" class="meta">Service</th>
-              <th scope="col" class="meta">Dentist</th>
-              <th scope="col" class="meta">Teeth</th>
-              <th scope="col" class="meta">Status</th>
-              {money && <th scope="col" class="meta text-right">Charged</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {visits.map((v) => (
-              <tr>
-                <td class="text-[14.5px] whitespace-nowrap tabular-nums">
-                  <span class="font-semibold">{visitText(v)}</span>
-                  <span class="block text-[13px] text-muted">{SOURCE[v.source] ?? v.source}{v.chair ? ` · chair ${v.chair}` : ''}</span>
-                  <button type="button" class="vx-link" data-ws-open={`rec-visit-${v.id}`} aria-haspopup="dialog">See the whole visit</button>
-                </td>
-                <td class="text-[15px]"><span class="meta ws-cell-label">Service</span>{v.reason ?? '—'}{v.notes && <span class="block max-w-[40ch] text-[13.5px] text-ink-2 max-lg:max-w-none">{v.notes}</span>}</td>
-                <td class="text-[15px]"><span class="meta ws-cell-label">Dentist</span>{v.dentist ? <Who name={v.dentist} /> : <span class="text-ink-2">—</span>}{v.dentist_free && <span class="block text-[13px] text-muted">As the old record has it</span>}</td>
-                <td class="text-[15px] tabular-nums"><span class="meta ws-cell-label">Teeth</span>{v.teeth?.length ? <span class="rp-row">{v.teeth.map((t: number) => <span class="rp rp-tooth">{t}</span>)}</span> : <span class="text-ink-2">—</span>}</td>
-                <td><span class="meta ws-cell-label">Status</span><Chip status={v.status} /></td>
-                {money && <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Charged</span>{v.charged ? pesos(v.charged) : <span class="text-muted">—</span>}</td>}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Pane>
-  </div>
-
-  <!-- Money -->
-  {money && (
-    <div id="rec-money" role="region" aria-labelledby="rec-money-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="money">
-    <Banner id="money" n={SECTION_NO['money']} label={SECTION_LABEL['money']} adds={[{ label: `A new statement for ${patient.first_name}`, text: 'New charge', href: chargeHref }]}>
-      <a href={`${links.finances}?patient=${patient.id}&view=all`} class="ws-btn ws-btn-quiet ws-btn-sm">In Finances <Icon name="arrow-right" size={16} /></a>
-    </Banner>
-      <Pane title="Money" icon="money" id="money" pad="none">
-        <p class="pp-money">
-          {balance > 0n ? <>Owes <span class="font-semibold text-caries tabular-nums">{pesos(balance)}</span>{openCount ? ` on ${openCount} ${openCount === 1 ? 'statement' : 'statements'}` : ''}.</>
-            : balance < 0n ? <>In credit <span class="font-semibold tabular-nums">{pesos(-balance)}</span>.</>
-            : <>Nothing owed.</>}
-          {' '}Paid <span class="font-semibold tabular-nums">{pesos(paidAll)}</span> in all.
-          {stmts.length === 0 ? ' No statements yet.' : ''}
-          <span class="pp-small"> Statements of account, not BIR receipts.</span>
+        {/* Who updated it, the change and the earlier versions on one line; an opened form takes the whole width. */}
+        <div class="pp-hist-foot">
+        <p class="pp-small">
+          {!latest ? 'Nothing recorded yet. Ask the patient before treatment.'
+            : answered(latest) ? `Updated ${byLine(latest)}.`
+            : `No health answers yet. Ask the patient before treatment. Last saved ${byLine(latest)}.`}
         </p>
-        {stmts.length > 0 && (
+        {canEdit && (
+          <details class="pp-edit" open={posted || !!conflict || healthProblems.length > 0 || undefined} data-pp-edit>
+          <summary class="rec-plus rec-plus-text"><span class="rec-plus-mark" aria-hidden="true"><Icon name="plus" size={16} /></span>Change the medical history</summary>
+          <form method="post" action={`${here}#health`} class="mt-5 rec-anchor" id="health-form" data-health-form data-health-unsaved={posted ? '' : undefined}>
+            <Csrf />
+            <input type="hidden" name="intent" value="health" />
+            <input type="hidden" name="base" value={base} />
+            <input type="hidden" name="birth_was" value={birthWas} />
+            {thisVisit && <input type="hidden" name="visit" value={thisVisit.id} />}
+
+            <div class="field border-b border-[var(--ws-hair)] pb-5">
+              <label for="birth_date" class="meta">Date of birth</label>
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <input id="birth_date" type="date" name="birth_date" value={birthValue} min="1900-01-01" max={today} class="w-[13.5rem]" data-health-birth data-today={today} />
+                <span class="text-[15px] text-ink-2" aria-live="polite" data-health-age>{formAge !== null && formAge >= 0 ? ageText(formAge) : birthValue ? '' : 'Not on file yet'}</span>
+              </div>
+            </div>
+            <PaperHistoryFields paper={latest?.paper ?? null} typed={posted?.paperTyped ?? null} chips={healthChips} none={healthNone} ask={asksPregnancy(patient.sex, age)} />
+
+            <label class="field border-t border-[var(--ws-hair)] pt-5">
+              <span class="meta">Note for the dentist</span>
+              <textarea name="note" rows="2" maxlength={NOTE_MAX} placeholder="Anything to know before starting. For example: faints at injections.">{shown.note ?? ''}</textarea>
+            </label>
+
+            <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
+              <button type="submit" class="ws-btn ws-btn-primary min-w-[9rem]" data-health-save><Icon name="check" />Save</button>
+              <span class="ws-pill ws-tint-amber" data-health-dirty hidden={!posted}>Not saved yet</span>
+              <span class="text-[13.5px] text-muted">Saved as a new version under your name. Earlier versions stay.</span>
+            </div>
+          </form>
+          </details>
+        )}
+
+        {health.total > 0 && (
+          <details class="pt-more pp-earlier">
+            <summary>Earlier versions ({health.total}) <Icon name="chevron" size={16} class="pt-chev" /></summary>
+            <ol class="pt-list mt-1">
+              {health.versions.map((v, i) => {
+                const prev = health.versions[i + 1] ?? health.older;
+                const what = versionChanges(prev, v);
+                return (
+                  <li class="!block">
+                    <p class="text-[14.5px] font-semibold">{byLine(v)}</p>
+                    <p class="mt-0.5 text-[14.5px] text-ink-2">{!prev ? [...what, 'First record.'].join(' · ') : what.length ? what.join(' · ') : 'Checked, no change.'}</p>
+                    <p class="mt-0.5 text-[13.5px] text-muted">{stateLine(v)}</p>
+                  </li>
+                );
+              })}
+            </ol>
+            {health.total > health.versions.length && <p class="mt-2 text-[13.5px] text-muted">The {health.versions.length} newest are shown.</p>}
+          </details>
+        )}
+        </div>
+      </Pane>
+      <Vitals vitals={ext.vitals} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'vitals'} />
+    </div>
+    <p class="pp-page-no">Page 1 of {PAGES}</p>
+  </article>
+
+  <!-- Page 2: informed consent -->
+  <article class="pp-sheet pp-page" aria-label={`Page 2 of ${PAGES}`}>
+    <div id="rec-consent" role="region" aria-labelledby="rec-consent-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="consent">
+      <Banner id="consent" label={SECTION_LABEL['consent']} adds={consentAdds} />
+      {saved === 'capacity' && <Callout tone="success" class="mb-1" text="Recorded. For 30 days a representative may sign consent forms for them, on a clinic device." />}
+      {saved === 'consent-removed' && <Callout tone="success" class="mb-1" text="The form was removed." />}
+      {q.get('capacity') === 'refused' && <Callout tone="alert" class="mb-1" text="Nothing was recorded. Only a treating dentist here with a PRC licence records this, for an adult patient with a birth date on file, and with a reason of at most 300 characters." />}
+      {/* The privacy notice first (not on the paper; the law asks for it): one ruled line once it is on record, else the
+          desk's form. Then the paper's page 2 (./_record/ConsentForms). */}
+      <div class="cf-privacy">
+        {!privacyLine && <h3 class="pp-band-title">Privacy notice</h3>}
+        <DeskConsent line notice={data.notice} consents={data.consents} canRecord={canEdit} minor={minor} birthKnown={!!patient.birth} dpo={data.dpo} action={`${here}#consent`}
+          problem={consentProblem} givenBy={givenBy} agreedAs={agreedAs} recorded={saved === 'consent' ? 'saved' : saved === 'consent-already' ? 'already' : null}
+          paper={{ ...paperState, recorded: saved === 'paper' ? 'saved' : null }} />
+      </div>
+      <ConsentForms docs={data.consentDocs} slug={clinic.slug} patientId={patient.id} firstName={patient.first_name} canEdit={canEdit} mayExplain={data.mayExplainIds}
+        mayCapacity={mayCapacity} capacity={data.capacity} canPrepare={data.canPrepare} offered={data.offeredCodes}
+        general={data.general} signed={data.signed} visits={data.fullVisits} paperForms={data.paperForms} forms={data.forms} formsBase={formsBase} />
+    </div>
+    <p class="pp-page-no">Page 2 of {PAGES}</p>
+  </article>
+
+  <!-- Page 3: the treatment record -->
+  <article class="pp-sheet pp-page" aria-label={`Page 3 of ${PAGES}`}>
+    <div id="rec-treatment-record" role="region" aria-labelledby="rec-treatment-record-title" class="rec-sec min-w-0 grid content-start" data-rec-panel="treatment-record">
+      <Banner id="treatment-record" label={SECTION_LABEL['treatment-record']} adds={canEdit ? [{ label: 'Record a treatment done', text: 'Record a treatment', open: 'rec-done-add' }] : []}>
+        {data.ledger.count > 0 && <a href={`${here}treatment-record/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>}
+      </Banner>
+      <TreatmentRecord ledger={data.ledger} money={money} today={today} name={shortName} />
+    </div>
+    <p class="pp-page-no">Page 3 of {PAGES}</p>
+  </article>
+
+  <!-- Attached to this record: each folded to one line until it is opened -->
+  <section class="pp-attached" aria-labelledby="pp-attached-title">
+    <h2 class="pp-attached-title" id="pp-attached-title">Attached to this record</h2>
+
+    <Attached id="treatment" label={SECTION_LABEL['treatment']} status={STATUS.treatment} open={openSheets.has('treatment')}>
+      <Treatment c={clin} loas={ext.loas} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={recordSaved(saved) === 'treatment' ? saved : null} today={today} firstName={patient.first_name} visitId={thisVisit?.id ?? null} gaps={data.gaps.byPlanItem} consentsBase={`${here}consents/`}>
+        {showOffer && current === 'treatment' && <ChartOffer slot="offer" state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="treatment" leaveHref={leaveOffer('treatment')} inChart={false} />}
+      </Treatment>
+      <div class="grid">
+        <Loas loas={ext.loas} plan={clin.plan} payors={ext.hmoPayors} hmoName={patient.hmo_name} memberNo={patient.hmo_member_no} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} settingsHref={`/c/${clinic.slug}/settings/`} />
+        <PayPlans plans={ext.plans} canEdit={canEdit} canBill={money} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} financesBase={links.finances} />
+      </div>
+    </Attached>
+
+    <Attached id="notes" label={SECTION_LABEL['notes']} status={STATUS.notes} open={openSheets.has('notes')}>
+      <Notes c={clin} canEdit={canEdit} saved={saved} />
+    </Attached>
+
+    <Attached id="rx" label={SECTION_LABEL['rx']} status={STATUS.rx} open={openSheets.has('rx')}>
+      <Prescriptions c={clin} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} firstName={patient.first_name} printBase={`${here}rx/`} allergies={allergies} typedRows={rxTyped} visitId={thisVisit?.id ?? null} openNow={openNow === 'rx'} today={today} ptrFix={ptrFix} />
+      <div>
+        <Letters letters={ext.letters} clinicians={clin.clinicians} canEdit={canEdit} action={recHere} meId={session.staffId} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} printBase={`${here}letters/`} lastVisit={lastVisit ? manilaDay(lastVisit.starts_at) : null} conditions={conditions} ptrFix={ptrFix} />
+      </div>
+    </Attached>
+
+    <Attached id="files" label={SECTION_LABEL['files']} status={STATUS.files} open={openSheets.has('files')}>
+      <Files c={clin} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} fileBase={`${here}files/`} visitId={thisVisit?.id ?? null} openNow={openNow === 'file'} />
+    </Attached>
+
+    {/* The appointments, with the next check-up (the ledger's Next visit, as the paper keeps it, is on page 3). */}
+    <Attached id="visits" label={SECTION_LABEL['visits']} status={STATUS.visits} open={openSheets.has('visits')} adds={[{ label: `Book a visit for ${patient.first_name}`, text: 'Book a visit', href: bookHref }]}>
+      <RecallCard recall={clin.recall} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} bookHref={bookHref} texts={me.recall_texts === true} />
+      <Pane title="Visits" icon="calendar" id="visits" meta={visits.length === 200 ? 'The newest 200' : undefined} pad="none">
+        {visits.length === 0 ? (
+          <div class="px-6 py-3 max-md:px-4"><Empty icon="calendar" text="No visits yet." action={canEdit ? { label: 'Bring in past visits from a spreadsheet', href: importHref } : { label: 'Book the first one', href: bookHref }} /></div>
+        ) : (
           <table class="ws-table">
-            <caption class="sr-only">Statements of {shortName}, newest first</caption>
+            <caption class="sr-only">Visits of {shortName}, newest first</caption>
             <thead>
               <tr>
-                <th scope="col" class="meta">Statement</th>
-                <th scope="col" class="meta">For</th>
-                <th scope="col" class="meta text-right">Total</th>
-                <th scope="col" class="meta text-right">Paid</th>
-                <th scope="col" class="meta text-right">Left</th>
+                <th scope="col" class="meta">When</th>
+                <th scope="col" class="meta">Service</th>
+                <th scope="col" class="meta">Dentist</th>
+                <th scope="col" class="meta">Teeth</th>
                 <th scope="col" class="meta">Status</th>
+                {money && <th scope="col" class="meta text-right">Charged</th>}
               </tr>
             </thead>
             <tbody>
-              {stmts.map((s) => {
-                const st = BILL_STATUS[s.status] ?? BILL_STATUS.issued;
+              {visits.map((v) => (
+                <tr>
+                  <td class="text-[14.5px] whitespace-nowrap tabular-nums">
+                    <span class="font-semibold">{visitText(v)}</span>
+                    <span class="block text-[13px] text-muted">{SOURCE[v.source] ?? v.source}{v.chair ? ` · chair ${v.chair}` : ''}</span>
+                    <button type="button" class="vx-link" data-ws-open={`rec-visit-${v.id}`} aria-haspopup="dialog">See the whole visit</button>
+                  </td>
+                  <td class="text-[15px]"><span class="meta ws-cell-label">Service</span>{v.reason ?? '—'}{v.notes && <span class="block max-w-[40ch] text-[13.5px] text-ink-2 max-lg:max-w-none">{v.notes}</span>}</td>
+                  <td class="text-[15px]"><span class="meta ws-cell-label">Dentist</span>{v.dentist ? <Who name={v.dentist} /> : <span class="text-ink-2">—</span>}{v.dentist_free && <span class="block text-[13px] text-muted">As the old record has it</span>}</td>
+                  <td class="text-[15px] tabular-nums"><span class="meta ws-cell-label">Teeth</span>{v.teeth?.length ? <span class="rp-row">{v.teeth.map((t: number) => <span class="rp rp-tooth">{t}</span>)}</span> : <span class="text-ink-2">—</span>}</td>
+                  <td><span class="meta ws-cell-label">Status</span><Chip status={v.status} /></td>
+                  {money && <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Charged</span>{v.charged ? pesos(v.charged) : <span class="text-muted">—</span>}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Pane>
+    </Attached>
+
+    {money && (
+      <Attached id="money" label={SECTION_LABEL['money']} status={STATUS.money} owed={balance > 0n} open={openSheets.has('money')} adds={[{ label: `A new statement for ${patient.first_name}`, text: 'New charge', href: chargeHref }]}>
+        <a slot="actions" href={`${links.finances}?patient=${patient.id}&view=all`} class="ws-btn ws-btn-quiet ws-btn-sm">In Finances <Icon name="arrow-right" size={16} /></a>
+        <Pane title="Money" icon="money" id="money" pad="none">
+          <p class="pp-money">
+            {balance > 0n ? <>Owes <span class="font-semibold text-caries tabular-nums">{pesos(balance)}</span>{openCount ? ` on ${openCount} ${openCount === 1 ? 'statement' : 'statements'}` : ''}.</>
+              : balance < 0n ? <>In credit <span class="font-semibold tabular-nums">{pesos(-balance)}</span>.</>
+              : <>Nothing owed.</>}
+            {' '}Paid <span class="font-semibold tabular-nums">{pesos(paidAll)}</span> in all.
+            {stmts.length === 0 ? ' No statements yet.' : ''}
+            <span class="pp-small"> Statements of account, not BIR receipts.</span>
+          </p>
+          {stmts.length > 0 && (
+            <table class="ws-table">
+              <caption class="sr-only">Statements of {shortName}, newest first</caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="meta">Statement</th>
+                  <th scope="col" class="meta">For</th>
+                  <th scope="col" class="meta text-right">Total</th>
+                  <th scope="col" class="meta text-right">Paid</th>
+                  <th scope="col" class="meta text-right">Left</th>
+                  <th scope="col" class="meta">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stmts.map((s) => {
+                  const st = BILL_STATUS[s.status] ?? BILL_STATUS.issued;
+                  return (
+                    <tr>
+                      <td class="whitespace-nowrap"><a href={`${links.finances}${s.id}/`} class="inline-flex min-h-11 items-center font-mono text-[14px] font-medium text-accent underline-offset-4 hover:underline">{statementNo(s.series_prefix, s.number)}</a><span class="block text-[13px] text-muted tabular-nums">{dateText(manilaDay(s.issued_at))}{s.imported_at ? ' · brought in' : ''}</span></td>
+                      <td class="text-[14.5px]"><span class="meta ws-cell-label">For</span>{s.first_line ?? '—'}{s.n_lines > 1 && <span class="text-muted"> and {s.n_lines - 1} more</span>}{s.payor_name && <span class="block text-[13px] text-muted">{s.payor_name} part {pesos(fromDb(s.payor_share))}</span>}</td>
+                      <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Total</span>{pesos(s.total)}</td>
+                      <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Paid</span>{pesos(s.paid)}</td>
+                      <td class="text-right text-[15px] font-semibold tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Left</span>{pesos(s.left)}</td>
+                      <td><span class="meta ws-cell-label">Status</span><span class:list={['ws-chip', STMT_TINT[s.status] ?? 'ws-tint-slate']}>{st.label}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </Pane>
+      </Attached>
+    )}
+
+    <Attached id="texts" label={SECTION_LABEL['texts']} status={STATUS.texts} open={openSheets.has('texts')}>
+      <a slot="actions" href={links.messages} class="ws-btn ws-btn-quiet ws-btn-sm">All messages <Icon name="arrow-right" size={16} /></a>
+      <Pane title="Texts" icon="message" id="texts" meta={data.texts.length === 50 ? 'The newest 50' : undefined} pad="none">
+        {data.texts.length === 0 ? (
+          <Empty icon="message" text="No texts yet. Confirmations and reminders show here." />
+        ) : (
+          <table class="ws-table">
+            <caption class="sr-only">Texts to and from {shortName}, newest first</caption>
+            <thead><tr><th scope="col" class="meta">When</th><th scope="col" class="meta">Status</th><th scope="col" class="meta">Text</th></tr></thead>
+            <tbody>
+              {data.texts.map((m) => {
+                const st = textStatus(m);
                 return (
                   <tr>
-                    <td class="whitespace-nowrap"><a href={`${links.finances}${s.id}/`} class="inline-flex min-h-11 items-center font-mono text-[14px] font-medium text-accent underline-offset-4 hover:underline">{statementNo(s.series_prefix, s.number)}</a><span class="block text-[13px] text-muted tabular-nums">{dateText(manilaDay(s.issued_at))}{s.imported_at ? ' · brought in' : ''}</span></td>
-                    <td class="text-[14.5px]"><span class="meta ws-cell-label">For</span>{s.first_line ?? '—'}{s.n_lines > 1 && <span class="text-muted"> and {s.n_lines - 1} more</span>}{s.payor_name && <span class="block text-[13px] text-muted">{s.payor_name} part {pesos(fromDb(s.payor_share))}</span>}</td>
-                    <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Total</span>{pesos(s.total)}</td>
-                    <td class="text-right text-[15px] tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Paid</span>{pesos(s.paid)}</td>
-                    <td class="text-right text-[15px] font-semibold tabular-nums max-lg:text-left"><span class="meta ws-cell-label">Left</span>{pesos(s.left)}</td>
-                    <td><span class="meta ws-cell-label">Status</span><span class:list={['ws-chip', STMT_TINT[s.status] ?? 'ws-tint-slate']}>{st.label}</span></td>
+                    <td class="text-[14.5px] whitespace-nowrap tabular-nums">{when(new Date(m.created_at))}<span class="block text-[13px] text-muted">{m.direction === 'in' ? 'Reply' : TEXT_KIND[m.kind ?? ''] ?? 'Text'}</span></td>
+                    <td><span class="meta ws-cell-label">Status</span><Chip tone={st.tone} label={st.label} dot={st.tone === 'alert'} /></td>
+                    <td class="max-w-[40rem] text-[14.5px] leading-relaxed break-words whitespace-pre-wrap"><span class="meta ws-cell-label">Text</span>{m.body ?? <span class="text-muted">A sign-in code. It is not shown here.</span>}</td>
                   </tr>
                 );
               })}
@@ -1301,41 +1308,12 @@ const recHere = here;
           </table>
         )}
       </Pane>
-    </div>
-  )}
-
-  <!-- Texts -->
-  <div id="rec-texts" role="region" aria-labelledby="rec-texts-title" class="rec-sec min-w-0 grid gap-4 max-md:gap-3 content-start" data-rec-panel="texts">
-    <Banner id="texts" n={SECTION_NO['texts']} label={SECTION_LABEL['texts']}>
-      <a href={links.messages} class="ws-btn ws-btn-quiet ws-btn-sm">All messages <Icon name="arrow-right" size={16} /></a>
-    </Banner>
-    <Pane title="Texts" icon="message" id="texts" meta={data.texts.length === 50 ? 'The newest 50' : undefined} pad="none">
-      {data.texts.length === 0 ? (
-        <Empty icon="message" text="No texts yet. Confirmations and reminders show here." />
-      ) : (
-        <table class="ws-table">
-          <caption class="sr-only">Texts to and from {shortName}, newest first</caption>
-          <thead><tr><th scope="col" class="meta">When</th><th scope="col" class="meta">Status</th><th scope="col" class="meta">Text</th></tr></thead>
-          <tbody>
-            {data.texts.map((m) => {
-              const st = textStatus(m);
-              return (
-                <tr>
-                  <td class="text-[14.5px] whitespace-nowrap tabular-nums">{when(new Date(m.created_at))}<span class="block text-[13px] text-muted">{m.direction === 'in' ? 'Reply' : TEXT_KIND[m.kind ?? ''] ?? 'Text'}</span></td>
-                  <td><span class="meta ws-cell-label">Status</span><Chip tone={st.tone} label={st.label} dot={st.tone === 'alert'} /></td>
-                  <td class="max-w-[40rem] text-[14.5px] leading-relaxed break-words whitespace-pre-wrap"><span class="meta ws-cell-label">Text</span>{m.body ?? <span class="text-muted">A sign-in code. It is not shown here.</span>}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </Pane>
-  </div>
+    </Attached>
+  </section>
 
   <p class="pp-small pp-foot">Every look at this record, and every change to it, is logged under the person’s name.</p>
   </div>
-  </article>
+  </div>
 
   {canEdit && (
     <SidePanel id="details" title="Edit details" meta={shortName} wide open={detailsProblems.length > 0 || openNow === 'details'}>
@@ -1344,6 +1322,8 @@ const recHere = here;
       <form method="post" action={(detailsDash ?? dashVisit) ? here : `${here}#overview`} class="grid gap-4">
         <Csrf />
         <input type="hidden" name="intent" value="details" />
+        {/* This form draws the paper record's Occupation and Parent or guardian, so they are read from it (import.ts readPersonForm). */}
+        <input type="hidden" name="has_paper_fields" value="1" />
         {(detailsDash ?? dashVisit) && <input type="hidden" name="dash" value={detailsDash ?? dashVisit} />}
         <div class="grid gap-4 sm:grid-cols-2">
           <label class="field"><span class="meta">Last name</span><input name="last_name" value={d.last} required maxlength="60" autocomplete="off" /></label>
@@ -1359,12 +1339,16 @@ const recHere = here;
             ))}
           </div>
         </fieldset>
+        <label class="field"><span class="meta">Occupation</span><input name="occupation" value={d.occupation ?? ''} maxlength={OCCUPATION_MAX} autocomplete="off" /></label>
         <div class="grid gap-4 sm:grid-cols-2">
           <label class="field"><span class="meta">Mobile</span><input type="tel" name="mobile" value={d.phone ? prettyPhone(d.phone) : ''} inputmode="tel" autocomplete="off" /><span class={help}>Reminders go to it.</span></label>
           <label class="field"><span class="meta">Email</span><input type="email" name="email" value={d.email ?? ''} maxlength="120" autocomplete="off" /></label>
           <label class="field sm:col-span-2"><span class="meta">Address</span><input name="address" value={d.address ?? ''} maxlength="200" autocomplete="off" /></label>
           <label class="field"><span class="meta">City or town</span><input name="city" value={d.city ?? ''} maxlength="80" autocomplete="off" /></label>
           <label class="field"><span class="meta">Province</span><input name="province" value={d.province ?? ''} maxlength="80" autocomplete="off" /></label>
+          <label class="field sm:col-span-2"><span class="meta">Parent’s or guardian’s name</span><input name="guardian_name" value={d.guardianName ?? ''} maxlength={GUARDIAN_NAME_MAX} autocomplete="off" /></label>
+          <label class="field"><span class="meta">Their relation</span><input name="guardian_relation" value={d.guardianRelation ?? ''} maxlength={RELATION_MAX} autocomplete="off" placeholder="Mother, father, guardian" /></label>
+          <label class="field"><span class="meta">Their mobile</span><input type="tel" name="guardian_phone" value={d.guardianPhone ? prettyPhone(d.guardianPhone) : ''} maxlength="20" inputmode="tel" autocomplete="off" /></label>
           <label class="field"><span class="meta">HMO</span><input name="hmo_name" value={d.hmoName ?? ''} maxlength="80" autocomplete="off" list="rec-hmo-names" /></label>
           <label class="field"><span class="meta">HMO member no.</span><input name="hmo_member_no" value={d.hmoMemberNo ?? ''} maxlength="40" autocomplete="off" /></label>
           <label class="field"><span class="meta">Emergency contact</span><input name="emergency_name" value={d.emergencyName ?? ''} maxlength="120" autocomplete="off" /></label>
@@ -1374,17 +1358,23 @@ const recHere = here;
         </div>
         <label class="field"><span class="meta">Notes</span><textarea name="notes" rows="3" maxlength={NOTES_MAX} data-rec-details-notes>{d.notes ?? ''}</textarea><span class={help}>The desk sees this beside the patient’s visits on the Dashboard. Keep health details in Health.</span></label>
         <datalist id="rec-hmo-names">{data.hmoNames.map((h) => <option value={h} />)}</datalist>
-        <p class="flex items-start gap-2 text-[13.5px] text-muted"><Icon name="info" size={16} class="mt-0.5 shrink-0" />The birth date is changed on Health, where its history is kept.</p>
+        <p class="flex items-start gap-2 text-[13.5px] text-muted"><Icon name="info" size={16} class="mt-0.5 shrink-0" />The date of birth is changed on the medical history, where its history is kept.</p>
         <div><button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save details</button></div>
       </form>
     </SidePanel>
   )}
 </ClinicLayout>
 
+<style is:global>
+  /* Print the record: the paper's A4 (record.css, "Printed"). */
+  @page { size: A4 portrait; margin: 10mm 12mm; }
+</style>
+
 <script>
   import { ageOn, ageText, capitalise } from '../../../../lib/health';
 
-  // --- the parts: all on one sheet; the address says which one, so a reload or a post lands where it was ---
+  // --- the parts: the paper's three pages and the sheets attached to it, on one page; the address says which one, so a
+  // reload or a post lands where it was ---
   // What stays at the top of the screen is the workspace bar: measured, so a part gone to lands just below it
   // (record.css, scroll-margin-top).
   const topBar = document.querySelector<HTMLElement>('[data-ws-top]');
@@ -1393,13 +1383,16 @@ const recHere = here;
   };
   measureTop();
   if (topBar) new ResizeObserver(measureTop).observe(topBar);
-  /** Bring a part, or an element in one, to the top; with `field`, put the caret in that field. */
+  /** Open every <details> around an element: a form folded away (the medical history's), an attached sheet. */
+  const unfold = (el: Element) => { for (let d = el.closest('details'); d; d = d.parentElement?.closest('details') ?? null) d.open = true; };
+  /** Bring a part, or an element in one, to the top; with `field`, put the caret in that field. An attached sheet opens. */
   const show = (name: string, o: { field?: string; focus?: boolean; smooth?: boolean } = {}) => {
     const sec = document.getElementById(`rec-${name}`);
     const el = sec?.matches('[data-rec-panel]') ? sec : document.getElementById(name) ?? sec;
     if (!el) return false;
-    // A form folded away (the medical history's) opens when something goes into it.
-    for (let d = el.closest('details'); d; d = d.parentElement?.closest('details') ?? null) d.open = true;
+    unfold(el);
+    const fold = el.querySelector<HTMLDetailsElement>(':scope > details[data-rec-fold]');
+    if (fold) fold.open = true;
     el.scrollIntoView({ block: 'start', behavior: o.smooth ? 'smooth' : 'auto' });
     const box = o.field ? el.querySelector<HTMLElement>(`[name="${o.field}"]`) : null;
     if (box) box.focus({ preventScroll: true });
@@ -1426,11 +1419,34 @@ const recHere = here;
     say(name);
   });
   window.addEventListener('hashchange', fromHash);
-  // No address to go to: a post comes back to the part it came from (the server's choice, data-rec-start).
+  // No address to go to: a post comes back to the part it came from (the server's choice, data-rec-start; none on a
+  // plain load, which opens at the top of the paper).
   if (!fromHash()) {
     const start = document.querySelector<HTMLElement>('[data-rec-start]')?.dataset.recStart;
-    if (start && start !== 'overview') requestAnimationFrame(() => show(start));
+    if (start) requestAnimationFrame(() => show(start));
   }
+
+  // A side panel inside an attached sheet that is folded is not drawn (a dialog in a closed <details> has no box, and
+  // the page behind it would still go inert): its sheet opens as the panel does, whoever opened it — the More menu,
+  // This visit, a plus. The shell says so on the dialog before it shows it (ws:panel-open, not bubbling: caught here on
+  // the way down). A panel the shell drew open as the page loaded, before this script, the server already put in an
+  // open sheet; this is the net under that.
+  document.addEventListener('ws:panel-open', (e) => { if (e.target instanceof Element) unfold(e.target); }, true);
+  document.querySelectorAll('details:not([open]) dialog[open]').forEach(unfold);
+
+  // Print the record: the three pages as the paper is (record.css, "Printed"). As it prints — this button or the
+  // browser's own Print — the page tells the audit log who printed it (intent printed; nothing comes back).
+  const printer = document.querySelector<HTMLButtonElement>('[data-rec-print]');
+  printer?.addEventListener('click', () => window.print());
+  let printedAt = 0;
+  window.addEventListener('beforeprint', () => {
+    if (!printer?.dataset.recPrint || Date.now() - printedAt < 60_000) return;
+    printedAt = Date.now();
+    const f = new FormData();
+    f.set('_csrf', printer.dataset.recPrint);
+    f.set('intent', 'printed');
+    navigator.sendBeacon(location.pathname, f);
+  });
 
   // ?open=details (the Dashboard's desk note, "Edit"): the caret waits at the end of Notes, once the shell has opened
   // the panel and focused its title; then the address drops open and dash, so Back does not open the panel again.
@@ -1543,7 +1559,8 @@ const recHere = here;
       const add = () => {
         const words = box.value.split(/[,;\n]/).map((s) => capitalise(s.replace(/\s+/g, ' ').trim())).filter(Boolean);
         for (const w of words) {
-          const same = items().find((i) => i.value.toLocaleLowerCase('en') === w.toLocaleLowerCase('en'));
+          // A chip shows the paper's words over the stored one ("High blood pressure" is Hypertension): either finds it.
+          const same = items().find((i) => [i.value, i.nextElementSibling?.textContent ?? ''].some((x) => x.trim().toLocaleLowerCase('en') === w.toLocaleLowerCase('en')));
           if (same) { same.checked = true; continue; }
           const node = tpl.content.firstElementChild!.cloneNode(true) as HTMLElement;
           const input = node.querySelector('input')!;

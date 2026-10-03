@@ -99,11 +99,13 @@ const fail = (status: number, code: string, error: string) => json({ error, code
 
 // The 32 permanent teeth the chart draws: quadrants 1–4, positions 1–8.
 const FDI = new Set([1, 2, 3, 4].flatMap((q) => [1, 2, 3, 4, 5, 6, 7, 8].map((p) => q * 10 + p)));
-// The check constraints on tooth_state, as written in schema.sql.
-const CONDITIONS = new Set(['sound', 'caries', 'filled', 'crown', 'bridge', 'implant', 'root_canal', 'sealant', 'veneer', 'missing', 'unerupted', 'impacted']);
+// The check constraints on tooth_state, as written in schema.sql and widened by 045 (the paper chart's Ex, RF, Ab,
+// P, Rm, Am and I).
+const CONDITIONS = new Set(['sound', 'caries', 'filled', 'crown', 'bridge', 'implant', 'root_canal', 'sealant', 'veneer', 'missing', 'unerupted', 'impacted',
+  'extraction', 'root_fragment', 'abutment', 'pontic', 'denture', 'amalgam', 'inlay']);
 const SURFACES = new Set(['mesial', 'distal', 'buccal', 'lingual', 'occlusal', 'incisal']);
 // Recorded per surface; everything else describes the whole tooth (SURFACE_SCOPED in demo.ts).
-const SURFACE_SCOPED = new Set(['caries', 'filled', 'sealant']);
+const SURFACE_SCOPED = new Set(['caries', 'filled', 'amalgam', 'inlay', 'sealant']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // How old a change may say it is. A tablet whose clock was reset mid-brownout
 // can claim anything; past a year it is taken as a year old.
@@ -305,8 +307,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     surfaces = [...new Set(raw.map(String))];
     if (surfaces.some((s) => !SURFACES.has(s))) return fail(400, 'bad', 'A surface is mesial, distal, buccal, lingual, occlusal or incisal.');
     if (condition === null) surfaces = [];
-    else if (SURFACE_SCOPED.has(condition)) { if (!surfaces.length) return fail(400, 'bad', 'Caries, fillings and sealants need at least one surface.'); }
-    else if (surfaces.length) return fail(400, 'bad', 'Surfaces apply to caries, fillings and sealants only.');
+    else if (SURFACE_SCOPED.has(condition)) { if (!surfaces.length) return fail(400, 'bad', 'Caries, fillings, amalgam, inlays and sealants need at least one surface.'); }
+    else if (surfaces.length) return fail(400, 'bad', 'Surfaces apply to caries, fillings, amalgam, inlays and sealants only.');
   }
 
   const parsed = parseChange(b.change);

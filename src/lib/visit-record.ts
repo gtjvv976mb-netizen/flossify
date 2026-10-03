@@ -62,7 +62,7 @@ export interface Visit {
   letters: Letter[];
   vitals: Vital[];
   files: FileRow[];
-  adjustments: { id: string; note: string | null; by: string | null }[];
+  adjustments: { id: string; wire: string | null; note: string | null; by: string | null }[];
   consents: VisitConsent[];
   /** The consent forms (039) of this visit: prepared from it, or signed through an intake or on paper on its day. */
   forms: RecordDoc[];
@@ -73,7 +73,7 @@ export interface Visit {
   teeth: number[];
   future: boolean;
   /** When the visit was booked (appointment.created_at), or null for a day with nothing on the book: the Treatment
-   *  record's Next appt. is the appointment set by the end of a visit's day. */
+   *  record's Next visit is the appointment set by the end of a visit's day. */
   bookedAt: Date | null;
 }
 
@@ -205,7 +205,7 @@ export async function loadVisits(tx: Tx, patientId: string, c: Clinical, x: Extr
   for (const p of x.plans) for (const a of p.adjustments) {
     const at = new Date(`${a.on}T12:00:00+08:00`);
     const v = onDay(at, a.on ?? dayKey(at), false);
-    if (v) { v.adjustments.push({ id: a.id, note: a.note, by: a.by }); }
+    if (v) { v.adjustments.push({ id: a.id, wire: a.wire, note: a.note, by: a.by }); }
   }
   for (const f of c.files) { const v = place(f.visitId, f.at, f.takenAt ?? dayKey(f.at), false); if (v) { v.files.push(f); } }
 

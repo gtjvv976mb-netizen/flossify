@@ -1,6 +1,6 @@
 ---
 import {
-  CONDITION_LABEL, SURFACE_SCOPED, SURFACE_LABEL, occlusalWord, surfaceSummary,
+  CONDITION_LABEL, CONDITION_CODE, CODE_LEGEND, SURFACE_SCOPED, SURFACE_LABEL, occlusalWord, surfaceSummary,
   type ToothCondition, type ToothMark, type Notation, type Surface,
 } from '../data/demo';
 
@@ -24,9 +24,13 @@ interface Props {
   /** Planned and done work per tooth (permanent teeth only): a ring under the number for open plan items, a dot
    *  for work done in the past year, and a sentence in the tooth's label. */
   work?: Partial<Record<number, { plan: string[]; done: string[] }>>;
+  /** The paper chart's codes: each finding's code (C, Ex, RF, M …) beside its tooth, above an upper tooth and below
+   *  a lower one, drawn by global.css from the attributes paint() sets; and the paper's legend under the arches
+   *  ("C – Caries · Ex – Extraction · …") in place of the colour swatches. Off, the chart is as it was. */
+  codes?: boolean;
 }
 
-const { marks = {}, notation = 'fdi', saveUrl, patientId, clinic, csrf, actions = false, work = {} } = Astro.props;
+const { marks = {}, notation = 'fdi', saveUrl, patientId, clinic, csrf, actions = false, work = {}, codes = false } = Astro.props;
 
 // --- charting through a brownout -------------------------------------------
 // A saving chart keeps each change on the device until the server has it
@@ -164,13 +168,15 @@ const legend = [
   { label: 'Missing', cls: 'bg-[var(--c-tooth-missing)]' },
 ];
 
-const surfaceConditions: ToothCondition[] = ['caries', 'filled', 'sealant'];
+// In the order of the paper chart's legend (C, Ex, RF, M, Un, Im, J, Am, Ab, P, I, Fx, S, Rm), then ours.
+const surfaceConditions: ToothCondition[] = ['caries', 'amalgam', 'inlay', 'sealant', 'filled'];
 const wholeConditions: ToothCondition[] = [
-  'crown', 'bridge', 'veneer', 'root_canal', 'implant', 'missing', 'unerupted', 'impacted',
+  'extraction', 'root_fragment', 'missing', 'unerupted', 'impacted', 'crown', 'abutment', 'pontic', 'bridge',
+  'denture', 'root_canal', 'implant', 'veneer',
 ];
 ---
 
-<div data-odontogram data-notation={notation} data-save-url={saveUrl} data-patient={patientId} data-clinic={clinic} data-csrf={csrf} data-staff={staffKey} data-sid={sid} data-session-left={sessionLeft} data-rendered-at={renderedAt} data-shell-until={shellUntil} class="flex flex-col gap-7 border border-line bg-surface p-6 sm:p-8 lg:flex-row">
+<div data-odontogram data-codes={codes ? '' : undefined} data-notation={notation} data-save-url={saveUrl} data-patient={patientId} data-clinic={clinic} data-csrf={csrf} data-staff={staffKey} data-sid={sid} data-session-left={sessionLeft} data-rendered-at={renderedAt} data-shell-until={shellUntil} class="flex flex-col gap-7 border border-line bg-surface p-6 sm:p-8 lg:flex-row">
   <div class="flex min-w-0 flex-1 flex-col">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <fieldset class="flex items-center gap-2">
@@ -184,8 +190,8 @@ const wholeConditions: ToothCondition[] = [
           </label>
         ))}
       </fieldset>
-      <div class="flex flex-wrap gap-4">
-        {legend.map((g) => (
+      <div class="flex flex-wrap gap-4" data-odo-keys>
+        {!codes && legend.map((g) => (
           <span class="flex items-center gap-1.5 text-xs text-ink-2"><span class={`swatch ${g.cls}`}></span>{g.label}</span>
         ))}
         {saveUrl && <span class="flex items-center gap-1.5 text-xs text-ink-2" data-waiting-legend hidden><span class="swatch waiting-swatch"></span>Saved on this device</span>}
@@ -207,7 +213,7 @@ const wholeConditions: ToothCondition[] = [
             <div class="h-px flex-1 bg-line-2"></div>
           </div>
         )}
-        <div class={`flex gap-4 overflow-x-auto ${archIndex === 0 ? 'mt-6 pb-1' : 'pt-1'}`}><div class="mx-auto flex gap-4">
+        <div class={`flex gap-4 overflow-x-auto ${archIndex === 0 ? `mt-6 pb-1${codes ? ' pt-5' : ''}` : `pt-1${codes ? ' pb-5' : ''}`}`}><div class="mx-auto flex gap-4">
           {[rows[a], rows[b]].map((quadrant) => (
             <div class="flex gap-[5px]">
               {quadrant.map((t) => (
@@ -249,6 +255,13 @@ const wholeConditions: ToothCondition[] = [
       </>
     ))}
 
+    {codes && (
+      <p class="mt-5 text-[13px] leading-relaxed text-ink-2" data-code-legend>
+        {CODE_LEGEND.map(([c, words], i) => (
+          <><span class="whitespace-nowrap"><b class="font-semibold text-ink">{CONDITION_CODE[c]}</b> – {words}</span>{i < CODE_LEGEND.length - 1 ? '\u00a0· ' : ''}</>
+        ))}
+      </p>
+    )}
     <p class="odo-help mt-6 text-[13px] text-muted">
       Click a tooth to pick a finding and its surfaces. Arrow keys move between teeth.
     </p>
@@ -359,6 +372,9 @@ const wholeConditions: ToothCondition[] = [
     crown: 'var(--c-crown)', bridge: 'var(--c-crown)', veneer: '#d946ef',
     root_canal: '#8b5cf6', implant: '#64748b', missing: 'var(--c-tooth-missing)',
     unerupted: 'var(--c-muted)', impacted: 'var(--c-muted)',
+    // The paper chart's findings (045); the same hues as their teeth in global.css.
+    extraction: 'var(--c-caries)', root_fragment: 'var(--c-caries)', abutment: 'var(--c-crown)',
+    pontic: 'var(--c-crown)', denture: '#c74b77', amalgam: '#7b8591', inlay: '#a87a12',
   };
   // A change still in the queue this long after it was made is shown as kept
   // on this device. Most saves come back well inside it, so a chart on a good

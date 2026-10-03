@@ -1,21 +1,23 @@
 ---
-// The Treatment record: the ledger of page 4 of the PDA dental chart — Date · Tooth no./s · Procedure ·
-// Dentist/s · Amount charged · Amount paid · Balance · Next appt. — oldest first, one row per treatment,
-// charge and payment (src/lib/treatment-record.ts builds it; the print page draws the same one). A date
-// opens the whole visit in its side panel (./VisitPanels.astro): the consent and signature, the notes, the
-// prescriptions, the payments. The money columns are drawn only for people who may bill.
+// The Treatment record: page 3 of the clinic's paper patient record — Date · Procedure · Wire · Next visit ·
+// Dentist · Amount · Balance · Sign — oldest first, one row per treatment, adjustment, charge and payment
+// (src/lib/treatment-record.ts builds it; the print page draws the same one). The teeth are written first in the
+// Procedure, as on the paper. A date opens the whole visit in its side panel (./VisitPanels.astro): the consent and
+// signature, the notes, the prescriptions, the payments. Amount and Balance are drawn only for people who may bill;
+// Sign is who entered the line, or, on a consent line only, the signer's own signature (./Signature.astro, small).
 //
 // A real table where the section is wide (from 54rem inside it); below that, each day is a card with
 // labelled lines (the container query in record.css). With more than 14 days, the script folds all but the
 // last 10 behind "Show N earlier days" (the hidden attribute, never a class); with scripts off, every day shows.
+// Printed with the record, it is the paper's table: every day, no buttons (record.css, "print").
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import Chip from '../../../../../components/ws/Chip.astro';
 import Icon from '../../../../../components/ws/Icon.astro';
 import Head from '../_ui/Head.astro';
-import Glyph from '../_ui/Glyph.astro';
+import Signature from './Signature.astro';
 import { dateText } from '../../../../../lib/health';
-import { balanceWords, amountWords, type Ledger } from '../../../../../lib/treatment-record';
+import { balanceWords, amountWords, signName, type Ledger } from '../../../../../lib/treatment-record';
 import { pesos } from '../../../../../lib/invoices';
 import { VISIT_STATUS } from '../../../../../lib/visit-record';
 
@@ -43,19 +45,20 @@ const balanceNote = !money ? null
           <thead>
             <tr>
               <th scope="col" class="meta trec-c-date">Date</th>
-              <th scope="col" class="meta trec-c-tooth"><span aria-hidden="true" title="FDI numbers">Tooth no./s</span><span class="sr-only">Tooth numbers, FDI</span></th>
               <th scope="col" class="meta trec-c-proc">Procedure</th>
-              <th scope="col" class="meta trec-c-who"><span aria-hidden="true">Dentist/s</span><span class="sr-only">Dentist</span></th>
-              {money && <th scope="col" class="meta trec-c-amt">Amount charged</th>}
-              {money && <th scope="col" class="meta trec-c-amt">Amount paid</th>}
+              <th scope="col" class="meta trec-c-wire">Wire</th>
+              <th scope="col" class="meta trec-c-next">Next visit</th>
+              <th scope="col" class="meta trec-c-who">Dentist</th>
+              {money && <th scope="col" class="meta trec-c-amt">Amount</th>}
               {money && <th scope="col" class="meta trec-c-amt">Balance</th>}
-              <th scope="col" class="meta trec-c-next"><span aria-hidden="true">Next appt.</span><span class="sr-only">Next appointment</span></th>
+              <th scope="col" class="meta trec-c-sign">Sign</th>
             </tr>
           </thead>
           {days.map((d, di) => (
             <tbody data-trec-day data-trec-early={di < folded ? '' : undefined}>
               {d.rows.map((r, ri) => {
                 const lastRow = ri === d.rows.length - 1;
+                const s = r.sign;
                 return (
                   <tr data-kind={r.kind} data-quiet={r.quiet ? '' : undefined}>
                     {ri === 0 && (
@@ -71,23 +74,38 @@ const balanceNote = !money ? null
                         ) : <span class="trec-date-plain">{d.day === today && <><span class="trec-nw">Today ·</span>{' '}</>}<span class="trec-nw">{dateText(d.day)}</span></span>}
                       </th>
                     )}
-                    <td class="trec-c-tooth" data-none={r.teeth.length ? undefined : ''}>
-                      <span class="meta trec-l">Tooth no./s</span>
-                      <span class="trec-teeth">{r.teeth.map((t) => <span class="rp rp-tooth"><Glyph name="tooth" size={13} /><span class="sr-only">Tooth </span>{t}</span>)}</span>
-                    </td>
                     <td class="trec-c-proc">
-                      <span class="trec-words">{r.status && <Chip status={r.status} label={VISIT_STATUS[r.status]?.label} />}{r.words && <span>{r.words}</span>}</span>
+                      <span class="trec-words">
+                        {r.status && <Chip status={r.status} label={VISIT_STATUS[r.status]?.label} />}
+                        {(r.teeth.length > 0 || r.words) && (
+                          <span>{r.teeth.length > 0 && <><span class="trec-tooth"><span class="sr-only">{r.teeth.length === 1 ? 'Tooth ' : 'Teeth '}</span>{r.teeth.join(', ')}</span>{r.words && ' · '}</>}{r.words}</span>
+                        )}
+                      </span>
                       {r.detail && <span class="trec-detail">{r.detail}</span>}
                     </td>
-                    <td class="trec-c-who" data-none={r.dentist ? undefined : ''}><span class="meta trec-l">Dentist</span>{r.dentist}</td>
-                    {money && <td class="trec-c-amt" data-none={r.charged === null ? '' : undefined}><span class="meta trec-l">Amount charged</span>{r.charged !== null && amountWords(r.charged)}</td>}
-                    {money && <td class="trec-c-amt trec-paid" data-none={r.paid === null ? '' : undefined}><span class="meta trec-l">Amount paid</span>{r.paid !== null && pesos(r.paid)}</td>}
-                    {money && <td class="trec-c-amt trec-bal" data-foot={lastRow && r.balance !== null ? '' : undefined} data-none={r.balance === null ? '' : undefined}><span class="meta trec-l">Balance</span>{r.balance !== null && balanceWords(r.balance)}</td>}
+                    <td class="trec-c-wire" data-none={r.wire ? undefined : ''}><span class="meta trec-l">Wire</span>{r.wire && <span class="trec-wire">{r.wire.split(/\s+·\s+/).map((part, wi) => <span class:list={[part.length <= 16 && 'trec-nw']}>{wi > 0 && <span class="sr-only"> · </span>}{part}</span>)}</span>}</td>
                     <td class="trec-c-next" data-foot={lastRow ? '' : undefined} data-none={r.next ? undefined : ''}>
-                      <span class="meta trec-l">Next appt.</span>
+                      <span class="meta trec-l">Next visit</span>
                       {r.next && (r.next.visitKey
-                        ? <button type="button" class="trec-next" data-ws-open={`rec-visit-${r.next.visitKey}`} aria-haspopup="dialog" aria-label={`Next appointment ${r.next.text}: see the visit`}>{r.next.text.split(' · ').map((part, pi) => <span class:list={[pi ? 'trec-next-tail' : 'trec-nw']}>{part}</span>)}</button>
-                        : <span>{r.next.text}</span>)}
+                        ? <button type="button" class="trec-next" data-ws-open={`rec-visit-${r.next.visitKey}`} aria-haspopup="dialog" aria-label={`Next visit ${r.next.text}: see the visit`}>{r.next.text.split(' · ').map((part, pi) => <span class:list={[pi ? 'trec-next-tail' : 'trec-nw']}>{part}</span>)}</button>
+                        : <span class="trec-next-plain">{r.next.text.split(' · ').map((part, pi) => <span class:list={[pi ? 'trec-next-tail' : 'trec-nw']}>{pi > 0 && ' · '}{part}</span>)}</span>)}
+                    </td>
+                    <td class="trec-c-who" data-none={r.dentist ? undefined : ''}><span class="meta trec-l">Dentist</span>{r.dentist}</td>
+                    {money && (
+                      <td class="trec-c-amt" data-none={r.charged === null && r.paid === null ? '' : undefined}>
+                        <span class="meta trec-l">Amount</span>
+                        <span class="trec-amt">
+                          {r.charged !== null && <span>{amountWords(r.charged)}</span>}
+                          {r.paid !== null && <span class="trec-paid">Paid {pesos(r.paid)}</span>}
+                        </span>
+                      </td>
+                    )}
+                    {money && <td class="trec-c-amt trec-bal" data-foot={lastRow && r.balance !== null ? '' : undefined} data-none={r.balance === null ? '' : undefined}><span class="meta trec-l">Balance</span>{r.balance !== null && balanceWords(r.balance)}</td>}
+                    <td class="trec-c-sign" data-none={s ? undefined : ''}>
+                      <span class="meta trec-l">Sign</span>
+                      {s?.kind === 'entered' && <span class="trec-sign" title={s.name}><span aria-hidden="true">{signName(s.name)}</span><span class="sr-only">Entered by {s.name}</span></span>}
+                      {s?.kind === 'signature' && <Signature strokes={s.strokes} name={s.name} class="trec-sig" />}
+                      {s?.kind === 'paper' && <span class="trec-sign">On paper<span class="sr-only">, signed by {s.name}</span></span>}
                     </td>
                   </tr>
                 );

@@ -1,11 +1,13 @@
 ---
-// The Treatment record on paper: page 4 of the PDA dental chart as the clinic prints it — the clinic's name,
-// address and number at the head, "Treatment record", the patient's Name · Age · Sex · Chart no., then the
-// same ledger the record shows (src/lib/treatment-record.ts builds both, so they never differ), every day,
-// oldest first. A4 portrait, black on white; the column heads repeat on every page. The bar at the top (the
-// way back, one teal Print) does not print. The money columns, the balance note and the not-a-BIR-receipt line
-// are printed only for people who may bill (finance.bill). Behind requireWorkspace; everything is read inside
-// withClinic, so another clinic's patient is a 404. Printing is written to the audit log.
+// The Treatment record on paper: page 3 of the clinic's paper patient record as the clinic prints it — the clinic's
+// own name, address, number and email at the head, "Treatment record", the patient's Name · Age · Sex · Chart no.,
+// then the same ledger the record shows (src/lib/treatment-record.ts builds both, so they never differ): Date ·
+// Procedure · Wire · Next visit · Dentist · Amount · Balance · Sign, every day, oldest first. A4 portrait, black on
+// white; the column heads repeat on every page. The bar at the top (the way back, one teal Print) does not print.
+// Amount, Balance, the balance note and the not-a-BIR-receipt line are printed only for people who may bill
+// (finance.bill). Sign is who entered the line, and the foot says so; a drawn signature is printed only on a consent
+// line. Behind requireWorkspace; everything is read inside withClinic, so another clinic's patient is a 404.
+// Printing is written to the audit log.
 export const prerender = false;
 
 import '../../../../../styles/global.css';
@@ -20,7 +22,8 @@ import { loadExtra } from '../../../../../lib/record-extra';
 import { loadVisits, VISIT_STATUS } from '../../../../../lib/visit-record';
 import { loadVisitConsents } from '../../../../../lib/visit-consent';
 import { loadConsentDocuments } from '../../../../../lib/consent-docs';
-import { buildLedger, loadLedgerMoney, loadRecallsSet, balanceWords, amountWords } from '../../../../../lib/treatment-record';
+import { buildLedger, loadLedgerMoney, loadRecallsSet, balanceWords, amountWords, signName } from '../../../../../lib/treatment-record';
+import { SIG_W, SIG_H, strokesPath } from '../../../../../lib/visit-consent';
 import { pesos, NOT_BIR } from '../../../../../lib/invoices';
 import { hmos } from '../../../../../data/directory';
 
@@ -39,7 +42,7 @@ const data = await withClinic(clinic.id, async (tx) => {
     `select p.id, p.chart_no, p.first_name, p.middle_name, p.last_name, p.suffix, p.sex, to_char(p.birth_date, 'YYYY-MM-DD') as birth, patient_balance(p.id) as balance
        from patient p where p.id = $1 and p.archived_at is null`, [patientId])).rows[0];
   if (!p) return null;
-  const c = (await tx.query('select name, address_line, barangay, city, province, phone from clinic where id = $1', [clinic.id])).rows[0];
+  const c = (await tx.query('select name, address_line, barangay, city, province, phone, email from clinic where id = $1', [clinic.id])).rows[0];
   const clinical = await loadClinical(tx, clinic.id, p.id);
   const extra = await loadExtra(tx, p.id, HMO_NAMES);
   const visits = await loadVisits(tx, p.id, clinical, extra, await loadVisitConsents(tx, p.id), money, await loadConsentDocuments(tx, p.id));
@@ -111,7 +114,8 @@ const pageCss = `
       .tr-pt { display: flex; flex-wrap: wrap; gap: 1mm 7mm; margin: 3mm 0 4mm; font-size: 12.5px; }
       .tr-pt b { font-weight: 600; }
       .tr-scroll { overflow-x: auto; }
-      /* Fixed columns in the paper's proportions, so eight fit across A4 portrait (186 mm inside the margins). */
+      /* Fixed columns in the paper's proportions, so eight fit across A4 portrait (186 mm inside the margins). Amount is
+         one column (a charge, a discount or "Paid …"), so it and Balance take the room the second amount had. */
       .tr-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 9pt; line-height: 1.35; color: #111827; overflow-wrap: anywhere; }
       @media screen { .tr-table { min-width: 640px; } }
       .tr-table thead { display: table-header-group; }
@@ -119,10 +123,16 @@ const pageCss = `
       .tr-table td { padding: 1.2mm 1.4mm; border: 0.6pt solid #98a2b3; vertical-align: top; }
       .tr-table tr { break-inside: avoid; }
       .tr-num { text-align: right !important; font-variant-numeric: tabular-nums; }
-      td.tr-num { white-space: nowrap; overflow-wrap: normal; }
+      td.tr-num { overflow-wrap: normal; }
+      .tr-nw { white-space: nowrap; }
       .tr-date { font-weight: 600; overflow-wrap: normal; }
       .tr-detail { display: block; font-size: 8pt; color: #344054; }
       .tr-status { font-style: italic; }
+      .tr-paid { display: block; }
+      .tr-wire { display: block; font-size: 8.5pt; }
+      .tr-sign { font-size: 8pt; color: #344054; overflow-wrap: anywhere; }
+      .tr-sig { display: block; width: 100%; max-width: 22mm; height: auto; border: 0.6pt solid #d0d5dd; border-radius: 1mm; background: #fff; }
+      .tr-sig path { fill: none; stroke: #111827; stroke-width: 18; stroke-linecap: round; stroke-linejoin: round; }
       .tr-foot { margin-top: 4mm; display: grid; gap: 1mm; font-size: 9pt; line-height: 1.45; color: #344054; }
       @media (max-width: 600px) { .tr-sheet { margin: 1rem; padding: 5mm; } }
     </style>
@@ -146,7 +156,7 @@ const pageCss = `
         <header class="tr-head">
           <p class="tr-clinic">{c.name}</p>
           {clinicAddress && <p class="tr-small">{clinicAddress}</p>}
-          {c.phone && <p class="tr-small">{prettyPhone(c.phone)}</p>}
+          {(c.phone || c.email) && <p class="tr-small">{[c.phone ? prettyPhone(c.phone) : null, c.email].filter(Boolean).join(' · ')}</p>}
         </header>
         <h1 class="tr-title">Treatment record</h1>
         <p class="tr-pt">
@@ -158,40 +168,47 @@ const pageCss = `
         <div class="tr-scroll">
           <table class="tr-table">
             {money ? (
-              <colgroup><col style="width: 11.5%" /><col style="width: 7.5%" /><col style="width: 24%" /><col style="width: 14.5%" /><col style="width: 11%" /><col style="width: 10.5%" /><col style="width: 11%" /><col style="width: 10%" /></colgroup>
+              <colgroup><col style="width: 10.5%" /><col style="width: 23%" /><col style="width: 11%" /><col style="width: 10.5%" /><col style="width: 11.5%" /><col style="width: 12.5%" /><col style="width: 11.5%" /><col style="width: 9.5%" /></colgroup>
             ) : (
-              <colgroup><col style="width: 12%" /><col style="width: 9%" /><col style="width: 44%" /><col style="width: 21%" /><col style="width: 14%" /></colgroup>
+              <colgroup><col style="width: 12%" /><col style="width: 34%" /><col style="width: 13%" /><col style="width: 13%" /><col style="width: 16%" /><col style="width: 12%" /></colgroup>
             )}
             <thead>
               <tr>
                 <th scope="col">Date</th>
-                <th scope="col">Tooth no./s</th>
                 <th scope="col">Procedure</th>
-                <th scope="col">Dentist/s</th>
-                {money && <th scope="col" class="tr-num">Amount charged</th>}
-                {money && <th scope="col" class="tr-num">Amount paid</th>}
+                <th scope="col">Wire</th>
+                <th scope="col">Next visit</th>
+                <th scope="col">Dentist</th>
+                {money && <th scope="col" class="tr-num">Amount</th>}
                 {money && <th scope="col" class="tr-num">Balance</th>}
-                <th scope="col">Next appt.</th>
+                <th scope="col">Sign</th>
               </tr>
             </thead>
             {ledger.days.length === 0 ? (
-              <tbody><tr><td colspan={money ? 8 : 5}>No treatment recorded yet.</td></tr></tbody>
+              <tbody><tr><td colspan={money ? 8 : 6}>No treatment recorded yet.</td></tr></tbody>
             ) : ledger.days.map((d) => (
               <tbody>
                 {d.rows.map((r, ri) => (
                   <tr>
                     <td class="tr-date">{ri === 0 ? dateText(d.day) : ''}</td>
-                    <td>{r.teeth.join(', ')}</td>
                     <td>
-                      {r.status && <span class="tr-status">{VISIT_STATUS[r.status]?.label ?? r.status}{r.words ? ' · ' : ''}</span>}
+                      {r.status && <span class="tr-status">{VISIT_STATUS[r.status]?.label ?? r.status}{r.words || r.teeth.length ? ' · ' : ''}</span>}
+                      {r.teeth.length > 0 && <>{r.teeth.join(', ')}{r.words ? ' · ' : ''}</>}
                       {r.words}
                       {r.detail && <span class="tr-detail">{r.detail}</span>}
                     </td>
+                    <td>{r.wire && r.wire.split(/\s+·\s+/).map((part) => <span class="tr-wire">{part}</span>)}</td>
+                    <td>{r.next && r.next.text.split(' · ').map((part, pi) => (pi ? <span class="tr-detail">{part}</span> : part))}</td>
                     <td>{r.dentist ?? ''}</td>
-                    {money && <td class="tr-num">{r.charged !== null ? amountWords(r.charged) : ''}</td>}
-                    {money && <td class="tr-num">{r.paid !== null ? pesos(r.paid) : ''}</td>}
-                    {money && <td class="tr-num">{r.balance !== null ? balanceWords(r.balance) : ''}</td>}
-                    <td>{r.next?.text ?? ''}</td>
+                    {money && <td class="tr-num">{r.charged !== null && <span class="tr-nw">{amountWords(r.charged)}</span>}{r.paid !== null && <span class="tr-paid">Paid <span class="tr-nw">{pesos(r.paid)}</span></span>}</td>}
+                    {money && <td class="tr-num">{r.balance !== null && <span class="tr-nw">{balanceWords(r.balance)}</span>}</td>}
+                    <td>
+                      {r.sign?.kind === 'entered' && <span class="tr-sign">{signName(r.sign.name)}</span>}
+                      {r.sign?.kind === 'signature' && (
+                        <svg class="tr-sig" viewBox={`0 0 ${SIG_W} ${SIG_H}`} role="img" aria-label={`Signature of ${r.sign.name}`} preserveAspectRatio="xMidYMid meet"><path d={strokesPath(r.sign.strokes)} /></svg>
+                      )}
+                      {r.sign?.kind === 'paper' && <span class="tr-sign">On paper</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -200,6 +217,7 @@ const pageCss = `
         </div>
         <footer class="tr-foot">
           <p>Teeth in FDI numbers.{ledger.capped && ' Only the newest 300 treatments and visits are listed.'}</p>
+          <p>Sign: who entered the line, signed in to Flossify under their own name. A drawn signature appears only on a consent line, where the patient or guardian signed that form.</p>
           {balanceNote && <p>{balanceNote}</p>}
           {money && <p>{NOT_BIR}</p>}
           <p>Printed {printed} by {session.name}.</p>

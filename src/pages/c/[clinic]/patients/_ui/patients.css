@@ -198,6 +198,23 @@
 /* A phone cannot show a whole arch at any usable size: the teeth keep the component's own 34px
    and the arches scroll (a tablet at 768px fits both arches whole at 33px). */
 @container pt-chart (width < 36rem) { .pt-chart .tooth { width: 34px; } }
+/* The paper's codes (the chart's `codes`): room above the upper arch and under the lower one for the code global.css
+   writes beside each tooth, and the paper's legend under the arches in the sheet's small print. */
+.pt-chart [data-codes] div:has(> div > div > div > [data-tooth]:not(.tooth--lower)) { padding-top: 22px; }
+.pt-chart [data-codes] div:has(> div > div > div > .tooth--lower) { padding-bottom: 22px; }
+.pt-chart [data-code-legend] { margin-top: 1rem; font-size: 13.5px; line-height: 1.6; color: var(--c-ink-2); }
+.pt-chart [data-code-legend] b { color: var(--c-ink); }
+/* Printed with the record (the paper's page 1), the paper chart is what the paper has: the arches, their numbers and
+   codes, and the legend, on light tiles whatever the screen's theme (the words follow the page's own print colours);
+   none of the screen's controls (the notation pills, the keys and work marks, the chart note, the save line and its
+   boxes, the palette). */
+@media print {
+  :root .ws .pt-chart-pane.pt-chart-pane { --c-tooth-sound: #ffffff; --c-tooth-line: #9aa3af; --c-tooth-missing: #e8ebf0; }
+  .pt-chart [data-codes] :is(fieldset, [data-odo-keys], [data-tooth-marks], .odo-help, [data-save-status], [data-hold-note], [data-copy-note], [data-sync-notice], [data-palette]),
+  .pt-chart [data-codes] > :has(> [data-note-list]) { display: none !important; }
+  .pt-chart [data-codes] div:has(> div > div > div > [data-tooth]) { overflow: visible; }
+  .pt-chart [data-codes] .tooth { outline: none; }
+}
 .pt-chart .tooth[data-waiting]::after { border-top-right-radius: 8px; }
 .pt-chart .tooth:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
 .pt-chart .pip { border-radius: 999px; }
@@ -247,7 +264,8 @@
 .pt-chart [data-hold-save]:hover { background: var(--ws-teal-fill-hover); opacity: 1; }
 
 /* The finding picker that opens at a tooth: a rounded sheet, soft buttons, the chosen surfaces tinted teal. */
-.pt-chart [data-palette] { padding: 1.125rem; border-color: var(--ws-hair); border-radius: var(--ws-r-lg); box-shadow: var(--ws-shadow-pop); }
+/* It holds the paper's eighteen findings: on a short phone it scrolls inside itself rather than run off the screen. */
+.pt-chart [data-palette] { max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; padding: 1.125rem; border-color: var(--ws-hair); border-radius: var(--ws-r-lg); box-shadow: var(--ws-shadow-pop); }
 .pt-chart [data-palette] button { border-color: var(--ws-field-line); border-radius: var(--ws-r-ctl); background: var(--c-surface); transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease; }
 .pt-chart [data-palette] button:hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); }
 .pt-chart [data-palette] [aria-pressed="true"], .pt-chart [data-palette] [aria-pressed="true"]:hover { background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 55%, transparent); color: var(--ws-teal-ink); }
