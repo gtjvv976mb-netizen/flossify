@@ -13,7 +13,7 @@
 // drawn — "Chart 26 MO as filled. Now: caries MO on the chart." — when the fee-guide item, tooth and surfaces make an
 // offer against the tooth as this page's chart draws it (src/lib/chart-offer.ts, the same rules as the server).
 // Ticked, the chart is updated in the same save; unticked, the page lands on the follow-up offer. Anything else
-// (uncovered, other, no surfaces, a baby tooth, a change waiting on this device) is one sentence and no box; and
+// (uncovered, other, no surfaces, a change waiting on this device) is one sentence and no box; and
 // then the box and its hidden fields are disabled, so nothing about the chart is posted. Each new offer starts
 // unticked. With scripts off the line stays hidden and disabled.
 //
@@ -244,7 +244,7 @@ const toothTip = 'FDI numbers. Whole mouth for work that is not on one tooth.';
         line.hidden = false;
         point.hidden = true;
         return;
-      } else if ((o.kind === 'point' || o.kind === 'baby') && words) say = words.line;
+      } else if (o.kind === 'point' && words) say = words.line;
       // Not an offer: nothing about the chart is posted.
       tick.checked = false;
       fields.forEach((f) => { f.disabled = true; });

@@ -100,7 +100,9 @@ const CASES: { label: string; effect: string; fdi: number; letters: string | nul
   { label: 'An extraction of 48, the chart shows 48 sound', effect: 'missing', fdi: 48, letters: null, now: null, treatment: 'Tooth extraction' },
   { label: 'A filling with no surfaces given, on 14', effect: 'filled', fdi: 14, letters: null, now: null, treatment: 'Composite filling' },
   { label: 'A root canal on 11, the chart shows a veneer on 11', effect: 'root_canal', fdi: 11, letters: null, now: { condition: 'veneer', surfaces: [] }, treatment: 'Root canal treatment' },
-  { label: 'An extraction of baby tooth 75', effect: 'missing', fdi: 75, letters: null, now: null, treatment: 'Tooth extraction' },
+  // Baby teeth (A–T, FDI 51–85) are on the chart since 3 Oct 2026: a treatment on one gets the same offer.
+  { label: 'An extraction of baby tooth 75 (K), the chart shows 75 sound', effect: 'missing', fdi: 75, letters: null, now: null, treatment: 'Tooth extraction' },
+  { label: 'A filling on baby tooth 54 O (B), the chart shows caries on 54 O', effect: 'filled', fdi: 54, letters: 'O', now: { condition: 'caries', surfaces: ['occlusal'] }, treatment: 'Composite filling' },
   // The paper chart's findings (045).
   { label: 'An extraction of 46, the chart shows 46 to be extracted (Ex)', effect: 'missing', fdi: 46, letters: null, now: { condition: 'extraction', surfaces: [] }, treatment: 'Tooth extraction' },
   { label: 'An extraction of 15, the chart shows a root fragment on 15 (RF)', effect: 'missing', fdi: 15, letters: null, now: { condition: 'root_fragment', surfaces: [] }, treatment: 'Tooth extraction' },
@@ -122,6 +124,7 @@ ${DEFAULTS.map(([c, e]) => `<tr><td class="mono">${c}</td><td>${e.replace('_', '
 <p class="dim">Any other code charts nothing unless the clinic sets it. The effects a code can have: ${CHART_EFFECTS.map((e) => e.replace('_', ' ')).join(', ')}.</p>
 <h4>What the record says after the treatment</h4>
 <div class="cases">${CASES.map((k) => { const o = chartOffer(k.effect, k.fdi, k.letters, k.now); const w = offerWords(o, k.treatment); return `<div class="case"><p class="case-q">${esc(k.label)}</p><p class="case-a">${w ? `${w.title ? `<strong>${esc(w.title)}</strong> ` : ''}${esc(w.line)}` : '<span class="dim">Nothing is offered: the chart is left as it is.</span>'}</p></div>`; }).join('')}</div>
+<p class="ask">For the dentist, on the baby teeth: the chart draws them as a small arch of their own (55–51 | 61–65 over 85–81 | 71–75; Universal A–T, Palmer A–E in each quadrant), open for a patient under 13 or when one of them has a finding or work, and charts them with the same findings and codes as the permanent teeth. A baby tooth that has come out, by itself or by extraction, is charted M, and an extraction recorded as done offers M. Is that right, or should a tooth lost naturally be told apart? Is 13 the right age to show them open?</p>
 <p class="ask">For the dentist: should a crown over a charted root canal be offered? Today it is not: the record asks the dentist to choose on the chart, as in the third case above. Should the offers from one visit be gathered into one question?</p>`;
 
 const care = Object.values(AFTERCARE).map((s) => `

@@ -24,7 +24,7 @@
 
 import './dotenv';
 import type { Tx } from './db';
-import { chartOffer, markKey, isPermanent, CHART_EFFECTS, type ChartEffect, type ChartOffer, type LiveMark } from './chart-offer';
+import { chartOffer, markKey, isOnChart, CHART_EFFECTS, type ChartEffect, type ChartOffer, type LiveMark } from './chart-offer';
 import { SURFACE_SCOPED, type Surface, type ToothCondition } from '../data/demo';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -84,7 +84,7 @@ export async function writeToothFromRecord(
   const patientId = c.patientId.toLowerCase();
   const surfaces = SCOPED.has(t.to.condition) ? ORDER.filter((s) => t.to.surfaces.includes(s)) : [];
   // What /api/chart refuses, refused here too: a tooth the chart does not draw, a surface finding with no surface.
-  if (!isPermanent(t.fdi) || (SCOPED.has(t.to.condition) && !surfaces.length)) throw new Error(`chart-write: nothing to chart for ${t.fdi} ${t.to.condition}`);
+  if (!isOnChart(t.fdi) || (SCOPED.has(t.to.condition) && !surfaces.length)) throw new Error(`chart-write: nothing to chart for ${t.fdi} ${t.to.condition}`);
   const payload = { fdi: t.fdi, condition: t.to.condition, surfaces, since: t.since ? t.since.toISOString() : null, from: 'record', procedure: t.procedureId };
   // The ledger row, stamped with the moment it reached the server, under the chart lock the caller holds.
   const { rows: [led] } = await tx.query(
@@ -146,7 +146,7 @@ export async function chartFromRecord(tx: Tx, c: Ctx, t: { treated: string; from
   // 3. Already charted from this treatment: a resend changes nothing.
   if (await charted(tx, patientId, d.id)) return { kind: 'nothing' };
   // 4. The offer, against the chart as it is now.
-  const now = d.fdi !== null && isPermanent(d.fdi) ? await liveTooth(tx, patientId, d.fdi) : null;
+  const now = d.fdi !== null && isOnChart(d.fdi) ? await liveTooth(tx, patientId, d.fdi) : null;
   const offer = chartOffer(d.effect, d.fdi, d.letters, now);
   if (offer.kind !== 'apply') return { kind: 'nothing' };
   // 5. The tooth must still show what the person was shown.
@@ -172,7 +172,7 @@ export async function offerFor(tx: Tx, patientId: string, treatedId: string): Pr
   const d = await treatmentOf(tx, pid, treatedId);
   if (!d) return null;
   const base = new Date((await tx.query('select clock_timestamp() as now')).rows[0].now).getTime();
-  const onChart = d.fdi !== null && isPermanent(d.fdi);
+  const onChart = d.fdi !== null && isOnChart(d.fdi);
   const now = onChart ? await liveTooth(tx, pid, d.fdi!) : null;
   return {
     treatedId: d.id, treatment: d.name, fdi: d.fdi, letters: d.letters, effect: d.effect,

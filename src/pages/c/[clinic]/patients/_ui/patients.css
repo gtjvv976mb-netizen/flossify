@@ -175,7 +175,8 @@
      note sits beside the arches only when the card is wide enough for both, under them
      otherwise. Where an arch still cannot fit (a phone) it scrolls sideways inside the card, the
      line above the chart says so, the edge where teeth wait fades, and the two arches scroll
-     together so 21–28 stay over 31–38 (the record's script sets data-pt-more). */
+     together so 21–28 stay over 31–38 (the record's script sets data-pt-more); the baby teeth's two
+     rows scroll together the same way, apart from the permanent ones. */
 .pt-chart-pane { --c-tooth-sound: #ffffff; --c-tooth-line: #c9cfd8; --c-tooth-missing: #e8ebf0; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .ws .pt-chart-pane { --c-tooth-sound: #262d36; --c-tooth-line: #3f4956; --c-tooth-missing: #15191e; }
@@ -214,6 +215,40 @@
   .pt-chart [data-codes] > :has(> [data-note-list]) { display: none !important; }
   .pt-chart [data-codes] div:has(> div > div > div > [data-tooth]) { overflow: visible; }
   .pt-chart [data-codes] .tooth { outline: none; }
+}
+/* The baby teeth (the chart's `primary`): their arch under the permanent one, as its own set; where the card has the
+   room for all 26 teeth side by side at 32px or more (62rem), beside it, as the paper draws it, with the chart note
+   under both. The arches then share the width: the teeth come out 35–37px at 1440 and 1366. "Baby teeth" is a quiet
+   pill beside the notation (open: the chosen thing's tint) and the arch's own name over it, in ink-2. */
+.pt-chart [data-odo-baby-toggle] { min-height: 44px; padding: 0 1rem; border: 1px solid var(--ws-field-line); border-radius: var(--ws-r-pill); background: var(--c-surface); font-size: 14px; font-weight: 500; color: var(--c-ink-2); }
+.pt-chart [data-odo-baby-toggle]:hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); color: var(--c-ink); }
+.pt-chart [data-odo-baby-toggle][aria-expanded="true"] { background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 55%, transparent); color: var(--ws-teal-ink); }
+.pt-chart [data-odo-baby-toggle]:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }
+.pt-chart [data-odo-set="primary"] { margin-top: 1.5rem; }
+.pt-chart [data-odo-baby-name] { font-size: 13.5px; color: var(--c-ink-2); }
+/* On a phone the baby arch is ten teeth: a little narrower than the permanent teeth's 34px, down to 28px, it fits the
+   card whole (30px at 390) instead of scrolling for its last two. */
+@container pt-chart (width < 36rem) {
+  .pt-chart [data-odo-set="primary"] .tooth { width: clamp(28px, calc((100cqi - 8 * var(--pt-tg) - var(--pt-qg) - 10px) / 10), 34px); }
+}
+@container pt-chart (width >= 62rem) {
+  .pt-chart [data-primary-open] [data-odo-arches] { flex-direction: row; justify-content: center; align-items: flex-start; gap: 2rem; }
+  .pt-chart [data-primary-open] [data-odo-set] { flex: 0 1 auto; }
+  .pt-chart [data-primary-open] [data-odo-set="primary"] { margin-top: 0; }
+  .pt-chart [data-odontogram][data-primary-open] .tooth { width: clamp(32px, calc((100cqi - 22 * var(--pt-tg) - 2 * var(--pt-qg) - 2rem - 28px) / 26), 44px); }
+  .pt-chart [data-odontogram][data-primary-open] { flex-direction: column; }
+  .pt-chart [data-odontogram][data-primary-open] > :has(> [data-note-list]) { width: 100%; }
+  .pt-chart [data-odontogram][data-primary-open] [data-note-list]:not([hidden]) { display: grid; }
+  .pt-chart [data-odontogram][data-primary-open] [data-clear] { width: auto; align-self: flex-start; }
+}
+/* Printed, as the paper has them: beside the permanent arch whatever the paper's width, the 26 teeth sharing it. */
+@media print {
+  .pt-chart [data-codes][data-primary-open] [data-odo-arches] { flex-direction: row; justify-content: center; align-items: flex-start; gap: 5mm; }
+  .pt-chart [data-codes][data-primary-open] [data-odo-set] { flex: 0 1 auto; }
+  .pt-chart [data-codes][data-primary-open] [data-odo-set="primary"] { margin-top: 0; }
+  .pt-chart [data-codes][data-primary-open] .tooth { width: calc((100cqi - 22 * var(--pt-tg) - 2 * var(--pt-qg) - 5mm - 28px) / 26); }
+  /* Two neighbours' longest codes (Impl, RCT) clear each other at the 25px pitch. */
+  .pt-chart [data-codes][data-primary-open] .tooth[data-tooth]::before { font-size: 7pt; }
 }
 .pt-chart .tooth[data-waiting]::after { border-top-right-radius: 8px; }
 .pt-chart .tooth:focus-visible { outline: 2px solid var(--ws-teal); outline-offset: 2px; }

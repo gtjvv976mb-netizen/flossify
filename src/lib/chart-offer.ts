@@ -20,7 +20,9 @@
 //   any other whole-tooth  other                         other   other       other   offer
 //   finding (crown, root canal, veneer, bridge, implant, unerupted, impacted, missing, and 045's extraction,
 //   root fragment, abutment, pontic, denture), a different one
-//   a baby tooth (51–85)   baby everywhere: the chart draws permanent teeth only
+//
+// The same table for every tooth on the chart, the 32 permanent teeth and the 20 baby teeth (51–55, 61–65, 71–75,
+// 81–85); any other number is none.
 //
 // A filling or sealant with no surfaces is always no-surfaces. What a treatment does is procedure_catalog's
 // chart_effect (042), never guessed from its name; null means no offer.
@@ -32,10 +34,10 @@ export type ChartEffect = (typeof CHART_EFFECTS)[number];
 /** One tooth as the chart draws it: a condition, and for a surface finding (SURFACE_SCOPED) its surfaces. Null = sound. */
 export interface LiveMark { condition: ToothCondition; surfaces: Surface[] }
 
-/** The 32 teeth the chart draws. */
-export const isPermanent = (fdi: number) => fdi >= 11 && fdi <= 48 && fdi % 10 >= 1 && fdi % 10 <= 8;
-/** The 20 baby teeth: quadrants 5–8, positions 1–5. */
-const isBaby = (fdi: number) => fdi >= 51 && fdi <= 85 && fdi % 10 >= 1 && fdi % 10 <= 5;
+/** The 52 teeth the chart draws: the 32 permanent (quadrants 1–4, positions 1–8) and the 20 baby teeth (quadrants
+ *  5–8, positions 1–5). The same set as POST /api/chart's. */
+export const isOnChart = (fdi: number) => Number.isInteger(fdi) && fdi % 10 >= 1
+  && ((fdi >= 11 && fdi <= 48 && fdi % 10 <= 8) || (fdi >= 51 && fdi <= 85 && fdi % 10 <= 5));
 const isEffect = (e: string | null): e is ChartEffect => e !== null && (CHART_EFFECTS as readonly string[]).includes(e);
 const onSurfaces = (c: string) => (SURFACE_SCOPED as string[]).includes(c);
 
@@ -64,19 +66,17 @@ export function markKey(m: LiveMark | null): string {
 }
 
 export type ChartOffer =
-  | { kind: 'none' }                                   // no tooth, or no chart effect: say nothing
-  | { kind: 'baby'; fdi: number }
+  | { kind: 'none' }                                   // no tooth on the chart, or no chart effect: say nothing
   | { kind: 'same'; fdi: number; now: LiveMark }
   | { kind: 'apply'; fdi: number; now: LiveMark | null; to: { condition: ChartEffect; surfaces: Surface[] } }
   // `to` on a point: what the treatment would have charted, for its sentence ("which Filling on MO does not cover",
   // "so root canal would hide it"); chartOffer always sets it.
   | { kind: 'point'; fdi: number; now: LiveMark | null; why: 'no-surfaces' | 'uncovered' | 'other'; left?: Surface[]; to?: { condition: ChartEffect; surfaces: Surface[] } };
 
-/** The table above, exactly. Checks in order: none → baby → no-surfaces → sound → same (union) → missing →
+/** The table above, exactly. Checks in order: none → no-surfaces → sound → same (union) → missing →
  *  caries cover (and a crown or root canal over a filling or sealant) → other. */
 export function chartOffer(effect: string | null, fdi: number | null, letters: string | null, now: LiveMark | null): ChartOffer {
-  if (fdi === null || !Number.isInteger(fdi) || !isEffect(effect)) return { kind: 'none' };
-  if (!isPermanent(fdi)) return isBaby(fdi) ? { kind: 'baby', fdi } : { kind: 'none' };
+  if (fdi === null || !isOnChart(fdi) || !isEffect(effect)) return { kind: 'none' };
   const cur = tidy(now);
   const scoped = effect === 'filled' || effect === 'sealant';
   const mine = scoped ? surfacesFromLetters(letters) : [];
@@ -101,7 +101,7 @@ export function chartOffer(effect: string | null, fdi: number | null, letters: s
   return { kind: 'point', fdi, now: cur, why: 'other', to };
 }
 
-/** Whether an offer earns the follow-up callout: 'apply' and 'point' only (never none, same or baby). */
+/** Whether an offer earns the follow-up callout: 'apply' and 'point' only (never none or same). */
 export const calloutWorthy = (o: ChartOffer) => o.kind === 'apply' || o.kind === 'point';
 
 const word = (c: ToothCondition) => CONDITION_LABEL[c].toLowerCase();
@@ -122,8 +122,6 @@ export function offerWords(o: ChartOffer, treatment: string): { title: string; l
     case 'none':
     case 'same':
       return null;
-    case 'baby':
-      return { title: '', line: `The chart shows permanent teeth only, so ${o.fdi} is not on it. The treatment is listed in Treatment.` };
     case 'apply': {
       const codes = surfaceSummary(o.fdi, o.to.surfaces);
       return { title: 'Update the chart?', line: `Chart ${o.fdi}${codes ? ` ${codes}` : ''} as ${word(o.to.condition)}. Now: ${markWords(o.fdi, o.now)}.` };

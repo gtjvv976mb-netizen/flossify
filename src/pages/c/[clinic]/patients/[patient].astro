@@ -29,8 +29,8 @@
 // patient.view to the audit log.
 //
 // The odontogram is src/components/Odontogram.astro. It gains the palette's
-// record actions, the plan/done marks and the paper's codes and legend (props
-// `actions`, `work`, `codes`); its
+// record actions, the plan/done marks, the paper's codes and legend and the
+// baby teeth A–T (props `actions`, `work`, `codes`, `primary`); its
 // offline logic (the kept copy of this page, changes waiting on the device)
 // is untouched. A copy served offline opens on the Chart, and a notice the
 // chart raises (a colleague's newer finding, changes waiting) brings the
@@ -166,7 +166,7 @@ import { intakeGates, intakeAnswers, useIntakeDetail } from '../../../../lib/int
 import { loadVisits, type StripVisit } from '../../../../lib/visit-record';
 import { buildLedger, loadLedgerMoney, loadRecallsSet } from '../../../../lib/treatment-record';
 import { offerFor } from '../../../../lib/chart-write';
-import { calloutWorthy } from '../../../../lib/chart-offer';
+import { calloutWorthy, isOnChart } from '../../../../lib/chart-offer';
 import { chartSession } from '../../../api/chart';
 
 const ws = await requireWorkspace(Astro);
@@ -657,15 +657,16 @@ const behindPlans = money ? ext.plans.filter((x) => x.status === 'active' && x.m
 const loaWaiting = ext.loas.filter((a) => a.status === 'requested').length;
 const planOpen = clin.plan.filter((i) => i.status === 'planned' || i.status === 'accepted');
 // --- work on the chart (p01) ----------------------------------------------------
-// Open plan items and work done in the past year, per permanent tooth: a ring and a dot under the tooth's number,
-// and a sentence in its label ("On the plan: Filling MO. Treated in the past year: Root canal, 12 Mar 2026.").
-// The chart shows permanent teeth only; work on a baby tooth is said under it instead.
-const PERMANENT = (n: number) => n >= 11 && n <= 48 && n % 10 >= 1 && n % 10 <= 8;
+// Open plan items and work done in the past year, per tooth on the chart (permanent and baby): a ring and a dot under
+// the tooth's number, and a sentence in its label ("On the plan: Filling MO. Treated in the past year: Root canal, 12
+// Mar 2026."). Work on a baby tooth also opens the chart's baby teeth.
 const workSince = Date.now() - 365 * 864e5;
 const chartWork: Partial<Record<number, { plan: string[]; done: string[] }>> = {};
-for (const i of planOpen) if (i.fdi && PERMANENT(i.fdi)) (chartWork[i.fdi] ??= { plan: [], done: [] }).plan.push(`${i.name}${i.surface ? ` ${i.surface}` : ''}`);
-for (const d of clin.done) if (d.fdi && PERMANENT(d.fdi) && +new Date(d.at) >= workSince) (chartWork[d.fdi] ??= { plan: [], done: [] }).done.push(`${d.name}, ${dateText(manilaDay(new Date(d.at)))}`);
-const babyWork = [...planOpen, ...clin.done.filter((d) => +new Date(d.at) >= workSince)].some((x) => x.fdi != null && x.fdi >= 51);
+for (const i of planOpen) if (i.fdi && isOnChart(i.fdi)) (chartWork[i.fdi] ??= { plan: [], done: [] }).plan.push(`${i.name}${i.surface ? ` ${i.surface}` : ''}`);
+for (const d of clin.done) if (d.fdi && isOnChart(d.fdi) && +new Date(d.at) >= workSince) (chartWork[d.fdi] ??= { plan: [], done: [] }).done.push(`${d.name}, ${dateText(manilaDay(new Date(d.at)))}`);
+// The baby teeth show open for a child (under 13 by the birth date on file); for anyone else when one of them has a
+// finding or work (the chart decides that itself), else behind its "Baby teeth" button.
+const babyOpen = age !== null && age < 13;
 // A new note's teeth: those of today's treatments (the This visit strip's visit, and today's with no visit named).
 const noteTeeth = [...new Set(clin.done.filter((d) => d.fdi && ((thisVisit && d.visitId === thisVisit.id) || (manilaDay(new Date(d.at)) === today && !d.visitId))).map((d) => d.fdi!))];
 // The line the Chart shows after a save from a panel its palette opened.
@@ -962,9 +963,8 @@ const recHere = here;
             the width of this card. Where a whole arch still cannot fit (a phone) the line below says so. */}
         <p class="pt-chart-scroll" data-pt-chart-scroll hidden>Scroll sideways to see every tooth <Icon name="arrow-right" size={16} /></p>
         <div class="pt-chart" data-pt-chart>
-          <Odontogram codes marks={marks} notation={me.notation as Notation} saveUrl="/api/chart" patientId={patient.id} clinic={clinic.slug} csrf={csrf} actions={canEdit} work={chartWork} />
+          <Odontogram codes primary primaryOpen={babyOpen} marks={marks} notation={me.notation as Notation} saveUrl="/api/chart" patientId={patient.id} clinic={clinic.slug} csrf={csrf} actions={canEdit} work={chartWork} />
         </div>
-        {babyWork && <p class="mt-3 text-[13.5px] text-ink-2">Work on baby teeth is in Treatment; this chart shows permanent teeth only.</p>}
 
         {/* The chart's history (tooth_state, grouped by the minute and the person), newest first. */}
         {data.chartChanges.length > 0 && (
@@ -1505,7 +1505,8 @@ const recHere = here;
   // component's empty line was written for a demo chart; a record says what to do. Where an
   // arch is wider than the card (a phone), the line above the chart says so, the edge where
   // teeth wait fades (data-pt-more), and the two arches scroll together, so the upper teeth
-  // stay over the lower ones — arrow keys moving to a hidden tooth scroll both.
+  // stay over the lower ones — arrow keys moving to a hidden tooth scroll both. The baby teeth's
+  // two rows (data-odo-set="primary") scroll together the same way, apart from the permanent ones.
   const chart = document.querySelector<HTMLElement>('[data-pt-chart]');
   if (chart) {
     const empty = chart.querySelector<HTMLElement>('[data-note-empty]');
@@ -1532,7 +1533,8 @@ const recHere = here;
       a.addEventListener('scroll', () => {
         if (lead && lead !== a) return;
         lead = a;
-        for (const b of arches) if (b !== a && Math.abs(b.scrollLeft - a.scrollLeft) > 1) b.scrollLeft = a.scrollLeft;
+        const set = a.closest('[data-odo-set]');
+        for (const b of arches) if (b !== a && b.closest('[data-odo-set]') === set && Math.abs(b.scrollLeft - a.scrollLeft) > 1) b.scrollLeft = a.scrollLeft;
         measure();
         requestAnimationFrame(() => { if (lead === a) lead = null; });
       }, { passive: true });

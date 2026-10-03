@@ -1084,7 +1084,7 @@ details covered, instead).
     email from its row (never another clinic's branding, no logo), Chart # (`chart_no`, opens Edit details) and Date (the
     day the chart was opened); the **Patient's chart** (Odontogram with `codes`: each finding's paper code drawn on its
     tooth by CSS from the attributes `paint()` already sets, and the paper's legend "C – Caries · Ex – Extraction · …"
-    under the arches); the **Patient information record**: Basic information in the paper's order (Patient name |
+    under the arches; and `primary`: the baby teeth as a small arch of their own, below); the **Patient information record**: Basic information in the paper's order (Patient name |
     Occupation; Date of birth | Age | Gender | Contact number | Email address; Address | Parent's or guardian's name; a
     six-column `.pf-grid`), HMO · Emergency contact · Desk note in a second grid, **Dental history** and **Medical
     history** (`_record/PaperHistory.astro`, `paper-history.css`), then blood pressure. Edit details gains Occupation and
@@ -1139,7 +1139,24 @@ details covered, instead).
   denture (Rm) and the surface restorations amalgam (Am) and inlay (I), in every list that names conditions (demo.ts
   `CONDITION_LABEL` / `CONDITION_CODE` / `SURFACE_SCOPED`, api/chart.ts, the palette in the paper legend's order, the
   swatch, global.css). Crown is J and bridge Fx, as on paper; our extras are F (filled), RCT (root canal), Impl (implant)
-  and V (veneer) — for a dentist to confirm (review pack, "The chart's codes"). Primary teeth (A–T) are not drawn yet.
+  and V (veneer) — for a dentist to confirm (review pack, "The chart's codes").
+- **The baby teeth (A–T) on the chart (3 Oct)** — Odontogram's `primary` draws them as a small arch of their own: 55–51 |
+  61–65 over 85–81 | 71–75, labelled in the notation in use (FDI; Universal A–J across the upper arch from the patient's
+  right and K–T back across the lower, 55 = A, 65 = J, 75 = K, 85 = T; Palmer A–E in each quadrant, "URA"). Beside the
+  permanent arches where the card holds all 26 teeth at 32 px or more (`@container pt-chart (width >= 62rem)`: 1366 and
+  1440, 33–36 px teeth, the chart note under both), under them otherwise (30 px teeth at 390, the arch whole); printed
+  beside them on page 1 (22 px teeth, codes at 7 pt so Impl and RCT clear a neighbour, the arch's name left on screen;
+  page 1 still one A4 sheet, 1009 px with a full history). Open for a patient under 13 by the birth date (`primaryOpen`,
+  `babyOpen` in the record) or when a baby tooth has a finding or work (the component reads its own marks); otherwise
+  behind one quiet **Baby teeth** pill beside the notation (a real button, 44 px, `aria-expanded`, `data-odo-baby-toggle`;
+  open, the chosen thing's tint); hidden, the arch prints hidden too. A baby tooth is charted exactly like a permanent
+  one (palette, surfaces, codes, legend, chart note, work marks, offline), saved by `POST /api/chart`, whose tooth set is
+  the 52 (`isOnChart` in chart-offer.ts is the same set; `tooth_state.fdi` always allowed 11..85, no migration). The
+  script changed only where it had to: `pips()` maps quadrant q to ((q − 1) % 4) + 1, and the arrow keys walk the teeth
+  as laid out (`stepFrom`: Right and Left along each line and on to the next, Up and Down to the next line's nearest
+  tooth; with the baby arch hidden exactly the old ±16 step); the toggle is its own handler. The record's scroll-sync
+  pairs the rows within a set (`data-odo-set`). Measured: the arch's name, numbers, midline, codes and the toggle ≥ 4.5:1
+  light and dark at 1440 and 390 (lowest 4.97:1 light, 6.58:1 dark), no sideways scroll from 1920 to 360.
 - Checked by `scripts/dev/record/paper-check.mjs` (rewritten for the three sheets and the attached sheets: order, the
   letterhead names this clinic, basic information in the paper's order, Edit details saves occupation and guardian and an
   older form keeps them, sheets closed on a plain load and opened by their hashes, a history box puts the caret in view,
@@ -1239,16 +1256,16 @@ details covered, instead).
   The actions hide offline, on a kept copy, or when the tooth's server check gets no answer. The chart shows
   a ring under a tooth for open plan items and a dot for work done in the past year, with a legend and a
   work sentence in each tooth's label. A new note opens with today's treated teeth ticked; an addendum with
-  none. `Odontogram.astro` changes only additively (props `actions` and `work`); its offline logic is
-  untouched.
+  none. `Odontogram.astro` changes only additively (props `actions`, `work`, `codes` and `primary`); its offline
+  logic is untouched.
 - **The chart after a treatment (p01 step 2) is an offer, applied only by a tap.** What a treatment does
   to the chart is `procedure_catalog.chart_effect` (042; the seven default codes, set by a trigger when an
   insert says nothing), never guessed from a name. `chart-offer.ts` is the table, pure and shared by page
   and server. Mark done and Record a treatment land on `?treated=<procedure_done id>#chart-offer`, in the
   section the post came from, when the offer has something worth a word: "Update the chart?" with one quiet
   Update the chart (intent `chart-apply`, hidden fields only) and Leave the chart as it is; the uncovered,
-  other and no-surfaces cases say why and open that tooth on the chart; a baby tooth or nothing to change
-  gets no callout. Record a treatment's chart line is never ticked as drawn, and its box and hidden fields
+  other and no-surfaces cases say why and open that tooth on the chart; nothing to change gets no callout.
+  A baby tooth gets the same offer as a permanent one (`isOnChart`; the "baby" offer and its sentence are gone). Record a treatment's chart line is never ticked as drawn, and its box and hidden fields
   are disabled unless it is an `apply` offer on a tooth with nothing waiting. Every write is
   `chartFromRecord` (`src/lib/chart-write.ts`) inside the record post's transaction, in this order: the
   page's sign-in (`sid`, else `chartskip=ended`), the chart lock `'chart:' + lower-case patient id` (the
@@ -1684,8 +1701,10 @@ page 1 beside the record with "Use" per detail, and withdrawals and overrides as
   their own: new templates, versions and a migration, with the lawyer); the privacy notice (privacy-2026-09) does not
   name the desk's health history, and the paper fields add pregnancy, nursing, the pill, transfusions and third parties'
   names and numbers (physician, former dentist) — listed in the review pack for the lawyer; no dentist's signature is
-  stored (the foot says "Dentist who explained"); primary teeth A–T on the chart are not built; a long archwire spec
-  can wrap mid-spec in the printed Wire column.
+  stored (the foot says "Dentist who explained"); a long archwire spec can wrap mid-spec in the printed Wire column. The
+  baby teeth (built 3 Oct) ask the dentist two things in the review pack: whether a baby tooth lost naturally should be
+  told apart from one extracted (both are M), and whether 13 is the right age to show them open; and the owner, whether
+  an adult's printed record should carry the baby arch empty, as the paper form does (today it prints only when open).
 - A new web patient's chart number is `W-` + (patients here + 1) (`api/bookings`): the app never deletes a
   patient, but one deleted by hand makes the next web booking for a new mobile fail on the unique key until
   another patient is added. Test scripts that share a database archive their patients instead of deleting.
@@ -1782,7 +1801,7 @@ src/pages/api/recall.ts        POST: the next check-up in one tap from the Dashb
 docs/clinic-operations.md      how a dental clinic runs, front door to archive: the brief the paperless day was built from
 public/samples/swiftcare/       sample clinic website (see "Sample client sites")
 docs/service-map.md            what to build for patients, dentists and clinics, and why (Sept 2026)
-src/components/Odontogram.astro  32 teeth, FDI/Universal/Palmer, surface-scoped
+src/components/Odontogram.astro  32 teeth and the 20 baby teeth (A–T), FDI/Universal/Palmer, surface-scoped
 src/data/schema.sql            full multi-tenant Postgres model with RLS
 src/data/lqip.json             blur placeholders, keyed by image name
 src/data/shot-size.json        real screenshot dimensions (generated)
