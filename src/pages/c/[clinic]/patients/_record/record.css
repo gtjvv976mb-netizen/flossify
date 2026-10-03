@@ -156,7 +156,8 @@
    are label-and-value lines, and pills read as plain words; only what must stand out keeps its colour (an allergy,
    a warning, money owed). The sheet is the card colour in both themes, so dark mode is the same charcoal page. */
 .rec-body { min-width: 0; }
-.rec-main { display: grid; min-width: 0; align-content: start; }
+/* One column that never grows past the screen: an auto track takes its widest child's min-content (the minor's privacy form made the page 22 px too wide at 320). */
+.rec-main { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; align-content: start; }
 .pp-sheet { max-width: 64rem; margin-inline: auto; width: 100%; padding: 2rem 2.5rem 2.5rem; border: 1px solid var(--ws-hair); border-radius: 12px; background: var(--c-surface); color: var(--c-ink); }
 @media (max-width: 767px) { .pp-sheet { padding: 1.25rem 1rem 1.75rem; border-radius: 12px; } }
 /* This visit's strip sits on page 1 outside every part: a post that lands on it (Go ahead anyway) stops under the bar too. */
@@ -865,6 +866,9 @@ button.rf { display: grid; min-height: 44px; }
   .pp-page .pt-chart [data-codes] .tooth { height: 32px; }
   .pp-page .pt-chart [data-codes] div:has(> div > div > div > [data-tooth]:not(.tooth--lower)) { padding-top: 18px; }
   .pp-page .pt-chart [data-codes] div:has(> div > div > div > .tooth--lower) { padding-bottom: 18px; }
+  /* The baby teeth beside the permanent ones (patients.css), their rows level with the permanent rows: their numbers
+     (55–85, or A–T) say what they are, so the arch's name over them stays on the screen. */
+  .pp-page .pt-chart [data-codes] [data-odo-baby-name] { display: none; }
   /* Blood pressure as a box under the medical history's: its name and when it was taken in the boxes' small print, the
      reading, the pulse and the guide's word on one line at the boxes' size, the guide's own words in small print; the
      earlier readings stay on the screen. */

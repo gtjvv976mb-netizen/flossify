@@ -21,16 +21,23 @@ interface Props {
   /** The palette's record actions (Add to plan, Treatment done, Clinical note) for someone who may edit records.
    *  They open the record's panels (data-pick-open); the finding buttons are untouched. */
   actions?: boolean;
-  /** Planned and done work per tooth (permanent teeth only): a ring under the number for open plan items, a dot
-   *  for work done in the past year, and a sentence in the tooth's label. */
+  /** Planned and done work per tooth (permanent teeth, and baby teeth when `primary` draws them): a ring under the
+   *  number for open plan items, a dot for work done in the past year, and a sentence in the tooth's label. */
   work?: Partial<Record<number, { plan: string[]; done: string[] }>>;
   /** The paper chart's codes: each finding's code (C, Ex, RF, M …) beside its tooth, above an upper tooth and below
    *  a lower one, drawn by global.css from the attributes paint() sets; and the paper's legend under the arches
    *  ("C – Caries · Ex – Extraction · …") in place of the colour swatches. Off, the chart is as it was. */
   codes?: boolean;
+  /** The baby teeth (A–T: FDI 55–51 | 61–65 over 85–81 | 71–75) as a small arch of their own, beside the permanent
+   *  arches where the chart is wide and under them where it is not, charted exactly like the permanent teeth. Off,
+   *  the chart is as it was. */
+  primary?: boolean;
+  /** With `primary`: the baby teeth shown open (a child). They also open on their own when a baby tooth has a finding
+   *  or work; otherwise they wait behind one quiet "Baby teeth" button. */
+  primaryOpen?: boolean;
 }
 
-const { marks = {}, notation = 'fdi', saveUrl, patientId, clinic, csrf, actions = false, work = {}, codes = false } = Astro.props;
+const { marks = {}, notation = 'fdi', saveUrl, patientId, clinic, csrf, actions = false, work = {}, codes = false, primary = false, primaryOpen = false } = Astro.props;
 
 // --- charting through a brownout -------------------------------------------
 // A saving chart keeps each change on the device until the server has it
@@ -88,7 +95,16 @@ const QUADRANTS: Record<number, { palmer: string; universalStart: number; ascend
   2: { palmer: 'UL', universalStart: 9, ascending: true },
   3: { palmer: 'LL', universalStart: 17, ascending: false },
   4: { palmer: 'LR', universalStart: 25, ascending: true },
+  // The baby teeth (`primary`): Universal letters A–J across the upper arch from the patient's right (55 = A, 51 = E,
+  // 61 = F, 65 = J) and K–T back across the lower (75 = K, 71 = O, 81 = P, 85 = T); Palmer A–E in each quadrant.
+  5: { palmer: 'UR', universalStart: 1, ascending: false },
+  6: { palmer: 'UL', universalStart: 6, ascending: true },
+  7: { palmer: 'LL', universalStart: 11, ascending: false },
+  8: { palmer: 'LR', universalStart: 16, ascending: true },
 };
+/** Quadrants 5–8 are the baby teeth, five to a quadrant. */
+const isBabyQuadrant = (q: number) => q >= 5;
+const LETTERS = 'ABCDEFGHIJKLMNOPQRST';
 
 // --- surface geometry -----------------------------------------------------
 // Mesial means "toward the midline", so which SIDE of the drawn tooth that is
@@ -96,7 +112,8 @@ const QUADRANTS: Record<number, { palmer: string; universalStart: number; ascend
 // down for the lower. Getting this wrong puts the mark on the wrong surface,
 // which is a clinical error, not a cosmetic one.
 function pips(fdi: number) {
-  const q = Math.floor(fdi / 10);
+  // A baby quadrant sits where its permanent one does: 5 → 1, 6 → 2, 7 → 3, 8 → 4.
+  const q = ((Math.floor(fdi / 10) - 1) % 4) + 1;
   const upper = q === 1 || q === 2;
   const mesialRight = q === 1 || q === 4;
   return {
@@ -114,6 +131,9 @@ function tooth(fdi: number) {
   const q = Math.floor(fdi / 10);
   const pos = fdi % 10;
   const meta = QUADRANTS[q];
+  const baby = isBabyQuadrant(q);
+  const size = baby ? 5 : 8;
+  const index = meta.universalStart + (meta.ascending ? pos - 1 : size - pos);
   const mark = drawn[fdi];
   const scoped = mark && SURFACE_SCOPED.includes(mark.condition);
   const plan = work[fdi]?.plan ?? [];
@@ -123,15 +143,15 @@ function tooth(fdi: number) {
     plan: plan.length > 0,
     done: done.length > 0,
     workWords: [plan.length ? `On the plan: ${plan.join('; ')}.` : '', done.length ? `Treated in the past year: ${done.join('; ')}.` : ''].filter(Boolean).join(' '),
-    universal: meta.universalStart + (meta.ascending ? pos - 1 : 8 - pos),
-    palmer: `${meta.palmer}${pos}`,
+    universal: baby ? LETTERS[index - 1] : index,
+    palmer: `${meta.palmer}${baby ? LETTERS[pos - 1] : pos}`,
     // Whole-tooth conditions paint the tooth; surface conditions leave it
     // sound and show pips instead.
     state: (mark && !scoped ? mark.condition : 'sound') as ToothCondition,
     surfaceCondition: scoped ? mark!.condition : '',
     surfaces: scoped ? (mark!.surfaces ?? []) : [],
     pips: pips(fdi),
-    lower: q === 3 || q === 4,
+    lower: q === 3 || q === 4 || q === 7 || q === 8,
   };
 }
 
@@ -141,6 +161,22 @@ const rows = {
   lowerRight: [48, 47, 46, 45, 44, 43, 42, 41].map(tooth),
   lowerLeft: [31, 32, 33, 34, 35, 36, 37, 38].map(tooth),
 };
+// The baby teeth's arch (`primary`), in the same order: the upper over the lower, the patient's right on the left.
+const babyRows = {
+  upperRight: [55, 54, 53, 52, 51].map(tooth),
+  upperLeft: [61, 62, 63, 64, 65].map(tooth),
+  lowerRight: [85, 84, 83, 82, 81].map(tooth),
+  lowerLeft: [71, 72, 73, 74, 75].map(tooth),
+};
+// The two sets of arches the chart draws: each an upper row over a lower row, each row its two quadrants.
+const sets = [
+  { key: 'permanent', arches: [[rows.upperRight, rows.upperLeft], [rows.lowerRight, rows.lowerLeft]] },
+  ...(primary ? [{ key: 'primary', arches: [[babyRows.upperRight, babyRows.upperLeft], [babyRows.lowerRight, babyRows.lowerLeft]] }] : []),
+];
+// The baby teeth show open for a child (primaryOpen), or when one of them has a finding or work on it.
+const isBaby = (fdi: number) => fdi >= 51 && fdi <= 85 && fdi % 10 >= 1 && fdi % 10 <= 5;
+const babyShown = primary && (primaryOpen || Object.keys(drawn).some((k) => isBaby(Number(k))) || Object.keys(work).some((k) => isBaby(Number(k))));
+const babyId = `odo-baby-${patientId ?? 'chart'}`;
 
 // Visual order for arrow-key movement.
 const flat = [...rows.upperRight, ...rows.upperLeft, ...rows.lowerRight, ...rows.lowerLeft];
@@ -176,7 +212,7 @@ const wholeConditions: ToothCondition[] = [
 ];
 ---
 
-<div data-odontogram data-codes={codes ? '' : undefined} data-notation={notation} data-save-url={saveUrl} data-patient={patientId} data-clinic={clinic} data-csrf={csrf} data-staff={staffKey} data-sid={sid} data-session-left={sessionLeft} data-rendered-at={renderedAt} data-shell-until={shellUntil} class="flex flex-col gap-7 border border-line bg-surface p-6 sm:p-8 lg:flex-row">
+<div data-odontogram data-codes={codes ? '' : undefined} data-primary-open={babyShown ? '' : undefined} data-notation={notation} data-save-url={saveUrl} data-patient={patientId} data-clinic={clinic} data-csrf={csrf} data-staff={staffKey} data-sid={sid} data-session-left={sessionLeft} data-rendered-at={renderedAt} data-shell-until={shellUntil} class="flex flex-col gap-7 border border-line bg-surface p-6 sm:p-8 lg:flex-row">
   <div class="flex min-w-0 flex-1 flex-col">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <fieldset class="flex items-center gap-2">
@@ -190,6 +226,11 @@ const wholeConditions: ToothCondition[] = [
           </label>
         ))}
       </fieldset>
+      {primary && (
+        <button type="button" class="mr-auto inline-flex min-h-11 cursor-pointer items-center border border-line bg-surface px-3.5 text-[13px] font-medium text-ink-2 hover:border-accent hover:text-accent" data-odo-baby-toggle aria-expanded={babyShown ? 'true' : 'false'} aria-controls={babyId}>
+          Baby teeth
+        </button>
+      )}
       <div class="flex flex-wrap gap-4" data-odo-keys>
         {!codes && legend.map((g) => (
           <span class="flex items-center gap-1.5 text-xs text-ink-2"><span class={`swatch ${g.cls}`}></span>{g.label}</span>
@@ -204,7 +245,12 @@ const wholeConditions: ToothCondition[] = [
       </div>
     </div>
 
-    {([['upperRight', 'upperLeft'], ['lowerRight', 'lowerLeft']] as const).map(([a, b], archIndex) => (
+    <div class="flex flex-col" data-odo-arches>
+    {sets.map((set) => (
+    <div class="min-w-0" data-odo-set={set.key} id={set.key === 'primary' ? babyId : undefined} hidden={set.key === 'primary' && !babyShown}
+      role={set.key === 'primary' ? 'group' : undefined} aria-labelledby={set.key === 'primary' ? `${babyId}-name` : undefined}>
+    {set.key === 'primary' && <p id={`${babyId}-name`} class="h-6 text-[13px] leading-6 font-medium text-ink-2" data-odo-baby-name>Baby teeth</p>}
+    {set.arches.map(([a, b], archIndex) => (
       <>
         {archIndex === 1 && (
           <div class="my-3.5 flex items-center gap-3.5">
@@ -213,8 +259,8 @@ const wholeConditions: ToothCondition[] = [
             <div class="h-px flex-1 bg-line-2"></div>
           </div>
         )}
-        <div class={`flex gap-4 overflow-x-auto ${archIndex === 0 ? `mt-6 pb-1${codes ? ' pt-5' : ''}` : `pt-1${codes ? ' pb-5' : ''}`}`}><div class="mx-auto flex gap-4">
-          {[rows[a], rows[b]].map((quadrant) => (
+        <div class={`flex gap-4 overflow-x-auto ${archIndex === 0 ? `${set.key === 'primary' ? '' : 'mt-6 '}pb-1${codes ? ' pt-5' : ''}` : `pt-1${codes ? ' pb-5' : ''}`}`}><div class="mx-auto flex gap-4">
+          {[a, b].map((quadrant) => (
             <div class="flex gap-[5px]">
               {quadrant.map((t) => (
                 <div class={`flex items-center gap-1.5 ${t.lower ? 'flex-col-reverse' : 'flex-col'}`}>
@@ -254,6 +300,9 @@ const wholeConditions: ToothCondition[] = [
         </div></div>
       </>
     ))}
+    </div>
+    ))}
+    </div>
 
     {codes && (
       <p class="mt-5 text-[13px] leading-relaxed text-ink-2" data-code-legend>
@@ -1112,15 +1161,47 @@ const wholeConditions: ToothCondition[] = [
       }));
     }
 
+    // Arrow keys move by what is on screen, row by row: the teeth shown (the baby teeth only while they are open), in
+    // lines as they are laid out (the baby arch beside the permanent one on a wide chart, under it on a narrow one).
+    // Right and Left go along a line and on to the next; Down and Up go to the next line, to the tooth nearest across.
+    // With the permanent arches alone this is the old step exactly: along the 32 in order, 18 ↕ 48, 21 ↕ 31.
+    function lines() {
+      const shown = teeth.filter((t) => !t.closest('[hidden]'))
+        .map((t) => ({ t, r: t.getBoundingClientRect() }))
+        .sort((x, y) => x.r.top - y.r.top || x.r.left - y.r.left);
+      const out: { t: HTMLButtonElement; r: DOMRect }[][] = [];
+      for (const s of shown) {
+        const line = out[out.length - 1];
+        if (line && Math.abs(line[0].r.top - s.r.top) < s.r.height / 2) line.push(s);
+        else out.push([s]);
+      }
+      out.forEach((line) => line.sort((x, y) => x.r.left - y.r.left));
+      return out;
+    }
+    function stepFrom(b: HTMLButtonElement, key: string): HTMLButtonElement | null {
+      const across = key === 'ArrowRight' ? 1 : key === 'ArrowLeft' ? -1 : 0;
+      const down = key === 'ArrowDown' ? 1 : key === 'ArrowUp' ? -1 : 0;
+      if (!across && !down) return null;
+      const ls = lines();
+      const li = ls.findIndex((line) => line.some((s) => s.t === b));
+      if (li < 0) return null;
+      if (across) {
+        const order = ls.flat();
+        const i = order.findIndex((s) => s.t === b);
+        return order[(i + across + order.length) % order.length].t;
+      }
+      const mid = (r: DOMRect) => r.left + r.width / 2;
+      const x = mid(ls[li].find((s) => s.t === b)!.r);
+      const to = ls[(li + down + ls.length) % ls.length];
+      return to.reduce((best, s) => (Math.abs(mid(s.r) - x) < Math.abs(mid(best.r) - x) ? s : best)).t;
+    }
+
     teeth.forEach((b) => {
       b.addEventListener('click', () => openPalette(b));
       b.addEventListener('keydown', (e) => {
-        const i = teeth.indexOf(b);
-        const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1
-          : e.key === 'ArrowDown' ? 16 : e.key === 'ArrowUp' ? -16 : 0;
-        if (!step) return;
+        const next = stepFrom(b, e.key);
+        if (!next) return;
         e.preventDefault();
-        const next = teeth[(i + step + teeth.length) % teeth.length];
         // Roving tabindex: 32 tab stops in a row is not navigation.
         b.tabIndex = -1;
         next.tabIndex = 0;
@@ -1175,6 +1256,22 @@ const wholeConditions: ToothCondition[] = [
         render();
         tell();
       });
+    });
+
+    // The baby teeth (`primary`): one button shows and hides their arch. Hidden, they keep their findings (the chart
+    // note still lists them) and take no tab stop: the roving one moves back to the first permanent tooth.
+    const babyToggle = root.querySelector<HTMLButtonElement>('[data-odo-baby-toggle]');
+    const babySet = root.querySelector<HTMLElement>('[data-odo-set="primary"]');
+    babyToggle?.addEventListener('click', () => {
+      if (!babySet) return;
+      const open = babySet.hidden;
+      babySet.hidden = !open;
+      root.toggleAttribute('data-primary-open', open);
+      babyToggle.setAttribute('aria-expanded', String(open));
+      if (!open && babySet.querySelector('[data-tooth][tabindex="0"]')) {
+        teeth.forEach((t) => { t.tabIndex = -1; });
+        teeth[0].tabIndex = 0;
+      }
     });
 
     root.querySelector<HTMLButtonElement>('[data-clear]')?.addEventListener('click', () => {

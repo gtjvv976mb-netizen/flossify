@@ -97,8 +97,12 @@ import { hit, waitText, LIMITS } from '../../lib/throttle';
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
 const fail = (status: number, code: string, error: string) => json({ error, code }, status);
 
-// The 32 permanent teeth the chart draws: quadrants 1–4, positions 1–8.
-const FDI = new Set([1, 2, 3, 4].flatMap((q) => [1, 2, 3, 4, 5, 6, 7, 8].map((p) => q * 10 + p)));
+// The 52 teeth the chart draws: the 32 permanent (quadrants 1–4, positions 1–8) and the 20 baby teeth (quadrants 5–8,
+// positions 1–5; tooth_state.fdi has allowed 11..85 from the start). isOnChart in src/lib/chart-offer.ts is the same set.
+const FDI = new Set([
+  ...[1, 2, 3, 4].flatMap((q) => [1, 2, 3, 4, 5, 6, 7, 8].map((p) => q * 10 + p)),
+  ...[5, 6, 7, 8].flatMap((q) => [1, 2, 3, 4, 5].map((p) => q * 10 + p)),
+]);
 // The check constraints on tooth_state, as written in schema.sql and widened by 045 (the paper chart's Ex, RF, Ab,
 // P, Rm, Am and I).
 const CONDITIONS = new Set(['sound', 'caries', 'filled', 'crown', 'bridge', 'implant', 'root_canal', 'sealant', 'veneer', 'missing', 'unerupted', 'impacted',
