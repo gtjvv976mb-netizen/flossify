@@ -66,13 +66,18 @@ export const YES_NO: readonly PaperChoice[] = [{ value: 'yes', label: 'Yes' }, {
 /**
  * One box of the paper's lists: the paper's `label`, the `word` the record stores (the column's spelling, the
  * same the patient forms write), and other spellings a person may type (`also`), all matched in any case.
+ * `also` holds only other spellings of the same thing (case, US or UK spelling, one or many, the paper's own
+ * label), never a broader or narrower word: a word on file goes through this table on every save, so "Anesthetic"
+ * must not come back "Local anaesthetic", nor "HIV" "HIV or AIDS". For the same reason a box's word is never
+ * narrower than the paper's label: the paper's "Ulcer" is stored "Ulcer", and the forms' "Stomach ulcers" stays
+ * its own word beside it.
  */
 export interface ListWord { label: string; word: string; also?: readonly string[] }
 
 /** Medical history: "Do you have or have you had any of the following?", the paper's 23, in its order. */
 export const PAPER_CONDITIONS: readonly ListWord[] = [
   { label: 'Anemia', word: 'Anaemia', also: ['Anemia'] },
-  { label: 'Arthritis/rheumatism', word: 'Arthritis or rheumatism', also: ['Arthritis/rheumatism', 'Arthritis', 'Rheumatism'] },
+  { label: 'Arthritis/rheumatism', word: 'Arthritis or rheumatism', also: ['Arthritis/rheumatism'] },
   { label: 'Artificial heart valves', word: 'Artificial heart valves', also: ['Artificial heart valve'] },
   { label: 'Artificial joints', word: 'Joint replacement or implant', also: ['Artificial joints', 'Artificial joint', 'Joint replacement'] },
   { label: 'Asthma', word: 'Asthma' },
@@ -84,7 +89,7 @@ export const PAPER_CONDITIONS: readonly ListWord[] = [
   { label: 'Hemophilia', word: 'Hemophilia', also: ['Haemophilia'] },
   { label: 'Hepatitis', word: 'Hepatitis' },
   { label: 'High blood pressure', word: 'Hypertension', also: ['High blood pressure'] },
-  { label: 'HIV/AIDS', word: 'HIV or AIDS', also: ['HIV/AIDS', 'HIV', 'AIDS'] },
+  { label: 'HIV/AIDS', word: 'HIV or AIDS', also: ['HIV/AIDS'] },
   { label: 'Kidney disease', word: 'Kidney disease' },
   { label: 'Liver disease', word: 'Liver disease' },
   { label: 'Pacemaker', word: 'Pacemaker' },
@@ -93,7 +98,7 @@ export const PAPER_CONDITIONS: readonly ListWord[] = [
   { label: 'Stroke', word: 'Stroke' },
   { label: 'Thyroid problems', word: 'Thyroid problem', also: ['Thyroid problems'] },
   { label: 'Tuberculosis', word: 'Tuberculosis (TB)', also: ['Tuberculosis', 'TB'] },
-  { label: 'Ulcer', word: 'Stomach ulcers', also: ['Ulcer', 'Ulcers', 'Stomach ulcer'] },
+  { label: 'Ulcer', word: 'Ulcer', also: ['Ulcers'] },
 ];
 
 /** The desk's own condition picks that the paper does not list: records have them and the desk still needs them. */
@@ -112,7 +117,7 @@ export const PAPER_ALLERGIES: readonly ListWord[] = [
   { label: 'Latex', word: 'Latex' },
   { label: 'Metals', word: 'Metals', also: ['Metal'] },
   { label: 'Plastic', word: 'Plastic', also: ['Plastics'] },
-  { label: 'Local anaesthetic', word: 'Local anaesthetic', also: ['Local anesthetic', 'Anesthetic', 'Anesthetics', 'Anaesthetic', 'Anaesthetics'] },
+  { label: 'Local anaesthetic', word: 'Local anaesthetic', also: ['Local anesthetic'] },
   { label: 'Foods', word: 'Foods', also: ['Food'] },
   { label: 'Pollen', word: 'Pollen' },
 ];
@@ -224,6 +229,21 @@ export const NONE_SUFFIX = '_none';
 /** The patient forms' rule: the pregnancy questions are for a patient who is not male and is 12 or older (or whose age is not known). */
 export const PREGNANCY_FROM_AGE = 12;
 export const asksPregnancy = (sex: string | null | undefined, age: number | null): boolean => sex !== 'male' && (age === null || age >= PREGNANCY_FROM_AGE);
+
+/** An answer is on file under this key: neither null, missing nor blank. */
+const said = (o: Record<string, unknown> | null | undefined, k: string) => { const v = o?.[k]; return v !== null && v !== undefined && v !== ''; };
+const listsPregnancy = (conditions: string[] | null | undefined) => (conditions ?? []).some((c) => low(c) === low(PREGNANCY));
+
+/**
+ * Whether the pregnancy questions are drawn: where they apply (`ask`, asksPregnancy), or wherever one is answered
+ * — a saved answer, "Pregnancy" on the conditions list, or the patient's own words. One rule for the record's boxes
+ * (paperBoxes) and the health form's questions (PaperHistoryFields), so a box's plus always lands on its question,
+ * and an answer given before the sex or the birth date said otherwise can still be changed or cleared.
+ */
+export function showsPregnancy(ask: boolean, latest: { conditions: string[] | null; paper: PaperAnswers | null } | null, ownHealth: Record<string, unknown> | null): boolean {
+  return ask || (['pregnant', 'nursing', 'pill'] as const).some((k) => latest?.paper?.[k] != null) || listsPregnancy(latest?.conditions)
+    || ['pregnant', 'nursing', 'birth_control'].some((k) => said(ownHealth, k));
+}
 
 export const emptyPaper = (): PaperAnswers =>
   Object.fromEntries(PAPER_FIELDS.map((f) => [f.key, null])) as unknown as PaperAnswers;
@@ -442,20 +462,40 @@ export function paperChanges(prev: PaperAnswers | null, next: PaperAnswers | nul
 }
 
 /**
+ * The paper's fields drawn again after a save conflict (someone saved the record after this page opened): from what
+ * is on file now (`latest`), keeping only what this person changed from the version the page opened from (`base`).
+ * So a second Save never puts an old answer back over a colleague's newer one. `clash`: the questions both changed,
+ * to different answers, for the callout to name what is on file.
+ */
+export function rebasePaper(typed: PaperTyped, posted: PaperAnswersIn | undefined, base: PaperAnswers | null, latest: PaperAnswers | null): { typed: PaperTyped; clash: PaperKey[] } {
+  const out = paperTyped(latest);
+  const clash: PaperKey[] = [];
+  for (const f of PAPER_FIELDS) {
+    const mine = posted?.[f.key], was = base?.[f.key] ?? null, now = latest?.[f.key] ?? null;
+    if (mine === undefined || sameValue(mine, was)) continue;
+    for (const n of f.kind === 'checks' ? [f.name, f.name + NONE_SUFFIX] : [f.name]) if (typed[n] !== undefined) out[n] = typed[n];
+    if (!sameValue(now, was) && !sameValue(now, mine)) clash.push(f.key);
+  }
+  return { typed: out, clash };
+}
+
+/**
  * The paper's answers once a patient's own answers (the patient forms' `health` and `teeth`, an intake's
  * `health`) are added to the record: the desk's older answer to a question the patient has now answered gives
  * way, so the record shows the newer one. The pregnancy questions, the last dental visit, and the former
- * dentist when the forms name a different one. Everything else stays.
+ * dentist when the desk named one and the forms name a different one (case, dots and commas aside: "Dr Cruz" is
+ * "Dr. Cruz"). A location or number the desk wrote with no name stays: the forms ask only for a name. Everything
+ * else stays.
  */
 export function paperAfterOwn(saved: PaperAnswers | null, health: Record<string, unknown> | null, teeth: Record<string, unknown> | null): PaperAnswers | null {
   if (!saved) return null;
   const p = { ...saved };
-  const said = (o: Record<string, unknown> | null, k: string) => { const v = o?.[k]; return v !== null && v !== undefined && v !== ''; };
+  const dentist = (s: unknown) => low(oneLine(String(s ?? '').replace(/[.,]/g, ' ')));
   if (said(health, 'pregnant')) p.pregnant = null;
   if (said(health, 'nursing')) p.nursing = null;
   if (said(health, 'birth_control')) p.pill = null;
   if (said(teeth, 'last_visit')) p.last_care = null;
-  if (said(teeth, 'previous_dentist') && low(oneLine(teeth!.previous_dentist)) !== low(p.dentist_name ?? '')) {
+  if (said(teeth, 'previous_dentist') && p.dentist_name && dentist(teeth!.previous_dentist) !== dentist(p.dentist_name)) {
     p.dentist_name = null; p.dentist_place = null; p.dentist_phone = null;
   }
   return isEmpty(p) ? null : p;
@@ -477,15 +517,21 @@ export function pregnancyTwin(conditions: string[] | null, pregnant: YesNo | nul
 // ---------------------------------------------------------------------------
 // The record's boxes
 // ---------------------------------------------------------------------------
+/** Where a patient's own answers came from: the patient forms from the QR code (QR-…), or an intake's page 1 (IN-…). */
+export interface OwnSource { kind: 'form' | 'intake'; ref: string | null }
+
 /** The patient's own answers on file: the newest the patient forms or an intake's page 1 gave (health.ts readOwnWords). */
 export interface OwnWords {
   /** answers.health of the newest version the patient answered that has one (the forms' or an intake's health step). */
   health: Record<string, unknown> | null;
   /** When those were sent. */
   healthAt: Date | string | null;
+  /** Which forms they came from. */
+  healthFrom?: OwnSource | null;
   /** answers.teeth of the newest version from the patient forms (an intake asks no teeth step). */
   teeth: Record<string, unknown> | null;
   teethAt: Date | string | null;
+  teethFrom?: OwnSource | null;
 }
 
 export interface Box {
@@ -502,8 +548,8 @@ export interface Box {
   also?: string[];
   /** Words for nothing on file, where they are not the usual "Not on file": "Not asked yet". */
   empty?: string;
-  /** Where the words came from when the desk has none: the patient forms (`at` when they were sent). */
-  from?: { what: 'forms'; at: Date | string | null };
+  /** Where the words came from when the desk has none: the patient forms or an intake's page 1 (`ref` its reference, `at` when sent). */
+  from?: { what: 'form' | 'intake'; ref: string | null; at: Date | string | null };
   /** Drawn red: an allergy. */
   alert?: boolean;
   /** Keep the line breaks. */
@@ -523,7 +569,7 @@ export interface BoxesIn {
   reason: string | null;
   /** There is a visit today (its reason may still be blank). */
   visitToday: boolean;
-  /** The pregnancy questions apply (asksPregnancy). Answered ones show whatever this says. */
+  /** The pregnancy questions apply (asksPregnancy). Answered ones show whatever this says (showsPregnancy). */
   ask: boolean;
   /** The newest X-ray taken here (YYYY-MM-DD), or null. */
   xrayHere?: string | null;
@@ -549,8 +595,8 @@ function checklist(key: ListName, on: string[], paper: readonly ListWord[], drop
 export function paperBoxes(i: BoxesIn): { dental: Box[]; medical: Box[] } {
   const p = i.latest?.paper ?? null;
   const h = i.own?.health ?? null, t = i.own?.teeth ?? null;
-  const fromHealth = { what: 'forms' as const, at: i.own?.healthAt ?? null };
-  const fromTeeth = { what: 'forms' as const, at: i.own?.teethAt ?? null };
+  const fromHealth: Box['from'] = { what: i.own?.healthFrom?.kind ?? 'form', ref: i.own?.healthFrom?.ref ?? null, at: i.own?.healthAt ?? null };
+  const fromTeeth: Box['from'] = { what: i.own?.teethFrom?.kind ?? 'form', ref: i.own?.teethFrom?.ref ?? null, at: i.own?.teethAt ?? null };
   const own = (o: Record<string, unknown> | null, name: string) => (o && o[name] !== null && o[name] !== undefined && o[name] !== '' ? i.ownText(name, o[name]) : null);
 
   const box = (key: PaperKey, span: 1 | 2 | 4, fallback?: { text: string | null; from: Box['from'] }): Box => {
@@ -595,10 +641,8 @@ export function paperBoxes(i: BoxesIn): { dental: Box[]; medical: Box[] } {
   const transfusion = box('transfusion', 1);
   if (p?.transfusion === 'yes' && p.transfusion_when) transfusion.text = `Yes, about ${partialDateText(p.transfusion_when)}`;
   const conditions = i.latest?.conditions ?? null;
-  const pregnancyListed = (conditions ?? []).some((c) => low(c) === low(PREGNANCY));
-  const pregnancyAnswered = ['pregnant', 'nursing', 'pill'].some((k) => p?.[k as PaperKey] != null) || pregnancyListed
-    || ['pregnant', 'nursing', 'birth_control'].some((k) => own(h, k));
-  const showPregnancy = i.ask || pregnancyAnswered;
+  const pregnancyListed = listsPregnancy(conditions);
+  const showPregnancy = showsPregnancy(i.ask, i.latest, h);
   const pregnant = box('pregnant', 1, { text: own(h, 'pregnant'), from: fromHealth });
   if (!p?.pregnant && pregnancyListed && !pregnant.text) pregnant.text = 'Yes';
   transfusion.span = showPregnancy ? 1 : 4;

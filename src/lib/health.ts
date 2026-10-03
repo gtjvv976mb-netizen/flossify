@@ -102,6 +102,7 @@ export interface HealthVersion extends HealthAnswers {
 // Dates. Manila's calendar, because that is the day the clinic is in.
 // ---------------------------------------------------------------------------
 const YMD = /^(\d{4})-(\d{2})-(\d{2})$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Today in Manila as YYYY-MM-DD. */
 export const manilaToday = (now = new Date()): string =>
@@ -229,18 +230,22 @@ export function readHealthForm(form: FormData, today = manilaToday()): {
 // ---------------------------------------------------------------------------
 // Comparing versions, for the history and for "did anything change"
 // ---------------------------------------------------------------------------
-const sameList = (a: string[] | null, b: string[] | null): boolean => {
+/** A list word compared by what it means: another spelling of a pick is the pick ("High blood pressure" is "Hypertension"), in any case. */
+const wordKey = (key: string, v: string) => lower(canonicalWord(key, v) ?? v);
+
+/** The same list, word for word, spellings of one pick counting as one (the form posts a pick's own spelling). */
+const sameList = (key: string, a: string[] | null, b: string[] | null): boolean => {
   if (a === null || b === null) return a === b;
-  const x = new Set(a.map(lower));
-  return a.length === b.length && b.every((v) => x.has(lower(v)));
+  const x = new Set(a.map((v) => wordKey(key, v))), y = new Set(b.map((v) => wordKey(key, v)));
+  return x.size === y.size && [...y].every((v) => x.has(v));
 };
 
 export const sameAnswers = (a: HealthAnswers | null, b: HealthAnswers): boolean =>
-  LISTS.every((l) => sameList(a?.[l.key] ?? null, b[l.key])) && (a?.note ?? null) === b.note;
+  LISTS.every((l) => sameList(l.key, a?.[l.key] ?? null, b[l.key])) && (a?.note ?? null) === b.note;
 
-/** True when at least one question has an answer, "none" included. */
-export const answered = (a: HealthAnswers | null): boolean =>
-  !!a && (LISTS.some((l) => a[l.key] !== null) || !!a.note);
+/** True when at least one question has an answer, "none" included; on a version, any of the paper record's answers too (saveHealth's rule). */
+export const answered = (a: (HealthAnswers & { paper?: PaperAnswers | null }) | null): boolean =>
+  !!a && (LISTS.some((l) => a[l.key] !== null) || !!a.note || !!a.paper);
 
 /** A list as a person would read it: "Penicillin, Latex", "none", or "not asked". */
 export const listText = (v: string[] | null, none = 'none'): string => (v === null ? 'not asked' : v.length ? v.join(', ') : none);
@@ -250,13 +255,14 @@ export function changes(prev: HealthAnswers | null, next: HealthAnswers): string
   const out: string[] = [];
   for (const l of LISTS) {
     const a = prev?.[l.key] ?? null, b = next[l.key];
-    if (sameList(a, b)) continue;
+    if (sameList(l.key, a, b)) continue;
     if (b === null) { out.push(`${l.label}: answer cleared`); continue; }
     if (b.length === 0) { out.push(`${l.label}: ${lower(l.none)}`); continue; }
-    const had = new Set((a ?? []).map(lower)), has = new Set(b.map(lower));
+    // Another spelling of the same pick is neither added nor removed.
+    const had = new Set((a ?? []).map((v) => wordKey(l.key, v))), has = new Set(b.map((v) => wordKey(l.key, v)));
     // In the paper's words where it has them ("High blood pressure" for the stored "Hypertension").
-    const added = b.filter((v) => !had.has(lower(v))).map((v) => labelOf(l.key, v));
-    const removed = (a ?? []).filter((v) => !has.has(lower(v))).map((v) => labelOf(l.key, v));
+    const added = [...new Set(b.filter((v) => !had.has(wordKey(l.key, v))).map((v) => labelOf(l.key, v)))];
+    const removed = [...new Set((a ?? []).filter((v) => !has.has(wordKey(l.key, v))).map((v) => labelOf(l.key, v)))];
     out.push(`${l.label}: ${[added.length && `added ${added.join(', ')}`, removed.length && `removed ${removed.join(', ')}`].filter(Boolean).join('; ')}`);
   }
   if ((prev?.note ?? null) !== next.note) out.push(next.note === null ? 'Note removed' : prev?.note ? 'Note changed' : 'Note added');
@@ -316,18 +322,22 @@ export async function readHealth(tx: Tx, patientId: string, limit = 12, withOwn 
 /**
  * The patient's own words on file: answers.health of the newest version the patient answered that has one (the
  * patient forms, or an intake's page 1), and answers.teeth of the newest that has one (the patient forms only),
- * each with when it was sent. Null when the patient never answered. Only the record draws them.
+ * each with when it was sent and which forms (QR-… or IN-…). Null when the patient never answered. Only the record
+ * draws them.
  */
 export async function readOwnWords(tx: Tx, patientId: string): Promise<OwnWords | null> {
   const part = (key: 'health' | 'teeth') => `(
-    select jsonb_build_object('v', h.answers -> '${key}', 'at', coalesce(f.submitted_at, i.sent_at, h.answered_at))
+    select jsonb_build_object('v', h.answers -> '${key}', 'at', coalesce(f.submitted_at, i.sent_at, h.answered_at),
+                              'kind', case when h.intake_id is not null then 'intake' else 'form' end, 'ref', coalesce(f.ref, i.ref))
       from medical_history h left join patient_form f on f.id = h.form_id left join intake i on i.id = h.intake_id
      where h.patient_id = $1 and h.answered_by = 'patient' and jsonb_typeof(h.answers -> '${key}') = 'object'
      order by h.answered_at desc, h.id desc limit 1)`;
-  const r = (await tx.query<{ health: { v: Record<string, unknown>; at: string } | null; teeth: { v: Record<string, unknown>; at: string } | null }>(
+  type Part = { v: Record<string, unknown>; at: string; kind: 'form' | 'intake'; ref: string | null } | null;
+  const r = (await tx.query<{ health: Part; teeth: Part }>(
     `select ${part('health')} as health, ${part('teeth')} as teeth`, [patientId])).rows[0];
   if (!r?.health && !r?.teeth) return null;
-  return { health: r.health?.v ?? null, healthAt: r.health?.at ?? null, teeth: r.teeth?.v ?? null, teethAt: r.teeth?.at ?? null };
+  const from = (x: Part) => (x ? { kind: x.kind === 'intake' ? 'intake' as const : 'form' as const, ref: x.ref ?? null } : null);
+  return { health: r.health?.v ?? null, healthAt: r.health?.at ?? null, healthFrom: from(r.health), teeth: r.teeth?.v ?? null, teethAt: r.teeth?.at ?? null, teethFrom: from(r.teeth) };
 }
 
 /**
@@ -344,8 +354,9 @@ export async function canEditRecords(tx: Tx, staffId: string, clinicId: string):
 
 export type SaveResult =
   | { kind: 'none' }
-  /** Someone saved after this page opened. `birth` is the birth date on file now. */
-  | { kind: 'conflict'; latest: HealthVersion | null; birth: string | null }
+  /** Someone saved after this page opened. `birth` is the birth date on file now; `basePaper` the paper record's answers
+   *  on the version the page opened from, so the page keeps only this person's own changes over what is on file (rebasePaper). */
+  | { kind: 'conflict'; latest: HealthVersion | null; birth: string | null; basePaper: PaperAnswers | null }
   | { kind: 'unchanged' }
   | { kind: 'saved'; answers: boolean; birth: boolean };
 
@@ -378,7 +389,11 @@ export async function saveHealth(tx: Tx, a: {
 
   const latest = (await readHealth(tx, a.patientId, 1)).versions[0] ?? null;
   const birthEdited = a.birth !== a.birthWas;
-  if ((latest?.id ?? 'none') !== a.base || (birthEdited && stored !== a.birthWas)) return { kind: 'conflict', latest, birth: stored };
+  if ((latest?.id ?? 'none') !== a.base || (birthEdited && stored !== a.birthWas)) {
+    const basePaper = UUID.test(a.base) ? paperFromStored((await tx.query<{ paper: unknown }>(
+      `select answers -> 'paper' as paper from medical_history where id = $1 and patient_id = $2`, [a.base, a.patientId])).rows[0]?.paper ?? null) : null;
+    return { kind: 'conflict', latest, birth: stored, basePaper };
+  }
 
   const birthChanged = birthEdited && a.birth !== stored;
   // The paper's answers as posted over the saved ones (a question the form did not draw stays as saved), and,
@@ -387,7 +402,7 @@ export async function saveHealth(tx: Tx, a: {
   const paper = mergePaper(latest?.paper ?? null, a.paper);
   const answers: HealthAnswers = a.paper?.pregnant !== undefined ? { ...a.answers, conditions: pregnancyTwin(a.answers.conditions, a.paper.pregnant) } : a.answers;
   const answersChanged = !sameAnswers(latest, answers) || !samePaper(latest?.paper ?? null, paper);
-  const checked = !answersChanged && !birthChanged && (answered(answers) || paper !== null);
+  const checked = !answersChanged && !birthChanged && answered({ ...answers, paper });
   if (!answersChanged && !birthChanged && !checked) return { kind: 'unchanged' };
 
   const audit = (action: string) => tx.query(

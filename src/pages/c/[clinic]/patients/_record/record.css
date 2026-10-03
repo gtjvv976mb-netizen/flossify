@@ -159,7 +159,8 @@
 .rec-main { display: grid; min-width: 0; align-content: start; }
 .pp-sheet { max-width: 64rem; margin-inline: auto; width: 100%; padding: 2rem 2.5rem 2.5rem; border: 1px solid var(--ws-hair); border-radius: 12px; background: var(--c-surface); color: var(--c-ink); }
 @media (max-width: 767px) { .pp-sheet { padding: 1.25rem 1rem 1.75rem; border-radius: 12px; } }
-.rec-sec, .rec-anchor, [data-rec-panel] [id] { scroll-margin-top: calc(var(--rec-top, 0px) + 0.75rem); }
+/* This visit's strip sits on page 1 outside every part: a post that lands on it (Go ahead anyway) stops under the bar too. */
+.rec-sec, .rec-anchor, [data-rec-panel] [id], #this-visit { scroll-margin-top: calc(var(--rec-top, 0px) + 0.75rem); }
 
 /* The contents. */
 .pp-contents { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; padding-bottom: 1rem; margin-bottom: 1.5rem; border-bottom: 2px solid var(--c-ink); }
@@ -426,6 +427,8 @@ button.rf { display: grid; min-height: 44px; }
 .trec-head { padding: 1.25rem 1.5rem 0; }
 .trec-pad { padding: 0 1.5rem 1rem; }
 .trec-foot { display: grid; gap: 0.25rem; padding: 0.875rem 1.5rem 1.25rem; border-top: 1px solid var(--ws-hair); font-size: 13.5px; line-height: 1.5; color: var(--c-ink-2); }
+/* What Sign means: printed only (below, "print"). */
+.trec-legend { display: none; }
 .trec-wrap { container-type: inline-size; container-name: trec; overflow-x: auto; }
 .trec { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; line-height: 1.45; color: var(--c-ink); }
 .trec:focus { outline: none; }
@@ -605,13 +608,14 @@ button.rf { display: grid; min-height: 44px; }
   .trec-wrap { container-type: normal; overflow: visible; }
   .trec-pad:has(> [data-trec-more]) { display: none; }
   .trec-wrap .trec { table-layout: fixed; font-size: 9pt; line-height: 1.35; color: #111827; }
-  /* The A4 paper's columns (186 mm inside the margins), with and without the money. */
-  .trec-wrap .trec thead th.trec-c-date { width: 10.5%; }
-  .trec-wrap .trec thead th.trec-c-proc { width: 23%; }
+  /* The A4 paper's columns (186 mm inside the margins), with and without the money: Amount and Balance hold a six-digit
+     amount whole (₱130,000.00 bold, in a wide fallback face), Next visit "adjustment". */
+  .trec-wrap .trec thead th.trec-c-date { width: 10%; }
+  .trec-wrap .trec thead th.trec-c-proc { width: 18%; }
   .trec-wrap .trec thead th.trec-c-wire { width: 11%; }
-  .trec-wrap .trec thead th.trec-c-next { width: 10.5%; }
+  .trec-wrap .trec thead th.trec-c-next { width: 12%; }
   .trec-wrap .trec thead th.trec-c-who { width: 11.5%; }
-  .trec-wrap .trec thead th.trec-c-amt { width: 12%; }
+  .trec-wrap .trec thead th.trec-c-amt { width: 14%; }
   .trec-wrap .trec thead th.trec-c-sign { width: 9.5%; }
   .trec-wrap .trec:not([data-money]) thead th.trec-c-date { width: 12%; }
   .trec-wrap .trec:not([data-money]) thead th.trec-c-proc { width: 34%; }
@@ -621,6 +625,10 @@ button.rf { display: grid; min-height: 44px; }
   .trec-wrap .trec:not([data-money]) thead th.trec-c-sign { width: 12%; }
   .trec-wrap .trec :is(.trec-c-amt, .trec-sign, .trec-nw, .trec-also) { white-space: normal; }
   .trec-wrap .trec :is(td, th) { overflow-wrap: anywhere; }
+  /* Never cut inside a number: an amount wraps only at its spaces ("Paid", "credit"). */
+  .trec-wrap .trec td.trec-c-amt { overflow-wrap: normal; }
+  /* A filed paper never says "Today": the date alone, as the A4 paper prints it. */
+  .trec-today { display: none; }
   .trec thead { display: table-header-group; }
   .trec tbody[hidden] { display: table-row-group; }
   .trec tbody + tbody { border-top: 0; }
@@ -632,8 +640,13 @@ button.rf { display: grid; min-height: 44px; }
   .trec-detail, .trec-sign, .trec tr[data-quiet] .trec-words, .trec tr[data-kind="payor"] .trec-words { color: #344054; }
   .trec-wrap .trec :is(.trec-detail, .trec-sign) { font-size: 8pt; }
   .trec-wrap .trec :is(.trec-wire, .trec-next, .trec-also) { font-size: inherit; }
+  /* Next visit as the A4 paper writes it: the date, then what it is for (adjustment, cancelled …) on a line of its own in
+     small print, never run into the date. */
+  .trec-next-sep { display: none; }
+  .trec-wrap .trec .trec-next-tail { display: block; font-size: 8pt; font-weight: 400; color: #344054; }
   .trec-paid { color: inherit; }
   .trec-foot { border-top: 0; color: #344054; }
+  .trec-legend { display: block; padding-top: 0.375rem; font-size: 12.5px; line-height: 1.5; color: #344054; }
 }
 /* Callouts on the sheet: the same tone, a slimmer box. */
 .pp-sheet .ws-callout { padding: 0.5rem 0.75rem; gap: 0.5rem; font-size: 14px; border-radius: 8px; }
@@ -721,6 +734,7 @@ button.rf { display: grid; min-height: 44px; }
    its own; dark mode comes from the tokens. */
 .rec-main { gap: 1rem; }
 .pp-page-no { margin-top: 1rem; text-align: right; font-size: 12.5px; line-height: 1.4; color: var(--c-ink-2); }
+.pp-page-who { display: none; }
 
 /* The contents, in the head: "Page 1" Chart · Patient information · Medical history | "Page 2" Consent | … */
 .pp-top .pp-contents { margin: 0.375rem 0 0; padding: 0.125rem 0 0; border-top: 1px solid var(--ws-hair); border-bottom: 0; }
@@ -781,6 +795,9 @@ button.rf { display: grid; min-height: 44px; }
 .pp-fold[open] > .pp-fold-sum .pp-fold-chev { transform: rotate(180deg); }
 .pp-fold-body { display: grid; gap: 0.375rem; min-width: 0; padding: 0.5rem 1.25rem 1rem; }
 .pp-fold-adds { justify-content: flex-end; }
+/* Under a sheet's title (h3) its panes' titles are h4 and a plan's phases h5, as blood pressure's is under the medical
+   history's: the workspace's heading rule (global.css, `.ws :is(h1, h2, h3)`) at its own weight, so they look as before. */
+.ws :where(.pp-att, #rec-health) :is(h4, h5) { font-family: var(--ws-font); font-weight: 600; letter-spacing: -0.012em; line-height: 1.25; text-wrap: balance; }
 @media (max-width: 767px) {
   .pp-fold-sum { padding: 0.25rem 0.75rem; }
   .pp-fold-body { padding: 0.5rem 0.75rem 0.75rem; }
@@ -817,8 +834,14 @@ button.rf { display: grid; min-height: 44px; }
   .pp-page + .pp-page { break-before: page; }
   .pp-page-no { margin-top: 1.5mm; color: #344054; }
   .pp-lh { border-bottom-color: #111827; }
-  .pp-head { break-after: avoid; }
-  /* Page 1 on one sheet, as the paper's is: the boxes at a form's print size. */
+  /* A heading never ends a sheet without what it heads. */
+  .pp-head, .pp-page :is(.ws-pane-head, .pp-band-title, .ph-title) { break-after: avoid; }
+  /* The foot names whose record it is, so a sheet that goes astray still says, and gives the page without "of 3": a
+     page that runs onto a second sheet would make that a sheet count it is not. */
+  .pp-page-who { display: inline; }
+  .pp-page-of { display: none; }
+  /* Page 1 on one sheet, as the paper's is, for an ordinary record: the boxes at a form's print size, blood pressure a
+     box of its own, the chart's tiles lower. A longer one runs onto a second sheet whole, boxes and headings unsplit. */
   .pp-lh { margin-bottom: 3mm; padding-bottom: 2mm; }
   .pp-lh-name { font-size: 13pt; }
   .pp-lh-line { font-size: 8.5pt; }
@@ -828,8 +851,8 @@ button.rf { display: grid; min-height: 44px; }
   .pp-page .rec-sec + .rec-sec, .pp-page #rec-chart + #rec-overview, .pp-page #rec-overview + #rec-health { margin-top: 2.5mm; }
   .pp-page .pp-band + .ph-band, .pp-page .ph-band + .ph-band { margin-top: 2mm; }
   .pf-cell { min-height: 0; padding: 0.5mm 1.6mm 0.7mm; break-inside: avoid; }
-  .pf-k { font-size: 6.8pt; line-height: 1.25; }
-  .pf-v, .pf-v .ph-ticks { font-size: 8.6pt; line-height: 1.25; }
+  .pf-k { font-size: 6.8pt; line-height: 1.2; }
+  .pf-v, .pf-v .ph-ticks { font-size: 8.6pt; line-height: 1.2; }
   .pf-v .ph-from { font-size: 6.8pt; }
   .pf-grid + .pf-grid { margin-top: 1.5mm; }
   .pp-page-no { font-size: 8pt; }
@@ -838,8 +861,28 @@ button.rf { display: grid; min-height: 44px; }
   .pp-page .pt-chart [data-codes] :has(> fieldset) { display: none !important; }
   .pp-page .pt-chart [data-codes] .overflow-x-auto { margin-top: 0; }
   .pp-page .pt-chart [data-codes] :has(> .meta) { margin-block: 1mm; }
-  .pp-page .pt-chart [data-codes] [data-code-legend] { margin-top: 1.5mm; font-size: 7.5pt; line-height: 1.4; }
-  .pp-page .pt-chart [data-codes] .tooth { height: 40px; }
+  .pp-page .pt-chart [data-codes] [data-code-legend] { margin-top: 1.5mm; font-size: 6.8pt; line-height: 1.35; }
+  .pp-page .pt-chart [data-codes] .tooth { height: 32px; }
+  .pp-page .pt-chart [data-codes] div:has(> div > div > div > [data-tooth]:not(.tooth--lower)) { padding-top: 18px; }
+  .pp-page .pt-chart [data-codes] div:has(> div > div > div > .tooth--lower) { padding-bottom: 18px; }
+  /* Blood pressure as a box under the medical history's: its name and when it was taken in the boxes' small print, the
+     reading, the pulse and the guide's word on one line at the boxes' size, the guide's own words in small print; the
+     earlier readings stay on the screen. */
+  .pp-page #vitals { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 4mm; margin-top: 1mm; padding: 0.5mm 1.6mm 0.7mm; border: 1px solid var(--ws-hair-strong); break-inside: avoid; }
+  .pp-page #vitals > :is(.ws-pane-head, .ws-callout, p:not(:has(.ws-chip))) { flex-basis: 100%; margin: 0; }
+  .pp-page #vitals .ws-pane-heading > div { display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: baseline; gap: 0 2mm; }
+  .pp-page #vitals :is(.ws-pane-title, .ws-pane-meta) { margin: 0; font-size: 6.8pt; font-weight: 600; line-height: 1.25; letter-spacing: 0; color: #344054; }
+  .pp-page #vitals .ws-pane-meta { font-weight: 400; }
+  .pp-page #vitals .vt-now { gap: 0 4mm; }
+  .pp-page #vitals :is(.vt-big, .vt-pulse) { font-size: 8.6pt; line-height: 1.25; letter-spacing: 0; }
+  .pp-page #vitals .vt-unit { font-size: 8.6pt; font-weight: 400; }
+  .pp-page #vitals > p:has(.ws-chip) { margin: 0; }
+  .pp-page #vitals .ws-chip { min-height: 0; padding: 0; border: 0; background: none; font-size: 8.6pt; color: #111827; }
+  .pp-page #vitals > p:not(:has(.ws-chip)) { font-size: 6.8pt; line-height: 1.25; }
+  .pp-page #vitals .ws-callout { display: block; padding: 0.4mm 1.2mm; font-size: 8pt; line-height: 1.25; }
+  .pp-page #vitals .ws-callout > svg { display: none; }
+  .pp-page #vitals .ws-callout p { display: inline; margin-right: 1.5mm; }
+  .pp-page #vitals .vt-list { display: none; }
 }
 
 /* --- Page 2, informed consent (./ConsentForms, ./ConsentRow, and DeskConsent's line) ----------------------------------

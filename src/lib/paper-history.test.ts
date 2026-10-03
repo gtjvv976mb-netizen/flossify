@@ -6,9 +6,9 @@ import assert from 'node:assert/strict';
 import {
   PAPER_CONDITIONS, PROBLEMS, PAPER_FIELDS, LIST_WORDS, pickWords, canonicalWord, labelOf, readPartialDate, partialDateText, laterDate,
   readPaperHistory, paperTyped, mergePaper, paperToStored, paperFromStored, samePaper, paperChanges, paperAfterOwn, pregnancyTwin,
-  paperBoxes, asksPregnancy, emptyPaper, PAPER_VERSION, type PaperAnswers, type BoxesIn,
+  paperBoxes, asksPregnancy, showsPregnancy, rebasePaper, emptyPaper, PAPER_VERSION, type PaperAnswers, type BoxesIn,
 } from './paper-history.ts';
-import { LISTS, readHealthForm, cleanList, changes, versionChanges, type HealthVersion } from './health.ts';
+import { LISTS, readHealthForm, cleanList, changes, versionChanges, sameAnswers, answered, type HealthAnswers, type HealthVersion } from './health.ts';
 
 const TODAY = '2026-10-03';
 /** A FormData-like post from pairs (a name may repeat). */
@@ -36,7 +36,7 @@ test('the paper’s lists: 23 conditions and 12 problems, in the paper’s order
 
 test('the picks keep the words the record already stores, so old rows and the forms still tick them', () => {
   const c = pickWords('conditions');
-  for (const w of ['Hypertension', 'Heart condition', 'Anaemia', 'Asthma', 'Diabetes', 'Hepatitis', 'HIV or AIDS', 'Tuberculosis (TB)', 'Stomach ulcers', 'Bleeding disorder', 'Epilepsy', 'Pregnancy']) {
+  for (const w of ['Hypertension', 'Heart condition', 'Anaemia', 'Asthma', 'Diabetes', 'Hepatitis', 'HIV or AIDS', 'Tuberculosis (TB)', 'Ulcer', 'Bleeding disorder', 'Epilepsy', 'Pregnancy']) {
     assert.ok(c.includes(w), w);
   }
   assert.deepEqual(LISTS.find((l) => l.key === 'conditions')!.picks, c);
@@ -51,7 +51,7 @@ test('canonicalWord and labelOf: the paper’s words and other spellings to the 
   assert.equal(canonicalWord('conditions', 'hiv/aids'), 'HIV or AIDS');
   assert.equal(canonicalWord('conditions', 'TB'), 'Tuberculosis (TB)');
   assert.equal(canonicalWord('conditions', 'Mango'), null);
-  assert.equal(canonicalWord('allergies', 'anesthetic'), 'Local anaesthetic');
+  assert.equal(canonicalWord('allergies', 'local anesthetic'), 'Local anaesthetic');
   assert.equal(canonicalWord('medications', 'Insulin'), 'Insulin');
   assert.equal(labelOf('conditions', 'Hypertension'), 'High blood pressure');
   assert.equal(labelOf('conditions', 'Breathing problems'), 'Respiratory disease');
@@ -59,10 +59,45 @@ test('canonicalWord and labelOf: the paper’s words and other spellings to the 
   assert.equal(labelOf('allergies', 'Local anaesthetic'), 'Local anaesthetic');
 });
 
+test('canonicalWord only re-spells: a broader or narrower word on file stays its own', () => {
+  // Never "Anesthetic" → "Local anaesthetic", "Ulcer" → "Stomach ulcers", "HIV" → "HIV or AIDS", "Arthritis" → "Arthritis or rheumatism".
+  for (const [k, w] of [['allergies', 'Anesthetic'], ['allergies', 'Anaesthetics'], ['conditions', 'HIV'], ['conditions', 'AIDS'], ['conditions', 'Stomach ulcers'], ['conditions', 'Arthritis']]) {
+    assert.equal(canonicalWord(k, w), null, w);
+  }
+  // The paper's "Ulcer" is stored as the paper says it; a box's word is never narrower than its label.
+  assert.equal(canonicalWord('conditions', 'ulcers'), 'Ulcer');
+  for (const w of LIST_WORDS.conditions) assert.equal(canonicalWord('conditions', w.label), w.word, w.label);
+  // The health form as drawn (HealthLists posts each chip's canonicalWord ?? word), saved untouched: the same lists, word for word.
+  const onFile: HealthAnswers = { allergies: ['Anesthetic'], conditions: ['Ulcer', 'HIV', 'Stomach ulcers'], medications: null, note: null };
+  const drawn = (k: string, list: string[]) => list.map((v) => [k, canonicalWord(k, v) ?? v] as [string, string]);
+  const r = readHealthForm(post([...drawn('allergies', onFile.allergies!), ...drawn('conditions', onFile.conditions!)]), TODAY);
+  assert.deepEqual(r.answers.allergies, ['Anesthetic']);
+  assert.deepEqual(r.answers.conditions, ['Ulcer', 'HIV', 'Stomach ulcers']);
+});
+
+test('an untouched Save of older spellings is a check, not a change', () => {
+  const onFile: HealthAnswers = { allergies: ['Local anesthetic'], conditions: ['High blood pressure', 'Anemia', 'Gout'], medications: null, note: null };
+  const drawn = (k: string, list: string[]) => list.map((v) => [k, canonicalWord(k, v) ?? v] as [string, string]);
+  const r = readHealthForm(post([...drawn('allergies', onFile.allergies!), ...drawn('conditions', onFile.conditions!)]), TODAY);
+  assert.deepEqual(r.answers.conditions, ['Hypertension', 'Anaemia', 'Gout']);
+  assert.ok(sameAnswers(onFile, r.answers));
+  assert.deepEqual(changes(onFile, r.answers), []);
+  // A real change is still named once, in the paper's words.
+  assert.deepEqual(changes(onFile, { ...r.answers, conditions: ['Hypertension', 'Asthma'] }), ['Conditions: added Asthma; removed Anemia, Gout']);
+});
+
+test('answered: a version with only the paper’s answers is answered (saveHealth’s rule)', () => {
+  const none = { allergies: null, conditions: null, medications: null, note: null };
+  assert.equal(answered(none), false);
+  assert.equal(answered({ ...none, paper: null }), false);
+  assert.equal(answered({ ...none, paper: paper({ physician_name: 'Dr. Jose Rizal' }) }), true);
+  assert.equal(answered({ ...none, allergies: [] }), true);
+});
+
 test('cleanList with the table: one word per condition, however it was typed', () => {
   const canon = (v: string) => canonicalWord('conditions', v);
   assert.deepEqual(cleanList(['Hypertension', 'high blood pressure', 'anemia', 'gout'], pickWords('conditions'), canon), ['Hypertension', 'Anaemia', 'Gout']);
-  // Without the table (the patient forms, the import), nothing changes.
+  // Without the table (the patient forms), nothing changes.
   assert.deepEqual(cleanList(['high blood pressure'], pickWords('conditions')), ['High blood pressure']);
 });
 
@@ -193,6 +228,11 @@ test('paperAfterOwn: the patient’s newer answer to the same question replaces 
   // The same dentist named again keeps the desk's location and number.
   const same = paperAfterOwn(desk, null, { previous_dentist: 'dr. reyes' })!;
   assert.equal(same.dentist_place, 'Baguio');
+  // The same dentist in another spelling keeps them too.
+  assert.equal(paperAfterOwn(desk, null, { previous_dentist: 'Dr Reyes' })!.dentist_place, 'Baguio');
+  // A location and number the desk wrote with no name stay beside the forms' name.
+  const noName = paperAfterOwn(paper({ dentist_place: 'Baguio', dentist_phone: '0917 555 0101' }), null, { previous_dentist: 'Dr. Cruz' })!;
+  assert.deepEqual([noName.dentist_name, noName.dentist_place, noName.dentist_phone], [null, 'Baguio', '0917 555 0101']);
   assert.equal(paperAfterOwn(null, { pregnant: 'yes' }, null), null);
   assert.equal(paperAfterOwn(paper({ pregnant: 'no' }), { pregnant: 'unsure' }, null), null);
 });
@@ -253,7 +293,7 @@ test('paperBoxes: where the desk has nothing, the patient forms’ own words, ma
   const latest = { allergies: null, conditions: ['Pregnancy'], medications: null, note: null, paper: null };
   const { dental, medical } = paperBoxes(boxesIn({ latest, own }));
   assert.equal(byKey(dental, 'reason').text, 'Toothache');
-  assert.equal(byKey(dental, 'reason').from?.what, 'forms');
+  assert.equal(byKey(dental, 'reason').from?.what, 'form');
   assert.equal(byKey(dental, 'last_care').text, '6 to 12 months ago');
   assert.equal(byKey(dental, 'dentist_name').text, 'Smile Clinic');
   assert.equal(byKey(dental, 'dentist_name').edit, 'Add the former dentist’s name', 'the desk has none');
@@ -281,6 +321,49 @@ test('paperBoxes: the pregnancy questions only where they apply, unless answered
   assert.equal(byKey(answered, 'pregnant').text, 'Yes');
   // Pregnancy alone on the list stays on it, so the box never says None for a list nobody asked beyond it.
   assert.deepEqual(byKey(answered, 'conditions').also, ['Pregnancy']);
+});
+
+test('showsPregnancy: one rule for the boxes and the health form, so an answer on file can always be changed', () => {
+  const none = { conditions: ['Asthma'], paper: null };
+  assert.equal(showsPregnancy(true, null, null), true);
+  assert.equal(showsPregnancy(false, none, null), false);
+  assert.equal(showsPregnancy(false, { conditions: null, paper: paper({ nursing: 'no' }) }, null), true, 'a saved answer');
+  assert.equal(showsPregnancy(false, { conditions: ['pregnancy'], paper: null }, null), true, 'the list');
+  assert.equal(showsPregnancy(false, none, { birth_control: 'yes' }), true, 'the patient’s own words');
+  assert.equal(showsPregnancy(false, none, { pregnant: '' }), false);
+  // The boxes follow it: a male patient with a saved answer has all three, each with its field on the form.
+  const male = paperBoxes(boxesIn({ ask: false, latest: { allergies: null, conditions: null, medications: null, note: null, paper: paper({ pregnant: 'yes' }) } })).medical;
+  assert.deepEqual(male.filter((b) => ['pregnant', 'nursing', 'pill'].includes(b.key)).map((b) => b.field), ['ph_pregnant', 'ph_nursing', 'ph_pill']);
+});
+
+test('paperBoxes: the patient’s own words name the forms they came from', () => {
+  const own = { health: { pregnant: 'no' }, healthAt: '2026-10-01T02:00:00Z', healthFrom: { kind: 'intake' as const, ref: 'IN-PRB7' }, teeth: { reason: 'Toothache' }, teethAt: '2026-09-26T02:00:00Z', teethFrom: { kind: 'form' as const, ref: 'QR-7K2F' } };
+  const { dental, medical } = paperBoxes(boxesIn({ own }));
+  assert.deepEqual(byKey(medical, 'pregnant').from, { what: 'intake', ref: 'IN-PRB7', at: '2026-10-01T02:00:00Z' });
+  assert.deepEqual(byKey(dental, 'reason').from, { what: 'form', ref: 'QR-7K2F', at: '2026-09-26T02:00:00Z' });
+});
+
+test('rebasePaper: after a conflict, what is on file now, with only this person’s own changes kept', () => {
+  const base = paper({ flossing: 'daily' });
+  const latest = paper({ flossing: 'daily', physician_name: 'Dr. Santos', pregnant: 'yes' });
+  // This person changed Brushing on a form drawn from `base` (no pregnancy questions on it).
+  const mine = readPaperHistory(post([['has_paper', '1'], ['ph_flossing', 'daily'], ['ph_brushing', 'twice']]), TODAY);
+  const re = rebasePaper(mine.typed, mine.paper, base, latest);
+  assert.equal(re.typed.ph_brushing, 'twice');
+  assert.equal(re.typed.ph_physician_name, 'Dr. Santos', 'the colleague’s answer stays');
+  assert.equal(re.typed.ph_pregnant, 'yes');
+  assert.deepEqual(re.clash, []);
+  // Saved again from the form as drawn: the colleague's answer and this person's both stand.
+  const again = readPaperHistory(post([['has_paper', '1'], ['has_paper_pregnancy', '1'], ...Object.entries(re.typed).flatMap(([k, v]) => (Array.isArray(v) ? v.map((x) => [k, x] as [string, string]) : [[k, v] as [string, string]]))]), TODAY);
+  const saved = mergePaper(latest, again.paper)!;
+  assert.deepEqual([saved.physician_name, saved.brushing, saved.flossing, saved.pregnant], ['Dr. Santos', 'twice', 'daily', 'yes']);
+  // Both changed the same question to different answers: this person's stays in the form, and the callout names the other.
+  const both = readPaperHistory(post([['has_paper', '1'], ['ph_flossing', 'daily'], ['ph_physician_name', 'Dr. Cruz']]), TODAY);
+  const r2 = rebasePaper(both.typed, both.paper, base, latest);
+  assert.equal(r2.typed.ph_physician_name, 'Dr. Cruz');
+  assert.deepEqual(r2.clash, ['physician_name']);
+  // An older form (no paper fields): everything as on file now.
+  assert.deepEqual(rebasePaper({}, undefined, base, latest).typed, paperTyped(latest));
 });
 
 test('readHealthForm: the desk’s typing read through the table, and the paper read beside it', () => {

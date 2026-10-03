@@ -40,7 +40,8 @@ import { deflateRawSync, inflateRawSync, crc32 } from 'node:zlib';
 import type { Tx } from './db';
 import { normalizePhone, PH_MOBILE } from './messages';
 import { EMAIL_ADDRESS, EMAIL_MAX, normalizeEmail } from './email';
-import { LISTS, cleanList, oneLine, manilaToday, sameAnswers, NOTE_MAX, type HealthAnswers } from './health';
+import { LISTS, cleanList, oneLine, manilaToday, sameAnswers, NOTE_MAX, ITEM_MAX, ITEMS_MAX, type HealthAnswers } from './health';
+import { canonicalWord } from './paper-history';
 import { SERIES, parseMoney, pesos, toDb, METHODS, methodLabel, type Cents } from './invoices';
 
 export const FILE_MAX = 5 * 1024 * 1024;
@@ -648,12 +649,16 @@ export function readSex(raw: string): 'female' | 'male' | 'other' | 'undisclosed
 }
 
 const NONE_WORDS = new Set(['none', 'none known', 'nka', 'nkda', 'no', 'wala', 'n a', 'na', 'nil', 'nothing', 'no known allergies']);
-/** A list cell: blank is "not asked" (null), "none"/"wala"/"N/A" is asked-and-none ([]), else the items. */
-export function readList(raw: string, picks: readonly string[]): string[] | null {
+/**
+ * A list cell: blank is "not asked" (null), "none"/"wala"/"N/A" is asked-and-none ([]), else the items. `canon`: another
+ * spelling of a pick to its stored word, as the record's health form reads it (paper-history.ts canonicalWord), so an
+ * imported "High blood pressure" is stored "Hypertension" like one typed at the desk.
+ */
+export function readList(raw: string, picks: readonly string[], canon?: (v: string) => string | null): string[] | null {
   const t = oneLine(raw);
   if (!t || t === '-' || t === '—') return null;
   if (NONE_WORDS.has(fold(t))) return [];
-  return cleanList(t.split(/[,;/\n]| and /), picks);
+  return cleanList(t.split(/[,;/\n]| and /), picks, canon);
 }
 
 /** FDI tooth numbers: permanent 11–48, milk teeth 51–85. */
@@ -1036,6 +1041,7 @@ export function plan(s: Snapshot, input: PlanInput): Plan {
   if (input.kind === 'patients') {
     const seenChart = new Map<string, number>(), seenPerson = new Map<string, number>(), seenName = new Map<string, number>();
     const picks = Object.fromEntries(LISTS.map((l) => [l.key, l.picks]));
+    const canon = Object.fromEntries(LISTS.map((l) => [l.key, (v: string) => canonicalWord(l.key, v)]));
     input.rows.forEach((r, i) => {
       if (r.every((c) => !String(c ?? '').trim())) return;
       const row = rowNumber(i, input.headerRow);
@@ -1062,10 +1068,11 @@ export function plan(s: Snapshot, input: PlanInput): Plan {
       const ePhoneRaw = clean(cell(r, 'emergency_phone'), 40);
       const ePhone = ePhoneRaw ? (readPhone(ePhoneRaw).mobile ?? ePhoneRaw.slice(0, 20)) : null;
       const health: HealthAnswers = {
-        allergies: readList(cell(r, 'allergies'), picks.allergies), conditions: readList(cell(r, 'conditions'), picks.conditions),
-        medications: readList(cell(r, 'medicines'), picks.medications), note: clean(cell(r, 'health_note'), NOTE_MAX),
+        allergies: readList(cell(r, 'allergies'), picks.allergies, canon.allergies), conditions: readList(cell(r, 'conditions'), picks.conditions, canon.conditions),
+        medications: readList(cell(r, 'medicines'), picks.medications, canon.medications), note: clean(cell(r, 'health_note'), NOTE_MAX),
       };
-      for (const l of LISTS) { const v = health[l.key]; if (v && v.some((x) => x.length > 60)) problems.push(`${l.label}: one item is longer than 60 characters. Split it with commas.`); if (v && v.length > 20) problems.push(`${l.label}: more than 20 items.`); }
+      // The health form's limits (health.ts), so a list the desk can save is a list the import takes.
+      for (const l of LISTS) { const v = health[l.key]; if (v && v.some((x) => x.length > ITEM_MAX)) problems.push(`${l.label}: one item is longer than ${ITEM_MAX} characters. Split it with commas.`); if (v && v.length > ITEMS_MAX) problems.push(`${l.label}: more than ${ITEMS_MAX} items.`); }
       const anyHealth = LISTS.some((l) => health[l.key] !== null) || !!health.note;
       let opening: PatientIn['opening'] = null;
       if (input.money) {

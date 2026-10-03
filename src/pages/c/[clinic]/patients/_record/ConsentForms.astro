@@ -11,7 +11,8 @@
 //     paper's foot as three boxes: the patient's signature (a parent or guardian for a minor), the dentist who explained
 //     it (never called a signature: no dentist's signature is kept), the date. The foot is the newest agreement still
 //     standing, from any of the three ways it is signed: at a visit on the tablet (035), as a form (039), or typed on the
-//     patient forms from the QR code (028). Its forms still to act on follow, the older ones folded;
+//     patient forms from the QR code (028); after a newer refusal or withdrawal, that decision and its day instead. Its
+//     forms still to act on follow, the older ones folded;
 //   - the history under it: signed at visits, and the patient forms.
 // The paper's headings are its own (sentence case); the words a patient signs are always ours, from the library, never
 // the paper's. Which paragraph holds which form is this page's map (PARAS), not the library's.
@@ -129,7 +130,17 @@ const feet: Foot[] = [
     dentist: null, day: day(new Date(f.submittedAt)), version: f.treatmentVersion,
   })),
 ];
-const foot = feet.sort((a, b) => b.at.getTime() - a.at.getTime())[0] ?? null;
+// The patient's newest decision against it — a general form they did not agree to, or one they withdrew — ends every
+// agreement before it: the foot then says so ("Withdrawn", "Did not agree", its day), never an older signature.
+const against = generalDocs.flatMap((d) => {
+  const s = d.latest;
+  if (d.state === 'withdrawn' && s?.withdrawal) return [{ at: new Date(s.withdrawal.at), words: 'Withdrawn', day: day(new Date(s.withdrawal.at)) }];
+  if (d.state === 'refused' && s) return [{ at: signedAtOf(s), words: 'Did not agree', day: s.channel === 'paper' && s.signedOn ? dateText(s.signedOn)! : day(new Date(s.signedAt)) }];
+  return [];
+}).sort((a, b) => b.at.getTime() - a.at.getTime())[0] ?? null;
+const newest = feet.sort((a, b) => b.at.getTime() - a.at.getTime())[0] ?? null;
+const foot = newest && (!against || newest.at.getTime() > against.at.getTime()) ? newest : null;
+const ended = foot ? null : against;
 // The general consent's forms: those to act on (to sign, not agreed, withdrawn, newer words, went ahead without) under the
 // foot; the signed ones, the foot's among them, folded (each still opens and prints).
 const openIntake = (d: RecordDoc) => d.intakeStatus === 'preparing' || d.intakeStatus === 'out';
@@ -214,11 +225,11 @@ const rowProps = (d: RecordDoc) => ({ doc: d, slug, patientId, canEdit, mayExpla
             {foot.strokes ? <Signature strokes={foot.strokes} name={foot.name} class="cf-slip" /> : null}
             <span>{foot.name}<span class="cf-signoff-how">{foot.how}{general && foot.version !== general.id ? ', under older words' : ''}</span></span>
           </span>
-        ) : 'Not signed'}
+        ) : (ended?.words ?? 'Not signed')}
       </dd>
     </div>
     <div class:list={['pf-cell', !foot?.dentist && 'pf-empty']}><dt class="pf-k">Dentist who explained</dt><dd class="pf-v">{foot?.dentist ?? '—'}</dd></div>
-    <div class:list={['pf-cell', !foot && 'pf-empty']}><dt class="pf-k">Date</dt><dd class="pf-v">{foot?.day ?? '—'}</dd></div>
+    <div class:list={['pf-cell', !foot && 'pf-empty']}><dt class="pf-k">Date</dt><dd class="pf-v">{foot?.day ?? ended?.day ?? '—'}</dd></div>
   </dl>
   {generalShown.length > 0 && <ul class="rs-list cf-docs cf-general-docs">{generalShown.map((d) => <ConsentRow {...rowProps(d)} titled={false} />)}</ul>}
   {generalFolded.length > 0 && (

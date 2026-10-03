@@ -9,7 +9,8 @@
 // A real table where the section is wide (from 54rem inside it); below that, each day is a card with
 // labelled lines (the container query in record.css). With more than 14 days, the script folds all but the
 // last 10 behind "Show N earlier days" (the hidden attribute, never a class); with scripts off, every day shows.
-// Printed with the record, it is the paper's table: every day, no buttons (record.css, "print").
+// Printed with the record, it is the paper's table: every day, no buttons, no "Today", and the A4 paper's line saying
+// what Sign means (record.css, "print").
 import Pane from '../../../../../components/ws/Pane.astro';
 import Empty from '../../../../../components/ws/Empty.astro';
 import Chip from '../../../../../components/ws/Chip.astro';
@@ -17,7 +18,7 @@ import Icon from '../../../../../components/ws/Icon.astro';
 import Head from '../_ui/Head.astro';
 import Signature from './Signature.astro';
 import { dateText } from '../../../../../lib/health';
-import { balanceWords, amountWords, signName, type Ledger } from '../../../../../lib/treatment-record';
+import { balanceWords, amountWords, signName, SIGN_LEGEND, type Ledger } from '../../../../../lib/treatment-record';
 import { pesos } from '../../../../../lib/invoices';
 import { VISIT_STATUS } from '../../../../../lib/visit-record';
 
@@ -66,12 +67,12 @@ const balanceNote = !money ? null
                         {d.open.length ? (
                           <>
                             <button type="button" class="trec-date" data-ws-open={`rec-visit-${d.open[0].key}`} aria-haspopup="dialog">
-                              <span>{d.day === today && <><span class="trec-nw">Today ·</span>{' '}</>}<span class="trec-nw">{dateText(d.day)}</span></span><span class="sr-only">, see the whole visit</span>
+                              <span>{d.day === today && <><span class="trec-nw trec-today">Today ·</span>{' '}</>}<span class="trec-nw">{dateText(d.day)}</span></span><span class="sr-only">, see the whole visit</span>
                               <span class="trec-date-go" aria-hidden="true">See the whole visit <Icon name="chevron-right" size={14} /></span>
                             </button>
                             {d.open.slice(1).map((o) => <button type="button" class="trec-also" data-ws-open={`rec-visit-${o.key}`} aria-haspopup="dialog">Also {o.time || 'another visit'}<span class="sr-only">: see that visit</span></button>)}
                           </>
-                        ) : <span class="trec-date-plain">{d.day === today && <><span class="trec-nw">Today ·</span>{' '}</>}<span class="trec-nw">{dateText(d.day)}</span></span>}
+                        ) : <span class="trec-date-plain">{d.day === today && <><span class="trec-nw trec-today">Today ·</span>{' '}</>}<span class="trec-nw">{dateText(d.day)}</span></span>}
                       </th>
                     )}
                     <td class="trec-c-proc">
@@ -88,7 +89,7 @@ const balanceNote = !money ? null
                       <span class="meta trec-l">Next visit</span>
                       {r.next && (r.next.visitKey
                         ? <button type="button" class="trec-next" data-ws-open={`rec-visit-${r.next.visitKey}`} aria-haspopup="dialog" aria-label={`Next visit ${r.next.text}: see the visit`}>{r.next.text.split(' · ').map((part, pi) => <span class:list={[pi ? 'trec-next-tail' : 'trec-nw']}>{part}</span>)}</button>
-                        : <span class="trec-next-plain">{r.next.text.split(' · ').map((part, pi) => <span class:list={[pi ? 'trec-next-tail' : 'trec-nw']}>{pi > 0 && ' · '}{part}</span>)}</span>)}
+                        : <span class="trec-next-plain">{r.next.text.split(' · ').map((part, pi) => <>{pi > 0 && <span class="trec-next-sep"> · </span>}<span class:list={[pi ? 'trec-next-tail' : 'trec-nw']}>{part}</span></>)}</span>)}
                     </td>
                     <td class="trec-c-who" data-none={r.dentist ? undefined : ''}><span class="meta trec-l">Dentist</span>{r.dentist}</td>
                     {money && (
@@ -103,7 +104,7 @@ const balanceNote = !money ? null
                     {money && <td class="trec-c-amt trec-bal" data-foot={lastRow && r.balance !== null ? '' : undefined} data-none={r.balance === null ? '' : undefined}><span class="meta trec-l">Balance</span>{r.balance !== null && balanceWords(r.balance)}</td>}
                     <td class="trec-c-sign" data-none={s ? undefined : ''}>
                       <span class="meta trec-l">Sign</span>
-                      {s?.kind === 'entered' && <span class="trec-sign" title={s.name}><span aria-hidden="true">{signName(s.name)}</span><span class="sr-only">Entered by {s.name}</span></span>}
+                      {s?.kind === 'entered' && <span class="trec-sign" title={`Entered by ${s.name}`}><span aria-hidden="true">{signName(s.name)}</span><span class="sr-only">Entered by {s.name}</span></span>}
                       {s?.kind === 'signature' && <Signature strokes={s.strokes} name={s.name} class="trec-sig" />}
                       {s?.kind === 'paper' && <span class="trec-sign">On paper<span class="sr-only">, signed by {s.name}</span></span>}
                     </td>
@@ -114,6 +115,9 @@ const balanceNote = !money ? null
           ))}
         </table>
       </div>
+      {/* What Sign means, on paper only (the A4 Treatment record's own line): a typed name in the paper's Sign column must
+          not read as a signature. On screen the cell's title and its screen-reader words say "Entered by". */}
+      <p class="trec-legend">{SIGN_LEGEND}</p>
       {(balanceNote || ledger.capped) && (
         <div class="trec-foot">
           {balanceNote && <p>{balanceNote}</p>}

@@ -1074,6 +1074,80 @@ was **not** opened, twice (another clinic's patient data behind its login; on 2 
 `/admin/patients/<id>?tab=workspace` again and was asked to describe it, or send screenshots with the patient's
 details covered, instead).
 
+- **The paper record (3 Oct 2026) — this is the record now; the bullets after it are its history.** The owner sent a
+  Philippine clinic's real three-page paper record and asked: "make the patient records as simple as this, better a
+  digital copy of the real form", then "make it a better but still simple like that". The photos showed a real minor
+  patient's details: they were used for the form's layout only and nothing from them is in the repository (as with the
+  SwiftCare admin screenshot: do not save or share them). The record is one page of **three paper sheets**, then the rest
+  folded:
+  - **Page 1** (`article.pp-sheet.pp-page`): `_record/Letterhead.astro` — THIS clinic's own name, address, phone and
+    email from its row (never another clinic's branding, no logo), Chart # (`chart_no`, opens Edit details) and Date (the
+    day the chart was opened); the **Patient's chart** (Odontogram with `codes`: each finding's paper code drawn on its
+    tooth by CSS from the attributes `paint()` already sets, and the paper's legend "C – Caries · Ex – Extraction · …"
+    under the arches); the **Patient information record**: Basic information in the paper's order (Patient name |
+    Occupation; Date of birth | Age | Gender | Contact number | Email address; Address | Parent's or guardian's name; a
+    six-column `.pf-grid`), HMO · Emergency contact · Desk note in a second grid, **Dental history** and **Medical
+    history** (`_record/PaperHistory.astro`, `paper-history.css`), then blood pressure. Edit details gains Occupation and
+    Parent or guardian (name, relation, mobile) behind `has_paper_fields` (`readPersonForm` / `updateDetails` in
+    import.ts; Add patient never sends the flag).
+  - **Page 2: Informed consent** — the privacy notice first (one ruled line once on record: DeskConsent's opt-in `line`;
+    the desk's form otherwise, unchanged), the clinic's paper forms on file, then the paper's **ten paragraphs in its
+    order** (`PARAS` in ConsentForms.astro, a UI-only map — never in consent-library.ts; `_record/ConsentRow.astro` per
+    form: the signature slip or "Signed on paper", state, date — a paper signing's own date —, signed by, "Explained by
+    Dr …", withdrawals and overrides in full). Changes in treatment plan, Radiograph and Drugs and medications point to
+    their point in the general consent ("No form of its own. See …") — a reference, never a claim that it covers them.
+    Then the general consent (its words folded, printed in full) and the paper's foot: Patient's signature (parent or
+    guardian if a minor) · **Dentist who explained** (never called a signature: no dentist's signature is stored) · Date —
+    the newest agreement still standing (a withdrawn or refused one is not shown as standing). No consent word changed.
+  - **Page 3: Treatment record** — Date · Procedure (teeth first, "36 MO · Composite filling") · **Wire** · Next visit ·
+    Dentist · Amount · Balance · **Sign** with `finance.bill`, and Date · Procedure · Wire · Next visit · Dentist · Sign
+    without it (no money row is read then). Wire is `plan_adjustment.wire` (045; "Adjustment done" has the field, ≤ 60
+    characters, shown in the adjustments list, the visit panel and the ledger). Sign is who entered the line
+    (`procedure_done.created_by`, `plan_adjustment.done_by`, `invoice.created_by` and `payment.received_by` inside
+    `loadLedgerMoney`, so behind finance.bill), blank for imported and unknown rows, and on a signed consent row the
+    signer's own small signature. The printed record's foot says what Sign means (print only: no explaining lines on
+    screen). The balance rule is `patient_balance()`'s, untouched. Screen and A4 paper share `buildLedger`.
+  - **Attached to this record** (`_record/Attached.astro`): Treatment (plan, done, lab cases, LOAs, payment plans),
+    Clinical notes, Prescriptions and letters, X-rays and files, Appointments (with the next check-up), Account
+    (finance.bill), Texts — each a closed `details.pp-att` with one status line ("2 on the plan", "₱1,200 owed"). Every id,
+    hash, opener and post landing still works: the server draws a sheet open when the page lands there or a panel in it
+    is drawn open (`PART_OF` / `partOf`); `show()` opens a region's fold; a capturing `ws:panel-open` listener and a
+    post-load net open the sheet around any panel opened from outside it — **a dialog inside a closed `<details>` is drawn
+    0×0 while still making the page inert** (measured), so a new part must be in `PART_OF`.
+  - **The head** keeps ‹ Patients, the actions (New booking the one teal, Edit details, **Print the record**, More), the
+    safety chips and the contents grouped Page 1 · Page 2 · Page 3 · Attached. The facts line and the four numbers are
+    gone (the paper says each fact once). Pages are numbered ("Page 1 of 3"), not the parts. Headings: h2 per sheet,
+    h3 per section, h4 for the cards inside (Pane and Head take `level` 4).
+  - **Print the record** prints the three sheets like the paper: black on white whatever the screen theme, no shell,
+    pluses, contents, strip or attached sheets, each sheet on its own A4 page with "<name> · Chart # <no> · Page N" at
+    its foot (no "of 3": a very long history can still spill onto a second sheet), ticks drawn in ink (they print without
+    background graphics). Audited `record.print` by a beacon on beforeprint, at most once a minute.
+- **The dental and medical history (3 Oct)** — `src/lib/paper-history.ts` (pure): the paper's 12 problems and 23
+  conditions in its order and words, stored under the words the record already uses (High blood pressure →
+  "Hypertension"; aliases are only real re-spellings, never a narrower or wider word), and everything else the paper asks
+  in `medical_history.answers.paper` (`{v:'paper-2026-10', …}`: former dentist's name, location and number; last dental
+  care and last X-ray as partial dates; flossing and brushing; problems; physician's name, location and last visit; a
+  blood transfusion and when; pregnant, nursing, birth control pills; other serious illnesses or operations). No
+  migration; every save is still an insert; a form without `has_paper` keeps what is saved; lists compare by meaning, so
+  a re-spelling is not a change. `showsPregnancy()` is the one rule for where the pregnancy questions appear (asked, or
+  an answer on file), and the form never pre-ticks Yes over a patient's newer No. After a save conflict the paper fields
+  are rebased (`rebasePaper`): only this person's own changes are kept. A box with no desk answer shows the patient's
+  own words and where they came from ("From the patient forms (QR-…)" or "From the forms the patient filled in (IN-…)").
+  The QR forms' and the intake's questions are unchanged. Unit tests: `node --experimental-strip-types --no-warnings
+  --import ./scripts/ts-register.mjs --test src/lib/paper-history.test.ts`.
+- **The chart's codes (045)** — tooth_state gains extraction (Ex), root_fragment (RF), abutment (Ab), pontic (P),
+  denture (Rm) and the surface restorations amalgam (Am) and inlay (I), in every list that names conditions (demo.ts
+  `CONDITION_LABEL` / `CONDITION_CODE` / `SURFACE_SCOPED`, api/chart.ts, the palette in the paper legend's order, the
+  swatch, global.css). Crown is J and bridge Fx, as on paper; our extras are F (filled), RCT (root canal), Impl (implant)
+  and V (veneer) — for a dentist to confirm (review pack, "The chart's codes"). Primary teeth (A–T) are not drawn yet.
+- Checked by `scripts/dev/record/paper-check.mjs` (rewritten for the three sheets and the attached sheets: order, the
+  letterhead names this clinic, basic information in the paper's order, Edit details saves occupation and guardian and an
+  older form keeps them, sheets closed on a plain load and opened by their hashes, a history box puts the caret in view,
+  the print shows only the three sheets; contrast ≥ 4.5:1 light and dark at 1440 and 390 with every sheet opened —
+  lowest 4.68:1 light, 5.59:1 dark —, 44 px, no sideways scroll), phone-e2e (all paths), the history unit tests and the
+  QR forms backend test. A 63-agent review (five angles, two skeptics per finding) confirmed 23 defects; all fixed and
+  re-checked.
+- *(History, 2 Oct: the twelve numbered parts on one sheet, below. The ids and openers they name all still exist.)*
 - **One sheet** (`<article class="pp-sheet">`, 64rem, the card colour in both themes) under the head (`.pp-top`, the
   same width): the name line, the allergy and safety chips, and one line of facts (Next visit · Last visit · Balance ·
   Consent: `.pp-facts`, no number tiles). Then **Contents** (`RecordNav.astro`: numbered links `#rec-<id>`,
@@ -1605,6 +1679,13 @@ page 1 beside the record with "Use" per detail, and withdrawals and overrides as
   sentences (should a crown over a charted root canal be offered? should one visit's offers be gathered into
   one?). The owner's three scheduling questions (turnover, p07 §7.1's held reminders, where the consent question
   comes) are each clinic's own setting since 044, defaulting to what shipped.
+- **The paper record's open questions (3 Oct):** a dentist confirms our own chart codes (F, RCT, Impl, V) and the
+  general consent pointers for Changes in treatment plan, Radiograph and Drugs and medications (or asks for forms of
+  their own: new templates, versions and a migration, with the lawyer); the privacy notice (privacy-2026-09) does not
+  name the desk's health history, and the paper fields add pregnancy, nursing, the pill, transfusions and third parties'
+  names and numbers (physician, former dentist) — listed in the review pack for the lawyer; no dentist's signature is
+  stored (the foot says "Dentist who explained"); primary teeth A–T on the chart are not built; a long archwire spec
+  can wrap mid-spec in the printed Wire column.
 - A new web patient's chart number is `W-` + (patients here + 1) (`api/bookings`): the app never deletes a
   patient, but one deleted by hand makes the next web booking for a new mobile fail on the unique key until
   another patient is added. Test scripts that share a database archive their patients instead of deleting.
@@ -1719,6 +1800,9 @@ scripts/dev/schedule/seat-check.mjs     In the chair asks why for a consent form
 scripts/dev/record/paper-check.mjs      the record as a paper chart: the parts in order, contents, plus signs, contrast, 390 px
 scripts/dev/schedule/choices-check.mjs  How the day runs (044): settings, the gap online and on the calendar, held reminders, the question at the door
 scripts/dev/schedule/dash-check.mjs     the Dashboard for a dentist who runs the clinic: first screen, Next for you, Mine · Everyone, tasks, contrast
+src/data/migrations/045        the paper record: tooth_state's paper codes (Ex, RF, Ab, P, Rm, Am, I), plan_adjustment.wire
+src/lib/paper-history.ts       the paper's dental and medical history: choices, aliases, answers.paper, the boxes (pure; .test.ts beside it)
+src/pages/c/[clinic]/patients/_record/Letterhead.astro, PaperHistory.astro, PaperHistoryFields.astro, ConsentRow.astro, Attached.astro  the paper record's pieces
 src/data/migrations/044        clinic.turnover_min, hold_closed_reminders, consent_ask_at; public_clinic_turnover(), appointment_reminder_held(), the reminder pass
 scripts/dev/review/review-pack.ts       npm run review:pack → docs/review/review-pack.html: every consent form, the chart's offer, aftercare, the privacy gaps, for the dentist and lawyer
 src/data/migrations/040        blocked time: lunch, dentist hours, clinic_block, blocked_ok_at, clinic_unavailable(), public_blocked/busy_ranges()

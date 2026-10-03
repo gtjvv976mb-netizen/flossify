@@ -2,7 +2,7 @@
 // The Dental history and the Medical history as the paper patient record boxes them (3 Oct 2026, the owner: "a
 // digital copy of the real form"): the paper's labels in its order, four boxes to a row (two on a phone), a small
 // label over each answer. What each box says is worked out in src/lib/paper-history.ts (paperBoxes): the desk's
-// answer; where the desk has none, the patient forms' own words, with a line saying they are the patient's; a
+// answer; where the desk has none, the patient's own words, with a line naming the forms they came from; a
 // checklist as the boxes ticked, each a tick and the paper's words. A box that can be changed is its own 44 px
 // button (record.css's .pf-go), with a small plus in its corner: it opens the folded health form with the caret in
 // that box's field (data-rec-go="health-form", data-rec-field), as the record's other boxes do. Allergies are red.
@@ -41,7 +41,12 @@ const bands: [string, string, Box[]][] = [
   ...(part !== 'medical' ? [['dental', 'Dental history', boxes.dental] as [string, string, Box[]]] : []),
   ...(part !== 'dental' ? [['medical', 'Medical history', boxes.medical] as [string, string, Box[]]] : []),
 ];
-const fromWords = (b: Box) => (b.from ? `From the patient forms${b.from.at ? `, ${day(new Date(b.from.at))}` : ''}` : null);
+// Which forms, as the record's health line names them: the patient forms from the QR code (QR-…), or an intake's page 1 (IN-…).
+const fromWords = (b: Box) => {
+  if (!b.from) return null;
+  const ref = [b.from.ref, b.from.at && `sent ${day(new Date(b.from.at))}`].filter(Boolean).join(', ');
+  return `${b.from.what === 'intake' ? 'From the forms the patient filled in' : 'From the patient forms'}${ref ? ` (${ref})` : ''}`;
+};
 ---
 
 {bands.map(([key, title, list]) => (

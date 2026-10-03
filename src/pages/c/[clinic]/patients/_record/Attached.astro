@@ -5,7 +5,8 @@
 // or any id in it (#notes, #money, #recall …), from a post that lands in it and from a side panel drawn open in it:
 // the server draws it open for those it knows of (`open`), the record's script opens it for the rest (show(), and
 // ws:panel-open for a panel opened from outside it: a dialog in a closed <details> is not drawn). The part keeps its
-// region, ids and title (#rec-<id>, #rec-<id>-title); its adds are the first row inside.
+// region, ids and title (#rec-<id>, #rec-<id>-title); its adds are the first row inside. The title is an h3 under
+// "Attached to this record" (h2), so a pane drawn in a sheet titles itself at h4 (Pane and Head, level={4}).
 import Icon from '../../../../../components/ws/Icon.astro';
 import Plus from './Plus.astro';
 import type { Add } from './Banner.astro';

@@ -8,7 +8,10 @@
 // these questions keeps what is saved. The pregnancy questions carry their own `has_paper_pregnancy`, so a form that
 // did not draw them leaves those answers as they are.
 // Pregnancy is one question here: the Pregnant answer puts "Pregnancy" on the conditions list or takes it off when
-// it is saved (paper-history.ts pregnancyTwin), so its chip is not drawn beside it.
+// it is saved (paper-history.ts pregnancyTwin), so its chip is not drawn beside it. The question starts from the
+// desk's own answer; where the desk has none and the patient answered it on their forms (the box above shows their
+// words), it starts unanswered and a list that has "Pregnancy" keeps its chip, ticked: a Save for anything else then
+// changes nothing about pregnancy. Only where nobody answered does a list that has it start the question at Yes.
 // Dates are written as on paper: a year, a month and year, or a day. Nothing here explains itself; the labels are
 // the paper's. The page's script marks the form unsaved on any change (it listens on the form).
 import { NONE_SUFFIX, HAS_PAPER, HAS_PAPER_PREGNANCY, FIELD, paperTyped, PREGNANCY, type PaperAnswers, type PaperTyped, type PaperKey } from '../../../../../lib/paper-history';
@@ -24,19 +27,22 @@ interface Props {
   chips: Record<string, { value: string; on: boolean }[]>;
   none: Record<string, boolean>;
   typedLists?: Record<string, string>;
-  /** Draw the pregnancy questions (paper-history.ts asksPregnancy). */
+  /** Draw the pregnancy questions (paper-history.ts showsPregnancy: where they apply, or wherever one is answered). */
   ask: boolean;
+  /** The patient's own health answers on file (readHealth's own.health), or null. */
+  own?: Record<string, unknown> | null;
 }
-const { paper, typed = null, chips, none, typedLists = {}, ask } = Astro.props;
+const { paper, typed = null, chips, none, typedLists = {}, ask, own = null } = Astro.props;
 
 const low = (s: string) => s.toLocaleLowerCase('en');
 // "Pregnancy" on the list is the Pregnant answer's twin: its chip goes, and a list that has it answers Yes until the
 // desk says otherwise.
 const listed = (chips.conditions ?? []).some((c) => c.on && low(c.value) === low(PREGNANCY));
-const conditionChips = ask ? { ...chips, conditions: (chips.conditions ?? []).filter((c) => low(c.value) !== low(PREGNANCY)) } : chips;
+const ownPregnant = own?.pregnant !== null && own?.pregnant !== undefined && own?.pregnant !== '';
 const v: PaperTyped = typed ?? paperTyped(paper);
-if (!typed && ask && !paper?.pregnant && listed) v.ph_pregnant = 'yes';
+if (!typed && ask && !paper?.pregnant && listed && !ownPregnant) v.ph_pregnant = 'yes';
 const val = (k: PaperKey) => String(v[FIELD[k].name] ?? '');
+const conditionChips = ask && !(listed && !val('pregnant')) ? { ...chips, conditions: (chips.conditions ?? []).filter((c) => low(c.value) !== low(PREGNANCY)) } : chips;
 const ticked = (k: PaperKey) => (Array.isArray(v[FIELD[k].name]) ? (v[FIELD[k].name] as string[]) : []);
 const DATE_HINT = 'For example, Mar 2024';
 ---

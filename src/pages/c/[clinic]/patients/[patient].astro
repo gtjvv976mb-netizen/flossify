@@ -148,7 +148,7 @@ import {
   type HealthAnswers, type HealthVersion, type AgreedAs, type PaperIn,
 } from '../../../../lib/health';
 import { readPersonForm, updateDetails, hmoSuggestions, SEXES, NOTES_MAX, OCCUPATION_MAX, GUARDIAN_NAME_MAX, RELATION_MAX, type PersonIn } from '../../../../lib/import';
-import { asksPregnancy, type PaperTyped } from '../../../../lib/paper-history';
+import { asksPregnancy, showsPregnancy, rebasePaper, FIELD, paperValueText, type PaperTyped } from '../../../../lib/paper-history';
 import { pesos, statementNo, STATUS as BILL_STATUS, fromDb } from '../../../../lib/invoices';
 import { prettyPhone } from '../../../../lib/messages';
 import { hmos } from '../../../../data/directory';
@@ -188,7 +188,7 @@ const chartSid = chartSession(session);
 // What a post left behind for the page to show.
 let healthProblems: string[] = [];
 let posted: { answers: HealthAnswers; birth: string; birthWas: string; base: string; paperTyped: PaperTyped } | null = null;
-let conflict: { latest: HealthVersion | null; birth: string | null; versionMoved: boolean; birthMoved: boolean } | null = null;
+let conflict: { latest: HealthVersion | null; birth: string | null; versionMoved: boolean; birthMoved: boolean; paperClash: string[] } | null = null;
 let consentProblem: string | null = null;
 let givenBy = '';
 let agreedAs: AgreedAs | null = null;
@@ -243,6 +243,7 @@ if (Astro.request.method === 'POST') {
   } else if (intent === 'health') {
     backTo = 'health';
     const { answers, birth, paper, paperTyped, problems } = readHealthForm(form);
+    let paperShown = paperTyped;
     let base = String(form.get('base') ?? '');
     // The birth date this page opened with: a save changes the birth date only when this person changed it.
     let birthWas = oneLine(form.get('birth_was'));
@@ -258,7 +259,13 @@ if (Astro.request.method === 'POST') {
       if (r.kind === 'unchanged') return Astro.redirect(to('saved=nothing', 'health'), 303);
       if (r.kind === 'denied') problems.push('Your account cannot change records at this branch. Ask the owner.');
       if (r.kind === 'conflict') {
-        conflict = { latest: r.latest, birth: r.birth, versionMoved: (r.latest?.id ?? 'none') !== base, birthMoved: (r.birth ?? '') !== birthWas };
+        // The paper's answers come back as they are on file now, with only this person's own changes kept, so the next
+        // Save does not put an old answer back over a colleague's (paper-history.ts rebasePaper); where both changed the
+        // same question, the callout names what is on file.
+        const re = rebasePaper(paperTyped, paper, r.basePaper, r.latest?.paper ?? null);
+        paperShown = re.typed;
+        const paperClash = re.clash.map((k) => `${FIELD[k].long} ${paperValueText(FIELD[k], r.latest?.paper?.[k] ?? null) ?? 'not asked'}`);
+        conflict = { latest: r.latest, birth: r.birth, versionMoved: (r.latest?.id ?? 'none') !== base, birthMoved: (r.birth ?? '') !== birthWas, paperClash };
         // The next Save starts from what is on file now. A birth date this person
         // did not change shows the one on file; one they changed stays as typed.
         if (birthShown === birthWas) birthShown = r.birth ?? '';
@@ -267,7 +274,7 @@ if (Astro.request.method === 'POST') {
       }
     }
     healthProblems = problems;
-    posted = { answers, birth: birthShown, birthWas, base, paperTyped };
+    posted = { answers, birth: birthShown, birthWas, base, paperTyped: paperShown };
   } else if (intent === 'consent') {
     backTo = 'consent';
     givenBy = oneLine(form.get('given_by_name'));
@@ -686,6 +693,7 @@ const SECTIONS: { id: string; label: string; short: string; page: 0 | 1 | 2 | 3 
   { id: 'texts', label: 'Texts', short: 'Texts', page: 0 },
 ];
 const PAGES = 3;
+const pageWho = `${fullName} · Chart # ${patient.chart_no} · `;
 const contents = [1, 2, 3, 0].map((n) => ({ label: n ? `Page ${n}` : 'Attached', items: SECTIONS.filter((x) => x.page === n).map((x) => ({ id: x.id, label: x.short, full: x.label })) }));
 // Where a save lands: Go ahead anyway on This visit lands on the strip, at the front of page 1.
 const savedTo: Record<string, string> = { intake: 'overview', 'consent-ahead': 'this-visit', capacity: 'consent', 'consent-removed': 'consent', health: 'health', birth: 'health', nothing: 'health', consent: 'consent', 'consent-already': 'consent', paper: 'consent', details: 'overview', new: 'overview', form: 'overview' };
@@ -1064,7 +1072,7 @@ const recHere = here;
                 : conflict.birthMoved ? `The birth date on file changed to ${dateText(conflict.birth) ?? 'none'} after you opened this page.`
                 : 'This record changed after you opened it.'} Nothing of yours was saved yet.
             </p>
-            <p class="mt-1.5 text-ink-2">On file now: {birthLine(conflict.birth)}{conflict.latest && <> · {stateLine(conflict.latest)}</>}.</p>
+            <p class="mt-1.5 text-ink-2">On file now: {birthLine(conflict.birth)}{conflict.latest && <> · {stateLine(conflict.latest)}</>}{conflict.paperClash.map((w) => <> · {w}</>)}.</p>
             <p class="mt-1.5 text-ink-2">Your answers are still below. Check them against what is on file, then press Save again.</p>
           </Callout>
         )}
@@ -1094,7 +1102,8 @@ const recHere = here;
                 <span class="text-[15px] text-ink-2" aria-live="polite" data-health-age>{formAge !== null && formAge >= 0 ? ageText(formAge) : birthValue ? '' : 'Not on file yet'}</span>
               </div>
             </div>
-            <PaperHistoryFields paper={latest?.paper ?? null} typed={posted?.paperTyped ?? null} chips={healthChips} none={healthNone} ask={asksPregnancy(patient.sex, age)} />
+            <PaperHistoryFields paper={latest?.paper ?? null} typed={posted?.paperTyped ?? null} chips={healthChips} none={healthNone} own={health.own?.health ?? null}
+              ask={showsPregnancy(asksPregnancy(patient.sex, age), latest, health.own?.health ?? null)} />
 
             <label class="field border-t border-[var(--ws-hair)] pt-5">
               <span class="meta">Note for the dentist</span>
@@ -1133,7 +1142,9 @@ const recHere = here;
       </Pane>
       <Vitals vitals={ext.vitals} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} firstName={patient.first_name} visitId={thisVisit?.id ?? null} openNow={openNow === 'vitals'} />
     </div>
-    <p class="pp-page-no">Page 1 of {PAGES}</p>
+    {/* Each page's foot: "Page 1 of 3" as the paper's; printed, whose record it is and the page without "of 3", since a
+        page that runs onto a second sheet would make that a sheet count it is not (record.css, "Printed"). */}
+    <p class="pp-page-no"><span class="pp-page-who">{pageWho}</span>Page 1<span class="pp-page-of"> of {PAGES}</span></p>
   </article>
 
   <!-- Page 2: informed consent -->
@@ -1155,7 +1166,7 @@ const recHere = here;
         mayCapacity={mayCapacity} capacity={data.capacity} canPrepare={data.canPrepare} offered={data.offeredCodes}
         general={data.general} signed={data.signed} visits={data.fullVisits} paperForms={data.paperForms} forms={data.forms} formsBase={formsBase} />
     </div>
-    <p class="pp-page-no">Page 2 of {PAGES}</p>
+    <p class="pp-page-no"><span class="pp-page-who">{pageWho}</span>Page 2<span class="pp-page-of"> of {PAGES}</span></p>
   </article>
 
   <!-- Page 3: the treatment record -->
@@ -1166,7 +1177,7 @@ const recHere = here;
       </Banner>
       <TreatmentRecord ledger={data.ledger} money={money} today={today} name={shortName} />
     </div>
-    <p class="pp-page-no">Page 3 of {PAGES}</p>
+    <p class="pp-page-no"><span class="pp-page-who">{pageWho}</span>Page 3<span class="pp-page-of"> of {PAGES}</span></p>
   </article>
 
   <!-- Attached to this record: each folded to one line until it is opened -->
@@ -1201,7 +1212,7 @@ const recHere = here;
     {/* The appointments, with the next check-up (the ledger's Next visit, as the paper keeps it, is on page 3). */}
     <Attached id="visits" label={SECTION_LABEL['visits']} status={STATUS.visits} open={openSheets.has('visits')} adds={[{ label: `Book a visit for ${patient.first_name}`, text: 'Book a visit', href: bookHref }]}>
       <RecallCard recall={clin.recall} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} bookHref={bookHref} texts={me.recall_texts === true} />
-      <Pane title="Visits" icon="calendar" id="visits" meta={visits.length === 200 ? 'The newest 200' : undefined} pad="none">
+      <Pane level={4} title="Visits" icon="calendar" id="visits" meta={visits.length === 200 ? 'The newest 200' : undefined} pad="none">
         {visits.length === 0 ? (
           <div class="px-6 py-3 max-md:px-4"><Empty icon="calendar" text="No visits yet." action={canEdit ? { label: 'Bring in past visits from a spreadsheet', href: importHref } : { label: 'Book the first one', href: bookHref }} /></div>
         ) : (
@@ -1241,7 +1252,7 @@ const recHere = here;
     {money && (
       <Attached id="money" label={SECTION_LABEL['money']} status={STATUS.money} owed={balance > 0n} open={openSheets.has('money')} adds={[{ label: `A new statement for ${patient.first_name}`, text: 'New charge', href: chargeHref }]}>
         <a slot="actions" href={`${links.finances}?patient=${patient.id}&view=all`} class="ws-btn ws-btn-quiet ws-btn-sm">In Finances <Icon name="arrow-right" size={16} /></a>
-        <Pane title="Money" icon="money" id="money" pad="none">
+        <Pane level={4} title="Money" icon="money" id="money" pad="none">
           <p class="pp-money">
             {balance > 0n ? <>Owes <span class="font-semibold text-caries tabular-nums">{pesos(balance)}</span>{openCount ? ` on ${openCount} ${openCount === 1 ? 'statement' : 'statements'}` : ''}.</>
               : balance < 0n ? <>In credit <span class="font-semibold tabular-nums">{pesos(-balance)}</span>.</>
@@ -1286,7 +1297,7 @@ const recHere = here;
 
     <Attached id="texts" label={SECTION_LABEL['texts']} status={STATUS.texts} open={openSheets.has('texts')}>
       <a slot="actions" href={links.messages} class="ws-btn ws-btn-quiet ws-btn-sm">All messages <Icon name="arrow-right" size={16} /></a>
-      <Pane title="Texts" icon="message" id="texts" meta={data.texts.length === 50 ? 'The newest 50' : undefined} pad="none">
+      <Pane level={4} title="Texts" icon="message" id="texts" meta={data.texts.length === 50 ? 'The newest 50' : undefined} pad="none">
         {data.texts.length === 0 ? (
           <Empty icon="message" text="No texts yet. Confirmations and reminders show here." />
         ) : (
@@ -1393,8 +1404,10 @@ const recHere = here;
     unfold(el);
     const fold = el.querySelector<HTMLDetailsElement>(':scope > details[data-rec-fold]');
     if (fold) fold.open = true;
-    el.scrollIntoView({ block: 'start', behavior: o.smooth ? 'smooth' : 'auto' });
+    // A named field goes to the middle of the screen, not its form's top: a box's field may sit screens down its form
+    // (the medical history's lists under the dental history). Without one, the part's head goes to the top, under the bar.
     const box = o.field ? el.querySelector<HTMLElement>(`[name="${o.field}"]`) : null;
+    (box ?? el).scrollIntoView({ block: box ? 'center' : 'start', behavior: o.smooth ? 'smooth' : 'auto' });
     if (box) box.focus({ preventScroll: true });
     else if (o.focus) {
       const head = el.matches('[data-rec-panel]') ? el.querySelector<HTMLElement>('.pp-title') : el;

@@ -45,6 +45,7 @@
 @media print {
   .ph-grid .pf-go { display: none; }
   .ph-title, .ph-from { color: #111827; }
-  .ph-tick { background: #111827; }
-  .ph-tick::after { border-color: #fff; }
+  /* A box and a check in ink, never a fill: browsers print without backgrounds unless asked. */
+  .ph-tick { background: none; border: 1.5px solid #111827; }
+  .ph-tick::after { left: 3px; top: 0; border-color: #111827; }
 }

@@ -40,7 +40,7 @@ const help = 'text-[13px] leading-snug text-ink-2';
   {saved === 'payplan-stopped' && <Callout tone="success" text="Plan stopped. Its statement stays, with whatever is left to pay." />}
   {inline && <Callout tone="alert" text={inline} />}
   <Pane as="section" label="Braces and payment plans" id="payplans">
-    <Head icon="money" title="Braces and payment plans" meta={running.length ? `${running.length} running` : undefined}>
+    <Head level={4} icon="money" title="Braces and payment plans" meta={running.length ? `${running.length} running` : undefined}>
       {canEdit && canBill && <Plus slot="actions" text="New plan" label="Start a payment plan" open="rec-payplan-add" />}
     </Head>
     {plans.length === 0 ? <Empty icon="money" text="No payment plan for this patient." /> : (

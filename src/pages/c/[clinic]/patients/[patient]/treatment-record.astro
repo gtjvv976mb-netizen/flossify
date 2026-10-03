@@ -22,7 +22,7 @@ import { loadExtra } from '../../../../../lib/record-extra';
 import { loadVisits, VISIT_STATUS } from '../../../../../lib/visit-record';
 import { loadVisitConsents } from '../../../../../lib/visit-consent';
 import { loadConsentDocuments } from '../../../../../lib/consent-docs';
-import { buildLedger, loadLedgerMoney, loadRecallsSet, balanceWords, amountWords, signName } from '../../../../../lib/treatment-record';
+import { buildLedger, loadLedgerMoney, loadRecallsSet, balanceWords, amountWords, signName, SIGN_LEGEND } from '../../../../../lib/treatment-record';
 import { SIG_W, SIG_H, strokesPath } from '../../../../../lib/visit-consent';
 import { pesos, NOT_BIR } from '../../../../../lib/invoices';
 import { hmos } from '../../../../../data/directory';
@@ -115,7 +115,9 @@ const pageCss = `
       .tr-pt b { font-weight: 600; }
       .tr-scroll { overflow-x: auto; }
       /* Fixed columns in the paper's proportions, so eight fit across A4 portrait (186 mm inside the margins). Amount is
-         one column (a charge, a discount or "Paid …"), so it and Balance take the room the second amount had. */
+         one column (a charge, a discount or "Paid …"), so it and Balance take the room the second amount had: each holds a
+         six-digit amount whole (₱130,000.00, in a wide fallback face), and Next visit "adjustment". The record printed
+         uses the same columns (record.css, "print"). */
       .tr-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 9pt; line-height: 1.35; color: #111827; overflow-wrap: anywhere; }
       @media screen { .tr-table { min-width: 640px; } }
       .tr-table thead { display: table-header-group; }
@@ -168,7 +170,7 @@ const pageCss = `
         <div class="tr-scroll">
           <table class="tr-table">
             {money ? (
-              <colgroup><col style="width: 10.5%" /><col style="width: 23%" /><col style="width: 11%" /><col style="width: 10.5%" /><col style="width: 11.5%" /><col style="width: 12.5%" /><col style="width: 11.5%" /><col style="width: 9.5%" /></colgroup>
+              <colgroup><col style="width: 10%" /><col style="width: 18%" /><col style="width: 11%" /><col style="width: 12%" /><col style="width: 11.5%" /><col style="width: 14%" /><col style="width: 14%" /><col style="width: 9.5%" /></colgroup>
             ) : (
               <colgroup><col style="width: 12%" /><col style="width: 34%" /><col style="width: 13%" /><col style="width: 13%" /><col style="width: 16%" /><col style="width: 12%" /></colgroup>
             )}
@@ -217,7 +219,7 @@ const pageCss = `
         </div>
         <footer class="tr-foot">
           <p>Teeth in FDI numbers.{ledger.capped && ' Only the newest 300 treatments and visits are listed.'}</p>
-          <p>Sign: who entered the line, signed in to Flossify under their own name. A drawn signature appears only on a consent line, where the patient or guardian signed that form.</p>
+          <p>{SIGN_LEGEND}</p>
           {balanceNote && <p>{balanceNote}</p>}
           {money && <p>{NOT_BIR}</p>}
           <p>Printed {printed} by {session.name}.</p>

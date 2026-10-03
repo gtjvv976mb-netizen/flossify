@@ -12,20 +12,25 @@
 //     the paper's three boxes, the dentist's one "who explained", never a signature;
 //   - the contents (in the head) land each part's head just under the workspace bar, open an attached sheet and put its
 //     name in the address; an address with a part's name or an id in it (#money, #recall) opens there;
-//   - a plus on every box that can be changed (Edit details opens with the caret in that field; a medical or dental
-//     history box opens the folded form with the caret in its field); a panel inside a folded sheet opened from outside
-//     it (More → Prescription) is drawn, its sheet opened; none for someone who cannot edit records;
+//   - a plus on every box that can be changed, Basic information's and More details' (HMO, Emergency contact, Desk note)
+//     alike (Edit details opens with the caret in that field; every medical or dental history box opens the folded form
+//     with the caret in its field, and that field in view, at 1440 and 390); a panel inside a folded sheet opened from
+//     outside it (More → Prescription) is drawn, its sheet opened; none for someone who cannot edit records;
+//   - no heading inside a part sits above the part's own title (an attached sheet's title is h3, its panes' h4);
 //   - Edit details saves the occupation and the parent or guardian, an older form (no has_paper_fields) keeps them, and
 //     a guardian's mobile that is not a Philippine mobile is refused;
 //   - every line on the paper and in the head ≥ 4.5:1 against what is behind it, light and dark, 1440 and 390, on a plain
 //     load and again with every attached sheet opened; no target under 44 px; no sideways scroll; New booking the only
 //     teal button in view;
-//   - printed (media print): only the three pages, each starting a sheet of paper, the words dark on white in either
-//     theme; printing tells the audit log (record.print).
+//   - printed (media print) from a full record (a full medical and dental history and a raised blood pressure planted for
+//     the step, then removed): only the three pages, each starting a sheet of paper, page 1 on one A4 sheet (three sheets
+//     in all), each page's foot naming the patient and the chart no. and its page without "of 3", the words dark on white
+//     in either theme; printing tells the audit log (record.print).
 //
 //   node scripts/dev/record/paper-check.mjs [base=http://127.0.0.1:4610] [slug=session-road] [email] [password=flossify]
 //   OUT=<folder for screenshots> · PATIENT=<id> · PW_CHROMIUM · DB=flossify_t · PGHOST · PGPORT · PGUSER (local only)
-// It saves Edit details on the patient it checks and puts the occupation and guardian back as they were.
+// It saves Edit details on the patient it checks and puts the occupation and guardian back as they were; the rows it plants
+// for the print step are deleted after it.
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import pg from 'pg';
@@ -40,14 +45,16 @@ const q = async (sql, p = []) => (await db.query(sql, p)).rows;
 const ok = (s) => console.log(`  ok  ${s}`);
 const clinic = (await q('select id, name, address_line from clinic where slug = $1', [slug]))[0];
 // A patient with a health history and the most else on file here (PATIENT=<id> to pick one).
-const pt = process.env.PATIENT ? (await q('select id, chart_no from patient where id = $1', [process.env.PATIENT]))[0]
-  : (await q(`select p.id, p.chart_no from patient p where p.clinic_id = $1 and p.archived_at is null
+const pt = process.env.PATIENT ? (await q('select id, chart_no, first_name, middle_name, last_name, suffix from patient where id = $1', [process.env.PATIENT]))[0]
+  : (await q(`select p.id, p.chart_no, p.first_name, p.middle_name, p.last_name, p.suffix from patient p where p.clinic_id = $1 and p.archived_at is null
   order by exists (select 1 from medical_history h where h.patient_id = p.id and h.allergies is not null) desc,
     (select count(*) from appointment a where a.patient_id = p.id) + (select count(*) from procedure_done d where d.patient_id = p.id) desc limit 1`, [clinic.id]))[0];
 const record = `${base}/c/${slug}/patients/${pt.id}/`;
+const fullName = [pt.first_name, pt.middle_name, pt.last_name, pt.suffix].filter(Boolean).join(' ');
 const PAGE1 = ['chart', 'overview', 'health'], PAGE2 = ['consent'], PAGE3 = ['treatment-record'];
 const ATTACHED = ['treatment', 'notes', 'rx', 'files', 'visits', 'money', 'texts'];
 const BASIC = ['Patient name', 'Occupation', 'Date of birth', 'Age', 'Gender', 'Contact number', 'Email address', 'Address', 'Parent’s or guardian’s name'];
+const MORE = ['HMO', 'Emergency contact', 'Desk note'];
 
 const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -96,14 +103,22 @@ const measure = () => p.evaluate(() => {
   const top = document.querySelector('.pp-top')?.getBoundingClientRect(), sh = pages[0].getBoundingClientRect();
   const lh = document.querySelector('.pp-lh');
   return {
-    pages: pages.map((pg) => ({ caption: text(pg.querySelector(':scope > .pp-page-no')), parts: [...pg.querySelectorAll('[data-rec-panel]')].map((s) => s.dataset.recPanel), hidden: !vis(pg) })),
+    // The foot as shown (its print-only words are not).
+    pages: pages.map((pg) => ({ caption: pg.querySelector(':scope > .pp-page-no')?.innerText.trim() ?? null, parts: [...pg.querySelectorAll('[data-rec-panel]')].map((s) => s.dataset.recPanel), hidden: !vis(pg) })),
     attached: [...document.querySelectorAll('.pp-attached [data-rec-panel]')].map((s) => ({ id: s.dataset.recPanel, open: !!s.querySelector(':scope > details[data-rec-fold]')?.open, title: text(s.querySelector('.pp-title')), line: text(s.querySelector('.pp-fold-st')) })),
     numbered: [...document.querySelectorAll('.pp-title')].filter((t) => /^\d/.test(text(t)) || t.querySelector('.pp-n')).length,
     links: [...document.querySelectorAll('[data-rec-link]')].map((a) => a.dataset.recLink),
     groups: [...document.querySelectorAll('.pp-contents-k')].map(text),
     letterhead: { name: text(lh?.querySelector('.pp-lh-name')), lines: [...(lh?.querySelectorAll('.pp-lh-line') ?? [])].map(text), chart: text(lh?.querySelector('.pf-cell:has(dt) .pf-v')), labels: [...(lh?.querySelectorAll('dt') ?? [])].map(text) },
     basic: [...document.querySelectorAll('#overview > .pf-cell > dt')].map(text),
-    linesWithout: [...document.querySelectorAll('#overview > .pf-cell')].filter((t) => !t.querySelector('.pf-go')).map((t) => text(t.querySelector('dt'))),
+    more: [...document.querySelectorAll('#rec-overview .pp-band > dl.pf-grid:not(#overview) > .pf-cell > dt')].map(text),
+    // Both grids of Basic information: the paper's boxes (#overview) and More details under them.
+    linesWithout: [...document.querySelectorAll('#rec-overview .pp-band > dl.pf-grid > .pf-cell')].filter((t) => !t.querySelector('.pf-go')).map((t) => text(t.querySelector('dt'))),
+    // A heading inside a part above the part's own title (h2 panes in an h3 sheet read as the record's parts).
+    inverted: [...document.querySelectorAll('[data-rec-panel]')].flatMap((reg) => {
+      const t = document.getElementById(`${reg.id}-title`), lv = (h) => Number(h.tagName[1]);
+      return t ? [...reg.querySelectorAll('h1, h2, h3, h4, h5, h6')].filter((h) => !h.closest('dialog') && lv(h) < lv(t)).map((h) => `${reg.id} ${t.tagName} > ${h.tagName} ${text(h)}`) : [];
+    }),
     chart: { codes: !!document.querySelector('[data-odontogram][data-codes]'), legend: text(document.querySelector('[data-code-legend]'))?.slice(0, 40), swatches: document.querySelectorAll('[data-odontogram] [data-odo-keys] .swatch:not(.waiting-swatch)').length },
     plus: plus.length,
     cellsShort: [...document.querySelectorAll('.pf-go')].filter(vis).filter((b) => b.getBoundingClientRect().height < 44 || b.getBoundingClientRect().width < 44).length,
@@ -139,7 +154,9 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
     assert.deepEqual(m.letterhead.labels, ['Chart #', 'Date'], 'Chart # and Date beside the letterhead');
     assert.equal(m.letterhead.chart, pt.chart_no, 'Chart # is the patient\'s chart no.');
     assert.deepEqual(m.basic, BASIC, 'Basic information: the paper\'s labels in its order');
-    assert.deepEqual(m.linesWithout, [], 'every box of Basic information is a box that opens its field');
+    assert.deepEqual(m.more, MORE, 'More details: HMO, Emergency contact, Desk note');
+    assert.deepEqual(m.linesWithout, [], 'every box of Basic information and More details is a box that opens its field');
+    assert.deepEqual(m.inverted, [], 'no heading in a part sits above the part\'s title');
     assert.deepEqual(m.chart, { codes: true, legend: 'C – Caries · Ex – Extraction · RF – Root', swatches: 0 }, 'the chart has the paper\'s codes and legend');
     assert.deepEqual(m.decoration, { banners: 0, icons: 0, tiles: 0 }, 'no colour banners, icon tiles or number tiles');
     assert.equal(m.cellsShort, 0, 'every box is a 44 px target');
@@ -265,6 +282,28 @@ assert.equal(await p.evaluate(() => document.querySelector('[data-pp-edit]')?.op
 await p.goto(record, { waitUntil: 'load' });
 await caretAfter(p.locator('[data-ph-box="last_care"] .pf-go'), 'ph_last_care', 'Date of last dental care has the caret');
 ok('the plus on Allergies and on Date of last dental care open the medical history\'s form with the caret in their box');
+// Every history box, one after another: the caret in its field and the field in view, under the bar (the lists and the
+// note sit screens down the form, under the dental history).
+for (const [w, h] of [[1440, 900], [390, 844]]) {
+  await p.setViewportSize({ width: w, height: h });
+  await p.goto(record, { waitUntil: 'load' });
+  const boxes = p.locator('[data-rec-go="health-form"][data-rec-field]');
+  const n = await boxes.count(), off = [];
+  for (let i = 0; i < n; i++) {
+    const field = await boxes.nth(i).getAttribute('data-rec-field');
+    await boxes.nth(i).click();
+    await p.waitForTimeout(150);
+    const r = await p.evaluate(() => {
+      const a = document.activeElement, t = a.getBoundingClientRect(), bar = document.querySelector('[data-ws-top]')?.getBoundingClientRect().bottom ?? 0;
+      return { name: a.getAttribute('name'), top: Math.round(t.top), inView: t.top >= bar - 1 && t.bottom <= innerHeight + 1 };
+    });
+    if (r.name !== field || !r.inView) off.push(`${field}: caret in ${r.name} at ${r.top}`);
+  }
+  assert.ok(n >= 15, `${w}: history boxes ${n}`);
+  assert.deepEqual(off, [], `${w}: every history box puts the caret in its field, in view`);
+  ok(`${w}: each of the ${n} medical and dental history boxes puts the caret in its field, in view`);
+}
+await p.setViewportSize({ width: 1440, height: 900 });
 await p.goto(record, { waitUntil: 'load' });
 await p.locator('[data-rec-link="notes"]').click();
 await p.waitForTimeout(700);
@@ -324,6 +363,20 @@ try {
 }
 
 // 5. Printed: only the three pages, each on a sheet of its own, dark words on white in either theme; the audit log told.
+// Printed from a full record: a medical and dental history with every box answered (the pregnancy questions where they
+// apply), lists and a note, and a raised blood pressure with one before it, planted for this step (rows a superuser
+// writes, removed after: these tables are insert-only for the app).
+const me = (await q('select id from staff where email = $1', [email]))[0];
+const fullPaper = { v: 'paper-2026-10', dentist_name: 'Dr. Ana Cruz', dentist_place: 'Baguio City', dentist_phone: '09171234567', last_care: '2025-06', last_xray: '2024',
+  flossing: 'sometimes', brushing: 'twice', problems: ['bleeding_gums', 'sens_cold', 'grinding'], physician_name: 'Dr. Ramon Santos', physician_place: 'Baguio General Hospital',
+  physician_visit: '2026-08', transfusion: 'no', pregnant: 'no', nursing: 'no', pill: 'no', illnesses: 'Appendectomy 2015' };
+const plantedHistory = (await q(`insert into medical_history (clinic_id, patient_id, answered_at, answered_by, recorded_by, allergies, conditions, medications, note, answers)
+  values ($1, $2, now(), 'staff', $3, '{Penicillin,Latex}', '{Asthma,Hypertension,Diabetes}', '{Salbutamol inhaler,Metformin}', 'Anxious with needles; prefers morning visits.', $4) returning id`,
+  [clinic.id, pt.id, me.id, JSON.stringify({ paper: fullPaper })]))[0].id;
+const plantedVitals = (await q(`insert into vital_sign (clinic_id, patient_id, taken_at, systolic, diastolic, pulse, taken_by)
+  values ($1, $2, now(), 150, 95, 88, $3), ($1, $2, now() - interval '30 days', 132, 84, 80, $3) returning id`, [clinic.id, pt.id, me.id])).map((x) => x.id);
+let page1 = 0;
+try {
 for (const scheme of ['light', 'dark']) {
   await p.setViewportSize({ width: 703, height: 1000 });
   await p.emulateMedia({ colorScheme: scheme });
@@ -341,13 +394,27 @@ for (const scheme of ['light', 'dark']) {
       ink: ['.pp-lh-name', '.pp-title', '.pf-v', '.pp-page-no'].map((s) => lum(getComputedStyle(document.querySelector(s)).color)),
       paper: ['body', '.pp-page'].map((s) => getComputedStyle(document.querySelector(s)).backgroundColor),
       scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      consent: { words: vis(document.querySelector('.cf-points-paper') ?? document.body), acts: [...document.querySelectorAll('#rec-consent :is(button, .ws-btn, summary, input:not([type="hidden"]))')].filter(vis).length },
+      heights: [...document.querySelectorAll('.pp-page')].map((pg) => pg.getBoundingClientRect().height),
+      feet: [...document.querySelectorAll('.pp-page > .pp-page-no')].map((f) => f.innerText.trim()),
+      consent: { words: !!document.querySelector('.cf-points-paper') && vis(document.querySelector('.cf-points-paper')), acts: [...document.querySelectorAll('#rec-consent :is(button, .ws-btn, summary, input:not([type="hidden"]))')].filter(vis).length },
     };
   });
   assert.deepEqual(r.consent, { words: true, acts: 0 }, `printed (${scheme}): page 2 has the general consent's words, and no button, fold or field`);
   assert.deepEqual(r.shown, ['pp-sheet pp-page', 'pp-sheet pp-page', 'pp-sheet pp-page'], `printed (${scheme}): only the three pages`);
   assert.deepEqual(r.gone, [], `printed (${scheme}): nothing else`);
   assert.deepEqual(r.breaks.slice(1), ['page', 'page'], 'pages 2 and 3 each start a sheet of paper');
+  // A4 less the record's @page margins (10 mm top and bottom): 277 mm, 1047 px at 96 per inch, at its 703 px width.
+  assert.ok(r.heights[0] <= 1047, `printed (${scheme}): page 1 fits one A4 sheet: ${Math.round(r.heights[0])} px`);
+  page1 = Math.max(page1, Math.round(r.heights[0]));
+  assert.deepEqual(r.feet, [1, 2, 3].map((n) => `${fullName} · Chart # ${pt.chart_no} · Page ${n}`), `printed (${scheme}): each foot names the patient, the chart no. and its page`);
+  // The sheets of paper, counted in the PDF itself; on a page of its own, since printing tells the audit log only once a
+  // minute per page (checked below).
+  const sheet = await ctx.newPage();
+  await sheet.emulateMedia({ colorScheme: scheme });
+  await sheet.goto(record, { waitUntil: 'load' });
+  const pdf = (await sheet.pdf({ format: 'A4', preferCSSPageSize: true, printBackground: true })).toString('latin1');
+  await sheet.close();
+  assert.equal((pdf.match(/\/Type\s*\/Page(?![s\w])/g) ?? []).length, 3, `printed (${scheme}): three sheets of A4`);
   // Dark words: at least 7:1 on the white paper (relative luminance under 0.1).
   assert.ok(r.ink.every((l) => l < 0.1), `printed (${scheme}): dark words ${r.ink.map((l) => l.toFixed(3))}`);
   assert.deepEqual(r.paper, ['rgb(255, 255, 255)', 'rgb(255, 255, 255)'], `printed (${scheme}): white paper`);
@@ -355,7 +422,11 @@ for (const scheme of ['light', 'dark']) {
   if (OUT) await p.screenshot({ path: `${OUT}/record-print-${scheme}.png`, fullPage: true });
   await p.emulateMedia({ media: null });
 }
-ok('printed, light or dark: only the three pages, pages 2 and 3 on sheets of their own, dark words on white; page 2 with the general consent\'s words and no buttons');
+} finally {
+  await q('delete from vital_sign where id = any($1)', [plantedVitals]);
+  await q('delete from medical_history where id = $1', [plantedHistory]);
+}
+ok(`printed, light or dark, from a full record: only the three pages on three A4 sheets (page 1 ${page1} of 1047 px), pages 2 and 3 on sheets of their own, each foot naming the patient and the chart no., dark words on white; page 2 with the general consent's words and no buttons`);
 const since = new Date();
 await p.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
 await p.waitForTimeout(1500);

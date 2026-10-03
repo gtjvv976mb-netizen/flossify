@@ -1,9 +1,9 @@
 ---
 // One consent form on page 2 of the record (039), as a line under its paragraph: the patient's signature (a small copy
 // of the strokes, "Signed on paper", or "Not signed yet"), the form's own title, where it stands in words (Signed · To
-// sign · To confirm · Did not agree · No photos · Withdrawn) and the date (a paper's own date, not the day it was
-// recorded), who signed, the teeth, who explained it (the dentist's confirmation, never called a signature), and a
-// withdrawal or treatment that went ahead without it in full. Then Open (its page: ../[patient]/consents/[document]),
+// sign · To confirm · Did not agree · No photos · Withdrawn) and its date (a paper's own date, not the day it was
+// recorded; a withdrawal's own day), who signed, the teeth, who explained it (the dentist's confirmation, never called a
+// signature), and a withdrawal or treatment that went ahead without it in full. Then Open (its page: ../[patient]/consents/[document]),
 // Print, and for someone who can edit records, Explain and confirm (its named dentist only), Sign on this tablet or
 // their phone (the same intake start; Sign again under newer words), and Print for signing on paper.
 // The hooks the checks read stay as they were: li.vx-signed-row, a[href$="/consents/<id>/"], form[data-rc-sign],
@@ -35,8 +35,10 @@ const TONE: Record<string, string> = { success: 'rp-ok', warn: 'rp-warn', alert:
 const st = STATE_WORDS[d.state];
 const s = d.latest;
 const teeth = docTeeth(d);
-// The day it was signed: a paper's own date (signed_on), else the Manila day it was signed on the device.
+// The day it was signed: a paper's own date (signed_on), else the Manila day it was signed on the device. The pill names
+// the day of its own word: a withdrawn form the day it was withdrawn (as the withdrawal's line under it does).
 const signedDay = s ? (s.channel === 'paper' && s.signedOn ? dateText(s.signedOn) : day(new Date(s.signedAt))) : null;
+const stateDay = d.state === 'withdrawn' && s?.withdrawal ? day(new Date(s.withdrawal.at)) : signedDay;
 const toSign = d.state === 'to_sign' || d.state === 'refused' || d.state === 'withdrawn' || d.state === 'no_photos';
 const openIntake = d.intakeStatus === 'preparing' || d.intakeStatus === 'out';
 // Newer words in force for this form's code: it is signed again under them, from here (the old form stays as history).
@@ -50,7 +52,7 @@ const resign = canEdit && !openIntake && (newer || (toSign && d.inForce && (!d.t
   <div class="min-w-0 grid gap-1">
     <p class="rp-row">
       {titled && <span class="cf-title">{d.title}</span>}
-      <span class:list={['rp', TONE[st.tone]]}>{st.words}{signedDay && d.state !== 'to_sign' ? ` ${signedDay}` : ''}</span>
+      <span class:list={['rp', TONE[st.tone]]}>{st.words}{stateDay && d.state !== 'to_sign' ? ` ${stateDay}` : ''}</span>
       {teeth.map((n) => <span class="rp rp-tooth">Tooth {n}</span>)}
       {!d.inForce && <span class="rp rp-warn">{newer ? 'Newer words: sign again' : 'Older words'}</span>}
       {openIntake && <span class="rp">In forms {d.intakeRef} now</span>}

@@ -91,7 +91,8 @@ export interface Ledger {
   openKeys: Set<string>;
 }
 
-/** by_name: who made the statement (invoice.created_by) and who took the payment (payment.received_by), for Sign. */
+/** by_name: who made the statement (invoice.created_by) and who took the payment (payment.received_by), for Sign — null
+ *  for one brought in by an import, whose created_by is only the person who ran the import, not who wrote it. */
 interface StatementRow { id: string; appointment_id: string | null; issued_at: Date | string; series_prefix: string; number: string; total: string; discount: string; discount_kind: string | null; payor_name: string | null; payor_share: string; status: string; by_name: string | null }
 interface LineRow { id: string; invoice_id: string; procedure_id: string | null; description: string; amount: string; line_no: number | null }
 interface PaymentRow { id: string; invoice_id: string | null; amount: string; method: string; paid_on: string | null; received_at: Date | string; by_name: string | null }
@@ -107,7 +108,7 @@ export async function loadLedgerMoney(tx: Tx, patientId: string): Promise<Ledger
        (select coalesce(json_agg(x order by x.ord), '[]'::json) from (
           select row_number() over (order by i.issued_at, i.number) as ord, i.id, i.appointment_id, i.issued_at, i.series_prefix,
                  i.number::text as number, i.total::text as total, i.discount::text as discount, i.discount_kind, i.payor_name,
-                 i.payor_share::text as payor_share, i.status, cs.full_name as by_name
+                 i.payor_share::text as payor_share, i.status, case when i.imported_at is null then cs.full_name end as by_name
             from invoice i left join staff cs on cs.id = i.created_by
            where i.patient_id = $1 and i.status in ${counted} order by i.issued_at, i.number limit ${LIMIT + 1}) x) as statements,
        (select coalesce(json_agg(x order by x.ord), '[]'::json) from (
@@ -117,7 +118,7 @@ export async function loadLedgerMoney(tx: Tx, patientId: string): Promise<Ledger
            where i.patient_id = $1 and i.status in ${counted} order by l.line_no nulls last, l.id limit ${LIMIT + 1}) x) as lines,
        (select coalesce(json_agg(x order by x.ord), '[]'::json) from (
           select row_number() over (order by y.received_at) as ord, y.id, y.invoice_id, y.amount::text as amount, y.method,
-                 to_char(y.paid_on, 'YYYY-MM-DD') as paid_on, y.received_at, rs.full_name as by_name
+                 to_char(y.paid_on, 'YYYY-MM-DD') as paid_on, y.received_at, case when y.imported_at is null then rs.full_name end as by_name
             from payment y left join invoice i on i.id = y.invoice_id left join staff rs on rs.id = y.received_by
            where y.patient_id = $1 and y.voided_at is null and (y.invoice_id is null or i.status in ${counted})
            order by y.received_at limit ${LIMIT + 1}) x) as payments,
@@ -434,6 +435,10 @@ export function buildLedger(i: BuildIn): Ledger {
   const capped = c.done.length >= 300 || visits.filter((v) => v.id).length >= 300;
   return { days, count, balance, onFile, capped, openKeys };
 }
+
+/** What Sign means, printed under the ledger on paper (the A4 Treatment record and the record printed): on a clinic's
+ *  paper the column is where the dentist signs, so a typed name there must say it is only who entered the line. */
+export const SIGN_LEGEND = 'Sign: who entered the line, signed in to Flossify under their own name. A drawn signature appears only on a consent line, where the patient or guardian signed that form.';
 
 /** "₱1,200.00", "₱0.00", "₱200.00 credit". */
 export const balanceWords = (c: Cents) => (c < 0n ? `${pesos(-c)} credit` : pesos(c));
