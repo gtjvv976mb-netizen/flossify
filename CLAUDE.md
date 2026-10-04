@@ -1170,6 +1170,32 @@ details covered, instead).
   tooth; with the baby arch hidden exactly the old ±16 step); the toggle is its own handler. The record's scroll-sync
   pairs the rows within a set (`data-odo-set`). Measured: the arch's name, numbers, midline, codes and the toggle ≥ 4.5:1
   light and dark at 1440 and 390 (lowest 4.97:1 light, 6.58:1 dark), no sideways scroll from 1920 to 360.
+- **The chart's pictures (4 Oct)** — the owner: "in the teeth chart, integrate a picture image of the teeth (or whole mouth
+  image) for easy identification". Each tooth's box has its **side view** drawn beside it on the outside of the arch
+  (`.odo-pic`, roots away from the midline), and the **whole mouth from above** ("Where it is") heads the chart note.
+  - **Drawn here, never an image**: `src/lib/tooth-drawing.ts` (pure) hand-draws the 26 kinds (16 permanent, 10 baby) once,
+    crown up with the mesial side on the right, as path data in one hidden `<defs>` that every tooth `<use>`s;
+    `flipFor(fdi)` turns a picture for its quadrant (upper crown down, the patient's left mirrored, so the mesial side
+    always faces the midline) and `tiltFor(fdi)` leans an impacted one toward the midline; `MOUTH` is the map, worked out
+    once (both arches as a chart reads them — the patient's right on the left, the upper arch on top — each tooth at an
+    average crown's size, the baby arch inside). `src/lib/tooth-name.ts`: "lower left first molar", "upper right first baby
+    molar" (`toothName`, `toothTitle`), in each tooth's label, the palette's title ("Tooth 36 · Lower left first molar") and
+    the map's line. Unit tests: `src/lib/tooth-name.test.ts` (all 52 names, the turns, the map's places).
+  - **What a picture shows is read by CSS from the box's own attributes** (`.odo-col:has(> .tooth[data-state=…])`, the
+    component's `<style is:global>`): `paint()` and the stored data are untouched. A whole-tooth finding fills the crown in
+    the box's colour; missing, unerupted and impacted are dashed; extraction is crossed; a root fragment is the roots only,
+    hatched; a root canal a line down each root; an implant a threaded post; a pontic and a denture tooth have no root. A
+    surface finding leaves the picture alone (the pips say which surface). A click on a picture opens the tooth as its box
+    does (the button stays the only control).
+  - **The map is a picture only** (`aria-hidden` as a whole, nothing in it a control: its shapes were 10–17 px). It lights the
+    tooth pointed at or focused, whichever the person did last, and the open one, and its line names it in the notation in
+    use; the findings show faintly. Where the note runs under the arches (below a 68rem chart, or with the baby teeth open)
+    the map is a compact 192 px picture beside the note (patients.css, `[data-odo-note]`, from a 28rem chart; small over it
+    on a phone); there it is too far below the upper teeth to follow the pointer, so patients.css hides its line and the
+    map follows the open tooth only (the script reads the line's display). Beside the arches it heads the 272 px column and
+    follows the pointer and the keyboard. The **palette** has the same map, small (88 px), the open tooth lit, so wherever a
+    tooth is opened its place in the mouth is in view. The pictures print small (18 px, a hairline); page 1 still fits one
+    A4 sheet. A dentist reads the drawings' simplifications in the review pack ("The chart's pictures").
 - Checked by `scripts/dev/record/paper-check.mjs` (rewritten for the three sheets and the attached sheets: order, the
   letterhead names this clinic, basic information in the paper's order, Edit details saves occupation and guardian and an
   older form keeps them, sheets closed on a plain load and opened by their hashes, a history box puts the caret in view,
@@ -1269,8 +1295,8 @@ details covered, instead).
   The actions hide offline, on a kept copy, or when the tooth's server check gets no answer. The chart shows
   a ring under a tooth for open plan items and a dot for work done in the past year, with a legend and a
   work sentence in each tooth's label. A new note opens with today's treated teeth ticked; an addendum with
-  none. `Odontogram.astro` changes only additively (props `actions`, `work`, `codes` and `primary`); its offline
-  logic is untouched.
+  none. `Odontogram.astro` changes only additively (props `actions`, `work`, `codes` and `primary`, and the pictures, which
+  read the boxes' attributes); its offline logic is untouched.
 - **The chart after a treatment (p01 step 2) is an offer, applied only by a tap.** What a treatment does
   to the chart is `procedure_catalog.chart_effect` (042; the seven default codes, set by a trigger when an
   insert says nothing), never guessed from a name. `chart-offer.ts` is the table, pure and shared by page
@@ -1718,6 +1744,8 @@ page 1 beside the record with "Use" per detail, and withdrawals and overrides as
   baby teeth (built 3 Oct) ask the dentist two things in the review pack: whether a baby tooth lost naturally should be
   told apart from one extracted (both are M), and whether 13 is the right age to show them open; and the owner, whether
   an adult's printed record should carry the baby arch empty, as the paper form does (today it prints only when open).
+  The chart's pictures (4 Oct) are simplified drawings: the review pack lists what a dentist should read (roots, cusps,
+  how each finding is drawn).
 - A new web patient's chart number is `W-` + (patients here + 1) (`api/bookings`): the app never deletes a
   patient, but one deleted by hand makes the next web booking for a new mobile fail on the unique key until
   another patient is added. Test scripts that share a database archive their patients instead of deleting.
@@ -1814,7 +1842,8 @@ src/pages/api/recall.ts        POST: the next check-up in one tap from the Dashb
 docs/clinic-operations.md      how a dental clinic runs, front door to archive: the brief the paperless day was built from
 public/samples/swiftcare/       sample clinic website (see "Sample client sites")
 docs/service-map.md            what to build for patients, dentists and clinics, and why (Sept 2026)
-src/components/Odontogram.astro  32 teeth and the 20 baby teeth (A–T), FDI/Universal/Palmer, surface-scoped
+src/components/Odontogram.astro  32 teeth and the 20 baby teeth (A–T), FDI/Universal/Palmer, surface-scoped, each drawn beside its box, and the mouth map
+src/lib/tooth-drawing.ts, tooth-name.ts  the chart's pictures (26 kinds, the turns, the mouth map MOUTH) and the teeth's names (pure; tooth-name.test.ts)
 src/data/schema.sql            full multi-tenant Postgres model with RLS
 src/data/lqip.json             blur placeholders, keyed by image name
 src/data/shot-size.json        real screenshot dimensions (generated)
