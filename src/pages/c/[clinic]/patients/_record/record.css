@@ -953,8 +953,6 @@ button.rf { display: grid; min-height: 44px; }
   .pp-page .pt-chart [data-codes] :has(> .meta) { margin-block: 1mm; }
   .pp-page .pt-chart [data-codes] [data-code-legend] { margin-top: 1.5mm; font-size: 6.8pt; line-height: 1.35; }
   .pp-page .pt-chart [data-codes] .tooth { height: 32px; }
-  .pp-page .pt-chart [data-codes] div:has(> div > div > div > [data-tooth]:not(.tooth--lower)) { padding-top: 18px; }
-  .pp-page .pt-chart [data-codes] div:has(> div > div > div > .tooth--lower) { padding-bottom: 18px; }
   /* The baby teeth beside the permanent ones (patients.css), their rows level with the permanent rows: their numbers
      (55–85, or A–T) say what they are, so the arch's name over them stays on the screen. */
   .pp-page .pt-chart [data-codes] [data-odo-baby-name] { display: none; }

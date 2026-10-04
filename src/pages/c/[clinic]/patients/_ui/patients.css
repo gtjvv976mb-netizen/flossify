@@ -199,10 +199,8 @@
 /* A phone cannot show a whole arch at any usable size: the teeth keep the component's own 34px
    and the arches scroll (a tablet at 768px fits both arches whole at 33px). */
 @container pt-chart (width < 36rem) { .pt-chart .tooth { width: 34px; } }
-/* The paper's codes (the chart's `codes`): room above the upper arch and under the lower one for the code global.css
-   writes beside each tooth, and the paper's legend under the arches in the sheet's small print. */
-.pt-chart [data-codes] div:has(> div > div > div > [data-tooth]:not(.tooth--lower)) { padding-top: 22px; }
-.pt-chart [data-codes] div:has(> div > div > div > .tooth--lower) { padding-bottom: 22px; }
+/* The paper's codes (the chart's `codes`): the code global.css writes beside each tooth stands between the tooth's box
+   and its picture (the component keeps the room), and the paper's legend under the arches in the sheet's small print. */
 .pt-chart [data-code-legend] { margin-top: 1rem; font-size: 13.5px; line-height: 1.6; color: var(--c-ink-2); }
 .pt-chart [data-code-legend] b { color: var(--c-ink); }
 /* Printed with the record (the paper's page 1), the paper chart is what the paper has: the arches, their numbers and
@@ -215,6 +213,17 @@
   .pt-chart [data-codes] > :has(> [data-note-list]) { display: none !important; }
   .pt-chart [data-codes] div:has(> div > div > div > [data-tooth]) { overflow: visible; }
   .pt-chart [data-codes] .tooth { outline: none; }
+  /* The teeth's pictures print, as the paper chart draws them, but small (18 px tall, a hairline). The code stands
+     between picture and box at 10 px and the number closer to its box: page 1 stays one sheet. */
+  .pt-chart [data-codes] .odo-col { gap: 2px; }
+  .pt-chart [data-codes] .odo-col > [data-label] { line-height: 12px; }
+  .pt-chart [data-codes] .odo-pic { contain: none; align-self: center; }
+  .pt-chart [data-codes] .odo-pic > svg { width: auto; height: 18px; }
+  .pt-chart [data-codes] .odo-pic use { stroke-width: 0.85px; }
+  .pt-chart [data-codes] .odo-col:has(> .tooth:not(.tooth--lower)) > .odo-pic { margin-bottom: 10px; }
+  .pt-chart [data-codes] .odo-col:has(> .tooth--lower) > .odo-pic { margin-top: 10px; }
+  .pt-chart [data-codes] .tooth[data-tooth]::before { bottom: calc(100% + 1px); font-size: 10px; }
+  .pt-chart [data-codes] .tooth--lower[data-tooth]::before { top: calc(100% + 1px); bottom: auto; }
 }
 /* The baby teeth (the chart's `primary`): their arch under the permanent one, as its own set; where the card has the
    room for all 26 teeth side by side at 32px or more (62rem), beside it, as the paper draws it, with the chart note
@@ -274,6 +283,30 @@
 .pt-chart [data-odontogram] > :has(> [data-note-list]) { width: 100%; padding: 1.25rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
 .pt-chart [data-note-list]:not([hidden]) { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.625rem 1.5rem; }
 .pt-chart [data-clear] { width: auto; align-self: flex-start; }
+/* The mouth map ("Where it is", the component's) where the note runs under the arches (a chart under 68rem, or the baby
+   teeth open): a compact picture beside the note, not a band of its own (the owner asks for a compact record), and on a
+   phone small over it. There it is too far below the upper teeth to follow the pointer, so it shows the findings and the
+   open tooth only and its pointer line goes (the component reads that: the line hidden, the map follows the open tooth;
+   the palette's own small map shows it where the person is looking). Beside the arches (68rem and no baby teeth) it
+   heads the 272px column as the component draws it, and follows the pointer and the keyboard. */
+@container pt-chart (28rem <= width < 68rem) {
+  .pt-chart [data-odo-note] { display: grid; grid-template-columns: 12rem minmax(0, 1fr); column-gap: 1.75rem; align-content: start; align-items: start; }
+  .pt-chart [data-odo-note] > .odo-where { grid-column: 1; grid-row: 1 / span 5; margin: 0; }
+  .pt-chart [data-odo-note] > :not(.odo-where) { grid-column: 2; }
+  .pt-chart [data-odo-note] > [data-clear] { justify-self: start; }
+  .pt-chart [data-odo-note] .odo-where-line { display: none; }
+}
+@container pt-chart (width >= 68rem) {
+  .pt-chart [data-primary-open] > [data-odo-note] { display: grid; grid-template-columns: 12rem minmax(0, 1fr); column-gap: 1.75rem; align-content: start; align-items: start; }
+  .pt-chart [data-primary-open] > [data-odo-note] > .odo-where { grid-column: 1; grid-row: 1 / span 5; margin: 0; }
+  .pt-chart [data-primary-open] > [data-odo-note] > :not(.odo-where) { grid-column: 2; }
+  .pt-chart [data-primary-open] > [data-odo-note] > [data-clear] { justify-self: start; }
+  .pt-chart [data-primary-open] > [data-odo-note] .odo-where-line { display: none; }
+}
+@container pt-chart (width < 28rem) {
+  .pt-chart [data-odo-note] .odo-map { max-width: 12rem; }
+  .pt-chart [data-odo-note] .odo-where-line { display: none; }
+}
 @container pt-chart (width >= 68rem) {
   .pt-chart [data-odontogram] { flex-direction: row; }
   .pt-chart [data-odontogram] > :has(> [data-note-list]) { width: 272px; }

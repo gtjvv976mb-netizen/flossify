@@ -3,6 +3,8 @@ import {
   CONDITION_LABEL, CONDITION_CODE, CODE_LEGEND, SURFACE_SCOPED, SURFACE_LABEL, occlusalWord, surfaceSummary,
   type ToothCondition, type ToothMark, type Notation, type Surface,
 } from '../data/demo';
+import { toothName } from '../lib/tooth-name';
+import { PICTURES, PIC_W, PIC_H, pictureKey, flipFor, tiltFor, MOUTH } from '../lib/tooth-drawing';
 
 interface Props {
   /** Existing findings keyed by FDI number. Empty means a fresh chart. */
@@ -152,6 +154,13 @@ function tooth(fdi: number) {
     surfaces: scoped ? (mark!.surfaces ?? []) : [],
     pips: pips(fdi),
     lower: q === 3 || q === 4 || q === 7 || q === 8,
+    // "lower left first molar": in its label, the palette's title and the mouth map's line.
+    name: toothName(fdi),
+    // Its side-view picture (src/lib/tooth-drawing.ts): which drawing, turned how for its quadrant, and which way an
+    // impacted one leans (its crown toward the midline).
+    pic: pictureKey(fdi),
+    flip: flipFor(fdi),
+    tilt: tiltFor(fdi),
   };
 }
 
@@ -186,10 +195,21 @@ function describe(t: ReturnType<typeof tooth>, name: string | number) {
   const workWords = t.workWords ? ` ${t.workWords}` : '';
   if (t.surfaceCondition) {
     const codes = surfaceSummary(t.fdi, t.surfaces);
-    return `Tooth ${name}, ${CONDITION_LABEL[t.surfaceCondition as ToothCondition]} on ${codes}.${workWords} Activate to edit.`;
+    return `Tooth ${name}, ${t.name}, ${CONDITION_LABEL[t.surfaceCondition as ToothCondition]} on ${codes}.${workWords} Activate to edit.`;
   }
-  return `Tooth ${name}, ${CONDITION_LABEL[t.state]}.${workWords} Activate to edit.`;
+  return `Tooth ${name}, ${t.name}, ${CONDITION_LABEL[t.state]}.${workWords} Activate to edit.`;
 }
+
+// --- the pictures -----------------------------------------------------------------------------------------------
+// Each tooth's side view beside its box, on the outside of the arch, and the whole mouth from above: in the chart note
+// ("Where it is", with the findings) and small in the palette (the open tooth lit). Drawn once per kind in a hidden
+// <defs> and reused; ids carry this chart's own prefix.
+const picId = `odo-pic-${(patientId ?? 'chart').slice(0, 8)}`;
+const picKinds = Object.entries(PICTURES).filter(([k]) => primary || !k.startsWith('B'));
+const mouth = MOUTH;
+// Each map tooth with its finding, as the tooth's own box has it (the script keeps them in step after a change).
+const mapSets = [{ key: 'permanent', teeth: mouth.permanent }, ...(primary ? [{ key: 'primary', teeth: mouth.primary }] : [])]
+  .map((g) => ({ key: g.key, teeth: g.teeth.map((m) => { const t = tooth(m.fdi); return { ...m, state: t.state, surfaceCondition: t.surfaceCondition }; }) }));
 
 const notations = [
   { id: 'fdi', label: 'FDI' },
@@ -212,7 +232,7 @@ const wholeConditions: ToothCondition[] = [
 ];
 ---
 
-<div data-odontogram data-codes={codes ? '' : undefined} data-primary-open={babyShown ? '' : undefined} data-notation={notation} data-save-url={saveUrl} data-patient={patientId} data-clinic={clinic} data-csrf={csrf} data-staff={staffKey} data-sid={sid} data-session-left={sessionLeft} data-rendered-at={renderedAt} data-shell-until={shellUntil} class="flex flex-col gap-7 border border-line bg-surface p-6 sm:p-8 lg:flex-row">
+<div data-odontogram style={`--odo-hatch: url(#${picId}-hatch)`} data-codes={codes ? '' : undefined} data-primary-open={babyShown ? '' : undefined} data-notation={notation} data-save-url={saveUrl} data-patient={patientId} data-clinic={clinic} data-csrf={csrf} data-staff={staffKey} data-sid={sid} data-session-left={sessionLeft} data-rendered-at={renderedAt} data-shell-until={shellUntil} class="flex flex-col gap-7 border border-line bg-surface p-6 sm:p-8 lg:flex-row">
   <div class="flex min-w-0 flex-1 flex-col">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <fieldset class="flex items-center gap-2">
@@ -259,11 +279,25 @@ const wholeConditions: ToothCondition[] = [
             <div class="h-px flex-1 bg-line-2"></div>
           </div>
         )}
-        <div class={`flex gap-4 overflow-x-auto ${archIndex === 0 ? `${set.key === 'primary' ? '' : 'mt-6 '}pb-1${codes ? ' pt-5' : ''}` : `pt-1${codes ? ' pb-5' : ''}`}`}><div class="mx-auto flex gap-4">
+        <div class={`flex gap-4 overflow-x-auto ${archIndex === 0 && set.key !== 'primary' ? 'mt-6 ' : ''}py-1`}><div class="mx-auto flex gap-4">
           {[a, b].map((quadrant) => (
             <div class="flex gap-[5px]">
               {quadrant.map((t) => (
-                <div class={`flex items-center gap-1.5 ${t.lower ? 'flex-col-reverse' : 'flex-col'}`}>
+                <div class={`odo-col flex items-center gap-1.5 ${t.lower ? 'flex-col-reverse' : 'flex-col'}`} data-odo-col>
+                  {/* The tooth's picture: first, so it sits on the outside of the arch (above an upper tooth, below a
+                      lower one). Not a control of its own: a click on it opens the tooth as the box does. */}
+                  <span class="odo-pic" data-odo-pic aria-hidden="true">
+                    <svg viewBox={`0 0 ${PIC_W} ${PIC_H}`} focusable="false">
+                      <g class="odo-tilt" data-tilt={t.tilt}><g transform={t.flip}>
+                        {PICTURES[t.pic].back && <use class="odo-back" href={`#${picId}-${t.pic}-b`} />}
+                        <use class="odo-root" href={`#${picId}-${t.pic}-r`} />
+                        <use class="odo-post" href={`#${picId}-${t.pic}-p`} />
+                        <use class="odo-canal" href={`#${picId}-${t.pic}-k`} />
+                        <use class="odo-crown" href={`#${picId}-${t.pic}-c`} />
+                      </g></g>
+                      <path class="odo-x" d="M4.5 6 19.5 30M19.5 6 4.5 30" />
+                    </svg>
+                  </span>
                   <button
                     type="button"
                     class:list={['tooth', t.lower && 'tooth--lower']}
@@ -336,7 +370,29 @@ const wholeConditions: ToothCondition[] = [
     )}
   </div>
 
-  <div class="flex w-full shrink-0 flex-col border border-line-2 bg-bg-soft p-5 lg:w-[290px]">
+  <div class="flex w-full shrink-0 flex-col border border-line-2 bg-bg-soft p-5 lg:w-[290px]" data-odo-note>
+    {/* Where it is: the whole mouth from above, as a dentist reads a chart (the patient's right on the left), the tooth
+        pointed at or focused (whichever came last) and the open one lit in teal, and named in words under it; the
+        findings mirrored faintly. A picture only, for the eye: nothing in it is a control, and a screen reader skips it
+        (each tooth's own button says its number and name). */}
+    <div class="odo-where" aria-hidden="true">
+      <span class="meta">Where it is</span>
+      <div class="odo-map">
+        <svg viewBox={`${mouth.box.x} ${mouth.box.y} ${mouth.box.w} ${mouth.box.h}`} focusable="false">
+          {mapSets.map((g) => (
+            <g data-map-set={g.key}>
+              {g.teeth.map((m) => (
+                <rect x={m.x0} y={m.y0} width={m.w} height={m.h} rx={m.rx} transform={`rotate(${m.angle} ${m.x} ${m.y})`}
+                  data-map-fdi={m.fdi} data-state={m.state} data-surface-condition={m.surfaceCondition} />
+              ))}
+            </g>
+          ))}
+        </svg>
+        <span class="odo-map-side" style={`top:${mouth.band}%`} data-side="right">Right</span>
+        <span class="odo-map-side" style={`top:${mouth.band}%`} data-side="left">Left</span>
+      </div>
+      <p class="odo-where-line" data-odo-where-line>Point at a tooth to see where it is</p>
+    </div>
     <div class="flex items-baseline justify-between">
       <span class="meta">Chart note</span>
       <span data-count class="text-xs tabular-nums text-muted"></span>
@@ -351,10 +407,44 @@ const wholeConditions: ToothCondition[] = [
     </button>
   </div>
 
+  <svg class="odo-defs" width="0" height="0" aria-hidden="true" focusable="false">
+    <defs>
+      {picKinds.map(([k, p]) => (
+        <>
+          <path id={`${picId}-${k}-c`} d={p.crown} vector-effect="non-scaling-stroke" />
+          <path id={`${picId}-${k}-r`} d={p.root} vector-effect="non-scaling-stroke" />
+          {p.back && <path id={`${picId}-${k}-b`} d={p.back} vector-effect="non-scaling-stroke" />}
+          <path id={`${picId}-${k}-k`} d={p.canal} vector-effect="non-scaling-stroke" />
+          <path id={`${picId}-${k}-p`} d={p.post} vector-effect="non-scaling-stroke" />
+        </>
+      ))}
+      {/* A root fragment: the roots hatched in the caries red. */}
+      <pattern id={`${picId}-hatch`} width="3.2" height="3.2" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="3.2" height="3.2" class="odo-hatch-ground" />
+        <rect width="1.3" height="3.2" class="odo-hatch-line" />
+      </pattern>
+    </defs>
+  </svg>
+
   <!-- One shared palette, moved to the clicked tooth. Native popover gives
        Escape, light-dismiss and focus handling without writing any of it. -->
   <div popover data-palette role="dialog" aria-label="Tooth finding" class="w-[320px] border border-line bg-surface p-4">
-    <p class="font-display text-[17px] font-semibold" data-palette-title>Tooth</p>
+    {/* The open tooth's number and name, and where it is in the mouth: the same map, small, the tooth lit (a picture for
+        the eye; the title says it in words). */}
+    <div class="odo-pal-head">
+      <p class="font-display text-[17px] font-semibold" data-palette-title>Tooth</p>
+      <div class="odo-map odo-map-mini" aria-hidden="true">
+        <svg viewBox={`${mouth.box.x} ${mouth.box.y} ${mouth.box.w} ${mouth.box.h}`} focusable="false">
+          {mapSets.map((g) => (
+            <g data-map-set={g.key}>
+              {g.teeth.map((m) => (
+                <rect x={m.x0} y={m.y0} width={m.w} height={m.h} rx={m.rx} transform={`rotate(${m.angle} ${m.x} ${m.y})`} data-mini-fdi={m.fdi} />
+              ))}
+            </g>
+          ))}
+        </svg>
+      </div>
+    </div>
 
     <div data-surface-block>
       <p class="meta mt-3">Surfaces</p>
@@ -414,6 +504,7 @@ const wholeConditions: ToothCondition[] = [
     type ToothCondition, type ToothMark, type Surface,
   } from '../data/demo';
   import * as queue from '../lib/offline-queue';
+  import { toothName, toothTitle } from '../lib/tooth-name';
 
   const SURFACES: Surface[] = ['mesial', 'occlusal', 'distal', 'buccal', 'lingual'];
   const SWATCH: Record<string, string> = {
@@ -468,7 +559,7 @@ const wholeConditions: ToothCondition[] = [
 
     function describe(b: HTMLButtonElement) {
       const m = marks.get(b);
-      const name = nameOf(b);
+      const name = `${nameOf(b)}, ${toothName(fdiOf(b))}`;
       const kept = waitingTeeth.has(b) ? ' Saved on this device, will sync.' : '';
       // Planned and done work on the tooth (the record's), for everyone who sees the chart: it survives every repaint.
       const work = b.dataset.toothWorkWords ? ` ${b.dataset.toothWorkWords}` : '';
@@ -1094,7 +1185,9 @@ const wholeConditions: ToothCondition[] = [
       const m = marks.get(b);
       picked = new Set(m?.surfaces ?? []);
 
-      title.textContent = `Tooth ${nameOf(b)}`;
+      title.textContent = `Tooth ${nameOf(b)} · ${toothTitle(fdi)}`;
+      openFdi = fdi;
+      lightMap();
       // Anteriors have an incisal edge, not an occlusal table.
       palette.querySelector<HTMLElement>('[data-surface-toggle="occlusal"] [data-surface-code]')!
         .textContent = occlusalCode(fdi);
@@ -1255,6 +1348,7 @@ const wholeConditions: ToothCondition[] = [
         });
         render();
         tell();
+        lightMap();
       });
     });
 
@@ -1273,6 +1367,66 @@ const wholeConditions: ToothCondition[] = [
         teeth[0].tabIndex = 0;
       }
     });
+
+    // --- the pictures and the mouth map ----------------------------------------------------------------------------
+    // A tooth's picture is part of its target: a click on it opens the tooth as a click on its box does (the button
+    // stays the only control, and keeps the keyboard order). The map is a picture only: it lights the tooth pointed at
+    // or focused, whichever the person did last (a click leaves the pointer resting on a tooth while the arrow keys move
+    // on), and the open one, and its line names that tooth in the notation in use; the palette's own small map lights
+    // the open tooth. The map mirrors each tooth's finding from the button's own attributes, as paint() sets them.
+    const whereLine = root.querySelector<HTMLElement>('[data-odo-where-line]');
+    const whereIdle = whereLine?.textContent ?? '';
+    const shapes = new Map([...root.querySelectorAll<SVGElement>('[data-map-fdi]')].map((s) => [Number(s.dataset.mapFdi), s]));
+    const minis = new Map([...palette.querySelectorAll<SVGElement>('[data-mini-fdi]')].map((s) => [Number(s.dataset.miniFdi), s]));
+    let hot: number | null = null;
+    let focused: number | null = null;
+    let last: 'pointer' | 'focus' = 'focus';
+    let openFdi: number | null = null;
+    // Where the page hides the map's line (the record, when the map sits under the arches, too far below the upper teeth to
+    // be seen with them), the map follows the open tooth only.
+    const follows = () => !!whereLine && getComputedStyle(whereLine).display !== 'none';
+    function lightMap() {
+      const now = !follows() ? null : last === 'pointer' ? (hot ?? focused) : (focused ?? hot);
+      shapes.forEach((s, fdi) => s.toggleAttribute('data-lit', fdi === now || fdi === openFdi));
+      minis.forEach((s, fdi) => s.toggleAttribute('data-lit', fdi === openFdi));
+      const fdi = now ?? openFdi;
+      const b = fdi === null ? undefined : byFdi.get(fdi);
+      if (whereLine) whereLine.textContent = b && fdi !== null ? `${nameOf(b)} · ${toothTitle(fdi)}` : whereIdle;
+    }
+    const toothAt = (target: EventTarget | null): HTMLButtonElement | null =>
+      (target instanceof Element ? target : null)?.closest('[data-odo-col]')?.querySelector<HTMLButtonElement>('button[data-tooth]') ?? null;
+    root.addEventListener('pointerover', (e) => {
+      const b = toothAt(e.target);
+      const fdi = b ? fdiOf(b) : null;
+      if (fdi !== hot) { hot = fdi; if (fdi !== null) last = 'pointer'; lightMap(); }
+    });
+    root.addEventListener('pointerleave', () => { if (hot !== null) { hot = null; lightMap(); } });
+    root.addEventListener('focusin', (e) => {
+      const b = e.target instanceof HTMLButtonElement && e.target.matches('[data-tooth]') ? e.target : null;
+      focused = b ? fdiOf(b) : null;
+      if (b) last = 'focus';
+      lightMap();
+    });
+    root.addEventListener('focusout', () => { if (focused !== null) { focused = null; lightMap(); } });
+    palette.addEventListener('toggle', () => {
+      if (!palette.matches(':popover-open') && openFdi !== null) { openFdi = null; lightMap(); }
+    });
+    root.addEventListener('click', (e) => {
+      const el = e.target instanceof Element ? e.target : null;
+      if (!el?.closest('[data-odo-pic]')) return;
+      const b = toothAt(el);
+      if (!b) return;
+      b.focus({ preventScroll: true });
+      b.click();
+    });
+    const mirror = (b: HTMLButtonElement) => {
+      const s = shapes.get(fdiOf(b));
+      if (!s) return;
+      s.setAttribute('data-state', b.dataset.state ?? 'sound');
+      s.setAttribute('data-surface-condition', b.dataset.surfaceCondition ?? '');
+    };
+    const mirrored = new MutationObserver((changes) => changes.forEach((c) => mirror(c.target as HTMLButtonElement)));
+    teeth.forEach((b) => { mirror(b); mirrored.observe(b, { attributes: true, attributeFilter: ['data-state', 'data-surface-condition'] }); });
 
     root.querySelector<HTMLButtonElement>('[data-clear]')?.addEventListener('click', () => {
       if (locked) return refuseLocked();
@@ -1311,4 +1465,98 @@ const wholeConditions: ToothCondition[] = [
   .tooth-marks { display: flex; gap: 3px; justify-content: center; align-items: center; height: 10px; }
   .tooth-mark-plan { width: 8px; height: 8px; border-radius: 999px; border: 2px solid var(--c-ink-2); }
   .tooth-mark-done { width: 8px; height: 8px; border-radius: 999px; background: var(--c-ink-2); }
+</style>
+
+<style is:global>
+  /* The chart's pictures (src/lib/tooth-drawing.ts draws them; the record sizes them for its layouts and its paper in
+     patients.css). Global, because the page's own rules reach in, and every rule is under the chart's own hooks.
+     Colours are tokens and the finding hues the .tooth rules in global.css use, so the drawings follow the theme and
+     whatever paper the sheet is. The outline is the muted slate: at least 3:1 on the card in both themes (measured). */
+  [data-odontogram] { --odo-line: var(--c-muted); }
+  .odo-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+  /* A tooth's side view, on the outside of the arch: as wide as its box, as tall as the drawing's box (2:3). It adds
+     nothing to the column's width (contain), and a click on it opens the tooth (the chart's script). */
+  .odo-pic { display: block; align-self: stretch; contain: inline-size; cursor: pointer; }
+  .odo-pic > svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .odo-pic use {
+    fill: var(--c-tooth-sound); stroke: var(--odo-line); stroke-width: 1.25px; stroke-linejoin: round; stroke-linecap: round;
+    transition: fill 120ms ease, stroke 120ms ease;
+  }
+  .odo-pic .odo-canal { display: none; fill: none; stroke: #7c53e0; stroke-width: 1.75px; }
+  .odo-pic .odo-post { display: none; fill: #5b666f; }
+  .odo-pic .odo-x { display: none; fill: none; stroke: var(--c-caries); stroke-width: 2px; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .odo-hatch-ground { fill: var(--c-tooth-sound); }
+  .odo-hatch-line { fill: var(--c-caries); }
+  /* The paper's code (global.css, .tooth::before, 5–17 px off the box) stands between the picture and the box. */
+  [data-codes] .odo-col:has(> .tooth:not(.tooth--lower)) > .odo-pic { margin-bottom: 12px; }
+  [data-codes] .odo-col:has(> .tooth--lower) > .odo-pic { margin-top: 12px; }
+  /* Pointing at the picture is pointing at the tooth: both darken together. */
+  .odo-col:has(> .tooth:hover) > .odo-pic, .odo-pic:hover { --odo-line: var(--c-ink); }
+  .odo-col:has(> .odo-pic:hover) > .tooth[data-state="sound"] { border-color: var(--c-ink); }
+
+  /* What the tooth shows, read from its box's own attributes (paint() sets them). A whole-tooth finding fills the crown
+     in the box's colour; a surface finding leaves the picture as it is (the box's pips say where). */
+  .odo-col:has(> .tooth:is([data-state="crown"], [data-state="bridge"], [data-state="abutment"])) .odo-crown { fill: var(--c-crown); }
+  .odo-col:has(> .tooth[data-state="veneer"]) .odo-crown { fill: #b333c9; }
+  .odo-col:has(> .tooth[data-state="denture"]) .odo-crown { fill: #c74b77; }
+  /* A tooth that replaces one (a pontic, a denture's tooth) has no root; a pontic is the crown's pale tint, dashed. */
+  .odo-col:has(> .tooth:is([data-state="pontic"], [data-state="denture"])) :is(.odo-root, .odo-back) { display: none; }
+  .odo-col:has(> .tooth[data-state="pontic"]) .odo-crown { fill: color-mix(in srgb, var(--c-crown) 28%, var(--c-tooth-sound)); stroke: var(--c-crown); stroke-dasharray: 2.5 2; }
+  /* A root canal: a line down each root. An implant: a threaded post where the roots were. */
+  .odo-col:has(> .tooth[data-state="root_canal"]) .odo-canal { display: inline; }
+  .odo-col:has(> .tooth[data-state="implant"]) :is(.odo-root, .odo-back) { display: none; }
+  .odo-col:has(> .tooth[data-state="implant"]) .odo-post { display: inline; }
+  /* To be taken out: crossed in the caries red. A root fragment: only the roots, hatched in it. */
+  .odo-col:has(> .tooth[data-state="extraction"]) .odo-x { display: inline; }
+  .odo-col:has(> .tooth[data-state="root_fragment"]) .odo-crown { display: none; }
+  .odo-col:has(> .tooth[data-state="root_fragment"]) :is(.odo-root, .odo-back) { fill: var(--odo-hatch); stroke: var(--c-caries); }
+  /* Missing: the outline only, dashed. Not through yet (unerupted), or stuck (impacted, leaning toward the midline):
+     dashed too. */
+  .odo-col:has(> .tooth:is([data-state="missing"], [data-state="unerupted"], [data-state="impacted"])) .odo-pic use { stroke-dasharray: 2.5 2; }
+  .odo-col:has(> .tooth[data-state="missing"]) .odo-pic use { fill: none; }
+  /* Turned inside its own box (a little smaller, so it stays inside it): nothing spills past the column. */
+  .odo-col:has(> .tooth[data-state="impacted"]) .odo-tilt { transform-box: view-box; transform-origin: 50% 50%; scale: 0.85; }
+  .odo-col:has(> .tooth[data-state="impacted"]) .odo-tilt[data-tilt="cw"] { rotate: 12deg; }
+  .odo-col:has(> .tooth[data-state="impacted"]) .odo-tilt[data-tilt="ccw"] { rotate: -12deg; }
+
+  /* Where it is: the mouth from above, at the top of the chart note (the record lays it beside the note where the note
+     runs the chart's whole width: patients.css), and small in the palette's head. */
+  .odo-where { display: grid; gap: 0.5rem; margin-bottom: 1.25rem; }
+  .odo-map { position: relative; width: 100%; max-width: 15rem; justify-self: center; }
+  .odo-map > svg { display: block; width: 100%; height: auto; }
+  .odo-map rect {
+    fill: var(--c-tooth-sound); stroke: var(--odo-line); stroke-width: 1px; vector-effect: non-scaling-stroke;
+    transition: fill 120ms ease, stroke 120ms ease;
+  }
+  [data-odontogram]:not([data-primary-open]) [data-map-set="primary"] { display: none; }
+  /* Findings, faintly: the whole mouth at a glance. */
+  .odo-map rect:is([data-state="crown"], [data-state="bridge"], [data-state="abutment"]) { fill: color-mix(in srgb, var(--c-crown) 45%, var(--c-tooth-sound)); }
+  .odo-map rect:is([data-state="extraction"], [data-state="root_fragment"], [data-surface-condition="caries"]) { fill: color-mix(in srgb, var(--c-caries) 45%, var(--c-tooth-sound)); }
+  .odo-map rect[data-surface-condition="filled"] { fill: color-mix(in srgb, var(--c-accent) 45%, var(--c-tooth-sound)); }
+  .odo-map rect[data-surface-condition="sealant"] { fill: color-mix(in srgb, #0b7fb5 45%, var(--c-tooth-sound)); }
+  .odo-map rect[data-surface-condition="amalgam"] { fill: color-mix(in srgb, #7b8591 45%, var(--c-tooth-sound)); }
+  .odo-map rect[data-surface-condition="inlay"] { fill: color-mix(in srgb, #a87a12 45%, var(--c-tooth-sound)); }
+  .odo-map rect[data-state="root_canal"] { fill: color-mix(in srgb, #7c53e0 45%, var(--c-tooth-sound)); }
+  .odo-map rect[data-state="implant"] { fill: color-mix(in srgb, #5b666f 45%, var(--c-tooth-sound)); }
+  .odo-map rect[data-state="veneer"] { fill: color-mix(in srgb, #b333c9 45%, var(--c-tooth-sound)); }
+  .odo-map rect[data-state="denture"] { fill: color-mix(in srgb, #c74b77 45%, var(--c-tooth-sound)); }
+  .odo-map rect[data-state="pontic"] { fill: color-mix(in srgb, var(--c-crown) 28%, var(--c-tooth-sound)); stroke-dasharray: 3 2; }
+  .odo-map rect:is([data-state="missing"], [data-state="unerupted"], [data-state="impacted"]) { stroke-dasharray: 3 2; }
+  .odo-map rect[data-state="missing"] { fill: none; }
+  /* The tooth pointed at, focused or open: teal, outlined darker. Its name is in the line under the map, or the
+     palette's title. */
+  .odo-map rect[data-lit] { fill: var(--ws-teal, var(--c-accent)); stroke: var(--ws-teal-fill, var(--c-ink)); stroke-width: 2px; }
+  /* The palette's head: the title beside a small map. The palette has the theme's own colours (a pop-up opened from the
+     paper takes the dark ones back in dark mode, global.css), so its outline is worked out there. */
+  [data-palette] { --odo-line: var(--c-muted); }
+  .odo-pal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+  .odo-pal-head > [data-palette-title] { min-width: 0; }
+  .odo-map-mini { flex: none; width: 5.5rem; max-width: none; justify-self: auto; }
+  /* "Right" and "Left" (the patient's) in the hollow between the arches, clear of the molars and the baby teeth. */
+  .odo-map-side { position: absolute; transform: translate(-50%, -50%); font-size: 12px; line-height: 1; color: var(--c-ink-2); pointer-events: none; }
+  .odo-map-side[data-side="right"] { left: 22%; }
+  .odo-map-side[data-side="left"] { left: 78%; }
+  .odo-where-line { margin: 0; min-height: 1.45em; font-size: 13.5px; line-height: 1.45; color: var(--c-ink-2); text-align: center; font-variant-numeric: tabular-nums; }
+  @media print { [data-odontogram] .odo-where { display: none; } }
 </style>
