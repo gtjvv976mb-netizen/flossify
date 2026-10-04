@@ -115,8 +115,9 @@ it (light and dark, 1440 and 390) — measure again before making it clearer.
   the screen, targets ≥44px, fields ≥16px, and contrast **measured** (≥4.5:1
   against the worst pixel behind the words, light and dark; muted slate on a
   pale tint is 4.48 — use ink-2 or the tint's own ink there).
-- **Exceptions:** the SwiftCare sample in `public/samples/` (its own design)
-  and the paper of print pages (black on white).
+- **Exceptions:** the SwiftCare sample in `public/samples/` (its own design),
+  the paper of print pages (black on white), and the patient record's sheets,
+  which are paper on screen too (record.css, "The record on paper").
 
 `src/styles/global.css` is the whole system: the tokens on `:root` (both
 themes; the utilities `text-ink`, `bg-teal-tint`, `rounded-card` … read them),
@@ -1122,6 +1123,18 @@ details covered, instead).
     pluses, contents, strip or attached sheets, each sheet on its own A4 page with "<name> · Chart # <no> · Page N" at
     its foot (no "of 3": a very long history can still spill onto a second sheet), ticks drawn in ink (they print without
     background graphics). Audited `record.print` by a beacon on beforeprint, at most once a minute.
+- **On paper (4 Oct 2026).** The owner: "make the patient record panel look like it's a paper record instead of the normal
+  template design". Every `.pp-sheet` (the three pages and the attached sheets) is a sheet of paper on the desk, screen
+  only (`@media screen` in record.css, "The record on paper"; print is unchanged): warm off-white `--pp-paper` with a grain
+  too faint to cost a word its contrast (2.5% at most), square-cut with a paper's shadow, the letterhead's name in a printed
+  serif from the device's own fonts (`--pp-serif`, nothing fetched) over a double rule, each section's title (`.pp-head`)
+  in a shaded band `--pp-band` between ink rules (a block inside a section, `.pp-head-sub`, is not banded), the boxes ruled
+  in `--ws-hair-strong`, and what was filled in (`.pf-v`, the ledger's cells, the history's ticks) in blue pen ink
+  `--pp-pen`; "Not on file" stays printed ink-2 and an allergy red. **The same paper in both themes**: the sheet carries the
+  light values of every colour token, so it is drawn and measured as in light mode, and global.css's dark blocks also
+  name `.pp-sheet :is(.ws-panel, [popover])`, so a side panel or the chart's palette opened inside a sheet is in the
+  person's theme (measured). The head above the sheets (‹ Patients, the actions, the contents) stays the workspace.
+  paper-check passes unchanged (lowest 4.68:1, light and dark: the sheet's words are the light ones in both).
 - **The dental and medical history (3 Oct)** — `src/lib/paper-history.ts` (pure): the paper's 12 problems and 23
   conditions in its order and words, stored under the words the record already uses (High blood pressure →
   "Hypertension"; aliases are only real re-spellings, never a narrower or wider word), and everything else the paper asks

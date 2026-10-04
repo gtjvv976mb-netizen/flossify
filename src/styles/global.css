@@ -191,11 +191,14 @@
   color-scheme: light;
 }
 
-/* Dark values, written once for the OS preference and once for the explicit toggle. Kept as two
+/* Dark values, written once for the OS preference and once for the explicit toggle. The patient record's sheets are
+   paper in both themes (record.css, "The record on paper": the light values on .pp-sheet), so a side panel or a pop-up
+   drawn inside a sheet takes the dark values back here, and opens in the theme the person chose. Kept as two
    selectors rather than one list because `:root:not([data-theme="light"])` inside a media query
    cannot be merged with a plain attribute selector without changing what wins. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]),
+  :root:not([data-theme="light"]) .pp-sheet :is(.ws-panel, [popover]) {
     --c-bg: #15191e;
     --c-bg-soft: #262d36;
     --c-surface: #1d232a;
@@ -251,7 +254,8 @@
   }
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+:root[data-theme="dark"] .pp-sheet :is(.ws-panel, [popover]) {
   --c-bg: #15191e;
   --c-bg-soft: #262d36;
   --c-surface: #1d232a;
