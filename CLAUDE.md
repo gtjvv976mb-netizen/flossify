@@ -1156,8 +1156,10 @@ details covered, instead).
 - **The baby teeth (A–T) on the chart (3 Oct)** — Odontogram's `primary` draws them as a small arch of their own: 55–51 |
   61–65 over 85–81 | 71–75, labelled in the notation in use (FDI; Universal A–J across the upper arch from the patient's
   right and K–T back across the lower, 55 = A, 65 = J, 75 = K, 85 = T; Palmer A–E in each quadrant, "URA"). Beside the
-  permanent arches where the card holds all 26 teeth at 32 px or more (`@container pt-chart (width >= 62rem)`: 1366 and
-  1440, 33–36 px teeth, the chart note under both), under them otherwise (30 px teeth at 390, the arch whole); printed
+  permanent arches where the card holds all 26 teeth at 32 px or more (`@container pt-chart (width >= 62rem)`: 1366,
+  33–36 px teeth, the chart note under both); from a 68rem chart (1440 and up) under the permanent arch at 44 px, so the
+  chart note and its mouth map stay on the right beside the teeth, as an adult's (the owner, 4 Oct: "in the baby teeth,
+  put the chart on the right side so it's visible"); under them otherwise (30 px teeth at 390, the arch whole); printed
   beside them on page 1 (22 px teeth, codes at 7 pt so Impl and RCT clear a neighbour, the arch's name left on screen;
   page 1 still one A4 sheet, 1009 px with a full history). Open for a patient under 13 by the birth date (`primaryOpen`,
   `babyOpen` in the record) or when a baby tooth has a finding or work (the component reads its own marks); otherwise
@@ -1189,7 +1191,7 @@ details covered, instead).
     does (the button stays the only control).
   - **The map is a picture only** (`aria-hidden` as a whole, nothing in it a control: its shapes were 10–17 px). It lights the
     tooth pointed at or focused, whichever the person did last, and the open one, and its line names it in the notation in
-    use; the findings show faintly. Where the note runs under the arches (below a 68rem chart, or with the baby teeth open)
+    use; the findings show faintly. Where the note runs under the arches (below a 68rem chart)
     the map is a compact 192 px picture beside the note (patients.css, `[data-odo-note]`, from a 28rem chart; small over it
     on a phone); there it is too far below the upper teeth to follow the pointer, so patients.css hides its line and the
     map follows the open tooth only (the script reads the line's display). Beside the arches it heads the 272 px column and
