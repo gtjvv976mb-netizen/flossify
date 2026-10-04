@@ -283,12 +283,11 @@
 .pt-chart [data-odontogram] > :has(> [data-note-list]) { width: 100%; padding: 1.25rem; border: 1px solid var(--ws-hair); border-radius: var(--ws-r); background: var(--ws-subtle); }
 .pt-chart [data-note-list]:not([hidden]) { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.625rem 1.5rem; }
 .pt-chart [data-clear] { width: auto; align-self: flex-start; }
-/* The mouth map ("Where it is", the component's) where the note runs under the arches (a chart under 68rem, or the baby
-   teeth open): a compact picture beside the note, not a band of its own (the owner asks for a compact record), and on a
+/* The mouth map ("Where it is", the component's) where the note runs under the arches (a chart under 68rem): a compact picture beside the note, not a band of its own (the owner asks for a compact record), and on a
    phone small over it. There it is too far below the upper teeth to follow the pointer, so it shows the findings and the
    open tooth only and its pointer line goes (the component reads that: the line hidden, the map follows the open tooth;
-   the palette's own small map shows it where the person is looking). Beside the arches (68rem and no baby teeth) it
-   heads the 272px column as the component draws it, and follows the pointer and the keyboard. */
+   the palette's own small map shows it where the person is looking). Beside the arches (68rem, with or without the baby
+   teeth) it heads the 272px column as the component draws it, and follows the pointer and the keyboard. */
 @container pt-chart (28rem <= width < 68rem) {
   .pt-chart [data-odo-note] { display: grid; grid-template-columns: 12rem minmax(0, 1fr); column-gap: 1.75rem; align-content: start; align-items: start; }
   .pt-chart [data-odo-note] > .odo-where { grid-column: 1; grid-row: 1 / span 5; margin: 0; }
@@ -296,12 +295,18 @@
   .pt-chart [data-odo-note] > [data-clear] { justify-self: start; }
   .pt-chart [data-odo-note] .odo-where-line { display: none; }
 }
+/* With the baby teeth open on a wide chart (68rem: 1440 and up), the owner (4 Oct): "in the baby teeth, put the chart on
+   the right side so it's visible". The baby arch goes under the permanent one, at the adult's tooth size, and the chart
+   note with the mouth map stands on the right beside the teeth as an adult's does (it follows the pointer there). The
+   62rem rules above (the arches side by side, the note under them) stay for the narrower chart and for print. */
 @container pt-chart (width >= 68rem) {
-  .pt-chart [data-primary-open] > [data-odo-note] { display: grid; grid-template-columns: 12rem minmax(0, 1fr); column-gap: 1.75rem; align-content: start; align-items: start; }
-  .pt-chart [data-primary-open] > [data-odo-note] > .odo-where { grid-column: 1; grid-row: 1 / span 5; margin: 0; }
-  .pt-chart [data-primary-open] > [data-odo-note] > :not(.odo-where) { grid-column: 2; }
-  .pt-chart [data-primary-open] > [data-odo-note] > [data-clear] { justify-self: start; }
-  .pt-chart [data-primary-open] > [data-odo-note] .odo-where-line { display: none; }
+  .pt-chart [data-primary-open] [data-odo-arches] { flex-direction: column; align-items: stretch; gap: 0; }
+  .pt-chart [data-primary-open] [data-odo-set="primary"] { margin-top: 1.5rem; }
+  .pt-chart [data-odontogram][data-primary-open] .tooth { width: 44px; }
+  .pt-chart [data-odontogram][data-primary-open] { flex-direction: row; }
+  .pt-chart [data-odontogram][data-primary-open] > :has(> [data-note-list]) { width: 272px; }
+  .pt-chart [data-odontogram][data-primary-open] [data-note-list]:not([hidden]) { display: flex; }
+  .pt-chart [data-odontogram][data-primary-open] [data-clear] { width: 100%; align-self: stretch; }
 }
 @container pt-chart (width < 28rem) {
   .pt-chart [data-odo-note] .odo-map { max-width: 12rem; }
