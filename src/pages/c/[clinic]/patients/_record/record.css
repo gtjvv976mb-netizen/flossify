@@ -804,6 +804,95 @@ button.rf { display: grid; min-height: 44px; }
   .pp-fold-body { padding: 0.5rem 0.75rem 0.75rem; }
 }
 
+/* --- The record on paper (the owner, 4 Oct 2026: "make the patient record panel look like it's a paper record instead
+   of the normal template design") ---------------------------------------------------------------------------------------
+   Every sheet of the record (the three pages and the attached sheets) is a sheet of paper on the desk: warm off-white
+   with a faint grain, square-cut with a paper's shadow, a printed letterhead over a double rule, each section's title in
+   a shaded band between ink rules as a printed form has them, the boxes ruled in a darker line, and what was filled in
+   written in blue pen ink. The same paper in both themes, as the signature slip already is: the sheet carries the light
+   values of the tokens (so everything on it is drawn as it is in light mode, and was measured so), and global.css gives a
+   side panel or a pop-up opened from inside a sheet the dark values back. The head above the sheets (‹ Patients, the
+   actions, the contents) stays the workspace. Screen only: printed, the paper is the paper (the print rules below). The
+   one face that is not the workspace's is the printed serif of the letterhead and the titles, from the device's own
+   fonts (nothing is fetched). */
+@media screen {
+  .pp-sheet {
+    --c-bg: #f3f5f8; --c-bg-soft: #f2f4f7; --c-surface: #ffffff; --c-ink: #1f2937; --c-ink-2: #475467; --c-muted: #667085;
+    --c-faint: #667085; --c-line: #e3dccd; --c-line-2: #ece6d9; --c-accent: #0d706d; --c-accent-deep: #0b5d5b;
+    --c-caries: #ac3232; --c-crown: #8a4604;
+    --c-tooth-sound: #ffffff; --c-tooth-line: #c6c6c0; --c-tooth-missing: #e4e4de;
+    --ws-shadow: 0 1px 2px rgb(16 24 40 / 0.05);
+    --ws-shadow-pop: 0 12px 32px -8px rgb(16 24 40 / 0.16), 0 2px 6px rgb(16 24 40 / 0.06);
+    --ws-card: rgb(255 255 255 / 0.94); --ws-glass: var(--ws-card); --ws-glass-strong: #ffffff; --ws-subtle: #faf8f2;
+    --ws-hair: #e0d8c7; --ws-hair-strong: #a39a88; --ws-hover: rgb(70 52 20 / 0.05);
+    --ws-field: #ffffff; --ws-field-line: #c9c0ae; --ws-field-line-hover: #9d937f; --ws-scrim: rgb(16 24 40 / 0.32);
+    --ws-teal: #14908f; --ws-teal-ink: #0d706d; --ws-teal-fill: #0e7471; --ws-teal-fill-hover: #0b5f5d; --ws-teal-tint: #e8f6f5;
+    --ws-green: #1f9d63; --ws-green-ink: #16734a; --ws-green-fill: #16784d; --ws-green-fill-hover: #11613e; --ws-green-tint: #e9f7ef;
+    --ws-amber: #d97706; --ws-amber-ink: #8a4604; --ws-amber-tint: #fff5e6;
+    --ws-blue: #3b82f6; --ws-blue-ink: #2359c9; --ws-blue-tint: #eef4ff;
+    --ws-red: #dc4c4c; --ws-red-ink: #ac3232; --ws-red-fill: #c43c3c; --ws-red-tint: #fdeeee;
+    --ws-violet-ink: #5b3fc4; --ws-violet-tint: #f1eefd;
+    --ws-rose-ink: #a3294f; --ws-rose-tint: #fdeef4;
+    /* The paper's own: the sheet, the shaded band behind a title, the printed rules, and the pen. */
+    --pp-paper: #fcfaf5;
+    --pp-band: #eee7d7;
+    --pp-rule: #3b3428;
+    --pp-pen: #1d3b8b;
+    --pp-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+    color-scheme: light;
+    color: var(--c-ink);
+    border: 1px solid #e2dacb;
+    border-radius: 3px;
+    background-color: var(--pp-paper);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .36 0 0 0 0 .29 0 0 0 0 .18 0 0 0 .025 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+    box-shadow: 0 1px 1px rgb(60 44 18 / 0.06), 0 3px 6px -2px rgb(60 44 18 / 0.08), 0 18px 32px -18px rgb(60 44 18 / 0.32);
+  }
+  /* On the dark desk the paper's shadow is a deeper one. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .pp-sheet { border-color: #0e1114; box-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 18px 36px -16px rgb(0 0 0 / 0.7); }
+  }
+  :root[data-theme="dark"] .pp-sheet { border-color: #0e1114; box-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 18px 36px -16px rgb(0 0 0 / 0.7); }
+
+  /* The chart's teeth as in light mode (patients.css draws them dark on a dark page). */
+  :root .ws .pp-sheet .pt-chart-pane.pt-chart-pane { --c-tooth-sound: #ffffff; --c-tooth-line: #c9cfd8; --c-tooth-missing: #e8ebf0; }
+
+  /* The letterhead: the clinic's name in the printed serif, over a double rule as a printed form's head. */
+  .pp-sheet .pp-lh { border-bottom: 3px double var(--pp-rule); }
+  .pp-sheet .pp-lh-name { font-family: var(--pp-serif); font-size: 21px; font-weight: 700; letter-spacing: 0.005em; }
+  .pp-sheet .pp-lh-ids .pf-cell { background: #ffffff; }
+
+  /* Each section's title in a shaded band between ink rules; a block's title in the serif, with a hairline under it. */
+  .pp-sheet .pp-head { padding: 0.1875rem 0.5rem; border-top: 1.5px solid var(--pp-rule); border-bottom: 1px solid var(--pp-rule); background: var(--pp-band); }
+  .pp-sheet .pp-title { font-family: var(--pp-serif); font-size: 17px; letter-spacing: 0.005em; }
+  /* A block inside a section (Medical history under Patient information record) is titled as its siblings are, not banded. */
+  .pp-sheet .pp-head.pp-head-sub { padding: 0; border: 0; background: none; }
+  .pp-sheet .pp-head-sub .pp-title { font-size: 15px; }
+  .pp-sheet :is(.pp-band-title, .ph-title) { font-family: var(--pp-serif); font-size: 15px; }
+  .pp-sheet.pp-att .pp-fold-sum .pp-title { font-size: 16px; }
+  /* A folded attached sheet is its band: the title band is the whole fold. */
+  .pp-sheet.pp-att { border-top: 2px solid var(--pp-rule); }
+
+  /* The boxes, ruled in the form's darker line; what was filled in, in pen; "Not on file" stays printed. */
+  .pp-sheet .pf-grid { border-color: var(--ws-hair-strong); }
+  .pp-sheet .pf-cell { border-color: var(--ws-hair-strong); }
+  .pp-sheet .pf-v { color: var(--pp-pen); }
+  .pp-sheet .pf-empty .pf-v { color: var(--c-ink-2); }
+  .pp-sheet .pf-v.pf-alert { color: var(--ws-red-ink); }
+  .pp-sheet .pf-v .ph-from { color: var(--c-ink-2); }
+  .pp-sheet .ph-tick { background: var(--pp-pen); }
+  .pp-sheet .pf-go:hover { background: color-mix(in srgb, var(--ws-teal-tint) 55%, transparent); }
+
+  /* The ledger as the paper's ruled table: the head in the band, each line ruled, the entries in pen. */
+  .pp-sheet .trec thead th { background: var(--pp-band); border-top: 1.5px solid var(--pp-rule); border-bottom: 1px solid var(--pp-rule); color: var(--c-ink); }
+  .pp-sheet .trec td { color: var(--pp-pen); }
+
+  /* This visit is a note clipped to the first page: white, a little lifted off the paper. */
+  .pp-sheet .ws-pane.ws-glass.vs { border-color: #ddd4c2; background: #ffffff; box-shadow: 0 1px 2px rgb(60 44 18 / 0.08), 0 6px 14px -8px rgb(60 44 18 / 0.25); }
+
+  /* The page's number at its foot, as a printed form numbers it. */
+  .pp-sheet .pp-page-no { font-family: var(--pp-serif); font-size: 13.5px; font-style: italic; }
+}
+
 /* --- Printed (Print the record): the paper's three pages, as the paper is -------------------------------------------
    Black on white whatever the screen's theme (the tokens reset to the light ones, the words darker), the letterhead, no
    workspace (global.css hides the shell), no head, contents, This visit, pluses, buttons, folded forms or attached
