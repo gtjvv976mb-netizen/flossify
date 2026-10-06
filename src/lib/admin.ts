@@ -250,7 +250,7 @@ export const PRC_NOTE_MAX = 200;
  * status + texted (sent | again | nophone | noclinic | none), or 'missed'
  * when the dentist is no longer in the queue, or 'bad' for a hand-made post.
  */
-export async function markPrc(form: FormData, who: Actor): Promise<{ status: string; texted: string } | 'missed' | 'bad'> {
+export async function markPrc(form: FormData, who: Actor): Promise<{ status: string; texted: string } | 'missed' | 'nonumber' | 'bad'> {
   const staffId = String(form.get('staff_id') ?? '');
   const status = String(form.get('status') ?? '');
   const note = String(form.get('note') ?? '').replace(/\s+/g, ' ').trim().slice(0, PRC_NOTE_MAX) || null;
@@ -258,6 +258,8 @@ export async function markPrc(form: FormData, who: Actor): Promise<{ status: str
 
   const row = (await publicRead<PrcRow>('select * from admin_prc_queue() where staff_id = $1', [staffId]))[0];
   if (!row) return 'missed';
+  // No number, nothing to check: "checked" would publish a licence check for no licence (046 refuses it too).
+  if (status === 'checked' && !(row.prc_licence ?? '').trim()) return 'nonumber';
 
   const MARK = 'select admin_prc_mark($1, $2, $3, $4) as ok';
   const args = [staffId, status, note, who.staffId];
@@ -300,6 +302,7 @@ export function prcNotice(q: URLSearchParams): string {
   if (done === 'pending') return 'Back in the waiting list. The public profile says “PRC check pending” again.';
   if (done === 'mismatch') return `Marked as not matching. The public profile says “PRC check pending” until it is sorted. ${tail}`;
   if (done === 'missed') return 'That dentist is no longer in the queue. The lists are current.';
+  if (done === 'nonumber') return 'That dentist has no PRC number on file, so there is nothing to check yet. Their profile says “PRC check pending” until the clinic adds the number.';
   return '';
 }
 

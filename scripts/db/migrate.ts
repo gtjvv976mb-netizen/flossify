@@ -606,6 +606,10 @@ try {
       const started = Date.now();
       const c = await connect();
       c.on('error', () => {});
+      // What a file says on purpose (RAISE NOTICE in a DO block: 046 names the clinics it changed) goes to the deploy log
+      // under its line. Postgres's own notices ("already exists, skipping") are left out.
+      const told: string[] = [];
+      c.on('notice', (n) => { if (/\bat RAISE\b/.test(n.where ?? '')) told.push(n.message); });
       try {
         await c.query(`set lock_timeout = '${LOCK_TIMEOUT}'`);
         if (m.bare) {
@@ -623,6 +627,7 @@ try {
         }
         const late = m.name !== SCHEMA && m.name < newest ? '  (older name than applied ones: merged late)' : '';
         say(`  applied  ${m.name.padEnd(36)} ${String(Date.now() - started).padStart(5)} ms${late}`);
+        for (const t of told) say(`           ${t}`);
       } catch (e) {
         await c.query('rollback').catch(() => {});
         failed = true;

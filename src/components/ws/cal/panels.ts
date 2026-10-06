@@ -244,7 +244,7 @@ export function initPanels(ctx: Ctx): Panels {
       // What the signed consent covered, in the patient's own words on the tablet (p25); the whole of it in the title.
       // The Edit form's amber line is what asks for a new signature when the treatment changes.
       if (c.consentSigned) { const li = line('ok', `Consent: signed for ${M.clip(c.consentFor ?? 'this visit', 120)}`); if (c.consentFor) li.title = c.consentFor; }
-      else line('warn', 'Consent: not signed for this visit', boot.canEdit ? { label: 'Sign on this tablet', href: signHref(c.patientId, c.id) } : undefined);
+      else line('warn', 'Consent: not signed for this visit', boot.canEdit ? { label: 'Sign consent for this visit', href: signHref(c.patientId, c.id) } : undefined);
       const age = M.ageOf(c.birth, boot.today);
       if (age !== null && age < 18) line('plain', 'Under 18: a parent or guardian signs');
       if (c.clearanceWaiting) line('alert', 'Medical clearance: waiting for the physician', { label: 'See the letter', href: rec('rx') });

@@ -192,7 +192,8 @@ a { color: var(--teal); } a:focus-visible { outline: 2px solid var(--teal); outl
 <main class="wrap">
   <header class="card">
     <h1>Flossify review pack</h1>
-    <p class="lede">Every word a patient will read and sign before a Philippine dental clinic relies on Flossify, drawn straight from the software on ${esc(today)}. A dentist reads the clinical words; the clinic owner’s lawyer reads the consent and privacy words. Nothing in sections 1 and 3 is offered on the live site until both have signed off.</p>
+    <p class="lede">Every word a patient will read and sign before a Philippine dental clinic relies on Flossify, drawn straight from the software on ${esc(today)}. A dentist reads the clinical words; the clinic owner’s lawyer reads the consent and privacy words. The consent forms in section 1 are not offered on the live site until both have signed off, with one exception, below.</p>
+    <p class="ask"><strong>Already live:</strong> the general consent to examination and treatment (<span class="mono">treatment-2026-09</span>) is what a patient signs on the clinic’s tablet for a visit (“Sign consent for this visit”), and that page is open on the live site today, before any sign-off. The chart’s offer after a treatment (section 3) is live too. Please read both first; a change of words becomes a new version.</p>
     <ol class="steps">
       <li>Read each form. Mark changes on the page; the wording changes as a new version, never in place.</li>
       <li>Sign off each form at its foot: who read it, when, and in which languages (English, and Filipino where a draft is shown).</li>

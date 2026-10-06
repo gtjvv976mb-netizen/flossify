@@ -20,7 +20,7 @@ import { shortName } from '../../../lib/schedule';
 // (GET /api/availability) and the booking is a row in the clinic's schedule (POST /api/bookings),
 // re-checked inside the same transaction so two people cannot take one chair.
 const l = await loadListing(Astro.params.clinic!);
-if (!l) return new Response('No such clinic', { status: 404 });
+if (!l) return new Response(null, { status: 404 });
 const dentists = l.dentistProfiles;
 const fees = l.fees;
 type Step = 'reason' | 'dentist' | 'when' | 'who' | 'confirm';

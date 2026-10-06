@@ -14,12 +14,12 @@ import { dentistDaysText } from '../../lib/availability';
 // A profile is a set of claims, each with where it came from. "Verified" on
 // its own means nothing; "PRC licence, checked by a person on 15 Sep" does.
 const d = await loadDentist(Astro.params.dentist!);
-if (!d) return new Response('No such dentist', { status: 404 });
+if (!d) return new Response(null, { status: 404 });
 // Their days at each clinic with their own hours where they have them: "Tue 1–6 pm · Thu" (040), as the clinic page says it.
 const places = d.clinicsFull.map((c) => ({ days: c.days ?? [], hours: c.hours, l: { slug: c.slug, name: c.name, area: c.area, workspace: c.bookingMode === 'live' } }));
 const checked = d.prcCheckedOn ? new Date(d.prcCheckedOn).toLocaleDateString('en-PH', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
 // A dentist with no listed clinic has no public place to be found; the page waits until there is one.
-if (!places.length) return new Response('No such dentist', { status: 404 });
+if (!places.length) return new Response(null, { status: 404 });
 const practises = d.practices?.length ? (d.practices.slice(1).join(', ').toLowerCase() || d.practices[0].toLowerCase()) : 'general dentistry';
 ---
 

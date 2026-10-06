@@ -36,8 +36,8 @@
 // is today's patients. The old ?pq=<text> / ?pf= (the patients list that was
 // here) go on to the Patients tab with the same search and filter.
 //
-// A form post here (the old Today page's status buttons) still works: CSRF,
-// then the server's state machine (applyStatus), then back here.
+// A form post here changes nothing (the old Today page's status form is retired: every status change goes through
+// /api/schedule and its checks).
 export const prerender = false;
 
 import ClinicLayout from '../../../layouts/Clinic.astro';
@@ -53,8 +53,8 @@ import BlockPanel from '../../../components/ws/cal/BlockPanel.astro';
 import '../../../components/ws/cal/cal.css';
 import { requireWorkspace } from '../../../lib/workspace';
 import { withClinic } from '../../../lib/db';
-import { csrfOk, csrfToken, CSRF_MESSAGE } from '../../../lib/csrf';
-import { applyStatus, ALLOWED, NEXT_STATUS, StatusRefused } from '../../../lib/schedule';
+import { csrfToken, CSRF_MESSAGE } from '../../../lib/csrf';
+import { NEXT_STATUS } from '../../../lib/schedule';
 import { shellLinks } from '../../../components/ws/routes';
 import { loadDashboard } from '../../../components/ws/cal/data';
 import { PT_KEYS } from '../../../components/ws/cal/model';
@@ -72,24 +72,10 @@ const { clinic, session, branches } = ws;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const here = `/c/${clinic.slug}/`;
 
-// The old Today page's status buttons posted here. They still work, through the server's state machine.
-if (Astro.request.method === 'POST') {
-  const f = await Astro.request.formData();
-  if (!csrfOk(Astro.cookies, f)) return Astro.redirect(`${here}?stale=1`, 303);
-  const id = String(f.get('id') ?? ''), to = String(f.get('status') ?? '');
-  if (UUID.test(id) && ALLOWED.has(to)) {
-    try {
-      await withClinic(clinic.id, async (tx) => {
-        const cur = (await tx.query<{ status: string }>('select status from appointment where id = $1 for update', [id])).rows[0];
-        if (cur && cur.status !== to) await applyStatus(tx, clinic.id, session.staffId, id, to, cur.status);
-      });
-    } catch (e) {
-      if (e instanceof StatusRefused) return Astro.redirect(`${here}?refused=1`, 303);
-      throw e;
-    }
-  }
-  return Astro.redirect(here, 303);
-}
+// The old Today page's status buttons posted here and changed a visit's status without the calendar's checks (who may
+// change the schedule, the consent question at the chair or the door, the request limit). Nothing sends it any more:
+// a post here changes nothing. Every status change goes through /api/schedule.
+if (Astro.request.method === 'POST') return Astro.redirect(here, 303);
 
 // Who is looking.
 const finance = can(clinic, 'finance.bill');
@@ -138,7 +124,6 @@ const openBlock = qs.get('new') === 'block';
 const openPatient = UUID.test(qs.get('patient') ?? '') ? qs.get('patient')!.toLowerCase() : null;
 const openBooking = UUID.test(qs.get('booking') ?? '') ? qs.get('booking')!.toLowerCase() : null;
 const stale = qs.get('stale') === '1';
-const refused = qs.get('refused') === '1';
 
 const first = view === 'week' ? mondayOf(date) : date;
 const from = new Date(startMs(first));
@@ -230,8 +215,8 @@ const bootJson = JSON.stringify(boot).replace(/</g, '\\u003c');
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.clinic.area }} title="Dashboard" section="dashboard" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" wide heading>
-  {(stale || refused) && (
-    <p role="alert" class="ws-callout dash-alert" data-tone="alert"><Icon name="alert" /><span>{stale ? CSRF_MESSAGE : 'That change is not one the book allows any more. The calendar shows where the visit stands now.'}</span></p>
+  {stale && (
+    <p role="alert" class="ws-callout dash-alert" data-tone="alert"><Icon name="alert" /><span>{CSRF_MESSAGE}</span></p>
   )}
 
   <!-- Four numbers, no more (the soft template): the same three for everyone, then Done — or, for the people

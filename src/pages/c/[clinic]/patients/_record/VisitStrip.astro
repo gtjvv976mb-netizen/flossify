@@ -36,6 +36,8 @@ interface Props {
   c: Clinical;
   x: Extra;
   signed: VisitConsent[];
+  /** The consent to treatment is signed for this visit, by the database's one rule (visit_treatment_consented): the tablet's signing or an agreed general consent form. */
+  consented?: boolean;
   /** The newest health history version on file, or null. */
   health: HealthVersion | null;
   /** The privacy notice: agreed and in force (or none in force), or the words for what is missing. */
@@ -61,7 +63,7 @@ interface Props {
   /** A Go ahead anyway that was refused: the form's id, so its panel opens again with the sentence (`problem`). */
   aheadDoc?: string | null;
 }
-const { visit, c, x, signed, health, privacy, minor, laterVisitAt, canEdit, money, today, firstName, action, chargeHref, printBase, saved, problem, forms = [], consentsBase = '', aheadDoc = null } = Astro.props;
+const { visit, c, x, signed, consented = false, health, privacy, minor, laterVisitAt, canEdit, money, today, firstName, action, chargeHref, printBase, saved, problem, forms = [], consentsBase = '', aheadDoc = null } = Astro.props;
 
 const tz = 'Asia/Manila';
 const dayOf = (d: Date | string) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(d));
@@ -104,8 +106,9 @@ if (bp && bpW) {
 // Signing on the tablet is for a visit today or later (canSign, the same rule as the signing page): a visit done today
 // can still be signed while the patient is at the desk; a visit of an earlier day can only be said to be unsigned.
 const signable = canEdit && canSign({ id: visit.id, status: visit.status, day: dayOf(visit.startsAt) }, today);
+// Signed by a general consent form instead (the forms below say which one), it is not missing: no line.
 if (consent) ok.push({ words: `Consent signed by ${consent.signedBy}, ${time(consent.at)}`, go: 'consent' });
-else lines.push({ tone: 'warn', words: `Consent to treatment: not signed${minor && signable ? ' (a parent or guardian signs)' : finished ? ' at this visit' : ''}`, acts: signable ? [{ label: 'Sign on this tablet', href: `${action}sign/${visit.id}/` }] : [{ label: 'Consent', go: 'consent' }] });
+else if (!consented) lines.push({ tone: 'warn', words: `Consent to treatment: not signed${minor && signable ? ' (a parent or guardian signs)' : finished ? ' at this visit' : ''}`, acts: signable ? [{ label: 'Sign consent for this visit', href: `${action}sign/${visit.id}/` }] : [{ label: 'Consent', go: 'consent' }] });
 if (!privacy.ok) lines.push({ tone: 'warn', words: privacy.words, acts: canEdit ? [{ label: 'Record it', go: 'consent' }] : [] });
 // The consent forms prepared from this visit (039): agreed ones are done; one not agreed is a line — Sign, or, with a reason,
 // go ahead anyway (consent_override, context strip; the same rule as consentGaps: "No photos" is a decision, not a gap). A form
