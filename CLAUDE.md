@@ -1,6 +1,6 @@
 # Flossify
 
-> **Continuing the simpler patient record?** On branch `claude/funny-ritchie-ujucx6`, read `docs/handoff/README.md` first: slices S0–S3 verified, S4 built and not yet verified, S5–S8 to build.
+> **Continuing the simpler patient record?** On branch `claude/funny-ritchie-ujucx6`, read `docs/handoff/README.md` first. Main has since replaced the record with the paper record (PRs #44–#51), so ask the owner before resuming this branch.
 >
 > **Continuing work?** Read `docs/HANDOFF.md` (1 Oct 2026) next: where `main` and the open pull request stand, what to do first, and `scripts/dev/resume.sh`, the check to run before changing anything.
 

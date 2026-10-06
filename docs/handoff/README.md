@@ -3,6 +3,30 @@
 The work stopped here. The next session (on another account, with no access to earlier session scratchpads)
 should pick it up from this file.
 
+## STOP FIRST: main has a different record now (found 6 Oct, after this handoff was written)
+
+While this branch was paused, other sessions merged PRs #44–#51 into `main`. Those PRs rebuilt the patient record differently
+because the owner asked them to: "imagine that the patient records is a paper record, simple, uneventful but effective" (2 Oct),
+then "make the patient records as simple as this, better a digital copy of the real form" (3 Oct).
+
+So on main the record is now **the paper record**:
+- one page of paper sheets with numbered parts and plain lines, and a plus beside what can be added;
+- no tabs and no colour groups;
+- `sections.ts` is deleted;
+- migration 045 adds the paper chart's codes.
+
+See `CLAUDE.md` on main, "a paper chart" / "The paper record".
+
+This branch's four-tab design is older, and the owner's later words replace it. Merging main into this branch conflicts
+in about 20 record files, and in `sections.ts` the change is a modify/delete. **Do not resume the workflow or resolve the
+conflicts mechanically.** Ask the owner first whether anything from this branch should carry over into the paper record.
+Candidates:
+- the pinned safety line (allergies always on screen);
+- Today's "This visit" lines with one button each;
+- the `test:record-tabs` deep-link resolver.
+
+Otherwise, close PR #52 and keep this folder only as a reference. The rest of this file describes the branch as it was.
+
 ## What the owner asked for
 
 "SIMPLIFY THE PATIENT RECORD" and "THERE'S TOO MANY TABS AND BUTTONS". Later they added: "it's okay to build it slow, just make sure
