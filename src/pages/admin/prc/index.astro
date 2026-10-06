@@ -36,6 +36,7 @@ if (Astro.request.method === 'POST') {
   const r = await markPrc(form, { staffId: admin.session.staffId, ip: clientIp(Astro), ua: Astro.request.headers.get('user-agent') });
   if (r === 'bad') return Astro.redirect('/admin/prc/', 303);
   if (r === 'missed') return Astro.redirect('/admin/prc/?prc=missed', 303);
+  if (r === 'nonumber') return Astro.redirect('/admin/prc/?prc=nonumber', 303);
   return Astro.redirect(`/admin/prc/?prc=${r.status}${r.status === 'mismatch' ? `&texted=${r.texted}` : ''}`, 303);
 }
 
@@ -43,7 +44,7 @@ if (Astro.request.method === 'POST') {
 const q = Astro.url.searchParams;
 const said = new URLSearchParams();
 const done = q.get('prc') ?? q.get('done') ?? '';
-if (['checked', 'mismatch', 'pending', 'missed'].includes(done)) said.set('prc', done);
+if (['checked', 'mismatch', 'pending', 'missed', 'nonumber'].includes(done)) said.set('prc', done);
 else if (q.get('missed') === '1') said.set('prc', 'missed');
 const texted = q.get('texted') ?? '';
 if (/^[a-z]{1,10}$/.test(texted)) said.set('texted', texted);
@@ -51,7 +52,11 @@ const notice = prcNotice(said);
 const stale = q.get('stale') === '1' || q.get('stale') === 'prc';
 
 const [prc, clinics] = await Promise.all([prcQueue(), clinicRows()]);
-const waiting = prc.filter((r) => r.prc_status === 'pending');
+// Waiting means there is a number to look up. A dentist with no number has nothing to check: one line says how many,
+// with nothing to press, and they join the queue on their own once the clinic adds the number.
+const hasNumber = (r: PrcRow) => !!(r.prc_licence ?? '').trim();
+const noNumber = prc.filter((r) => r.prc_status === 'pending' && !hasNumber(r));
+const waiting = prc.filter((r) => r.prc_status === 'pending' && hasNumber(r));
 const decided = prc.filter((r) => r.prc_status !== 'pending');
 const clinicIdBySlug = new Map(clinics.map((r) => [r.slug, r.id]));
 const digits = (s: string | null) => (s ?? '').replace(/\D/g, '');
@@ -66,7 +71,7 @@ const PRC_SITE = 'https://verification.prc.gov.ph/';
 
 <AdminLayout title="PRC checks" section="prc" admin={{ name: admin.name, email: admin.email }}>
   {stale && <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{CSRF_MESSAGE}</span></p>}
-  {notice && !stale && <p role="status" class="ws-callout" data-tone={done === 'mismatch' || done === 'missed' ? 'info' : 'success'}><Icon name={done === 'checked' ? 'check' : 'info'} /><span>{notice}</span></p>}
+  {notice && !stale && <p role="status" class="ws-callout" data-tone={done === 'mismatch' || done === 'missed' || done === 'nonumber' ? 'info' : 'success'}><Icon name={done === 'checked' ? 'check' : 'info'} /><span>{notice}</span></p>}
 
   <Pane id="waiting" title="Waiting for a check" icon="check" meta={waiting.length === 0 ? 'Nobody waiting' : `${waiting.length === 1 ? '1 dentist' : `${waiting.length} dentists`}`} pad="none">
     <a slot="actions" href={PRC_SITE} rel="noopener noreferrer" target="_blank" class="ws-btn ws-btn-primary max-sm:w-full">
@@ -75,6 +80,11 @@ const PRC_SITE = 'https://verification.prc.gov.ph/';
     <div class="px-6 pt-4 max-md:px-4">
       <p class="ws-callout text-[14.5px]"><Icon name="info" /><span>Look up each PRC number on the PRC site, then mark it here. Until then the dentist’s public profile says “PRC check pending”. <strong class="font-semibold">Doesn’t match</strong> texts the clinic’s owner.</span></p>
     </div>
+    {noNumber.length > 0 && (
+      <div class="px-6 pt-2 max-md:px-4">
+        <p class="text-[14.5px] text-ink-2" data-prc-nonumber>{noNumber.length === 1 ? '1 dentist has' : `${noNumber.length} dentists have`} no PRC number yet; their profile says “PRC check pending” until the clinic adds it.</p>
+      </div>
+    )}
     {waiting.length === 0 ? (
       <div class="px-6 pt-2 pb-3 max-md:px-4">
         <Empty icon="check" text="Nobody is waiting. A dentist shows here when a clinic adds one with a public profile." />
@@ -160,7 +170,7 @@ const PRC_SITE = 'https://verification.prc.gov.ph/';
           <input type="hidden" name="staff_id" value={r.staff_id} />
           <label class="field"><span class="meta">Note (optional)</span><input name="note" maxlength={PRC_NOTE_MAX} value={r.prc_note ?? ''} placeholder="What the PRC site showed" /></label>
           <div class="grid gap-2">
-            {r.prc_status !== 'checked' && <button name="status" value="checked" class="ws-btn ws-btn-quiet"><Icon name="check" class="text-[var(--ws-green-ink)]" /> Matches</button>}
+            {r.prc_status !== 'checked' && hasNumber(r) && <button name="status" value="checked" class="ws-btn ws-btn-quiet"><Icon name="check" class="text-[var(--ws-green-ink)]" /> Matches</button>}
             {r.prc_status !== 'mismatch' && <button name="status" value="mismatch" class="ws-btn ws-btn-danger"><Icon name="close" /> Doesn’t match</button>}
             <button name="status" value="pending" class="ws-btn ws-btn-quiet"><Icon name="clock" /> Back to waiting</button>
           </div>

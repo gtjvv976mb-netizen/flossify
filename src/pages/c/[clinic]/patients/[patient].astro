@@ -489,6 +489,9 @@ const data = await withClinic(clinic.id, async (tx) => {
   const clinical = await loadClinical(tx, clinic.id, p.id);
   const extra = await loadExtra(tx, p.id, HMO_NAMES);
   const signed = await loadVisitConsents(tx, p.id);
+  // "Consent to treatment signed for this visit" has one answer, the database's (039): the tablet's signing, or an
+  // agreed general consent form prepared for the visit. The Dashboard reads the same function.
+  const consentedIds = new Set((await tx.query<{ id: string }>('select a.id from appointment a where a.patient_id = $1 and visit_treatment_consented(a.id)', [p.id])).rows.map((r) => r.id));
   // The consent to dental examination and treatment in force, with its words: page 2's general paragraph.
   const general = await treatmentInForce(tx);
   // The consent forms (039): the list, who may explain which, a capacity note, and just after an intake was added, its forms.
@@ -512,7 +515,7 @@ const data = await withClinic(clinic.id, async (tx) => {
   // ?treated=<procedure_done id>: the chart's offer for that treatment, as the chart is now (read only; the write re-checks).
   const treatedQ = q.get('treated');
   const offerState = canEdit && treatedQ && UUID.test(treatedQ) ? await offerFor(tx, p.id, treatedQ) : null;
-  return { general, consentDocs, mayExplainIds, treatsHere, capacity, canPrepare, offeredCodes, intakeDocs, gaps, offerState, clinical, extra, ledger, chartChanges, signed, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, added, addedLine, addedDiffers, addedIntake, intakeDiffers };
+  return { general, consentDocs, mayExplainIds, treatsHere, capacity, canPrepare, offeredCodes, intakeDocs, gaps, offerState, clinical, extra, ledger, chartChanges, signed, consentedIds, fullVisits, me, p, teeth, visits, next, health, consents, paperForms, notice, canEdit, dpo: dpo as string | null, statements, texts, hmoNames, forms, added, addedLine, addedDiffers, addedIntake, intakeDiffers };
 });
 if (!data) return notFound();
 const { me, p: patient, visits, health, canEdit } = data;
@@ -944,7 +947,7 @@ const recHere = here;
   <article class="pp-sheet pp-page" aria-label={`Page 1 of ${PAGES}`}>
     {/* Today's visit, a note clipped to the front of the paper: what is still to do at it and what is done (036). */}
     {thisVisit && (
-      <VisitStrip visit={thisVisit} c={clin} x={ext} signed={data.signed} health={latest} privacy={privacyState} minor={minor} laterVisitAt={laterVisitAt}
+      <VisitStrip visit={thisVisit} c={clin} x={ext} signed={data.signed} consented={data.consentedIds.has(thisVisit.id)} health={latest} privacy={privacyState} minor={minor} laterVisitAt={laterVisitAt}
         canEdit={canEdit} money={money} today={today} firstName={patient.first_name} action={here} chargeHref={`${chargeHref}&visit=${thisVisit.id}`} printBase={`${here}rx/`}
         saved={saved} problem={stripProblem} forms={data.fullVisits.find((v) => v.id === thisVisit.id)?.forms ?? []} consentsBase={`${here}consents/`} aheadDoc={aheadDoc} />
     )}

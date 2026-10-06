@@ -356,7 +356,9 @@ own site at `/<clinic>/`).
   the bare room fails — keep words on glass. A clinic not listed yet opens its
   door instead. An address that is no clinic answers `new Response(null,
   {status: 404})`, which renders the site's 404 page — `Astro.rewrite('/404/')`
-  is refused (the 404 page is prerendered).
+  is refused (the 404 page is prerendered). So do `/find/<slug>/`, its booking and
+  `/dentists/<slug>` (6 Oct; they answered a bare "No such clinic"), and the 404
+  page's teal button is Find a clinic, the home page the quiet one.
 - **`RESERVED` in `src/lib/slug.ts`** lists first path segments no clinic slug
   may take (`uniqueClinicSlug` skips them: "Find" → `find-2`). A page at a new
   first segment goes on that list.
@@ -623,7 +625,12 @@ The rules that live in code:
   that returns exactly the columns a page shows. Seeded: `ops@flossify.example`.
 - **PRC licences are checked by a person** on `/admin/prc/`: `staff.prc_status`
   pending → checked (sets `prc_checked_on`) or mismatch (clears it and texts the
-  owner). Public pages say "PRC check pending" until then.
+  owner). Public pages say "PRC check pending" until then. **No number, no
+  check** (046, 6 Oct): `admin_prc_mark()` refuses `checked` while the dentist
+  has no `prc_licence` (`markPrc` → `nonumber`), the queue has no Matches for
+  them and says how many wait for a number, and 046 put anyone already checked
+  with no number back to pending — its NOTICE in the deploy log names the
+  clinics.
 - **A patient is their mobile number** (`/me/`): a texted code (`phone_code`,
   `issuePhoneCode`), a separate cookie (`fl_patient`), and visits across every
   clinic through `patient_visits(phone)` / `patient_act(phone, id, action)` —
@@ -1346,7 +1353,8 @@ or out of range, clearance needed/waiting/cleared, an LOA waiting, a plan behind
   (`createStatement`), paid in Finances like any other, so no balance is counted twice. The plan adds
   the schedule and braces adjustments. Missed = scheduled payments due by today that what was paid does
   not cover (the down payment counts as one). Making or stopping one needs finance.bill; amounts show
-  only with it; anyone with records.edit records an adjustment.
+  only with it; anyone with records.edit records an adjustment. A statement an active plan is built on
+  cannot be voided (`voidStatement` names the plan: stop the plan first, 6 Oct).
 - `ws:panel-open` now carries `auto: true` when the server drew a panel open (a refused post): a page
   must not refill that form from the first matching opener (`src/components/ws/shell.ts`).
 - **PTR (041).** `staff.ptr_number` / `ptr_year` is the PTR on file. A prescription and a letter take a copy
@@ -1455,6 +1463,14 @@ patient"). One migration, 036; the pieces in the order of a visit:
   Charge this visit, which pre-fills the visit), the aftercare sheet, the next visit or check-up (In 3 months · 6
   months · A year → `POST /api/recall`, the same `recall-set` as the record) or Book a visit. Every line is
   words plus its one action, never a blocked step.
+- **"Consent to treatment signed for this visit" has one answer**, `visit_treatment_consented()` (039): the
+  tablet's signing or an agreed general consent form for the visit. The calendar (cal/data.ts), the In the chair
+  question and the record's strip (`consentedIds` → `VisitStrip`'s `consented`, 6 Oct) all read it. The per-visit
+  button is **Sign consent for this visit** everywhere; "Sign on this tablet" is a consent form's own button.
+- **The Dashboard takes no posts** (6 Oct): the old Today page's status form posted to `/c/<slug>/` and skipped
+  the schedule's checks; a post there now changes nothing. Every status change is `/api/schedule`.
+- **The chart's Clear chart is off on the record** (Odontogram's `clearAll`, default false, 6 Oct): one tap wiped
+  every finding. A tooth is cleared one at a time in the palette.
 - **This visit on the record** (`_record/VisitStrip.astro`, above the sections, for today's going visit:
   `?visit=` else the one under way, else the next, else the one just done). Lines for what is missing in the
   order a visit runs, pills for what is done, "All done" when nothing is. Every chairside form it opens — a
@@ -1864,6 +1880,7 @@ scripts/dev/record/paper-check.mjs      the record as a paper chart: the parts i
 scripts/dev/schedule/choices-check.mjs  How the day runs (044): settings, the gap online and on the calendar, held reminders, the question at the door
 scripts/dev/schedule/dash-check.mjs     the Dashboard for a dentist who runs the clinic: first screen, Next for you, Mine · Everyone, tasks, contrast
 src/data/migrations/045        the paper record: tooth_state's paper codes (Ex, RF, Ab, P, Rm, Am, I), plan_adjustment.wire
+src/data/migrations/046        a PRC check needs a PRC number: admin_prc_mark() refuses checked without one; old ones back to pending
 src/lib/paper-history.ts       the paper's dental and medical history: choices, aliases, answers.paper, the boxes (pure; .test.ts beside it)
 src/pages/c/[clinic]/patients/_record/Letterhead.astro, PaperHistory.astro, PaperHistoryFields.astro, ConsentRow.astro, Attached.astro  the paper record's pieces
 src/data/migrations/044        clinic.turnover_min, hold_closed_reminders, consent_ask_at; public_clinic_turnover(), appointment_reminder_held(), the reminder pass

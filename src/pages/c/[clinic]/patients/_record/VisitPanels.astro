@@ -46,7 +46,7 @@ const NOTE_PARTS = [['complaint', 'Why they came'], ['findings', 'Findings'], ['
       {(signable || v.future) && <div slot="actions" class="vx-actions">
         {signable && (
           <a href={`${base}/sign/${v.id}/`} class="ws-btn ws-btn-primary">
-            <Glyph name="pen" size={18} />{v.consents.length ? 'Sign another consent' : 'Sign consent on this tablet'}
+            <Glyph name="pen" size={18} />{v.consents.length ? 'Sign another consent' : 'Sign consent for this visit'}
           </a>
         )}
         {v.future && <span class="rp rp-ok">Coming up</span>}
@@ -74,7 +74,7 @@ const NOTE_PARTS = [['complaint', 'Why they came'], ['findings', 'Findings'], ['
         <section class="vx-sec hue-violet" aria-labelledby={`vx-${v.key}-consent`}>
           <h3 class="vx-h" id={`vx-${v.key}-consent`}><span class="vx-hi"><Glyph name="shield" size={18} /></span>Consent and signature</h3>
           {v.consents.length === 0 && v.agreed.length === 0 && v.forms.length === 0 && (
-            <p class="vx-empty">{signable ? `No consent signed for this visit yet. Press “Sign consent on this tablet”, choose what the dentist explained, and hand the tablet to ${firstName}.` : v.id ? 'No consent was signed on the tablet for this visit.' : 'Work recorded without a booking has no consent of its own. Consents signed on paper or on the patient forms are in Consent.'}</p>
+            <p class="vx-empty">{signable ? `No consent signed for this visit yet. Press “Sign consent for this visit”, choose what the dentist explained, and hand the tablet to ${firstName}.` : v.id ? 'No consent was signed on the tablet for this visit.' : 'Work recorded without a booking has no consent of its own. Consents signed on paper or on the patient forms are in Consent.'}</p>
           )}
           {/* The consent forms (039): prepared from this visit, or signed through an intake or on paper on its day. */}
           {v.forms.map((d) => {

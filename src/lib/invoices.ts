@@ -640,6 +640,10 @@ export async function voidStatement(
   if (!inv || inv.status === 'void') return 'missed';
   const live = (await tx.query(`select count(*)::int as n from payment where invoice_id = $1 and voided_at is null`, [invoiceId])).rows[0].n;
   if (live > 0) return `A payment is still recorded on this statement. Void ${live === 1 ? 'that payment' : `those ${live} payments`} first, then the statement.`;
+  // A payment plan (braces or instalments) is built on one statement: voiding it under an active plan would leave the
+  // plan counting missed payments against money that no longer exists.
+  const plan = (await tx.query(`select title from payment_plan where invoice_id = $1 and status = 'active'`, [invoiceId])).rows[0];
+  if (plan) return `The payment plan “${plan.title}” is built on this statement. Stop the payment plan first, on the patient's record, then void the statement.`;
   await tx.query(`update invoice set status = 'void', voided_at = now(), voided_by = $2, void_reason = $3 where id = $1`, [invoiceId, staffId, reason]);
   await audit(tx, clinicId, staffId, 'invoice.void', 'invoice', invoiceId);
   return 'ok';

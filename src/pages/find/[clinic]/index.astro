@@ -9,7 +9,7 @@ import ClinicPage from '../_ui/ClinicPage.astro';
 import { loadListing } from '../../../lib/directory-db';
 
 const l = await loadListing(Astro.params.clinic!);
-if (!l) return new Response('No such clinic', { status: 404 });
+if (!l) return new Response(null, { status: 404 });
 ---
 
 <Base title={`${l.name} — dentists, prices, hours — Flossify`} description={`${l.name}, ${l.area}. ${l.workspace ? 'Open slots' : 'Visit requests'}, fee guide, dentists and their PRC licence checks, and which HMO cards are taken. ${l.workspace ? 'Book' : 'Request a time'} without an account.`}>
