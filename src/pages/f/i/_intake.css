@@ -107,3 +107,10 @@
 @media (max-width: 479px) { .ip .ip-actions > .btn-primary { flex: 1 1 100%; justify-content: center; } }
 /* After the thank-you on a clinic device: the screen turns neutral (nothing of the patient stays on it). */
 .ip[data-ip-neutral] .ip-done-body { display: none; }
+
+/* --- their own phone (phase 3): Start, and a patient on file's date of birth ---------------------- */
+.ip .ip-start .pf-done-actions { margin-top: 1.25rem; }
+.ip .ip-start .pf-done-actions > .btn { min-height: 52px; min-width: 12rem; justify-content: center; }
+.ip .ip-start .ip-verify-form { margin-top: 1rem; text-align: left; }
+.ip .ip-start .ip-verify-form .pf-grid { grid-template-columns: 1fr; }
+.ip .ip-start .ip-banner { margin: 1rem 0 0; text-align: left; }

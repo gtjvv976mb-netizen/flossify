@@ -60,12 +60,14 @@ export const TABLET_FRESH_MS = 2 * 60 * 1000;
 /** A tablet link unseen this long is left behind by a patient who walked away (the gate retires it as idle too). */
 export const LINK_IDLE_MS = 20 * 60 * 1000;
 /**
- * The phone path (the QR code only this patient can use, claimed by the first
- * phone, the birth-date check for a patient on file, the live status panel) is
- * phase 3 of the intake. Until it is built the phone card stays closed on
- * every server, whatever the notice says.
+ * The phone path (phase 3, shipped): a QR code only this patient can use,
+ * shown on the desk's screen and claimed by the first phone that opens it
+ * (intake_claim); a patient on file types their birth date first
+ * (intake_verify, three misses lock the link); the desk's live panel follows
+ * it. Page 1 on a phone still needs the privacy notice to cover it
+ * (page1Open), like every device. False closes the phone card on every server.
  */
-export const PHONE_PATH_BUILT = false;
+export const PHONE_PATH_BUILT = true;
 
 /** The first name shown under the code, at most (intake.label). */
 export const LABEL_MAX = 40;
@@ -116,7 +118,7 @@ export interface IntakeGates {
   privacyVersion: string | null;
   /** Page 1 (a new patient's details) on any device: the notice in force names what it collects. */
   page1Open: boolean;
-  /** The QR code for the patient's own phone. */
+  /** The QR code for the patient's own phone (a new patient's page 1 still needs page1Open). */
   phoneOpen: boolean;
   /** The forms that may be offered: in force, words matching their stored hash, reviewed on a production server. */
   templates: Template[];
@@ -127,7 +129,7 @@ export async function intakeGates(q: Q): Promise<IntakeGates> {
   const privacyVersion = (await q.query<{ id: string | null }>('select (current_consent_version()).id as id')).rows[0]?.id ?? null;
   const page1Open = formsNoticeReady(privacyVersion);
   const templates = (await templatesInForce(q)).filter((t) => offered(t, production));
-  return { production, privacyVersion, page1Open, phoneOpen: PHONE_PATH_BUILT && page1Open, templates };
+  return { production, privacyVersion, page1Open, phoneOpen: PHONE_PATH_BUILT, templates };
 }
 
 /** Sent intakes nobody has added yet (with the poster's forms, the "N patients sent their forms" line). */
@@ -207,6 +209,10 @@ export interface DeskIntake {
   /** Page 1's birth date, when the patient gave it (the minor rule). */
   page1Birth: string | null;
   link: DeskLink | null;
+  /** With no live link: the last one and why it ended (a phone's code not scanned in time, locked, idle, stopped). */
+  lastLink: { device: LinkDevice; why: string | null; at: Date } | null;
+  /** A patient on file on their phone: when the birth date matched (the pages open only after). */
+  verifiedAt: Date | null;
   docs: DeskDoc[];
   /** When an unsent intake is purged. */
   expiresAt: Date;
@@ -222,6 +228,8 @@ export async function loadIntake(q: Q, id: string): Promise<DeskIntake | null> {
   const link = (await q.query<Record<string, any>>(
     `select l.token, l.device, l.tablet_id, t.name as tablet_name, l.created_at, l.open_by, l.claimed_at, l.last_seen_at, l.created_by
        from intake_link l left join clinic_tablet t on t.id = l.tablet_id where l.intake_id = $1 and l.retired_at is null`, [id])).rows[0];
+  const last = link ? null : (await q.query<{ device: LinkDevice; retired_why: string | null; retired_at: Date }>(
+    `select device, retired_why, retired_at from intake_link where intake_id = $1 and retired_at is not null order by retired_at desc limit 1`, [id])).rows[0] ?? null;
   const docs = (await q.query<Record<string, any>>(
     `select d.id, d.ref, d.version_id, coalesce(v.code, 'general') as code, d.sort, d.rev, d.fields, d.dentist_id, d.dentist_name, d.dentist_prc,
             d.explained_in, d.explained_other, d.plan_item_id, consent_in_force(d.version_id) as in_force, d.paper_printed_at is not null as printed,
@@ -249,6 +257,8 @@ export async function loadIntake(q: Q, id: string): Promise<DeskIntake | null> {
       token: link.token, device: link.device, tabletId: link.tablet_id, tabletName: link.tablet_name, createdAt: link.created_at, openBy: link.open_by,
       claimedAt: link.claimed_at, lastSeenAt: link.last_seen_at, createdBy: link.created_by,
     } : null,
+    lastLink: last ? { device: last.device, why: last.retired_why, at: last.retired_at } : null,
+    verifiedAt: i.verified_at ?? null,
     docs: docs.map((d) => ({
       id: d.id, ref: d.ref, versionId: d.version_id, code: d.code, template: TEMPLATES[d.version_id] ?? null, sort: d.sort, rev: d.rev, fields: d.fields ?? {},
       dentistId: d.dentist_id, dentistName: d.dentist_name, dentistPrc: d.dentist_prc, explainedIn: d.explained_in, explainedOther: d.explained_other,
@@ -451,7 +461,9 @@ const templateFor = (gates: IntakeGates, code: Code) => gates.templates.find((t)
  * new patient needs page 1 open; a patient on file must be here, not
  * archived, with a birth date on file; a visit must be theirs and going
  * ahead. `documents`: forms on the record to sign again (never signed, or
- * last refused or withdrawn), moved into this intake. Audit intake.start.
+ * last refused or withdrawn), moved into this intake; a form whose words are
+ * no longer in force is prepared again under the words in force instead
+ * (phase 4.2), whether or not it was signed. Audit intake.start.
  */
 export type StartRefusal = 'patient' | 'birth' | 'page1' | 'visit' | 'doc_other' | 'doc_open' | 'doc_signed' | 'doc_words';
 const refuseStart = (code: StartRefusal, text: string) => new Refused<{ code: StartRefusal }>(text, { code });
@@ -480,14 +492,38 @@ export async function startIntake(tx: Tx, a: {
      values ($1, $2, $3, $4, $5, $6, $7) on conflict (clinic_id, ref) do nothing returning id`,
     [a.clinicId, ref, patient ? 'existing' : 'new', patient?.id ?? null, visit?.id ?? null, INTAKE_FORM_VERSION, a.staffId])).rows[0]?.id ?? null);
   for (const docId of docs) {
-    const d = (await tx.query<{ id: string; patient_id: string | null; cancelled: boolean; in_force: boolean; state: string; open_intake: string | null; title: string | null }>(
+    const d = (await tx.query<{
+      id: string; patient_id: string | null; cancelled: boolean; in_force: boolean; state: string; open_intake: string | null; title: string | null;
+      code: string; version_id: string; fields: Fields; dentist_id: string | null; explained_in: string | null; explained_other: string | null;
+      plan_item_id: string | null; appointment_id: string | null; signed: boolean;
+    }>(
       `select d.id, d.patient_id, d.cancelled_at is not null as cancelled, consent_in_force(d.version_id) as in_force, consent_document_state(d.id) as state,
-              (select i.ref from intake i where i.id = d.intake_id and i.status in ('preparing', 'out')) as open_intake, v.title
+              (select i.ref from intake i where i.id = d.intake_id and i.status in ('preparing', 'out')) as open_intake, v.title,
+              coalesce(v.code, 'general') as code, d.version_id, d.fields, d.dentist_id, d.explained_in, d.explained_other, d.plan_item_id, d.appointment_id,
+              exists (select 1 from consent_signing s where s.document_id = d.id) as signed
          from consent_document d join consent_version v on v.id = d.version_id where d.id = $1 for update of d`, [isUuid(docId) ? docId : null])).rows[0];
     if (!d || d.patient_id !== patient!.id || d.cancelled) throw refuseStart('doc_other', 'That form is not this patient’s, or was removed.');
     if (d.open_intake) throw refuseStart('doc_open', `${d.title ?? 'That form'} is in forms being filled in now (${d.open_intake}). Take it out of those forms, or throw them away, first.`);
-    if (!['to_sign', 'refused', 'no_photos', 'withdrawn'].includes(d.state)) throw refuseStart('doc_signed', `${d.title ?? 'That form'} is signed already. Only a form never signed, refused or withdrawn is signed again.`);
-    if (!d.in_force) throw refuseStart('doc_words', `The clinic has newer words for ${d.title ?? 'that form'}. Prepare it again from the record.`);
+    if (!d.in_force) {
+      // Newer words (phase 4.2, "Sign again"): the form is prepared again under the words in force, in this intake —
+      // the clinic's part carried over where the fields are the same, the dentist, the visit and the plan line kept.
+      // An unsigned old form retires as renewed; a signed one stays on the record as history. The named dentist
+      // explains the new words again before they are signed (no attestation is copied).
+      const t = templateFor(a.gates, d.code as Code);
+      if (!t) throw refuseStart('doc_words', `The clinic has newer words for ${d.title ?? 'that form'} that this server does not offer yet.`);
+      const was = TEMPLATES[d.version_id];
+      const sameFields = !!was && JSON.stringify(was.clinicFields.map((f) => [f.name, f.kind])) === JSON.stringify(t.clinicFields.map((f) => [f.name, f.kind]));
+      if (!d.signed) await tx.query(`update consent_document set cancelled_at = now(), cancelled_by = $2, cancel_why = 'renewed' where id = $1`, [d.id, a.staffId]);
+      await insertWithRef(tx, newDocumentRef, async (ref) => (await tx.query<{ id: string }>(
+        `insert into consent_document (clinic_id, ref, version_id, intake_id, patient_id, appointment_id, plan_item_id, fields, dentist_id, explained_in, explained_other, sort, prepared_by)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) on conflict (clinic_id, ref) do nothing returning id`,
+        [a.clinicId, ref, t.version, id, patient!.id, d.appointment_id ?? visit?.id ?? null, d.plan_item_id, JSON.stringify(sameFields ? d.fields : {}),
+          d.dentist_id, d.explained_in, d.explained_other, t.order, a.staffId])).rows[0]?.id ?? null);
+      await event(tx, a.clinicId, id, 'renewed', a.staffId, t.version, d.id);
+      await audit(tx, a.clinicId, a.staffId, 'consent.renew', 'consent_document', d.id);
+      continue;
+    }
+    if (!['to_sign', 'refused', 'no_photos', 'withdrawn'].includes(d.state)) throw refuseStart('doc_signed', `${d.title ?? 'That form'} is signed already under the words in force. Only a form never signed, refused or withdrawn is signed again.`);
     await tx.query('update consent_document set intake_id = $2 where id = $1', [d.id, id]);
   }
   await event(tx, a.clinicId, id, 'started', a.staffId, docs.length ? 'to sign again' : null);
@@ -725,6 +761,11 @@ export async function goLive(tx: Tx, a: {
   if (i.status !== 'preparing' && i.status !== 'out') throw refuseLive('sent');
   if (i.target === 'new' && !a.gates.page1Open) throw refuseLive('page1');
   if (a.device === 'phone' && !a.gates.phoneOpen) throw refuseLive('phone');
+  // A patient on file opens their phone's forms with their birth date: without one on record, no code could ever open.
+  if (a.device === 'phone' && i.target === 'existing') {
+    const b = (await tx.query<{ b: string | null }>('select birth_date::text as b from patient where id = $1', [i.patient_id])).rows[0]?.b ?? null;
+    if (!b) throw refuseLive('phone', 'Add their birth date to their record first: they type it on their phone to open the forms.');
+  }
   const docs = (await tx.query<{ n: string; stale: string }>(
     `select count(*) as n, count(*) filter (where not consent_in_force(version_id)) as stale from consent_document where intake_id = $1 and cancelled_at is null`, [i.id])).rows[0];
   if (Number(docs.stale) > 0) throw refuseLive('words');

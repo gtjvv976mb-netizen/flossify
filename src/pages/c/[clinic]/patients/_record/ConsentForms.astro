@@ -33,8 +33,12 @@ interface Props {
   capacity: { at: Date; dentistName: string; reason: string } | null;
   /** Consent forms are offered on this server (none on a production server until reviewed): Prepare consent forms shows. */
   canPrepare: boolean;
+  /** The codes whose words in force are offered here: a form under older words can be signed again under them (phase 4.2). */
+  offered: ReadonlySet<string>;
 }
-const { part, docs, slug, patientId, firstName, canEdit, mayExplain, mayCapacity, capacity, canPrepare } = Astro.props;
+const { part, docs, slug, patientId, firstName, canEdit, mayExplain, mayCapacity, capacity, canPrepare, offered } = Astro.props;
+/** Sign on this tablet / on their phone: the same start, the way chosen (the Check step preselects the phone from ?via=phone). */
+const WAYS = [['clinic', 'tablet', 'on this tablet'], ['phone', 'phone', 'on their phone']] as const;
 const base = `/c/${slug}/patients/${patientId}/consents/`;
 const TONE: Record<string, string> = { success: 'rp-ok', warn: 'rp-warn', alert: 'rp-alert', neutral: '', info: '' };
 const day = (d: Date) => new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Manila' }).format(new Date(d));
@@ -62,6 +66,9 @@ const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.tee
         const teeth = teethOf(d);
         const toSign = d.state === 'to_sign' || d.state === 'refused' || d.state === 'withdrawn' || d.state === 'no_photos';
         const openIntake = d.intakeStatus === 'preparing' || d.intakeStatus === 'out';
+        // Newer words in force for this form's code: it is signed again under them, from here (the old form stays as history).
+        const newer = !d.inForce && offered.has(d.code);
+        const resign = canEdit && !openIntake && (newer || (toSign && d.inForce && (!d.template?.attest || !!d.attestation)));
         return (
           <li class="rs-item vx-signed-row">
             {s && s.strokes ? <Signature strokes={s.strokes} name={s.signedByName} /> : <span class="sig"><span class="sig-none">{s ? (s.channel === 'paper' ? 'Signed on paper' : 'Not signed') : 'Not signed yet'}</span></span>}
@@ -71,7 +78,8 @@ const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.tee
                 <span class:list={['rp', TONE[st.tone]]}>{st.words}{s && d.state !== 'to_sign' ? ` ${day(s.signedAt)}` : ''}</span>
                 {teeth.map((n) => <span class="rp rp-tooth">Tooth {n}</span>)}
                 {s && <Who name={signerWords({ name: s.signedByName, as: s.signedAs, relation: s.relation, method: s.method })} />}
-                {!d.attestation && d.template?.attest && d.state === 'to_sign' && <span class="rp">Waiting for {d.dentistName ?? 'the dentist'} to explain</span>}
+                {!d.attestation && d.template?.attest && d.state === 'to_sign' && d.inForce && <span class="rp">Waiting for {d.dentistName ?? 'the dentist'} to explain</span>}
+                {!d.inForce && <span class="rp rp-warn">{newer ? 'Newer words: sign again' : 'Older words'}</span>}
                 {openIntake && <span class="rp">In forms {d.intakeRef} now</span>}
               </p>
               {d.attestation && <p class="text-[14px] text-ink-2">Explained by {d.attestation.dentistName}, PRC {d.attestation.dentistPrc}, in {d.attestation.lang}</p>}
@@ -80,13 +88,13 @@ const teethOf = (d: RecordDoc) => (Array.isArray(d.fields.teeth) ? (d.fields.tee
                 {canEdit && openIntake && d.intakeId && <a href={`/c/${slug}/patients/intake/${d.intakeId}/`} class="ws-btn ws-btn-quiet ws-btn-sm">Open forms {d.intakeRef}</a>}
                 {s && <a href={`${base}${d.id}/print/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print</a>}
                 {canEdit && toSign && !openIntake && mayExplain.has(d.id) && !d.attestation && d.state === 'to_sign' && <a href={`${base}${d.id}/?explain=1`} class="ws-btn ws-btn-quiet ws-btn-sm">Explain and confirm</a>}
-                {canEdit && toSign && !openIntake && d.inForce && (!d.template?.attest || d.attestation) && (
-                  <form method="post" action={`/c/${slug}/patients/intake/`}>
-                    <Csrf /><input type="hidden" name="intent" value="start" /><input type="hidden" name="way" value="clinic" /><input type="hidden" name="from" value="document" />
+                {resign && WAYS.map(([way, glyph, where]) => (
+                  <form method="post" action={`/c/${slug}/patients/intake/`} data-rc-sign={way}>
+                    <Csrf /><input type="hidden" name="intent" value="start" /><input type="hidden" name="way" value={way} /><input type="hidden" name="from" value="document" />
                     <input type="hidden" name="patient" value={patientId} /><input type="hidden" name="document" value={d.id} />
-                    <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="tablet" size={16} />Sign on this tablet</button>
+                    <button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name={glyph} size={16} />{newer ? 'Sign again' : 'Sign'} {where}</button>
                   </form>
-                )}
+                ))}
                 {canEdit && d.state === 'to_sign' && !s && !openIntake && (!d.template?.attest || d.attestation) && (
                   <form method="post" action={`${base}${d.id}/`}><Csrf /><input type="hidden" name="intent" value="paper_print" /><button type="submit" class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="print" size={16} />Print for signing on paper</button></form>
                 )}

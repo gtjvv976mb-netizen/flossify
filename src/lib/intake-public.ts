@@ -289,6 +289,26 @@ export async function sendIntake(token: string, device: string, nonce: string, c
   return { status: r, added };
 }
 
+/**
+ * Start, on the patient's own phone: the first phone to press it claims the
+ * link with the hash of a secret made for that browser (fl_idev, set by the
+ * page only when this answers open or verify). Answers the gate's next status
+ * — open, or verify for a patient on file — or why not (taken, expired, …).
+ */
+export async function claimIntake(token: string, deviceHash: string): Promise<string> {
+  return (await publicRead<{ r: string }>('select intake_claim($1, $2) as r', [token, deviceHash]))[0]?.r ?? 'unknown';
+}
+
+/**
+ * A patient on file, on their phone: the birth date typed must be the
+ * record's (intake_verify). Answers open, wrong, locked (three misses retire
+ * the link), or the gate's status. The date never reaches a log.
+ */
+export async function verifyIntake(token: string, deviceHash: string, birth: string): Promise<string> {
+  const b = /^\d{4}-\d{2}-\d{2}$/.test(birth) ? birth : '';
+  return (await publicRead<{ r: string }>('select intake_verify($1, $2, $3) as r', [token, deviceHash, b]))[0]?.r ?? 'unknown';
+}
+
 /** Keep a link alive while the page is open. */
 export async function pingIntake(token: string, device: string): Promise<string> {
   return (await publicRead<{ r: string }>('select intake_ping($1, $2) as r', [token, device]))[0]?.r ?? 'unknown';
@@ -312,7 +332,7 @@ export const INTAKE_WORDS: Record<Exclude<IntakeStatus, 'open'>, { title: string
   replaced: { title: 'This code was replaced', lead: 'Please ask the desk for the new one.', code: 410 },
   locked: { title: 'Please ask the desk', lead: 'The date of birth did not match three times, so this code is locked.', code: 423 },
   closed: { title: 'These forms were stopped', lead: 'Please ask the desk.', code: 410 },
-  finished: { title: 'These forms are finished', lead: 'Thank you. You can hand the device back to the desk.', code: 200 },
+  finished: { title: 'These forms are finished', lead: 'Thank you. The clinic has them.', code: 200 },
   unknown: { title: 'This link doesn’t open any forms', lead: 'Please ask the desk.', code: 404 },
   wait: { title: 'Please wait a little', lead: 'Or ask the desk for a paper form.', code: 429 },
 };
@@ -324,6 +344,7 @@ const CLINIC_DEVICE_WORDS: Partial<Record<Exclude<IntakeStatus, 'open'>, { title
   replaced: { title: 'These forms moved to another device', lead: 'Please hand the device back to the desk.' },
   closed: { title: 'These forms were stopped', lead: 'Please hand the device back to the desk.' },
   taken: { title: 'These forms are open on another device', lead: 'Please hand the device back to the desk.' },
+  finished: { title: 'These forms are finished', lead: 'Thank you. You can hand the device back to the desk.' },
 };
 
 /** The words for a status on this device: a phone's (the code it was given), or a clinic device's. */

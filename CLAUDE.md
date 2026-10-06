@@ -1,6 +1,6 @@
 # Flossify
 
-> **Continuing work?** `docs/HANDOFF.md` is the older hand-over (26 Sep): the QR forms and all five clinic-sites phases it lists are now shipped (PRs #23, #25–#30).
+> **Continuing work?** Read `docs/HANDOFF.md` (1 Oct 2026) next: where `main` and the open pull request stand, what to do first, and `scripts/dev/resume.sh`, the check to run before changing anything.
 
 
 Marketing site + prototype clinic workspace for dental practice software aimed at
@@ -1266,8 +1266,9 @@ end: procedure forms are signed only after the named dentist records "I explaine
 at Send unless the patient looks like one already on file; a fresh signature on every form with initials on
 the risks; the six scheduling features first). **Phase 1** is the library, the data and the shared add path;
 **phase 2** (shipped, fixes in 043) the desk's steps, clinic tablets, the patient's pages (`/f/i/<token>/`,
-`/f/t/`), park/unlock and the record's Consent forms pane; the phone path is phase 3, the record integration
-phase 4.
+`/f/t/`), park/unlock and the record's Consent forms pane; **phase 3** (shipped 1 Oct, no migration) the
+patient's own phone; **phase 4** (the record integration, `docs/intake-design.md`) began the same day with
+the signed forms on the visit panel and the Treatment record (the owner's first pick).
 
 - **The consent library is data** (`src/lib/consent-library.ts`, no Node imports): ten forms
   (`anaesthesia-2026-10` … `photos-2026-10`, `consent_version` kind `document`, in force from 1 Oct 2026) and
@@ -1331,6 +1332,59 @@ phase 4.
   applies after 039–042 and only resets a version's fingerprint where no consent form uses that version yet.
   Stop (not throw away) leaves a record form tied to the paused intake until it is taken out, thrown away or
   purged; the record links to the open forms and says how to get it back.
+- **Phase 3: their own phone (no migration; 039's definers already had it).** On Check, "Their phone" is offered
+  (`phoneOk`: `gates.phoneOpen` = `PHONE_PATH_BUILT`, and for a new patient `page1Open`; the chooser's phone card
+  says the same, and a patient on file needs a birth date on record). Step 4 then shows a **QR code on the desk's
+  screen** (`qrSvg` of `/f/i/<token>/`; at flossify.ph live, this machine's origin in development so a phone on
+  the network can scan it), good for 15 minutes (`intake_link.open_by`), with the state in words: waiting to be
+  scanned until hh:mm, on their phone, typing the birth date, idle, not scanned in time, locked. **The first phone
+  to press Start claims the link** (`intake_claim`, the page then sets `fl_idev` under `/f/i/`; `claimIntake`), the
+  QR leaves the desk's screen at once, and a second phone reads "open on another device". **A patient on file
+  types their birth date first** (`intake_verify`, `verifyIntake`: wrong is told, three misses retire the link as
+  locked and the desk says so); nothing of the record is drawn before. A code that ended (not scanned, idle,
+  locked) keeps "Show a new code" (`goLive` again: the old link `replaced`/retired, a new one made;
+  `DeskIntake.lastLink` says why the last one ended). **The live panel**: step 4 asks itself `?step=out&live=1`
+  every 8 s while visible (`LIMITS.intake.poll` per staff member; JSON of the state words, each part's tag, what
+  needs the desk) and updates the words in place and in an aria-live line; a change in what needs the desk, or
+  the forms sent, stopped or thrown away, loads the page again. The phone's own words differ from a clinic
+  device's (`intakeWords`: "Thank you. The clinic has them." rather than "hand the device back").
+  **A page 1 fix found by the phone run (every device):** a condition that reads an earlier screen's answer
+  (the pregnancy questions read `sex` from the first screen) was hidden by the page's script, which could not
+  see that answer, while the server required it, so a non-male adult could not pass the health screen with
+  scripts on. The form now carries `data-prior` (only the fields a condition names, from earlier screens) and
+  the script reads it. **Checks:** `scripts/dev/intake/phone-e2e.mjs` plays the desk and two phones through a
+  new patient, a patient on file (a wrong birth date, then the right one), a second phone, an idle code and a
+  new one, the geometry at 390 (no sideways scroll, 44 px), and the database after each; `--keep` leaves a Start
+  screen, a birth-date screen and the desk's QR step open with saved states for `contrast.mjs` (`PW_STATE`,
+  `PW_CHROMIUM`). Measured 1 Oct: 0 fails, lowest 5.30:1, light and dark, phone and desk.
+- **Phase 4, first piece: the signed forms where the dentist looks (no migration).** `loadVisits()` takes the
+  record's consent forms (`RecordDoc[]`, `Visit.forms`): a form prepared from a visit belongs to it, signed or still
+  to sign; one signed through an intake or on paper with no visit named joins the visit of the day it was signed (a
+  paper's own day), and never makes a day of its own; a form nobody signed and no visit names stays in Consent. The
+  **visit panel**'s "Consent and signature" draws each as a card beside the tablet-signed consent (`[data-vx-form]`:
+  the signature or "Signed on paper", who signed, the state pill, where — `SIGNED_WHERE`: on their phone, the
+  clinic's tablet, a device handed to them, paper — and when, the teeth, who explained, Open the form, Print). The
+  **Treatment record** gets a row of kind `consent` per signed form, before the work it covers (`formWords`:
+  "Signed by Ana Dimaculangan · on their phone · 2:31 pm", or "Did not agree · …", "withdrawn <day>"), with the
+  form's teeth and the dentist who explained it; a form still to sign is no row. The paper draws the same rows.
+  `holds()` counts signed forms, so a visit with nothing else done is still history. Checked by `phone-e2e.mjs` at a
+  clinic with a visit today (the card, the row, the paper, the page fits at 1440 and 390) and measured with the
+  panel open: 0 contrast fails, light and dark, desk and phone.
+- **Phase 4, second piece: Sign again from the record, on a phone or this tablet (no migration).** On the record's
+  Consent pane and a form's own page, a form that may be signed (never signed, refused, withdrawn, no photos) has
+  **Sign on this tablet** and **Sign on their phone**: the same intake start (`intent=start`, `document=<id>`,
+  `way=clinic|phone`); the phone way lands on Check with the phone preselected (`?via=phone`). A form whose
+  **words are no longer in force** (a newer version of its code in `consent_version`, and that version offered
+  here: the pane's `offered` codes) is marked "Newer words: sign again" and offers **Sign again** the same two
+  ways: `startIntake` no longer refuses `doc_words` but prepares the form again under the words in force in the
+  new intake — the clinic's part carried over when the fields are the same (as `renewDocuments`), the dentist,
+  the visit and the plan line kept, no attestation copied (the named dentist explains the new words again). An
+  unsigned old form retires as `renewed`; a signed one stays on the record as history. A form signed under the
+  words in force is still refused (`doc_signed`); words not offered here refuse `doc_words`. Checked by
+  `phone-e2e.mjs` B2: an older general-consent version planted by the test (never offered; the row is a
+  superuser's), an unsigned form on it, the record's pill and button, the intake under `treatment-2026-09`, the
+  old form `renewed`, signed on the phone, the record clean. The pill and buttons reuse measured classes
+  (`rp-warn`, `ws-btn-quiet`, `ik-tag[data-tone=warn]`).
 
 ## Open — read before shipping
 
@@ -1483,6 +1537,8 @@ src/data/lqip.json             blur placeholders, keyed by image name
 src/data/shot-size.json        real screenshot dimensions (generated)
 src/data/migrations/039        the patient intake and the consent library: intakes, links, tablets, consent forms, signings, attestations, the chain
 src/data/migrations/043        the intake's review fixes (phase 2)
+scripts/dev/intake/phone-e2e.mjs  the phone path end to end in two browsers (phase 3); --keep leaves screens for contrast.mjs
+docs/intake-design.md          the intake as built (phases 1–3) and what phase 4 is to settle with the owner
 src/pages/f/i/, f/t/, auth/park.ts, auth/unlock.astro, auth/tablet.ts  the patient's intake pages, the clinic tablet, handing a device over
 src/lib/intake.ts, intake-public.ts, consent-docs.ts, park.ts  the desk's intake, its public side, consent documents, hand-over
 src/lib/consent-library.ts, consent-seal.ts  the consent forms as data and the one renderer; canonical JSON, snapshot, seal, chain (npm run consent:hash)
