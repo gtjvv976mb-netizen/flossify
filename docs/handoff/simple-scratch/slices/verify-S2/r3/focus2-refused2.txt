@@ -1,0 +1,37 @@
+ok   refused rec-vitals-add over overview (from Add ▾), reopened=true tab=overview; closed → focus — button[open=rec-vitals-add] "Take it" vis=true y=303
+ok   refused rec-rx-add over overview (from Add ▾), reopened=true tab=overview; closed → focus — button[open=rec-rx-add] "Prescription" vis=true y=507
+FAIL refused rec-letter-add over overview (from Add ▾), reopened=true tab=overview; closed → focus — BODY
+FAIL refused rec-lab-add over overview (from Add ▾), reopened=true tab=overview; closed → focus — BODY
+ok   refused rec-file-add over overview (from Add ▾), reopened=true tab=overview; closed → focus — button[open=rec-file-add] "X-ray or photo" vis=true y=507
+FAIL refused rec-loa-add over overview (from Add ▾), reopened=true tab=overview; closed → focus — BODY
+ok   refused rec-plan-add over overview (from Add ▾), reopened=true tab=overview; closed → focus — button#rec-rec-overview-tab "TodayToday" vis=true y=493
+ok   refused rec-done-add over overview (from Add ▾), reopened=true tab=overview; closed → focus — button#rec-rec-overview-tab "TodayToday" vis=true y=493
+ok   refused rec-note-add over overview (from Add ▾), reopened=true tab=overview; closed → focus — button#rec-rec-overview-tab "TodayToday" vis=true y=493
+ok   refused rec-vitals-add over patient (from Add ▾), reopened=true tab=patient; closed → focus — button[open=rec-vitals-add] "Take a reading" vis=true y=173
+FAIL refused rec-rx-add over patient (from Add ▾), reopened=true tab=patient; closed → focus — BODY
+FAIL refused rec-letter-add over patient (from Add ▾), reopened=true tab=patient; closed → focus — BODY
+FAIL refused rec-lab-add over patient (from Add ▾), reopened=true tab=patient; closed → focus — BODY
+FAIL refused rec-file-add over patient (from Add ▾), reopened=true tab=patient; closed → focus — BODY
+FAIL refused rec-loa-add over patient (from Add ▾), reopened=true tab=patient; closed → focus — BODY
+ok   refused rec-plan-add over patient (from Add ▾), reopened=true tab=patient; closed → focus — button#rec-rec-patient-tab "Patient infoPatient" vis=true y=493
+ok   refused rec-done-add over patient (from Add ▾), reopened=true tab=patient; closed → focus — button#rec-rec-patient-tab "Patient infoPatient" vis=true y=493
+ok   refused rec-note-add over patient (from Add ▾), reopened=true tab=patient; closed → focus — button#rec-rec-patient-tab "Patient infoPatient" vis=true y=493
+FAIL refused rec-vitals-add over chart (from Add ▾), reopened=true tab=chart; closed → focus — BODY
+FAIL refused rec-rx-add over chart (from Add ▾), reopened=true tab=chart; closed → focus — BODY
+FAIL refused rec-letter-add over chart (from Add ▾), reopened=true tab=chart; closed → focus — BODY
+ok   refused rec-lab-add over chart (from Add ▾), reopened=true tab=chart; closed → focus — button[open=rec-lab-add] "New lab case" vis=true y=493
+ok   refused rec-file-add over chart (from Add ▾), reopened=true tab=chart; closed → focus — button[open=rec-file-add] "Add files" vis=true y=493
+ok   refused rec-loa-add over chart (from Add ▾), reopened=true tab=chart; closed → focus — button[open=rec-loa-add] "Ask for an LOA" vis=true y=493
+ok   refused rec-plan-add over chart (from Add ▾), reopened=true tab=chart; closed → focus — button[open=rec-plan-add] "Add to plan" vis=true y=493
+ok   refused rec-done-add over chart (from Add ▾), reopened=true tab=chart; closed → focus — button[open=rec-done-add] "Record a treatment" vis=true y=493
+ok   refused rec-note-add over chart (from Add ▾), reopened=true tab=chart; closed → focus — button#rec-rec-chart-tab "Chart & planChart2, 2 open on " vis=true y=493
+FAIL refused rec-vitals-add over treatment-record (from Add ▾), reopened=true tab=treatment-record; closed → focus — BODY
+ok   refused rec-rx-add over treatment-record (from Add ▾), reopened=true tab=treatment-record; closed → focus — button[open=rec-rx-add] "New prescription" vis=true y=493
+ok   refused rec-letter-add over treatment-record (from Add ▾), reopened=true tab=treatment-record; closed → focus — button[open=rec-letter-add] "Dental certificateFor school o" vis=true y=473
+FAIL refused rec-lab-add over treatment-record (from Add ▾), reopened=true tab=treatment-record; closed → focus — BODY
+FAIL refused rec-file-add over treatment-record (from Add ▾), reopened=true tab=treatment-record; closed → focus — BODY
+FAIL refused rec-loa-add over treatment-record (from Add ▾), reopened=true tab=treatment-record; closed → focus — BODY
+ok   refused rec-plan-add over treatment-record (from Add ▾), reopened=true tab=treatment-record; closed → focus — button#rec-rec-treatment-record-tab "Treatment recordRecord" vis=true y=493
+ok   refused rec-done-add over treatment-record (from Add ▾), reopened=true tab=treatment-record; closed → focus — button#rec-rec-treatment-record-tab "Treatment recordRecord" vis=true y=493
+ok   refused rec-note-add over treatment-record (from Add ▾), reopened=true tab=treatment-record; closed → focus — button[open=rec-note-add] "New note" vis=true y=493
+15 failing of 36

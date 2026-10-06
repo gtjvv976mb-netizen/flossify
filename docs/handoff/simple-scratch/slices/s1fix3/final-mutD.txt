@@ -1,0 +1,25 @@
+caught helper-param-template: ✗ #treatmnt (src/pages/c/[clinic]/finances/close/index.astro:173 via src/pages/c/[clinic]/finances/close/index.astro:339): "#treatmnt" → null
+caught helper-param-concat: ✗ #treatmnt (src/pages/c/[clinic]/finances/close/index.astro:173 via src/pages/c/[clinic]/finances/close/index.astro:339): "#treatmnt" → null
+MISSED helper-param-control: exit 0 — CONTROL (should pass): the same helper, a good name
+caught const-suffix-hash: ✗ #treatmnt (src/pages/c/[clinic]/finances/close/index.astro:173): "#treatmnt" → null
+caught const-suffix-open: ✗ ?open=nte (src/pages/c/[clinic]/finances/close/index.astro:173) is not a panel the record opens (OPEN_PANEL): "nte"
+caught let-plus-equals: ✗ #treatmnt (src/pages/c/[clinic]/finances/close/index.astro:174): "#treatmnt" → null
+caught sign-url-hash: ✗ #nots (src/pages/c/[clinic]/patients/[patient]/sign/[visit].astro:43 via src/pages/c/[clinic]/patients/[patient]/sign/[visit].astro:43): "#nots" → null
+caught sign-url-open: ✗ ?open=vitalz (src/pages/c/[clinic]/patients/[patient]/sign/[visit].astro:42 via src/pages/c/[clinic]/patients/[patient]/sign/[visit].astro:42) is not a panel the record
+caught sign-url-search: ✗ ?saved=signd (src/pages/c/[clinic]/patients/[patient]/sign/[visit].astro:42) has no section in SAVED_TO or SAVED_WORD: "signd"
+caught rx-url-from-astro: ✗ .hash is written at src/pages/c/[clinic]/patients/[patient]/rx/[rx].astro:27 on an object this check cannot place — say among the URL objects whose address it is: "bu"
+caught consents-urlsearchparams: ✗ what is added after an address of the record at src/pages/c/[clinic]/patients/[patient]/consents/index.astro:35 (src/pages/c/[clinic]/patients/[patient]/consents/index.
+caught close-origin-before: ✗ #treatmnt (src/pages/c/[clinic]/finances/close/index.astro:338): "#treatmnt" → null
+caught close-join: ✗ a # joins an address of the record by .join() (src/pages/c/[clinic]/finances/close/index.astro:338): this check cannot read an address put together that way — write it 
+caught close-drop-hash: ✗ spec §5, #treatment (finances/close:338), #money (:370): this check no longer reads #treatment in src/pages/c/[clinic]/finances/close/index.astro — the link was rewritt
+caught import-concat: ✗ #vists (src/pages/c/[clinic]/patients/import.astro:572): "#vists" → null
+caught treatment-record-concat: ✗ #treatment-recrd (src/pages/c/[clinic]/patients/[patient]/treatment-record.astro:33): "#treatment-recrd" → null
+caught letters-plus-hash: ✗ #lettrs (src/pages/c/[clinic]/patients/[patient]/letters/[letter].astro:27 via src/pages/c/[clinic]/patients/[patient]/letters/[letter].astro:27): "#lettrs" → null
+caught files-group: ✗ #fles (src/pages/c/[clinic]/patients/[patient]/files/[file]/view.astro:27 via src/pages/c/[clinic]/patients/[patient]/files/[file]/view.astro:27): "#fles" → null
+caught new-index-ternary: ✗ #consnt (src/pages/c/[clinic]/patients/new/index.astro:107): "#consnt" → null
+caught intake-member: ✗ what is added after an address of the record at src/pages/c/[clinic]/patients/intake/[intake].astro:709 (src/pages/c/[clinic]/patients/intake/[intake].astro:709): this 
+caught panels-opts: ✗ the #hash at src/components/ws/cal/panels.ts:234 (src/components/ws/cal/panels.ts:234): this check cannot tell which names `o.hash` takes — write a literal, or teach th
+caught panels-map: ✗ a # joins an address of the record by .join() (src/components/ws/cal/panels.ts:236): this check cannot read an address put together that way — write it as a template or
+
+21 caught, 1 missed, 0 not applied
+clean tree after: passes

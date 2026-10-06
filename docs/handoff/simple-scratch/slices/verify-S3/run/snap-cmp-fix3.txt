@@ -1,0 +1,29 @@
+
+== headings
+  +    Visit · # Oct #                                                                                                          21× [all roles] {maria,maria-visit,rich}
+  -    Visit · # Sep #                                                                                                          21× [all roles] {maria,maria-visit,rich}
+
+== buttons
+  +    # Oct #                                                                                                                  14× [all roles] {maria,maria-visit}
+  -    # Sep #                                                                                                                  14× [all roles] {maria,maria-visit}
+  -    BP #/# today · high                                                                                                      7× [all roles] {rich}
+  -    Needs medical clearance                                                                                                  7× [all roles] {rich}
+  +    Today · # Oct #, see the whole visitSee the whole visit                                                                  7× [all roles] {rich}
+  -    Today · # Sep #, see the whole visitSee the whole visit                                                                  21× [all roles] {maria,maria-visit,rich}
+
+== links
+  -    Balance₱#,#.#Owed on # statements → #money                                                                               9× [owner,admin,secretary] {maria,maria-visit,ledger}
+  -    Balance₱#.#Nothing owed → #money                                                                                         3× [owner,admin,secretary] {rich}
+  -    ConsentNot yetAsk at the desk → #consent                                                                                 28× [all roles] {maria,maria-visit,ledger,rich}
+  +    In closed time, next # weeksVisits booked when the clinic is not open; move them or call# → /c/session-road/calls/#close 28× [all roles] {maria,maria-visit,ledger,rich}
+  +    Owes ₱#,#.# → /c/session-road/finances/?patient=:id&view=all                                                             9× [owner,admin,secretary] {maria,maria-visit,ledger}
+
+== hrefs
+  +    /c/session-road/calls/#closed-time                                                                                       28× [all roles] {maria,maria-visit,ledger,rich}
+  -    #consent                                                                                                                 28× [all roles] {maria,maria-visit,ledger,rich}
+  -    #money                                                                                                                   12× [owner,admin,secretary] {maria,maria-visit,ledger,rich}
+
+== recgo
+  -    go:rx                                                                                                                    7× [all roles] {rich}
+
+56 pages; 24 parts differ in order only

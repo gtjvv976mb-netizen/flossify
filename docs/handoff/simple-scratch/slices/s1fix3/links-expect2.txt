@@ -1,0 +1,15 @@
+case                               tab               → new             expect                     el                             dialogs
+dash-vitals-open                   health            patient           overview                   #vitals in health y88          rec-vitals-add         FAIL tab health ≠ overview
+open-vitals                        health            patient           overview                                                  rec-vitals-add         FAIL tab health ≠ overview
+open-vitals-visit                  health            patient           overview                                                  rec-vitals-add         FAIL tab health ≠ overview
+anchor-vitals                      health            patient           patient                    #vitals in health y88                                 FAIL tab health ≠ patient
+post-vitals-add-vitals             health            patient           patient                    #vitals in health y88                                 FAIL tab health ≠ patient
+post-vitals-add-vitals-high        health            patient           patient                    #vitals in health y88                                 FAIL tab health ≠ patient
+back-overview-vitals-add           overview          overview          overview                   #overview in overview y88                             ok
+back-patient-vitals-add            health            patient           patient                    #patient absent                                       FAIL tab health ≠ patient
+back-chart-vitals-add              chart             chart             chart                      #chart in chart y88                                   ok
+back-treatment-record-vitals-add   treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        ok
+
+presses (data-rec-go / data-rec-show):
+
+10 links, 0 presses, 7 failing → /tmp/fl-simple-scratch/s1fix3/links-expect2.json

@@ -1,0 +1,11 @@
+note-add    back=null      → treatment-record  rec-note-add     Write at least one part of the note. Nothing was saved.
+note-add    back=chart     → chart             rec-note-add     Write at least one part of the note. Nothing was saved.
+note-add    back=treatment → chart             rec-note-add     Write at least one part of the note. Nothing was saved.
+plan-add    back=null      → chart             rec-plan-add     Choose a treatment from your fee guide, or type one. Nothing was added
+plan-add    back=chart     → chart             rec-plan-add     Choose a treatment from your fee guide, or type one. Nothing was added
+vitals-add  back=null      → patient           rec-vitals-add   Blood pressure is two numbers: the top one (systolic) and the bottom o
+rx-add      back=null      → treatment-record  rec-rx-add       Choose the dentist who prescribes. Nothing was saved.
+recall-set  back=null      → overview          rec-recall-set   Choose when: in 3, 6 or 12 months, or a day. Nothing was set.
+letter-add  back=null      → treatment-record  rec-letter-add   Choose which letter to write. Nothing was saved.
+rows written: none
+refused exit 0

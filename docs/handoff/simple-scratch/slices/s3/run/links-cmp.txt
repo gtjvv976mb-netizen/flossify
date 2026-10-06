@@ -1,0 +1,355 @@
+dash-health
+    el {"id": "health", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "health", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 765 → 531
+dash-rx
+    el {"id": "rx", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "rx", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 2162 → 1863
+dash-treatment
+    el {"id": "treatment", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "treatment", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 1353 → 1119
+treated-rich
+    el {"id": "chart-offer", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart-offer", "exists": true, "shown": true, "panel": "chart", "top": 213, "onScreen": true}
+    scrollY 704 → 452
+treated-rich-back-chart
+    el {"id": "chart-offer", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart-offer", "exists": true, "shown": true, "panel": "chart", "top": 213, "onScreen": true}
+    scrollY 704 → 452
+treated-rich-plain
+    el {"id": "chart-offer", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart-offer", "exists": true, "shown": true, "panel": "chart", "top": 213, "onScreen": true}
+    scrollY 704 → 452
+chartskip-changed
+    el {"id": "chart-offer", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart-offer", "exists": true, "shown": true, "panel": "chart", "top": 213, "onScreen": true}
+    scrollY 704 → 452
+chartskip-ended
+    el {"id": "chart-offer", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart-offer", "exists": true, "shown": true, "panel": "chart", "top": 213, "onScreen": true}
+    scrollY 704 → 452
+back-treatment-old
+    el {"id": "chart-offer", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart-offer", "exists": true, "shown": true, "panel": "chart", "top": 213, "onScreen": true}
+    scrollY 704 → 452
+saved-details
+    el {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 540 → 306
+form-used
+    el {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 540 → 306
+saved-health
+    el {"id": "health", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "health", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 765 → 531
+saved-birth
+    callouts ["Saved."] → ["Details saved. The birth date the record had is kept in the health history."]
+    el {"id": "health", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "health", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 765 → 600
+    url "?saved=birth#health" → "?saved=birth#patient"
+saved-birth-details
+    callouts ["Saved."] → ["Details saved. The birth date the record had is kept in the health history."]
+    panels ["patient"] → ["overview"]
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"}
+    tab "patient" → "overview"
+saved-nothing
+    el {"id": "health", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "health", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 765 → 531
+saved-consent
+    el {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 1951 → 1624
+saved-consent-already
+    el {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 1951 → 1624
+saved-paper
+    el {"id": "consent-paper", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "consent-paper", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 2241 → 1914
+consent-paper
+    el {"id": "consent-paper", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "consent-paper", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 2241 → 1914
+saved-capacity
+    el {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 2020 → 1693
+saved-consent-removed
+    el {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 2020 → 1693
+capacity-refused
+    el {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 2042 → 1715
+stale-consent
+    el {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 2020 → 1693
+hash-treatment-record
+    el {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+aftercare-back
+    el {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+aftercare-back-today
+    el {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+hash-timeline
+    scrollY 472 → 238
+hash-rx
+    el {"id": "rx", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "rx", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 2162 → 1863
+hash-letters
+    el {"id": "letters", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "letters", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 2530 → 2232
+hash-files
+    el {"id": "files", "exists": true, "shown": true, "panel": "chart", "top": 156, "onScreen": true} → {"id": "files", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 2690 → 2466
+hash-treatment
+    el {"id": "treatment", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "treatment", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 1353 → 1119
+hash-money
+    el {"id": "money", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "money", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 2940 → 2641
+hash-money-dentist
+    scrollY 440 → 238
+hash-visits
+    el {"id": "visits", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "visits", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 1902 → 1668
+hash-consent
+    el {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "consent", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 1951 → 1624
+anchor-treatment-done
+    el {"id": "treatment-done", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "treatment-done", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 1948 → 1714
+anchor-treatment-lab
+    el {"id": "treatment-lab", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "treatment-lab", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 2468 → 2234
+anchor-recall
+    el {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 918 → 684
+anchor-vitals
+    el {"id": "vitals", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "vitals", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+anchor-letters
+    el {"id": "letters", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "letters", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 2530 → 2232
+anchor-loas
+    scrollY 2690 → 2495
+anchor-payplans
+    scrollY 2690 → 2495
+anchor-treatment-lab-rich
+    el {"id": "treatment-lab", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "treatment-lab", "exists": true, "shown": true, "panel": "chart", "top": 213, "onScreen": true}
+    scrollY 1962 → 1711
+anchor-loas-rich
+    scrollY 2388 → 2204
+hash-overview
+    el {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+hash-health
+    el {"id": "health", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "health", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 765 → 531
+hash-chart
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+hash-notes
+    el {"id": "notes", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "notes", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 1455 → 1156
+hash-texts
+    scrollY 3131 → 2871
+hash-this-visit
+    el {"id": "this-visit", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "this-visit", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+hash-chart-offer
+    scrollY 472 → 238
+hash-consent-forms
+    el {"id": "consent-forms", "exists": true, "shown": true, "panel": "patient", "top": 215, "onScreen": true} → {"id": "consent-forms", "exists": true, "shown": true, "panel": "patient", "top": 214, "onScreen": true}
+    scrollY 2266 → 1979
+hash-visit-consents
+    el {"id": "visit-consents", "exists": true, "shown": true, "panel": "patient", "top": 367, "onScreen": true} → {"id": "visit-consents", "exists": true, "shown": true, "panel": "patient", "top": 366, "onScreen": true}
+    scrollY 2266 → 1979
+hash-patient-forms
+    scrollY 472 → 238
+hash-details-card
+    scrollY 472 → 238
+hash-patient
+    el {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+hash-rec-overview
+    el {"id": "rec-overview", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "rec-overview", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+hash-rec-health
+    scrollY 472 → 238
+hash-rec-chart
+    el {"id": "rec-chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "rec-chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+hash-rec-treatment-record
+    el {"id": "rec-treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "rec-treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+post-plan-add-plan
+    el {"id": "treatment", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "treatment", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 1353 → 1119
+post-plan-add-back-chart
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+post-plan-status-plan-accepted
+    el {"id": "treatment", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "treatment", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 1353 → 1119
+post-plan-status-plan-done
+    el {"id": "treatment", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "treatment", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 1353 → 1119
+post-plan-remove-plan-removed
+    el {"id": "treatment", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "treatment", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 1353 → 1119
+post-done-add-done
+    el {"id": "treatment-done", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "treatment-done", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 1948 → 1714
+post-done-add-back-chart
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+post-lab-add-lab
+    el {"id": "treatment-lab", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "treatment-lab", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 2468 → 2234
+post-lab-next-lab-moved
+    el {"id": "treatment-lab", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "treatment-lab", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 2468 → 2234
+post-note-add-note
+    el {"id": "notes", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "notes", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 1455 → 1156
+post-note-add-back-chart
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+post-note-add-addendum
+    el {"id": "notes", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "notes", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 1455 → 1156
+post-rx-add-rx
+    el {"id": "rx", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "rx", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 2162 → 1863
+post-file-add-file
+    el {"id": "files", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "files", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 2700 → 2466
+post-file-add-files
+    el {"id": "files", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "files", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 2700 → 2466
+post-file-remove-file-removed
+    el {"id": "files", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "files", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 2700 → 2466
+post-recall-set-recall
+    el {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 918 → 684
+post-recall-done-recall-done
+    el {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 918 → 684
+post-recall-clear-recall-cleared
+    el {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 918 → 684
+post-vitals-add-vitals
+    el {"id": "vitals", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "vitals", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+post-vitals-add-vitals-high
+    el {"id": "vitals", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "vitals", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+post-letter-add-letter
+    el {"id": "letters", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "letters", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 2530 → 2232
+post-letter-answer-answered
+    el {"id": "letters", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "letters", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 2530 → 2232
+post-loa-add-loa
+    scrollY 2759 → 2564
+post-loa-approve-loa-approved
+    scrollY 2759 → 2564
+post-loa-deny-loa-denied
+    scrollY 2759 → 2564
+post-loa-cancel-loa-cancelled
+    scrollY 2759 → 2564
+post-payplan-add-payplan
+    scrollY 2781 → 2586
+post-payplan-stop-payplan-stopped
+    scrollY 2759 → 2564
+post-adjust-add-adjusted
+    scrollY 2759 → 2564
+back-overview-rx-add
+    el {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-patient-rx-add
+    el {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-chart-rx-add
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-treatment-record-rx-add
+    el {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-overview-note-add
+    el {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-patient-note-add
+    el {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-chart-note-add
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-treatment-record-note-add
+    el {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-overview-vitals-add
+    el {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-patient-vitals-add
+    el {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-chart-vitals-add
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-treatment-record-vitals-add
+    el {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-overview-letter-add
+    el {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-patient-letter-add
+    el {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-chart-letter-add
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-treatment-record-letter-add
+    el {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-overview-file-add
+    el {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-patient-file-add
+    el {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-chart-file-add
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-treatment-record-file-add
+    el {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-overview-done-add
+    el {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-patient-done-add
+    el {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-chart-done-add
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-treatment-record-done-add
+    el {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-overview-recall-set
+    el {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 146, "onScreen": true} → {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-patient-recall-set
+    el {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 146, "onScreen": true} → {"id": "patient", "exists": true, "shown": true, "panel": "patient", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-chart-recall-set
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+back-treatment-record-recall-set
+    el {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 146, "onScreen": true} → {"id": "treatment-record", "exists": true, "shown": true, "panel": "treatment-record", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+offline-copy
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+offline-copy-visit
+    el {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 146, "onScreen": true} → {"id": "chart", "exists": true, "shown": true, "panel": "chart", "top": 185, "onScreen": true}
+    scrollY 472 → 238
+presses differ
+   ('rich', 0, 'patient', [], '#patient') → ('rich', 0, 'chart', [], '#chart')
+   ('rich', 1, 'treatment-record', [], '#treatment-record') → ('rich', 1, 'patient', [], '#patient')
+   ('rich', 2, 'chart', [], '#chart') → ('rich', 2, 'patient', [], '#patient')
+   ('rich', 4, 'patient', [], '#patient') → ('rich', 4, 'chart', [], '#chart')
+   ('rich', 5, 'patient', [], '#patient') → ('rich', 5, 'chart', [], '#chart')
+   ('rich', 6, 'chart', [], '#chart') → ('rich', 6, 'patient', [], '#patient')
+152 links, 16 presses compared; 121 differences

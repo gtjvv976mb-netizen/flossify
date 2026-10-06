@@ -1,0 +1,14 @@
+import { chromium } from '/home/user/fl-simple/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4470';
+const [w, h, who, out, scheme] = process.argv.slice(2);
+const P = { maria: '1a1d1c5e-ce1a-4d80-801c-f13fb6ef48cb', rich: '7e57a1c0-0000-4000-8000-000000000001', ledger: '9ea415bd-4b9e-4725-80e8-391464e2c12e' };
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await b.newContext({ viewport: { width: +w, height: +h }, colorScheme: scheme || 'light' });
+const page = await ctx.newPage();
+await page.goto(BASE + '/auth/login/?any=1'); await page.fill('#email', process.env.LOGIN_ || 'liwayway.domingo@example.com'); await page.fill('#password', 'flossify');
+await Promise.all([page.waitForNavigation(), page.click('[data-go]')]);
+await page.goto(`${BASE}/c/session-road/patients/${P[who] ?? who}/${process.env.Q_ ?? ''}`, { waitUntil: 'networkidle' });
+await page.screenshot({ path: out, fullPage: process.env.FULL_ === '1' });
+const n = await page.evaluate(() => { const vis = (el) => el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && el.getClientRects().length > 0; return [...document.body.querySelectorAll('button, a.ws-btn, summary, [role=tab], a.ws-nav-item, nav a')].filter(vis).filter((e) => !e.closest('dialog') && !e.closest('.ws-menu-pop')).length; });
+console.log('body controls', n);
+await b.close();

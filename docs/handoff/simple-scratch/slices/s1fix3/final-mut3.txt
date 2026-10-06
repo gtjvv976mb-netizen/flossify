@@ -1,0 +1,11 @@
+caught sign-visit-hash (1 occurrence): ✗ #hlth (src/pages/c/[clinic]/patients/[patient]/sign/[visit].astro:171): "#hlth" → null
+caught rx-back (1 occurrence): ✗ #rxx (src/pages/c/[clinic]/patients/[patient]/rx/[rx].astro:27): "#rxx" → null
+caught files-view (1 occurrence): ✗ #file (src/pages/c/[clinic]/patients/[patient]/files/[file]/view.astro:26): "#file" → null
+caught trec-back (1 occurrence): ✗ #treatment-recrd (src/pages/c/[clinic]/patients/[patient]/treatment-record.astro:33): "#treatment-recrd" → null
+caught consents-doc (1 occurrence): ✗ #consnt (src/pages/c/[clinic]/patients/[patient]/consents/[document].astro:100): "#consnt" → null
+caught chartoffer (1 occurrence): ✗ #chart-offr (src/pages/c/[clinic]/patients/_record/ChartOffer.astro:71): "#chart-offr" → null
+caught treatpanels (1 occurrence): ✗ #treatment-dne (src/pages/c/[clinic]/patients/_record/TreatmentPanels.astro:111 via src/pages/c/[clinic]/patients/_record/TreatmentPanels.astro:111): "#treatm
+caught notepanel-home (3 occurrences, first changed): ✗ #note (src/pages/c/[clinic]/patients/_record/NotePanel.astro:32 via src/pages/c/[clinic]/patients/_record/NotePanel.astro:32): "#note" → null
+
+8 caught, 0 missed, 0 not applied
+clean tree after: passes

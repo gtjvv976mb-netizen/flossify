@@ -1,0 +1,13 @@
+import { chromium } from '/home/user/fl-simple/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4470';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
+const page = await ctx.newPage();
+await page.goto(`${BASE}/auth/login/?any=1`); await page.fill('#email', 'liwayway.domingo@example.com'); await page.fill('#password', 'flossify');
+await Promise.all([page.waitForNavigation(), page.click('button[type="submit"]')]);
+await page.goto(`${BASE}/c/session-road/patients/1a1d1c5e-ce1a-4d80-801c-f13fb6ef48cb/`, { waitUntil: 'load' });
+const html = await page.content();
+const s = [...html.matchAll(/<script([^>]*)>/g)].map((m) => m[1]);
+const byType = {}; for (const a of s) byType[a.trim() || '(none)'] = (byType[a.trim() || '(none)'] ?? 0) + 1;
+console.log(byType);
+await b.close();

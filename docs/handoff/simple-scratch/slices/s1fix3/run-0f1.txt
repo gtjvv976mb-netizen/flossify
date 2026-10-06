@@ -1,0 +1,11 @@
+tabs: overview (Today) · patient (Patient info) · chart (Chart & plan) · treatment-record (Treatment record)
+TAB_OF: 28 names
+the record's own files (33); 71 places an address of the record gets its #hash
+from the source — saved words (42): addendum adjusted: answered birth capacity charted checked checked-today consent consent-already consent-removed details done file file-removed files: form health intake lab lab-moved letter: loa loa-approved loa-cancelled loa-denied new note nothing paper payplan-stopped payplan: plan plan- plan-done plan-removed recall recall-cleared recall-done rx: vitals vitals-
+from the source — hashes (20): chart chart-offer consent consent-paper files health letters loas money notes overview payplans recall rx treatment treatment-done treatment-lab treatment-record visits vitals
+from the source — data-rec-go / show (9): chart consent files health money notes rx treatment visits
+from the source — names that pick a tab: show() and rec-rec-<name>-tab (12): chart consent files health money notes overview rx texts treatment treatment-record visits
+from the source — ?open= (2): details vitals
+from the source — sections the page lands on (3): consent health overview
+288 names checked, 31248 landing combinations
+every name resolves to one of the four tabs

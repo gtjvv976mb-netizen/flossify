@@ -1,0 +1,18 @@
+caught close-concat-open (1 occurrence): ✗ ?open=nte (src/pages/c/[clinic]/finances/close/index.astro:338) is not a panel the record opens (OPEN_PANEL): "nte"
+caught close-concat-saved (1 occurrence): ✗ ?saved=xyz (src/pages/c/[clinic]/finances/close/index.astro:338) has no section in SAVED_TO or SAVED_WORD: "xyz"
+caught close-concat-query-hash (1 occurrence): ✗ #treatmnt (src/pages/c/[clinic]/finances/close/index.astro:338): "#treatmnt" → null
+caught close-concat-visit-hash (1 occurrence): ✗ #treatment-recrd (src/pages/c/[clinic]/finances/close/index.astro:338): "#treatment-recrd" → null
+caught close-money-query-hash (1 occurrence): ✗ #mony (src/pages/c/[clinic]/finances/close/index.astro:370): "#mony" → null
+caught close-template-helper-hash (1 occurrence): ✗ #treatmnt (src/pages/c/[clinic]/finances/close/index.astro:338): "#treatmnt" → null
+caught panels-concat-open (1 occurrence): ✗ ?open=detals (src/components/ws/cal/panels.ts:463) is not a panel the record opens (OPEN_PANEL): "detals"
+MISSED panels-rec-concat-hash: exit 0 — rec() by concatenation; calls unchanged; no typo (control: should pass)
+   src/components/ws/cal/panels.ts: "`${recordHref(c.patientId, c.id)}${open ? `&open=${open}` : ''}#${hash}`" → "recordHref(c.patientId, c.id) + (open ? '&open=' + open : '') + '#' + hash"
+caught panels-rec-concat-hash-typo (1 occurrence): ✗ #helth (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:236): "#helth" → null
+caught consents-concat-saved (1 occurrence): ✗ ?saved=capcity (src/pages/c/[clinic]/patients/[patient]/consents/index.astro:35) has no section in SAVED_TO or SAVED_WORD: "capcity"
+caught consents-concat-hash (1 occurrence): ✗ #consnt (src/pages/c/[clinic]/patients/[patient]/consents/index.astro:35): "#consnt" → null
+caught forms-concat-saved (2 occurrences, first changed): ✗ ?saved=frm (src/pages/c/[clinic]/patients/forms/[form]/index.astro:98) has no section in SAVED_TO or SAVED_WORD: "frm"
+caught type-concat-saved (1 occurrence): ✗ ?saved=nw (src/pages/c/[clinic]/patients/new/type.astro:288) has no section in SAVED_TO or SAVED_WORD: "nw"
+caught sign-back-hash (1 occurrence): ✗ #nots (src/pages/c/[clinic]/patients/[patient]/sign/[visit].astro:40): "#nots" → null
+
+13 caught, 1 missed, 0 not applied
+clean tree after: passes

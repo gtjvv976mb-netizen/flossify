@@ -1,0 +1,7 @@
+caught panels-join: ✗ a # joins an address of the record by .join() (src/components/ws/cal/panels.ts:236): this check cannot read an address put together that way — write it as a template or
+caught close-concat-method: ✗ #treatmnt (src/pages/c/[clinic]/finances/close/index.astro:338): "#treatmnt" → null
+caught close-concat-method-2: ✗ #treatmnt (src/pages/c/[clinic]/finances/close/index.astro:338): "#treatmnt" → null
+MISSED close-concat-method-control: exit 0 — CONTROL (should pass)
+
+3 caught, 1 missed, 0 not applied
+clean tree after: passes

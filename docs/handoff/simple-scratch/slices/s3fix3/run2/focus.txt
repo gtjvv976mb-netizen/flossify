@@ -1,0 +1,43 @@
+ok   palette → rec-plan-add on tooth 26 opens with back=chart, #chart — {"open":true,"back":"chart","hash":"#chart"}
+ok   closing rec-plan-add gives focus back to tooth 26 — button[fdi=26]
+ok   palette → rec-done-add on tooth 36 opens with back=chart, #chart — {"open":true,"back":"chart","hash":"#chart"}
+ok   closing rec-done-add gives focus back to tooth 36 — button[fdi=36]
+ok   palette → rec-note-add on tooth 46 opens with back=chart, #chart — {"open":true,"back":"chart","hash":"#chart"}
+ok   closing rec-note-add gives focus back to tooth 46 — button[fdi=46]
+ok   no page errors (palette)
+     Add ▾ items: Clinical note (55px) · Record a treatment (55px) · Blood pressure (55px) · Prescription (55px) · X-ray or photo (55px) · Add to plan (55px) · Lab case (55px) · HMO approval (LOA) (55px) · Braces or payment plan (55px) · Certificate or letter (55px) · New charge (55px)
+ok   Add ▾ items are at least 44px (overview)
+ok   Add ▾ › Prescription over overview: back=overview, #overview, the tab stays — {"open":true,"back":"overview","hash":"#overview","tab":"overview"}
+ok   closing it gives focus back to Add ▾ (overview) — button.rec-add-btn
+ok   Add ▾ items are at least 44px (patient)
+ok   Add ▾ › Prescription over patient: back=patient, #patient, the tab stays — {"open":true,"back":"patient","hash":"#patient","tab":"patient"}
+ok   closing it gives focus back to Add ▾ (patient) — button.rec-add-btn
+ok   Add ▾ items are at least 44px (chart)
+ok   Add ▾ › Prescription over chart: back=chart, #chart, the tab stays — {"open":true,"back":"chart","hash":"#chart","tab":"chart"}
+ok   closing it gives focus back to Add ▾ (chart) — button.rec-add-btn
+ok   Add ▾ items are at least 44px (treatment-record)
+ok   Add ▾ › Prescription over treatment-record: back=treatment-record, #treatment-record, the tab stays — {"open":true,"back":"treatment-record","hash":"#treatment-record","tab":"treatment-record"}
+ok   closing it gives focus back to Add ▾ (treatment-record) — button.rec-add-btn
+ok   Add ▾ by keyboard: ↓ opens on the first item, ↓ moves, Escape returns to the button — Clinical noteWhat wa → Record a treatmentWo
+ok   tabs by keyboard: → → → → ← End Home — patient chart treatment-record overview treatment-record treatment-record overview
+ok   no page errors (Add ▾)
+ok   the kept copy opens on Chart & plan, Add ▾ hidden — {"tab":"rec-rec-chart-tab","addHidden":true,"addShown":0}
+ok   Add ▾ hides offline and comes back online — {"on1":true,"off":true,"on2":true}
+ok   no page errors (offline)
+ok   1440: the row on screen with room under it: choosing a tab does not scroll — {"y":0,"barBottom":407,"tab":423,"sw":1440,"iw":1440} → {"y":0,"barBottom":407,"tab":423,"sw":1440,"iw":1440}
+ok   1440: scrolled down, the chosen tab starts just under the row — {"y":281,"barBottom":168,"tab":180,"sw":1440,"iw":1440}
+ok   1440: the row at the foot of the screen: the chosen tab comes up where it can be seen — {"y":0,"barBottom":407,"tab":423,"sw":1440,"iw":1440}
+ok   1440: no sideways scroll — {"y":281,"barBottom":168,"tab":180,"sw":1440,"iw":1440}
+ok   390: the row on screen with room under it: choosing a tab does not scroll — {"y":0,"barBottom":644,"tab":656,"sw":390,"iw":390} → {"y":0,"barBottom":644,"tab":656,"sw":390,"iw":390}
+ok   390: scrolled down, the chosen tab starts just under the row — {"y":486,"barBottom":158,"tab":170,"sw":390,"iw":390}
+ok   390: the row at the foot of the screen: the chosen tab comes up where it can be seen — {"y":0,"barBottom":644,"tab":656,"sw":390,"iw":390}
+ok   390: no sideways scroll — {"y":486,"barBottom":158,"tab":170,"sw":390,"iw":390}
+ok   ?open=vitals: rec-vitals-add over Today, back=overview, #overview — {"open":true,"back":"overview","hash":"#overview","tab":"overview"}
+ok   ?open=note: rec-note-add over Today, back=overview, #overview — {"open":true,"back":"overview","hash":"#overview","tab":"overview"}
+ok   ?open=rx: rec-rx-add over Today, back=overview, #overview — {"open":true,"back":"overview","hash":"#overview","tab":"overview"}
+ok   ?open=done: rec-done-add over Today, back=overview, #overview — {"open":true,"back":"overview","hash":"#overview","tab":"overview"}
+ok   ?open=file: rec-file-add over Today, back=overview, #overview — {"open":true,"back":"overview","hash":"#overview","tab":"overview"}
+ok   ?open=details: details over Today, back=overview, #overview — {"open":true,"back":"overview","hash":"#overview","tab":"overview"}
+ok   no page errors (?open=)
+all ok
+focus exit 0

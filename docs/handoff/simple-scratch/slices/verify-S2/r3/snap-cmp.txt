@@ -1,0 +1,125 @@
+
+== tabs
+  -    Billing: Money                                                                                                           3× [owner,admin,secretary] {rich}
+  -    Billing: Money#                                                                                                          9× [owner,admin,secretary] {maria,maria-visit,ledger}
+  +    Chart & planChart                                                                                                        21× [all roles] {maria,maria-visit,ledger}
+  +    Chart & planChart#, one open on the plan                                                                                 7× [all roles] {rich}
+  -    Clinical: Chart                                                                                                          28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Clinical: Files                                                                                                          28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Clinical: Notes                                                                                                          14× [all roles] {ledger,rich}
+  -    Clinical: Notes#                                                                                                         14× [all roles] {maria,maria-visit}
+  -    Clinical: Treatment                                                                                                      7× [all roles] {ledger}
+  -    Clinical: Treatment#                                                                                                     21× [all roles] {maria,maria-visit,rich}
+  -    Documents: Consent                                                                                                       28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Documents: Rx & letters                                                                                                  14× [all roles] {ledger,rich}
+  -    Documents: Rx & letters#                                                                                                 14× [all roles] {maria,maria-visit}
+  -    Documents: Texts                                                                                                         14× [all roles] {ledger,rich}
+  -    Documents: Texts#                                                                                                        14× [all roles] {maria,maria-visit}
+  -    Health: Health                                                                                                           28× [all roles] {maria,maria-visit,ledger,rich}
+  +    Patient infoPatient                                                                                                      28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Patient: Overview                                                                                                        28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Patient: Treatment record                                                                                                28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Patient: Visits#                                                                                                         28× [all roles] {maria,maria-visit,ledger,rich}
+  +    TodayToday                                                                                                               28× [all roles] {maria,maria-visit,ledger,rich}
+  +    Treatment recordRecord                                                                                                   28× [all roles] {maria,maria-visit,ledger,rich}
+
+== headings
+  -    Chart                                                                                                                    28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Consent                                                                                                                  28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Files                                                                                                                    28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Health                                                                                                                   28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Money                                                                                                                    12× [owner,admin,secretary] {maria,maria-visit,ledger,rich}
+  -    Notes                                                                                                                    28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Overview                                                                                                                 28× [all roles] {maria,maria-visit,ledger,rich}
+  -2×  Phase #₱#,#                                                                                                              14× [all roles] {maria,maria-visit}
+  -    Rx & letters                                                                                                             28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Texts                                                                                                                    28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Treatment                                                                                                                28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Treatment plan                                                                                                           14× [all roles] {maria,maria-visit}
+  -    Treatment record                                                                                                         28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Visits                                                                                                                   28× [all roles] {maria,maria-visit,ledger,rich}
+
+== buttons
+  +    Add                                                                                                                      24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  +    Add to planWith the price from your fee guide                                                                            24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    Add to treatment planWith the price from your fee guide                                                                  24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    Add X-ray or photoOr a document, as a PDF                                                                                24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    Billing: Money                                                                                                           3× [owner,admin,secretary] {rich}
+  -    Billing: Money#                                                                                                          9× [owner,admin,secretary] {maria,maria-visit,ledger}
+  +    Blood pressureBefore anaesthesia                                                                                         24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  +    Braces or payment planPaid in parts, on one statement                                                                    12× [owner,admin,secretary] {maria,maria-visit,ledger,rich}
+  +    Certificate or letterOr a referral, or medical clearance                                                                 24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  +    Chart & planChart                                                                                                        21× [all roles] {maria,maria-visit,ledger}
+  +    Chart & planChart#, one open on the plan                                                                                 7× [all roles] {rich}
+  -    Clinical: Chart                                                                                                          28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Clinical: Files                                                                                                          28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Clinical: Notes                                                                                                          14× [all roles] {ledger,rich}
+  -    Clinical: Notes#                                                                                                         14× [all roles] {maria,maria-visit}
+  -    Clinical: Treatment                                                                                                      7× [all roles] {ledger}
+  -    Clinical: Treatment#                                                                                                     21× [all roles] {maria,maria-visit,rich}
+  -2×  Declined                                                                                                                 12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  -    Dental certificateOr a referral, or medical clearance                                                                    24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    Documents: Consent                                                                                                       28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Documents: Rx & letters                                                                                                  14× [all roles] {ledger,rich}
+  -    Documents: Rx & letters#                                                                                                 14× [all roles] {maria,maria-visit}
+  -    Documents: Texts                                                                                                         14× [all roles] {ledger,rich}
+  -    Documents: Texts#                                                                                                        14× [all roles] {maria,maria-visit}
+  -    Health: Health                                                                                                           28× [all roles] {maria,maria-visit,ledger,rich}
+  +    HMO approval (LOA)Ask the HMO before treatment                                                                           24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  +    Lab caseA crown or a denture from a lab                                                                                  24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -2×  Mark done                                                                                                                12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  -    Mark done: Porcelain crown                                                                                               12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  -    Mark done: Root canal treatment (molar)                                                                                  12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  -    More                                                                                                                     24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    Not agreed yet                                                                                                           12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  -    Open                                                                                                                     14× [all roles] {maria,maria-visit}
+  -    Patient agreed                                                                                                           12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  +    Patient infoPatient                                                                                                      28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Patient: Overview                                                                                                        28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Patient: Treatment record                                                                                                28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Patient: Visits#                                                                                                         28× [all roles] {maria,maria-visit,ledger,rich}
+  +    Porcelain crown · #                                                                                                      14× [all roles] {maria,maria-visit}
+  +    Record a treatmentWork done, and on which tooth                                                                          24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -2×  Remove                                                                                                                   12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  +    Root canal treatment (molar) · #                                                                                         14× [all roles] {maria,maria-visit}
+  -    Take blood pressureBefore anaesthesia                                                                                    24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  +    TodayToday                                                                                                               28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Tooth #, Root canal. On the plan: Root canal treatment (molar); Porcelain crown. Activate to edit.                       14× [all roles] {maria,maria-visit}
+  +    Tooth #, Root canal. Treated in the past year: Porcelain crown, # Sep #; Root canal treatment (molar), # Sep #. Activate 14× [all roles] {maria,maria-visit}
+  +    Treatment recordRecord                                                                                                   28× [all roles] {maria,maria-visit,ledger,rich}
+  +    X-ray or photoOr a document, as a PDF                                                                                    24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+
+== fields
+  -2×  input:checkbox:items                                                                                                     12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  -10× input:hidden:_csrf                                                                                                       12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  +10× input:hidden:back                                                                                                        6× [dentist,associate,assistant] {maria,maria-visit}
+  +11× input:hidden:back                                                                                                        6× [owner,admin,secretary] {maria,maria-visit}
+  +12× input:hidden:back                                                                                                        6× [dentist,associate,assistant] {ledger,rich}
+  +13× input:hidden:back                                                                                                        6× [owner,admin,secretary] {ledger,rich}
+  -4×  input:hidden:dentist                                                                                                     6× [owner,dentist,associate] {maria,maria-visit}
+  -10× input:hidden:intent                                                                                                      12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  -10× input:hidden:item                                                                                                        12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  -8×  input:hidden:to                                                                                                          12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  -4×  input:hidden:visit                                                                                                       12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  -4×  select:select-one:dentist                                                                                                6× [admin,secretary,assistant] {maria,maria-visit}
+
+== links
+  +    Aftercare sheet: After a crown, bridge or veneer · Print → /c/session-road/patients/:id/aftercare/crown/?visit=:id       14× [all roles] {maria,maria-visit}
+  -    Bring in past visitsFrom a spreadsheet of old records → /c/session-road/patients/import/                                 24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+
+== intents
+  -    post /c/session-road/patients/:id/#treatment intent=plan-remove                                                          12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  -    post /c/session-road/patients/:id/#treatment intent=plan-status                                                          12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+
+== hrefs
+  +    /c/session-road/patients/:id/aftercare/crown/?visit=:id                                                                  14× [all roles] {maria,maria-visit}
+  -    /c/session-road/patients/import/                                                                                         24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+
+== recgo
+  -    show:files                                                                                                               24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    show:health                                                                                                              24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    show:notes                                                                                                               24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    show:rx                                                                                                                  24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    show:treatment                                                                                                           24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+
+56 pages; 30 parts differ in order only

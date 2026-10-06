@@ -1,0 +1,31 @@
+// Verifier: keyboard focus moving UP the page (Shift+Tab) — does a focused control end up hidden under the stuck row?
+import { chromium } from '/home/user/fl-simple/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4470';
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+for (const [w, h] of [[1440, 900], [1366, 768], [390, 844]]) {
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, serviceWorkers: 'block' });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/auth/login/?any=1`); await page.fill('#email', 'liwayway.domingo@example.com'); await page.fill('#password', 'flossify');
+  await Promise.all([page.waitForNavigation(), page.click('button[type="submit"]')]);
+  for (const tab of (process.env.TABS_ ?? 'overview,patient,chart,treatment-record').split(',')) {
+    await page.goto('about:blank');
+    for (const pid of ['1a1d1c5e-ce1a-4d80-801c-f13fb6ef48cb', '7e57a1c0-0000-4000-8000-000000000301']) {
+    await page.goto('about:blank');
+    await page.goto(`${BASE}/c/session-road/patients/${pid}/#${tab}`, { waitUntil: 'load' }); await page.waitForTimeout(300);
+    // Focus the last focusable in the tab, then walk up with Shift+Tab and record any focus that lands under the row.
+    await page.evaluate((t) => { const p = document.getElementById('rec-' + t) ?? document.querySelector('[data-rec-panel]:not([hidden])'); const f = [...p.querySelectorAll('a[href], button, input:not([type=hidden]), select, textarea, summary')].filter((e) => e.checkVisibility() && e.getClientRects().length && !e.closest('[hidden]')); f[f.length - 1].focus(); }, tab);
+    let under = 0, total = 0; const ex = [];
+    for (let i = 0; i < 60; i++) {
+      await page.keyboard.press('Shift+Tab');
+      const s = await page.evaluate(() => { const a = document.activeElement; const top = document.querySelector('[data-ws-top]').getBoundingClientRect(); const rb = document.querySelector('[data-rec-bar]'); const pin = rb.querySelector('[data-rec-pin]'); const pinned = rb.hasAttribute('data-pinned') && getComputedStyle(pin).display !== 'none'; const bar = rb && rb.getBoundingClientRect().top <= top.bottom + 1 ? (pinned ? pin.getBoundingClientRect() : rb.getBoundingClientRect()) : top; const r = a.getBoundingClientRect();  return { r: [Math.round(r.top), Math.round(r.bottom)], bar: Math.round(bar.bottom), topBar: Math.round(top.bottom), stuck: true, name: (a.innerText || a.getAttribute('aria-label') || a.name || a.tagName).replace(/\s+/g, ' ').trim().slice(0, 30), inTab: !!a.closest('[data-rec-panel]') }; });
+      if (!s.inTab) break;
+      total++;
+      if (s.stuck && s.r[1] <= s.bar + 1) { under++; if (ex.length < 3) ex.push(`${s.name} y${s.r[0]}-${s.r[1]} (row ends ${s.bar})`); }
+      else if (s.stuck && s.r[0] < s.bar) { under++; if (ex.length < 3) ex.push(`partly: ${s.name} y${s.r[0]}-${s.r[1]} (row ends ${s.bar})`); }
+    }
+    console.log(`${w} ${pid.slice(-4)} ${tab.padEnd(17)} focus steps ${total}, hidden or partly hidden under the row: ${under} ${ex.join(' | ')}`);
+  }
+  }
+  await ctx.close();
+}
+await browser.close();

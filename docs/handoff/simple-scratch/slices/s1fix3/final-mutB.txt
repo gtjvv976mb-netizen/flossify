@@ -1,0 +1,8 @@
+caught panels-rec-concat+typo: ✗ #helth (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:236): "#helth" → null
+caught panels-rec-concat+open-typo: ✗ ?open=vitalz (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:240) is not a panel the record opens (OPEN_PANEL): "vitalz"
+caught panels-rec-url+typo: ✗ #helth (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:236): "#helth" → null
+caught panels-rec-url+open-typo: ✗ ?open=vitalz (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:240) is not a panel the record opens (OPEN_PANEL): "vitalz"
+caught neg-money-removed: ✗ an old section (SECTION_META): "money" → null
+
+5 caught, 0 missed, 0 not applied
+clean tree after: passes

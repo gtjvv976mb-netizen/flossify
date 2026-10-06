@@ -1,0 +1,24 @@
+ok   panel draws the birth date and the age: {"url":"7e57a1c0-0000-4000-8000-000000000302/","tab":"rec-rec-overview-tab","callouts":[],"panelOpen":true,"birth":"1990-01-10","was":"1990-01-10","middle":"","age":"36 years old"}
+ok   the age follows the date as typed: "36 years old"
+ok   1 birth changed → ?saved=birth on Today, the head says so: {"url":"7e57a1c0-0000-4000-8000-000000000302/?saved=birth#overview","tab":"rec-rec-overview-tab","callouts":["Details saved. The birth date the record had is kept in the health history."],"panelOpen":false,"birth":"1990-01-11","was":"1990-01-11","middle":"","age":"36 years old"}
+ok   1 database: birth, one new version with from/to and the answers kept, audits: {"birth":"1990-01-11","middle":"","versions":2,"lastChange":"{\"to\": \"1990-01-11\", \"from\": \"1990-01-10\"} |  |","audits":"patient.birth_date,patient.update"}
+ok   2 details only → ?saved=details, no version: {"s":{"url":"7e57a1c0-0000-4000-8000-000000000302/?saved=details#overview","tab":"rec-rec-overview-tab","callouts":["Details saved."],"panelOpen":false,"birth":"1990-01-11","was":"1990-01-11","middle":"Mid","age":"36 years old"},"a":{"birth":"1990-01-11","middle":"Mid","versions":2,"lastChange":"{\"to\": \"1990-01-11\", \"from\": \"1990-01-10\"} |  |","audits":"patient.update"}}
+ok   3 conflict → nothing saved, the panel again with the sentence, typed kept, drawn with the date on file: {"url":"7e57a1c0-0000-4000-8000-000000000302/#overview","tab":"rec-rec-overview-tab","callouts":["Nothing was saved.The birth date on file changed to 12 Jan 1990 after this panel opened, so nothing was saved. Check the birth date, then sa"],"panelOpen":true,"birth":"1990-01-13","was":"1990-01-12","middle":"Conflict","age":"36 years old"}
+ok   3 database untouched (middle name rolled back too): {"birth":"1990-01-12","middle":"Mid","versions":2,"lastChange":"{\"to\": \"1990-01-11\", \"from\": \"1990-01-10\"} |  |","audits":""}
+ok   3 saved again → birth, and the middle name: {"s":{"url":"7e57a1c0-0000-4000-8000-000000000302/?saved=birth#overview","tab":"rec-rec-overview-tab","callouts":["Details saved. The birth date the record had is kept in the health history."],"panelOpen":false,"birth":"1990-01-13","was":"1990-01-13","middle":"Conflict","age":"36 years old"},"a":{"birth":"1990-01-13","middle":"Conflict","versions":3,"lastChange":"{\"to\": \"1990-01-13\", \"from\": \"1990-01-12\"} |  |","audits":"patient.birth_date,patient.update"}}
+ok   4 not touched here → details saved, the other person's birth date stays: {"s":{"url":"7e57a1c0-0000-4000-8000-000000000302/?saved=details#overview","tab":"rec-rec-overview-tab","callouts":["Details saved."],"panelOpen":false,"birth":"1990-01-14","was":"1990-01-14","middle":"Kept","age":"36 years old"},"a":{"birth":"1990-01-14","middle":"Kept","versions":3,"lastChange":"{\"to\": \"1990-01-13\", \"from\": \"1990-01-12\"} |  |","audits":"patient.update"}}
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.waitForNavigation: Timeout 30000ms exceeded.
+=========================== logs ===========================
+waiting for navigation until "load"
+============================================================
+    at save (/tmp/fl-simple-scratch/s3/birth.mjs:28:90)
+    at /tmp/fl-simple-scratch/s3/birth.mjs:68:105 {
+  log: [],
+  name: 'TimeoutError'
+}
+
+Node.js v22.22.2

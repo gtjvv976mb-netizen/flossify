@@ -1,0 +1,16 @@
+saved-birth
+    callouts ["Saved."] → ["Details saved. The birth date the record had is kept in the health history."]
+    url "?saved=birth#health" → "?saved=birth#patient"
+saved-birth-details
+    callouts ["Saved."] → ["Details saved. The birth date the record had is kept in the health history."]
+    panels ["patient"] → ["overview"]
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"}
+    tab "patient" → "overview"
+presses differ
+   ('rich', 0, 'patient', [], '#patient') → ('rich', 0, 'chart', [], '#chart')
+   ('rich', 1, 'treatment-record', [], '#treatment-record') → ('rich', 1, 'patient', [], '#patient')
+   ('rich', 2, 'chart', [], '#chart') → ('rich', 2, 'patient', [], '#patient')
+   ('rich', 4, 'patient', [], '#patient') → ('rich', 4, 'chart', [], '#chart')
+   ('rich', 5, 'patient', [], '#patient') → ('rich', 5, 'chart', [], '#chart')
+   ('rich', 6, 'chart', [], '#chart') → ('rich', 6, 'patient', [], '#patient')
+152 links, 16 presses compared; 3 differences

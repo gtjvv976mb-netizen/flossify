@@ -1,0 +1,161 @@
+
+## start
+ {
+ "birth": "1984-03-02 -",
+ "versions": "1",
+ "audits": "0"
+}
+
+## 1 age while typing
+ {
+ "url": "00000000401/#chart",
+ "open": "details",
+ "birth": "2010-05-01",
+ "was": "1984-03-02",
+ "age": "16 years old",
+ "problems": [],
+ "callouts": [
+  "Note for the dentistFaints at the sight of needles: lie her back before any injection and keep juice at the chair. Anxio",
+  "The health answers are not saved yet. Save them first, then record consent.Save the health answers"
+ ],
+ "tab": "rec-rec-chart-tab",
+ "safety": "Allergy: PenicillinAllergy: LatexAllergy: Sulfa drugsAllergy: AspirinAllergy: Co"
+}
+
+## 2 after save
+ {
+ "url": "00000000401/?saved=birth#overview",
+ "open": null,
+ "birth": "2010-05-01 -",
+ "problems": [],
+ "callouts": [
+  "Note for the dentistFaints at the sight of needles: lie her back before any injection and keep juice at the chair. Anxio",
+  "Details saved. The birth date the record had is kept in the health history.",
+  "The health answers are not saved yet. Save them first, then record consent.Save the health answers"
+ ],
+ "tab": "rec-rec-overview-tab",
+ "safety": "Allergy: PenicillinAllergy: LatexAllergy: Sulfa drugsAllergy: AspirinAllergy: Co",
+ "versions": "2",
+ "audits": "2",
+ "hist": "{\"birth_date\": {\"to\": \"2010-05-01\", \"from\": \"1984-03-02\"}}"
+}
+
+## 3 conflict
+ {
+ "url": "00000000401/#patient",
+ "open": "details",
+ "birth": "2001-01-01",
+ "was": "1999-09-09",
+ "age": "25 years old",
+ "problems": [
+  "Nothing was saved.Someone changed the birth date on file to 9 Sep 1999 after this panel opened. Check it with the patient, then save again."
+ ],
+ "callouts": [
+  "Note for the dentistFaints at the sight of needles: lie her back before any injection and keep juice at the chair. Anxio",
+  "The health answers are not saved yet. Save them first, then record consent.Save the health answers"
+ ],
+ "tab": "rec-rec-patient-tab",
+ "safety": "Allergy: PenicillinAllergy: LatexAllergy: Sulfa drugsAllergy: AspirinAllergy: Co",
+ "before": {
+  "birth": "1999-09-09 -",
+  "versions": "2",
+  "audits": "2"
+ },
+ "after": {
+  "birth": "1999-09-09 -",
+  "versions": "2",
+  "audits": "2"
+ }
+}
+
+## 3b resubmit
+ {
+ "url": "00000000401/?saved=birth#overview",
+ "open": null,
+ "birth": "2001-01-01 vv@example.com",
+ "problems": [],
+ "callouts": [
+  "Note for the dentistFaints at the sight of needles: lie her back before any injection and keep juice at the chair. Anxio",
+  "Details saved. The birth date the record had is kept in the health history.",
+  "The health answers are not saved yet. Save them first, then record consent.Save the health answers"
+ ],
+ "tab": "rec-rec-overview-tab",
+ "safety": "Allergy: PenicillinAllergy: LatexAllergy: Sulfa drugsAllergy: AspirinAllergy: Co",
+ "versions": "3",
+ "audits": "4"
+}
+
+## 4 untouched birth, email change
+ {
+ "url": "00000000401/?saved=details#overview",
+ "open": null,
+ "birth": "1970-07-07 vv2@example.com",
+ "problems": [],
+ "callouts": [
+  "Note for the dentistFaints at the sight of needles: lie her back before any injection and keep juice at the chair. Anxio",
+  "Details saved.",
+  "The health answers are not saved yet. Save them first, then record consent.Save the health answers"
+ ],
+ "tab": "rec-rec-overview-tab",
+ "safety": "Allergy: PenicillinAllergy: LatexAllergy: Sulfa drugsAllergy: AspirinAllergy: Co",
+ "versions": "3",
+ "audits": "5"
+}
+
+## 5 future
+ {
+ "url": "00000000401/#chart",
+ "open": "details",
+ "birth": "2030-01-01",
+ "was": "1970-07-07",
+ "age": "",
+ "problems": [
+  "Nothing was saved.The birth date is after today. Check the year."
+ ],
+ "callouts": [
+  "Note for the dentistFaints at the sight of needles: lie her back before any injection and keep juice at the chair. Anxio",
+  "The health answers are not saved yet. Save them first, then record consent.Save the health answers"
+ ],
+ "tab": "rec-rec-chart-tab",
+ "safety": "Allergy: PenicillinAllergy: LatexAllergy: Sulfa drugsAllergy: AspirinAllergy: Co",
+ "before": {
+  "birth": "1970-07-07 vv2@example.com",
+  "versions": "3",
+  "audits": "5"
+ },
+ "after": {
+  "birth": "1970-07-07 vv2@example.com",
+  "versions": "3",
+  "audits": "5"
+ }
+}
+
+## 6 cleared
+ {
+ "url": "00000000401/?saved=birth#overview",
+ "open": null,
+ "birth": "null vv2@example.com",
+ "problems": [],
+ "callouts": [
+  "Note for the dentistFaints at the sight of needles: lie her back before any injection and keep juice at the chair. Anxio",
+  "Details saved. The birth date the record had is kept in the health history.",
+  "The health answers are not saved yet. Save them first, then record consent.Save the health answers"
+ ],
+ "tab": "rec-rec-overview-tab",
+ "safety": "Allergy: PenicillinAllergy: LatexAllergy: Sulfa drugsAllergy: AspirinAllergy: Co",
+ "versions": "4",
+ "audits": "7",
+ "hist": "{\"birth_date\": {\"to\": null, \"from\": \"1970-07-07\"}}"
+}
+
+## 7 legacy health post
+ {
+ "res": {
+  "status": 0,
+  "type": "opaqueredirect",
+  "loc": null
+ },
+ "birth": "1985-05-05 vv2@example.com",
+ "versions": "5",
+ "audits": "8"
+}

@@ -1,0 +1,17 @@
+import { chromium } from '/home/user/fl-simple/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4470';
+const REC = `${BASE}/c/session-road/patients/1a1d1c5e-ce1a-4d80-801c-f13fb6ef48cb/`;
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+const page = await ctx.newPage();
+await page.goto(`${BASE}/auth/login/?any=1`); await page.fill('#email', 'liwayway.domingo@example.com'); await page.fill('#password', 'flossify');
+await Promise.all([page.waitForNavigation(), page.click('button[type="submit"]')]);
+await page.goto(REC, { waitUntil: 'load' }); await page.waitForTimeout(300);
+const m = () => page.evaluate(() => ({ y: Math.round(scrollY), h: document.documentElement.scrollHeight, bar: Math.round(document.querySelector('[data-rec-bar]').getBoundingClientRect().top), chart: Math.round(document.getElementById('rec-chart').getBoundingClientRect().top), chartH: Math.round(document.getElementById('rec-chart').getBoundingClientRect().height) }));
+await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await page.waitForTimeout(200);
+console.log('bottom of today', await m());
+await page.evaluate(() => document.getElementById('rec-rec-chart-tab').click()); await page.waitForTimeout(50);
+console.log('after click 50ms', await m());
+await page.waitForTimeout(500);
+console.log('after 550ms', await m());
+await b.close();

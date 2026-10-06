@@ -1,0 +1,44 @@
+plan                   back=-                tab=treatment        shown:Added to the plan. || hidden:The health answers are not saved yet. Save them first, then record con
+plan-accepted          back=-                tab=treatment        shown:Marked accepted. The patient agreed to it. || hidden:The health answers are not saved yet. Save them first, then record con
+plan-declined          back=-                tab=treatment        shown:Marked declined. It stays on the plan, crossed out. || hidden:The health answers are not saved yet. Save them first, then record con
+plan-planned           back=-                tab=treatment        shown:Back to planned. || hidden:The health answers are not saved yet. Save them first, then record con
+plan-done              back=-                tab=treatment        shown:Marked done, and added to treatments done. || hidden:The health answers are not saved yet. Save them first, then record con
+plan-removed           back=-                tab=treatment        shown:Taken off the plan. || hidden:The health answers are not saved yet. Save them first, then record con
+done                   back=-                tab=treatment        shown:Treatment recorded. || hidden:The health answers are not saved yet. Save them first, then record con
+lab                    back=-                tab=treatment        shown:Lab case added. || hidden:The health answers are not saved yet. Save them first, then record con
+lab-moved              back=-                tab=treatment        shown:Lab case moved on. || hidden:The health answers are not saved yet. Save them first, then record con
+note                   back=-                tab=notes            shown:Note saved under your name. || hidden:The health answers are not saved yet. Save them first, then record con
+addendum               back=-                tab=notes            shown:Addendum saved under the note. || hidden:The health answers are not saved yet. Save them first, then record con
+file                   back=-                tab=files            shown:File added to the record. || hidden:The health answers are not saved yet. Save them first, then record con
+file-removed           back=-                tab=files            shown:File taken off the record. It is kept for the audit. || hidden:The health answers are not saved yet. Save them first, then record con
+files:3                back=-                tab=files            shown:3 files added to the record. || hidden:The health answers are not saved yet. Save them first, then record con
+recall                 back=-                tab=overview         shown:Next check-up set. || hidden:The health answers are not saved yet. Save them first, then record con
+recall-done            back=-                tab=overview         shown:Marked as came in. Set the next one when you are ready. || hidden:The health answers are not saved yet. Save them first, then record con
+recall-cleared         back=-                tab=overview         shown:Next check-up cleared. || hidden:The health answers are not saved yet. Save them first, then record con
+loa                    back=-                tab=treatment        shown:LOA request noted. Write in the approval code when the HMO answers. || hidden:The health answers are not saved yet. Save them first, then record con
+loa-approved           back=-                tab=treatment        shown:Approved. The code is on the record. || hidden:The health answers are not saved yet. Save them first, then record con
+loa-denied             back=-                tab=treatment        shown:Denied. The reason is on the record. || hidden:The health answers are not saved yet. Save them first, then record con
+loa-cancelled          back=-                tab=treatment        shown:LOA cancelled. || hidden:The health answers are not saved yet. Save them first, then record con
+payplan-stopped        back=-                tab=treatment        shown:Plan stopped. Its statement stays, with whatever is left to pay. || hidden:The health answers are not saved yet. Save them first, then record con
+answered               back=-                tab=rx               shown:The physician’s reply is on the record. || hidden:The health answers are not saved yet. Save them first, then record con
+rx:5aa8a88b-1059-421d-8ce9-28612789eebd back=-                tab=rx               shown:Prescription saved.Print it for Maria Liza on the clinic’s paper, with || shown:Printed without a PTR numberWrite it in by hand before signing. Papers || hidden:The health answers are not saved yet. Save them first, then record con
+letter:66ac700b-43bd-481e-a6a1-39341416ce72 back=-                tab=rx               shown:Dental certificate saved.Print it on the clinic’s paper, signed by Dr. || shown:Printed without a PTR numberWrite it in by hand before signing. Papers || hidden:The health answers are not saved yet. Save them first, then record con
+payplan:0fa1a28a-895b-4ddb-862b-265b4f2e3535 back=-                tab=treatment        shown:Plan made, with its statement.Take the down payment on the statement,  || hidden:The health answers are not saved yet. Save them first, then record con
+adjusted:2026-11-02    back=-                tab=treatment        shown:Adjustment saved. The next one is 2 Nov 2026: book it before they leav || hidden:The health answers are not saved yet. Save them first, then record con
+vitals                 back=-                tab=health           shown:Reading saved. || hidden:The health answers are not saved yet. Save them first, then record con
+vitals-high            back=-                tab=health           hidden:The health answers are not saved yet. Save them first, then record con
+vitals-crisis          back=-                tab=health           hidden:The health answers are not saved yet. Save them first, then record con
+vitals-low             back=-                tab=health           shown:Reading saved. || hidden:The health answers are not saved yet. Save them first, then record con
+checked                back=-                tab=overview         VIEW:Health history checked with Maria Liza: no change. || hidden:The health answers are not saved yet. Save them first, then record con
+checked-today          back=-                tab=overview         VIEW:The health history was already checked today. || hidden:The health answers are not saved yet. Save them first, then record con
+health                 back=-                tab=health           shown:Saved. || hidden:The health answers are not saved yet. Save them first, then record con
+birth                  back=-                tab=health           shown:Saved. || hidden:The health answers are not saved yet. Save them first, then record con
+nothing                back=-                tab=health           shown:Nothing was saved: nothing is ticked or typed yet. || hidden:The health answers are not saved yet. Save them first, then record con
+consent                back=-                tab=consent          hidden:The health answers are not saved yet. Save them first, then record con
+consent-already        back=-                tab=consent          hidden:The health answers are not saved yet. Save them first, then record con
+paper                  back=-                tab=consent          hidden:The health answers are not saved yet. Save them first, then record con || shown:Recorded.
+details                back=-                tab=overview         VIEW:Details saved. || hidden:The health answers are not saved yet. Save them first, then record con
+new                    back=-                tab=overview         VIEW:Added. Maria Liza Dela Cruz is on file as SR-0142; everything from the || hidden:The health answers are not saved yet. Save them first, then record con
+capacity               back=-                tab=consent          VIEW:Recorded. For 30 days a representative may sign consent forms for them || hidden:The health answers are not saved yet. Save them first, then record con
+consent-removed        back=-                tab=consent          VIEW:The form was removed. || hidden:The health answers are not saved yet. Save them first, then record con
+charted                back=-                tab=treatment        hidden:The health answers are not saved yet. Save them first, then record con

@@ -1,0 +1,26 @@
+owner   maria  bills=true facts="Chart no. SR-014238 years oldFemale0917 555 0142Owes ₱3,250.00" link finances/?patient=1a1d1c5e-ce1a-4d80-801c-f13fb6ef48cb&view=all ok
+owner   none   bills=true facts="Chart no. T-NONE36 years oldFemale0917 555 0302In credit ₱500.00" link finances/?patient=7e57a1c0-0000-4000-8000-000000000302&view=all ok
+owner   rich   bills=true facts="Chart no. T-RICH47 years oldFemale0917 555 0901Maxicare MX-2231-0901Nothing owed"  ok
+dentist maria  bills=false facts="Chart no. SR-014238 years oldFemale0917 555 0142"  ok
+dentist none   bills=false facts="Chart no. T-NONE36 years oldFemale0917 555 0302"  ok
+dentist rich   bills=false facts="Chart no. T-RICH47 years oldFemale0917 555 0901Maxicare MX-2231-0901"  ok
+ramon   maria  bills=false facts="Chart no. SR-014238 years oldFemale0917 555 0142"  ok
+ramon   none   bills=false facts="Chart no. T-NONE36 years oldFemale0917 555 0302"  ok
+ramon   rich   bills=false facts="Chart no. T-RICH47 years oldFemale0917 555 0901Maxicare MX-2231-0901"  ok
+admin   maria  bills=true facts="Chart no. SR-014238 years oldFemale0917 555 0142Owes ₱3,250.00" link finances/?patient=1a1d1c5e-ce1a-4d80-801c-f13fb6ef48cb&view=all ok
+admin   none   bills=true facts="Chart no. T-NONE36 years oldFemale0917 555 0302In credit ₱500.00" link finances/?patient=7e57a1c0-0000-4000-8000-000000000302&view=all ok
+admin   rich   bills=true facts="Chart no. T-RICH47 years oldFemale0917 555 0901Maxicare MX-2231-0901Nothing owed"  ok
+assoc   maria  bills=false facts="Chart no. SR-014238 years oldFemale0917 555 0142"  ok
+assoc   none   bills=false facts="Chart no. T-NONE36 years oldFemale0917 555 0302"  ok
+assoc   rich   bills=false facts="Chart no. T-RICH47 years oldFemale0917 555 0901Maxicare MX-2231-0901"  ok
+sec     maria  bills=true facts="Chart no. SR-014238 years oldFemale0917 555 0142Owes ₱3,250.00" link finances/?patient=1a1d1c5e-ce1a-4d80-801c-f13fb6ef48cb&view=all ok
+sec     none   bills=true facts="Chart no. T-NONE36 years oldFemale0917 555 0302In credit ₱500.00" link finances/?patient=7e57a1c0-0000-4000-8000-000000000302&view=all ok
+sec     rich   bills=true facts="Chart no. T-RICH47 years oldFemale0917 555 0901Maxicare MX-2231-0901Nothing owed"  ok
+asst    maria  bills=false facts="Chart no. SR-014238 years oldFemale0917 555 0142"  ok
+asst    none   bills=false facts="Chart no. T-NONE36 years oldFemale0917 555 0302"  ok
+asst    rich   bills=false facts="Chart no. T-RICH47 years oldFemale0917 555 0901Maxicare MX-2231-0901"  ok
+desk    maria  bills=false facts="Chart no. SR-014238 years oldFemale0917 555 0142"  ok
+desk    none   bills=false facts="Chart no. T-NONE36 years oldFemale0917 555 0302"  ok
+desk    rich   bills=false facts="Chart no. T-RICH47 years oldFemale0917 555 0901Maxicare MX-2231-0901"  ok
+all ok
+owes exit 0

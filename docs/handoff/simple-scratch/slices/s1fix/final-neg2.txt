@@ -1,0 +1,10 @@
+[1] OPEN_PANEL details → bogus ::   ✗ OPEN_PANEL[details]: "overviewz" → null   ✗ landingSection gave a section that is no tab, in 24 of the combinations, first: {"backTo":null,"fromChart":false,"saved":null,"openNow":"details","visit":null} → "overviewz" 
+[1] OPEN_PANEL loses rx (a link uses ?open=rx) ::   ✗ the page opens a panel for ?open=rx (src/pages/c/[clinic]/patients/[patient].astro:1158) that OPEN_PANEL does not know: "rx"   ✗ ?open=rx, an inbound link of spec §5, is not in OPEN_PANEL: "rx" 
+[1] page sets backTo to an unknown section ::   ✗ a section the page lands on (src/pages/c/[clinic]/patients/[patient].astro:240): "consentz" → null   ✗ landingSection gave a section that is no tab, in 2800 of the combinations, first: {"backTo":"consentz","fromChart":fa
+[1] TreatmentPanels form action hash unknown ::   ✗ #treatment-donez (src/pages/c/[clinic]/patients/_record/TreatmentPanels.astro:111 via src/pages/c/[clinic]/patients/_record/TreatmentPanels.astro:111): "#treatment-donez" → null 
+[1] NotePanel aimForm home unknown ::   ✗ #notez (src/pages/c/[clinic]/patients/_record/pickpanel.ts:10 via src/pages/c/[clinic]/patients/_record/NotePanel.astro:73): "#notez" → null 
+[1] ChartOffer data-rec-go valid but offer form hash bogus ::   ✗ #chart-offerz (src/pages/c/[clinic]/patients/_record/ChartOffer.astro:71): "#chart-offerz" → null 
+   !! pattern not found in src/pages/c/[clinic]/patients/[patient]/sign/[visit].astro
+[0] sign page ?visit link → unknown hash :: 
+[1] Dashboard panels.ts rec('rx') → rec('rxz') ::   ✗ #rxz (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:247): "#rxz" → null 
+[1] RecordNav/SECTION_META new section unknown :: 

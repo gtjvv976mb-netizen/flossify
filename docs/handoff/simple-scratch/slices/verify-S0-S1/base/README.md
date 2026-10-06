@@ -1,0 +1,183 @@
+# Flossify — marketing site
+
+Dental practice software marketing site. Astro + Tailwind v4, static output.
+
+## Run it
+
+```bash
+npm install
+cp .env.example .env     # DATABASE_URL, SESSION_SECRET, the text sender, uploads
+npm run db:setup         # creates flossify_dev from schema + migrations, seeds it
+npm run dev              # http://localhost:4321
+npm run build && npm run preview   # the Node server, as deployed
+npm run sms:worker       # in a second terminal: sends queued texts (console provider in dev)
+```
+
+Needs a local PostgreSQL (Homebrew's is fine). `db:setup` drops and recreates
+the database, runs `src/data/schema.sql` and `src/data/migrations/*.sql`, then
+seeds the invented clinics, dentists and patients. Dev sign-in: each group's
+owner has the password `flossify` — e.g. `liwayway.domingo@example.com`.
+
+The app connects as `flossify_app`, a plain role, so PostgreSQL row-level
+security applies to it; `src/lib/db.ts` refuses to start as a superuser.
+
+## Why Astro
+
+The whole positioning is "try it now, no demo call." A page that argues for
+speed has to be fast. Current build:
+
+| | This site | Molarsoft (Sept 2026) |
+| --- | --- | --- |
+| Home page, gzipped | ~16 KB | ~580 KB of JS alone |
+| JS shipped | 1.9 KB gzipped, one file | 580 KB, 23 files |
+
+The odontogram script imports shared types, so Astro emits it as one small
+module rather than inlining it. Keep it that way: before adding a framework,
+check whether a few lines of vanilla JS will do. The whole site — ten pages
+plus assets — is 34 KB gzipped.
+
+## Server and database
+
+Static by default; pages that read the database opt out of prerendering and
+run on the Node adapter. `src/lib/db.ts` has the two ways in: `withClinic(id,
+fn)` runs fn in a transaction with `app.clinic_id` set, so RLS scopes every
+query to one clinic; `publicRead` runs the security-definer functions
+(`public_directory()`, `public_dentist()`, `public_booked_ranges()`) that
+expose a clinic's public face without a tenant. Sessions are signed cookies
+(`src/lib/auth.ts`); `requireWorkspace` (`src/lib/workspace.ts`) gates every
+workspace page and re-checks branch access on each request.
+
+API: `GET /api/availability` (real open slots), `POST /api/bookings` (book or
+request without an account; the slot is re-checked inside the insert's
+transaction; twenty an hour per address, five a day per mobile), `DELETE
+/api/bookings/:ref` (undo within three minutes, cancel after), `POST
+/api/sms/inbound` (a patient's reply; `Y` confirms their next visit).
+
+Texts: the app only queues them (`message_log`). `npm run sms:worker` sends
+them — `SMS_PROVIDER=console` prints them in development, `semaphore` sends
+through semaphore.co with a registered sender name — holds patient texts
+between 9 pm and 8 am, queues one reminder per visit the day before, and
+retries three times before marking a text failed. The desk sees every text,
+both directions, on the branch's **Messages** page. No text ever contains a
+link; Philippine telcos drop those.
+
+Sign-in: scrypt passwords, a signed session cookie, a CSRF token on every
+form, rate limits on sign-in, reset and sign-up, and password reset by a
+six-digit code texted to the staff member's mobile (`/auth/forgot/`,
+`/auth/code/`). A password change signs out every other session.
+
+Clinics: `/start/` creates a clinic and its owner in one form. It begins
+unlisted; Settings (profile, hours, HMOs, the fee guide, Team with texted
+invitations, Photos, Privacy, Billing) works down a checklist and the owner
+flips **Listed on Find a clinic** when the page is ready. Claims (HMO and
+PhilHealth) have their own page with aging and a CSV export; the tooth chart
+saves every change under the staff member's name.
+
+Schedule: `/c/<slug>/schedule/` — the day by chair or by dentist, a week
+view, drag a visit to another time or chair, one sentence when it clashes,
+web bookings land in an Unplaced lane, print the day list. JSON API at
+`/api/schedule` and `/api/patients`.
+
+Patients: `/me/` — a texted code and nothing else — shows every visit under
+that mobile across clinics, with confirm and cancel. `/privacy/` is the
+versioned notice; each booking records which version was agreed to.
+
+Operations (`/admin/`, Flossify staff only): the PRC licence check queue,
+the clinics list, and billing — trials, monthly invoices, manual payments
+marked paid. Prices and pay-to details are placeholders in
+`src/lib/billing.ts` until you set them; nothing is invoiced until
+`BILLING_FINAL` in `src/lib/billing-config.ts` is true.
+
+The workspace installs as an app (`manifest.webmanifest`, `sw.js`); the
+service worker caches only the shell and fonts, never patient data.
+
+## Layout
+
+```
+src/
+  layouts/Base.astro        <head>, meta, JSON-LD, theme bootstrap
+  components/Odontogram.astro   the interactive chart
+  pages/index.astro         the landing page, content in frontmatter
+  pages/websites.astro      the clinic-website service, framing the sample
+  pages/find/…              patients: find a clinic, clinic pages, booking without an account
+  pages/dentists/…          dentist profiles with dated PRC checks
+  pages/coverage.astro      PhilHealth dental benefit and HMO cards, explained
+  data/directory.ts         the directory's invented clinics, dentists, services
+  lib/availability.ts       Manila-time status and open slots
+  styles/global.css         design tokens, tooth states, dark mode
+public/
+  samples/swiftcare/        a complete sample clinic website (static, no build)
+```
+
+Page copy lives in the frontmatter arrays at the top of `index.astro`
+(`steps`, `pillars`, `comparison`, `faqs`). Edit there, not in the markup.
+
+## The odontogram
+
+Full adult dentition. Every tooth is a real `<button>` rendered
+server-side, so it is keyboard-operable and visible with JS disabled.
+
+**Charting is a palette, not a cycle.** Clicking a tooth opens a popover:
+pick the surfaces, then the finding. An earlier version cycled through
+states on each click, which meant three clicks to record a crown and four
+more to undo a mis-click — fine for a demo, wrong at the chair with gloves
+on. The popover uses the native `popover` attribute, so Escape, light
+dismiss and focus handling come from the browser.
+
+Findings split the way dentists actually record them:
+
+- **Per surface** — caries, filled, sealant. Stored against mesial, distal,
+  buccal, lingual and the occlusal/incisal surface, and shown as pips placed
+  where that surface sits on the drawn tooth. "Mesial" is toward the
+  midline, so which side that is flips between quadrants; putting the pip on
+  the wrong side is a clinical error, not a cosmetic one.
+- **Whole tooth** — crown, bridge, veneer, root canal, implant, missing,
+  unerupted, impacted. "Missing on the mesial" is not something a dentist
+  can say, so picking one of these ignores the surface row.
+
+Anteriors have an incisal edge, not an occlusal table; the palette relabels
+that slot per tooth.
+
+Arrow keys move between teeth under a roving tabindex — 32 tab stops in a
+row is not navigation.
+
+Three notation systems, because the market is not one country:
+
+| Region | System | Example (upper right third molar) |
+| --- | --- | --- |
+| International / PH | FDI | 18 |
+| United States | Universal | 1 |
+| United Kingdom | Palmer | UR8 |
+
+Each button carries all three as data attributes and the segmented control
+relabels in place. Adding deciduous (child) dentition means extending the
+`QUADRANTS` map with quadrants 5–8.
+
+## Theming
+
+Colors are CSS variables in `global.css`, mapped into Tailwind with
+`@theme inline`. Dark mode is a variable swap, not a second set of
+utilities. It follows the OS by default and `[data-theme]` overrides it;
+the choice persists in `localStorage`, and every access is wrapped in
+try/catch because private mode throws.
+
+## Before this goes live
+
+- [ ] Replace every `[YOUR ...]` placeholder: price, branch price, trial
+      length, storage policy, SEC registration number, and the Data Privacy
+      Act statement. **Do not claim NPC compliance before it is true.**
+- [ ] Re-verify every row of the comparison table against the competitor's
+      live site, and keep the date on the claim. Comparative marketing is
+      fine; being wrong about a competitor is not.
+- [x] The domain is **flossify.ph** (the owner, September 2026); `site` in
+      `astro.config.mjs` points at it. Flossy (flossy.com) sells AI software
+      to dental practices — one letter away, same buyer.
+- [ ] Set the plan prices, the GCash / Maya / bank pay-to details, the billing
+      email and the listing-pause policy in `src/lib/billing.ts` (all marked
+      as placeholders on the Billing pages until then), then set
+      `BILLING_FINAL = true` in `src/lib/billing-config.ts`. Until then no
+      invoice is issued.
+- [ ] Name Flossify's Data Protection Officer and enter the NPC registration
+      number in `src/pages/privacy.astro` — only once they are real.
+- [ ] Add real product screenshots. The chart is currently the only real
+      product surface on the page.

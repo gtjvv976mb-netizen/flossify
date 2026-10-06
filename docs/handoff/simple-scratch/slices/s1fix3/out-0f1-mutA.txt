@@ -1,0 +1,28 @@
+MISSED close-concat-open: exit 0 — a bad ?open= added by concatenation (the file's own style)
+   src/pages/c/[clinic]/finances/close/index.astro: "patientHref(d.patient_id) + '#treatment'" → "patientHref(d.patient_id) + '?open=nte'"
+MISSED close-concat-saved: exit 0 — a bad ?saved= in the literal after the helper
+   src/pages/c/[clinic]/finances/close/index.astro: "patientHref(d.patient_id) + '#treatment'" → "patientHref(d.patient_id) + '?saved=xyz#treatment'"
+MISSED close-concat-query-hash: exit 0 — a bad hash after a query in the concatenated literal
+   src/pages/c/[clinic]/finances/close/index.astro: "patientHref(d.patient_id) + '#treatment'" → "patientHref(d.patient_id) + '?from=close#treatmnt'"
+MISSED close-concat-visit-hash: exit 0 — S2's suggested change, with the visit, and a typo
+   src/pages/c/[clinic]/finances/close/index.astro: "patientHref(d.patient_id) + '#treatment'" → "patientHref(d.patient_id) + '?visit=' + d.patient_id + '#treatment-recrd'"
+MISSED close-money-query-hash: exit 0 — same, on the #money link
+   src/pages/c/[clinic]/finances/close/index.astro: "patientHref(p.id) + '#money'" → "patientHref(p.id) + '?from=close#mony'"
+caught close-template-helper-hash (1 occurrence): ✗ #treatmnt (src/pages/c/[clinic]/finances/close/index.astro:338): "#treatmnt" → null
+MISSED panels-concat-open: exit 0 — the desk note's link by concatenation
+   src/components/ws/cal/panels.ts: "`${recordHref(c.patientId)}?open=details&dash=${encodeURIComponent(c.id)}`" → "recordHref(c.patientId) + '?open=detals&dash=' + encodeURIComponent(c.id)"
+MISSED panels-rec-concat-hash: exit 0 — rec() by concatenation; calls unchanged; no typo (control: should pass)
+   src/components/ws/cal/panels.ts: "`${recordHref(c.patientId, c.id)}${open ? `&open=${open}` : ''}#${hash}`" → "recordHref(c.patientId, c.id) + (open ? '&open=' + open : '') + '#' + hash"
+caught panels-rec-concat-hash-typo (1 occurrence): ✗ #helth (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:236): "#helth" → null
+MISSED consents-concat-saved: exit 0 — the capacity redirect by concatenation, bad saved
+   src/pages/c/[clinic]/patients/[patient]/consents/index.astro: "`${record}?saved=capacity#consent`" → "record + '?saved=capcity#consent'"
+MISSED consents-concat-hash: exit 0 — the capacity redirect by concatenation, bad hash
+   src/pages/c/[clinic]/patients/[patient]/consents/index.astro: "`${record}?saved=capacity#consent`" → "record + '?saved=capacity#consnt'"
+MISSED forms-concat-saved: exit 0 — Add patient from a form, by concatenation
+   src/pages/c/[clinic]/patients/forms/[form]/index.astro: "`${base}${r.patientId}/?saved=form&form=${formId}`" → "base + r.patientId + '/?saved=frm&form=' + formId"
+MISSED type-concat-saved: exit 0 — fully concatenated address
+   src/pages/c/[clinic]/patients/new/type.astro: "`/c/${clinic.slug}/patients/${out.id}/?saved=new`" → "'/c/' + clinic.slug + '/patients/' + out.id + '/?saved=nw'"
+caught sign-back-hash (1 occurrence): ✗ #nots (src/pages/c/[clinic]/patients/[patient]/sign/[visit].astro:40): "#nots" → null
+
+3 caught, 11 missed, 0 not applied
+clean tree after: passes

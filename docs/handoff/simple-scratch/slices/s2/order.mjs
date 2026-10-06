@@ -1,0 +1,11 @@
+import { chromium } from '/home/user/fl-simple/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4470';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await b.newContext(); const page = await ctx.newPage();
+await page.goto(`${BASE}/auth/login/?any=1`); await page.fill('#email', 'liwayway.domingo@example.com'); await page.fill('#password', 'flossify');
+await Promise.all([page.waitForNavigation(), page.click('button[type="submit"]')]);
+const r = await page.goto(`${BASE}/c/session-road/patients/1a1d1c5e-ce1a-4d80-801c-f13fb6ef48cb/`);
+const html = await r.text();
+const scripts = [...html.matchAll(/<script\b[^>]*>/g)].map((m) => [m.index, m[0].slice(0, 140)]);
+console.log(scripts.length, 'scripts'); for (const s of scripts) console.log(s[0], s[1]);
+await b.close();

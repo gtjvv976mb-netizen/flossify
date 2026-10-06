@@ -1,0 +1,121 @@
+ok   owner light 1440 maria  overview         max 1  teal: New booking
+ok   owner light 1440 maria  patient          max 1  teal: New booking | Record consent
+ok   owner light 1440 maria  chart            max 1  teal: New booking | Add to plan
+ok   owner light 1440 maria  treatment-record max 1  teal: New booking
+ok   owner light 1440 rich   overview         max 1  teal: New booking
+ok   owner light 1440 rich   patient          max 1  teal: New booking | Record consent
+ok   owner light 1440 rich   chart            max 1  teal: New booking | Add to plan
+ok   owner light 1440 rich   treatment-record max 1  teal: New booking
+ok   owner light 1440 ledger overview         max 1  teal: New booking
+ok   owner light 1440 ledger patient          max 1  teal: New booking | Record consent
+ok   owner light 1440 ledger chart            max 1  teal: New booking | Add to plan
+ok   owner light 1440 ledger treatment-record max 1  teal: New booking
+ok   owner light 1440 teal   overview         max 1  teal: New booking
+ok   owner light 1440 teal   patient          max 1  teal: New booking | Record consent
+ok   owner light 1440 teal   chart            max 1  teal: New booking | Add to plan
+ok   owner light 1440 teal   treatment-record max 1  teal: New booking
+ok   owner light 1440 stale  overview         max 1  teal: New booking
+ok   owner light 1440 stale  patient          max 1  teal: New booking | Save
+ok   owner light 1440 stale  chart            max 1  teal: New booking | Add to plan
+ok   owner light 1440 stale  treatment-record max 1  teal: New booking
+ok   owner light 1366 maria  overview         max 1  teal: New booking
+ok   owner light 1366 maria  patient          max 1  teal: New booking | Record consent
+ok   owner light 1366 maria  chart            max 1  teal: New booking | Add to plan
+ok   owner light 1366 maria  treatment-record max 1  teal: New booking
+ok   owner light 1366 rich   overview         max 1  teal: New booking
+ok   owner light 1366 rich   patient          max 1  teal: New booking | Record consent
+ok   owner light 1366 rich   chart            max 1  teal: New booking | Add to plan
+ok   owner light 1366 rich   treatment-record max 1  teal: New booking
+ok   owner light 1366 ledger overview         max 1  teal: New booking
+ok   owner light 1366 ledger patient          max 1  teal: New booking | Record consent
+ok   owner light 1366 ledger chart            max 1  teal: New booking | Add to plan
+ok   owner light 1366 ledger treatment-record max 1  teal: New booking
+ok   owner light 1366 teal   overview         max 1  teal: New booking
+ok   owner light 1366 teal   patient          max 1  teal: New booking | Record consent
+ok   owner light 1366 teal   chart            max 1  teal: New booking | Add to plan
+ok   owner light 1366 teal   treatment-record max 1  teal: New booking
+ok   owner light 1366 stale  overview         max 1  teal: New booking
+ok   owner light 1366 stale  patient          max 1  teal: New booking | Save
+ok   owner light 1366 stale  chart            max 1  teal: New booking | Add to plan
+ok   owner light 1366 stale  treatment-record max 1  teal: New booking
+ok   owner light 390 maria  overview         max 1  teal: New booking
+ok   owner light 390 maria  patient          max 1  teal: New booking | Record consent
+ok   owner light 390 maria  chart            max 1  teal: New booking | Add to plan
+ok   owner light 390 maria  treatment-record max 1  teal: New booking
+ok   owner light 390 rich   overview         max 1  teal: New booking
+ok   owner light 390 rich   patient          max 1  teal: New booking | Record consent
+ok   owner light 390 rich   chart            max 1  teal: New booking | Add to plan
+ok   owner light 390 rich   treatment-record max 1  teal: New booking
+ok   owner light 390 ledger overview         max 1  teal: New booking
+ok   owner light 390 ledger patient          max 1  teal: New booking | Record consent
+ok   owner light 390 ledger chart            max 1  teal: New booking | Add to plan
+ok   owner light 390 ledger treatment-record max 1  teal: New booking
+ok   owner light 390 teal   overview         max 1  teal: New booking
+ok   owner light 390 teal   patient          max 1  teal: New booking | Record consent
+ok   owner light 390 teal   chart            max 1  teal: New booking | Add to plan
+ok   owner light 390 teal   treatment-record max 1  teal: New booking
+ok   owner light 390 stale  overview         max 1  teal: New booking
+ok   owner light 390 stale  patient          max 1  teal: New booking | Save
+ok   owner light 390 stale  chart            max 1  teal: New booking | Add to plan
+ok   owner light 390 stale  treatment-record max 1  teal: New booking
+ok   dentist light 1440 maria  overview         max 1  teal: New booking
+ok   dentist light 1440 maria  patient          max 1  teal: New booking | Record consent
+ok   dentist light 1440 maria  chart            max 1  teal: New booking | Add to plan
+ok   dentist light 1440 maria  treatment-record max 1  teal: New booking
+ok   dentist light 1440 rich   overview         max 1  teal: New booking
+ok   dentist light 1440 rich   patient          max 1  teal: New booking | Record consent
+ok   dentist light 1440 rich   chart            max 1  teal: New booking | Add to plan
+ok   dentist light 1440 rich   treatment-record max 1  teal: New booking
+ok   dentist light 1440 ledger overview         max 1  teal: New booking
+ok   dentist light 1440 ledger patient          max 1  teal: New booking | Record consent
+ok   dentist light 1440 ledger chart            max 1  teal: New booking | Add to plan
+ok   dentist light 1440 ledger treatment-record max 1  teal: New booking
+ok   dentist light 1440 teal   overview         max 1  teal: New booking
+ok   dentist light 1440 teal   patient          max 1  teal: New booking | Record consent
+FAIL dentist light 1440 teal   chart            max 2 {"y":240,"which":["New booking @-24","Add to plan @898"]}  teal: New booking | Add to plan
+ok   dentist light 1440 teal   treatment-record max 1  teal: New booking
+ok   dentist light 1440 stale  overview         max 1  teal: New booking
+ok   dentist light 1440 stale  patient          max 1  teal: New booking | Save
+ok   dentist light 1440 stale  chart            max 1  teal: New booking | Add to plan
+ok   dentist light 1440 stale  treatment-record max 1  teal: New booking
+ok   dentist light 1366 maria  overview         max 1  teal: New booking
+ok   dentist light 1366 maria  patient          max 1  teal: New booking | Record consent
+ok   dentist light 1366 maria  chart            max 1  teal: New booking | Add to plan
+ok   dentist light 1366 maria  treatment-record max 1  teal: New booking
+ok   dentist light 1366 rich   overview         max 1  teal: New booking
+ok   dentist light 1366 rich   patient          max 1  teal: New booking | Record consent
+ok   dentist light 1366 rich   chart            max 1  teal: New booking | Add to plan
+ok   dentist light 1366 rich   treatment-record max 1  teal: New booking
+ok   dentist light 1366 ledger overview         max 1  teal: New booking
+ok   dentist light 1366 ledger patient          max 1  teal: New booking | Record consent
+ok   dentist light 1366 ledger chart            max 1  teal: New booking | Add to plan
+ok   dentist light 1366 ledger treatment-record max 1  teal: New booking
+ok   dentist light 1366 teal   overview         max 1  teal: New booking
+ok   dentist light 1366 teal   patient          max 1  teal: New booking | Record consent
+ok   dentist light 1366 teal   chart            max 1  teal: New booking | Add to plan
+ok   dentist light 1366 teal   treatment-record max 1  teal: New booking
+ok   dentist light 1366 stale  overview         max 1  teal: New booking
+ok   dentist light 1366 stale  patient          max 1  teal: New booking | Save
+ok   dentist light 1366 stale  chart            max 1  teal: New booking | Add to plan
+ok   dentist light 1366 stale  treatment-record max 1  teal: New booking
+ok   dentist light 390 maria  overview         max 1  teal: New booking
+ok   dentist light 390 maria  patient          max 1  teal: New booking | Record consent
+ok   dentist light 390 maria  chart            max 1  teal: New booking | Add to plan
+ok   dentist light 390 maria  treatment-record max 1  teal: New booking
+ok   dentist light 390 rich   overview         max 1  teal: New booking
+ok   dentist light 390 rich   patient          max 1  teal: New booking | Record consent
+ok   dentist light 390 rich   chart            max 1  teal: New booking | Add to plan
+ok   dentist light 390 rich   treatment-record max 1  teal: New booking
+ok   dentist light 390 ledger overview         max 1  teal: New booking
+ok   dentist light 390 ledger patient          max 1  teal: New booking | Record consent
+ok   dentist light 390 ledger chart            max 1  teal: New booking | Add to plan
+ok   dentist light 390 ledger treatment-record max 1  teal: New booking
+ok   dentist light 390 teal   overview         max 1  teal: New booking
+ok   dentist light 390 teal   patient          max 1  teal: New booking | Record consent
+ok   dentist light 390 teal   chart            max 1  teal: New booking | Add to plan
+ok   dentist light 390 teal   treatment-record max 1  teal: New booking
+ok   dentist light 390 stale  overview         max 1  teal: New booking
+ok   dentist light 390 stale  patient          max 1  teal: New booking | Save
+ok   dentist light 390 stale  chart            max 1  teal: New booking | Add to plan
+ok   dentist light 390 stale  treatment-record max 1  teal: New booking
+1 screens with more than one teal, of 120 tab sweeps; worst 2

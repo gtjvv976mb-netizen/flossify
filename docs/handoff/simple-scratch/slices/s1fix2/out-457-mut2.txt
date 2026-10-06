@@ -1,0 +1,9 @@
+caught panels-details (1 occurrence): ✗ ?open=detail (src/components/ws/cal/panels.ts:463) is not a panel the record opens (OPEN_PANEL): "detail"
+caught forms-saved-98 (2 occurrences, first changed): ✗ ?saved=frm (src/pages/c/[clinic]/patients/forms/[form]/index.astro:98) has no section in SAVED_TO or SAVED_WORD: "frm"
+caught type-saved-288 (1 occurrence): ✗ ?saved=nw (src/pages/c/[clinic]/patients/new/type.astro:288) has no section in SAVED_TO or SAVED_WORD: "nw"
+caught type-saved-hash (1 occurrence): ✗ #helth (src/pages/c/[clinic]/patients/new/type.astro:288): "#helth" → null
+MISSED sign-visit-hash: exit 0 — sign page link
+   src/pages/c/[clinic]/patients/[patient]/sign/[visit].astro: "?visit=" → "?visit=${'x'}#hlth&visit="
+
+4 caught, 1 missed, 0 not applied
+clean tree after: passes

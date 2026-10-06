@@ -1,0 +1,17 @@
+import { chromium } from '/home/user/fl-simple/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4470';
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
+const page = await ctx.newPage();
+await page.goto(`${BASE}/auth/login/?any=1`); await page.fill('#email', 'liwayway.domingo@example.com'); await page.fill('#password', 'flossify');
+await Promise.all([page.waitForNavigation(), page.click('button[type="submit"]')]);
+for (const h of ['consent', 'consent-paper', 'vitals', 'health']) {
+  await page.goto('about:blank');
+  await page.goto(`${BASE}/c/session-road/patients/1a1d1c5e-ce1a-4d80-801c-f13fb6ef48cb/#${h}`, { waitUntil: 'load' });
+  for (const t of [50, 300, 900]) {
+    await page.waitForTimeout(t);
+    console.log(h, t, JSON.stringify(await page.evaluate((h) => { const e = document.getElementById(h); const r = e.getBoundingClientRect(); const a = document.activeElement;
+      return { top: Math.round(r.top), scrollY, docH: document.documentElement.scrollHeight, maxY: document.documentElement.scrollHeight - innerHeight, active: a?.tagName + '#' + a?.id, pad: getComputedStyle(document.documentElement).scrollPaddingTop, tag: e.tagName, cls: e.className.slice(0, 60), tabH: document.getElementById('rec-patient').getBoundingClientRect().height }; }, h)));
+  }
+}
+await browser.close();

@@ -1,0 +1,60 @@
+caught vs-go-dq (1 occurrence): ✗ data-rec-go / show "hlth" (src/pages/c/[clinic]/patients/_record/VisitStrip.astro:148 via src/pages/c/[clinic]/patients/_record/VisitStrip.astro:88): "hlth" →
+caught vs-go-ternary (1 occurrence): ✗ data-rec-go / show "hlth" (src/pages/c/[clinic]/patients/_record/VisitStrip.astro:148 via src/pages/c/[clinic]/patients/_record/VisitStrip.astro:88): "hlth" →
+caught vs-go-tpl (1 occurrence): ✗ data-rec-go / show "hlth" (src/pages/c/[clinic]/patients/_record/VisitStrip.astro:148 via src/pages/c/[clinic]/patients/_record/VisitStrip.astro:88): "hlth" →
+caught vs-show-dq (1 occurrence): ✗ data-rec-go / show "helth" (src/pages/c/[clinic]/patients/_record/VisitStrip.astro:146 via src/pages/c/[clinic]/patients/_record/VisitStrip.astro:94): "helth"
+caught vs-go-ok-ternary (1 occurrence): ✗ data-rec-go / show "hlth" (src/pages/c/[clinic]/patients/_record/VisitStrip.astro:148 via src/pages/c/[clinic]/patients/_record/VisitStrip.astro:89): "hlth" →
+caught page-offline-show (1 occurrence): ✗ a name that picks a tab, "chrt" (src/pages/c/[clinic]/patients/[patient].astro:1406 via src/pages/c/[clinic]/patients/[patient].astro:1453): "chrt" → null
+caught page-notice-show (1 occurrence): ✗ a name that picks a tab, "chrt" (src/pages/c/[clinic]/patients/[patient].astro:1406 via src/pages/c/[clinic]/patients/[patient].astro:1457): "chrt" → null
+caught page-go-literal (1 occurrence): ✗ data-rec-go / show "vists" (src/pages/c/[clinic]/patients/[patient].astro:906): "vists" → null
+caught page-rec-go-consent (1 occurrence): ✗ data-rec-go / show "consnt" (src/pages/c/[clinic]/patients/[patient].astro:818): "consnt" → null
+caught page-timeline-rewrite (1 occurrence): ✗ #treatment-recrd (src/pages/c/[clinic]/patients/[patient].astro:1420 via src/pages/c/[clinic]/patients/[patient].astro:1420, src/pages/c/[clinic]/patients/[pa
+caught page-backTo-health (1 occurrence): ✗ a section the page lands on (src/pages/c/[clinic]/patients/[patient].astro:212): "helth" → null
+caught page-saved-details (1 occurrence): ✗ ?saved=detail (src/pages/c/[clinic]/patients/[patient].astro:297) has no section in SAVED_TO or SAVED_WORD: "detail"
+caught page-saved-checked (1 occurrence): ✗ ?saved=chekd (src/pages/c/[clinic]/patients/[patient].astro:336) has no section in SAVED_TO or SAVED_WORD: "chekd"
+caught page-chart-offer (1 occurrence): ✗ #chart-ofer (src/pages/c/[clinic]/patients/[patient].astro:209 via src/pages/c/[clinic]/patients/[patient].astro:319): "#chart-ofer" → null
+caught page-paper-hash (1 occurrence): ✗ #consent-papr (src/pages/c/[clinic]/patients/[patient].astro:275): "#consent-papr" → null
+caught page-health-hash (1 occurrence): ✗ #helth (src/pages/c/[clinic]/patients/[patient].astro:209 via src/pages/c/[clinic]/patients/[patient].astro:225): "#helth" → null
+caught page-saved-tpl-branch (1 occurrence): ✗ ?saved=brth (src/pages/c/[clinic]/patients/[patient].astro:225 via src/pages/c/[clinic]/patients/[patient].astro:225) has no section in SAVED_TO or SAVED_WORD
+caught rec-done-dq (1 occurrence): ✗ ?saved=xlab (src/lib/record.ts:421) has no section in SAVED_TO or SAVED_WORD: "xlab"
+caught rec-done-var (1 occurrence): ✗ ?saved=xlab (src/lib/record.ts:421) has no section in SAVED_TO or SAVED_WORD: "xlab"
+caught rec-saved-dq (1 occurrence): ✗ ?saved=xcharted (src/lib/record.ts:288) has no section in SAVED_TO or SAVED_WORD: "xcharted"
+caught rec-section-fallback (1 occurrence): ✗ a section the page lands on (src/lib/record.ts:180): "overveiw" → null
+caught rec-sectionof (1 occurrence): ✗ record.ts SECTION_OF[note-add]: "note" → null
+caught extra-sectionof (1 occurrence): ✗ record-extra.ts SECTION_OF[vitals-add]: "helth" → null
+caught extra-anchor (1 occurrence): ✗ EXTRA_ANCHOR[loa-add]: "#loaz" → null
+caught extra-saved (1 occurrence): ✗ ?saved=replied (src/lib/record-extra.ts:223) has no section in SAVED_TO or SAVED_WORD: "replied"
+caught sec-tabof-visits (1 occurrence): ✗ an old section (SECTION_META): "visits" → null
+caught sec-tabof-patientforms (1 occurrence): ✗ an inbound name of spec §5 on the wrong tab: #patient-forms belongs on patient: "patient-forms" → null
+caught sec-tabof-wrongtab (1 occurrence): ✗ an inbound name of spec §5 on the wrong tab: #loas belongs on chart: "loas" → "patient"
+caught sec-tabof-money-wrong (1 occurrence): ✗ an inbound name of spec §5 on the wrong tab: #money belongs on treatment-record: "money" → "overview"
+caught sec-savedto (1 occurrence): ✗ SAVED_TO[paper]: "consnt" → null
+caught sec-openpanel (2 occurrences, first changed): ✗ SAVED_WORD[file]: "file" → null
+caught sec-openpanel-drop (1 occurrence): ✗ the page opens a panel for ?open=done (src/pages/c/[clinic]/patients/[patient].astro:875) that OPEN_PANEL does not know: "done"
+caught sec-landing-visits (1 occurrence): ✗ landingSection gave a section that is no tab, in 6 of the combinations, first: {"backTo":null,"fromChart":false,"saved":null,"openNow":null,"visit":"other"} →
+caught sec-backof (1 occurrence): ✗ back=treatment: "treatmnt" → null
+caught sec-savedword (1 occurrence): ✗ SAVED_WORD[addendum]: "note" → null
+caught sec-anchor (1 occurrence): ✗ ANCHOR[recall-clear]: "#recal" → null
+caught close-treatment (1 occurrence): ✗ #treatmnt (src/pages/c/[clinic]/finances/close/index.astro:338): "#treatmnt" → null
+caught close-money (1 occurrence): ✗ #mony (src/pages/c/[clinic]/finances/close/index.astro:370): "#mony" → null
+caught import-visits (1 occurrence): ✗ #vists (src/pages/c/[clinic]/patients/import.astro:572): "#vists" → null
+caught intake-consent (1 occurrence): ✗ #consnt (src/pages/c/[clinic]/patients/intake/[intake].astro:709): "#consnt" → null
+caught new-consent (1 occurrence): ✗ #consnt (src/pages/c/[clinic]/patients/new/index.astro:107): "#consnt" → null
+caught aftercare (1 occurrence): ✗ #treatment-recrd (src/pages/c/[clinic]/patients/[patient]/aftercare/[kind].astro:35): "#treatment-recrd" → null
+caught letters-form (1 occurrence): ✗ #leters (src/pages/c/[clinic]/patients/_record/Letters.astro:111): "#leters" → null
+caught deskconsent (1 occurrence): ✗ #consent-papr (src/components/DeskConsent.astro:163): "#consent-papr" → null
+caught panels-health (1 occurrence): ✗ #helth (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:236): "#helth" → null
+caught panels-open (1 occurrence): ✗ ?open=vitalz (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:240) is not a panel the record opens (OPEN_PANEL): "vitalz"
+MISSED panels-details: exit 0 — 
+   src/components/ws/cal/panels.ts: "?open=details&dash=" → "?open=detail&dash="
+caught panels-dq (1 occurrence): ✗ #helth (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:236): "#helth" → null
+caught recall-card (1 occurrence): ✗ #recal (src/pages/c/[clinic]/patients/_record/RecallCard.astro:46): "#recal" → null
+caught vs-href-recall (1 occurrence): ✗ #recal (src/pages/c/[clinic]/patients/_record/VisitStrip.astro:116): "#recal" → null
+caught consents-saved (1 occurrence): ✗ ?saved=capcity (src/pages/c/[clinic]/patients/[patient]/consents/index.astro:35) has no section in SAVED_TO or SAVED_WORD: "capcity"
+MISSED forms-saved: exit 0 — 
+   src/pages/c/[clinic]/patients/forms/[form]/index.astro: "saved=form" → "saved=frm"
+MISSED type-saved: exit 0 — 
+   src/pages/c/[clinic]/patients/new/type.astro: "saved=new" → "saved=nw"
+caught intake-saved (1 occurrence): ✗ ?saved=intke (src/pages/c/[clinic]/patients/intake/[intake].astro:128) has no section in SAVED_TO or SAVED_WORD: "intke"
+
+51 caught, 3 missed, 0 not applied
+clean tree after: passes

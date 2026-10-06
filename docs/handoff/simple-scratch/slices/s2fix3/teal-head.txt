@@ -1,0 +1,121 @@
+ok   owner light 1440 maria  overview         max 1  teal: New booking
+FAIL owner light 1440 maria  patient          max 2 {"y":1400,"which":["Save @458","Record consent @898"]}  teal: New booking | Save | Record consent
+ok   owner light 1440 maria  chart            max 1  teal: New booking | Add to plan | Add files
+FAIL owner light 1440 maria  treatment-record max 2 {"y":1520,"which":["New note @159","New prescription @866"]}  teal: New booking | New note | New prescription
+ok   owner light 1440 rich   overview         max 1  teal: New booking
+FAIL owner light 1440 rich   patient          max 2 {"y":1720,"which":["Save @422","Record consent @862"]}  teal: New booking | Save | Record consent
+ok   owner light 1440 rich   chart            max 1  teal: New booking | Add to plan | Add files
+FAIL owner light 1440 rich   treatment-record max 2 {"y":720,"which":["New note @640","New prescription @872"]}  teal: New booking | New note | New prescription
+ok   owner light 1440 ledger overview         max 1  teal: New booking
+FAIL owner light 1440 ledger patient          max 2 {"y":1200,"which":["Save @503","Record consent @870"]}  teal: New booking | Save | Record consent
+ok   owner light 1440 ledger chart            max 1  teal: New booking | Add to plan | Add files
+FAIL owner light 1440 ledger treatment-record max 2 {"y":1040,"which":["New note @636","New prescription @868"]}  teal: New booking | New note | New prescription
+ok   owner light 1440 teal   overview         max 1  teal: New booking
+FAIL owner light 1440 teal   patient          max 2 {"y":1280,"which":["Save @390","Record consent @881"]}  teal: New booking | Save | Record consent
+FAIL owner light 1440 teal   chart            max 2 {"y":960,"which":["Add to plan @197","Add files @893"]}  teal: New booking | Add to plan | Add files
+FAIL owner light 1440 teal   treatment-record max 3 {"y":200,"which":["New booking @16","New note @658","New prescription @890"]}  teal: New booking | New note | New prescription
+ok   owner light 1440 stale  overview         max 1  teal: New booking
+ok   owner light 1440 stale  patient          max 1  teal: New booking | Save
+FAIL owner light 1440 stale  chart            max 2 {"y":1040,"which":["Add to plan @181","Add files @877"]}  teal: New booking | Add to plan | Add files
+FAIL owner light 1440 stale  treatment-record max 2 {"y":160,"which":["New booking @56","New note @882"]}  teal: New booking | New note | New prescription
+ok   owner light 1366 maria  overview         max 1  teal: New booking
+FAIL owner light 1366 maria  patient          max 2 {"y":1560,"which":["Save @315","Record consent @755"]}  teal: New booking | Save | Record consent
+ok   owner light 1366 maria  chart            max 1  teal: New booking | Add to plan | Add files
+FAIL owner light 1366 maria  treatment-record max 2 {"y":1640,"which":["New note @56","New prescription @763"]}  teal: New booking | New note | New prescription
+ok   owner light 1366 rich   overview         max 1  teal: New booking
+FAIL owner light 1366 rich   patient          max 2 {"y":1800,"which":["Save @327","Record consent @767"]}  teal: New booking | Save | Record consent
+ok   owner light 1366 rich   chart            max 1  teal: New booking | Add to plan | Add files
+FAIL owner light 1366 rich   treatment-record max 2 {"y":840,"which":["New note @505","New prescription @737"]}  teal: New booking | New note | New prescription
+ok   owner light 1366 ledger overview         max 1  teal: New booking
+FAIL owner light 1366 ledger patient          max 2 {"y":1320,"which":["Save @381","Record consent @749"]}  teal: New booking | Save | Record consent
+ok   owner light 1366 ledger chart            max 1  teal: New booking | Add to plan | Add files
+FAIL owner light 1366 ledger treatment-record max 2 {"y":1160,"which":["New note @515","New prescription @747"]}  teal: New booking | New note | New prescription
+ok   owner light 1366 teal   overview         max 1  teal: New booking
+FAIL owner light 1366 teal   patient          max 2 {"y":1400,"which":["Save @270","Record consent @761"]}  teal: New booking | Save | Record consent
+FAIL owner light 1366 teal   chart            max 2 {"y":1320,"which":["Add to plan @33","Add files @729"]}  teal: New booking | Add to plan | Add files
+FAIL owner light 1366 teal   treatment-record max 2 {"y":120,"which":["New booking @96","New note @737"]}  teal: New booking | New note | New prescription
+ok   owner light 1366 stale  overview         max 1  teal: New booking
+ok   owner light 1366 stale  patient          max 1  teal: New booking | Save
+FAIL owner light 1366 stale  chart            max 2 {"y":1400,"which":["Add to plan @49","Add files @745"]}  teal: New booking | Add to plan | Add files
+FAIL owner light 1366 stale  treatment-record max 2 {"y":560,"which":["New note @513","New prescription @745"]}  teal: New booking | New note | New prescription
+ok   owner light 390 maria  overview         max 1  teal: New booking
+FAIL owner light 390 maria  patient          max 2 {"y":2600,"which":["Save @167","Record consent @843"]}  teal: New booking | Save | Record consent
+ok   owner light 390 maria  chart            max 1  teal: New booking | Add to plan | Add files
+ok   owner light 390 maria  treatment-record max 1  teal: New booking | New note | New prescription
+ok   owner light 390 rich   overview         max 1  teal: New booking
+FAIL owner light 390 rich   patient          max 2 {"y":3560,"which":["Save @140","Record consent @815"]}  teal: New booking | Save | Record consent
+ok   owner light 390 rich   chart            max 1  teal: New booking | Add to plan | Add files
+FAIL owner light 390 rich   treatment-record max 2 {"y":2000,"which":["New note @551","New prescription @825"]}  teal: New booking | New note | New prescription
+ok   owner light 390 ledger overview         max 1  teal: New booking
+FAIL owner light 390 ledger patient          max 2 {"y":2360,"which":["Save @205","Record consent @807"]}  teal: New booking | Save | Record consent
+ok   owner light 390 ledger chart            max 1  teal: New booking | Add to plan | Add files
+FAIL owner light 390 ledger treatment-record max 2 {"y":2800,"which":["New note @538","New prescription @812"]}  teal: New booking | New note | New prescription
+ok   owner light 390 teal   overview         max 1  teal: New booking
+FAIL owner light 390 teal   patient          max 2 {"y":2480,"which":["Save @48","Record consent @839"]}  teal: New booking | Save | Record consent
+ok   owner light 390 teal   chart            max 1  teal: New booking | Add to plan | Add files
+FAIL owner light 390 teal   treatment-record max 2 {"y":800,"which":["New note @542","New prescription @815"]}  teal: New booking | New note | New prescription
+ok   owner light 390 stale  overview         max 1  teal: New booking
+ok   owner light 390 stale  patient          max 1  teal: New booking | Save
+ok   owner light 390 stale  chart            max 1  teal: New booking | Add to plan | Add files
+FAIL owner light 390 stale  treatment-record max 2 {"y":1200,"which":["New note @555","New prescription @828"]}  teal: New booking | New note | New prescription
+ok   dentist light 1440 maria  overview         max 1  teal: New booking
+FAIL dentist light 1440 maria  patient          max 2 {"y":1400,"which":["Save @426","Record consent @866"]}  teal: New booking | Save | Record consent
+ok   dentist light 1440 maria  chart            max 1  teal: New booking | Add to plan | Add files
+FAIL dentist light 1440 maria  treatment-record max 2 {"y":1080,"which":["New note @192","New prescription @899"]}  teal: New booking | New note | New prescription
+ok   dentist light 1440 rich   overview         max 1  teal: New booking
+FAIL dentist light 1440 rich   patient          max 2 {"y":1640,"which":["Save @451","Record consent @892"]}  teal: New booking | Save | Record consent
+ok   dentist light 1440 rich   chart            max 1  teal: New booking | Add to plan | Add files
+FAIL dentist light 1440 rich   treatment-record max 2 {"y":560,"which":["New note @665","New prescription @897"]}  teal: New booking | New note | New prescription
+ok   dentist light 1440 ledger overview         max 1  teal: New booking
+FAIL dentist light 1440 ledger patient          max 2 {"y":1160,"which":["Save @510","Record consent @878"]}  teal: New booking | Save | Record consent
+ok   dentist light 1440 ledger chart            max 1  teal: New booking | Add to plan | Add files
+FAIL dentist light 1440 ledger treatment-record max 2 {"y":920,"which":["New note @639","New prescription @871"]}  teal: New booking | New note | New prescription
+ok   dentist light 1440 teal   overview         max 1  teal: New booking
+FAIL dentist light 1440 teal   patient          max 2 {"y":1280,"which":["Save @372","Record consent @863"]}  teal: New booking | Save | Record consent
+FAIL dentist light 1440 teal   chart            max 2 {"y":240,"which":["New booking @-24","Add to plan @898"]}  teal: New booking | Add to plan | Add files
+FAIL dentist light 1440 teal   treatment-record max 3 {"y":160,"which":["New booking @56","New note @658","New prescription @890"]}  teal: New booking | New note | New prescription
+ok   dentist light 1440 stale  overview         max 1  teal: New booking
+ok   dentist light 1440 stale  patient          max 1  teal: New booking | Save
+FAIL dentist light 1440 stale  chart            max 2 {"y":1000,"which":["Add to plan @202","Add files @898"]}  teal: New booking | Add to plan | Add files
+FAIL dentist light 1440 stale  treatment-record max 2 {"y":80,"which":["New booking @136","New note @878"]}  teal: New booking | New note | New prescription
+ok   dentist light 1366 maria  overview         max 1  teal: New booking
+FAIL dentist light 1366 maria  patient          max 2 {"y":1520,"which":["Save @305","Record consent @746"]}  teal: New booking | Save | Record consent
+ok   dentist light 1366 maria  chart            max 1  teal: New booking | Add to plan | Add files
+FAIL dentist light 1366 maria  treatment-record max 2 {"y":1240,"which":["New note @31","New prescription @739"]}  teal: New booking | New note | New prescription
+ok   dentist light 1366 rich   overview         max 1  teal: New booking
+FAIL dentist light 1366 rich   patient          max 2 {"y":1760,"which":["Save @317","Record consent @757"]}  teal: New booking | Save | Record consent
+ok   dentist light 1366 rich   chart            max 1  teal: New booking | Add to plan | Add files
+FAIL dentist light 1366 rich   treatment-record max 2 {"y":680,"which":["New note @530","New prescription @762"]}  teal: New booking | New note | New prescription
+ok   dentist light 1366 ledger overview         max 1  teal: New booking
+FAIL dentist light 1366 ledger patient          max 2 {"y":1280,"which":["Save @390","Record consent @757"]}  teal: New booking | Save | Record consent
+ok   dentist light 1366 ledger chart            max 1  teal: New booking | Add to plan | Add files
+FAIL dentist light 1366 ledger treatment-record max 2 {"y":1040,"which":["New note @519","New prescription @751"]}  teal: New booking | New note | New prescription
+ok   dentist light 1366 teal   overview         max 1  teal: New booking
+FAIL dentist light 1366 teal   patient          max 2 {"y":1400,"which":["Save @252","Record consent @742"]}  teal: New booking | Save | Record consent
+FAIL dentist light 1366 teal   chart            max 2 {"y":1280,"which":["Add to plan @55","Add files @751"]}  teal: New booking | Add to plan | Add files
+FAIL dentist light 1366 teal   treatment-record max 2 {"y":80,"which":["New booking @136","New note @737"]}  teal: New booking | New note | New prescription
+ok   dentist light 1366 stale  overview         max 1  teal: New booking
+ok   dentist light 1366 stale  patient          max 1  teal: New booking | Save
+FAIL dentist light 1366 stale  chart            max 2 {"y":1360,"which":["Add to plan @39","Add files @735"]}  teal: New booking | Add to plan | Add files
+FAIL dentist light 1366 stale  treatment-record max 2 {"y":200,"which":["New booking @16","New note @757"]}  teal: New booking | New note | New prescription
+ok   dentist light 390 maria  overview         max 1  teal: New booking
+FAIL dentist light 390 maria  patient          max 2 {"y":2600,"which":["Save @149","Record consent @824"]}  teal: New booking | Save | Record consent
+ok   dentist light 390 maria  chart            max 1  teal: New booking | Add to plan | Add files
+ok   dentist light 390 maria  treatment-record max 1  teal: New booking | New note | New prescription
+ok   dentist light 390 rich   overview         max 1  teal: New booking
+FAIL dentist light 390 rich   patient          max 2 {"y":3560,"which":["Save @140","Record consent @815"]}  teal: New booking | Save | Record consent
+ok   dentist light 390 rich   chart            max 1  teal: New booking | Add to plan | Add files
+FAIL dentist light 390 rich   treatment-record max 2 {"y":1840,"which":["New note @564","New prescription @837"]}  teal: New booking | New note | New prescription
+ok   dentist light 390 ledger overview         max 1  teal: New booking
+FAIL dentist light 390 ledger patient          max 2 {"y":2320,"which":["Save @227","Record consent @829"]}  teal: New booking | Save | Record consent
+ok   dentist light 390 ledger chart            max 1  teal: New booking | Add to plan | Add files
+FAIL dentist light 390 ledger treatment-record max 2 {"y":2560,"which":["New note @560","New prescription @833"]}  teal: New booking | New note | New prescription
+ok   dentist light 390 teal   overview         max 1  teal: New booking
+FAIL dentist light 390 teal   patient          max 2 {"y":2480,"which":["Save @48","Record consent @839"]}  teal: New booking | Save | Record consent
+ok   dentist light 390 teal   chart            max 1  teal: New booking | Add to plan | Add files
+FAIL dentist light 390 teal   treatment-record max 2 {"y":760,"which":["New note @560","New prescription @834"]}  teal: New booking | New note | New prescription
+ok   dentist light 390 stale  overview         max 1  teal: New booking
+ok   dentist light 390 stale  patient          max 1  teal: New booking | Save
+ok   dentist light 390 stale  chart            max 1  teal: New booking | Add to plan | Add files
+FAIL dentist light 390 stale  treatment-record max 2 {"y":1000,"which":["New note @563","New prescription @836"]}  teal: New booking | New note | New prescription
+60 screens with more than one teal, of 120 tab sweeps; worst 3

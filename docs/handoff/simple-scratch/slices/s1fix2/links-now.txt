@@ -1,0 +1,191 @@
+case                               tab               → new             expect                     el                             dialogs
+visit-today                        overview          overview          overview                                                                         same
+visit-past-ledger                  treatment-record  treatment-record  treatment-record                                          rec-visit-1b9c069c-452 same
+visit-stale-chair                  treatment-record  treatment-record  treatment-record                                          rec-visit-2ac3bf8c-647 same
+visit-cancelled-empty              visits            overview          treatment-record                                          rec-visit-becca4e2-73b CHANGES
+visit-future                       visits            overview          overview                                                  rec-visit-f0ad9227-874 same
+visit-future-cancelled             visits            overview          treatment-record|overview                                 rec-visit-0429460e-778 same
+visit-ledger-chair                 treatment-record  treatment-record  treatment-record                                          rec-visit-77d83a8b-208 same
+visit-rich-today                   overview          overview          overview                                                                         same
+visit-unknown                      visits            overview          overview                                                                         same
+dash-health                        health            patient           patient                    #health in health y88                                 same
+dash-vitals-open                   health            patient           overview|patient           #vitals in health y88          rec-vitals-add         same
+dash-rx                            rx                treatment-record  treatment-record           #rx in rx y88                                         same
+dash-treatment                     treatment         chart             chart                      #treatment in treatment y88                           same
+dash-desk-note                     overview          overview          overview                                                  details                same
+open-vitals                        health            patient           overview                                                  rec-vitals-add         CHANGES
+open-vitals-visit                  health            patient           overview                                                  rec-vitals-add         CHANGES
+open-note                          notes             treatment-record  overview                                                  rec-note-add           CHANGES
+open-note-visit                    notes             treatment-record  overview                                                  rec-note-add           CHANGES
+open-rx                            rx                treatment-record  overview                                                  rec-rx-add             CHANGES
+open-rx-visit                      rx                treatment-record  overview                                                  rec-rx-add             CHANGES
+open-done                          treatment         chart             overview                                                  rec-done-add           CHANGES
+open-done-visit                    treatment         chart             overview                                                  rec-done-add           CHANGES
+open-file                          files             chart             overview                                                  rec-file-add           CHANGES
+open-file-visit                    files             chart             overview                                                  rec-file-add           CHANGES
+open-details                       overview          overview          overview                                                  details                same
+open-health                        overview          overview          overview                                                                         same
+back-chart                         chart             chart             chart                                                                            same
+treated-rich                       treatment         chart             chart                      #chart-offer in treatment y88                         same
+treated-rich-back-chart            chart             chart             chart                      #chart-offer in chart y88                             same
+treated-rich-plain                 overview          overview          chart                      #chart-offer absent                                   CHANGES
+treated-maria                      treatment         chart             chart                      #chart-offer absent                                   same
+chartskip-changed                  treatment         chart             chart                      #chart-offer in treatment y88                         same
+chartskip-ended                    treatment         chart             chart                      #chart-offer in treatment y88                         same
+back-treatment-old                 treatment         chart             chart                      #chart-offer in treatment y88                         same
+saved-new                          overview          overview          overview                                                                         same
+saved-details                      overview          overview          overview                   #overview in overview y88                             same
+saved-form                         overview          overview          overview                                                                         same
+form-used                          overview          overview          overview                   #overview in overview y88                             same
+stale                              overview          overview          overview                                                                         same
+saved-health                       health            patient           patient                    #health in health y88                                 same
+saved-birth                        health            patient           patient|overview           #health in health y88                                 same
+saved-nothing                      health            patient           patient                    #health in health y88                                 same
+saved-checked                      overview          overview          overview                                                                         same
+saved-checked-today                overview          overview          overview                                                                         same
+saved-consent                      consent           patient           patient                    #consent in consent y96                               same
+saved-consent-already              consent           patient           patient                    #consent in consent y96                               same
+saved-paper                        consent           patient           patient                    #consent-paper in consent y96                         same
+consent-paper                      consent           patient           patient                    #consent-paper in consent y121                        same
+saved-intake                       overview          overview          overview                                                                         same
+saved-capacity                     consent           patient           patient                    #consent in consent y96                               same
+saved-consent-removed              consent           patient           patient                    #consent in consent y96                               same
+capacity-refused                   consent           patient           patient                    #consent in consent y96                               same
+stale-consent                      consent           patient           patient                    #consent in consent y96                               same
+hash-treatment-record              treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        same
+aftercare-back                     treatment-record  treatment-record  treatment-record           #treatment-record in treatment rec-visit-1b9c069c-452 same
+aftercare-back-today               treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        same
+hash-timeline                      treatment-record  treatment-record  treatment-record           #timeline absent                                      same
+hash-rx                            rx                treatment-record  treatment-record           #rx in rx y88                                         same
+hash-letters                       rx                treatment-record  treatment-record           #letters in rx y420                                   same
+hash-files                         files             chart             chart                      #files in files y620                                  same
+hash-treatment                     treatment         chart             chart                      #treatment in treatment y88                           same
+hash-money                         money             treatment-record  treatment-record           #money in money y268                                  same
+hash-money-dentist                 overview          overview          treatment-record           #money absent                                         CHANGES
+hash-visits                        visits            overview          overview                   #visits in visits y88                                 same
+hash-consent                       consent           patient           patient                    #consent in consent y96                               same
+anchor-treatment-done              treatment         chart             chart                      #treatment-done in treatment y                        same
+anchor-treatment-lab               treatment         chart             chart                      #treatment-lab in treatment y1                        same
+anchor-recall                      overview          overview          overview                   #recall in overview y88                               same
+anchor-vitals                      health            patient           patient                    #vitals in health y88                                 same
+anchor-letters                     rx                treatment-record  treatment-record           #letters in rx y420                                   same
+anchor-loas                        treatment         chart             chart                      #loas in treatment y388                               same
+anchor-payplans                    treatment         chart             chart                      #payplans in treatment y620                           same
+anchor-treatment-lab-rich          treatment         chart             chart                      #treatment-lab in treatment y8                        same
+anchor-loas-rich                   treatment         chart             chart                      #loas in treatment y288                               same
+hash-overview                      overview          overview          overview                   #overview in overview y88                             same
+hash-health                        health            patient           patient                    #health in health y88                                 same
+hash-chart                         chart             chart             chart                      #chart in chart y88                                   same
+hash-notes                         notes             treatment-record  treatment-record           #notes in notes y144                                  same
+hash-texts                         texts             treatment-record  treatment-record           #texts in texts y515                                  same
+hash-this-visit                    overview          overview          overview                   #this-visit in null y0                                same
+hash-chart-offer                   overview          overview          chart                      #chart-offer absent                                   CHANGES
+hash-consent-forms                 consent           patient           patient                    #consent-forms in consent y215                        same
+hash-visit-consents                consent           patient           patient                    #visit-consents in consent y36                        same
+hash-patient-forms                 overview          overview          patient                    #patient-forms absent                                 CHANGES
+hash-details-card                  overview          overview          patient                    #details-card absent                                  CHANGES
+hash-patient                       overview          overview          patient                    #patient absent                                       CHANGES
+hash-rec-overview                  overview          overview          overview                   #rec-overview in overview y88                         same
+hash-rec-health                    health            patient           patient                    #rec-health in health y-323                           same
+hash-rec-chart                     chart             chart             chart                      #rec-chart in chart y-29                              same
+hash-rec-treatment-record          treatment-record  treatment-record  treatment-record           #rec-treatment-record in treat                        same
+post-plan-add-plan                 treatment         chart             chart                      #treatment in treatment y88                           same
+post-plan-add-back-chart           chart             chart             chart                      #chart in chart y88                                   same
+post-plan-status-plan-accepted     treatment         chart             chart                      #treatment in treatment y88                           same
+post-plan-status-plan-done         treatment         chart             chart                      #treatment in treatment y88                           same
+post-plan-remove-plan-removed      treatment         chart             chart                      #treatment in treatment y88                           same
+post-done-add-done                 treatment         chart             chart                      #treatment-done in treatment y                        same
+post-done-add-back-chart           chart             chart             chart                      #chart in chart y88                                   same
+post-lab-add-lab                   treatment         chart             chart                      #treatment-lab in treatment y1                        same
+post-lab-next-lab-moved            treatment         chart             chart                      #treatment-lab in treatment y1                        same
+post-note-add-note                 notes             treatment-record  treatment-record           #notes in notes y145                                  same
+post-note-add-back-chart           chart             chart             chart                      #chart in chart y88                                   same
+post-note-add-addendum             notes             treatment-record  treatment-record           #notes in notes y145                                  same
+post-rx-add-rx                     rx                treatment-record  treatment-record           #rx in rx y88                                         same
+post-file-add-file                 files             chart             chart                      #files in files y620                                  same
+post-file-add-files                files             chart             chart                      #files in files y620                                  same
+post-file-remove-file-removed      files             chart             chart                      #files in files y620                                  same
+post-recall-set-recall             overview          overview          overview                   #recall in overview y88                               same
+post-recall-done-recall-done       overview          overview          overview                   #recall in overview y88                               same
+post-recall-clear-recall-cleared   overview          overview          overview                   #recall in overview y88                               same
+post-vitals-add-vitals             health            patient           patient                    #vitals in health y88                                 same
+post-vitals-add-vitals-high        health            patient           patient                    #vitals in health y88                                 same
+post-letter-add-letter             rx                treatment-record  treatment-record           #letters in rx y420                                   same
+post-letter-answer-answered        rx                treatment-record  treatment-record           #letters in rx y420                                   same
+post-loa-add-loa                   treatment         chart             chart                      #loas in treatment y388                               same
+post-loa-approve-loa-approved      treatment         chart             chart                      #loas in treatment y388                               same
+post-loa-deny-loa-denied           treatment         chart             chart                      #loas in treatment y388                               same
+post-loa-cancel-loa-cancelled      treatment         chart             chart                      #loas in treatment y388                               same
+post-payplan-add-payplan           treatment         chart             chart                      #payplans in treatment y620                           same
+post-payplan-stop-payplan-stopped  treatment         chart             chart                      #payplans in treatment y620                           same
+post-adjust-add-adjusted           treatment         chart             chart                      #payplans in treatment y620                           same
+back-overview-rx-add               overview          overview          overview                   #overview in overview y88                             same
+back-patient-rx-add                rx                treatment-record  patient                    #patient absent                                       CHANGES
+back-chart-rx-add                  chart             chart             chart                      #chart in chart y88                                   same
+back-treatment-record-rx-add       treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        same
+back-overview-note-add             overview          overview          overview                   #overview in overview y88                             same
+back-patient-note-add              notes             treatment-record  patient                    #patient absent                                       CHANGES
+back-chart-note-add                chart             chart             chart                      #chart in chart y88                                   same
+back-treatment-record-note-add     treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        same
+back-overview-vitals-add           overview          overview          overview                   #overview in overview y88                             same
+back-patient-vitals-add            health            patient           patient                    #patient absent                                       same
+back-chart-vitals-add              chart             chart             chart                      #chart in chart y88                                   same
+back-treatment-record-vitals-add   treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        same
+back-overview-letter-add           overview          overview          overview                   #overview in overview y88                             same
+back-patient-letter-add            rx                treatment-record  patient                    #patient absent                                       CHANGES
+back-chart-letter-add              chart             chart             chart                      #chart in chart y88                                   same
+back-treatment-record-letter-add   treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        same
+back-overview-file-add             overview          overview          overview                   #overview in overview y88                             same
+back-patient-file-add              files             chart             patient                    #patient absent                                       CHANGES
+back-chart-file-add                chart             chart             chart                      #chart in chart y88                                   same
+back-treatment-record-file-add     treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        same
+back-overview-done-add             overview          overview          overview                   #overview in overview y88                             same
+back-patient-done-add              treatment         chart             patient                    #patient absent                                       CHANGES
+back-chart-done-add                chart             chart             chart                      #chart in chart y88                                   same
+back-treatment-record-done-add     treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        same
+back-overview-recall-set           overview          overview          overview                   #overview in overview y88                             same
+back-patient-recall-set            overview          overview          patient                    #patient absent                                       CHANGES
+back-chart-recall-set              chart             chart             chart                      #chart in chart y88                                   same
+back-treatment-record-recall-set   treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        same
+offline-copy                       chart             chart             chart                      #chart in chart y88                                   same
+offline-copy-visit                 chart             chart             chart                      #chart in chart y88                                   same
+
+presses (data-rec-go / data-rec-show):
+maria   more        show=notes         Clinical noteWhat was found and do → notes             (treatment-record want treatment-record) rec-note-add       same
+maria   more        show=treatment     Add to treatment planWith the pric → treatment         (chart            want chart           ) rec-plan-add       same
+maria   more        show=rx            PrescriptionWith the PRC and PTR o → rx                (treatment-record want treatment-record) rec-rx-add         same
+maria   more        show=health        Take blood pressureBefore anaesthe → health            (patient          want patient         ) rec-vitals-add     same
+maria   more        show=rx            Dental certificateOr a referral, o → rx                (treatment-record want treatment-record) rec-letter-add     same
+maria   more        show=files         Add X-ray or photoOr a document, a → files             (chart            want chart           ) rec-file-add       same
+maria   this-visit  go=health          Something changed                  → health            (patient          want patient         )                    same
+maria   this-visit  show=health        Take it                            → health            (patient          want patient         ) rec-vitals-add     same
+maria   this-visit  go=consent         Record it                          → consent           (patient          want patient         )                    same
+maria   this-visit  show=rx            Prescription                       → rx                (treatment-record want treatment-record) rec-rx-add         same
+maria   this-visit  show=files         X-ray or photo                     → files             (chart            want chart           ) rec-file-add       same
+maria   this-visit  go=chart           Chart                              → chart             (chart            want chart           )                    same
+maria   overview    go=visits          See all 6                          → visits            (overview         want overview        )                    same
+maria   overview    go=health          Update                             → health            (patient          want patient         )                    same
+maria   overview    go=treatment       Open                               → treatment         (chart            want chart           )                    same
+rich    more        show=notes         Clinical noteWhat was found and do → notes             (treatment-record want treatment-record) rec-note-add       same
+rich    more        show=treatment     Add to treatment planWith the pric → treatment         (chart            want chart           ) rec-plan-add       same
+rich    more        show=rx            PrescriptionWith the PRC and PTR o → rx                (treatment-record want treatment-record) rec-rx-add         same
+rich    more        show=health        Take blood pressureBefore anaesthe → health            (patient          want patient         ) rec-vitals-add     same
+rich    more        show=rx            Dental certificateOr a referral, o → rx                (treatment-record want treatment-record) rec-letter-add     same
+rich    more        show=files         Add X-ray or photoOr a document, a → files             (chart            want chart           ) rec-file-add       same
+rich    head-chip   go=health          BP 165/102 today · high            → health            (patient          want patient         )                    same
+rich    head-chip   go=rx              Needs medical clearance            → rx                (treatment-record want treatment-record)                    same
+rich    head-chip   go=treatment       Waiting for an HMO LOA             → treatment         (chart            want chart           )                    same
+rich    this-visit  go=health          Something changed                  → health            (patient          want patient         )                    same
+rich    this-visit  show=health        Take again                         → health            (patient          want patient         ) rec-vitals-add     same
+rich    this-visit  go=health          What to do                         → health            (patient          want patient         )                    same
+rich    this-visit  go=consent         Record it                          → consent           (patient          want patient         )                    same
+rich    this-visit  show=treatment     Record it                          → treatment         (chart            want chart           ) rec-done-add       same
+rich    this-visit  go=treatment       The plan                           → treatment         (chart            want chart           )                    same
+rich    this-visit  show=notes         Write it                           → notes             (treatment-record want treatment-record) rec-note-add       same
+rich    this-visit  show=rx            Prescription                       → rx                (treatment-record want treatment-record) rec-rx-add         same
+rich    this-visit  show=files         X-ray or photo                     → files             (chart            want chart           ) rec-file-add       same
+rich    this-visit  go=chart           Chart                              → chart             (chart            want chart           )                    same
+rich    overview    go=health          Update                             → health            (patient          want patient         )                    same
+rich    overview    go=treatment       Open                               → treatment         (chart            want chart           )                    same
+
+150 links, 36 presses → /tmp/fl-simple-scratch/s1fix2/links-now.json

@@ -1,0 +1,74 @@
+
+== tabs
+  -    TodayToday                                                                                                               21× [all roles] {maria,maria-visit,rich}
+  +    TodayToday#, # things still to do at this visit                                                                          21× [all roles] {maria,maria-visit,rich}
+
+== headings
+  +    Coming up                                                                                                                28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Health                                                                                                                   28× [all roles] {maria,maria-visit,ledger,rich}
+  +    Last visit                                                                                                               28× [all roles] {maria,maria-visit,ledger,rich}
+  +    Needs attention                                                                                                          28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Next check-up                                                                                                            28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Recent visits                                                                                                            28× [all roles] {maria,maria-visit,ledger,rich}
+  -    Treatment plan                                                                                                           21× [all roles] {maria,maria-visit,rich}
+  -    Visits                                                                                                                   28× [all roles] {maria,maria-visit,ledger,rich}
+
+== buttons
+  +    # Sep #                                                                                                                  7× [all roles] {rich}
+  +    Add them                                                                                                                 24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    Address+ Add                                                                                                             24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  +    Ask for clearance                                                                                                        6× [owner,admin,dentist,associate,secretary,assistant] {rich}
+  -    Chart                                                                                                                    18× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,rich}
+  -    Consent                                                                                                                  3× [custom] {maria,maria-visit,rich}
+  -    Email+ Add                                                                                                               24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    Emergency contact+ Add                                                                                                   24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  +    Fri # Jul #, #:# am                                                                                                      14× [all roles] {maria,maria-visit}
+  +    Fri # Oct, #:# am                                                                                                        7× [all roles] {ledger}
+  -    HMO+ Add                                                                                                                 18× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger}
+  +    In # months                                                                                                              24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  +    Mon # Sep #, #:# am                                                                                                      14× [all roles] {maria,maria-visit}
+  -    Open                                                                                                                     19× [all roles] {maria,maria-visit,rich,ledger}
+  -2×  Open                                                                                                                     3× [custom] {maria,maria-visit,rich}
+  +    Other…                                                                                                                   24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    Pick a day                                                                                                               24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    Prescription                                                                                                             12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+  +    Record the answer                                                                                                        6× [owner,admin,dentist,associate,secretary,assistant] {rich}
+  +    Sat # Sep #, #:# pm                                                                                                      7× [all roles] {ledger}
+  -    See all #                                                                                                                21× [all roles] {maria,maria-visit,ledger}
+  -    See the whole visit                                                                                                      7× [all roles] {rich}
+  -22× See the whole visit                                                                                                      7× [all roles] {ledger}
+  -6×  See the whole visit                                                                                                      14× [all roles] {maria,maria-visit}
+  +    Set the next check-up                                                                                                    6× [owner,admin,dentist,associate,secretary,assistant] {rich}
+  -    Sex+ Add                                                                                                                 6× [owner,admin,dentist,associate,secretary,assistant] {ledger}
+  +    Sun # Oct #, #:# am                                                                                                      7× [all roles] {ledger}
+  -    The plan                                                                                                                 6× [owner,admin,dentist,associate,secretary,assistant] {rich}
+  -    TodayToday                                                                                                               21× [all roles] {maria,maria-visit,rich}
+  +    TodayToday#, # things still to do at this visit                                                                          21× [all roles] {maria,maria-visit,rich}
+  -    Update                                                                                                                   24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  -    Waiting for an HMO LOA                                                                                                   7× [all roles] {rich}
+  -    What to do                                                                                                               7× [all roles] {rich}
+  -    X-ray or photo                                                                                                           12× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit}
+
+== fields
+  +    input:hidden:_csrf                                                                                                       24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  +3×  input:hidden:back                                                                                                        24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  +    input:hidden:intent                                                                                                      24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+  +    input:hidden:months                                                                                                      24× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,ledger,rich}
+
+== links
+  +    Open that day → /c/session-road/?date=#-#-#&booking=:id                                                                  21× [all roles] {maria,maria-visit,ledger}
+  -    Set it → #recall                                                                                                         6× [owner,admin,dentist,associate,secretary,assistant] {rich}
+
+== hrefs
+  +    /c/session-road/?date=#-#-#&booking=:id                                                                                  21× [all roles] {maria,maria-visit,ledger}
+  -    #recall                                                                                                                  6× [owner,admin,dentist,associate,secretary,assistant] {rich}
+
+== recgo
+  -    go:chart                                                                                                                 18× [owner,admin,dentist,associate,secretary,assistant] {maria,maria-visit,rich}
+  -    go:consent                                                                                                               3× [custom] {maria,maria-visit,rich}
+  -    go:health                                                                                                                10× [all roles] {ledger,maria,maria-visit,rich}
+  +    go:loas                                                                                                                  6× [owner,admin,dentist,associate,secretary,assistant] {rich}
+  -    go:treatment                                                                                                             21× [all roles] {maria,maria-visit,rich}
+  -    go:visits                                                                                                                21× [all roles] {maria,maria-visit,ledger}
+
+56 pages; 0 parts differ in order only

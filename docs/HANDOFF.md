@@ -14,6 +14,15 @@ Read in this order:
    settle with the owner.
 3. Run the resume check (below) before changing anything.
 
+## Update, 6 Oct 2026: the simpler patient record (in progress)
+
+The owner asked to simplify the patient record ("too many tabs and buttons"). The work is on
+`claude/funny-ritchie-ujucx6` (a draft PR): four tabs (Today · Patient info · Chart & plan · Treatment
+record), Add ▾ and a pinned safety line. Slices S0–S3 are built and verified, S4 is built but not verified,
+and S5–S8 plus a final review remain. Everything needed to carry on is in `docs/handoff/README.md`: the
+spec, the rules, the progress log, the check tools, the baselines and the workflow script that resumes at
+verify S4.
+
 ## The owner and how to work with them
 
 - Flossify is the owner's startup: practice software for Philippine dental

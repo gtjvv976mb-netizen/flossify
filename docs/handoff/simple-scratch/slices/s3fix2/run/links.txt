@@ -1,0 +1,172 @@
+case                               tab               → new             expect                     el                             dialogs
+visit-today                        overview          overview          overview                                                                         ok
+visit-past-ledger                  treatment-record  treatment-record  treatment-record                                          rec-visit-1b9c069c-452 ok
+visit-stale-chair                  treatment-record  treatment-record  treatment-record                                          rec-visit-2ac3bf8c-647 ok
+visit-cancelled-empty              overview          overview          treatment-record                                          rec-visit-becca4e2-73b later (S7) tab overview ≠ treatment-record
+visit-future                       overview          overview          overview                                                  rec-visit-f0ad9227-874 ok
+visit-future-cancelled             overview          overview          overview                                                  rec-visit-0429460e-778 ok
+visit-future-cancelled-fold        overview          overview          treatment-record                                          rec-visit-0429460e-778 later (S7) tab overview ≠ treatment-record
+visit-ledger-chair                 treatment-record  treatment-record  treatment-record                                          rec-visit-77d83a8b-208 ok
+visit-rich-today                   overview          overview          overview                                                                         ok
+visit-unknown                      overview          overview          overview                                                                         ok
+dash-health                        patient           patient           patient                    #health in patient y184                               ok
+dash-vitals-open                   overview          overview          overview                   #vitals hidden                 rec-vitals-add         ok
+dash-rx                            treatment-record  treatment-record  treatment-record           #rx in treatment-record y184                          ok
+dash-treatment                     chart             chart             chart                      #treatment in chart y184                              ok
+dash-desk-note                     overview          overview          overview                                                  details                ok
+open-vitals                        overview          overview          overview                                                  rec-vitals-add         ok
+open-vitals-visit                  overview          overview          overview                                                  rec-vitals-add         ok
+open-note                          overview          overview          overview                                                  rec-note-add           ok
+open-note-visit                    overview          overview          overview                                                  rec-note-add           ok
+open-rx                            overview          overview          overview                                                  rec-rx-add             ok
+open-rx-visit                      overview          overview          overview                                                  rec-rx-add             ok
+open-done                          overview          overview          overview                                                  rec-done-add           ok
+open-done-visit                    overview          overview          overview                                                  rec-done-add           ok
+open-file                          overview          overview          overview                                                  rec-file-add           ok
+open-file-visit                    overview          overview          overview                                                  rec-file-add           ok
+open-details                       overview          overview          overview                                                  details                ok
+open-health                        overview          overview          overview                                                                         later (S5) no dialog rec-health
+back-chart                         chart             chart             chart                                                                            ok
+treated-rich                       chart             chart             chart                      #chart-offer in chart y212                            ok
+treated-rich-back-chart            chart             chart             chart                      #chart-offer in chart y212                            ok
+treated-rich-plain                 chart             chart             chart                      #chart-offer in chart y212                            ok
+treated-maria                      chart             chart             chart                      #chart-offer absent                                   ok
+chartskip-changed                  chart             chart             chart                      #chart-offer in chart y212                            ok
+chartskip-ended                    chart             chart             chart                      #chart-offer in chart y212                            ok
+back-treatment-old                 chart             chart             chart                      #chart-offer in chart y212                            ok
+saved-new                          overview          overview          overview                                                                         ok
+saved-details                      overview          overview          overview                   #overview in overview y184                            ok
+saved-form                         overview          overview          overview                                                                         ok
+form-used                          overview          overview          overview                   #overview in overview y184                            ok
+stale                              overview          overview          overview                                                                         ok
+saved-health                       patient           patient           patient                    #health in patient y184                               ok
+saved-birth                        patient           patient           patient                    #health in patient y184                               ok
+saved-birth-details                overview          overview          overview                                                                         ok
+saved-nothing                      patient           patient           patient                    #health in patient y184                               ok
+saved-checked                      overview          overview          overview                                                                         ok
+saved-checked-today                overview          overview          overview                                                                         ok
+saved-consent                      patient           patient           patient                    #consent in patient y184                              ok
+saved-consent-already              patient           patient           patient                    #consent in patient y184                              ok
+saved-paper                        patient           patient           patient                    #consent-paper in patient y184                        ok
+consent-paper                      patient           patient           patient                    #consent-paper in patient y184                        ok
+saved-intake                       overview          overview          overview                                                                         ok
+saved-capacity                     patient           patient           patient                    #consent in patient y184                              ok
+saved-consent-removed              patient           patient           patient                    #consent in patient y184                              ok
+capacity-refused                   patient           patient           patient                    #consent in patient y184                              ok
+stale-consent                      patient           patient           patient                    #consent in patient y184                              ok
+hash-treatment-record              treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        ok
+aftercare-back                     treatment-record  treatment-record  treatment-record           #treatment-record in treatment rec-visit-1b9c069c-452 ok
+aftercare-back-today               treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        ok
+hash-timeline                      treatment-record  treatment-record  treatment-record           #timeline absent                                      ok
+hash-rx                            treatment-record  treatment-record  treatment-record           #rx in treatment-record y184                          ok
+hash-letters                       treatment-record  treatment-record  treatment-record           #letters in treatment-record y                        ok
+hash-files                         chart             chart             chart                      #files in chart y184                                  ok
+hash-treatment                     chart             chart             chart                      #treatment in chart y184                              ok
+hash-money                         treatment-record  treatment-record  treatment-record           #money in treatment-record y18                        ok
+hash-money-dentist                 treatment-record  treatment-record  treatment-record           #money absent                                         ok
+hash-visits                        overview          overview          overview                   #visits in overview y184                              ok
+hash-consent                       patient           patient           patient                    #consent in patient y184                              ok
+anchor-treatment-done              chart             chart             chart                      #treatment-done in chart y184                         ok
+anchor-treatment-lab               chart             chart             chart                      #treatment-lab in chart y184                          ok
+anchor-recall                      overview          overview          overview                   #recall in overview y184                              ok
+anchor-vitals                      patient           patient           patient                    #vitals in patient y184                               ok
+anchor-letters                     treatment-record  treatment-record  treatment-record           #letters in treatment-record y                        ok
+anchor-loas                        chart             chart             chart                      #loas in chart y388                                   ok
+anchor-payplans                    chart             chart             chart                      #payplans in chart y620                               ok
+anchor-treatment-lab-rich          chart             chart             chart                      #treatment-lab in chart y212                          ok
+anchor-loas-rich                   chart             chart             chart                      #loas in chart y288                                   ok
+hash-overview                      overview          overview          overview                   #overview in overview y184                            ok
+hash-health                        patient           patient           patient                    #health in patient y184                               ok
+hash-chart                         chart             chart             chart                      #chart in chart y184                                  ok
+hash-notes                         treatment-record  treatment-record  treatment-record           #notes in treatment-record y18                        ok
+hash-texts                         treatment-record  treatment-record  treatment-record           #texts in treatment-record y53                        ok
+hash-this-visit                    overview          overview          overview                   #this-visit in overview y184                          ok
+hash-chart-offer                   chart             chart             chart                      #chart-offer absent                                   ok
+hash-consent-forms                 patient           patient           patient                    #consent-forms in patient y214                        ok
+hash-visit-consents                patient           patient           patient                    #visit-consents in patient y36                        ok
+hash-patient-forms                 patient           patient           patient                    #patient-forms absent                                 ok
+hash-details-card                  patient           patient           patient                    #details-card absent                                  ok
+hash-patient                       patient           patient           patient                    #patient in patient y184                              ok
+hash-rec-overview                  overview          overview          overview                   #rec-overview in overview y184                        ok
+hash-rec-health                    patient           patient           patient                    #rec-health absent                                    ok
+hash-rec-chart                     chart             chart             chart                      #rec-chart in chart y184                              ok
+hash-rec-treatment-record          treatment-record  treatment-record  treatment-record           #rec-treatment-record in treat                        ok
+post-plan-add-plan                 chart             chart             chart                      #treatment in chart y184                              ok
+post-plan-add-back-chart           chart             chart             chart                      #chart in chart y184                                  ok
+post-plan-status-plan-accepted     chart             chart             chart                      #treatment in chart y184                              ok
+post-plan-status-plan-done         chart             chart             chart                      #treatment in chart y184                              ok
+post-plan-remove-plan-removed      chart             chart             chart                      #treatment in chart y184                              ok
+post-done-add-done                 chart             chart             chart                      #treatment-done in chart y184                         ok
+post-done-add-back-chart           chart             chart             chart                      #chart in chart y184                                  ok
+post-lab-add-lab                   chart             chart             chart                      #treatment-lab in chart y184                          ok
+post-lab-next-lab-moved            chart             chart             chart                      #treatment-lab in chart y184                          ok
+post-note-add-note                 treatment-record  treatment-record  treatment-record           #notes in treatment-record y18                        ok
+post-note-add-back-chart           chart             chart             chart                      #chart in chart y184                                  ok
+post-note-add-addendum             treatment-record  treatment-record  treatment-record           #notes in treatment-record y18                        ok
+post-rx-add-rx                     treatment-record  treatment-record  treatment-record           #rx in treatment-record y184                          ok
+post-file-add-file                 chart             chart             chart                      #files in chart y184                                  ok
+post-file-add-files                chart             chart             chart                      #files in chart y184                                  ok
+post-file-remove-file-removed      chart             chart             chart                      #files in chart y184                                  ok
+post-recall-set-recall             overview          overview          overview                   #recall in overview y184                              ok
+post-recall-done-recall-done       overview          overview          overview                   #recall in overview y184                              ok
+post-recall-clear-recall-cleared   overview          overview          overview                   #recall in overview y184                              ok
+post-vitals-add-vitals             patient           patient           patient                    #vitals in patient y184                               ok
+post-vitals-add-vitals-high        patient           patient           patient                    #vitals in patient y184                               ok
+post-letter-add-letter             treatment-record  treatment-record  treatment-record           #letters in treatment-record y                        ok
+post-letter-answer-answered        treatment-record  treatment-record  treatment-record           #letters in treatment-record y                        ok
+post-loa-add-loa                   chart             chart             chart                      #loas in chart y319                                   ok
+post-loa-approve-loa-approved      chart             chart             chart                      #loas in chart y319                                   ok
+post-loa-deny-loa-denied           chart             chart             chart                      #loas in chart y319                                   ok
+post-loa-cancel-loa-cancelled      chart             chart             chart                      #loas in chart y319                                   ok
+post-payplan-add-payplan           chart             chart             chart                      #payplans in chart y529                               ok
+post-payplan-stop-payplan-stopped  chart             chart             chart                      #payplans in chart y551                               ok
+post-adjust-add-adjusted           chart             chart             chart                      #payplans in chart y551                               ok
+back-overview-rx-add               overview          overview          overview                   #overview in overview y184                            ok
+back-patient-rx-add                patient           patient           patient                    #patient in patient y184                              ok
+back-chart-rx-add                  chart             chart             chart                      #chart in chart y184                                  ok
+back-treatment-record-rx-add       treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        ok
+back-overview-note-add             overview          overview          overview                   #overview in overview y184                            ok
+back-patient-note-add              patient           patient           patient                    #patient in patient y184                              ok
+back-chart-note-add                chart             chart             chart                      #chart in chart y184                                  ok
+back-treatment-record-note-add     treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        ok
+back-overview-vitals-add           overview          overview          overview                   #overview in overview y184                            ok
+back-patient-vitals-add            patient           patient           patient                    #patient in patient y184                              ok
+back-chart-vitals-add              chart             chart             chart                      #chart in chart y184                                  ok
+back-treatment-record-vitals-add   treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        ok
+back-overview-letter-add           overview          overview          overview                   #overview in overview y184                            ok
+back-patient-letter-add            patient           patient           patient                    #patient in patient y184                              ok
+back-chart-letter-add              chart             chart             chart                      #chart in chart y184                                  ok
+back-treatment-record-letter-add   treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        ok
+back-overview-file-add             overview          overview          overview                   #overview in overview y184                            ok
+back-patient-file-add              patient           patient           patient                    #patient in patient y184                              ok
+back-chart-file-add                chart             chart             chart                      #chart in chart y184                                  ok
+back-treatment-record-file-add     treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        ok
+back-overview-done-add             overview          overview          overview                   #overview in overview y184                            ok
+back-patient-done-add              patient           patient           patient                    #patient in patient y184                              ok
+back-chart-done-add                chart             chart             chart                      #chart in chart y184                                  ok
+back-treatment-record-done-add     treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        ok
+back-overview-recall-set           overview          overview          overview                   #overview in overview y184                            ok
+back-patient-recall-set            patient           patient           patient                    #patient in patient y184                              ok
+back-chart-recall-set              chart             chart             chart                      #chart in chart y184                                  ok
+back-treatment-record-recall-set   treatment-record  treatment-record  treatment-record           #treatment-record in treatment                        ok
+offline-copy                       chart             chart             chart                      #chart in chart y184                                  ok
+offline-copy-visit                 chart             chart             chart                      #chart in chart y184                                  ok
+
+presses (data-rec-go / data-rec-show):
+maria   this-visit  go=health          Something changed                  → patient           (patient          want patient         )                    ok
+maria   this-visit  go=consent         Record it                          → patient           (patient          want patient         )                    ok
+maria   this-visit  go=chart           Chart                              → chart             (chart            want chart           )                    ok
+maria   overview    go=visits          See all 6                          → overview          (overview         want overview        )                    ok
+maria   overview    go=health          Update                             → patient           (patient          want patient         )                    ok
+maria   overview    go=treatment       Open                               → chart             (chart            want chart           )                    ok
+rich    head-chip   go=treatment       Waiting for an HMO LOA             → chart             (chart            want chart           )                    ok
+rich    this-visit  go=health          Something changed                  → patient           (patient          want patient         )                    ok
+rich    this-visit  go=health          What to do                         → patient           (patient          want patient         )                    ok
+rich    this-visit  go=consent         Record it                          → patient           (patient          want patient         )                    ok
+rich    this-visit  go=treatment       The plan                           → chart             (chart            want chart           )                    ok
+rich    this-visit  go=chart           Chart                              → chart             (chart            want chart           )                    ok
+rich    overview    go=health          Update                             → patient           (patient          want patient         )                    ok
+rich    overview    go=treatment       Open                               → chart             (chart            want chart           )                    ok
+
+152 links, 14 presses, 0 failing → s3fix2/run/links.json
+links exit 0

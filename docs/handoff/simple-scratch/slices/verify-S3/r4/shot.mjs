@@ -1,0 +1,12 @@
+import { browser, login, rec } from './lib.mjs';
+const b = await browser();
+const [w,h,y,p,out] = [+process.argv[2], +process.argv[3], +process.argv[4], process.argv[5], process.argv[6]];
+const { ctx, page } = await login(b, 'owner', { viewport: { width: w, height: h } });
+await page.goto(rec(p)); await page.waitForTimeout(600);
+await page.evaluate((y) => scrollTo(0, y), y); await page.waitForTimeout(400);
+const info = await page.evaluate(() => { const pin = document.querySelector('[data-rec-pin]').getBoundingClientRect(); const bar = document.querySelector('[data-rec-bar]').getBoundingClientRect();
+ const chips = [...document.querySelectorAll('.rec-todo button, .rec-desk-note, .ws-callout')].map((e) => { const r = e.getBoundingClientRect(); return [e.textContent.trim().slice(0,30), Math.round(r.top), Math.round(r.bottom)]; });
+ return { pin: [Math.round(pin.top), Math.round(pin.bottom)], bar: [Math.round(bar.top), Math.round(bar.bottom)], chips }; });
+console.log(JSON.stringify(info));
+await page.screenshot({ path: out });
+await b.close();

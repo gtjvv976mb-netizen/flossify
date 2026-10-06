@@ -1,0 +1,37 @@
+[1] pickpanel u.hash 'chart' → chartz ::   ✗ #chartz (src/pages/c/[clinic]/patients/_record/pickpanel.ts:10 via src/pages/c/[clinic]/patients/_record/pickpanel.ts:10): "#chartz" → null
+[1] pickpanel u.hash home → an unreadable call ::   ✗ the hash set at src/pages/c/[clinic]/patients/_record/pickpanel.ts:10 (src/pages/c/[clinic]/patients/_record/pickpanel.ts:10): this check cannot tell which names `pick(home)` takes — write a l
+[1] sign page real link gets #bogus ::   ✗ #bogus (src/pages/c/[clinic]/patients/[patient]/sign/[visit].astro:171): "#bogus" → null
+[1] TreatmentPanels dataset.pickHome fallback ::   ✗ #treatmentz (src/pages/c/[clinic]/patients/_record/pickpanel.ts:10 via src/pages/c/[clinic]/patients/_record/TreatmentPanels.astro:188, src/pages/c/[clinic]/patients/_record/pickpanel.ts:10 via 
+[1] TreatmentPanels data-pick-home attr ::   ✗ #treatment-donez (src/pages/c/[clinic]/patients/_record/pickpanel.ts:10 via src/pages/c/[clinic]/patients/_record/TreatmentPanels.astro:111, src/pages/c/[clinic]/patients/_record/pickpanel.ts:10
+[1] TreatmentPanels aimForm(f, …, 'treatment') ::   ✗ #treatmentz (src/pages/c/[clinic]/patients/_record/pickpanel.ts:10 via src/pages/c/[clinic]/patients/_record/TreatmentPanels.astro:207): "#treatmentz" → null
+[1] TreatmentPanels:64 plan-add action ::   ✗ #treatmentz (src/pages/c/[clinic]/patients/_record/TreatmentPanels.astro:64 via src/pages/c/[clinic]/patients/_record/TreatmentPanels.astro:64): "#treatmentz" → null
+[1] NotePanel action ternary ::   ✗ #notez (src/pages/c/[clinic]/patients/_record/NotePanel.astro:32 via src/pages/c/[clinic]/patients/_record/NotePanel.astro:32): "#notez" → null
+[1] page const hash chart-offer ::   ✗ #chart-offerz (src/pages/c/[clinic]/patients/[patient].astro:209 via src/pages/c/[clinic]/patients/[patient].astro:319): "#chart-offerz" → null
+[1] page leaveOffer('chart') ::   ✗ #chartz (src/pages/c/[clinic]/patients/[patient].astro:660 via src/pages/c/[clinic]/patients/[patient].astro:1086): "#chartz" → null
+[1] page backTo = 'health' ::   ✗ a section the page lands on (src/pages/c/[clinic]/patients/[patient].astro:212): "healthz" → null
+[1] page backTo = 'overview' (form-use, 343) ::   ✗ a section the page lands on (src/pages/c/[clinic]/patients/[patient].astro:343): "overviewz" → null
+[1] page backTo = unreadable ::   ✗ landingSection's backTo at src/pages/c/[clinic]/patients/[patient].astro:653 (src/pages/c/[clinic]/patients/[patient].astro:240): this check cannot tell which names `sectionFor(intent)` takes �
+[1] page to('saved=nothing', 'healthz') ::   ✗ #healthz (src/pages/c/[clinic]/patients/[patient].astro:209 via src/pages/c/[clinic]/patients/[patient].astro:226): "#healthz" → null
+[1] page to() saved ternary word ::   ✗ ?saved=birthz (src/pages/c/[clinic]/patients/[patient].astro:225 via src/pages/c/[clinic]/patients/[patient].astro:225) has no section in SAVED_TO or SAVED_WORD: "birthz"
+[1] page href=#consent (818) ::   ✗ #consentz (src/pages/c/[clinic]/patients/[patient].astro:818): "#consentz" → null
+[1] page health form action ::   ✗ #healthz (src/pages/c/[clinic]/patients/[patient].astro:1024): "#healthz" → null
+[1] page script timeline rewrite ::   ✗ #treatment-recordz (src/pages/c/[clinic]/patients/[patient].astro:1420 via src/pages/c/[clinic]/patients/[patient].astro:1420, src/pages/c/[clinic]/patients/[patient].astro:1427 via src/pages/c/
+[1] page details action ::   ✗ #overviewz (src/pages/c/[clinic]/patients/[patient].astro:1361): "#overviewz" → null
+[1] page openNow === 'rx' but OPEN_PANEL has no rx ::   ✗ the page opens a panel for ?open=rx (src/pages/c/[clinic]/patients/[patient].astro:1158) that OPEN_PANEL does not know: "rx"
+[1] panels.ts rec('vitals', …) hash ::   ✗ #vitalz (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:240): "#vitalz" → null
+[1] panels.ts rec(…, 'vitals') open ::   ✗ ?open=vitalz (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:240) is not a panel the record opens (OPEN_PANEL): "vitalz"
+[1] finances close patientHref + #treatment ::   ✗ #treatmentz (src/pages/c/[clinic]/finances/close/index.astro:338): "#treatmentz" → null
+[1] intake //#consent ::   ✗ #consentz (src/pages/c/[clinic]/patients/intake/[intake].astro:709): "#consentz" → null
+[1] new/index #consent ::   ✗ #consentz (src/pages/c/[clinic]/patients/new/index.astro:107): "#consentz" → null
+[1] consents/[document] #consent ::   ✗ #consentz (src/pages/c/[clinic]/patients/[patient]/consents/[document].astro:170): "#consentz" → null
+[1] VisitStrip href: '#recall' ::   ✗ #recallz (src/pages/c/[clinic]/patients/_record/VisitStrip.astro:116): "#recallz" → null
+[1] record.ts section fallback ::   ✗ a section the page lands on (src/lib/record.ts:180): "overviewz" → null
+[1] DeskConsent '#' + a variable ::   ✗ the #hash at src/components/DeskConsent.astro:163 (src/components/DeskConsent.astro:163): this check cannot tell which names `paperAnchor` takes — write a literal, or teach the check (COVERED 
+[1] DeskConsent '#' + a literal ::   ✗ #consent-paperz (src/components/DeskConsent.astro:163 via src/components/DeskConsent.astro:163): "#consent-paperz" → null
+[1] Files action on an unknown address ::   ✗ a # this check cannot place (src/pages/c/[clinic]/patients/_record/Files.astro:94): ``${elsewhere}#files`` — say in addressOf() whose address it is: "\u0001elsewhere\u0002"
+[1] Files action hash from a call ::   ✗ the #hash at src/pages/c/[clinic]/patients/_record/Files.astro:94 (src/pages/c/[clinic]/patients/_record/Files.astro:94): this check cannot tell which names `anchorOf(\"files\")}`} enctype="mult
+[1] Files hash built in pieces ::   ✗ a #hash with a name built in pieces (src/pages/c/[clinic]/patients/_record/Files.astro:94): the check cannot read `#fil${…}`: "fil"
+[1] a straight apostrophe hides a link ::   ✗ a # outside any string (src/pages/c/[clinic]/patients/_record/Files.astro:94): this check cannot read `#filez\\">x</a> it's" enctype="multipart`: "src/pages/c/[clinic]/patients/_record/Files.ast
+[1] data-rec-go from a call ::   ✗ data-rec-go / show at src/pages/c/[clinic]/patients/_record/ChartOffer.astro:65 (src/pages/c/[clinic]/patients/_record/ChartOffer.astro:65): this check cannot tell which names `goTo()` takes —
+[1] a new component gets the record's action ::   ✗ #vitalz (src/pages/c/[clinic]/patients/[patient].astro:999): "#vitalz" → null
+[1] ALLOWED goes stale ::   ✗ the #hash at src/pages/c/[clinic]/patients/[patient].astro:1420 (src/pages/c/[clinic]/patients/[patient].astro:1417): this check cannot tell which names `decodeURIComponent(location.hash.substri

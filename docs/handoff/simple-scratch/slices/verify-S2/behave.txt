@@ -1,0 +1,130 @@
+ok   1440 #rx lands under the row (tab treatment-record)
+ok   1440 #letters lands under the row (tab treatment-record)
+ok   1440 #money lands under the row (tab treatment-record)
+ok   1440 #treatment lands under the row (tab chart)
+ok   1440 #health lands under the row (tab patient)
+ok   1440 #vitals lands under the row (tab patient)
+ok   1440 #consent lands under the row (tab patient)
+ok   1440 #consent-paper lands under the row (tab patient)
+ok   1440 #consent-forms lands under the row (tab patient)
+ok   1440 #visit-consents lands under the row (tab patient)
+ok   1440 #recall lands under the row (tab overview)
+ok   1440 #visits lands under the row (tab overview)
+ok   1440 #files lands under the row (tab chart)
+ok   1440 #notes lands under the row (tab treatment-record)
+ok   1440 #texts lands under the row (tab treatment-record)
+ok   1440 #treatment-done lands under the row (tab chart)
+ok   1440 #treatment-lab lands under the row (tab chart)
+ok   1440 #loas lands under the row (tab chart)
+ok   1440 #this-visit lands under the row (tab overview)
+ok   1440 #treatment-record lands under the row (tab treatment-record)
+ok   1440 #chart lands under the row (tab chart)
+ok   1440 #patient lands under the row (tab patient)
+ok   1440 #overview lands under the row (tab overview)
+ok   1440 tile #money → its tab, under the row
+ok   1440 tile #consent → its tab, under the row
+ok   390 #rx lands under the row (tab treatment-record)
+ok   390 #letters lands under the row (tab treatment-record)
+ok   390 #money lands under the row (tab treatment-record)
+ok   390 #treatment lands under the row (tab chart)
+ok   390 #health lands under the row (tab patient)
+ok   390 #vitals lands under the row (tab patient)
+ok   390 #consent lands under the row (tab patient)
+ok   390 #consent-paper lands under the row (tab patient)
+ok   390 #consent-forms lands under the row (tab patient)
+ok   390 #visit-consents lands under the row (tab patient)
+ok   390 #recall lands under the row (tab overview)
+ok   390 #visits lands under the row (tab overview)
+ok   390 #files lands under the row (tab chart)
+ok   390 #notes lands under the row (tab treatment-record)
+ok   390 #texts lands under the row (tab treatment-record)
+ok   390 #treatment-done lands under the row (tab chart)
+ok   390 #treatment-lab lands under the row (tab chart)
+ok   390 #loas lands under the row (tab chart)
+ok   390 #this-visit lands under the row (tab overview)
+ok   390 #treatment-record lands under the row (tab treatment-record)
+ok   390 #chart lands under the row (tab chart)
+ok   390 #patient lands under the row (tab patient)
+ok   390 #overview lands under the row (tab overview)
+ok   390 tile #money → its tab, under the row
+ok   390 tile #consent → its tab, under the row
+ok   1366 #rx lands under the row (tab treatment-record)
+ok   1366 #letters lands under the row (tab treatment-record)
+ok   1366 #money lands under the row (tab treatment-record)
+ok   1366 #treatment lands under the row (tab chart)
+ok   1366 #health lands under the row (tab patient)
+ok   1366 #vitals lands under the row (tab patient)
+ok   1366 #consent lands under the row (tab patient)
+ok   1366 #consent-paper lands under the row (tab patient)
+ok   1366 #consent-forms lands under the row (tab patient)
+ok   1366 #visit-consents lands under the row (tab patient)
+ok   1366 #recall lands under the row (tab overview)
+ok   1366 #visits lands under the row (tab overview)
+ok   1366 #files lands under the row (tab chart)
+ok   1366 #notes lands under the row (tab treatment-record)
+ok   1366 #texts lands under the row (tab treatment-record)
+ok   1366 #treatment-done lands under the row (tab chart)
+ok   1366 #treatment-lab lands under the row (tab chart)
+ok   1366 #loas lands under the row (tab chart)
+ok   1366 #this-visit lands under the row (tab overview)
+ok   1366 #treatment-record lands under the row (tab treatment-record)
+ok   1366 #chart lands under the row (tab chart)
+ok   1366 #patient lands under the row (tab patient)
+ok   1366 #overview lands under the row (tab overview)
+ok   1366 tile #money → its tab, under the row
+ok   1366 tile #consent → its tab, under the row
+ok   820 #rx lands under the row (tab treatment-record)
+ok   820 #letters lands under the row (tab treatment-record)
+ok   820 #money lands under the row (tab treatment-record)
+ok   820 #treatment lands under the row (tab chart)
+ok   820 #health lands under the row (tab patient)
+ok   820 #vitals lands under the row (tab patient)
+ok   820 #consent lands under the row (tab patient)
+ok   820 #consent-paper lands under the row (tab patient)
+ok   820 #consent-forms lands under the row (tab patient)
+ok   820 #visit-consents lands under the row (tab patient)
+ok   820 #recall lands under the row (tab overview)
+ok   820 #visits lands under the row (tab overview)
+ok   820 #files lands under the row (tab chart)
+ok   820 #notes lands under the row (tab treatment-record)
+ok   820 #texts lands under the row (tab treatment-record)
+ok   820 #treatment-done lands under the row (tab chart)
+ok   820 #treatment-lab lands under the row (tab chart)
+ok   820 #loas lands under the row (tab chart)
+ok   820 #this-visit lands under the row (tab overview)
+ok   820 #treatment-record lands under the row (tab treatment-record)
+ok   820 #chart lands under the row (tab chart)
+ok   820 #patient lands under the row (tab patient)
+ok   820 #overview lands under the row (tab overview)
+ok   820 tile #money → its tab, under the row
+ok   820 tile #consent → its tab, under the row
+ok   ArrowRight → Patient info, focused
+ok   End → Treatment record
+ok   ArrowRight wraps → Today
+ok   ArrowLeft wraps → Treatment record
+ok   Tab from the tablist → Add ▾
+ok   Add ▾ opens with Enter; 11 items ≥44px
+ok   Escape closes Add ▾, focus on its button
+ok   Add ▾ › Prescription opens over Treatment record with back=treatment-record
+ok   Escape → focus back on Add ▾
+ok   palette Add to plan opens over chart, back=chart
+ok   palette Add to plan: Escape → tooth 26
+ok   palette Treatment done opens over chart, back=chart
+ok   palette Treatment done: Escape → tooth 26
+ok   palette Clinical note opens over chart, back=chart
+ok   palette Clinical note: Escape → tooth 26
+ok   refused palette plan-add reopens over Chart & plan
+ok   refused palette plan-add: Escape → tooth 36
+ok   refused details from overview reopens over overview
+ok   refused details from patient reopens over patient
+ok   refused details from chart reopens over chart
+ok   refused details from treatment-record reopens over treatment-record
+ok   offline: Add ▾ hidden, palette actions hidden
+ok   online again: Add ▾ back
+ok   dentist: no Money, no charge, no payment plan; #money → Treatment record
+ok   chip "BP 165/102 today · high" → patient, #health under the row
+ok   chip "Needs medical clearance" → treatment-record, #rx under the row
+ok   chip "Waiting for an HMO LOA" → chart, #treatment under the row
+ok   390: Add ▾ fits the screen
+
+0 failing

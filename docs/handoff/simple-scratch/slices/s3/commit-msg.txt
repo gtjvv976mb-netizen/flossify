@@ -1,0 +1,24 @@
+The record's head: the facts in one line with what the patient owes, a safety line that says which kind of none and stays pinned, the desk note, and the birth date in Edit details.
+
+The head loses its four tiles (and the next-visit query behind "Today, now"). Beside the avatar: age, sex, mobile, the
+HMO with its member no. and, for people who may bill, "Owes ₱…" or "In credit ₱…" as a link to the patient's statements
+in Finances. Edit details and New booking stay quiet. The safety line (_record/SafetyLine.astro, _record/safety.ts) is
+plain pills, never buttons: the allergies, or "No known allergies" / "Allergies: not asked yet", the conditions, the
+medicines, a blood pressure, "Clearance asked <day>", under 18. Under it the note for the dentist and the desk's note
+(deskNoteOf); what the import wrote into the notes is listed in Details as "From the old records". The LOA-waiting,
+plan-behind and stale-health chips stay as buttons in a row of their own until Today's Needs attention takes them.
+
+The tab row pins the safety line. From 768px a compact copy hangs below the row while it is stuck and the head's line
+is off the screen; it takes no room in the page, and --rec-stick counts it, so landings, focus and a tab's reveal land
+below it. Row and copy keep to 128px: the note, then the medicines, conditions, under 18, the clearance and the blood
+pressure fold into "+N more alerts, at the top"; an allergy never does. Below 768px one line of words sits above the
+five columns: the allergies in full and how many more.
+
+Edit details takes the birth date, with the age beside it. A change is kept in the health history as the health form
+kept it (saveBirth: a version with the change from and to, audit patient.birth_date), in the details' transaction; a
+birth date someone else changed since the panel opened takes back the whole save and says what is on file. It lands on
+Today (?saved=birth; SAVED_TO birth → overview). The health form keeps the answers only; a form drawn before the move
+still has its birth date kept.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KWQrsMwM4vBK2FEE98qqkk

@@ -1,0 +1,35 @@
+1440  addmenu rx               overview          → overview          line y142-348 row 130 Prescription saved. Print it for Maria Liza on the clinic’s paper, with the prescriber’s l ok
+1440  strip rx                 overview          → overview          line y142-348 row 130 Prescription saved. Print it for Rich on the clinic’s paper, with the prescriber’s licence ok
+1440  addmenu rx refused       treatment-record  → treatment-record  line ynull-null row 130 Write at least one medicine. Nothing was saved. / Allergies on file: Penicillin Check ever ok
+1440  strip bp                 overview          → overview          line y142-194 row 130 Reading saved.                                                                             ok
+1440  addmenu bp high          treatment-record  → treatment-record  line y142-217 row 130 Reading saved: very high blood pressure, 182/112. Postpone treatment that can wait, and re ok
+1440  addmenu letter           patient           → patient           line y142-348 row 130 Dental certificate saved. Print it on the clinic’s paper, signed by Dr. Hazel Tabanao. Pri ok
+1440  addmenu note on chart    chart             → chart             line y142-194 row 130 Note saved under your name.                                                                ok
+1440  addmenu lab              overview          → overview          line y142-194 row 130 Lab case added.                                                                            ok
+1440  addmenu file             treatment-record  → treatment-record  line y142-194 row 130 File added to the record.                                                                  ok
+1440  addmenu plan             patient           → patient           line y142-194 row 130 Added to the plan.                                                                         ok
+1440  plan row agreed          chart             → chart             line y229-281 row 130 Marked accepted. The patient agreed to it.                                                 ok
+1440  recall 6 months          overview          → overview          line y223-275 row 130 Next check-up set.                                                                         ok
+1440  palette plan             chart             → chart             line y142-194 row 130 Added to the plan. Teeth with planned work have a ring under their number.                 ok
+1440  details refused          chart             → chart             line ynull-null row 130 Nothing was saved. Write the last name.                                                    ok
+1440  addmenu done             patient           → patient           line y142-194 row 130 Treatment recorded.                                                                        ok
+390   addmenu rx               overview          → overview          line y138-458 row 126 Prescription saved. Print it for Maria Liza on the clinic’s paper, with the prescriber’s l ok
+390   strip rx                 overview          → overview          line y138-435 row 126 Prescription saved. Print it for Rich on the clinic’s paper, with the prescriber’s licence ok
+390   addmenu rx refused       treatment-record  → treatment-record  line ynull-null row 126 Write at least one medicine. Nothing was saved. / Allergies on file: Penicillin Check ever ok
+390   strip bp                 overview          → overview          line ynull-null row 126                                                                                            FAIL steps: TimeoutError: locator.click: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for locator('#this-visit [data-ws-open="rec-vitals-add"]').first()[22m
+; 0 saved lines; url #overview
+390   addmenu bp high          treatment-record  → treatment-record  line y138-258 row 126 Reading saved: very high blood pressure, 182/112. Postpone treatment that can wait, and re ok
+390   addmenu letter           patient           → patient           line y138-435 row 126 Dental certificate saved. Print it on the clinic’s paper, signed by Dr. Hazel Tabanao. Pri ok
+390   addmenu note on chart    chart             → chart             line y138-191 row 126 Note saved under your name.                                                                ok
+390   addmenu lab              overview          → overview          line y138-191 row 126 Lab case added.                                                                            ok
+390   addmenu file             treatment-record  → treatment-record  line y138-191 row 126 File added to the record.                                                                  ok
+390   addmenu plan             patient           → patient           line y138-191 row 126 Added to the plan.                                                                         ok
+390   plan row agreed          chart             → chart             line y215-290 row 126 Marked accepted. The patient agreed to it.                                                 ok
+390   recall 6 months          overview          → overview          line y209-262 row 126 Next check-up set.                                                                         ok
+390   palette plan             chart             → chart             line y138-213 row 126 Added to the plan. Teeth with planned work have a ring under their number.                 ok
+390   details refused          chart             → chart             line ynull-null row 126 Nothing was saved. Write the last name.                                                    ok
+390   addmenu done             patient           → patient           line y138-191 row 126 Treatment recorded.                                                                        ok
+page errors: none
+30 flows, 1 failing

@@ -1,0 +1,11 @@
+ok   rec-vitals-add   opened by visible Take it                          (tab health) → refused on tab health, open=true; closed → BUTTON#[rec-vitals-add] "Take it" vis=true
+ok   rec-rx-add       opened by visible Prescription                     (tab rx) → refused on tab rx, open=true; closed → BUTTON#[rec-rx-add] "Prescription" vis=true
+ok   rec-letter-add   opened by section rec-rx Dental certificateFor sch (tab rx) → refused on tab rx, open=true; closed → BUTTON#[rec-letter-add] "Dental certificateFor sch" vis=true
+ok   rec-lab-add      opened by section rec-treatment New lab case       (tab treatment) → refused on tab treatment, open=true; closed → BUTTON#[rec-lab-add] "New lab case" vis=true
+ok   rec-file-add     opened by visible X-ray or photo                   (tab files) → refused on tab files, open=true; closed → BUTTON#[rec-file-add] "X-ray or photo" vis=true
+ok   rec-loa-add      opened by section rec-treatment Ask for an LOA     (tab treatment) → refused on tab treatment, open=true; closed → BUTTON#[rec-loa-add] "Ask for an LOA" vis=true
+ok   rec-plan-add     opened by section rec-treatment Add to plan        (tab treatment) → refused on tab treatment, open=true; closed → BUTTON#[rec-plan-add] "Add to plan" vis=true
+ok   rec-done-add     opened by section rec-treatment Record a treatment (tab treatment) → refused on tab treatment, open=true; closed → BUTTON#[rec-done-add] "Record a treatment" vis=true
+ok   rec-note-add     opened by section rec-notes New note               (tab notes) → refused on tab notes, open=true; closed → BUTTON#[rec-note-add] "New note" vis=true
+ok   rec-recall-set   opened by visible Pick a day                       (tab overview) → refused on tab overview, open=true; closed → BUTTON#[rec-recall-set] "Pick a day" vis=true
+0 with focus lost

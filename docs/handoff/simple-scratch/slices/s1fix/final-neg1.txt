@@ -1,0 +1,31 @@
+[1] TAB_OF loses money ::   ✗ an old section (SECTION_META): "money" → null   ✗ #money (src/pages/c/[clinic]/finances/close/index.astro:370, src/pages/c/[clinic]/patients/[patient].astro:862): "#money" → null 
+[1] TAB_OF loses details-card ::   ✗ an inbound hash of spec §5: "#details-card" → null 
+[1] TAB_OF maps notes to bogus tab ::   ✗ TAB_OF.notes: "notes"   ✗ an old section (SECTION_META): "notes" → "notes" 
+[1] ANCHOR to unknown id ::   ✗ ANCHOR[done-add]: "#treatment-donez" → null   ✗ the redirect of done-add: "#treatment-donez" → null 
+[1] EXTRA_ANCHOR to unknown id ::   ✗ EXTRA_ANCHOR[payplan-add]: "#payplanz" → null   ✗ the redirect of payplan-add: "#payplanz" → null 
+[1] record.ts SECTION_OF new intent to bogus section ::   ✗ record.ts SECTION_OF[x-new]: "bogus" → null   ✗ the redirect of x-new: "#bogus" → null 
+[1] record-extra SECTION_OF bogus ::   ✗ record-extra.ts SECTION_OF[vitals-add]: "healthz" → null   ✗ landingSection gave a section that is no tab, in 2800 of the combinations, first: {"backTo":"healthz","fromChart":false,"saved":null,"openNow":null,"visit":nul
+[1] SAVED_TO bogus ::   ✗ SAVED_TO[details]: "overviewz" → null   ✗ ?saved=details (src/pages/c/[clinic]/patients/[patient].astro:297): "overviewz" → null 
+[1] SAVED_WORD bogus ::   ✗ SAVED_WORD[adjusted]: "treatmentz" → null   ✗ ?saved=adjusted (src/lib/record-extra.ts:329): "treatmentz" → null 
+[1] record.ts returns a new saved word ::   ✗ ?saved=zebra (src/lib/record.ts:435) has no section in SAVED_TO or SAVED_WORD: "zebra" 
+[1] record-extra returns a new saved word via saved: ::   ✗ ?saved=zork (src/lib/record-extra.ts:307) has no section in SAVED_TO or SAVED_WORD: "zork" 
+[1] OPEN_PANEL bogus section ::   ✗ SAVED_WORD[file]: "filez" → null   ✗ ?saved=file (src/lib/record.ts:381): "filez" → null 
+[1] a link opens a panel not in OPEN_PANEL ::   ✗ ?open=health (src/components/ws/cal/panels.ts:234 via src/components/ws/cal/panels.ts:240) is not a panel the record opens (OPEN_PANEL): "health" 
+[1] a page links into the record with an unknown hash ::   ✗ #moneyz (src/pages/c/[clinic]/finances/close/index.astro:370): "#moneyz" → null 
+[1] rx print page's back hash unknown ::   ✗ #rxz (src/pages/c/[clinic]/patients/[patient]/rx/[rx].astro:27): "#rxz" → null 
+[1] data-rec-go unknown ::   ✗ data-rec-go / show "chartz" (src/pages/c/[clinic]/patients/_record/ChartOffer.astro:65): "chartz" → null 
+[1] VisitStrip go: unknown ::   ✗ data-rec-go / show "visitz" (src/pages/c/[clinic]/patients/_record/VisitStrip.astro:115): "visitz" → null 
+[1] landingSection other visit → bogus ::   ✗ landingSection gave a section that is no tab, in 6 of the combinations, first: {"backTo":null,"fromChart":false,"saved":null,"openNow":null,"visit":"other"} → "visitz"   ✗ ?visit= (other): "visitz" → null 
+[1] landingSection default → bogus ::   ✗ landingSection gave a section that is no tab, in 12 of the combinations, first: {"backTo":null,"fromChart":false,"saved":null,"openNow":null,"visit":null} → "home"   ✗ ?visit= (none or unknown): "home" → null 
+[1] backOf returns bogus ::   ✗ back=treatment: "treatmentz" → null   ✗ landingSection gave a section that is no tab, in 2800 of the combinations, first: {"backTo":"treatmentz","fromChart":false,"saved":null,"openNow":null,"visit":null} → "treatmentz
+[1] page redirects saved=unknown word ::   ✗ ?saved=zilch (src/pages/c/[clinic]/patients/[patient].astro:226) has no section in SAVED_TO or SAVED_WORD: "zilch" 
+[1] consents page redirects to unknown hash ::   ✗ #consentz (src/pages/c/[clinic]/patients/[patient]/consents/index.astro:35): "#consentz" → null 
+[1] intake page redirects to record with unknown saved ::   ✗ ?saved=intakez (src/pages/c/[clinic]/patients/intake/[intake].astro:128) has no section in SAVED_TO or SAVED_WORD: "intakez" 
+[1] import links to unknown hash ::   ✗ #visitz (src/pages/c/[clinic]/patients/import.astro:572): "#visitz" → null 
+[1] aftercare back link unknown hash ::   ✗ #treatment-recordz (src/pages/c/[clinic]/patients/[patient]/aftercare/[kind].astro:35): "#treatment-recordz" → null 
+[1] DeskConsent paper hash unknown ::   ✗ #consent-paperz (src/components/DeskConsent.astro:163): "#consent-paperz" → null 
+[0] pickpanel chart hash unknown :: 
+[1] ChartOffer #chart-offer unknown ::   ✗ #chart-offerz (src/pages/c/[clinic]/patients/_record/ChartOffer.astro:71): "#chart-offerz" → null 
+[1] Letters #letters unknown ::   ✗ #letterz (src/pages/c/[clinic]/patients/_record/Letters.astro:111): "#letterz" → null 
+[1] files view back hash unknown ::   ✗ #filez (src/pages/c/[clinic]/patients/[patient]/files/[file]/view.astro:26): "#filez" → null 
+[0] sign page back hash (visit) :: 

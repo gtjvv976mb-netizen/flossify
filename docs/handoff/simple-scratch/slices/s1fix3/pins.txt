@@ -1,0 +1,41 @@
+// Every link of spec §5 that another page writes, pinned to the file that writes it: each name must still be read there.
+// A link rewritten in a way this check does not follow (a URL object, a helper, pieces) would otherwise stop being
+// checked without a word — here it fails instead. A change §5 asks for (finances/close:338 → #treatment-record,
+// import.astro:572 → #treatment-record, the Dashboard's hashes dropped) is made in this table with the link.
+// [§5 row, file, kind (hash | saved | open | visit), names ('*': at least one)]
+const RP = `${REC}/[patient]`;
+const SPEC_SITES = [
+  ['?visit=<id> (panels.ts:85, :358)', 'src/components/ws/cal/panels.ts', 'visit', ['*']],
+  ['?visit=<id> (sign/[visit].astro:169, 184, 190)', `${RP}/sign/[visit].astro`, 'visit', ['*']],
+  ['panels.ts:236-247: #health, #vitals, #rx, #treatment', 'src/components/ws/cal/panels.ts', 'hash', ['health', 'vitals', 'rx', 'treatment']],
+  ['panels.ts:240 ?open=vitals, :463 ?open=details&dash=', 'src/components/ws/cal/panels.ts', 'open', ['vitals', 'details']],
+  ['#consent-paper (DeskConsent.astro:163)', 'src/components/DeskConsent.astro', 'hash', ['consent-paper']],
+  ['#treatment-record (treatment-record.astro:32)', `${RP}/treatment-record.astro`, 'hash', ['treatment-record']],
+  ['#treatment-record (aftercare/[kind].astro:34)', `${RP}/aftercare/[kind].astro`, 'hash', ['treatment-record']],
+  ['?visit= (aftercare/[kind].astro:34)', `${RP}/aftercare/[kind].astro`, 'visit', ['*']],
+  ['#rx (rx/[rx].astro:26)', `${RP}/rx/[rx].astro`, 'hash', ['rx']],
+  ['#letters (letters/[letter].astro:25)', `${RP}/letters/[letter].astro`, 'hash', ['letters']],
+  ['#files (files/[file]/view.astro)', `${RP}/files/[file]/view.astro`, 'hash', ['files']],
+  ['#treatment (finances/close:338), #money (:370)', 'src/pages/c/[clinic]/finances/close/index.astro', 'hash', ['treatment', 'money']],
+  ['#visits (import.astro:572)', `${REC}/import.astro`, 'hash', ['visits']],
+  ['the intake\'s #consent (consents/index.astro)', `${RP}/consents/index.astro`, 'hash', ['consent']],
+  ['?saved=capacity (consents/index.astro:35)', `${RP}/consents/index.astro`, 'saved', ['capacity']],
+  ['the intake\'s #consent ([document].astro:100, 170)', `${RP}/consents/[document].astro`, 'hash', ['consent']],
+  ['?saved=consent-removed ([document].astro:100)', `${RP}/consents/[document].astro`, 'saved', ['consent-removed']],
+  ['the intake\'s #consent (new/index.astro:107)', `${REC}/new/index.astro`, 'hash', ['consent']],
+  ['the intake\'s #consent (intake/[intake].astro:708)', `${REC}/intake/[intake].astro`, 'hash', ['consent']],
+  ['?saved=intake&intake= (intake/[intake].astro)', `${REC}/intake/[intake].astro`, 'saved', ['intake']],
+  ['?saved=new (new/type.astro)', `${REC}/new/type.astro`, 'saved', ['new']],
+  ['?saved=form&form= (forms/[form]/index.astro)', `${REC}/forms/[form]/index.astro`, 'saved', ['form']],
+];
+const siteOf = (w) => w.split(' via ')[0].replace(/:\d+$/, '');
+for (const [row, file, kind, names] of SPEC_SITES) {
+  checked++;
+  if (!byRel.has(file)) { fail(`spec §5, ${row}: ${file} is gone — update SPEC_SITES with the page that writes this link now`, file); continue; }
+  const read = new Set([...found[kind]].filter(([, at]) => at.some((w) => siteOf(w) === file)).map(([v]) => v));
+  for (const n of names) {
+    if (n === '*' ? read.size : read.has(n)) continue;
+    const what = kind === 'hash' ? `#${n}` : `?${kind}=${n === '*' ? '…' : n}`;
+    fail(`spec §5, ${row}: this check no longer reads ${what} in ${file} — the link was rewritten in a way the check does not follow (teach it), or moved or changed (update SPEC_SITES with it)`, n);
+  }
+}

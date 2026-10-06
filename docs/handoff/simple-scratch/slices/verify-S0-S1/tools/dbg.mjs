@@ -1,0 +1,10 @@
+import { chromium } from '/home/user/fl-simple/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4470';
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await browser.newContext({ serviceWorkers: 'block' }); const page = await ctx.newPage();
+await page.goto(`${BASE}/auth/login/?any=1`); await page.fill('#email', 'liwayway.domingo@example.com'); await page.fill('#password', 'flossify');
+await Promise.all([page.waitForNavigation(), page.click('button[type="submit"]')]);
+console.log(page.url());
+console.log((await ctx.cookies()).map((c) => `${c.name} secure=${c.secure} domain=${c.domain} path=${c.path}`));
+console.log(await page.locator('.entry-error, [role=alert]').allInnerTexts());
+await browser.close();

@@ -1,0 +1,11 @@
+import { chromium } from '/home/user/fl-simple/node_modules/playwright/index.mjs';
+const BASE = 'http://127.0.0.1:4470';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await b.newContext({ serviceWorkers: 'block' }); const page = await ctx.newPage();
+await page.goto(BASE + '/auth/login/?any=1'); await page.fill('#email', 'hazel.tabanao@example.com'); await page.fill('#password', 'flossify');
+await Promise.all([page.waitForNavigation(), page.click('[data-go]')]);
+const res = await page.goto(`${BASE}/c/session-road/patients/1a1d1c5e-ce1a-4d80-801c-f13fb6ef48cb/`);
+const html = await res.text();
+let i = -1; const out = new Set(); while ((i = html.indexOf('₱', i + 1)) >= 0) out.add(html.slice(Math.max(0, i - 90), i + 30).replace(/\s+/g, ' '));
+console.log([...out].slice(0, 12).join('\n---\n'));
+await b.close();

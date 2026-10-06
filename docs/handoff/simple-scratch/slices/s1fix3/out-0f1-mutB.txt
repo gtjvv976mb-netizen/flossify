@@ -1,0 +1,8 @@
+MISSED panels-rec-concat+typo: exit 0 — rec() by concatenation, then a typo in a call
+MISSED panels-rec-concat+open-typo: exit 0 — rec() by concatenation, then a bad ?open=
+MISSED panels-rec-url+typo: exit 0 — rec() with a URL object (.hash =), then a typo in a call
+MISSED panels-rec-url+open-typo: exit 0 — rec() with a URL object (searchParams.set), then a bad ?open=
+caught neg-money-removed: ✗ an old section (SECTION_META): "money" → null
+
+1 caught, 4 missed, 0 not applied
+clean tree after: passes

@@ -1,0 +1,350 @@
+visit-today
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+visit-rich-today
+    strip {"shown": true, "meta": "11:00 am \u00b7 Dr. Hazel Tabanao \u00b7 Root canal, tooth 46 \u00b7 Chair 3"} → {"shown": true, "meta": "11:00 am \u00b7 Root canal, tooth 46 \u00b7 Chair 3 \u00b7 Dr. Tabanao"}
+dash-health
+    scrollY 574 → 941
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+dash-vitals-open
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+dash-rx
+    scrollY 1906 → 2018
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+dash-treatment
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+dash-desk-note
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+open-vitals
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+open-vitals-visit
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+open-note
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+open-note-visit
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+open-rx
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+open-rx-visit
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+open-done
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+open-done-visit
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+open-file
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+open-file-visit
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+open-details
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+open-health
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-chart
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+treated-rich
+    scrollY 523 → 471
+    strip {"shown": false, "meta": "11:00 am \u00b7 Dr. Hazel Tabanao \u00b7 Root canal, tooth 46 \u00b7 Chair 3"} → {"shown": false, "meta": "11:00 am \u00b7 Root canal, tooth 46 \u00b7 Chair 3 \u00b7 Dr. Tabanao"}
+treated-rich-back-chart
+    scrollY 523 → 471
+    strip {"shown": false, "meta": "11:00 am \u00b7 Dr. Hazel Tabanao \u00b7 Root canal, tooth 46 \u00b7 Chair 3"} → {"shown": false, "meta": "11:00 am \u00b7 Root canal, tooth 46 \u00b7 Chair 3 \u00b7 Dr. Tabanao"}
+treated-rich-plain
+    scrollY 523 → 471
+    strip {"shown": false, "meta": "11:00 am \u00b7 Dr. Hazel Tabanao \u00b7 Root canal, tooth 46 \u00b7 Chair 3"} → {"shown": false, "meta": "11:00 am \u00b7 Root canal, tooth 46 \u00b7 Chair 3 \u00b7 Dr. Tabanao"}
+treated-maria
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+chartskip-changed
+    scrollY 523 → 471
+    strip {"shown": false, "meta": "11:00 am \u00b7 Dr. Hazel Tabanao \u00b7 Root canal, tooth 46 \u00b7 Chair 3"} → {"shown": false, "meta": "11:00 am \u00b7 Root canal, tooth 46 \u00b7 Chair 3 \u00b7 Dr. Tabanao"}
+chartskip-ended
+    scrollY 523 → 471
+    strip {"shown": false, "meta": "11:00 am \u00b7 Dr. Hazel Tabanao \u00b7 Root canal, tooth 46 \u00b7 Chair 3"} → {"shown": false, "meta": "11:00 am \u00b7 Root canal, tooth 46 \u00b7 Chair 3 \u00b7 Dr. Tabanao"}
+back-treatment-old
+    scrollY 523 → 471
+    strip {"shown": false, "meta": "11:00 am \u00b7 Dr. Hazel Tabanao \u00b7 Root canal, tooth 46 \u00b7 Chair 3"} → {"shown": false, "meta": "11:00 am \u00b7 Root canal, tooth 46 \u00b7 Chair 3 \u00b7 Dr. Tabanao"}
+saved-new
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-details
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-form
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+form-used
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+stale
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-health
+    scrollY 574 → 941
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-birth
+    scrollY 643 → 1009
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-birth-details
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-nothing
+    scrollY 574 → 941
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-checked
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-checked-today
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-consent
+    scrollY 1667 → 2034
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-consent-already
+    scrollY 1667 → 2034
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-paper
+    scrollY 1957 → 2324
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+consent-paper
+    scrollY 1957 → 2324
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-intake
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-capacity
+    scrollY 1736 → 2102
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+saved-consent-removed
+    scrollY 1736 → 2102
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+capacity-refused
+    scrollY 1758 → 2125
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+stale-consent
+    scrollY 1736 → 2102
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-treatment-record
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+aftercare-back-today
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-timeline
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-rx
+    scrollY 1906 → 2018
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-letters
+    scrollY 2275 → 2387
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-files
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-treatment
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-money
+    scrollY 2684 → 2796
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-money-dentist
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-visits
+    el {"id": "visits", "exists": true, "shown": true, "panel": "overview", "top": 180, "onScreen": true} → {"id": "visits", "exists": true, "shown": true, "panel": "overview", "top": 248, "onScreen": true}
+    scrollY 1711 → 175
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-consent
+    scrollY 1667 → 2034
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+anchor-treatment-done
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+anchor-treatment-lab
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+anchor-recall
+    el {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 180, "onScreen": true} → {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 363, "onScreen": true}
+    scrollY 727 → 175
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+anchor-vitals
+    scrollY 281 → 647
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+anchor-letters
+    scrollY 2275 → 2387
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+anchor-loas
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+anchor-payplans
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+anchor-treatment-lab-rich
+    scrollY 1782 → 1730
+    strip {"shown": false, "meta": "11:00 am \u00b7 Dr. Hazel Tabanao \u00b7 Root canal, tooth 46 \u00b7 Chair 3"} → {"shown": false, "meta": "11:00 am \u00b7 Root canal, tooth 46 \u00b7 Chair 3 \u00b7 Dr. Tabanao"}
+anchor-loas-rich
+    scrollY 2204 → 2152
+    strip {"shown": false, "meta": "11:00 am \u00b7 Dr. Hazel Tabanao \u00b7 Root canal, tooth 46 \u00b7 Chair 3"} → {"shown": false, "meta": "11:00 am \u00b7 Root canal, tooth 46 \u00b7 Chair 3 \u00b7 Dr. Tabanao"}
+hash-overview
+    el {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 222, "onScreen": true} → {"id": "overview", "exists": true, "shown": true, "panel": "overview", "top": 248, "onScreen": true}
+    scrollY 239 → 175
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-health
+    scrollY 574 → 941
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-chart
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-notes
+    scrollY 1199 → 1311
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-texts
+    scrollY 2871 → 2983
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-this-visit
+    el {"id": "this-visit", "exists": true, "shown": true, "panel": "overview", "top": 180, "onScreen": true} → {"id": "this-visit", "exists": true, "shown": true, "panel": "overview", "top": 248, "onScreen": true}
+    scrollY 281 → 175
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-chart-offer
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-consent-forms
+    el {"id": "consent-forms", "exists": true, "shown": true, "panel": "patient", "top": 252, "onScreen": true} → {"id": "consent-forms", "exists": true, "shown": true, "panel": "patient", "top": 253, "onScreen": true}
+    scrollY 1979 → 2345
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-visit-consents
+    el {"id": "visit-consents", "exists": true, "shown": true, "panel": "patient", "top": 404, "onScreen": true} → {"id": "visit-consents", "exists": true, "shown": true, "panel": "patient", "top": 405, "onScreen": true}
+    scrollY 1979 → 2345
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-patient-forms
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-details-card
+    el {"id": "details-card", "exists": false, "shown": false, "panel": null, "top": null, "onScreen": null} → {"id": "details-card", "exists": true, "shown": true, "panel": "patient", "top": 180, "onScreen": true}
+    scrollY 239 → 281
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-patient
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-rec-overview
+    el {"id": "rec-overview", "exists": true, "shown": true, "panel": "overview", "top": 222, "onScreen": true} → {"id": "rec-overview", "exists": true, "shown": true, "panel": "overview", "top": 248, "onScreen": true}
+    scrollY 239 → 175
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-rec-health
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-rec-chart
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+hash-rec-treatment-record
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-plan-add-plan
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-plan-add-back-chart
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-plan-status-plan-accepted
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-plan-status-plan-done
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-plan-remove-plan-removed
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-done-add-done
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-done-add-back-chart
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-lab-add-lab
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-lab-next-lab-moved
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-note-add-note
+    scrollY 1199 → 1311
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-note-add-back-chart
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-note-add-addendum
+    scrollY 1199 → 1311
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-rx-add-rx
+    scrollY 1906 → 2018
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-file-add-file
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-file-add-files
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-file-remove-file-removed
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-recall-set-recall
+    el {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 180, "onScreen": true} → {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 363, "onScreen": true}
+    scrollY 727 → 175
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-recall-done-recall-done
+    el {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 180, "onScreen": true} → {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 354, "onScreen": true}
+    scrollY 727 → 184
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-recall-clear-recall-cleared
+    el {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 180, "onScreen": true} → {"id": "recall", "exists": true, "shown": true, "panel": "overview", "top": 363, "onScreen": true}
+    scrollY 727 → 175
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-vitals-add-vitals
+    scrollY 281 → 647
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-vitals-add-vitals-high
+    scrollY 281 → 647
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-letter-add-letter
+    scrollY 2275 → 2387
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-letter-answer-answered
+    scrollY 2275 → 2387
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-loa-add-loa
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-loa-approve-loa-approved
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-loa-deny-loa-denied
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-loa-cancel-loa-cancelled
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-payplan-add-payplan
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-payplan-stop-payplan-stopped
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+post-adjust-add-adjusted
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-overview-rx-add
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-patient-rx-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-chart-rx-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-treatment-record-rx-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-overview-note-add
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-patient-note-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-chart-note-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-treatment-record-note-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-overview-vitals-add
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-patient-vitals-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-chart-vitals-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-treatment-record-vitals-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-overview-letter-add
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-patient-letter-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-chart-letter-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-treatment-record-letter-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-overview-file-add
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-patient-file-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-chart-file-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-treatment-record-file-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-overview-done-add
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-patient-done-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-chart-done-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-treatment-record-done-add
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-overview-recall-set
+    strip {"shown": true, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": true, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-patient-recall-set
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-chart-recall-set
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+back-treatment-record-recall-set
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+offline-copy
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+offline-copy-visit
+    strip {"shown": false, "meta": "9:30 am \u00b7 Dr. Hazel Tabanao \u00b7 Filling, tooth 36 \u00b7 Chair 2"} → {"shown": false, "meta": "9:30 am \u00b7 Filling, tooth 36 \u00b7 Chair 2 \u00b7 Dr. Tabanao"}
+presses differ
+   ('maria', 2, 'chart', [], '#chart') → ('rich', 0, 'patient', [], '#patient')
+   ('maria', 3, 'overview', [], '') → ('rich', 1, 'patient', [], '#patient')
+   ('maria', 4, 'patient', [], '#patient') → ('rich', 2, 'chart', [], '#chart')
+152 links, 14 presses compared; 144 differences

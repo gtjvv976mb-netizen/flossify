@@ -1,0 +1,269 @@
+ok   owner 1440 maria  overview         plan-add      escape       → button "Add" y=493
+ok   owner 1440 maria  overview         done-add      close-button → button "Add" y=493
+ok   owner 1440 maria  overview         lab-add       escape       → button "Add" y=493
+ok   owner 1440 maria  overview         note-add      close-button → button "Add" y=493
+ok   owner 1440 maria  overview         rx-add        escape       → button[open=rec-rx-add] "Prescription" y=507
+ok   owner 1440 maria  overview         file-add      close-button → button[open=rec-file-add] "X-ray or photo" y=507
+ok   owner 1440 maria  overview         recall-set    escape       → button[open=rec-recall-set] "Pick a day" y=760
+ok   owner 1440 maria  overview         vitals-add    close-button → button[open=rec-vitals-add] "Take it" y=303
+ok   owner 1440 maria  overview         letter-add    escape       → button "Add" y=493
+ok   owner 1440 maria  overview         letter-answer close-button → button#rec-rec-overview-tab "TodayToday" y=493
+ok   owner 1440 maria  overview         loa-add       escape       → button "Add" y=493
+ok   owner 1440 maria  overview         loa-approve   close-button → button#rec-rec-overview-tab "TodayToday" y=493
+ok   owner 1440 maria  overview         loa-deny      escape       → button#rec-rec-overview-tab "TodayToday" y=493
+ok   owner 1440 maria  overview         payplan-add   close-button → button "Add" y=493
+ok   owner 1440 maria  overview         adjust-add    escape       → button#rec-rec-overview-tab "TodayToday" y=493
+ok   owner 1440 maria  overview         plan-status   close-button → button "Add" y=493
+ok   owner 1440 maria  overview         details       escape       → button[open=details] "Edit details" y=216
+ok   owner 1440 maria  patient          plan-add      close-button → button "Add" y=493
+ok   owner 1440 maria  patient          done-add      escape       → button "Add" y=493
+ok   owner 1440 maria  patient          lab-add       close-button → button "Add" y=493
+ok   owner 1440 maria  patient          note-add      escape       → button "Add" y=493
+ok   owner 1440 maria  patient          rx-add        close-button → button "Add" y=493
+ok   owner 1440 maria  patient          file-add      escape       → button "Add" y=493
+ok   owner 1440 maria  patient          recall-set    close-button → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   owner 1440 maria  patient          vitals-add    escape       → button[open=rec-vitals-add] "Take a reading" y=173
+ok   owner 1440 maria  patient          letter-add    close-button → button "Add" y=493
+ok   owner 1440 maria  patient          letter-answer escape       → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   owner 1440 maria  patient          loa-add       close-button → button "Add" y=493
+ok   owner 1440 maria  patient          loa-approve   escape       → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   owner 1440 maria  patient          loa-deny      close-button → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   owner 1440 maria  patient          payplan-add   escape       → button "Add" y=493
+ok   owner 1440 maria  patient          adjust-add    close-button → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   owner 1440 maria  patient          plan-status   escape       → button "Add" y=493
+ok   owner 1440 maria  patient          details       close-button → button[open=details] "Edit details" y=216
+ok   owner 1440 maria  chart            plan-add      escape       → button[open=rec-plan-add] "Add to plan" y=493
+ok   owner 1440 maria  chart            done-add      close-button → button[open=rec-done-add] "Record a treatment" y=493
+ok   owner 1440 maria  chart            lab-add       escape       → button[open=rec-lab-add] "New lab case" y=493
+ok   owner 1440 maria  chart            note-add      close-button → button "Add" y=493
+ok   owner 1440 maria  chart            rx-add        escape       → button "Add" y=493
+ok   owner 1440 maria  chart            file-add      close-button → button[open=rec-file-add] "Add files" y=493
+ok   owner 1440 maria  chart            recall-set    escape       → button#rec-rec-chart-tab "Chart & planChart2, 2 open o" y=493
+ok   owner 1440 maria  chart            vitals-add    close-button → button "Add" y=493
+ok   owner 1440 maria  chart            letter-add    escape       → button "Add" y=493
+ok   owner 1440 maria  chart            letter-answer close-button → button#rec-rec-chart-tab "Chart & planChart2, 2 open o" y=493
+ok   owner 1440 maria  chart            loa-add       escape       → button[open=rec-loa-add] "Ask for an LOA" y=493
+ok   owner 1440 maria  chart            loa-approve   close-button → button#rec-rec-chart-tab "Chart & planChart2, 2 open o" y=493
+ok   owner 1440 maria  chart            loa-deny      escape       → button#rec-rec-chart-tab "Chart & planChart2, 2 open o" y=493
+ok   owner 1440 maria  chart            payplan-add   close-button → button[open=rec-payplan-add] "New plan" y=693
+ok   owner 1440 maria  chart            adjust-add    escape       → button#rec-rec-chart-tab "Chart & planChart2, 2 open o" y=493
+ok   owner 1440 maria  chart            plan-status   close-button → button[open=rec-done-add] "Record a treatment" y=493
+ok   owner 1440 maria  chart            details       escape       → button[open=details] "Edit details" y=216
+ok   owner 1440 maria  treatment-record plan-add      close-button → button "Add" y=493
+ok   owner 1440 maria  treatment-record done-add      escape       → button "Add" y=493
+ok   owner 1440 maria  treatment-record lab-add       close-button → button "Add" y=493
+ok   owner 1440 maria  treatment-record note-add      escape       → button[open=rec-note-add] "New note" y=493
+ok   owner 1440 maria  treatment-record rx-add        close-button → button[open=rec-rx-add] "New prescription" y=493
+ok   owner 1440 maria  treatment-record file-add      escape       → button "Add" y=493
+ok   owner 1440 maria  treatment-record recall-set    close-button → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   owner 1440 maria  treatment-record vitals-add    escape       → button "Add" y=493
+ok   owner 1440 maria  treatment-record letter-add    close-button → button[open=rec-letter-add] "Dental certificateFor school" y=473
+ok   owner 1440 maria  treatment-record letter-answer escape       → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   owner 1440 maria  treatment-record loa-add       close-button → button "Add" y=493
+ok   owner 1440 maria  treatment-record loa-approve   escape       → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   owner 1440 maria  treatment-record loa-deny      close-button → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   owner 1440 maria  treatment-record payplan-add   escape       → button "Add" y=493
+ok   owner 1440 maria  treatment-record adjust-add    close-button → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   owner 1440 maria  treatment-record plan-status   escape       → button "Add" y=493
+ok   owner 1440 maria  treatment-record details       close-button → button[open=details] "Edit details" y=216
+ok   owner 1440 rich   overview         plan-add      escape       → button "Add" y=493
+ok   owner 1440 rich   overview         done-add      close-button → button[open=rec-done-add] "Record it" y=495
+ok   owner 1440 rich   overview         lab-add       escape       → button "Add" y=493
+ok   owner 1440 rich   overview         note-add      close-button → button[open=rec-note-add] "Write it" y=559
+ok   owner 1440 rich   overview         rx-add        escape       → button[open=rec-rx-add] "Prescription" y=699
+ok   owner 1440 rich   overview         file-add      close-button → button[open=rec-file-add] "X-ray or photo" y=699
+ok   owner 1440 rich   overview         recall-set    escape       → button[open=rec-recall-set] "Pick a day" y=493
+ok   owner 1440 rich   overview         vitals-add    close-button → button[open=rec-vitals-add] "Take again" y=303
+ok   owner 1440 rich   overview         letter-add    escape       → button "Add" y=493
+ok   owner 1440 rich   overview         letter-answer close-button → button#rec-rec-overview-tab "TodayToday" y=493
+ok   owner 1440 rich   overview         loa-add       escape       → button "Add" y=493
+ok   owner 1440 rich   overview         loa-approve   close-button → button#rec-rec-overview-tab "TodayToday" y=493
+ok   owner 1440 rich   overview         loa-deny      escape       → button#rec-rec-overview-tab "TodayToday" y=493
+ok   owner 1440 rich   overview         payplan-add   close-button → button "Add" y=493
+ok   owner 1440 rich   overview         adjust-add    escape       → button#rec-rec-overview-tab "TodayToday" y=493
+ok   owner 1440 rich   overview         plan-status   close-button → button[open=rec-done-add] "Record it" y=495
+ok   owner 1440 rich   overview         details       escape       → button[open=details] "Edit details" y=216
+ok   owner 1440 rich   patient          plan-add      close-button → button "Add" y=493
+ok   owner 1440 rich   patient          done-add      escape       → button "Add" y=493
+ok   owner 1440 rich   patient          lab-add       close-button → button "Add" y=493
+ok   owner 1440 rich   patient          note-add      escape       → button "Add" y=493
+ok   owner 1440 rich   patient          rx-add        close-button → button "Add" y=493
+ok   owner 1440 rich   patient          file-add      escape       → button "Add" y=493
+ok   owner 1440 rich   patient          recall-set    close-button → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   owner 1440 rich   patient          vitals-add    escape       → button[open=rec-vitals-add] "Take a reading" y=173
+ok   owner 1440 rich   patient          letter-add    close-button → button "Add" y=493
+ok   owner 1440 rich   patient          letter-answer escape       → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   owner 1440 rich   patient          loa-add       close-button → button "Add" y=493
+ok   owner 1440 rich   patient          loa-approve   escape       → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   owner 1440 rich   patient          loa-deny      close-button → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   owner 1440 rich   patient          payplan-add   escape       → button "Add" y=493
+ok   owner 1440 rich   patient          adjust-add    close-button → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   owner 1440 rich   patient          plan-status   escape       → button "Add" y=493
+ok   owner 1440 rich   patient          details       close-button → button[open=details] "Edit details" y=216
+ok   owner 1440 rich   chart            plan-add      escape       → button[open=rec-plan-add] "Add to plan" y=798
+ok   owner 1440 rich   chart            done-add      close-button → button[open=rec-done-add] "Record a treatment" y=493
+ok   owner 1440 rich   chart            lab-add       escape       → button[open=rec-lab-add] "New lab case" y=493
+ok   owner 1440 rich   chart            note-add      close-button → button "Add" y=493
+ok   owner 1440 rich   chart            rx-add        escape       → button "Add" y=493
+ok   owner 1440 rich   chart            file-add      close-button → button[open=rec-file-add] "Add files" y=493
+ok   owner 1440 rich   chart            recall-set    escape       → button#rec-rec-chart-tab "Chart & planChart1, one open" y=493
+ok   owner 1440 rich   chart            vitals-add    close-button → button "Add" y=493
+ok   owner 1440 rich   chart            letter-add    escape       → button "Add" y=493
+ok   owner 1440 rich   chart            letter-answer close-button → button#rec-rec-chart-tab "Chart & planChart1, one open" y=493
+ok   owner 1440 rich   chart            loa-add       escape       → button[open=rec-loa-add] "Ask for an LOA" y=493
+ok   owner 1440 rich   chart            loa-approve   close-button → button[open=rec-loa-approve] "Approved" y=523
+ok   owner 1440 rich   chart            loa-deny      escape       → button[open=rec-loa-deny] "Denied" y=523
+ok   owner 1440 rich   chart            payplan-add   close-button → button[open=rec-payplan-add] "New plan" y=693
+ok   owner 1440 rich   chart            adjust-add    escape       → button#rec-rec-chart-tab "Chart & planChart1, one open" y=493
+ok   owner 1440 rich   chart            plan-status   close-button → button[open=rec-done-add] "Record a treatment" y=493
+ok   owner 1440 rich   chart            details       escape       → button[open=details] "Edit details" y=216
+ok   owner 1440 rich   treatment-record plan-add      close-button → button "Add" y=493
+ok   owner 1440 rich   treatment-record done-add      escape       → button "Add" y=493
+ok   owner 1440 rich   treatment-record lab-add       close-button → button "Add" y=493
+ok   owner 1440 rich   treatment-record note-add      escape       → button[open=rec-note-add] "New note" y=656
+ok   owner 1440 rich   treatment-record rx-add        close-button → button[open=rec-rx-add] "New prescription" y=493
+ok   owner 1440 rich   treatment-record file-add      escape       → button "Add" y=493
+ok   owner 1440 rich   treatment-record recall-set    close-button → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   owner 1440 rich   treatment-record vitals-add    escape       → button "Add" y=493
+ok   owner 1440 rich   treatment-record letter-add    close-button → button[open=rec-letter-add] "Dental certificateFor school" y=473
+ok   owner 1440 rich   treatment-record letter-answer escape       → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   owner 1440 rich   treatment-record loa-add       close-button → button "Add" y=493
+ok   owner 1440 rich   treatment-record loa-approve   escape       → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   owner 1440 rich   treatment-record loa-deny      close-button → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   owner 1440 rich   treatment-record payplan-add   escape       → button "Add" y=493
+ok   owner 1440 rich   treatment-record adjust-add    close-button → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   owner 1440 rich   treatment-record plan-status   escape       → button "Add" y=493
+ok   owner 1440 rich   treatment-record details       close-button → button[open=details] "Edit details" y=216
+ok   owner 390 maria  overview         plan-add      escape       → button "Add" y=457
+ok   owner 390 maria  overview         done-add      close-button → button "Add" y=457
+ok   owner 390 maria  overview         lab-add       escape       → button "Add" y=457
+ok   owner 390 maria  overview         note-add      close-button → button "Add" y=457
+ok   owner 390 maria  overview         rx-add        escape       → button[open=rec-rx-add] "Prescription" y=729
+ok   owner 390 maria  overview         file-add      close-button → button[open=rec-file-add] "X-ray or photo" y=779
+ok   owner 390 maria  overview         recall-set    escape       → button[open=rec-recall-set] "Pick a day" y=463
+ok   owner 390 maria  overview         vitals-add    close-button → button[open=rec-vitals-add] "Take it" y=473
+ok   owner 390 maria  overview         letter-add    escape       → button "Add" y=457
+ok   owner 390 maria  overview         letter-answer close-button → button#rec-rec-overview-tab "TodayToday" y=457
+ok   owner 390 maria  overview         loa-add       escape       → button "Add" y=457
+ok   owner 390 maria  overview         loa-approve   close-button → button#rec-rec-overview-tab "TodayToday" y=457
+ok   owner 390 maria  overview         loa-deny      escape       → button#rec-rec-overview-tab "TodayToday" y=457
+ok   owner 390 maria  overview         payplan-add   close-button → button "Add" y=457
+ok   owner 390 maria  overview         adjust-add    escape       → button#rec-rec-overview-tab "TodayToday" y=457
+ok   owner 390 maria  overview         plan-status   close-button → button "Add" y=457
+ok   owner 390 maria  overview         details       escape       → button[open=details] "Edit details" y=427
+ok   owner 390 maria  patient          plan-add      close-button → button "Add" y=457
+ok   owner 390 maria  patient          done-add      escape       → button "Add" y=457
+ok   owner 390 maria  patient          lab-add       close-button → button "Add" y=457
+ok   owner 390 maria  patient          note-add      escape       → button "Add" y=457
+ok   owner 390 maria  patient          rx-add        close-button → button "Add" y=457
+ok   owner 390 maria  patient          file-add      escape       → button "Add" y=457
+ok   owner 390 maria  patient          recall-set    close-button → button#rec-rec-patient-tab "Patient infoPatient" y=457
+ok   owner 390 maria  patient          vitals-add    escape       → button[open=rec-vitals-add] "Take a reading" y=217
+ok   owner 390 maria  patient          letter-add    close-button → button "Add" y=457
+ok   owner 390 maria  patient          letter-answer escape       → button#rec-rec-patient-tab "Patient infoPatient" y=457
+ok   owner 390 maria  patient          loa-add       close-button → button "Add" y=457
+ok   owner 390 maria  patient          loa-approve   escape       → button#rec-rec-patient-tab "Patient infoPatient" y=457
+ok   owner 390 maria  patient          loa-deny      close-button → button#rec-rec-patient-tab "Patient infoPatient" y=457
+ok   owner 390 maria  patient          payplan-add   escape       → button "Add" y=457
+ok   owner 390 maria  patient          adjust-add    close-button → button#rec-rec-patient-tab "Patient infoPatient" y=457
+ok   owner 390 maria  patient          plan-status   escape       → button "Add" y=457
+ok   owner 390 maria  patient          details       close-button → button[open=details] "Edit details" y=427
+ok   owner 390 maria  chart            plan-add      escape       → button[open=rec-plan-add] "Add to plan" y=463
+ok   owner 390 maria  chart            done-add      close-button → button[open=rec-done-add] "Record a treatment" y=463
+ok   owner 390 maria  chart            lab-add       escape       → button[open=rec-lab-add] "New lab case" y=463
+ok   owner 390 maria  chart            note-add      close-button → button "Add" y=457
+ok   owner 390 maria  chart            rx-add        escape       → button "Add" y=457
+ok   owner 390 maria  chart            file-add      close-button → button[open=rec-file-add] "Add files" y=463
+ok   owner 390 maria  chart            recall-set    escape       → button#rec-rec-chart-tab "Chart & planChart2, 2 open o" y=457
+ok   owner 390 maria  chart            vitals-add    close-button → button "Add" y=457
+ok   owner 390 maria  chart            letter-add    escape       → button "Add" y=457
+ok   owner 390 maria  chart            letter-answer close-button → button#rec-rec-chart-tab "Chart & planChart2, 2 open o" y=457
+ok   owner 390 maria  chart            loa-add       escape       → button[open=rec-loa-add] "Ask for an LOA" y=463
+ok   owner 390 maria  chart            loa-approve   close-button → button#rec-rec-chart-tab "Chart & planChart2, 2 open o" y=457
+ok   owner 390 maria  chart            loa-deny      escape       → button#rec-rec-chart-tab "Chart & planChart2, 2 open o" y=457
+ok   owner 390 maria  chart            payplan-add   close-button → button[open=rec-payplan-add] "New plan" y=657
+ok   owner 390 maria  chart            adjust-add    escape       → button#rec-rec-chart-tab "Chart & planChart2, 2 open o" y=457
+ok   owner 390 maria  chart            plan-status   close-button → button[open=rec-done-add] "Record a treatment" y=463
+ok   owner 390 maria  chart            details       escape       → button[open=details] "Edit details" y=427
+ok   owner 390 maria  treatment-record plan-add      close-button → button "Add" y=457
+ok   owner 390 maria  treatment-record done-add      escape       → button "Add" y=457
+ok   owner 390 maria  treatment-record lab-add       close-button → button "Add" y=457
+ok   owner 390 maria  treatment-record note-add      escape       → button[open=rec-note-add] "New note" y=463
+ok   owner 390 maria  treatment-record rx-add        close-button → button[open=rec-rx-add] "New prescription" y=463
+ok   owner 390 maria  treatment-record file-add      escape       → button "Add" y=457
+ok   owner 390 maria  treatment-record recall-set    close-button → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=457
+ok   owner 390 maria  treatment-record vitals-add    escape       → button "Add" y=457
+ok   owner 390 maria  treatment-record letter-add    close-button → button[open=rec-letter-add] "Dental certificateFor school" y=453
+ok   owner 390 maria  treatment-record letter-answer escape       → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=457
+ok   owner 390 maria  treatment-record loa-add       close-button → button "Add" y=457
+ok   owner 390 maria  treatment-record loa-approve   escape       → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=457
+ok   owner 390 maria  treatment-record loa-deny      close-button → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=457
+ok   owner 390 maria  treatment-record payplan-add   escape       → button "Add" y=457
+ok   owner 390 maria  treatment-record adjust-add    close-button → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=457
+ok   owner 390 maria  treatment-record plan-status   escape       → button "Add" y=457
+ok   owner 390 maria  treatment-record details       close-button → button[open=details] "Edit details" y=427
+ok   dentist 1440 rich   overview         plan-add      escape       → button "Add" y=493
+ok   dentist 1440 rich   overview         done-add      close-button → button[open=rec-done-add] "Record it" y=496
+ok   dentist 1440 rich   overview         lab-add       escape       → button "Add" y=493
+ok   dentist 1440 rich   overview         note-add      close-button → button[open=rec-note-add] "Write it" y=560
+ok   dentist 1440 rich   overview         rx-add        escape       → button[open=rec-rx-add] "Prescription" y=700
+ok   dentist 1440 rich   overview         file-add      close-button → button[open=rec-file-add] "X-ray or photo" y=700
+ok   dentist 1440 rich   overview         recall-set    escape       → button[open=rec-recall-set] "Pick a day" y=493
+ok   dentist 1440 rich   overview         vitals-add    close-button → button[open=rec-vitals-add] "Take again" y=304
+ok   dentist 1440 rich   overview         letter-add    escape       → button "Add" y=493
+ok   dentist 1440 rich   overview         letter-answer close-button → button#rec-rec-overview-tab "TodayToday" y=493
+ok   dentist 1440 rich   overview         loa-add       escape       → button "Add" y=493
+ok   dentist 1440 rich   overview         loa-approve   close-button → button#rec-rec-overview-tab "TodayToday" y=493
+ok   dentist 1440 rich   overview         loa-deny      escape       → button#rec-rec-overview-tab "TodayToday" y=493
+ok   dentist 1440 rich   overview         adjust-add    close-button → button#rec-rec-overview-tab "TodayToday" y=493
+ok   dentist 1440 rich   overview         plan-status   escape       → button[open=rec-done-add] "Record it" y=496
+ok   dentist 1440 rich   overview         details       close-button → button[open=details] "Edit details" y=216
+ok   dentist 1440 rich   patient          plan-add      escape       → button "Add" y=493
+ok   dentist 1440 rich   patient          done-add      close-button → button "Add" y=493
+ok   dentist 1440 rich   patient          lab-add       escape       → button "Add" y=493
+ok   dentist 1440 rich   patient          note-add      close-button → button "Add" y=493
+ok   dentist 1440 rich   patient          rx-add        escape       → button "Add" y=493
+ok   dentist 1440 rich   patient          file-add      close-button → button "Add" y=493
+ok   dentist 1440 rich   patient          recall-set    escape       → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   dentist 1440 rich   patient          vitals-add    close-button → button[open=rec-vitals-add] "Take a reading" y=173
+ok   dentist 1440 rich   patient          letter-add    escape       → button "Add" y=493
+ok   dentist 1440 rich   patient          letter-answer close-button → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   dentist 1440 rich   patient          loa-add       escape       → button "Add" y=493
+ok   dentist 1440 rich   patient          loa-approve   close-button → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   dentist 1440 rich   patient          loa-deny      escape       → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   dentist 1440 rich   patient          adjust-add    close-button → button#rec-rec-patient-tab "Patient infoPatient" y=493
+ok   dentist 1440 rich   patient          plan-status   escape       → button "Add" y=493
+ok   dentist 1440 rich   patient          details       close-button → button[open=details] "Edit details" y=216
+ok   dentist 1440 rich   chart            plan-add      escape       → button[open=rec-plan-add] "Add to plan" y=799
+ok   dentist 1440 rich   chart            done-add      close-button → button[open=rec-done-add] "Record a treatment" y=493
+ok   dentist 1440 rich   chart            lab-add       escape       → button[open=rec-lab-add] "New lab case" y=493
+ok   dentist 1440 rich   chart            note-add      close-button → button "Add" y=493
+ok   dentist 1440 rich   chart            rx-add        escape       → button "Add" y=493
+ok   dentist 1440 rich   chart            file-add      close-button → button[open=rec-file-add] "Add files" y=493
+ok   dentist 1440 rich   chart            recall-set    escape       → button#rec-rec-chart-tab "Chart & planChart1, one open" y=493
+ok   dentist 1440 rich   chart            vitals-add    close-button → button "Add" y=493
+ok   dentist 1440 rich   chart            letter-add    escape       → button "Add" y=493
+ok   dentist 1440 rich   chart            letter-answer close-button → button#rec-rec-chart-tab "Chart & planChart1, one open" y=493
+ok   dentist 1440 rich   chart            loa-add       escape       → button[open=rec-loa-add] "Ask for an LOA" y=493
+ok   dentist 1440 rich   chart            loa-approve   close-button → button[open=rec-loa-approve] "Approved" y=524
+ok   dentist 1440 rich   chart            loa-deny      escape       → button[open=rec-loa-deny] "Denied" y=524
+ok   dentist 1440 rich   chart            adjust-add    close-button → button#rec-rec-chart-tab "Chart & planChart1, one open" y=493
+ok   dentist 1440 rich   chart            plan-status   escape       → button[open=rec-done-add] "Record a treatment" y=493
+ok   dentist 1440 rich   chart            details       close-button → button[open=details] "Edit details" y=216
+ok   dentist 1440 rich   treatment-record plan-add      escape       → button "Add" y=493
+ok   dentist 1440 rich   treatment-record done-add      close-button → button "Add" y=493
+ok   dentist 1440 rich   treatment-record lab-add       escape       → button "Add" y=493
+ok   dentist 1440 rich   treatment-record note-add      close-button → button[open=rec-note-add] "New note" y=572
+ok   dentist 1440 rich   treatment-record rx-add        escape       → button[open=rec-rx-add] "New prescription" y=804
+ok   dentist 1440 rich   treatment-record file-add      close-button → button "Add" y=493
+ok   dentist 1440 rich   treatment-record recall-set    escape       → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   dentist 1440 rich   treatment-record vitals-add    close-button → button "Add" y=493
+ok   dentist 1440 rich   treatment-record letter-add    escape       → button[open=rec-letter-add] "Dental certificateFor school" y=476
+ok   dentist 1440 rich   treatment-record letter-answer close-button → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   dentist 1440 rich   treatment-record loa-add       escape       → button "Add" y=493
+ok   dentist 1440 rich   treatment-record loa-approve   close-button → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   dentist 1440 rich   treatment-record loa-deny      escape       → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   dentist 1440 rich   treatment-record adjust-add    close-button → button#rec-rec-treatment-record-tab "Treatment recordRecord" y=493
+ok   dentist 1440 rich   treatment-record plan-status   escape       → button "Add" y=493
+ok   dentist 1440 rich   treatment-record details       close-button → button[open=details] "Edit details" y=216
+268 cases, 0 failing; 4 skipped (no such panel for the person); page errors: none

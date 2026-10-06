@@ -8,7 +8,7 @@ export const meta = {
   ],
 }
 
-const SP = '/home/user/flossify/docs/handoff/notes'
+const SP = '/home/user/fl-simple/docs/handoff/notes'
 const RULES = `Read ${SP}/simplify-rules.md first (sandbox, rules, how to finish), then ${SP}/simplify-spec.md (the design; §8 is the slice list and each slice's checks). CLAUDE.md applies in full.`
 
 const SLICES = [

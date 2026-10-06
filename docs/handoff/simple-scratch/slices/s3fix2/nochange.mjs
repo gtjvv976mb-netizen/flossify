@@ -1,0 +1,17 @@
+import { browser, login, rec, S, db } from '/tmp/fl-simple-scratch/verify-S3/r2/lib.mjs';
+const ID = '7e57a1c0-0000-4000-8000-00000000fb01';
+const b = await browser();
+const { ctx, page } = await login(b, 'owner');
+await page.goto(rec(ID)); await page.waitForTimeout(300);
+const hist = await page.evaluate(() => [...document.querySelectorAll('#health details.pt-more li')].slice(0, 2).map((l) => l.innerText.replace(/\s+/g, ' ')));
+console.log('history:', JSON.stringify(hist));
+await page.goto(`${S}/patients/?show=attention`); await page.waitForTimeout(300);
+console.log('patients list mentions T-V3B stale:', await page.evaluate(() => { const t = document.body.innerText; const i = t.indexOf('Verify'); return i >= 0 ? t.slice(i, i + 200).replace(/\s+/g, ' ') : 'not found'; }));
+await page.goto(rec(ID)); await page.waitForTimeout(300);
+const btn = page.locator('button', { hasText: 'No change' }).first();
+await Promise.all([page.waitForNavigation(), btn.click()]);
+console.log('after No change:', page.url(), await page.evaluate(() => document.body.innerText.match(/Health history[^\n]{0,80}/g)?.slice(0, 4)));
+const c = await db();
+console.log((await c.query(`select answered_at, answers from medical_history where patient_id=$1 order by answered_at`, [ID])).rows);
+await c.end();
+await b.close();

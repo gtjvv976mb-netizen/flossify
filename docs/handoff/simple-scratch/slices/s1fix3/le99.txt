@@ -1,0 +1,9 @@
+case                               tab               → new             expect                     el                             dialogs
+visit-cancelled-empty              visits            overview          treatment-record                                          rec-visit-becca4e2-73b FAIL tab visits ≠ treatment-record
+visit-future-cancelled             visits            overview          overview                                                  rec-visit-0429460e-778 retired (after S6)
+visit-future-cancelled-fold        visits            overview          treatment-record                                          rec-visit-0429460e-778 FAIL tab visits ≠ treatment-record
+post-loa-cancel-loa-cancelled      treatment         chart             chart                      #loas in treatment y388                               FAIL tab treatment ≠ chart
+
+presses (data-rec-go / data-rec-show):
+
+4 links, 0 presses, 3 failing → /tmp/fl-simple-scratch/s1fix3/links-e99.json
