@@ -1,6 +1,6 @@
 # A simpler Flossify: the plan
 
-*6 October 2026. This is a plan only. No code has changed.*
+*6 October 2026. This was a plan only when written. Status on 9 Oct: phase 1a, the seven safety fixes, is live (#53); the rest is not started.*
 
 ## 1. Summary
 
@@ -1321,7 +1321,7 @@ Marked **[lawyer]** or **[accountant]** where they should answer with you.
 
 **For your information (no answer needed):**
 - **Please act on this one.** The clinic tablet's per-visit signing already offers the consent to treatment on the live site, although it is still marked unreviewed elsewhere. Please have your dentist and lawyer read it first (1.6).
-- **PRC (1.4).** The PRC fix may switch some dentists' public pages back to "PRC check pending". We will count them first and tell you which clinics.
+- **PRC (1.4).** Done on 6 Oct. The line starting `046:` in that day's deploy log on Render says whether any dentist went back to "PRC check pending", and names the clinics. Please send it: a session cannot read the live database.
 - **Add patient (1.11).** "Easiest" appears only beside a way that is open. On the live site the poster stays under Patients → More until the privacy notice covers it.
 - **Texts (1.8).** The Messages page is renamed "Texts".
 - **Bookings in the browser (1.15).** The browser no longer keeps a list of bookings. Undo, then My visits, replace it.
