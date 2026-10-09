@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
 const B = process.argv[2] || 'http://127.0.0.1:4610', N = process.argv[3] || '1';
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
 for (const [vn, vp] of [['desk', { width: 1440, height: 900 }], ['phone', { width: 390, height: 844 }]]) {
   execFileSync('psql', ['-d', 'flossify_glass', '-Atc', "delete from throttle where key like 'signup:%'"]);
   const p = await (await browser.newContext({ viewport: vp })).newPage();

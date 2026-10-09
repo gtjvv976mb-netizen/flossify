@@ -1,7 +1,7 @@
 // Usage: node measure.mjs <outdir> [base]  — screenshots + pane geometry for the home page and /start/.
 import { chromium } from 'playwright';
 const OUT = process.argv[2], B = process.argv[3] || 'http://127.0.0.1:4610';
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
 const res = {};
 for (const [vpName, vp] of [['desk', { width: 1440, height: 900 }], ['phone', { width: 390, height: 844 }]]) {
   const ctx = await browser.newContext({ viewport: vp, isMobile: vpName === 'phone', hasTouch: vpName === 'phone' });
