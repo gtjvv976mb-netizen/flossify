@@ -12,7 +12,7 @@
 #
 # PGHOST / PGPORT / PGUSER are honoured for a local server only (a remote PGHOST is
 # refused, as in setup.sh). PR_BRANCH is the branch of the open pull request to compare
-# with (default: the one in docs/HANDOFF.md). Exit 0 when nothing failed.
+# with (docs/HANDOFF.md names any). Exit 0 when nothing failed. The browser checks are scripts/dev/e2e.sh.
 set -u
 cd "$(dirname "$0")/../.."
 PR_BRANCH="${PR_BRANCH:-}"
@@ -145,8 +145,9 @@ if [ -f scripts/dev/intake/db-test.mjs ]; then
 else
   echo "   no scripts/dev/intake/db-test.mjs on this checkout"; note skip "intake db-test (not on this checkout)"
 fi
-echo "   needs a running server, not run here: scripts/dev/qr-forms/backend-test.mjs, scripts/dev/glass/*.mjs"
-echo "   (contrast, geometry, a real booking), scripts/film.mjs. See docs/HANDOFF.md, Tools."
+echo "   the browser checks need a running server: DB=<throwaway db> scripts/dev/e2e.sh runs all six, each on a"
+echo "   fresh seed. Not run by either: scripts/dev/qr-forms/backend-test.mjs, scripts/dev/glass/*.mjs (contrast,"
+echo "   geometry, a real booking), scripts/film.mjs. See docs/HANDOFF.md, Tools."
 
 step "5. The build"
 if [ $BUILD = 0 ]; then
@@ -161,7 +162,7 @@ fi
 
 printf '\n== Summary\n%s\n\n' "$RESULTS"
 if [ $fail = 0 ]; then
-  echo "Nothing failed. Next: docs/HANDOFF.md, \"What to do next\"."
+  echo "Nothing failed. Next: DB=<throwaway db> scripts/dev/e2e.sh, then docs/HANDOFF.md, \"What to do next\"."
 else
   echo "Something failed: fix that first (docs/HANDOFF.md, \"Tools\", says what each check needs)."
 fi

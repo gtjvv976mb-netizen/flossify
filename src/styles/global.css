@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* Documents for people, not the site: their words must not add classes to the build (measured 9 Oct: the plan page added 47 bytes). */
+@source not "../../docs/simplify-plan.html";
+@source not "../../docs/simplify";
 
 /* ===========================================================================
    fonts — one self-hosted face, for reference numbers only

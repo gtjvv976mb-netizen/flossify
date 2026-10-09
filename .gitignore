@@ -25,3 +25,6 @@ raw-walk/
 # npm run db:backup's default BACKUP_DIR: database dumps and photo archives
 # hold patients' records. Anchored like /uploads/ above.
 /backups/
+
+# A throwaway check written during a session (it must sit in the repository to find playwright and pg).
+/scripts/dev/.*.tmp.mjs

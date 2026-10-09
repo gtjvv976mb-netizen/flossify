@@ -1,264 +1,227 @@
-# Handoff — where the work stopped (1 Oct 2026)
+# Handoff — where the work stopped (9 Oct 2026)
 
-For the next Claude session, which starts from GitHub alone: a fresh clone, no
-scratchpad from any earlier session, and no way to read those sessions (the one
-that built the open pull request ran on another account). Everything the next
-session needs is in this repository: this file, `CLAUDE.md` on the branch you
-check out, and `scripts/dev/resume.sh`.
+For the next Claude session, which starts from GitHub alone: a fresh clone, no scratchpad, no memory of earlier
+sessions, and possibly **another Claude account** (the owner asked on 9 Oct to move the work to their other
+account). Everything the next session needs is in this repository: `CLAUDE.md`, this file, `docs/simplify-plan.md`
+and the two scripts `scripts/dev/resume.sh` and `scripts/dev/e2e.sh`.
 
 Read in this order:
 
-1. `CLAUDE.md` on `main`: the record of everything built, the intake's four
-   phases included.
-2. This file, then `docs/intake-design.md` for what the intake's phase 4 is to
-   settle with the owner.
-3. Run the resume check (below) before changing anything.
+1. `CLAUDE.md` on `main`: the standing constraints and the record of everything built.
+2. This file.
+3. `docs/simplify-plan.md`: the plan the owner asked for on 6 Oct ("can you plan on simplifying the whole site"), and
+   its 25 questions (section 5). `docs/simplify-plan.html` is the same plan as a page with the questions as choices
+   and a "Copy my answers" button: open it in a browser and send it to the owner.
+4. Run the two checks (below) before changing anything.
+
+## Moving to another account
+
+- **GitHub.** The repository is `gtjvv976mb-netizen/flossify`. If the new Claude account signs in to GitHub as a
+  different user, the owner adds that user as a collaborator with write access (GitHub → the repository → Settings →
+  Collaborators), then connects GitHub in the new Claude account and lets the Claude GitHub App reach this repository.
+  Nobody else can do that step for them, and the session never touches the owner's credentials.
+- **Nothing else moves.** Render deploys `main` to flossify.ph (web + worker, Singapore) and runs
+  `npm run db:migrate` before each deploy; the database is DigitalOcean Managed PostgreSQL 17. Both stay on the owner's
+  own accounts.
+- **Private pages on claude.ai stay with the old account.** Copies are in the repository: the plan page
+  (`docs/simplify-plan.html`) and the review pack for the dentist and the lawyer (`docs/review/review-pack.html`,
+  rebuilt by `npm run review:pack`). Publish them again from the new account if the owner wants a link.
+- **Branches.** `claude/lucid-ptolemy-38t0gn` was the last session's branch and holds nothing that is not on `main`.
+  A new session works on its own branch, started from `main`.
 
 ## The owner and how to work with them
 
-- Flossify is the owner's startup: practice software for Philippine dental
-  clinics, Baguio City. Mantra: **user experience and user-friendliness**, for
-  patients and clinic owners both.
-- The owner writes short, excited messages ("do it", "make it live") and has
-  authorised finishing work, opening pull requests and **merging** them. Render
-  deploys `main` to flossify.ph on its own (`render.yaml`: branch `main`, and
-  `npm run db:migrate` as the pre-deploy command, so a merge applies pending
-  migrations before the new version serves). Check the live site after each
-  merge and send screenshots.
-- Standing decisions (do not re-open; `CLAUDE.md` "Standing constraints" has the
-  full list): motion always on everywhere, never gated on `prefers-reduced-motion`;
-  no footer and nothing fixed to the bottom of the screen; the soft template on
-  every page (white rounded cards, one teal, sentence case, line icons); frosted
-  glass where a clinic is the background; the workspace has exactly four tabs.
-- Every line on glass is **measured** against the pixels behind it, light and
-  dark, 1440 and 390, before shipping. Numbers, not eyes (`CLAUDE.md`
-  "Verification").
-- Never enter passwords, API keys or tokens for the owner; they type secrets
-  themselves (Render dashboard or shell). Their email is only for identification.
-- Never touch the `flossify_dev` database in tests and never run `npm run
-  db:setup` without `DB=`. Use a throwaway database: `DB=flossify_t
-  scripts/dev/resume.sh` makes one, or on the owner's Mac `createdb -T
-  flossify_t_final flossify_xyz` (a seeded test copy there), then
-  `DB=flossify_xyz npm run db:migrate`.
-- Do not save or share the SwiftCare admin screenshot the owner once sent (it
-  shows a real minor patient). The SwiftCare sample under `public/samples/swiftcare/`
-  keeps SwiftCare's own branding; do not restyle it.
+- Flossify is the owner's startup: practice software for Philippine dental clinics, from Baguio City. The test is
+  **user experience and user-friendliness**, for patients and clinic owners both.
+- The owner writes short messages ("merge", "do it", "start with the safety fixes"). Pattern that works: build on a
+  branch, verify with numbers, open a pull request with what changed and how it was checked, then **merge only when
+  the owner says "merge"**. After a merge, watch the Render deploy to success and check the live site
+  (`https://flossify.ph/healthz` answers 200).
+- When the owner asks for a plan or anything they will read, make it readable without the code: plain words, short
+  sentences, what changes for a clinic.
+- Standing decisions, never re-opened (`CLAUDE.md` "Standing constraints" and "Art direction"): motion always on,
+  never gated on `prefers-reduced-motion`; no footer and nothing fixed to the bottom of the screen; the soft template
+  everywhere (white rounded cards, one teal button per screen, sentence case, line icons); frosted glass where a clinic
+  is the background; the workspace has four tabs; no faces, no 3D, no tooth chart on the home page.
+- Every new line of text is **measured**: contrast ≥ 4.5:1 against what is behind it, light and dark, at 1440 and
+  390 px wide; targets ≥ 44 px; fields 16 px; no sideways scroll. Every dark rule needs both twins.
 
-## Where everything stands
+### Rules that protect people (never relax)
 
-**`main`** carries migrations through `043_intake_fixes.sql`. PR #38 (the round
-below) and PR #39 (this handoff and the resume check) were merged by the owner
-on 1 Oct, in that order, and Render deploys `main` with `db:migrate` before each
-version, so the live database should now be at 043. **Not checked from here:**
-the cloud session's network policy refuses flossify.ph, so the post-deploy look
-(the site loads, `/healthz` is `{"ok":true}`, a record and the calendar open, the
-new screens are there) is still owed. Do it first, from a machine that can reach
-the site, and check `select max(name) from schema_migrations;` from the Render
-shell.
+- Never type passwords, API keys or tokens for the owner; they enter secrets themselves (Render dashboard, shell).
+  Their email is only for identifying them.
+- Never touch the `flossify_dev` database in tests, and never run `npm run db:setup` (or `scripts/db/setup.sh`)
+  without `DB=` naming a throwaway database: it drops the database first.
+- Never edit an applied migration or `schema.sql`; a change is a new numbered file (the newest is `046`).
+- Never put `--allow-late` in `render.yaml` or the `Procfile`.
+- The owner once sent a SwiftCare admin screenshot and SwiftCare admin links: another clinic's real patient data. Do
+  not open the links, and do not save or share the screenshot. (The SwiftCare sample site in `public/samples/` is a
+  separate, public concept and is fine.)
+- On 3 Oct the owner sent photos of a Philippine clinic's real three-page paper record. They show a real minor
+  patient's details. They were used for the form's layout only. Nothing from them is, or may be, in the repository,
+  a test, a comment or a document; do not ask for them again or share them.
+- No model name in commits, pull requests or code. Test agents never delete audit rows.
 
-**PR #38** held three of the owner's requests, built as one round and verified
-together:
+## Where everything stands (9 Oct 2026)
 
-1. **The Treatment record**: the patient record's Timeline became page 4 of the
-   PDA dental chart (date, teeth, procedure, dentist, charged, paid, balance,
-   next visit), oldest first, with an A4 print. The running balance is
-   `patient_balance()`'s rule.
-2. **Six scheduling features**: blocked time (040: lunch, closed days, a
-   dentist's hours and leave, a chair out of use, one reader
-   `clinic_unavailable()`, honoured by the desk and by every public slot); free
-   times as chips; a one-dentist clinic books with her; a time tapped on
-   `/find/` is held; edit a booked visit in place; tooth-first charting with an
-   offered chart update (042); the PTR number on prescriptions and letters (041).
-3. **The step-by-step patient intake, phases 1 and 2** (039, fixes in 043): the
-   consent library as data with every form's words pinned by a hash, intakes and
-   links and clinic tablets under forced row-level security, the desk's steps,
-   "Hand this device to <name>" (`/auth/park/`), the patient's pages
-   `/f/i/<token>/`, and the record's Consent forms pane.
+- **`main`** is at `723b9cd` (pull request #53), migrations through `046_prc_needs_number.sql`. Deployed on Render
+  with web and worker both successful, and `https://flossify.ph/healthz` answered 200 afterwards.
+- **Owed by the owner:** in the Render web service's deploy log for that deploy, the line starting `046:` says whether
+  any dentist had been marked "PRC checked" with no PRC number, and names their clinics (they went back to "PRC check
+  pending"). A session cannot read the live database or the Render dashboard.
+- **Open pull request #52** (draft, branch `claude/funny-ritchie-ujucx6`, from another session's 30 Sep–1 Oct work):
+  a four-tab patient record. `main`'s paper record (#44–#51) replaced that design at the owner's request, and #52 is
+  on hold: **the owner decides** whether to carry pieces over into the paper record (the pinned allergy line, Today's
+  one-button visit lines, the `test:record-tabs` deep-link check) or close it. Its own `docs/handoff/README.md`, "STOP
+  FIRST", says the same. Do not merge it or resolve its conflicts mechanically.
 
-Its description lists each part and the builder's verification: desk and
-schedule suites 719 of 719, `test:consent` 24 of 24, the intake database checks
-19 of 19, the QR forms backend test 31 of 31, the 7-role snapshot, lowest
-contrast 4.75:1, every target 44 px, races and a production start. The resume
-check reproduced what it can on a fresh machine on 1 Oct: 43 files migrate from
-empty in order, the seed runs, `test:consent` 24 of 24, the database checks 19
-of 19, and the build completes.
+### Merged since the 1 Oct handoff
 
-**The intake's phase 3, the patient's own phone, is built** (1 Oct, after the
-merges; no migration): the QR code on the desk's screen, Start on the first
-phone, the birth date for a patient on file, the live panel, and a page 1 fix
-that stopped a non-male adult on every device. `CLAUDE.md` "Add patient, step by
-step (039)", the Phase 3 bullet, and `docs/intake-design.md`. Verified end to
-end in two browsers (`scripts/dev/intake/phone-e2e.mjs`) and measured (0
-contrast fails, lowest 5.30:1; fits 390 px; 44 px targets).
-
-**Merged since the 26 Sep handoff** (none of this is to be redone): #23 QR
-patient forms; #24 the earlier handoff and the glass tools; #25–#30 clinic sites
-P1–P5 (usernames and each clinic's door, roles as rows, members, the Roles
-screen, tasks, every clinic's own site); #31 light or dark as the person's
-choice; #32–#35 the complete patient record, its paperwork, colour-coded
-sections, every detail as a pill; #36 every visit clickable with its signed
-consent; #37 the paperless day.
-
-## The resume check — run it first
-
-```sh
-git fetch origin main
-DB=flossify_t scripts/dev/resume.sh            # needs a local PostgreSQL 16 or 17 and Node 22+
-PR_BRANCH=<branch> DB=flossify_t scripts/dev/resume.sh   # also compares with an open pull request's branch
-```
-
-On a machine with no PostgreSQL: `initdb` a cluster under `/tmp` as a non-root
-user, `pg_ctl start` on a spare port, then `PGHOST=<socket dir> PGPORT=<port>
-PGUSER=postgres` in front of the command. Chromium for the browser checks: set
-`PW_CHROMIUM` to its binary when Playwright's own build is not installed.
-
-It prints where the checkout stands against GitHub, installs the packages,
-creates (if missing), migrates and seeds that local database, runs `test:consent`
-and the intake database checks where the checkout has them, builds, and ends
-with a summary. "Nothing failed" is the state the pull request was left in.
-Without `DB=` it skips the database and its checks; `--no-build` skips the
-build. It refuses a remote `PGHOST` and a set `DATABASE_ADMIN_URL`, and it
-never drops anything.
-
-What it cannot do, because they need a running server and a browser: the QR
-forms backend test, the glass measurements and the booking walk (Tools, below).
-
-## The round's eight steps (reconstructed 2 Oct 2026)
-
-The session that built PR #38 worked from an eight-step plan; only "the plan's
-step 4: the final check, then ready and merge" reached the repository, and the
-owner does not have the list. This is the plan as the repository shows it: the
-round's commits, PR #38's own "Before a clinic depends on this" list, and the
-house pattern of earlier handoffs (build, check, merge, then the owner's
-steps). Keep it here; a new step goes at the end, never in place.
-
-| Step | What | Where it stands |
+| PR | Merged | What |
 |---|---|---|
-| 1 | The Treatment record (the owner's "make it as such") | Done, PR #38 |
-| 2 | The six scheduling features: blocked time, free times, the one-dentist clinic, edit a visit, tooth-first charting, PTR | Done, PR #38 |
-| 3 | The step-by-step intake, phases 1 and 2, and the review's fixes (043) | Done, PR #38 |
-| 4 | The combined final check (V1–V6), ready, merge | Done: PR #38 merged 1 Oct |
-| 5 | Deploy (039–043 through `db:migrate`) and look at the live site | Done from a session: `/healthz` ok, every public page 200, the intake's routes live. Screenshots still owed from the owner's machine (a session's browser does not trust its proxy). |
-| 6 | The intake's remaining phases: 3, their own phone; 4, the record integration | Done: PRs #40 and #41; #42 adds 4.3, 4.4 and In the chair (open) |
-| 7 | The reviews: a dentist reads the consent forms, the chart's offer and the aftercare; the lawyer reads the consent forms and the next privacy notice | Ready for them: `npm run review:pack` writes `docs/review/review-pack.html` (published privately for the owner to share). Their sign-off fills `CONSENT_REVIEWED`; a new privacy version opens the QR forms |
-| 8 | The owner's answers: reminders in closed time (p07 §7.1), turnover, In the chair or Arrived; then the Open list in the owner's order | Built as each clinic's own setting (044, Clinic profile → How the day runs; defaults keep what shipped), on PR #42. The owner says only which defaults to change. Then the Open list |
+| #40 | 1 Oct | The intake's phase 3: the patient's own phone, from a QR code on the desk's screen |
+| #41 | 1 Oct | The intake's phase 4: the signed forms where the dentist looks; Sign again from the record |
+| #42 | 2 Oct | Phase 4 finished; the consent question at the chair or the door; How the day runs (044); profile forms; the review pack |
+| #43–#46 | 2 Oct | The patient record as one page, then a paper chart, then compact; a Dashboard for the dentist who runs the clinic |
+| #47 | 3 Oct | The patient record as the clinic's paper form (three sheets; 045's chart codes and the braces wire) |
+| #48 | 3 Oct | Chart: baby teeth (FDI 51–85) |
+| #49 | 4 Oct | The patient record on paper (the look) |
+| #50 | 4 Oct | Chart: a drawing of each tooth, and the whole mouth |
+| #51 | 4 Oct | Chart: with the baby teeth open, the chart note stays on the right |
+| #53 | 6 Oct | The simplification plan, and its phase 1a: the seven safety fixes (below) |
+
+Phase 1a's safety fixes, all live (`CLAUDE.md` has each under its section):
+
+1. The Dashboard takes no form posts; every visit status change goes through `/api/schedule` and its checks.
+2. A statement an active payment plan is built on cannot be voided.
+3. No "Clear chart" button on the patient record (`Odontogram`'s `clearAll`, off by default).
+4. 046: a PRC check needs a PRC number; the operator's queue shows who is waiting for one. The migration runner now
+   prints a file's `RAISE NOTICE` lines in the deploy log.
+5. "Consent signed for this visit" has one rule everywhere, `visit_treatment_consented()`; the per-visit button reads
+   "Sign consent for this visit".
+6. The review pack says the tablet's general consent and the chart's offer are already live.
+7. A missing clinic or dentist page answers with the site's 404 page; its teal button is Find a clinic.
 
 ## What to do next
 
-### 1. After the merges: look at the live site, and tell the owner
+### 1. Get the owner's answers to the plan's 25 questions
 
-1. flossify.ph loads, `/healthz` is `{"ok":true}`, the calendar and a record
-   open, the Treatment record, blocked time, the free-time chips and Add patient
-   → *At the clinic, step by step* and *On their phone* are there. Screenshots
-   to the owner. (The record's phase 4 — Mark done anyway, the strip's Go ahead
-   anyway, "Use" per detail after an intake — arrives with the pull request
-   that carries this note; after it merges, the same look at a record.)
-2. If anything is wrong, the Render dashboard's deploy log says whether
-   `db:migrate` applied 039 → 043; **never put `--allow-late` in `render.yaml`
-   or the Procfile**: it is for a database that somehow has 040–042 without
-   039, by hand, once.
-3. Tell the owner, in a few lines, what the recent pull requests changed for
-   clinics, and the questions below.
+`docs/simplify-plan.md`, section 5 ("Questions for the owner"), and the same questions as choices in
+`docs/simplify-plan.html`. The owner had the page on the old account and had not sent answers by 9 Oct. Ask once,
+plainly; add the decision on PR #52 (above) as a 26th. Items that wait on an answer are marked in the plan
+("question N"); everything else can go ahead.
 
-Open with the owner before a clinic depends on it (also in `CLAUDE.md` "Open"):
+### 2. Then the plan's phases, in order
 
-- p07 §7.1, turnover, and where the consent question comes are each clinic's
-  own choice since 044 (Clinic profile → How the day runs: hold the reminder,
-  time between visits, at the chair or at the door). The defaults keep what
-  shipped: reminders go, no gap, at the chair. Ask the owner only whether a
-  default should change.
-- Online slots will be fewer, on purpose: "any dentist" is offered only while a
-  dentist who is in is free, and a one-dentist clinic cannot be double-booked
-  from the web any more.
-- A dentist reads the chart-effect mapping and its sentences.
-- A dentist and the owner's lawyer read the ten consent forms and the general
-  consent before `CONSENT_REVIEWED` (`src/lib/consent-library.ts`) is filled;
-  production offers none of them until then. The Filipino "In short" lines for
-  nine forms and the attestation's Filipino are not written.
-- The QR patient forms stay closed on the live site until a new privacy notice
-  covers what they collect (`FORMS_PRIVACY_VERSIONS`, `CLAUDE.md` "Patient forms").
+- **Phase 1a** (safety fixes 1.1–1.7): done, #53.
+- **Phase 1b** (groundwork, `docs/simplify-plan.md` §4): next. It makes the later changes cheaper and safer (shared
+  pieces, one glossary of names, checks first). Read the critique notes folded into the plan before starting: one
+  name per thing (the glossary, plan item 2.28) is to be settled at the start of phase 1, not after.
+- **Phase 1c** (quick wins), **phase 2** (consolidation by area) and **phase 3** (bigger changes that need the
+  owner's yes), as the plan orders them. One pull request per coherent group; each measured as above.
 
-### 2. The intake's phase 4: the record integration
+### 3. Still open with the owner (unchanged; also `CLAUDE.md` "Open")
 
-Phases 1 to 4 are built (1 Oct): the forms signed through an intake or on
-paper sit on the visit panel and the Treatment record (4.1); a form is signed
-again from the record, on a phone or a tablet, with newer words prepared
-again (4.2); page 1 of an intake added to a patient on file is compared with
-the record, "Use" per detail, and the Health section names the forms (4.3);
-and withdrawals and overrides are asked for first (Mark done anyway, the
-strip's Go ahead anyway) and drawn everywhere the form is (4.4). None needed a
-migration. `docs/intake-design.md` says what each settled. What is left is
-the owner's: the forms' words (`CONSENT_REVIEWED`), the Filipino lines, and
-whether the calendar's In the chair step should ask too.
+- A dentist and the owner's lawyer read the consent forms, the general consent, the chart's codes and offer, the
+  aftercare sheets and the drawings (`docs/review/review-pack.html`). Their sign-off fills `CONSENT_REVIEWED`; until
+  then production offers none of the ten consent forms.
+- A new privacy notice (the lawyer's) opens the QR patient forms on the live site (`FORMS_PRIVACY_VERSIONS`).
+- Semaphore's first live text, the email provider and a verified domain, and billing's real prices and pay-to details
+  (`BILLING_FINAL` stays false until then). Each needs something only the owner has.
 
-### 3. Then
+## The checks — run them first
 
-The `CLAUDE.md` "Open" list, in the owner's order when they give one. Email,
-Semaphore's first live send and billing's placeholders are the oldest items,
-and every one of them needs something only the owner has (a key, a verified
-domain, the real prices, the lawyer's reading). Done on 1 Oct without them:
-the public profile's own lines (PDA, practising since, about) and the clinic's
-founding year now have forms (`scripts/dev/settings/profile-check.mjs`), the
-calendar's In the chair asks why when a consent form is not agreed
-(`scripts/dev/schedule/seat-check.mjs`), and
-the live site answered its checks from a session (`/healthz` ok, every public
-page 200, the intake's routes deployed); screenshots still need a browser that
-trusts the session's proxy, so take them from the owner's machine.
+### `scripts/dev/resume.sh`: branch state, packages, a seeded database, unit tests, the build
 
-## What lived only in session scratchpads and is gone
+```sh
+git fetch origin main
+DB=flossify_t scripts/dev/resume.sh          # Node 22+, a local PostgreSQL 16 or 17
+```
 
-Nothing below is in the repository. Rebuild from the repository if needed, and
-**put anything the next session will need under `scripts/dev/` or `docs/`**,
-never in a scratchpad: that rule is why this file and `resume.sh` exist.
+It never drops anything (it creates the database only if missing) and refuses a database that is not on this
+machine. Without `DB=` it skips the database; `--no-build` skips the build.
 
-- `intake-spec.md` (above).
-- `entrance-check.mjs` (the staff entrance's measurements), `snap.mjs` /
-  `cmp.mjs` (the 7-role × 20-page snapshot), the scheduling round's verification
-  scripts (its V1–V6 in the pull request's description) and the desk and schedule
-  suites (719 checks). `CLAUDE.md` describes each approach well enough to write
-  them again; they are not needed to merge PR #38.
-- The build workflow that produced the round, phase by phase. The repository's
-  equivalent is this file's "What to do next" plus `resume.sh`.
+### `scripts/dev/e2e.sh`: every browser check, each on a freshly seeded database
+
+```sh
+DB=flossify_t scripts/dev/e2e.sh                 # paper dash seat choices profile phone
+DB=flossify_t scripts/dev/e2e.sh paper dash      # only those
+```
+
+It starts its own dev server (port 4610, or `PORT=`), **drops and reseeds `$DB` before every check**, and refuses
+`flossify_dev` and any remote host. On 9 Oct all six passed in a cloud session on `main` plus this handoff (the
+Dashboard check on its own second run: the first was cut short because files were being edited while it ran, and
+the dev server reloaded the page under a sign-in; do not edit the checkout during a run). The unit tests:
+
+```sh
+npm run test:consent
+node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs --test \
+  src/lib/paper-history.test.ts src/lib/tooth-name.test.ts
+```
+
+### In a cloud session (no PostgreSQL running, root user)
+
+```sh
+mkdir -p /tmp/flpg && chown nobody /tmp/flpg
+su -s /bin/bash nobody -c '/usr/lib/postgresql/16/bin/initdb -D /tmp/flpg/data -U postgres -A trust'
+su -s /bin/bash nobody -c '/usr/lib/postgresql/16/bin/pg_ctl -D /tmp/flpg/data -o "-p 5499 -k /tmp/flpg -c listen_addresses=127.0.0.1" -l /tmp/flpg/log start'
+export PGHOST=/tmp/flpg PGPORT=5499 PGUSER=postgres PW_CHROMIUM=/opt/pw-browsers/chromium
+DB=flossify_t scripts/dev/resume.sh && DB=flossify_t scripts/dev/e2e.sh
+```
+
+(The pg_ctl line starts it again after the container has slept.) Verified from scratch on 9 Oct. The container's
+network policy may refuse flossify.ph from a browser; `curl` reached it on 9 Oct.
+
+### Working by hand against a dev server
+
+```sh
+DATABASE_URL='postgres://flossify_app:flossify_dev@127.0.0.1:5499/flossify_t' \
+SESSION_SECRET='dev-only-secret-0123456789abcdef0123456789' SMS_PROVIDER=console \
+UPLOAD_DIR=/tmp/fl-uploads SHOW_DEMO_LOGINS=1 TRUST_PROXY=0 \
+  npx astro dev --ignore-lock --port 4610 --host 127.0.0.1
+```
+
+- Seeded logins, password `flossify`: `liwayway.domingo@example.com` (owner, clinic `session-road`),
+  `hazel.tabanao@example.com` (a dentist who may not edit records), `ops@flossify.example` (Flossify's operator,
+  `/admin/`). `/auth/login/?any=1` is the email sign-in.
+- Patient `SR-0144` at session-road is the child for the baby teeth: `e2e.sh` sets the birth date to 7 years ago
+  after each seed; do the same by hand after `db:setup`.
+- To reseed while a server runs: end the database's connections
+  (`select pg_terminate_backend(pid) from pg_stat_activity where datname = '<db>' and pid <> pg_backend_pid()`), then
+  `DB=<db> npm run db:setup`. The server's pool reconnects on its own.
+- A throwaway Playwright or `pg` script must sit inside the repository to find its packages: name it
+  `scripts/dev/.<name>.tmp.mjs` (git ignores that pattern) and delete it after. Never `pkill astro`: it kills the session's
+  own shell; use another port. Headless Chromium has no H.264 (see `CLAUDE.md` "Traps").
 
 ## Tools in the repository
 
-- `scripts/dev/resume.sh` — the resume check above.
-- `npm run test:consent` — the consent library and seal units (PR #38 branch).
-  `npm run consent:hash` prints the hash of every template's words; new words
-  are a new version id and a new row in one change.
-- `scripts/dev/intake/phone-e2e.mjs` — the phone path end to end: a dev server
-  on a throwaway database (`DATABASE_URL` as `flossify_app`, `SESSION_SECRET`,
-  `SMS_PROVIDER=console`, `UPLOAD_DIR`), then `DB=<db> node
-  scripts/dev/intake/phone-e2e.mjs http://127.0.0.1:4610`; `--keep` leaves a
-  Start screen, a birth-date screen and the desk's QR step open and saves the
-  browsers' states (`KEEP_DIR`) for `contrast.mjs` with `PW_STATE`.
-- `scripts/dev/intake/db-test.mjs` — the intake database: row-level security,
-  grants, triggers, definers answering status words, seals and the chain,
-  retention, races. Rolls back; refuses a database that is not on this machine.
-  `DB=<db> node --experimental-strip-types --no-warnings --import
-  ./scripts/ts-register.mjs scripts/dev/intake/db-test.mjs`.
-- `scripts/dev/qr-forms/backend-test.mjs` — the QR forms' back end against a
-  running dev server (its header says how; `ts-resolve.mjs` beside it).
-  `qr-decode-test.mjs` decodes the poster at several sizes, blurred and turned.
-- `scripts/dev/glass/contrast.mjs` — text contrast against the real pixels
-  behind every line (hides text, screenshots, reads the pixels under each text
-  box; WCAG AA). `node contrast.mjs <home|start|find|any/path/> <light|dark>
-  <desk|phone|wide|laptop|tablet> <base-url> [outdir]`. On the home page it
-  redirects the film to `/video/tour-test.webm` (a VP9 copy, git-excluded; the
-  ffmpeg line is in `scripts/film.mjs`).
-- `scripts/dev/glass/measure-page.mjs <outdir> <path> [base]` — screenshots and
-  card geometry at 1440×900 and 390×844; `measure.mjs` does home and `/start/`.
-- `scripts/dev/glass/make-uploads.mjs` — test "uploaded photos" for clinics in a
-  throwaway database (a real room, all-black, all-white, harsh stripes, none).
-- `scripts/dev/glass/book-e2e.mjs`, `signup-e2e.mjs` — a real booking with Undo
-  (with a held slot on the PR #38 branch) and a clinic sign-up, against a local
-  server on a throwaway database.
-- `scripts/film.mjs` — the home page film walk; `scripts/record-walkthroughs.mjs`
-  re-records the two "How to register" videos (`REC_BASE=<url>`).
-- Headless Chromium has no H.264: verify the scrub with the VP9 copy and the
-  visuals from decoded frames. Set `PW_CHROMIUM` to a Chromium binary when
-  Playwright's own is not installed.
-- On the owner's Mac there is no `timeout`; wrap long commands as
-  `perl -e 'alarm shift; exec @ARGV' 150 <cmd>`. A throwaway PostgreSQL on a
-  machine without one: `initdb` a cluster under `/tmp` as a non-root user,
-  `pg_ctl start` on a spare port, and `PGHOST=<socket dir> PGPORT=<port>`.
+- `scripts/dev/resume.sh`, `scripts/dev/e2e.sh` (above).
+- `scripts/dev/record/paper-check.mjs` — the patient record: the three sheets and the attached sheets, Edit details,
+  the print, contrast light and dark at 1440 and 390, 44 px, no sideways scroll.
+- `scripts/dev/schedule/dash-check.mjs` — the Dashboard for a dentist who runs the clinic.
+  `seat-check.mjs` — In the chair asks why for a consent form not agreed. `choices-check.mjs` — How the day runs
+  (044).
+- `scripts/dev/settings/profile-check.mjs` — the public profile's lines and the clinic's founding year.
+- `scripts/dev/intake/phone-e2e.mjs` — the intake on the patient's phone and the record's phase 4, in two browsers;
+  `--keep` leaves screens open for `contrast.mjs`. `scripts/dev/intake/db-test.mjs` — the intake's database rules
+  (rolls back; run by `resume.sh`).
+- `scripts/dev/qr-forms/backend-test.mjs` and `qr-decode-test.mjs` — the QR forms' back end, and the poster decoded
+  at several sizes, blurred and turned.
+- `scripts/dev/glass/contrast.mjs` — text contrast against the real pixels behind every line;
+  `measure-page.mjs`, `make-uploads.mjs`, `book-e2e.mjs`, `signup-e2e.mjs` beside it.
+- `scripts/dev/review/review-pack.ts` — `npm run review:pack` writes `docs/review/review-pack.html`; re-run it after
+  any change of words a patient signs.
+- `scripts/film.mjs` (the home page film), `scripts/record-walkthroughs.mjs` (the two "How to register" videos).
+- `docs/simplify/` — the evidence behind the plan: `audit.json` (the 6 Oct audit of eight areas of the site: what
+  each measured, what to keep, and its 103 proposals, plus the two it dropped and why) and `critique.md` (the
+  adversarial read of the first draft, whose points the final plan answers).
+
+## What lived only in session scratchpads and is gone
+
+Put anything the next session will need under `scripts/dev/` or `docs/`, never only in a scratchpad.
+
+- From before 1 Oct: `intake-spec.md` (its content is `docs/intake-design.md`), `entrance-check.mjs` (the staff
+  entrance's measurements), `snap.mjs` / `cmp.mjs` (the 7-role × 20-page structure snapshot) and the 719-check desk
+  and schedule suites. `CLAUDE.md` describes each approach well enough to write them again.
+- From 2–9 Oct: one-off probes and screenshots only. Everything they established is in `CLAUDE.md`, the pull
+  requests' descriptions and the checks above; the plan's page and evidence were saved to `docs/`.

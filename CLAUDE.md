@@ -1,6 +1,6 @@
 # Flossify
 
-> **Continuing work?** Read `docs/HANDOFF.md` (1 Oct 2026) next: where `main` and the open pull request stand, what to do first, and `scripts/dev/resume.sh`, the check to run before changing anything.
+> **Continuing work?** Read `docs/HANDOFF.md` (9 Oct 2026) next: where `main` and the open pull request stand, moving to another account, what to do first (`docs/simplify-plan.md` and the owner's 25 questions), and the two checks to run before changing anything: `scripts/dev/resume.sh`, then `scripts/dev/e2e.sh`.
 
 
 Marketing site + prototype clinic workspace for dental practice software aimed at
@@ -319,7 +319,8 @@ Built for a front desk between patients and a dentist with gloves just off:
 - Offline disables the button and says why on the card — brownouts are real.
 - Fits a 1366×768 clinic monitor without scrolling to the button, and 1440×900
   without scrolling at all.
-- `entrance-check.mjs` in the session scratchpad measures all of it.
+- `entrance-check.mjs` measured all of it; it lived in a session scratchpad and is gone (docs/HANDOFF.md).
+  `scripts/dev/glass/contrast.mjs` and `measure-page.mjs` do the same measurements page by page.
 
 ## Clinic doors and usernames — `/<clinic>/sign-in/` (029)
 
@@ -380,7 +381,7 @@ own site at `/<clinic>/`).
   sets `staff.role`. `staff_access.can_view_finance` still adds Finances and
   amounts at one branch; `can_edit_records` false still takes editing away.
 - **Verified by snapshot**: 7 roles × 20 workspace pages, structure identical
-  before and after (`snap.mjs`/`cmp.mjs` in the session scratchpad; the
+  before and after (`snap.mjs`/`cmp.mjs`, from a session scratchpad, now gone; the
   approach: sign in as each, fingerprint tabs, headings, buttons, form fields
   and links, mask ids). Do the same when a check moves.
 - **Roles screen** (Clinic settings → Roles, for `roles.manage`; by default
@@ -1526,8 +1527,8 @@ patient"). One migration, 036; the pieces in the order of a visit:
 
 The owner (29 Sep 2026): Add patient by QR or at the clinic, step by step — before the QR the staff tick which
 consent forms the procedure needs; page 1 patient information, then the consent forms, then the profile is
-made. The design is the intake spec (session scratchpad `intake-spec.md`, with the owner's four answers at its
-end: procedure forms are signed only after the named dentist records "I explained this"; the profile is made
+made. The design was the intake spec (`intake-spec.md`, a session scratchpad, gone; `docs/intake-design.md` has it as built and
+opens with the owner's four answers: procedure forms are signed only after the named dentist records "I explained this"; the profile is made
 at Send unless the patient looks like one already on file; a fresh signature on every form with initials on
 the risks; the six scheduling features first). **Phase 1** is the library, the data and the shared add path;
 **phase 2** (shipped, fixes in 043) the desk's steps, clinic tablets, the patient's pages (`/f/i/<token>/`,
