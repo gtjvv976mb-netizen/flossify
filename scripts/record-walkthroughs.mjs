@@ -27,7 +27,7 @@ const cap = () => {
   const st = document.createElement('style'); st.textContent = 'astro-dev-toolbar{display:none!important}';
   document.addEventListener('DOMContentLoaded', () => { document.head.append(st); draw(); });
 };
-const b = await chromium.launch();
+const b = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
 const ctx = await b.newContext({ viewport: { width: 1280, height: 720 }, recordVideo: { dir: OUT, size: { width: 1280, height: 720 } } });
 await ctx.addInitScript(cap);
 const p = await ctx.newPage(); p.setDefaultTimeout(20000);

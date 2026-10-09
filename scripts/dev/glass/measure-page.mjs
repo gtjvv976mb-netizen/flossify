@@ -3,7 +3,7 @@ import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 const OUT = process.argv[2], PATH_ = process.argv[3] || '/find/', B = process.argv[4] || 'http://127.0.0.1:4610'; const NAME = PATH_.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'home';
 mkdirSync(OUT, { recursive: true });
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
 const res = {};
 for (const [vn, vp] of [['desk', { width: 1440, height: 900 }], ['phone', { width: 390, height: 844 }]]) {
   const p = await (await browser.newContext({ viewport: vp, isMobile: vn === 'phone', hasTouch: vn === 'phone' })).newPage();

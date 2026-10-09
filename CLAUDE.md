@@ -320,7 +320,9 @@ Built for a front desk between patients and a dentist with gloves just off:
 - Fits a 1366×768 clinic monitor without scrolling to the button, and 1440×900
   without scrolling at all.
 - `entrance-check.mjs` measured all of it; it lived in a session scratchpad and is gone (docs/HANDOFF.md).
-  `scripts/dev/glass/contrast.mjs` and `measure-page.mjs` do the same measurements page by page.
+  `node scripts/dev/glass/contrast.mjs auth/login/ <light|dark> <desk|phone> <base>` covers only the text contrast
+  (4.5:1 against the pixels behind); the field and button heights, the 44 px targets, the 5.2:1 over black and white,
+  and the 1366×768 and 1440×900 fit need a check written again.
 
 ## Clinic doors and usernames — `/<clinic>/sign-in/` (029)
 
@@ -1544,8 +1546,10 @@ page 1 beside the record with "Use" per detail, and withdrawals and overrides as
   the named dentist attests), the patient's questions and every word a page shows. `readClinicPart`,
   `readPatientPart`, `renderDocument` (pure: the one renderer) and `consentsForCatalog` live there.
   **The words are Flossify's plain drafts:** `CONSENT_REVIEWED` is empty, so a production server offers none
-  of them, the general consent included, until a dentist and the owner's lawyer have read each. Filipino shows
-  only where drafted and reviewed.
+  of them through the intake, the general consent included, until a dentist and the owner's lawyer have read each.
+  **But the tablet's per-visit signing** (`/c/<slug>/patients/<id>/sign/<visit>/`, 035) reads no review list and
+  already offers the general consent (`treatment-2026-09`) on the live site; the review pack says so (6 Oct), so the
+  dentist and the lawyer read it first. Filipino shows only where drafted and reviewed.
 - **Words are pinned.** `consent_version.body_sha256` equals `libraryHash(template)` (`npm run consent:hash`); a
   server offers a template only while the two match (`templatesInForce`), and `npm run test:consent` fails when
   a word changes. New words are a new version id and a new row, in one change. Tailwind scans these files:

@@ -11,7 +11,7 @@
 import { chromium } from 'playwright';
 const S = process.argv[2] || 'shots', BASE = process.argv[3] || 'http://localhost:4399/';
 await (await import('node:fs/promises')).mkdir(S, { recursive: true });
-const b = await chromium.launch();
+const b = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
 const route = (p) => p.route('**/video/tour-*.mp4', (r) => r.continue({ url: new URL('/video/tour-test.webm', BASE).href }));
 const report = {};
 const FR = [0, 0.08, 0.17, 0.3, 0.42, 0.55, 0.7, 0.8, 0.9, 1];

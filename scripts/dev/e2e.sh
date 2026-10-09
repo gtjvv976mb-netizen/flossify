@@ -95,7 +95,8 @@ for c in $WANT; do
   FAIL	$c (no server)"; fail=1; break; }
   fi
   first=0
-  if DB="$DB" node "$(script_of "$c")" "$base" >"$OUT/$c.log" 2>&1; then
+  # The checks default to the socket in /var/run/postgresql; give them the host the seed and the server used.
+  if DB="$DB" PGHOST="${PGHOST:-$TCP}" node "$(script_of "$c")" "$base" >"$OUT/$c.log" 2>&1; then
     tail -1 "$OUT/$c.log" | sed 's/^/   /'
     RESULTS="$RESULTS
   ok	$c"

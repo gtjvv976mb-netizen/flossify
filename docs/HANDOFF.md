@@ -60,12 +60,14 @@ Read in this order:
 - On 3 Oct the owner sent photos of a Philippine clinic's real three-page paper record. They show a real minor
   patient's details. They were used for the form's layout only. Nothing from them is, or may be, in the repository,
   a test, a comment or a document; do not ask for them again or share them.
-- No model name in commits, pull requests or code. Test agents never delete audit rows.
+- A test or a helper agent never deletes audit rows (`audit_log`, `auth_event`) to tidy up after itself; archive
+  test patients instead of deleting them (`CLAUDE.md` "Open", the `W-` chart numbers).
 
 ## Where everything stands (9 Oct 2026)
 
-- **`main`** is at `723b9cd` (pull request #53), migrations through `046_prc_needs_number.sql`. Deployed on Render
-  with web and worker both successful, and `https://flossify.ph/healthz` answered 200 afterwards.
+- **`main`** carries pull request #53 (`723b9cd`, the safety fixes) and #54 (this handoff, merged 9 Oct), with
+  migrations through `046_prc_needs_number.sql`. Both deployed on Render, web and worker successful, and
+  `https://flossify.ph/healthz` answered `{"ok":true}` afterwards.
 - **Owed by the owner:** in the Render web service's deploy log for that deploy, the line starting `046:` says whether
   any dentist had been marked "PRC checked" with no PRC number, and names their clinics (they went back to "PRC check
   pending"). A session cannot read the live database or the Render dashboard.
@@ -89,14 +91,15 @@ Read in this order:
 | #50 | 4 Oct | Chart: a drawing of each tooth, and the whole mouth |
 | #51 | 4 Oct | Chart: with the baby teeth open, the chart note stays on the right |
 | #53 | 6 Oct | The simplification plan, and its phase 1a: the seven safety fixes (below) |
+| #54 | 9 Oct | This handoff, `scripts/dev/e2e.sh`, the plan page and its evidence in `docs/` |
 
-Phase 1a's safety fixes, all live (`CLAUDE.md` has each under its section):
+Phase 1a's safety fixes, all live (`CLAUDE.md` has each under its section; 6 under "Add patient, step by step"):
 
 1. The Dashboard takes no form posts; every visit status change goes through `/api/schedule` and its checks.
 2. A statement an active payment plan is built on cannot be voided.
 3. No "Clear chart" button on the patient record (`Odontogram`'s `clearAll`, off by default).
-4. 046: a PRC check needs a PRC number; the operator's queue shows who is waiting for one. The migration runner now
-   prints a file's `RAISE NOTICE` lines in the deploy log.
+4. 046: a PRC check needs a PRC number. The operator's queue offers no Matches without one and says how many dentists
+   wait for a number. The migration runner now prints a file's `RAISE NOTICE` lines in the deploy log.
 5. "Consent signed for this visit" has one rule everywhere, `visit_treatment_consented()`; the per-visit button reads
    "Sign consent for this visit".
 6. The review pack says the tablet's general consent and the chart's offer are already live.
@@ -114,9 +117,14 @@ plainly; add the decision on PR #52 (above) as a 26th. Items that wait on an ans
 ### 2. Then the plan's phases, in order
 
 - **Phase 1a** (safety fixes 1.1–1.7): done, #53.
-- **Phase 1b** (groundwork, `docs/simplify-plan.md` §4): next. It makes the later changes cheaper and safer (shared
-  pieces, one glossary of names, checks first). Read the critique notes folded into the plan before starting: one
-  name per thing (the glossary, plan item 2.28) is to be settled at the start of phase 1, not after.
+- **Phase 1b** (groundwork, `docs/simplify-plan.md` §4, items 1.8 and 1.9): next.
+  - **1.8 Write the glossary first** (`docs/glossary.md`), before any screen changes; every later item uses its
+    words, and its sweep over every screen is 2.32.
+  - **1.9 A shorter rulebook**: `CLAUDE.md` from about 1,900 lines to 300–400, the owner's decisions word for word
+    and a "Retired — do not bring back" list; the owner reads the new constraints first. Its other two parts are done
+    by #54: the handoff is current, and the references to lost scratchpad tools are fixed.
+  - `docs/simplify/critique.md` numbers items as the first draft did: its "2.28 glossary" is the final plan's 1.8
+    (2.28 is now "One account for someone who works at two branches").
 - **Phase 1c** (quick wins), **phase 2** (consolidation by area) and **phase 3** (bigger changes that need the
   owner's yes), as the plan orders them. One pull request per coherent group; each measured as above.
 
@@ -149,9 +157,10 @@ DB=flossify_t scripts/dev/e2e.sh paper dash      # only those
 ```
 
 It starts its own dev server (port 4610, or `PORT=`), **drops and reseeds `$DB` before every check**, and refuses
-`flossify_dev` and any remote host. On 9 Oct all six passed in a cloud session on `main` plus this handoff (the
-Dashboard check on its own second run: the first was cut short because files were being edited while it ran, and
-the dev server reloaded the page under a sign-in; do not edit the checkout during a run). The unit tests:
+`flossify_dev` and any remote host. On 9 Oct, in a cloud session from a cold start, paper, seat, choices, profile
+and phone passed, and the Dashboard check passed when run again on its own: its first run timed out on a sign-in
+because files were being edited during the run and the dev server reloaded the page (PR #54; the script's header
+warns about it). The unit tests:
 
 ```sh
 npm run test:consent
@@ -172,7 +181,13 @@ DB=flossify_t scripts/dev/resume.sh && DB=flossify_t scripts/dev/e2e.sh
 (The pg_ctl line starts it again after the container has slept.) Verified from scratch on 9 Oct. The container's
 network policy may refuse flossify.ph from a browser; `curl` reached it on 9 Oct.
 
+Outside that recipe (a Mac with Homebrew's PostgreSQL, say), export `PGHOST=localhost` (and `PGPORT` if it is not
+5432) before the checks: the check scripts default to the socket in `/var/run/postgresql`, not `/tmp`. `e2e.sh`
+passes its own host on to them.
+
 ### Working by hand against a dev server
+
+The port continues the cloud recipe (5499); use your own PostgreSQL's port (usually 5432) elsewhere.
 
 ```sh
 DATABASE_URL='postgres://flossify_app:flossify_dev@127.0.0.1:5499/flossify_t' \
@@ -182,8 +197,10 @@ UPLOAD_DIR=/tmp/fl-uploads SHOW_DEMO_LOGINS=1 TRUST_PROXY=0 \
 ```
 
 - Seeded logins, password `flossify`: `liwayway.domingo@example.com` (owner, clinic `session-road`),
-  `hazel.tabanao@example.com` (a dentist who may not edit records), `ops@flossify.example` (Flossify's operator,
-  `/admin/`). `/auth/login/?any=1` is the email sign-in.
+  `hazel.tabanao@example.com` (a dentist at session-road: edits records and the schedule, but has no Finances,
+  amounts or staff management), `ops@flossify.example` (Flossify's operator, `/admin/`). To see the record as someone
+  who may not edit, set `staff_access.can_edit_records = false` for her at that clinic, as `paper-check.mjs` does,
+  and set it back after. `/auth/login/?any=1` is the email sign-in.
 - Patient `SR-0144` at session-road is the child for the baby teeth: `e2e.sh` sets the birth date to 7 years ago
   after each seed; do the same by hand after `db:setup`.
 - To reseed while a server runs: end the database's connections
@@ -205,13 +222,19 @@ UPLOAD_DIR=/tmp/fl-uploads SHOW_DEMO_LOGINS=1 TRUST_PROXY=0 \
 - `scripts/dev/intake/phone-e2e.mjs` — the intake on the patient's phone and the record's phase 4, in two browsers;
   `--keep` leaves screens open for `contrast.mjs`. `scripts/dev/intake/db-test.mjs` — the intake's database rules
   (rolls back; run by `resume.sh`).
-- `scripts/dev/qr-forms/backend-test.mjs` and `qr-decode-test.mjs` — the QR forms' back end, and the poster decoded
-  at several sizes, blurred and turned.
+- `scripts/dev/qr-forms/` — **written on the owner's Mac and not runnable from a clone as they are**:
+  `backend-test.mjs`, `qr-decode-test.mjs`, `qr-stress.mjs` and `seed-sample-forms.mjs` import from a hard-coded path
+  there, the decode tests need `jsqr` and `pngjs` (not in `package.json`), and `backend-test.mjs` runs only against a
+  database named `flossify_qr`. `qr-decode-test.mjs` decodes the code at several sizes; `qr-stress.mjs` blurs and turns
+  it. Make the paths relative before relying on them (and after any change to the QR drawing, `CLAUDE.md` asks for
+  that decoding).
 - `scripts/dev/glass/contrast.mjs` — text contrast against the real pixels behind every line;
   `measure-page.mjs`, `make-uploads.mjs`, `book-e2e.mjs`, `signup-e2e.mjs` beside it.
 - `scripts/dev/review/review-pack.ts` — `npm run review:pack` writes `docs/review/review-pack.html`; re-run it after
   any change of words a patient signs.
 - `scripts/film.mjs` (the home page film), `scripts/record-walkthroughs.mjs` (the two "How to register" videos).
+- Every browser script reads `PW_CHROMIUM` (a Chromium binary) when Playwright's own build is not installed, except
+  `scripts/shoot.mjs` and `scripts/audit.mjs`, which name `/opt/pw-browsers/chromium` outright.
 - `docs/simplify/` — the evidence behind the plan: `audit.json` (the 6 Oct audit of eight areas of the site: what
   each measured, what to keep, and its 103 proposals, plus the two it dropped and why) and `critique.md` (the
   adversarial read of the first draft, whose points the final plan answers).
