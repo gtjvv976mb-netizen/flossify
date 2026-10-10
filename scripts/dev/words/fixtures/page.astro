@@ -1,0 +1,37 @@
+---
+// The words check's fixture page (words.test.mjs). Retired words are planted where a person reads them, and code
+// that only looks like words where nobody does. A Team in this comment is never read.
+import Pane from './Pane.astro';
+import { team } from './team';
+type Status = 'In chair' | 'Done';
+const status: Status = 'Done';
+const unpaid = 'Not paid yet';
+const owes = `Owes nothing at ${team}`;
+const cls = 'ws-pill pp-strip';
+const sql = `select id from appointment where status = $1`;
+const url = `/c/${team}/settings/team/`;
+const words = { 'No show': 'Booking reference' };
+if (status === 'In lobby') console.log('Team appointment');
+/* A block comment about the call list. */
+---
+<Pane title="Closed days and time off" head="Open Team" class="pane recall-card" id="timeline" />
+<p class="ws-btn pp-strip" data-recall-set data-confirm="Void this receipt?">Your appointments are below.</p>
+<a href="/settings/team/" title="Open the call list" aria-label="Booking reference" aria-describedby="timeline-help">Calls</a>
+<input type="hidden" name="intent" value="Today page" />
+<input type="text" placeholder="Other notes" />
+<!-- An HTML comment about the Team page. -->
+{/* A template comment about Messages. */}
+<p>Saved on the <strong>Schedule</strong> page.</p>
+<p>Open <a href="/settings/people/">Settings → Team</a> now.</p>
+<p>{owes ? 'Still owed' : <span>Nothing owed</span>}</p>
+<script type="application/ld+json">{"name": "Team"}</script>
+<script>
+  const el = document.querySelector<HTMLElement>('[data-recall] .strip');
+  if (el) el.textContent = 'In the lobby';
+  el?.addEventListener('click', () => { el.title = `Paid ahead by ${el.id}`; });
+  el?.classList.add('is-strip');
+</script>
+<style>
+  .strip { color: red; }
+  .strip::after { content: 'Recall'; justify-content: center; }
+</style>

@@ -133,6 +133,18 @@ if node -e 'process.exit(require("./package.json").scripts["test:consent"] ? 0 :
 else
   echo "   no test:consent on this checkout (it arrives with PR #38)"; note skip "test:consent (not on this checkout)"
 fi
+if node -e 'process.exit(require("./package.json").scripts["test:words"] ? 0 : 1)'; then
+  if npm run -s test:words >"$out" 2>&1; then
+    grep -E '^# (tests|pass|fail)' "$out" | tr '\n' ' ' | sed 's/^/   test:words: /'; echo
+    note ok "test:words ($(grep -E '^# pass' "$out" | sed 's/^# //') of $(grep -E '^# tests' "$out" | sed 's/^# tests //'))"
+  else
+    grep -E '^# (tests|pass|fail)|^not ok' "$out" | head -8 | sed 's/^/   /'
+    grep -E '\[[a-z-]+\] “|known\.json lists' "$out" | sed -E "s/^[[:space:]+0-9:]*['\"]?//; s/['\"],?\$//" | sort -u | head -8 | sed 's/^/   /'
+    note FAIL "test:words (the glossary's words check: node scripts/dev/words/check.mjs)"; fail=1
+  fi
+else
+  echo "   no test:words on this checkout (plan item 1.8)"; note skip "test:words (not on this checkout)"
+fi
 if [ -f scripts/dev/intake/db-test.mjs ]; then
   if [ -z "${DB:-}" ]; then
     echo "   intake db-test needs DB=<local database>"; note skip "intake db-test (no DB)"

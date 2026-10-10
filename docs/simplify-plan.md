@@ -227,7 +227,8 @@ Each item says who it helps, what changes, why, the effort (S = days, M = a week
   - **The record:** the *This visit checklist*. The name of the attached Treatment sheet is question 1.
   - **Not touched:** consent words and titles, the privacy notice, the paper record's labels, printed papers (without your agreement), and the not-BIR line.
 - *Measure:* The glossary exists before phase 1c starts. A check flags retired words (Team, "appointment" on staff screens). The last sweep is 2.32.
-- *For the developer:* `docs/glossary.md`; a words check in tests that reads only on-screen strings and skips consent, privacy, paper and print files.
+- *How later items use it:* Each later item also sweeps the retired words in the files whose words it rewrites; the check's list names the item for each. Where this plan quotes a screen word the glossary retires (Book a slot, Privacy consent, HMO claims, your page), the glossary's word wins when the item is built.
+- *For the developer:* `docs/glossary.md`; a words check in tests that reads only on-screen strings and skips consent, privacy, paper and print files. Built as `npm run test:words` (`scripts/dev/words/`), with `known.json` listing every retired word still on screen and its plan item.
 
 **1.9 A shorter rulebook for whoever builds Flossify next**
 - *Helps:* maintainer. *Effort:* M. *Risk:* low.
@@ -372,6 +373,7 @@ Each item says who it helps, what changes, why, the effort (S = days, M = a week
   - "Clinic settings → HMOs" becomes "Clinic profile → HMOs you accept", and "Services & fees" becomes "Services & prices".
   - The forgot page says "No mobile on file? Ask your clinic owner to set a new password for you in Clinic settings → People."
   - Links go straight to the real page instead of passing through old addresses.
+  - The Messages page becomes Texts (its address stays), and the Finances tab "HMO claims" becomes "HMO & PhilHealth claims", as the glossary says.
 - *Why:* 7 places send people to "Team", which is called People. On the live site, every staff member who forgets a password reads it.
 - *Kept safe:* Texts stay one SMS long, re-measured with a long dentist name. Old addresses and PayMongo returns still land. A check stops the retired names coming back.
 - *Measure:* Retired names on screen and in texts 7+ → 0. Live links through old addresses 3 → 0.
@@ -1323,7 +1325,7 @@ Marked **[lawyer]** or **[accountant]** where they should answer with you.
 - **Please act on this one.** The clinic tablet's per-visit signing already offers the consent to treatment on the live site, although it is still marked unreviewed elsewhere. Please have your dentist and lawyer read it first (1.6).
 - **PRC (1.4).** The PRC fix may switch some dentists' public pages back to "PRC check pending". We will count them first and tell you which clinics.
 - **Add patient (1.11).** "Easiest" appears only beside a way that is open. On the live site the poster stays under Patients → More until the privacy notice covers it.
-- **Texts (1.8).** The Messages page is renamed "Texts".
+- **Texts (1.8, done in 1.18).** The Messages page is renamed "Texts".
 - **Bookings in the browser (1.15).** The browser no longer keeps a list of bookings. Undo, then My visits, replace it.
 - **In the lobby (1.34).** "In the lobby" is no longer offered; Arrived covers it.
 - **Partners (1.44).** The home page shows six partner clinics at a time, rotating daily. Every listed clinic stays on Find a clinic.
