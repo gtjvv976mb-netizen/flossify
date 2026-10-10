@@ -289,7 +289,7 @@ Each item says who it helps, what changes, why, the effort (S = days, M = a week
   - When every count is 0 it says "Nothing waiting".
   - Its foot holds three quiet links: Calls · Texts · Tasks. Question 2 asks whether you also want them in the sidebar.
   - "New replies" and the Replies filter appear only once this branch has received a reply.
-  - The Texts page's note becomes "Between 9 pm and 8 am, reminders and your own texts wait until morning."
+  - The Texts page's note becomes "Between 9 pm and 8 am, reminders, aftercare texts and your own texts wait until morning."
 - *Why:* The inbox shows 5 rows even when every count is 0 (58 words of hints), yet misses sent forms and your tasks. Texts and Tasks can be reached only from menus, and "Tasks you gave" takes 3 clicks. The live text service sends one way, so "New replies" is always 0 today.
 - *Kept safe:*
   - The Calls button in Today's patients stays.

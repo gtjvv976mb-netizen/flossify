@@ -133,10 +133,11 @@ const [inbox, plan, area] = await Promise.all([
   areaOf(),
 ]);
 const inboxCount = inbox?.total ?? 0;
-// New patient forms waiting (the QR code on the desk): a count on the Patients tab, for people who can add them.
+// Forms to add (plan 1.12: the desk poster forms and the step-by-step forms sent, not added yet): a count on the
+// Patients tab, for people who can add them.
 const formsWaiting = inbox?.forms ?? 0;
 const tabCount = (id: Tab) => (id === 'patients' && formsWaiting > 0 ? formsWaiting : 0);
-const countWords = (n: number) => `, ${n} new patient ${n === 1 ? 'form' : 'forms'} waiting`;
+const countWords = (n: number) => `, ${n} ${n === 1 ? 'form' : 'forms'} to add`;
 const inboxLabel = inbox === null ? 'Inbox' : inboxCount ? `Inbox, ${inboxCount} waiting` : 'Inbox, nothing waiting';
 
 const ROLE: Record<string, string> = {
@@ -249,7 +250,7 @@ const BarTitle = heading ? 'h1' : 'p';
                   <Icon name={t.icon} size={20} />
                   <span class="ws-nav-word ws-nav-long">{t.label}</span>
                   <span class="ws-nav-word ws-nav-short" aria-hidden="true">{t.short}</span>
-                  {tabCount(t.id) > 0 && <span class="ws-nav-count" title="New patient forms waiting"><span aria-hidden="true">{tabCount(t.id) > 99 ? '99+' : tabCount(t.id)}</span><span class="sr-only">{countWords(tabCount(t.id))}</span></span>}
+                  {tabCount(t.id) > 0 && <span class="ws-nav-count" title={PLACE.formsToAdd}><span aria-hidden="true">{tabCount(t.id) > 99 ? '99+' : tabCount(t.id)}</span><span class="sr-only">{countWords(tabCount(t.id))}</span></span>}
                 </a>
               ))}
             </nav>
@@ -323,39 +324,61 @@ const BarTitle = heading ? 'h1' : 'p';
                     {inboxCount > 0 && <span class="ws-count" aria-hidden="true">{inboxCount > 99 ? '99+' : inboxCount}</span>}
                   </Fragment>
                   <p class="ws-menu-head">Inbox</p>
+                  {/* Only what is waiting (plan 1.13): a row only for a count above 0, each to people who may open it. */}
                   {inbox === null && <p class="ws-results-note">The counts could not be read just now.</p>}
-                  <a class="ws-menu-item" href={`${links.messages}?show=failed`}>
-                    <span class="ws-menu-icon" data-tint="red"><Icon name="alert" /></span>
-                    <span class="ws-menu-words">Texts that failed<span class="ws-menu-hint">In the last 7 days; send them again</span></span>
-                    {inbox && <span class="ws-count" data-zero={inbox.failed ? undefined : ''}>{inbox.failed}</span>}
-                  </a>
-                  <a class="ws-menu-item" href={`${links.messages}?show=replies`}>
-                    <span class="ws-menu-icon" data-tint="blue"><Icon name="message" /></span>
-                    <span class="ws-menu-words">New replies<span class="ws-menu-hint">From patients, since this device last opened {PLACE.texts}</span></span>
-                    {inbox && <span class="ws-count" data-zero={inbox.replies ? undefined : ''}>{inbox.replies}</span>}
-                  </a>
-                  <a class="ws-menu-item" href={links.requests}>
-                    <span class="ws-menu-icon" data-tint="amber"><Icon name="clock" /></span>
-                    <span class="ws-menu-words">Web requests to place<span class="ws-menu-hint">Patients waiting for the desk to give a time</span></span>
-                    {inbox && <span class="ws-count" data-zero={inbox.requests ? undefined : ''}>{inbox.requests}</span>}
-                  </a>
-                  {/* Visits in closed time (040), for people who may change the schedule: only when there are some. */}
+                  {inbox && inbox.total === 0 && <p class="ws-results-note">Nothing waiting</p>}
+                  {inbox && inbox.failed > 0 && (
+                    <a class="ws-menu-item" href={`${links.messages}?show=failed`}>
+                      <span class="ws-menu-icon" data-tint="red"><Icon name="alert" /></span>
+                      <span class="ws-menu-words">Texts that failed<span class="ws-menu-hint">In the last 7 days; send them again</span></span>
+                      <span class="ws-count">{inbox.failed}</span>
+                    </a>
+                  )}
+                  {inbox && inbox.replies > 0 && (
+                    <a class="ws-menu-item" href={`${links.messages}?show=replies`}>
+                      <span class="ws-menu-icon" data-tint="blue"><Icon name="message" /></span>
+                      <span class="ws-menu-words">New replies<span class="ws-menu-hint">From patients, since this device last opened {PLACE.texts}</span></span>
+                      <span class="ws-count">{inbox.replies}</span>
+                    </a>
+                  )}
+                  {inbox && inbox.requests > 0 && (
+                    <a class="ws-menu-item" href={links.requests}>
+                      <span class="ws-menu-icon" data-tint="amber"><Icon name="clock" /></span>
+                      <span class="ws-menu-words">Web requests to place<span class="ws-menu-hint">Patients waiting for the desk to give a time</span></span>
+                      <span class="ws-count">{inbox.requests}</span>
+                    </a>
+                  )}
+                  {/* Visits in closed time (040), for people who may change the schedule. */}
                   {inbox && !!inbox.closed && (
-                    <a class="ws-menu-item" href={`/c/${clinic.slug}/calls/#closed-time`}>
+                    <a class="ws-menu-item" href={`${links.calls}#closed-time`}>
                       <span class="ws-menu-icon" data-tint="amber"><Icon name="calendar" /></span>
                       <span class="ws-menu-words">In closed time, next 2 weeks<span class="ws-menu-hint">Visits booked when the clinic is not open; move them or call</span></span>
                       <span class="ws-count">{inbox.closed}</span>
                     </a>
                   )}
-                  {inbox && inbox.forms !== null && (
-                    <a class="ws-menu-item" href={`/c/${clinic.slug}/patients/forms/`}>
+                  {/* Forms to add (plan 1.12), for people who can add patients. */}
+                  {inbox && !!inbox.forms && (
+                    <a class="ws-menu-item" href={links.formsToAdd}>
                       <span class="ws-menu-icon" data-tint="teal"><Icon name="file" /></span>
-                      <span class="ws-menu-words">New patient forms<span class="ws-menu-hint">Sent from the QR code on your desk; add them to your patients</span></span>
-                      <span class="ws-count" data-zero={inbox.forms ? undefined : ''}>{inbox.forms}</span>
+                      <span class="ws-menu-words">{PLACE.formsToAdd}<span class="ws-menu-hint">Sent by patients; add or dismiss each</span></span>
+                      <span class="ws-count">{inbox.forms}</span>
+                    </a>
+                  )}
+                  {/* Your own tasks due today or overdue (032). */}
+                  {inbox && inbox.tasks > 0 && (
+                    <a class="ws-menu-item" href={links.tasks}>
+                      <span class="ws-menu-icon"><Icon name="check" /></span>
+                      <span class="ws-menu-words">Your tasks<span class="ws-menu-hint">Due today or overdue</span></span>
+                      <span class="ws-count">{inbox.tasks}</span>
                     </a>
                   )}
                   <div class="ws-menu-sep"></div>
-                  <a class="ws-menu-item" href={links.messages}><span class="ws-menu-words">{PLACE.allTexts}</span> <Icon name="arrow-right" size={16} /></a>
+                  {/* Three quiet links for everyone at the branch (question 2 may add them to the sidebar too). */}
+                  <nav class="ws-menu-foot" aria-label="More">
+                    <a class="ws-menu-item" href={links.calls}>{PLACE.calls}</a>
+                    <a class="ws-menu-item" href={links.messages}>{PLACE.texts}</a>
+                    <a class="ws-menu-item" href={links.tasks}>{PLACE.tasks}</a>
+                  </nav>
                 </Menu>
 
                 {/* Quiet (white, a hairline, a teal plus): one main action per screen is teal, and
@@ -407,7 +430,7 @@ const BarTitle = heading ? 'h1' : 'p';
               <a href={t.href} class="ws-tabrow-item" aria-current={t.id === tab ? 'page' : undefined}>
                 {tabs.length < 4 && <Icon name={t.icon} />}
                 <span>{t.short}</span>
-                {tabCount(t.id) > 0 && <span class="ws-nav-count" title="New patient forms waiting"><span aria-hidden="true">{tabCount(t.id) > 99 ? '99+' : tabCount(t.id)}</span><span class="sr-only">{countWords(tabCount(t.id))}</span></span>}
+                {tabCount(t.id) > 0 && <span class="ws-nav-count" title={PLACE.formsToAdd}><span aria-hidden="true">{tabCount(t.id) > 99 ? '99+' : tabCount(t.id)}</span><span class="sr-only">{countWords(tabCount(t.id))}</span></span>}
               </a>
             ))}
           </nav>

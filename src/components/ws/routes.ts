@@ -39,6 +39,14 @@ export interface ShellLinks {
   finances: string;
   settings: string;
   messages: string;
+  /** The Dashboard's Calls (visits to call about). */
+  calls: string;
+  /** The Dashboard's Tasks (yours, and the ones you gave). */
+  tasks: string;
+  /** Forms to add: forms patients sent, both ways, waiting to be added (plan 1.12). */
+  formsToAdd: string;
+  /** Forms being filled in: step-by-step forms not sent yet (plan 1.12). */
+  formsBeingFilled: string;
   claims: string;
   newBooking: string;
   /** The Dashboard's Block time panel (040): a closed day, a dentist away, a chair out of use. */
@@ -61,6 +69,10 @@ export function shellLinks(slug: string): ShellLinks {
     finances: LANDED.finances ? `${b}/finances/` : `${b}/billing/`,
     settings: `${b}/settings/`,
     messages: `${b}/messages/`,
+    calls: `${b}/calls/`,
+    tasks: `${b}/tasks/`,
+    formsToAdd: `${b}/patients/forms/`,
+    formsBeingFilled: `${b}/patients/intake/`,
     claims: `${b}/claims/`,
     newBooking: LANDED.dashboard ? `${b}/?new=booking` : `${b}/schedule/`,
     newBlock: `${b}/?new=block`,

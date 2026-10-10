@@ -36,8 +36,9 @@
   .pts-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-left: auto; }
   .pts-sort-k { color: var(--c-muted); font-weight: 500; }
   .pts-sort-btn, .pts-more-btn { gap: 0.3rem; }
-  /* More (the sort and Import in one list) is the narrow card's; wider, they stand apart. */
-  .pts-more-menu { display: none; }
+  /* More is on every card for people who may add patients (the QR code for the desk, Forms to add); a narrow card
+     also folds the sort and Import into it. Wider, those two stand apart, so More leaves them out. */
+  .pts-more-narrow { display: none; }
 
   /* --- what is shown ---------------------------------------------------------------------------- */
   .pts-region { display: block; transition: opacity 160ms ease; }
@@ -124,14 +125,17 @@
   /* A narrow card (a phone, a tablet): each patient a small card — who they are and what they owe on
      top, their visits, then the record check, both under the name. */
   @container pts (max-width: 699px) {
-    /* At most two rows before the pills: the search, then More (sort, Import) beside + Add patient — or,
-       for someone who may not add patients, the sort alone. A card with room (a tablet's) has them on the
-       search's row. */
+    /* At most two rows before the pills: the search, then More (the sort, Import, the QR code, Forms to add)
+       beside + Add patient — or, for someone who may not add patients, the sort alone. A card with room (a
+       tablet's) has them on the search's row. */
     .pts-head { gap: 0.625rem; padding: 1rem 1rem 0.75rem; }
     .pts-find { flex: 1 1 16rem; max-width: none; }
     .pts-actions { flex: 1 1 auto; margin-left: 0; flex-wrap: nowrap; }
     .pts-more-menu { display: block; flex: none; }
-    .pts-more-menu ~ .pts-sort-menu, .pts-import { display: none; }
+    .pts-more-narrow { display: block; }
+    /* More opens from the row's left edge here (it is the row's first button). */
+    .pts-more-menu > .ws-menu-pop[data-align] { left: 0; right: auto; }
+    .pts-actions:has(> .pts-more-menu) > .pts-sort-menu, .pts-import { display: none; }
     .pts-actions > .pts-sort-menu { flex: 1 1 auto; }
     .pts-actions > .pts-sort-menu > .pts-sort-btn { width: 100%; justify-content: flex-start; }
     .pts-add { flex: 1 1 auto; }

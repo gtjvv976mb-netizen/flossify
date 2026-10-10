@@ -409,10 +409,10 @@ export function initPanels(ctx: Ctx): Panels {
     const age = M.ageOf(p?.birth ?? c.birth, boot.today);
     who(V.who, c.patientName, c.patientId, [age === null ? null : `${age} years`, `Chart ${c.chartNo}`].filter(Boolean).join(' · '));
     alertChips(V.alerts, allergyOf(c), c.conditions ?? (p ? p.conditions.join(', ') : ''));
-    // The patient forms' own answer (p25): blue, information, never a status colour; the title says where it is from.
+    // The desk poster forms' own answer (p25): blue, information, never a status colour; the title says where it is from.
     if (c.formNervous) {
       const n = pill(c.formNervous === 'very' ? 'Very nervous about visits (from their form)' : 'A little nervous about visits (from their form)', 'blue');
-      n.title = 'From the patient forms';
+      n.title = 'From the desk poster forms';
       V.alerts.append(n);
     }
     const bal = p?.balance ?? null;

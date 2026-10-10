@@ -501,7 +501,10 @@ export function consentInForce(noticeId: string | null | undefined, consents: Co
 export const guardianStillNeeded = (minor: boolean, inForce: ConsentRow | null): boolean =>
   minor && !!inForce && inForce.agreed_as !== 'guardian';
 
-/** How an agreement was taken, in the words the desk uses. */
+/**
+ * How an agreement was taken, in the words the desk uses. DeskConsent prints these on the record's page 2, so `form`
+ * (the desk poster forms) stays "on the patient forms" until the owner says yes: printed words change only then.
+ */
 export const CONSENT_HOW: Record<string, string> = { web: 'online', desk: 'at the desk', sms: 'by text', paper: 'on paper', form: 'on the patient forms' };
 
 export type ConsentResult =

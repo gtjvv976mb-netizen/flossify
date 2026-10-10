@@ -19,10 +19,11 @@
 // it to this branch; money only for canBill() (the Finances tab's rule), via
 // patient_balance(); for anyone else it is never read.
 //
-// Patient forms sent from the QR code on the desk (src/lib/patient-forms.ts)
-// and not yet added: one line above the list says how many are waiting, with
-// the way to them (./forms/), for people who may add patients; More has the QR
-// code itself (./qr/).
+// Forms to add (plan 1.12, src/lib/forms-to-add.ts): forms patients sent, by
+// the desk poster or step by step, and not yet added. One line above the list
+// says how many, with the way to them (./forms/), for people who may add
+// patients; More, at every width, has the QR code for the desk (./qr/) and
+// Forms to add, whether or not some are waiting.
 //
 // The state is in the address, so a reload, a link and the back button come
 // back to the same view: ?q= (name, mobile or chart no.; the old /patients/?q=
@@ -47,8 +48,9 @@ import './_forms/forms.css';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { DAY_MS, startMs, ymdOf } from '../../../../components/ws/cal/model';
 import { loadList, readState, listHref, defaultSort, SORTS, type Sort } from './_list/list';
-import { newFormsWaiting } from '../../../../lib/patient-forms';
+import { formsToAddWaiting } from '../../../../lib/forms-to-add';
 import { can } from '../../../../lib/can';
+import { PLACE } from '../../../../lib/places';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -81,8 +83,8 @@ const SORT_LABEL: Record<Sort, { label: string; hint: string }> = {
   due: { label: 'Check-up due', hint: 'Soonest first' },
 };
 const canEdit = data.canEdit;
-// Forms waiting in "New patient forms" (the full page only; a part never needs it).
-const formsWaiting = !part && canEdit ? (await newFormsWaiting(clinic.id)) ?? 0 : 0;
+// Forms to add, both ways (the full page only; a part never needs it).
+const formsWaiting = !part && canEdit ? (await formsToAddWaiting(clinic.id)) ?? 0 : 0;
 const regionProps = {
   rows: data.rows, counts: data.counts, matched: data.matched, state, base, slug: clinic.slug, today, finance, canEdit, notice: data.notice,
 };
@@ -96,7 +98,7 @@ const boot = JSON.stringify({ base, q: state.q, f: state.f, sort: state.sort }).
     {formsWaiting > 0 && (
       <div class="ws-glass fm-waiting" role="status">
         <span class="fm-waiting-icon"><Glyph name="form" /></span>
-        <p class="fm-waiting-words"><span class="font-semibold text-ink">{formsWaiting === 1 ? 'One new patient form is' : `${formsWaiting} new patient forms are`} waiting.</span> Sent from the QR code on your desk; add {formsWaiting === 1 ? 'it' : 'them'} to your patients.</p>
+        <p class="fm-waiting-words"><span class="font-semibold text-ink">{formsWaiting === 1 ? 'One form to add.' : `${formsWaiting} forms to add.`}</span> {formsWaiting === 1 ? 'A patient sent it; add it or dismiss it.' : 'Patients sent them; add each one or dismiss it.'}</p>
         <a href={`/c/${clinic.slug}/patients/forms/`} class="ws-btn ws-btn-quiet ws-btn-sm">Review <span class="fm-count" aria-hidden="true">{formsWaiting}</span></a>
       </div>
     )}
@@ -114,28 +116,6 @@ const boot = JSON.stringify({ base, q: state.q, f: state.f, sort: state.sort }).
             <button type="submit" class="sr-only">Search</button>
           </form>
           <div class="pts-actions">
-            {/* A narrow card (a phone) keeps one row under the search: More (the sort and Import) and + Add
-                patient. Sort and Import are drawn apart from a wider card up (list.css). */}
-            {canEdit && (
-              <Menu id="pts-more" align="left" class="pts-more-menu" buttonClass="ws-btn ws-btn-quiet pts-more-btn">
-                <Fragment slot="button">More <Icon name="chevron" size={16} class="ws-chev" /></Fragment>
-                <p class="ws-menu-head">Sort by</p>
-                {SORTS.map((s) => (
-                  <a class="ws-menu-item" href={listHref(base, { ...state, sort: s })} aria-current={s === state.sort ? 'page' : undefined} data-pts-sort={s}>
-                    <span class="ws-menu-words">{SORT_LABEL[s].label}<span class="ws-menu-hint">{SORT_LABEL[s].hint}</span></span>
-                  </a>
-                ))}
-                <div class="ws-menu-sep" role="presentation"></div>
-                <a class="ws-menu-item" href={`/c/${clinic.slug}/patients/import/`}>
-                  <span class="ws-menu-icon" data-tint="teal"><Icon name="upload" /></span>
-                  <span class="ws-menu-words">Import<span class="ws-menu-hint">Patients or past visits from a spreadsheet</span></span>
-                </a>
-                <a class="ws-menu-item" href={`/c/${clinic.slug}/patients/qr/`}>
-                  <span class="ws-menu-icon" data-tint="teal"><Glyph name="qr" /></span>
-                  <span class="ws-menu-words">QR code for your desk<span class="ws-menu-hint">Patients fill in their own forms on their phone</span></span>
-                </a>
-              </Menu>
-            )}
             <Menu id="pts-sort" align="right" class="pts-sort-menu" buttonClass="ws-btn ws-btn-quiet pts-sort-btn" label={`Sort: ${SORT_LABEL[state.sort].label}`}>
               <Fragment slot="button"><span class="pts-sort-k">Sort:</span> <span data-pts-sort-word>{SORT_LABEL[state.sort].label}</span> <Icon name="chevron" size={16} class="ws-chev" /></Fragment>
               <p class="ws-menu-head">Sort by</p>
@@ -148,6 +128,34 @@ const boot = JSON.stringify({ base, q: state.q, f: state.f, sort: state.sort }).
             {canEdit && (
               <>
                 <a href={`/c/${clinic.slug}/patients/import/`} class="ws-btn ws-btn-quiet pts-import"><Icon name="upload" />Import</a>
+                {/* More, at every width, for people who may add patients: the QR code for the desk and Forms to add
+                    (always there, so the poster, and Added and Dismissed, are reached with nothing waiting). A narrow
+                    card (a phone) also folds the sort and Import into it (list.css: .pts-more-narrow). */}
+                <Menu id="pts-more" align="right" class="pts-more-menu" buttonClass="ws-btn ws-btn-quiet pts-more-btn">
+                  <Fragment slot="button">More <Icon name="chevron" size={16} class="ws-chev" /></Fragment>
+                  <div class="pts-more-narrow">
+                    <p class="ws-menu-head">Sort by</p>
+                    {SORTS.map((s) => (
+                      <a class="ws-menu-item" href={listHref(base, { ...state, sort: s })} aria-current={s === state.sort ? 'page' : undefined} data-pts-sort={s}>
+                        <span class="ws-menu-words">{SORT_LABEL[s].label}<span class="ws-menu-hint">{SORT_LABEL[s].hint}</span></span>
+                      </a>
+                    ))}
+                    <div class="ws-menu-sep" role="presentation"></div>
+                    <a class="ws-menu-item" href={`/c/${clinic.slug}/patients/import/`}>
+                      <span class="ws-menu-icon" data-tint="teal"><Icon name="upload" /></span>
+                      <span class="ws-menu-words">Import<span class="ws-menu-hint">Patients or past visits from a spreadsheet</span></span>
+                    </a>
+                  </div>
+                  <a class="ws-menu-item" href={`/c/${clinic.slug}/patients/qr/`} data-pts-qr>
+                    <span class="ws-menu-icon" data-tint="teal"><Glyph name="qr" /></span>
+                    <span class="ws-menu-words">QR code for your desk<span class="ws-menu-hint">Patients fill in their own forms on their phone</span></span>
+                  </a>
+                  <a class="ws-menu-item" href={`/c/${clinic.slug}/patients/forms/`} data-pts-forms>
+                    <span class="ws-menu-icon" data-tint="teal"><Icon name="file" /></span>
+                    <span class="ws-menu-words">{PLACE.formsToAdd}<span class="ws-menu-hint">Sent by patients; add or dismiss each</span></span>
+                    {formsWaiting > 0 && <span class="ws-count">{formsWaiting > 99 ? '99+' : formsWaiting}</span>}
+                  </a>
+                </Menu>
                 <a href={`/c/${clinic.slug}/patients/new/`} class="ws-btn ws-btn-primary pts-add"><Icon name="plus" />Add patient</a>
               </>
             )}

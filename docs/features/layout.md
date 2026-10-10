@@ -75,11 +75,12 @@ src/lib/treatment-record.ts    the Treatment record (the PDA ledger): rows, char
 src/pages/c/[clinic]/patients/[patient]/treatment-record.astro  the Treatment record on A4 paper
 src/pages/c/[clinic]/patients/[patient]/sign/  the tablet signing page (clinic step, patient step, thank you)
 src/pages/f/[key].astro        patients: the patient forms from the QR code on a clinic's desk (five steps, no account)
-src/lib/patient-forms.ts       forms key, public submit, the "New patient forms" queue, adding a form to the records
+src/lib/patient-forms.ts       forms key, public submit, the desk poster forms' queue, adding a form to the records
+src/lib/forms-to-add.ts        Forms to add: both ways' forms sent and not added, in one list (plan 1.12); the hold the purge keeps
 src/lib/patient-forms-def.ts   the questions as data, reading a post, labelling the answers (no Node imports)
 src/lib/qr.ts                  QR codes as SVG: error correction H, the Flossify mark in the middle
 src/pages/c/[clinic]/patients/qr/     the QR poster: page, print/, _poster.ts (the drawing steps), _draw.ts (the PNG)
-src/pages/c/[clinic]/patients/forms/  "New patient forms": the queue, one form (<id>/) and its printout (<id>/print/)
+src/pages/c/[clinic]/patients/forms/  Forms to add (both ways), one desk poster form (<id>/) and its printout (<id>/print/)
 src/pages/c/[clinic]/patients/_forms/ the forms' shared pieces: Answers, Confirm, forms.css, words, fit
 scripts/sms/worker.ts          the sender: npm run sms:worker (loop) / sms:once; every pass also runs sms_enqueue_recalls()
 src/data/migrations/036, 037, 038  the paperless day: visit links, reminder passes, recall texts, clinic switches; day_close; appointment_contact
@@ -105,6 +106,7 @@ src/pages/f/i/, f/t/, auth/park.ts, auth/unlock.astro, auth/tablet.ts  the patie
 src/lib/intake.ts, intake-public.ts, consent-docs.ts, park.ts  the desk's intake, its public side, consent documents, hand-over
 src/lib/consent-library.ts, consent-seal.ts  the consent forms as data and the one renderer; canonical JSON, snapshot, seal, chain (npm run consent:hash)
 src/lib/intake-def.ts, patient-add.ts, refused.ts  the intake's page 1; adding a patient's own answers (forms and intakes); the one Refused class
+src/lib/add-ways.ts            Add patient's one chooser: the ways open on this server, Easiest only beside an open one (plan 1.11; add-ways.test.ts)
 scripts/dev/intake/db-test.mjs the intake database checks; scripts/ts-register.mjs runs a script that imports src/lib
 scripts/dev/settings/profile-check.mjs  the public profile's lines and the clinic's founding year, end to end
 scripts/dev/schedule/seat-check.mjs     In the chair asks why for a consent form not agreed (API, Dashboard, 390 px)

@@ -113,8 +113,9 @@ The owner's decisions, in force, with the owner's words and dates where the reco
   manager and the dentist owner, improve the experience for the clinic, the staff and the patient".
 
 ### Patients' own forms, the sample site and the plan (patient-forms.md, sample-sites.md)
-- **Desk poster forms (028):** the owner asked for a QR code a clinic prints and posts at reception; Add patient offers
-  it second of three, marked *Easiest*. Owner's call: the contact fields keep their autofill tokens for the patient's
+- **Desk poster forms (028):** the owner asked for a QR code a clinic prints and posts at reception; Add patient offered
+  it second of three, marked *Easiest* (plan 1.11, 10 Oct: the poster is under Patients → More, Add patient offers only
+  the ways open on this server, and *Easiest* marks only an open one). Owner's call: the contact fields keep their autofill tokens for the patient's
   own phone (to trade that for a shared tablet, drop the tokens from `STEPS`).
 - **The owner (29 Sep 2026): Add patient by QR or at the clinic, step by step** — before the QR the staff tick which
   consent forms the procedure needs; page 1 patient information, then the consent forms, then the profile is made. The

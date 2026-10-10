@@ -9,6 +9,25 @@ patient fills in their details and the standard patient forms on their own
 phone. Add patient offers it beside typing and importing, second of the three
 and marked *Easiest*.
 
+*One Add patient chooser (1.11, 10 Oct):* Add patient no longer links to the
+poster: it is under Patients → More, at every width (with Forms to add, whether or
+not some wait), and on Forms to add's head. The one chooser
+is Add patient's (`patients/new/`, the rule is `src/lib/add-ways.ts`, tested in
+`add-ways.test.ts`): it offers only the ways open on this server — a way closed
+here (no consent form offered, the phone path not built, or a new patient's
+patient information not covered by the notice) is left out, never greyed; one
+closed only for this patient (a patient on file with no birth date) stays off
+with its sentence — and *Easiest* sits only beside the step-by-step forms on the
+patient's phone while that way is open. When typing is the only way (the live
+site today) the page goes straight to the typing form, which lost its own
+three-way header: it keeps one "Before you type" pane — one line naming both
+kinds of forms already sent (desk poster and step-by-step, with Forms to add),
+the line on why patients cannot sign their own consent forms yet (only while
+no consent form is offered: "Patients can sign their consent forms here once a
+dentist and a lawyer have read them.", the chooser's sentence too, true
+whichever gate opens first), and a quiet Import a spreadsheet. Other ways on
+the chooser: Import, and Forms to add (n) while some wait.
+
 - **Closed in production until the privacy notice covers it.** Patients
   agree to the notice in force, and privacy-2026-09 does not name what the
   forms collect (health history, address, emergency contact and a parent's
@@ -64,7 +83,7 @@ and marked *Easiest*.
   a shared device, so the QR page tells a clinic tablet to open the link in
   a private tab. Owner's call: to trade that fill-in for a shared tablet,
   drop the tokens from STEPS (`_Field` then renders "off").
-- **A form is not a patient.** It waits in "New patient forms" until someone
+- **A form is not a patient.** It waits in Forms to add (1.12; "New patient forms" before) until someone
   who can edit records adds it — as a new patient or to one on file — or
   dismisses it. A form nobody added is deleted 30 days after it was sent, by
   `retention_purge()`, which the worker already runs; an added form stays with
@@ -74,8 +93,9 @@ and marked *Easiest*.
   under `lockClinic`), a `medical_history` version with `answered_by
   'patient'`, `form_id`, and `answered_at` = **when it was added** (so it is
   the current version even if the desk typed one after the form was sent; the
-  sending time is `answers.form.submitted_at` and the record prints "from the
-  patient forms (QR-7K2F, sent 26 Sep)"), `recorded_by` null (021's rule for a
+  sending time is `answers.form.submitted_at` and the record's health line says
+  "from the desk poster forms (QR-7K2F, sent 26 Sep)"; "the patient forms" until
+  1.12, and still on the printed page 1), `recorded_by` null (021's rule for a
   patient's own answers), and `patient_consent` rows with channel `form` (the
   form, who added it, the typed signature, as whom, when it was signed), one
   per version per patient as at the desk. Added to a patient on file, it fills
@@ -119,9 +139,9 @@ and marked *Easiest*.
   data only). After any change to the drawing, decode it again (jsQR over a
   rendered PNG, at several sizes, blurred and turned): a poster that looks
   right and does not scan is the one failure it cannot have.
-- **The workspace side.** Add patient offers three ways at its top — type it
-  in, *Patients fill it in* (Easiest), import a spreadsheet — and says when
-  forms are waiting, so nobody types a patient in twice.
+- **The workspace side.** Add patient offers the ways open on this server
+  (1.11, above), and says when forms are waiting, so nobody types a patient in
+  twice. The QR poster for the desk is under Patients → More.
   `/c/<slug>/patients/qr/` is the poster as it prints, one teal Print poster,
   Download QR (PNG), Copy link and Make a new QR code (asks first); on a phone
   the buttons come first, full width. The poster is one set of drawing steps
@@ -133,9 +153,10 @@ and marked *Easiest*.
   (`.fm-print-sheet`): a hidden frame cannot work, because every page sends
   `frame-ancestors 'none'`. Draw the poster's SVG in tenths of a millimetre
   (`posterSvg` does): at 4–15 units a browser rounds each letter's advance
-  and the words come out letter-spaced. `patients/forms/` is the queue (New ·
-  Added · Dismissed; a search by name, mobile or reference; boxes and
-  "Dismiss selected" on New) and `patients/forms/<id>/` one form: the answers
+  and the words come out letter-spaced. `patients/forms/` is Forms to add (1.12,
+  below: To add · Added · Dismissed; a search by name, mobile or reference;
+  boxes and "Dismiss selected" on the desk poster forms' rows) and
+  `patients/forms/<id>/` one form: the answers
   labelled from the definition, what the dentist should see first as pills,
   likely matches each with *Add to <name>* (teal when the strongest has the
   same name and birth date; a mobile alone never is), *Add as a new patient*
@@ -148,6 +169,44 @@ and marked *Easiest*.
   the visit). The count of waiting forms is on the Patients tab (a dot on a
   phone's tab row), in the inbox and above the patients list — only for
   people who can add patients (`inboxFor(…, staffId)`).
+- *Forms to add (1.12, 10 Oct):* one list for every form a patient sent and
+  nobody added, both ways — desk poster forms (`patient_form` status `new`,
+  QR-…) and step-by-step forms sent and not added (`intake` status `sent`,
+  IN-…: only a new patient's can wait — `intake_send()` puts a patient on
+  file's on their record at Send — when Send could not add them: a look-alike
+  on file, a visit, or a maker who may no longer add patients, `addAtSend`).
+  `src/lib/forms-to-add.ts` (`listFormsToAdd`,
+  `countFormsToAdd`, `formsToAddWaiting`, `countFormsBeingFilled`) merges the
+  list, not the adding: a row opens its own way's page (a desk poster form its
+  form page; a step-by-step form its Screen F, which asks why before it
+  dismisses and lands back here with `?done=steps-dismissed&ref=IN-…`), so each
+  keeps its look-alike check, its signings and seals and its deletion rule.
+  Each row keeps its reference, says which way it came ("desk poster forms" or
+  "step-by-step forms"; the consent forms in a step-by-step form, each with its
+  state, are on its Screen F), says "May already be on file" by its own way's
+  look-alike rule (`listForms`' for a desk poster form, Screen F's
+  `intakeLookAlikes` for a step-by-step form), and says when it goes:
+  "Deleted on 9 Nov" (in the last week "Deleted in 3 days"), or for a held
+  step-by-step form "Kept until added or dismissed" — `INTAKE_HELD_SQL`, a word
+  for word copy of the hold in 039's `retention_purge()`; the two change
+  together, and `scripts/dev/intake/db-test.mjs` checks they agree, in words
+  and in effect. Only desk poster forms' rows have a box, so "Dismiss
+  selected" never reaches a step-by-step form (and `dismissForms` touches
+  `patient_form` only). Added and Dismissed list desk poster forms only, and
+  say so. `listForms`, `countNewForms`, `newFormsWaiting` and
+  `countSentIntakes` keep their meaning (backend-test pins them). Forms being
+  filled in (`patients/intake/`: With the patient now · Not finished, only
+  the groups with some) is linked from Forms to add's head while there are
+  some, and Screen F's back link goes to whichever list the forms are on (Forms
+  being filled in's own back link goes to Forms to add). The inbox, the
+  Patients tab, the line above the patients list, Patients → More and the QR
+  page's Forms to add pane count both ways (`records.edit` only). The record's
+  screens and the calendar's pill say "desk poster forms" for the poster's.
+  **The printed record keeps "patient forms"** until the owner says yes (printed
+  words change only then): page 2's "Patient forms · From the QR code" heading
+  and "typed on the patient forms (QR-…)", page 1's "From the patient forms"
+  line, and DeskConsent's "agreed … on the patient forms" (`CONSENT_HOW.form`);
+  the words check lists them as allowed for that reason.
 - **Every /c/ response is `Cache-Control: no-store`** (`src/middleware.ts`):
   the forms' answers and printouts, records and health histories must not
   stay in a shared clinic computer's cache after sign-out.

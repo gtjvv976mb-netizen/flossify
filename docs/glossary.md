@@ -92,13 +92,14 @@ settings"), so a rename also searches for the old name.
   - My page.
   - HMO & PhilHealth claims: only for people without Finances; *Claims* on a narrow screen.
   - Your Flossify plan: the owner's card, shown only when it has something to say.
-- **Top bar:** Inbox · New.
+- **Top bar:** Inbox · New. The inbox's foot: *Calls · Texts · Tasks* (1.13).
 - **Dashboard:** the calendar · Today's patients · Next for you · the tiles *Booked today*, *Waiting*, *In the chair*,
   *Collected today* · Calls · Tasks.
 - **Finances:** statements · New charge · Close the day · HMO & PhilHealth claims.
-- **Patients:** Add patient · Import patients · New patient forms (becomes *Forms to add*, 1.12) · Patient forms in
-  progress (becomes *Forms being filled in*, 1.12) · *QR code for your desk* (the poster's page).
-- **Texts** (its web address stays `/messages/`; the inbox's link to it is *All texts*). It holds *Text a patient*.
+- **Patients:** Add patient · Import patients · Forms to add · Forms being filled in · *QR code for your desk* (the
+  poster's page, under More).
+- **Texts** (its web address stays `/messages/`; the inbox's foot links to it as *Texts*, the record's Texts sheet as
+  *All texts*). It holds *Text a patient*.
 - **Clinic settings**, today: Clinic profile · Opening hours · Closed days · Services & prices · People · Roles ·
   Photos · Privacy · Clinic tablets · Your Flossify plan.
   After 2.23 and 2.24: Your public page · Hours and closed days · How the day runs · Services & prices · People (with

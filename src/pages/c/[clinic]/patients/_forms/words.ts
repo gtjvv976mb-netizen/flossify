@@ -8,13 +8,16 @@ const parts = (d: Date) => Object.fromEntries(new Intl.DateTimeFormat('en-US', {
 }).formatToParts(d).map((x) => [x.type, x.value]));
 const ymd = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 
-/** "Today, 7:29 pm" · "Yesterday, 7:29 pm" · "Thu 24 Sep, 7:29 pm" · "Thu 24 Sep 2025, 7:29 pm" (Manila). */
+/**
+ * "today, 7:29 pm" · "yesterday, 7:29 pm" · "Thu 24 Sep, 7:29 pm" · "Thu 24 Sep 2025, 7:29 pm" (Manila). Always after a
+ * word ("Sent …", "Added …", ", …"), so today and yesterday are lower case and a weekday keeps its capital.
+ */
 export function sentText(d: Date, now = new Date()): string {
   const p = parts(d);
   const time = `${p.hour}:${p.minute} ${String(p.dayPeriod).toLowerCase()}`;
   const day = ymd(d);
-  if (day === ymd(now)) return `Today, ${time}`;
-  if (day === ymd(new Date(now.getTime() - 86_400_000))) return `Yesterday, ${time}`;
+  if (day === ymd(now)) return `today, ${time}`;
+  if (day === ymd(new Date(now.getTime() - 86_400_000))) return `yesterday, ${time}`;
   const thisYear = parts(now).year === p.year;
   return `${p.weekday} ${p.day} ${p.month}${thisYear ? '' : ` ${p.year}`}, ${time}`;
 }
