@@ -12,7 +12,7 @@
 // before the move still lands where it is handled (the CSRF token rides in
 // the body and the cookie, both unchanged). Nothing here reads the database
 // or the session: the page it goes to checks who may see it. The Flossify
-// plan is Clinic settings → Your Flossify plan (/settings/billing/), not here.
+// plan is Clinic settings → Your Flossify plan (/settings/#plan), not here.
 export const prerender = false;
 
 import type { APIRoute } from 'astro';

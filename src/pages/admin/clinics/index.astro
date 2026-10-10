@@ -219,7 +219,7 @@ const stepsOf = (r: ClinicRow) => [
           <div class="ws-tiles mt-5 grid-cols-2!">
             <Tile label="Patients" value={n(r.patients)} note="a count only" />
             <Tile label="Bookings, 30 days" value={n(r.bookings_30d)} note={`${n(r.visits_next_7d)} in the next 7 days`} />
-            <Tile label="Team" value={n(r.team)} note={`${plural(r.dentists, 'dentist')}${r.invited ? ` · ${n(r.invited)} invited` : ''}`} />
+            <Tile label="People" value={n(r.team)} note={`${plural(r.dentists, 'dentist')}${r.invited ? ` · ${n(r.invited)} invited` : ''}`} />
             <Tile label="Texts failed" value={n(r.texts_failed_7d)} tone={r.texts_failed_7d ? 'alert' : 'default'} note={`this week · ${n(r.texts_queued)} waiting`} />
           </div>
           <dl class="ops-facts mt-5">

@@ -62,6 +62,8 @@ import { queueText, prettyPhone } from '../../../../lib/messages';
 import { can } from '../../../../lib/can';
 import { shortName } from '../../../../lib/schedule';
 import { TEXT_TEMPLATES, phpAmount } from '../../../../lib/text-templates';
+import { PLACE } from '../../../../lib/places';
+import { mayManage } from '../../../../lib/roles';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -220,10 +222,12 @@ const { area, clinicPhone, texts, recipients, failedCount } = await withClinic(c
             -- A live sign-in code is for the phone it was texted to, never for the page.
             case when m.kind in ('reset', 'invite') then null else m.body end as body,
             m.failed_reason, m.sent_at, m.created_at,
-            p.id as patient_id, p.first_name, p.last_name, p.chart_no, s.full_name as staff_name
+            p.id as patient_id, p.first_name, p.last_name, p.chart_no, m.staff_id, s.full_name as staff_name,
+            r.rank as role_rank, r.is_owner as role_owner
      from message_log m
      left join patient p on p.id = m.patient_id
      left join staff s on s.id = m.staff_id
+     left join clinic_role r on r.id = s.role_id
      where m.channel = 'sms' and ${SHOWS[show].where}
      order by m.created_at desc limit 100`)).rows,
   recipients: canSend ? (await tx.query(RECIPIENTS, [to || null, canMoney])).rows : [],
@@ -256,7 +260,18 @@ function failedWords(reason: string | null): string {
   return 'The text service did not take it. Send it again; if it fails again, tell Flossify.';
 }
 const isCode = (m: { kind: string | null }) => m.kind === 'reset' || m.kind === 'invite';
-const CODE_WHY = 'A code expires, so it is not sent again. A new one: “Forgot your password?” on the sign-in page, or Clinic settings → Team.';
+// A code with no member is a patient's, for My visits (src/pages/me/): the desk cannot send it again, the patient asks.
+const CODE_WHY = `A code expires, so it is not sent again. A new one: “Forgot your password?” on the sign-in page, or ${PLACE.people}.`;
+const PATIENT_CODE_WHY = 'A patient’s code for My visits. A code expires, so it is not sent again: they ask for a new one on My visits.';
+// A failed member's code, and the way on for whoever reads it: your own is on My page; someone whose sign-in you
+// change, their Sign-in card in People, where a new code is sent; anyone else, the same card, which says who can.
+function codeGo(m: { staff_id: string | null; role_rank: number | null; role_owner: boolean | null }): { label: string; href: string } | null {
+  if (!m.staff_id || !canSetUp) return null;
+  if (m.staff_id === session.staffId) return { label: `Open ${PLACE.myPage}`, href: `/c/${clinic.slug}/account/` };
+  const href = `/c/${clinic.slug}/settings/people/${m.staff_id}/#signin`;
+  const manages = m.role_rank !== null && mayManage(clinic, { role_rank: m.role_rank, role_owner: !!m.role_owner }, false);
+  return { label: manages ? 'Open their page to send a new code' : 'Open their page', href };
+}
 
 // Status is never colour alone: every chip is a word, and a failure says why in a sentence.
 function statusOf(m: (typeof texts)[number]): { label: string; tone: Tone; why?: string } {
@@ -266,7 +281,7 @@ function statusOf(m: (typeof texts)[number]): { label: string; tone: Tone; why?:
     case 'sending': return { label: 'Sending', tone: 'neutral' };
     case 'sent': return { label: `Sent ${m.sent_at ? time(m.sent_at) : ''}`.trim(), tone: 'muted' };
     case 'delivered': return { label: 'Delivered', tone: 'accent' };
-    case 'failed': return { label: 'Failed', tone: 'alert', why: isCode(m) ? CODE_WHY : failedWords(m.failed_reason) };
+    case 'failed': return { label: 'Failed', tone: 'alert', why: isCode(m) ? (m.staff_id ? CODE_WHY : PATIENT_CODE_WHY) : failedWords(m.failed_reason) };
     case 'cancelled': return { label: 'Cancelled', tone: 'muted' };
     default: return { label: m.status, tone: 'neutral' };
   }
@@ -334,8 +349,8 @@ const emptyText = show === 'failed' ? `No text has failed in the last ${WINDOW_D
   : show === 'replies' ? 'No replies yet. A patient’s text back shows here.'
   : 'No texts yet. The first booking confirmation will show here.';
 ---
-<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title="Messages" section="messages" staff={{ name: session.name, role: session.role }} branches={branches} layout="panes" heading>
-  <Pane as="div" label="Messages" pad="tight" class="msg-bar">
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area }} title={PLACE.texts} section="messages" staff={{ name: session.name, role: session.role }} branches={branches} layout="panes" heading>
+  <Pane as="div" label={PLACE.texts} pad="tight" class="msg-bar">
     <div class="msg-bar-row">
       <Tabs label="Show" current={show} items={[
         { id: 'all', label: 'All', href: here },
@@ -359,6 +374,7 @@ const emptyText = show === 'failed' ? `No text has failed in the last ${WINDOW_D
           const s = statusOf(m);
           const kind = m.direction === 'in' ? 'Reply' : (KIND[m.kind ?? ''] ?? 'Text');
           const name = m.patient_id ? `${m.first_name} ${m.last_name}` : m.staff_name ?? null;
+          const go = s.why && isCode(m) ? codeGo(m) : null;
           return (
             <li class="msg-row" data-dir={m.direction}>
               {name ? <Avatar name={name} /> : <span class="msg-noname" aria-hidden="true"><Icon name="message" /></span>}
@@ -374,7 +390,7 @@ const emptyText = show === 'failed' ? `No text has failed in the last ${WINDOW_D
                 <p class="msg-text">{m.body ?? <span class="msg-hidden">A sign-in code, texted to the number on file. It is not shown here.</span>}</p>
                 <p class="msg-when">{when(m.created_at)}{name && <> · <span class="whitespace-nowrap">{prettyPhone(m.to_address)}</span></>}</p>
                 {s.why && <p class="msg-why"><Icon name="alert" size={16} />{s.why}</p>}
-                {s.why && isCode(m) && canSetUp && <a href={`/c/${clinic.slug}/settings/team/`} class="ws-empty-go msg-go">Open Team to send a new code <Icon name="arrow-right" size={16} /></a>}
+                {go && <a href={go.href} class="ws-empty-go msg-go">{go.label} <Icon name="arrow-right" size={16} /></a>}
               </div>
               <div class="msg-side">
                 <Chip tone={s.tone} label={s.label} dot={s.tone === 'alert'} />
@@ -456,7 +472,7 @@ const emptyText = show === 'failed' ? `No text has failed in the last ${WINDOW_D
 </ClinicLayout>
 
 <style is:global>
-  /* Messages' own few rules (the rest is the shell's), in the components layer so a utility in the markup still wins. */
+  /* The Texts page's own few rules (the rest is the shell's), in the components layer so a utility in the markup still wins. */
   @layer components {
     .msg-bar-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1rem; }
     .msg-lede { margin-top: 0.75rem; font-size: 14px; line-height: 1.5; color: var(--c-muted); }

@@ -181,7 +181,7 @@ details covered, instead).
   that explains the page (the chart's "saved as you make it" and how-to, the Treatment record's balance note — the
   mismatch and the 300 cap still show —, Signed at visits', the patient forms', the letters', the desk hint under
   privacy consent on the sheet only), and no count lines ("1 on record", "0 about this patient"). Each part's buttons are
-  in its heading: Print on the Treatment record, In Finances and New charge on Account, All messages on Texts, and the
+  in its heading: Print on the Treatment record, In Finances and New charge on Account, All texts on Texts, and the
   letters' three kinds as pluses (Certificate · Referral · Clearance, `data-letter-kind`). The head is one row (‹
   Patients · chart no. and facts · the actions; no avatar), the facts inline; the contents use short names
   (`SECTIONS[].short`, the full name for a screen reader) on one line from 1366 px and one sideways-scrolling row on a
@@ -445,7 +445,7 @@ patient"). One migration, 036; the pieces in the order of a visit:
   today by method, the drawer count against the cash expected (`day_close`, 037, insert-only, many closes a day
   and the newest counts), what is still open (in the clinic, done and not charged, charged and unpaid, left
   owing, did not come), tomorrow in three numbers. `finance.bill` opens it; `finance.money` shows amounts.
-  Messages → Text a patient lists anyone with a reason (on the book, seen lately, a check-up due, lab work back,
+  Texts → Text a patient lists anyone with a reason (on the book, seen lately, a check-up due, lab work back,
   owes) and fills a template (`src/lib/text-templates.ts`, eight, GSM-safe, no link, no reply asked). The
   Patients tab has Due for check-up and Not seen in a year, and Needs attention includes a health history older
   than a year.

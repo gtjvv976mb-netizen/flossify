@@ -84,6 +84,6 @@ const area = (await withClinic(clinic.id, async (tx) => (await tx.query('select 
   <Pane pad="none" title="Claims" icon="file" meta="From filing to payment">
     <Claims slug={clinic.slug} data={data} filter={filter} canMoney={canMoney} viewKey="view"
       link={link} action={link()} csvHref={link({ export: 'csv' })}
-      post={post} error={q.get('stale') === '1' ? CSRF_MESSAGE : ''} notice={CLAIM_DONE[q.get('done') ?? ''] ?? ''} missed={q.get('missed') ? CLAIM_MISSED : ''} />
+      post={post} error={q.get('stale') === '1' ? CSRF_MESSAGE : ''} notice={CLAIM_DONE[q.get('done') ?? ''] ?? ''} missed={q.get('missed') ? CLAIM_MISSED : ''} canSetUp={can(ws, 'settings.edit')} />
   </Pane>
 </ClinicLayout>

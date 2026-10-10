@@ -80,8 +80,12 @@ where marked in the plan:
 
 ## Places, named as they are on screen
 
-Point to a place by its on-screen name, with an arrow for the path: *Clinic settings → People*. Where a name changes
-in a later item, it is written "today's name (becomes …, item)".
+Point to a place by its on-screen name, with an arrow for the path: *Clinic settings → People*. In a text message the
+arrow is a comma (*Clinic settings, People*): it is not a GSM-7 character. Where a name changes in a later item, it is
+written "today's name (becomes …, item)". The names are in `src/lib/places.ts` (`PLACE`, `settingsPlace()`,
+`sectionName()`): the sentences item 1.18 swept, and every new one, take the name from there. Some headings and older
+sentences still write a name out (most settings sections' titles, the Calls page's title, "on their page in Clinic
+settings"), so a rename also searches for the old name.
 
 - **Workspace tabs:** Dashboard · Patients · Finances · Clinic settings (the phone's tab row says *Settings*).
 - **Sidebar foot:**
@@ -91,11 +95,10 @@ in a later item, it is written "today's name (becomes …, item)".
 - **Top bar:** Inbox · New.
 - **Dashboard:** the calendar · Today's patients · Next for you · the tiles *Booked today*, *Waiting*, *In the chair*,
   *Collected today* · Calls · Tasks.
-- **Finances:** statements · New charge · Close the day · HMO claims (becomes *HMO & PhilHealth claims*, the name the
-  page already has, 1.18).
+- **Finances:** statements · New charge · Close the day · HMO & PhilHealth claims.
 - **Patients:** Add patient · Import patients · New patient forms (becomes *Forms to add*, 1.12) · Patient forms in
   progress (becomes *Forms being filled in*, 1.12) · *QR code for your desk* (the poster's page).
-- **Messages** (becomes *Texts*, 1.18; its web address stays). It holds *Text a patient*.
+- **Texts** (its web address stays `/messages/`; the inbox's link to it is *All texts*). It holds *Text a patient*.
 - **Clinic settings**, today: Clinic profile · Opening hours · Closed days · Services & prices · People · Roles ·
   Photos · Privacy · Clinic tablets · Your Flossify plan.
   After 2.23 and 2.24: Your public page · Hours and closed days · How the day runs · Services & prices · People (with
@@ -209,8 +212,9 @@ Each rule below is one retired wording; a rule with `files` counts only in those
 - **todo**: still to sweep, with its plan item.
 
 Anything else fails the check. A todo that is gone also fails, until it is taken off the list (`npm run words:prune`).
-`node scripts/dev/words/check.mjs --files <paths>` tries the rules on any file. Item 1.18 puts the place names in one
-module built from `SECTIONS`, so 2.24's renames change every sentence at once.
+`node scripts/dev/words/check.mjs --files <paths>` tries the rules on any file. The place names are in one module,
+`src/lib/places.ts`, built from `SECTIONS` (item 1.18), so 2.24's renames change every sentence that reads it at once
+(and a search finds the few that still write a name out).
 
 | Rule | Say instead |
 |---|---|

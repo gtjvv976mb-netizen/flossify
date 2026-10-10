@@ -22,6 +22,7 @@ import { hmos } from '../../../../../data/directory';
 import { AREAS, placeOf } from '../../../../../lib/slug';
 import { parseTin, tinParts } from '../../../../../lib/invoices';
 import { DAY_LONG, DAYS, listWords } from './common';
+import { PLACE } from '../../../../../lib/places';
 
 export const ABOUT_MAX = 600;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -241,8 +242,8 @@ export async function saveClinic(
 /** After an hours save put visits ahead into closed time: the warn note, and where Calls lists them. */
 export function closedText(n: number): string {
   return n === 1
-    ? 'Saved. 1 visit ahead is now in closed time. It is on the call list: move it or call the patient.'
-    : `Saved. ${n} visits ahead are now in closed time. They are on the call list: move them or call the patients.`;
+    ? `Saved. 1 visit ahead is now in closed time. It shows on ${PLACE.calls}: move it or call the patient.`
+    : `Saved. ${n} visits ahead are now in closed time. They show on ${PLACE.calls}: move them or call the patients.`;
 }
 
 /** "Saved. The listing switch stayed off: the clinic still needs opening hours." */

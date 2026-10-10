@@ -34,6 +34,7 @@ import SidePanel from '../../../../components/ws/SidePanel.astro';
 import Tabs from '../../../../components/ws/Tabs.astro';
 import { TONE } from '../../../../components/ws/status';
 import { pesos } from '../../../../lib/invoices';
+import { PLACE, sectionName, settingsAt } from '../../../../lib/places';
 import {
   CLAIM_VIEWS, CLAIM_STATUS, TEXT_MAX, REASON_MAX, NOTE_MAX, SHOW_MAX, EMPTY_DRAFT,
   aging, claimTone, nextStep, payorChoices, day,
@@ -58,8 +59,10 @@ interface Props {
   error?: string;
   notice?: string;
   missed?: string;
+  /** The person may change Clinic settings (settings.edit): with no payor, a way to Clinic profile; else who ticks them. */
+  canSetUp?: boolean;
 }
-const { slug, data, filter, canMoney, viewKey, link, action, csvHref, post = null, error = '', notice = '', missed = '' } = Astro.props;
+const { slug, data, filter, canMoney, viewKey, link, action, csvHref, post = null, error = '', notice = '', missed = '', canSetUp = false } = Astro.props;
 
 const views = Object.keys(CLAIM_VIEWS) as ClaimView[];
 const active = data.providers.filter((p) => p.active);
@@ -299,7 +302,9 @@ const help = 'fin-help';
   <SidePanel id="claim-new" title="New claim" meta="HMO or PhilHealth" open={Boolean(newRefused)}>
     {newRefused && <p role="alert" class="ws-callout mb-5" data-tone="alert"><Icon name="alert" /><span>{newRefused.error}</span></p>}
     {choices.length === 0 ? (
-      <Empty icon="settings" text="No payor to file to yet. Tick the HMOs the clinic takes, or mark it PhilHealth-accredited, in Clinic settings." action={{ label: 'Clinic settings', href: `/c/${slug}/settings/` }} />
+      canSetUp
+        ? <Empty icon="settings" text={`No payor to file to yet. Tick the HMOs you accept, or mark the clinic PhilHealth-accredited, in ${PLACE.profile}.`} action={{ label: `Open ${sectionName('profile')}`, href: settingsAt(slug, 'hmos') }} />
+        : <Empty icon="settings" text={`No payor to file to yet. The owner or an admin ticks the HMOs you accept, or marks the clinic PhilHealth-accredited, in ${PLACE.profile}.`} />
     ) : data.recent.length === 0 ? (
       <Empty icon="calendar" text="Nobody has had a visit in the last 90 days, so there is no one to file for yet. A claim starts from a visit." />
     ) : (

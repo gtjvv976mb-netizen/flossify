@@ -12,6 +12,7 @@
 // and passes it in; nothing is drawn when there is none, which is most days.
 import Icon from './ws/Icon.astro';
 import type { Notice } from './ws/plan';
+import { settingsAt, sectionName } from '../lib/places';
 
 interface Props { line: Notice | null; slug: string }
 const { line, slug } = Astro.props;
@@ -21,9 +22,9 @@ const { line, slug } = Astro.props;
   <div id="ws-plan-line" class="ws-plan" data-plan-alert={line.alert ? '' : undefined}>
     <Icon name={line.alert ? 'alert' : 'clock'} class="ws-plan-icon" />
     <p class="ws-plan-text">{line.text}</p>
-    <a href={`/c/${slug}/settings/billing/`} class="ws-plan-go">
+    <a href={settingsAt(slug, 'plan')} class="ws-plan-go">
       <Icon name="file" class="ws-plan-go-icon" />
-      <span class="ws-plan-go-long">Your Flossify plan</span><span class="ws-plan-go-short" aria-hidden="true">Plan</span>
+      <span class="ws-plan-go-long">{sectionName('plan')}</span><span class="ws-plan-go-short" aria-hidden="true">Plan</span>
       <Icon name="arrow-right" size={16} class="ws-plan-go-arrow" />
     </a>
   </div>

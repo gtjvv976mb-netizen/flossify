@@ -2,11 +2,11 @@
 // only (the Clinic layout calls it on every workspace page).
 //
 //   failed   — texts to patients that failed in the last 7 days and were not
-//              sent again (Messages → Failed shows the same rows). Sign-in
+//              sent again (Texts → Failed shows the same rows). Sign-in
 //              codes (reset, invite) are not counted: a code expires, so it is
 //              never sent again; a new one comes from the sign-in page or
-//              Clinic settings → Team.
-//   replies  — texts patients sent in since this browser last opened Messages
+//              Clinic settings → People.
+//   replies  — texts patients sent in since this browser last opened Texts
 //              (the fl_replies_seen cookie, per branch; at most 7 days back).
 //   requests — web requests the desk has not given a time yet (source =
 //              'request' and moved_at is null, the rule in CLAUDE.md), not
@@ -32,7 +32,7 @@ import { IN_SCOPE_SQL, VISIT_AHEAD_SQL } from '../../lib/blocks';
 
 export interface Inbox { failed: number; replies: number; requests: number; forms: number | null; closed: number | null; total: number }
 
-/** Messages sets this when it shows the replies; path-scoped to the branch. */
+/** The Texts page sets this when it shows the replies; path-scoped to the branch. */
 export const SEEN_COOKIE = 'fl_replies_seen';
 export const WINDOW_DAYS = 7;
 

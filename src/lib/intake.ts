@@ -45,6 +45,7 @@ import { lockClinic } from './import';
 import {
   audit, insertPatientFromAnswers, fillPatientFromAnswers, writeHealthFromAnswers, writePrivacyConsent, useAnswerDetail, type AnswerSource,
 } from './patient-add';
+import { PLACE } from './places';
 
 type Q = Pick<Tx, 'query'>;
 
@@ -651,7 +652,7 @@ export async function saveChecklist(tx: Tx, a: {
       const t = templateFor(a.gates, code)!;
       const needsDentist = t.kind === 'document' && t.code !== 'photos';
       if (needsDentist && !dentist) {
-        problems.push(`${t.title.en}: no dentist here has a PRC licence on file. Add it in Clinic settings → People, then choose the form again.`);
+        problems.push(`${t.title.en}: no dentist here has a PRC licence on file. Add it in ${PLACE.people}, then choose the form again.`);
         continue;
       }
       const suggestions = (sug.byCode[code] ?? []).filter((s) => s.tick);
@@ -690,7 +691,7 @@ export async function saveClinicPart(tx: Tx, a: {
     const dentists = await treatingDentists(tx, a.clinicId);
     dentist = dentists.find((d) => d.id === a.dentistId) ?? null;
     if (!dentist) problems.push('Choose the dentist who explains the forms.');
-    else if (!dentist.prc) problems.push(`${dentist.name} has no PRC licence on file. Add it in Clinic settings → People, or choose another dentist.`);
+    else if (!dentist.prc) problems.push(`${dentist.name} has no PRC licence on file. Add it in ${PLACE.people}, or choose another dentist.`);
   }
   const lang = (['en', 'fil', 'other'] as const).find((x) => x === a.explainedIn) ?? null;
   const other = (a.explainedOther ?? '').replace(/\s+/g, ' ').trim().normalize('NFC') || null;
