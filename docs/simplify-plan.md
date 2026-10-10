@@ -328,7 +328,7 @@ Each item says who it helps, what changes, why, the effort (S = days, M = a week
 - *Why:* On the measured path the street address appears nowhere: not on the card, the booking, the done screen, the calendar file or the text. "Find another clinic" is not a next step for someone who has just booked.
 - *Kept safe:* Undo is unchanged, and My visits finds requests too. There is no teal on this screen.
 - *Measure:* Address on the done screen and in the calendar file: no → yes.
-- *For the developer:* `book.astro` (done panel, .ics, paintMine, `flossify:bookings`), `ClinicPage.astro:35`; `book-e2e.mjs:53`. Update the CLAUDE.md /find/ rule.
+- *For the developer:* `book.astro` (done panel, .ics, paintMine, `flossify:bookings`), `ClinicPage.astro:35`; `book-e2e.mjs:53`. Update the /find/ rule in `docs/features/find-a-clinic.md` ("The patient side — `/find/`": "Bookings live in `localStorage` …").
 
 **1.16 Toothache now: urgent help first on a phone**
 - *Helps:* a patient in pain. *Effort:* S. *Risk:* low.
@@ -377,7 +377,7 @@ Each item says who it helps, what changes, why, the effort (S = days, M = a week
 - *Why:* 7 places send people to "Team", which is called People. On the live site, every staff member who forgets a password reads it.
 - *Kept safe:* Texts stay one SMS long, re-measured with a long dentist name. Old addresses and PayMongo returns still land. A check stops the retired names coming back.
 - *Measure:* Retired names on screen and in texts 7+ → 0. Live links through old addresses 3 → 0.
-- *For the developer:* `auth/forgot.astro:211`, `auth/login.astro:68`, `messages/index.astro:259/377`, `lib/messages.ts:134–144`, `record-extra.ts:228`, `finances/new.astro:276`, `BillingNotice.astro:24`, `payments.ts:205`, `api/payments/checkout.ts:36`, `routes.ts` newCharge. A place-names module built from `SECTIONS`. Also `docs/launch.md:182` and CLAUDE.md 534/615.
+- *For the developer:* `auth/forgot.astro:211`, `auth/login.astro:68`, `messages/index.astro:259/377`, `lib/messages.ts:134–144`, `record-extra.ts:228`, `finances/new.astro:276`, `BillingNotice.astro:24`, `payments.ts:205`, `api/payments/checkout.ts:36`, `routes.ts` newCharge. A place-names module built from `SECTIONS`. Also `docs/launch.md:182` and `docs/features/backend.md`: "Backend — Postgres, RLS, sessions" ("reset by the owner from Settings → Team") and "Production — settings, database, deploy" ("Settings → Team and `/start/` both check globally").
 
 **1.19 Home page: one name per destination, and words that match the product**
 - *Helps:* prospective owner, patient. *Effort:* S. *Risk:* low.

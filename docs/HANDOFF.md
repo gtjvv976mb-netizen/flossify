@@ -2,12 +2,14 @@
 
 For the next Claude session, which starts from GitHub alone: a fresh clone, no scratchpad, no memory of earlier
 sessions, and possibly **another Claude account** (the owner asked on 9 Oct to move the work to their other
-account). Everything the next session needs is in this repository: `CLAUDE.md`, this file, `docs/simplify-plan.md`
-and the two scripts `scripts/dev/resume.sh` and `scripts/dev/e2e.sh`.
+account). Everything the next session needs is in this repository: `CLAUDE.md`, `docs/features/`, this file,
+`docs/simplify-plan.md` and the two scripts `scripts/dev/resume.sh` and `scripts/dev/e2e.sh`.
 
 Read in this order:
 
-1. `CLAUDE.md` on `main`: the standing constraints and the record of everything built.
+1. `CLAUDE.md` on `main`: the standing constraints, the owner's decisions, the Retired list and the rules that protect
+   patients, consent and money. The record of everything built is in `docs/features/`; CLAUDE.md's last section,
+   "Where the detail lives", says which file holds what.
 2. This file.
 3. `docs/simplify-plan.md`: the plan the owner asked for on 6 Oct ("can you plan on simplifying the whole site"), and
    its 25 questions (section 5). `docs/simplify-plan.html` is the same plan as a page with the questions as choices
@@ -39,10 +41,11 @@ Read in this order:
   (`https://flossify.ph/healthz` answers 200).
 - When the owner asks for a plan or anything they will read, make it readable without the code: plain words, short
   sentences, what changes for a clinic.
-- Standing decisions, never re-opened (`CLAUDE.md` "Standing constraints" and "Art direction"): motion always on,
-  never gated on `prefers-reduced-motion`; no footer and nothing fixed to the bottom of the screen; the soft template
-  everywhere (white rounded cards, one teal button per screen, sentence case, line icons); frosted glass where a clinic
-  is the background; the workspace has four tabs; no faces, no 3D, no tooth chart on the home page.
+- Standing decisions, never re-opened (`CLAUDE.md` "Standing constraints", "Your decisions" and "Retired — do not
+  bring back"): motion always on, never gated on `prefers-reduced-motion`; no footer and nothing fixed to the bottom of
+  the screen; the soft template everywhere (white rounded cards, one teal button per screen, sentence case, line
+  icons); frosted glass where a clinic is the background; the workspace has four tabs; no faces, no 3D, no tooth chart
+  on the home page.
 - Every new line of text is **measured**: contrast ≥ 4.5:1 against what is behind it, light and dark, at 1440 and
   390 px wide; targets ≥ 44 px; fields 16 px; no sideways scroll. Every dark rule needs both twins.
 
@@ -61,7 +64,8 @@ Read in this order:
   patient's details. They were used for the form's layout only. Nothing from them is, or may be, in the repository,
   a test, a comment or a document; do not ask for them again or share them.
 - A test or a helper agent never deletes audit rows (`audit_log`, `auth_event`) to tidy up after itself; archive
-  test patients instead of deleting them (`CLAUDE.md` "Open", the `W-` chart numbers).
+  test patients instead of deleting them (`CLAUDE.md` "Rules that protect patients, consent and money", the `W-` chart
+  numbers; the full note is in `docs/features/open.md`).
 
 ## Where everything stands (9 Oct 2026)
 
@@ -92,8 +96,11 @@ Read in this order:
 | #51 | 4 Oct | Chart: with the baby teeth open, the chart note stays on the right |
 | #53 | 6 Oct | The simplification plan, and its phase 1a: the seven safety fixes (below) |
 | #54 | 9 Oct | This handoff, `scripts/dev/e2e.sh`, the plan page and its evidence in `docs/` |
+| #55 | 10 Oct | Handoff corrections from an independent review |
+| #57 | 10 Oct | The glossary (`docs/glossary.md`) and the words check (`npm run test:words`), plan 1.8 |
 
-Phase 1a's safety fixes, all live (`CLAUDE.md` has each under its section; 6 under "Add patient, step by step"):
+Phase 1a's safety fixes, all live (`CLAUDE.md` has each as a rule or a Retired line; the detail is under its old
+section in `docs/features/`, 6 under "Add patient, step by step" in `docs/features/patient-forms.md`):
 
 1. The Dashboard takes no form posts; every visit status change goes through `/api/schedule` and its checks.
 2. A statement an active payment plan is built on cannot be voided.
@@ -117,12 +124,15 @@ plainly; add the decision on PR #52 (above) as a 26th. Items that wait on an ans
 ### 2. Then the plan's phases, in order
 
 - **Phase 1a** (safety fixes 1.1–1.7): done, #53.
-- **Phase 1b** (groundwork, `docs/simplify-plan.md` §4, items 1.8 and 1.9): next.
+- **Phase 1b** (groundwork, `docs/simplify-plan.md` §4, items 1.8 and 1.9): 1.8 merged (#57); 1.9 in progress.
   - **1.8 Write the glossary first** (`docs/glossary.md`), before any screen changes; every later item uses its
-    words, and its sweep over every screen is 2.32.
+    words, and its sweep over every screen is 2.32. Done (#57): `npm run test:words` fails on a retired word anywhere
+    new, and `scripts/dev/words/known.json` names the item that sweeps each one still on screen. An item that
+    rewrites those words removes them, then runs `npm run words:prune`.
   - **1.9 A shorter rulebook**: `CLAUDE.md` from about 1,900 lines to 300–400, the owner's decisions word for word
     and a "Retired — do not bring back" list; the owner reads the new constraints first. Its other two parts are done
-    by #54: the handoff is current, and the references to lost scratchpad tools are fixed.
+    by #54: the handoff is current, and the references to lost scratchpad tools are fixed. In its own pull request
+    (10 Oct): the detail moved word for word to `docs/features/`, and the rulebook for the owner to read.
   - `docs/simplify/critique.md` numbers items as the first draft did: its "2.28 glossary" is the final plan's 1.8
     (2.28 is now "One account for someone who works at two branches").
 - **Phase 1c** (quick wins), **phase 2** (consolidation by area) and **phase 3** (bigger changes that need the
@@ -245,6 +255,9 @@ Put anything the next session will need under `scripts/dev/` or `docs/`, never o
 
 - From before 1 Oct: `intake-spec.md` (its content is `docs/intake-design.md`), `entrance-check.mjs` (the staff
   entrance's measurements), `snap.mjs` / `cmp.mjs` (the 7-role × 20-page structure snapshot) and the 719-check desk
-  and schedule suites. `CLAUDE.md` describes each approach well enough to write them again.
-- From 2–9 Oct: one-off probes and screenshots only. Everything they established is in `CLAUDE.md`, the pull
-  requests' descriptions and the checks above; the plan's page and evidence were saved to `docs/`.
+  and schedule suites. `docs/features/sign-in-and-people.md` describes the first two approaches well enough to write
+  them again: the staff entrance's measurements under "The staff entrance — `/auth/login/`, `/auth/forgot/`,
+  `/auth/code/`", and the snapshot under "Roles and permissions (030)". No document describes the 719-check suites.
+- From 2–9 Oct: one-off probes and screenshots only. Everything they established is in `CLAUDE.md` and
+  `docs/features/`, the pull requests' descriptions and the checks above; the plan's page and evidence were saved to
+  `docs/`.
