@@ -55,6 +55,7 @@ import {
 import { attestDocument, mayAttest, clinicFace, contextFor, plannedLanguage, bornLine } from '../../../../../lib/consent-docs';
 import { qrSvg } from '../../../../../lib/qr';
 import { PUBLIC_ORIGIN } from '../../../../../lib/patient-forms-def';
+import { PLACE, sectionName, settingsAt } from '../../../../../lib/places';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -502,7 +503,9 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
                 <select name="dentist" required>
                   {dentists.map((d) => <option value={d.id} selected={chosenDentist === d.id}>{d.name}{d.prc ? '' : ' (no PRC licence on file)'}</option>)}
                 </select>
-                {dentists.some((d) => !d.prc) && <span class="ik-help">A dentist needs a PRC licence on file to be named: <a href={`/c/${slug}/settings/#people`} class="underline">Clinic settings → People</a>.</span>}
+                {/* People is for someone who may manage people; anyone else is told who adds the licence, not sent to a page that refuses them. */}
+                {dentists.some((d) => !d.prc) && <span class="ik-help">A dentist needs a PRC licence on file to be named. {can(clinic, 'people.manage') ? `Add it on their page in ${PLACE.people}.` : `The owner or an admin adds it in ${PLACE.people}.`}</span>}
+                {dentists.some((d) => !d.prc) && can(clinic, 'people.manage') && <a href={settingsAt(slug, 'people')} class="ws-empty-go self-start text-[14px]">Open {sectionName('people')} <Icon name="arrow-right" size={16} /></a>}
               </label>
               <fieldset class="ik-q">
                 <legend>The language planned</legend>
@@ -515,7 +518,7 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
                 <span class="ik-help">The dentist records the language actually used when they explain.</span>
               </fieldset>
             </div>
-            {!face.address && <Callout tone="warn" role="note" class="mt-3" text="The clinic’s address is missing: the forms print without it. Add it in Clinic settings → Clinic profile." />}
+            {!face.address && <Callout tone="warn" role="note" class="mt-3" text={`The clinic’s address is missing: the forms print without it. Add it in ${PLACE.profile}.`} />}
           </Pane>
         )}
         <Pane as="section" label="The forms" class="ik-cq">
@@ -642,7 +645,7 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
                 </span>
               </label>
             </fieldset>
-            {tablets.length === 0 && can(clinic, 'settings.edit') && <p class="ik-help">No clinic tablets yet. <a class="underline" href={`/c/${slug}/settings/#tablets`}>Make a device a clinic tablet</a> in Clinic settings.</p>}
+            {tablets.length === 0 && can(clinic, 'settings.edit') && <p class="ik-help">No clinic tablets yet. <a class="underline" href={settingsAt(slug, 'tablets')}>Make a device a clinic tablet</a> in {PLACE.settings}.</p>}
             <p class="ik-help" data-ik-park-line hidden={deviceChoice !== 'desk' ? true : undefined}>This device opens the clinic’s pages again only after you sign in.</p>
             <div class="ik-actions">
               <button type="submit" class="ws-btn ws-btn-primary" data-ik-go>{deviceChoice === 'desk' ? `Hand this device to ${firstName}` : deviceChoice.startsWith('tablet:') ? `Send to ${tablets.find((t) => `tablet:${t.id}` === deviceChoice)?.name ?? 'the tablet'}` : deviceChoice === 'phone' ? 'Show the QR code' : 'Hand over'}</button>

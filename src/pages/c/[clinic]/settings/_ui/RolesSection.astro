@@ -10,6 +10,7 @@ import Icon from '../../../../../components/ws/Icon.astro';
 import Csrf from '../../../../../components/Csrf.astro';
 import Note from './Note.astro';
 import { PERMS, PERM_KEYS, type Perm } from '../../../../../lib/can';
+import { PLACE } from '../../../../../lib/places';
 import type { Role, Manager } from '../../../../../lib/roles';
 import { mayEditRole, ROLE_NAME_MAX, type RolesRefused } from '../_lib/roles';
 
@@ -36,7 +37,7 @@ function summary(r: Role): string {
   const has = (k: Perm) => r.perms.includes(k);
   const bits = [
     has('records.edit') || has('schedule.edit') ? (has('records.edit') && has('schedule.edit') ? 'Patients and schedule' : has('records.edit') ? 'Patients' : 'Schedule') : '',
-    has('messages.send') ? 'Messages' : '',
+    has('messages.send') ? PLACE.texts : '',
     has('finance.bill') ? (has('finance.money') ? 'Finances and amounts' : 'Finances') : has('finance.money') ? 'Amounts' : '',
     has('finance.void') ? 'Voids' : '',
     has('settings.edit') ? 'Clinic settings' : '',

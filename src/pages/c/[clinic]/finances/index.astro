@@ -68,6 +68,7 @@ import {
   claimFilterFrom, loadClaims, postClaim, claimsCsv, csvFile, CLAIM_DONE, CLAIM_MISSED, type ClaimPost,
 } from './_claims';
 import { can } from '../../../../lib/can';
+import { PLACE } from '../../../../lib/places';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -343,7 +344,7 @@ const claimMissed = q.get('missed') ? CLAIM_MISSED : '';
       <Pane pad="none" label="Statements and claims" id="fin-sections" class="scroll-mt-28">
         <header class="fin-head">
           <Tabs label="Section" group="fin" current={show} variant="underline"
-            items={[{ id: 'statements', label: 'Statements' }, { id: 'claims', label: 'HMO claims' }]} />
+            items={[{ id: 'statements', label: 'Statements' }, { id: 'claims', label: PLACE.claims }]} />
           <div class="fin-head-go">
             <a href={newCharge} class="ws-btn ws-btn-primary" data-fin-new data-fin-for="statements" hidden={show !== 'statements'}>
               <Icon name="plus" />New charge
@@ -472,7 +473,7 @@ const claimMissed = q.get('missed') ? CLAIM_MISSED : '';
         <div id="claims" role="tabpanel" aria-labelledby="fin-claims-tab" hidden={show !== 'claims'}>
           <Claims slug={clinic.slug} data={claims} filter={claimFilter} canMoney={canMoney} viewKey="claims"
             link={(c) => link({ show: 'claims', ...c })} action={link({ show: 'claims' })} csvHref={link({ show: 'claims', export: 'claims' })}
-            post={claimPost} error={claimError} notice={claimNotice} missed={claimMissed} />
+            post={claimPost} error={claimError} notice={claimNotice} missed={claimMissed} canSetUp={can(ws, 'settings.edit')} />
         </div>
       </Pane>
 

@@ -64,7 +64,7 @@ export function shellLinks(slug: string): ShellLinks {
     claims: `${b}/claims/`,
     newBooking: LANDED.dashboard ? `${b}/?new=booking` : `${b}/schedule/`,
     newBlock: `${b}/?new=block`,
-    newCharge: `${b}/billing/new/`,
+    newCharge: LANDED.finances ? `${b}/finances/new/` : `${b}/billing/new/`,
     requests: LANDED.dashboard ? `${b}/#requests` : `${b}/#web-title`,
     addPatient: LANDED.addPatient ? `${b}/patients/new/` : null,
     myPage: LANDED.myPage ? `${b}/account/` : null,

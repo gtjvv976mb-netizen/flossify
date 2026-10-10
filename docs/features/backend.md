@@ -53,9 +53,9 @@ The workspace and the patient directory read from PostgreSQL. Rules:
   `/auth/code/` serves both purposes (invite when the row has no password).
   With `EMAIL_PROVIDER` set (023, `src/lib/email.ts`) the same codes can also
   go by email; with it unset there is no email channel, and a staff member with
-  no mobile on file is reset by the owner from Settings → Team.
+  no mobile on file is reset by the owner from Clinic settings → People.
 - **A sign-in code is for the phone it was texted to, never for a page.** The
-  Messages page blanks the body of `reset` and `invite` rows (the review
+  Texts page (`/c/<slug>/messages/`) blanks the body of `reset` and `invite` rows (the review
   found a dentist could read the owner's reset code there and take the
   account). Nothing that renders `message_log.body` may show those kinds.
 - **A reply belongs to the clinic that last texted that number**
@@ -134,7 +134,7 @@ The rules that live in code:
   in a 15-minute httpOnly cookie (`fl_code_phone`, `fl_me_phone`) scoped to
   the code page and cleared once the code works.
 - One email and one mobile per staff account **across the whole service**
-  (sign-in finds people by email, resets by mobile); Settings → Team and
+  (sign-in finds people by email, resets by mobile); Clinic settings → People and
   `/start/` both check globally.
 
 ## Round three — operations, patients, billing, compliance, chart, PWA, claims
@@ -162,7 +162,7 @@ The rules that live in code:
 - **Consent is a record, not a boolean** (012): `patient_consent` says which
   `consent_version` a patient agreed to, when, how. Booking writes one. The
   notice is `/privacy/`; the DPO and NPC registration number live on the
-  group (`Settings → Privacy`). Do not claim NPC registration before it is true.
+  group (Clinic settings → Privacy). Do not claim NPC registration before it is true.
 - **Chart edits save as they are made** (`POST /api/chart`, CSRF in the
   `X-CSRF` header, `tooth_state` rows superseded, audit `chart.update`).
 - **The workspace installs** (`/manifest.webmanifest`, `/sw.js`): the service

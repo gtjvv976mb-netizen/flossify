@@ -9,6 +9,7 @@ import Csrf from '../../../../../components/Csrf.astro';
 import Note from './Note.astro';
 import { DOWS, type HoursValues } from '../_lib/profile';
 import { DAY_LONG } from '../_lib/common';
+import { sectionName } from '../../../../../lib/places';
 
 interface Props {
   base: string;
@@ -25,7 +26,7 @@ const { base, days, problems, notes, on } = Astro.props;
   <Csrf />
   <input type="hidden" name="form" value="hours" />
   <Pane id="hours" icon="clock" title="Opening hours" class="set-sec">
-    <p class="set-intro">Patients can book only while you are open. Lunch and closed days are never offered to them. <a href="#closed" class="set-link set-intro-link">Closed days and time off<Icon name="arrow-right" size={16} class="set-arrow" /></a></p>
+    <p class="set-intro">Patients can book only while you are open. Lunch and closed days are never offered to them. <a href="#closed" class="set-link set-intro-link">{sectionName('closed')}<Icon name="arrow-right" size={16} class="set-arrow" /></a></p>
     {(notes.length > 0 || problems.length > 0) && (
       <div class="set-notes mt-5">
         {notes.map((n) => (

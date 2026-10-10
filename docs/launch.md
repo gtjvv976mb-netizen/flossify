@@ -79,7 +79,7 @@ you do not need to read it. Written 23 September 2026.
       registration is real: they go into the privacy page (`/privacy/`)
       before launch. Today that page shows bracketed placeholders in their
       place, which must not go live. Never claim registration early.
-      (Settings → Privacy, inside each clinic's workspace, is for the
+      (Clinic settings → Privacy, inside each clinic's workspace, is for the
       clinic's own DPO, not Flossify's.)
 - [x] **Lawyer review** (owner, 23 Sep 2026: done). Give the developer the
       approved privacy notice wording: it is published as a new consent
@@ -179,7 +179,7 @@ the trial dates before that day.
 **Setting each clinic up** (an hour, in person):
 
 - Create the clinic at `/start/` together: hours, dentists, fees, photos.
-- Invite the staff from Settings → Team. Each needs their own mobile.
+- Invite the staff from Clinic settings → People. Each needs their own mobile.
 - Check the dentists' PRC licences on `/admin/prc/`.
 - Keep the clinic unlisted until its page is complete; then the owner
   switches on "Listed on Find a clinic".
@@ -190,8 +190,8 @@ the trial dates before that day.
 **What to watch, every week:**
 
 - **Texts**: on `/admin/`, the "Texts failed, 7 days" and "Texts waiting"
-  numbers (your account cannot open a clinic's Messages page). Ask each
-  front desk to look at their Messages page for failed texts, whether
+  numbers (your account cannot open a clinic's Texts page). Ask each
+  front desk to look at their Texts page for failed texts, whether
   reminders went out the day before, and any patient who says they
   replied to a text (nobody receives replies).
 - **Bookings** made through Find a clinic, compared with phone and walk-in.

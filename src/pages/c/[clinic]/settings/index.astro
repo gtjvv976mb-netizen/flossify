@@ -51,6 +51,7 @@ import './_ui/settings.css';
 import { requireWorkspace } from '../../../../lib/workspace';
 import { csrfOk, CSRF_MESSAGE } from '../../../../lib/csrf';
 import { SECTIONS, isSection, daysText, type SectionId } from './_lib/common';
+import { PLACE } from '../../../../lib/places';
 import { loadClinic, saveClinic, savedProfile, savedHours, heldText, closedText, type ClinicRefused } from './_lib/profile';
 import { closedDaysAction, loadClosedDays, dentistsHere, emptyClosed, type ClosedRefused } from './_lib/closed-days';
 import { blockDone } from '../../../../lib/block-words';
@@ -160,7 +161,7 @@ const startRole = (offered.find((r) => r.base === 'dentist') ?? offered[offered.
 
 type N = { tone: 'ok' | 'alert' | 'warn'; text: string; href?: string; link?: string };
 const notes: Record<SectionId, N[]> = { profile: [], hours: [], closed: [], fees: [], people: [], roles: [], photos: [], privacy: [], tablets: [], plan: [] };
-const callsLink = { href: `/c/${clinic.slug}/calls/#closed-time`, link: 'Open Calls' };
+const callsLink = { href: `/c/${clinic.slug}/calls/#closed-time`, link: `Open ${PLACE.calls}` };
 const stale = q.get('stale');
 if (isSection(stale) && stale !== 'plan') notes[stale].push({ tone: 'alert', text: CSRF_MESSAGE });
 if (data && Astro.request.method === 'GET') {
@@ -183,8 +184,8 @@ if (data && Astro.request.method === 'GET') {
       notes.closed.push({ tone: 'ok', text: b ? blockDone(b, Date.now(), 'Added') : 'Added.' });
       const n = Number(q.get('inside'));
       if (Number.isInteger(n) && n > 0) notes.closed.push({ tone: 'warn', ...callsLink, text: n === 1
-        ? '1 visit is already booked in that time. Nothing was changed for it, and its reminder text still goes out. It is on the call list.'
-        : `${n} visits are already booked in that time. Nothing was changed for them, and their reminder texts still go out. They are on the call list.` });
+        ? `1 visit is already booked in that time. Nothing was changed for it, and its reminder text still goes out. It shows on ${PLACE.calls}.`
+        : `${n} visits are already booked in that time. Nothing was changed for them, and their reminder texts still go out. They show on ${PLACE.calls}.` });
     }
   }
   if (saved === 'fees') notes.fees.push({ tone: 'ok', text: 'Saved.' });
@@ -305,7 +306,7 @@ const firstOn: SectionId = may[wanted] ? wanted : (shown[0]?.id ?? 'profile');
           {may.people && <PeopleSection
             base={base} clinicName={clinic.name} slug={clinic.slug} roles={offered} people={people!} me={session.staffId} isOwner={clinic.role_owner} emailOn={emailOn()} on={firstOn === 'people'}
             add={addRefused?.add ?? { ...emptyPerson(startRole), treats: offered.find((r) => r.id === startRole)?.base === 'dentist' }} addError={addRefused?.error ?? ''}
-            notes={notes.people} highlight={q.get('person') === 'added' ? (q.get('id') ?? '') : ''}
+            notes={notes.people} highlight={q.get('person') === 'added' ? (q.get('id') ?? '') : ''} rolesHere={may.roles}
           />}
           {may.roles && <RolesSection base={base} roles={roles!} me={clinic} refused={rolesRefused} notes={notes.roles} highlight={q.get('role') === 'added' ? (q.get('id') ?? '') : ''} on={firstOn === 'roles'} />}
           {may.photos && <PhotosSection base={base} clinicId={clinic.id} clinicName={clinic.name} keys={keys!} error={photosRefused?.error ?? ''} notes={notes.photos} on={firstOn === 'photos'} />}

@@ -42,6 +42,7 @@ import { hit, LIMITS } from '../../../../../../lib/throttle';
 import { canEditRecords, manilaToday, ageOn, isMinor, dateText } from '../../../../../../lib/health';
 import { can } from '../../../../../../lib/can';
 import { Refused } from '../../../../../../lib/refused';
+import { PLACE } from '../../../../../../lib/places';
 import { renderDocument, holds, EXPLAINED_LANGS, signerChoices, type SignerChoice } from '../../../../../../lib/consent-library';
 import {
   loadConsentDocument, snapshotDoc, signingCheck, attestDocument, confirmSigning, withdrawConsent, printForPaper, recordPaperSigning, cancelDocument,
@@ -224,7 +225,7 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
         <p class="rp-row"><span class="rp">{snap.decision === 'agreed' ? 'I agree' : 'I do not agree'}</span>{snap.read && <span class="rp">{snap.read.en}</span>}{snap.explained_in && <span class="rp">Explained in {snap.explained_in}</span>}</p>
         {snap.meaning && <p class="text-[16px] font-semibold">{snap.meaning}</p>}
         <div class="grid gap-2 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] items-start">
-          {latest.strokes ? <Signature strokes={latest.strokes} name={latest.signedByName} /> : <span class="sig"><span class="sig-none">{latest.channel === 'paper' ? 'On paper: see the scan in Files' : 'No signature: an unsigned “No, thank you”'}</span></span>}
+          {latest.strokes ? <Signature strokes={latest.strokes} name={latest.signedByName} /> : <span class="sig"><span class="sig-none">{latest.channel === 'paper' ? `On paper: see the scan in ${PLACE.files}` : 'No signature: an unsigned “No, thank you”'}</span></span>}
           <div class="grid gap-1.5">
             <p class="rp-row"><Who name={signerWords({ name: latest.signedByName, as: latest.signedAs, relation: latest.relation, method: latest.method })} />{latest.authority && latest.authority !== 'parent' && <span class="rp">{({ court_guardian: 'Court-appointed guardian', substitute: 'Substitute parental authority', written: 'Authorised in writing by a parent', representative: 'Representative' } as Record<string, string>)[latest.authority]}</span>}</p>
             <p class="text-[14.5px] text-ink-2">{facts(latest)}</p>
@@ -273,7 +274,7 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
     <SidePanel id="cd-confirm" title={needsConfirm.needsConfirm === 'witness' ? 'I saw this signed' : 'I checked the papers'} meta={doc.ref} open={postedIntent === 'confirm'}>
       <form method="post" action={here} class="grid gap-4">
         <Csrf /><input type="hidden" name="intent" value="confirm" /><input type="hidden" name="signing" value={needsConfirm.id} />
-        <p class="text-[15px] text-ink-2">{needsConfirm.needsConfirm === 'witness' ? `You saw ${needsConfirm.signedByName} make their mark. You confirm it under your own sign-in.` : `You checked ${needsConfirm.signedByName}’s authority: the court order, the papers for the ground, or the parent’s letter, in ${p.first_name}’s Files.`}</p>
+        <p class="text-[15px] text-ink-2">{needsConfirm.needsConfirm === 'witness' ? `You saw ${needsConfirm.signedByName} make their mark. You confirm it under your own sign-in.` : `You checked ${needsConfirm.signedByName}’s authority: the court order, the papers for the ground, or the parent’s letter, in ${PLACE.files} on ${p.first_name}’s record.`}</p>
         {needsConfirm.needsConfirm === 'authority' && (
           <label class="field"><span class="meta">The file that shows it</span>
             <select name="file" required><option value="">Choose a file</option>{files.map((f) => <option value={f.id} selected={val('file') === f.id}>{f.caption ?? f.kind} · {day(f.created_at)}</option>)}</select>
@@ -306,7 +307,7 @@ const val = (k: string, d = '') => (posted ? String(posted.get(k) ?? '') : d);
     <SidePanel id="cd-paper" title="Record a paper signing" meta={doc.ref} wide open={postedIntent === 'paper'}>
       <form method="post" action={here} class="grid gap-4">
         <Csrf /><input type="hidden" name="intent" value="paper" />
-        <p class="ik-help">Copy what the signed paper says. Upload its scan in Files first; it must be uploaded after the form was printed ({day(doc.paperPrintedAt)}).</p>
+        <p class="ik-help">Copy what the signed paper says. Upload its scan in {PLACE.files} first; it must be uploaded after the form was printed ({day(doc.paperPrintedAt)}).</p>
         <label class="field"><span class="meta">The scan</span>
           <select name="file" required><option value="">Choose the scan</option>{paperFiles.map((f) => <option value={f.id} selected={val('file') === f.id}>{f.caption ?? f.kind} · {day(f.created_at)}</option>)}</select>
         </label>
