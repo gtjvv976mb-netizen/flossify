@@ -213,7 +213,7 @@ Each item says who it helps, what changes, why, the effort (S = days, M = a week
     - A *statement* is what a patient pays, and a *charge* is a line on it ("New charge", "Charge").
     - "Acknowledgment of payment" is never called a receipt or an invoice.
     - A statement's amount is "Still to pay". A person "owes", is "In credit" or has "Nothing owed".
-    - "Balance" is used only in the Treatment record column.
+    - "Balance" is used only in the Treatment record column, and in Opening balance when bringing over old records.
   - **Places:**
     - *People*, never Team.
     - Every place is named as it is on screen.
@@ -227,7 +227,8 @@ Each item says who it helps, what changes, why, the effort (S = days, M = a week
   - **The record:** the *This visit checklist*. The name of the attached Treatment sheet is question 1.
   - **Not touched:** consent words and titles, the privacy notice, the paper record's labels, printed papers (without your agreement), and the not-BIR line.
 - *Measure:* The glossary exists before phase 1c starts. A check flags retired words (Team, "appointment" on staff screens). The last sweep is 2.32.
-- *For the developer:* `docs/glossary.md`; a words check in tests that reads only on-screen strings and skips consent, privacy, paper and print files.
+- *How later items use it:* The check's list names the item that sweeps each retired word still on screen: the item that rewrites those words, or else the first item that rewrites that screen's words. 2.32 takes the screens no other item touches, and the labels it names itself. Where this plan quotes a screen word the glossary retires (Book a slot, Privacy consent, HMO claims, your page), the glossary's word wins when the item is built.
+- *For the developer:* `docs/glossary.md`; a words check in tests that reads only on-screen strings and skips consent, privacy, paper and print files. Built as `npm run test:words` (`scripts/dev/words/`), with `known.json` listing each retired word still in the code: the ones to sweep with their plan item, and the ones allowed with the reason.
 
 **1.9 A shorter rulebook for whoever builds Flossify next**
 - *Helps:* maintainer. *Effort:* M. *Risk:* low.
@@ -372,6 +373,7 @@ Each item says who it helps, what changes, why, the effort (S = days, M = a week
   - "Clinic settings → HMOs" becomes "Clinic profile → HMOs you accept", and "Services & fees" becomes "Services & prices".
   - The forgot page says "No mobile on file? Ask your clinic owner to set a new password for you in Clinic settings → People."
   - Links go straight to the real page instead of passing through old addresses.
+  - The Messages page becomes Texts (its address stays), and the Finances tab "HMO claims" becomes "HMO & PhilHealth claims", as the glossary says.
 - *Why:* 7 places send people to "Team", which is called People. On the live site, every staff member who forgets a password reads it.
 - *Kept safe:* Texts stay one SMS long, re-measured with a long dentist name. Old addresses and PayMongo returns still land. A check stops the retired names coming back.
 - *Measure:* Retired names on screen and in texts 7+ → 0. Live links through old addresses 3 → 0.
@@ -402,7 +404,7 @@ Each item says who it helps, what changes, why, the effort (S = days, M = a week
 - *Why:* The Find a clinic card shows three times, but the clinic page shows none. A patient who arrives there (from Google, a dentist's page or the clinic's own site) must go through Reason and Dentist, then a grid of more than 60 times, before seeing one.
 - *Kept safe:* Book a slot stays the one teal button. Contrast is checked over a real cover photo, an all-black, an all-white, a striped and a missing cover. Today that page has 0 fails, lowest 5.3:1.
 - *Measure:* To Confirm in 9 taps over 5 screens → 7 over 4.
-- *For the developer:* `find/_ui/ClinicPage.astro` head, `openSlots(l,{limit:3})` when `l.workspace`; `clinic-glass.css`. Audit note: another count gave 10 taps today.
+- *For the developer:* `find/_ui/ClinicPage.astro` head, `openSlots(l,{limit:3})` when `l.workspace`; `clinic-glass.css`. The clinic site's bar label in `[clinic]/index.astro` is its twin and changes with it. Audit note: another count gave 10 taps today.
 
 **1.21 My visits says "Booked" for a time the patient just chose**
 - *Helps:* patient. *Effort:* S. *Risk:* low.
@@ -497,8 +499,8 @@ Each item says who it helps, what changes, why, the effort (S = days, M = a week
 - *What changes:* Following the glossary (1.8):
   - A statement is Unpaid · Part paid · Paid · Void everywhere, and its amount is "Still to pay".
   - A person "Owes ₱X", is "In credit ₱X" or has "Nothing owed".
-  - "Balance" appears only in the Treatment record column, as on paper.
-  - Amber means owed, and red means overdue only. The record's Account sheet matches Finances. Allergies stay the only red on the sheet.
+  - "Balance" appears only in the Treatment record column, as on paper, and in Opening balance when bringing over old records.
+  - Amber means owed, and red means overdue only (a payment plan behind). The record's Account sheet matches Finances. On the sheet, red stays only for an allergy and a refused or withdrawn consent.
 - *Why:* What a patient owes appears in 14 places under 8 words, with 3 words for "unpaid". It is amber in Finances and red on the record.
 - *Kept safe:* "Statements of account, not BIR receipts." stays word for word unless you answer question 22. Amber on the paper is checked at 4.5:1 or better, light and dark.
 - *Measure:* Words for "owed" 8 → 3. Colours 2 → 1.
@@ -788,6 +790,7 @@ Each item says who it helps, what changes, why, the effort (S = days, M = a week
   - The five actions (next step, Move, Edit, Open record, More) fit on one row at 1440.
   - The "Before we start" and "Before they leave" lists use the shared rules from 2.9, with done items as one row of labels.
   - After 1.10, every visit opens here.
+  - The heading "This visit" inside the panel goes: the panel is already titled Visit, and "This visit" names the record's checklist (the glossary).
 - *Why:* The action row wraps at 1440, so More drops to a second line. The content is 942 px in an 874 px panel.
 - *Kept safe:* The teal step follows the server's rules, Cancel asks first, and nothing is removed.
 - *Measure:* Action rows 2 → 1 at 1440. Content 942 → 874 px or less. Controls (11) unchanged.
@@ -1274,7 +1277,7 @@ Marked **[lawyer]** or **[accountant]** where they should answer with you.
 
 **A. Please answer these first: they hold up work in phases 1 and 2.**
 
-1. **The attached "Treatment" sheet on the record will hold the plan, lab cases, LOAs and payment plans; work done moves to page 3 (1.33). What should it be called?** "Treatment plan and lab" / "Plan, lab work and LOAs" / keep "Treatment".
+1. **The attached "Treatment" sheet on the record will hold the plan, lab cases, LOAs and payment plans; work done moves to page 3 (1.33). What should it be called?** "Treatment plan and lab" / "Treatment plan, lab cases and LOAs" / keep "Treatment".
 2. **Calls, Texts and Tasks: small links under Dashboard in the sidebar, which changes the four-tab sidebar, or only at the foot of the inbox (1.13)?** Sidebar / inbox only.
 3. **The home page's six pages are your layout from 25 Sep. They describe the clinic features twice and the patient steps three times. May we fold Services, How it works, Pricing's "Included" list and How to register into three pages: "One price. Everything in it.", "For patients" and "How to start"?** The opening, Partners and Know the team stay. This decides 3.2 and part of 1.19. Yes / no.
 4. **Only if your answer to 3 is no: the section "How to register" sits on a page that says patients need no account. May it become "How to start", with "As a clinic" and "As a patient: book a visit"?** Yes / no.
@@ -1323,7 +1326,7 @@ Marked **[lawyer]** or **[accountant]** where they should answer with you.
 - **Please act on this one.** The clinic tablet's per-visit signing already offers the consent to treatment on the live site, although it is still marked unreviewed elsewhere. Please have your dentist and lawyer read it first (1.6).
 - **PRC (1.4).** The PRC fix may switch some dentists' public pages back to "PRC check pending". We will count them first and tell you which clinics.
 - **Add patient (1.11).** "Easiest" appears only beside a way that is open. On the live site the poster stays under Patients → More until the privacy notice covers it.
-- **Texts (1.8).** The Messages page is renamed "Texts".
+- **Texts (1.8, done in 1.18).** The Messages page is renamed "Texts".
 - **Bookings in the browser (1.15).** The browser no longer keeps a list of bookings. Undo, then My visits, replace it.
 - **In the lobby (1.34).** "In the lobby" is no longer offered; Arrived covers it.
 - **Partners (1.44).** The home page shows six partner clinics at a time, rotating daily. Every listed clinic stays on Find a clinic.
