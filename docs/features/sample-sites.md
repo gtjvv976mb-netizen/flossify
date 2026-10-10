@@ -1,6 +1,6 @@
 # Sample client sites
 
-*Moved here from `CLAUDE.md` word for word on 10 Oct 2026 (plan item 1.9). `CLAUDE.md` holds the rules; this file holds the detail. Where they differ, `CLAUDE.md` wins.*
+*Moved here from `CLAUDE.md` word for word on 10 Oct 2026 (plan item 1.9), with cross-references re-pointed to the file that now holds them. `CLAUDE.md` holds the rules; this file holds the detail. Where they differ, `CLAUDE.md` wins.*
 
 ## Sample client sites — `public/samples/`
 
@@ -16,7 +16,7 @@ open the clinic's real booking flow and staff login. If that relationship ever
 changes, swap the folder for a fictional clinic rather than editing it in place.
 
 It is a **client deliverable, not a Flossify page**, and it deliberately does
-not follow Flossify's own design system above: a patient expects a clinic site to feel warm,
+not follow Flossify's own design system (docs/features/design.md): a patient expects a clinic site to feel warm,
 so the sample is rounded, shadowed and set in a serif, in the clinic's own gold
 and espresso. Keep that exception inside the folder. Its CSS is scoped to its
 own document and imports nothing from `global.css`. The clinic's service

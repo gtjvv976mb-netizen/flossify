@@ -1,6 +1,6 @@
 # The look: the soft template, everywhere
 
-*Moved here from `CLAUDE.md` word for word on 10 Oct 2026 (plan item 1.9). `CLAUDE.md` holds the rules; this file holds the detail. Where they differ, `CLAUDE.md` wins.*
+*Moved here from `CLAUDE.md` word for word on 10 Oct 2026 (plan item 1.9), with cross-references re-pointed to the file that now holds them. `CLAUDE.md` holds the rules; this file holds the detail. Where they differ, `CLAUDE.md` wins.*
 
 ## Art direction — soft clinical, everywhere
 
@@ -18,7 +18,7 @@ mono labels, Archivo): do not bring them back on any page.
 
 **Frosted glass where a clinic is the background** (the owner, 26 Sep 2026:
 "make the panels translucent … so more of the background can be seen"): the
-home page's cards on the film (`.pane.pane-glass`, see "The film"), the
+home page's cards on the film (`.pane.pane-glass`, see "The film" in docs/features/home-film.md), the
 clinic sign-up `/start/`, whose compact glass cards stand on a fixed photo of
 the treatment room (`/img/ws/chair-*.webp`), and Find a clinic `/find/` (the
 "I'm a Patient" page; its glass is scoped to `.pt-glass` in the page, over the

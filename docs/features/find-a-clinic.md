@@ -1,6 +1,6 @@
 # The patient side: Find a clinic and booking
 
-*Moved here from `CLAUDE.md` word for word on 10 Oct 2026 (plan item 1.9). `CLAUDE.md` holds the rules; this file holds the detail. Where they differ, `CLAUDE.md` wins.*
+*Moved here from `CLAUDE.md` word for word on 10 Oct 2026 (plan item 1.9), with cross-references re-pointed to the file that now holds them. `CLAUDE.md` holds the rules; this file holds the detail. Where they differ, `CLAUDE.md` wins.*
 
 ## The patient side — `/find/`
 
@@ -38,4 +38,4 @@ Built from `docs/service-map.md`. Rules that shaped it, and that hold:
   step. A request there never offers "any dentist", and the When step names her
   days away from the start. Her reminders then name her.
 - Blocked time (lunch, closed days, a dentist's hours and leave, a chair out of
-  use) is honoured by every slot and every request: "Blocked time (040)" below.
+  use) is honoured by every slot and every request: "Blocked time (040)" in docs/features/schedule.md.

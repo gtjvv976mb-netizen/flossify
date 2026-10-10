@@ -1,6 +1,6 @@
 # Open: read before shipping
 
-*Moved here from `CLAUDE.md` word for word on 10 Oct 2026 (plan item 1.9). `CLAUDE.md` holds the rules; this file holds the detail. Where they differ, `CLAUDE.md` wins.*
+*Moved here from `CLAUDE.md` word for word on 10 Oct 2026 (plan item 1.9), with cross-references re-pointed to the file that now holds them. `CLAUDE.md` holds the rules; this file holds the detail. Where they differ, `CLAUDE.md` wins.*
 
 ## Open — read before shipping
 
@@ -23,7 +23,7 @@
 - Live since 24 Sep 2026: flossify.ph on Render (web + worker, Singapore) with DigitalOcean Managed PostgreSQL 17 (SGP1, trusted sources = Render's Singapore ranges).
 - A person's page in Clinic settings edits their name, email and PRC number
   (031), and the public profile's own lines and the clinic's founding year
-  have forms since 1 Oct (below, "Members the owner makes"); what a public
+  have forms since 1 Oct (docs/features/sign-in-and-people.md, "Members the owner makes"); what a public
   page still hides when empty is only what nobody has typed.
 - The privacy notice (consent version privacy-2026-09) says texts let patients
   "confirm or cancel by text" and does not mention the IP address stored with
@@ -38,7 +38,7 @@
   in `src/lib/health.ts`); web bookings write their own `patient_consent`.
 - **The patient forms are closed on the live site until a new privacy
   notice is published** (`FORMS_PRIVACY_VERSIONS` is empty; see "Patient
-  forms"). The notice must name every category the forms collect — health
+  forms" in docs/features/patient-forms.md). The notice must name every category the forms collect — health
   and dental history, home address, emergency contact, a parent's or
   guardian's details, Facebook, PhilHealth PIN and HMO card — why, who sees
   it, and that a form nobody adds is deleted after 30 days; the owner's

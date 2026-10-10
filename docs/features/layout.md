@@ -1,6 +1,6 @@
 # Layout: where things are
 
-*Moved here from `CLAUDE.md` word for word on 10 Oct 2026 (plan item 1.9). `CLAUDE.md` holds the rules; this file holds the detail. Where they differ, `CLAUDE.md` wins.*
+*Moved here from `CLAUDE.md` word for word on 10 Oct 2026 (plan item 1.9), with cross-references re-pointed to the file that now holds them. `CLAUDE.md` holds the rules; this file holds the detail. Where they differ, `CLAUDE.md` wins.*
 
 ## Layout
 
@@ -89,7 +89,7 @@ src/pages/c/[clinic]/calls/    the desk's call list: visits in closed time (Keep
 src/pages/c/[clinic]/finances/close/  Close the day: payments by method, the drawer count, what is still open, tomorrow
 src/pages/api/recall.ts        POST: the next check-up in one tap from the Dashboard's visit panel (recall-set)
 docs/clinic-operations.md      how a dental clinic runs, front door to archive: the brief the paperless day was built from
-public/samples/swiftcare/       sample clinic website (see "Sample client sites")
+public/samples/swiftcare/       sample clinic website (see docs/features/sample-sites.md)
 docs/service-map.md            what to build for patients, dentists and clinics, and why (Sept 2026)
 src/components/Odontogram.astro  32 teeth and the 20 baby teeth (A–T), FDI/Universal/Palmer, surface-scoped, each drawn beside its box, and the mouth map
 src/lib/tooth-drawing.ts, tooth-name.ts  the chart's pictures (26 kinds, the turns, the mouth map MOUTH) and the teeth's names (pure; tooth-name.test.ts)
