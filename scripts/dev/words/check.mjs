@@ -195,8 +195,12 @@ function probe(paths) {
   for (const p of paths) {
     const abs = isAbsolute(p) ? p : resolve(process.cwd(), p);
     const shown = abs.startsWith(ROOT) ? relative(ROOT, abs) : abs;
+    // A probe outside the repo is scoped by its path from its last src/, so a rule kept to staff screens is tried
+    // on scratch/src/pages/c/x.astro as it would be on the real file.
+    const at = shown.lastIndexOf('/src/');
+    const scoped = at >= 0 ? shown.slice(at + 1) : shown;
     const items = extract(abs, readFileSync(abs, 'utf8'));
-    for (const m of matchItems(shown, items).sort((a, b) => a.line - b.line)) { console.log(sayLine(m)); n++; }
+    for (const m of matchItems(scoped, items).sort((a, b) => a.line - b.line)) { console.log(sayLine({ ...m, file: shown })); n++; }
   }
   console.log(`${n} match${n === 1 ? '' : 'es'} in ${paths.length} file${paths.length === 1 ? '' : 's'} (known.json not read)`);
   return 0;

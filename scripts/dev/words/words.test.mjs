@@ -240,11 +240,21 @@ test('a file that does not parse fails loudly, at its own line', () => {
   assert.throws(() => extract('notes.md', '# Team'), /notes\.md is not a kind of file the words check reads/);
 });
 
+test('entities and a doctype in strings with no other markup are read as a person reads them', () => {
+  assert.deepEqual(read('entities.ts'), [
+    ['code', 'No show · call them back'],                            // &nbsp; and &middot; decoded with no tags around
+    ['code', 'Offline Your appointments are kept on this device.'],  // the <!doctype> goes with the tags
+    ['code', 'Owes \ufffd on the account'],                           // &#x110000; is past U+10FFFF: no RangeError
+  ]);
+  assert.deepEqual(found('entities.ts'), [['appointment', 'Offline Your appointments are kept on this device.'], ['no-show', 'No show · call them back']]);
+});
+
 test('the code test: words stay words, code goes', () => {
   for (const words of ['Where it is from', 'Select a dentist from the list.', 'a no-show', 'Save', 'No-show', '₱800 a month',
     'Owes ₱…', 'e.g. 2012', 'Saving checks the book again.', 'Settings → Team', 'PRC',
     'Balance:', 'Outstanding:', '(Completed)', 'Appointment(s)', 'Invoice/receipt', 'allergy: …', 'desk note: …', '…: nothing booked',
-    '…: more than … items.', 'check-up due …', 'no-show balance', 'walk-in appointments', 'x-ray files', '… slots/day']) assert.equal(isCodeLike(words), false, words);
+    '…: more than … items.', 'check-up due …', 'no-show balance', 'walk-in appointments', 'x-ray files', '… slots/day',
+    'on flossify.ph/your-clinic', 'or e.g. 2012', 'or email billing@flossify.ph']) assert.equal(isCodeLike(words), false, words);
   for (const code of ['team', 'recall-set', 'appointment_id', '#timeline', '/settings/team/', '[data-recall] .strip', 'rec-ahead-…',
     'ws-pill ws-tint-teal', 'flex items-center gap-2', 'https://flossify.ph/team', 'patientHref', 'login:e:…',
     'select a.id from appointment a where a.status = $1', 'r.balance > 0', "('issued', 'partly_paid', 'paid')",
@@ -266,7 +276,7 @@ const EXAMPLES = {
   'book-door': [['Rebook', 'Book it', 'Book again', 'Book the first one', 'Book here', 'Book online', 'Book a slot'], ['New booking', 'Save booking', 'Book anyway', 'Book a visit', 'Book a visit at the desk or online']],
   'staff-book-a-visit': [['Book a visit', 'Book a visit for …'], ['New booking', 'Book a visit at the desk or online', 'Book anyway']],
   'slot': [['That slot has just gone. Pick another.', 'Real open slots'], ['That time has just gone. Pick another.', 'Next open']],
-  'request-a-time': [['Request a time'], ['Request a visit', 'Request for medical clearance', 'LOA request']],
+  'request-a-time': [['Request a time', 'Request here'], ['Request a visit', 'Request for medical clearance', 'LOA request', 'Send a request here when you are ready']],
   'asked-online': [['Asked for online'], ['Web request', 'Booked online']],
   'schedule-place': [['Add them from the Schedule first', 'The Schedule shows every chair.'], ['Your role cannot change the schedule here.', 'the live schedule']],
   'the-book': [['Nothing on the book.', 'That visit is not on this book.', "That visit is not on this branch's book any more."], ['Book the visit', 'the booking', 'Book a visit']],
@@ -287,14 +297,15 @@ const EXAMPLES = {
   'timeline': [['Timeline'], ['Treatment record']],
   'coverage-name': [['Coverage', 'Patients · Coverage'], ['PhilHealth & HMO', 'How coverage works', 'Coverage for braces varies by HMO.']],
   'hmo-claims': [['HMO claims', 'Open HMO claims'], ['HMO & PhilHealth claims', 'Claims', 'an HMO claim']],
-  'public-page': [['Your clinic page on Find a clinic.', "Your clinic's own page:", 'Switch on your listing.', 'Clinic page'], ['your public page', 'Clinic page on Flossify', 'My page']],
+  'public-page': [['Your clinic page on Find a clinic.', "Your clinic's own page:", 'Clinic page'], ['your public page', 'Clinic page on Flossify', 'My page', 'Switch on your listing.', 'switch on the listing']],
   'desk-poster-forms': [['Patients fill it in', 'the QR forms'], ['desk poster forms', 'New patient? Scan to fill in your forms.']],
+  'patient-forms': [['Patient forms', 'Added from the patient forms (QR-7K2F).', 'cannot add or dismiss patient forms'], ['New patient forms', 'Patient forms in progress', 'desk poster forms', 'step-by-step forms']],
   'privacy-consent': [['Privacy consent', 'the privacy consent waits'], ['Privacy notice: agreed', 'Privacy notice: not agreed yet']],
   'consent-no-dental': [['the consent to examination and treatment'], ['Consent to dental examination and treatment', 'the consent to treatment']],
   'general-consent': [['the general consent', 'Treatment consent version'], ['the consent to treatment']],
   'sign-another-consent': [['Sign another consent'], ['Sign consent for this visit', 'Sign on this tablet']],
-  'new-patient-forms': [['New patient forms', '3 new patient forms are waiting.', 'Sent: add to the records'], ['Forms to add', 'New patient? Scan to fill in your forms.', 'Add to the records']],
-  'forms-in-progress': [['Patient forms in progress', 'Filling in now', 'Forms sent'], ['Forms being filled in', 'Forms to add']],
+  'new-patient-forms': [['New patient forms', '3 new patient forms are waiting.', 'Sent: add to the records', 'Forms sent'], ['Forms to add', 'New patient? Scan to fill in your forms.', 'Add to the records']],
+  'forms-in-progress': [['Patient forms in progress', 'Filling in now'], ['Forms being filled in', 'Forms to add', 'Forms sent']],
   'not-paid-yet': [['Not paid yet', 'not paid yet', 'Not yet paid'], ['Unpaid', 'Part paid', 'Paid']],
   'balance': [['Balance', 'With balance', 'more than the balance of ₱500', 'with whatever is left to pay'], ['Opening balance', 'Opening balances', 'Balance as of', 'Balance brought forward from the clinic’s earlier records', 'Still to pay']],
   'owed': [['₱1,200 owed', 'Still owed', 'Left owing', 'Owes nothing', 'Paid ahead', 'outstanding', '₱500 credit', '… credit'], ['Nothing owed', 'Owes ₱1,200', 'In credit ₱200', 'a credit card']],

@@ -2,8 +2,9 @@
 // its order. words.test.mjs checks that every id here is in that table and every id there is here. Plan item 1.8.
 //
 // Only those rows are checked. A few retired wordings are also ordinary English, so a pattern cannot tell them
-// apart and the plan item that touches the file sweeps them by hand: "this clinic" (for the location on staff
-// screens), "leave", "your page", "plan" alone, "Partly paid", "bill", "intake", "₱X from Maxicare", and "Money",
+// apart and the plan item that touches the file sweeps them by hand: "booking" for the event, "this clinic" (for the
+// location on staff screens), "leave", "your page", "plan" alone, "Partly paid", "bill", "intake", "₱X from
+// Maxicare", "consent" alone for the privacy notice, "Service" as a column that shows the reason, and "Money",
 // "Files", "Health", "Left", "Notes" and "Consent:" as bare titles. The glossary says so too.
 // Where a row's Not column holds a wording with the same say, its rule takes it too (each says so on its line).
 
@@ -19,7 +20,10 @@
 //   node scripts/dev/words/check.mjs --rules     prints this table
 //
 // Where a pattern goes past the glossary's own words it says why on its line.
-export const STAFF = /^src\/(pages\/c\/|components\/ws\/|layouts\/Clinic\.astro$)/;
+// The staff screens: the workspace, its layout, and the staff-only components outside components/ws.
+export const STAFF = /^src\/(pages\/c\/|components\/ws\/|components\/entry\/|layouts\/Clinic\.astro$|components\/(DeskConsent|Odontogram|BillingNotice|StaffEntrance)\.astro$)/;
+// Staff screens and the shared lib, whose sentences staff read (visit-record.ts, health.ts); not the patient pages.
+const STAFF_OR_LIB = new RegExp(STAFF.source.replace('^src\\/(', '^src\\/(lib\\/|'));
 
 export const RULES = [
   // ── Visits
@@ -30,7 +34,8 @@ export const RULES = [
   // "Book a visit" is the patients' own door; on a staff screen it is a door to the booking panel.
   { id: 'staff-book-a-visit', re: /^book a visit( for …)?[.!]?$/i, files: STAFF, say: 'New booking (on staff screens only)', item: '2.32' },
   { id: 'slot', re: /\bslots?\b/i, say: 'time', item: '2.2' },
-  { id: 'request-a-time', re: /\brequest a time\b/i, say: 'Request a visit', item: '2.2' },
+  // "Request here" is "Book here"'s twin on a clinic that takes requests (a whole label).
+  { id: 'request-a-time', re: /\brequest a time\b|^request here[.!]?$/i, say: 'Request a visit', item: '2.2' },
   { id: 'asked-online', re: /\basked for online\b/i, say: 'Web request', item: '2.32' },
   // The place has a capital S; "the schedule" in lower case is the ordinary word. "The Schedule" opens a sentence.
   { id: 'schedule-place', re: /\b[Tt]he Schedule\b/, say: 'the calendar', item: '1.18' },
@@ -64,14 +69,18 @@ export const RULES = [
   // Cannot match "HMO & PhilHealth claims".
   { id: 'hmo-claims', re: /\bHMO claims\b/, say: 'HMO & PhilHealth claims', item: '1.18' },
   // ── People and branches
-  // "Clinic page on Flossify" is what patients read at the foot of a clinic's page; it stays.
-  { id: 'public-page', re: /\b[Yy]our (listing|clinic page|clinic's own page)\b|\bClinic page\b(?! on Flossify)/, say: 'your public page', item: '2.32' },
+  // "Clinic page on Flossify" is what patients read at the foot of a clinic's page; it stays. "Listing" is the act of
+  // showing on Find a clinic ("switch on your listing"), not the page, so it is not here.
+  { id: 'public-page', re: /\b[Yy]our (clinic page|clinic's own page)\b|\bClinic page\b(?! on Flossify)/, say: 'your public page', item: '2.32' },
   { id: 'the-group', re: /\bthe group\b/i, say: 'All your branches', item: '2.24' },
   // ── Forms and consent
   { id: 'desk-poster-forms', re: /\bpatients fill it in\b|\bthe QR forms\b/i, say: 'desk poster forms', item: '1.11' },
-  // The glossary's Forms to add row also retires the step-by-step forms' group "Sent: add to the records".
-  { id: 'new-patient-forms', re: /\bnew patient forms\b|\bsent: add to the records\b/i, say: 'Forms to add', item: '1.12' },
-  { id: 'forms-in-progress', re: /\bpatient forms in progress\b|\bfilling in now\b|\bforms sent\b/i, say: 'Forms being filled in', item: '1.12' },
+  // On staff screens (and the lib's sentences); the patient's own pages keep "New patient forms" and their words.
+  { id: 'patient-forms', re: /\bpatient forms\b/i, except: /\bnew patient forms\b|\bpatient forms in progress\b/i, files: STAFF_OR_LIB, say: 'desk poster forms, step-by-step forms', item: '1.12' },
+  // The glossary's Forms to add row also retires "Forms sent" and the step-by-step forms' group "Sent: add to the
+  // records".
+  { id: 'new-patient-forms', re: /\bnew patient forms\b|\bsent: add to the records\b|\bforms sent\b/i, say: 'Forms to add', item: '1.12' },
+  { id: 'forms-in-progress', re: /\bpatient forms in progress\b|\bfilling in now\b/i, say: 'Forms being filled in', item: '1.12' },
   { id: 'privacy-consent', re: /\bprivacy consents?\b/i, say: 'privacy notice', item: '2.32' },
   { id: 'consent-no-dental', re: /(?<!dental )\bconsent to examination and treatment\b/i, say: 'the consent to treatment', item: '2.32' },
   { id: 'general-consent', re: /\bgeneral consent\b|\btreatment consent\b/i, say: 'the consent to treatment', item: '2.32' },

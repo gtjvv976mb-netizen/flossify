@@ -153,7 +153,7 @@ const ENTITIES = {
 };
 export function decodeEntities(s) {
   return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
-    if (e[0] === '#') { const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return Number.isFinite(n) ? String.fromCodePoint(n) : m; }
+    if (e[0] === '#') { const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return Number.isFinite(n) ? (n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : '\ufffd') : m; }
     return ENTITIES[e.toLowerCase()] ?? m;
   });
 }
@@ -174,8 +174,6 @@ const PROSE_HYPHEN = /^(no-shows?|walk-ins?|x-rays?|check-ups?|check-ins?|follow
 const SQL_ID = /\$\d|\b[a-z][a-z0-9]*_[a-z0-9_]+\b|\b[a-z]{1,3}\.[a-z_]{2,}\b|::[a-z]|\b(coalesce|nullif|count|sum|now|jsonb?_[a-z_]+|array_agg|string_agg|to_char|date_trunc|greatest|least|exists|lower|upper)\s*\(/;
 const SQL_IDS = new RegExp(SQL_ID.source, 'g');
 const SQL_WORD = /\b(select|from|where|join|into|update|delete|values|returning|on conflict|group by|order by|limit|coalesce|exists|between|ilike|union|having|offset|distinct|is (not )?null|nulls (first|last)|asc|desc|interval|case when)\b|\bin \(|\) as [a-z_]+\b|[<>=]/i;
-// A clause that opens a piece of SQL, which a sentence on screen never does with a table.column after it.
-const SQL_PIECE = /^(?:(?:left|right|inner|cross|full)\s+(?:outer\s+)?)?join\b|^(?:order|group) by\b|^(?:where|and|or|on)\b/;
 const SQL_START = /^\(?\s*(select|insert into|update [a-z_]+ set|delete from|with [a-z_]+ as \(|create |alter |drop |grant |revoke |set local|lock table)\b/; // lower case, as this repository writes SQL
 
 /** Lower-case tokens that are prose, not a class list: a word with a colon after it ("allergy: …", "…: closed"),
@@ -214,7 +212,6 @@ export function isCodeLike(raw) {
   // Prose has none of those ("Where it is from" stays words).
   if ((SQL_START.test(s) && (SQL_ID.test(s) || SQL_WORD.test(s))) || (SQL_ID.test(s) && SQL_WORD.test(s)) || (s.match(SQL_IDS) ?? []).length >= 3) return true;
   if (/^\(\s*'[^']*'(\s*,\s*'[^']*')*\s*\)$/.test(s)) return true;               // a SQL list: ('issued', 'paid')
-  if (SQL_PIECE.test(s) && /\b[a-z_]+\.[a-z_]+\b/.test(s)) return true;             // a piece of SQL: left join x on x.id = …, order by a.b
   if (/'(self|none|unsafe-inline)'|^[a-z-]+=\(/.test(s)) return true;                // a security header's value
   if (toks.every((t) => /^!?[a-z0-9_\-:[\]/.%#()&>*@=,+~'"…]+$/.test(t)) && toks.some((t) => /[-:[\]/]/.test(t)) && !toks.some((t) => STOP.has(t)) && !prosy(s, toks)) return true; // a class list
   if (/^[a-z_$][\w$]*\s*\(.*\)\s*;?$/.test(s) || /=>|\breturn\b.*;|[{};]\s*$/.test(s) && /[=:(]/.test(s) && !/[.!?]["')]?$/.test(s)) return true; // a line of code
