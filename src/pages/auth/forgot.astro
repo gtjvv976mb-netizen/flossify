@@ -52,6 +52,7 @@ import { hit, clientIp, waitText, LIMITS } from '../../lib/throttle';
 import { issueCode } from '../../lib/codes';
 import { normalizePhone, PH_MOBILE, queueText, queueEmail, texts, emails, codePageFor } from '../../lib/messages';
 import { emailEnabled, normalizeEmail, EMAIL_ADDRESS, EMAIL_MAX } from '../../lib/email';
+import { PLACE } from '../../lib/places';
 
 // Read back by /auth/code/, which clears them once the code is used.
 const CODE_PHONE_COOKIE = 'fl_code_phone', CODE_EMAIL_COOKIE = 'fl_code_email', CODE_COOKIE_PATH = '/auth/code';
@@ -208,7 +209,7 @@ const GO = { sms: 'Text me a code', email: 'Email me a code' };
   {emailOn ? (
     <p class="entry-aside"><Icon name="info" /><span>No mobile on file, or the clinic phone is shared? Choose <strong>Email</strong> above.</span></p>
   ) : (
-    <p class="entry-aside"><Icon name="info" /><span>No mobile on file? Your clinic owner can add it on <strong>Settings → Team</strong> and text you a code from there.</span></p>
+    <p class="entry-aside"><Icon name="info" /><span>No mobile on file? Ask your clinic owner to set a new password for you in <strong>{PLACE.people}</strong>.</span></p>
   )}
 
   <ul class="entry-ways" aria-label="Other ways in">

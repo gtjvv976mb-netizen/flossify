@@ -453,9 +453,14 @@ name off to keep it, or add it in quotes to change it. Without a Shell:
 `docker run --rm -it --env-file prod.env flossify npm run admin:create -- ops@flossify.ph`.
 With no terminal to type into, see step 6 of the first deploy.
 
-A clinic can still add your operations email to one of its staff (Settings
-→ Team checks emails only inside that clinic). Your sign-in keeps working,
-because the older account wins, and the reset still works; it then adds a
-*Note:* naming that staff member, who cannot sign in with the email until
-the developer changes the email on their account. If it says sign-in opens
-a clinic's account instead, nothing changed: call the developer.
+A clinic cannot give your operations email to one of its staff: Clinic
+settings → People and `/start/` refuse an email that is already on any
+Flossify staff account, the operations account included. A clinic account
+can have it only from before that check covered the whole service, or by
+hand. While your operations account is the older one, sign-in keeps opening
+it and the reset still works; it then adds a *Note:* naming that staff
+member, who cannot sign in with the email until it changes (the clinic can
+change it on their page in Clinic settings → People, or the developer can).
+If it says sign-in opens a clinic's account instead, nothing changed: the
+clinic can change that member's email or disable the account there, or call
+the developer.

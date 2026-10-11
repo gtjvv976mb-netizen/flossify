@@ -26,7 +26,7 @@ src/lib/auth.ts                scrypt passwords, signed session cookie with toke
 src/lib/csrf.ts + components/Csrf.astro   the double-submit token every form carries
 src/lib/throttle.ts            hit(): fixed-window rate limits in Postgres; LIMITS; clientIp
 src/lib/codes.ts               six-digit one-time codes (reset, invite)
-src/lib/messages.ts            queueText(), phone normalising, the text wording
+src/lib/messages.ts            queueText(), phone normalising, the text wording; gsmName / smsLength / oneText keep a text to one GSM-7 message where a wording fits (messages.test.ts)
 src/lib/sms.ts                 provider seam: console (dev), semaphore (live)
 src/lib/uploads.ts             clinic photos: sharp → 1600/640 webp under UPLOAD_DIR
 src/lib/workspace.ts           requireWorkspace: session + branch access, every request
@@ -38,8 +38,9 @@ src/pages/start/               a clinic sets itself up
 src/pages/[clinic]/            a clinic's own site (index) and its staff sign-in (its door)
 src/lib/clinic-door.ts, username.ts  the remembered clinic, Find your clinic; username rules
 src/lib/can.ts                 permission keys, default roles, can(ws, key); roles are clinic_role rows (030)
+src/lib/places.ts              every place by its name on screen (docs/glossary.md, Places): the tabs, Clinic settings' SECTIONS, PLACE, settingsPlace / settingsAt / inText (no imports)
 src/lib/roles.ts, tasks.ts     the rank rules for people and roles; tasks (032). Pages: settings Roles section, /c/<slug>/tasks/
-src/pages/c/[clinic]/settings/ profile + hours (lunch) + closed days + HMOs + listing, fees, team (invites), photos, privacy (DPO), billing
+src/pages/c/[clinic]/settings/ the one Clinic settings page: profile + HMOs + listing, hours (lunch), closed days, services & prices, people (and their pages), roles, photos, privacy (DPO), tablets, the plan
 src/pages/c/[clinic]/claims/   HMO and PhilHealth claims: file, approve, deny, pay, notes, aging, CSV
 src/pages/me/                  patients: my visits by mobile (code → list; confirm / cancel / calendar)
 src/pages/admin/               Flossify operations: overview, PRC checks, clinics, billing
@@ -84,8 +85,8 @@ scripts/sms/worker.ts          the sender: npm run sms:worker (loop) / sms:once;
 src/data/migrations/036, 037, 038  the paperless day: visit links, reminder passes, recall texts, clinic switches; day_close; appointment_contact
 src/pages/c/[clinic]/patients/_record/VisitStrip.astro  This visit: today's visit checklist above the record's sections
 src/lib/aftercare.ts           the nine aftercare sheets (en + fil), kindForCatalog, the evening text; printed at patients/<id>/aftercare/<kind>/
-src/lib/text-templates.ts      the eight texts Messages → Text a patient fills in (GSM-safe, no link, no reply asked)
-src/pages/c/[clinic]/calls/    the desk's call list: visits in closed time (Keep it), tomorrow's visits to confirm, a call log, no-shows to call back, a print sheet
+src/lib/text-templates.ts      the eight texts Texts → Text a patient fills in (GSM-safe, no link, no reply asked)
+src/pages/c/[clinic]/calls/    Calls, the desk's list: visits in closed time (Keep it), tomorrow's visits to confirm, a call log, no-shows to call back, a print sheet
 src/pages/c/[clinic]/finances/close/  Close the day: payments by method, the drawer count, what is still open, tomorrow
 src/pages/api/recall.ts        POST: the next check-up in one tap from the Dashboard's visit panel (recall-set)
 docs/clinic-operations.md      how a dental clinic runs, front door to archive: the brief the paperless day was built from

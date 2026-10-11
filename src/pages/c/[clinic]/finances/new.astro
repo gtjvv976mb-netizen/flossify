@@ -61,11 +61,15 @@ import {
 } from '../../../../lib/invoices';
 import { ageOn, dateText, manilaToday } from '../../../../lib/health';
 import { can } from '../../../../lib/can';
+import { PLACE, sectionName, settingsAt } from '../../../../lib/places';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
 const { clinic, session, branches } = ws;
 const may = can(clinic, 'finance.bill');
+// Someone who may change Clinic settings gets the place named and a quiet "Open …" on a line of its own after it (a
+// whole 44 px target, which a link inside the sentence's lines is not); everyone else, the place and who changes it.
+const canSetUp = can(clinic, 'settings.edit');
 const home = `/c/${clinic.slug}/finances/`;
 const q = Astro.url.searchParams;
 const hmoNames = new Map(hmos.map((h) => [h.id, h.name]));
@@ -273,7 +277,9 @@ const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the adm
                     </select>
                   </label>
                 ) : (
-                  <p class="ws-callout w-full" data-tone="info"><Icon name="info" /><span>The fee guide is empty. The owner adds services in Clinic settings → Services &amp; fees; until then, add each line as something else.</span></p>
+                  <p class="ws-callout w-full" data-tone="info"><Icon name="info" /><span>The fee guide is empty. {canSetUp
+                    ? `Add services in ${PLACE.fees}` : `The owner or an admin adds services in ${PLACE.fees}`}; until then, add each line as something else.
+                    {canSetUp && <span class="block"><a href={settingsAt(clinic.slug, 'fees')} class="ws-empty-go">Open {sectionName('fees')} <Icon name="arrow-right" size={16} /></a></span>}</span></p>
                 )}
                 {data.guide.length > 0 && <button type="button" class="ws-btn ws-btn-quiet" data-bill-guide-add><Icon name="plus" />Add</button>}
                 <button type="button" class="ws-btn ws-btn-quiet" data-bill-add-free><Icon name="plus" />Something else</button>
@@ -314,7 +320,9 @@ const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the adm
                   </label>
                 </div>
                 {data.payors.length === 0 ? (
-                  <p class="fin-help">No HMO or PhilHealth is set up for this branch, so the patient pays all of it. The owner ticks the HMOs the clinic takes in Clinic settings.</p>
+                  <p class="fin-help">No HMO or PhilHealth is set up for this branch, so the patient pays all of it. {canSetUp
+                    ? `Set them up in ${PLACE.profile}.` : `The owner or an admin sets them up in ${PLACE.profile}.`}
+                    {canSetUp && <span class="block"><a href={settingsAt(clinic.slug, 'profile')} class="ws-empty-go text-[14px]">Open {sectionName('profile')} <Icon name="arrow-right" size={16} /></a></span>}</p>
                 ) : (
                   <div class="grid content-start gap-3">
                     <label class="field">
@@ -325,7 +333,7 @@ const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the adm
                       </select>
                     </label>
                     <label class="field" data-bill-share hidden={!draft.payor}>
-                      <span class="meta">Their part, in pesos</span>
+                      <span class="meta">The HMO’s or PhilHealth’s part, in pesos</span>
                       <input name="payor_share" value={draft.payorShare} inputmode="decimal" autocomplete="off" class="tabular-nums" placeholder="0.00" data-bill-share-input />
                       <span class={help}>What the LOA or PhilHealth covers. Record it as paid when their money comes in.</span>
                     </label>
@@ -452,7 +460,7 @@ const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the adm
           if (!res.ok) say('Could not reach the clinic to search. Try again.');
           else if (found.length) hint.hidden = true;
           else if (addPatient) say('No one on file matches.', { label: 'Add the patient first', href: addPatient });
-          else say('No one on file matches. Add them from the Schedule first, then charge them here.');
+          else say('No one on file matches. Add them from the calendar first, then charge them here.');
         } catch (e) {
           if ((e as Error).name !== 'AbortError') say('Could not reach the clinic to search. Try again.');
         }

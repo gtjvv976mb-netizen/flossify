@@ -1,7 +1,7 @@
 // Queueing texts. Nothing here sends: rows go into message_log and the worker
 // (scripts/sms/worker.ts) sends them, retries them, and records what the
 // provider said. Every text is written inside a clinic transaction, so the
-// row belongs to a clinic and the desk can see it on their Messages page.
+// row belongs to a clinic and the desk can see it on their Texts page.
 //
 // No links in any text. Philippine telcos drop messages with URLs in them, and
 // a bare domain (anything.gov.ph) can read as one to their filters: name the
@@ -12,6 +12,7 @@
 
 import type { Tx } from './db';
 import { EMAIL_ADDRESS, EMAIL_MAX, normalizeEmail } from './email';
+import { PLACE, inText } from './places';
 
 /** 0917 000 0000 / +63 917 000 0000 / 63917… → '09170000000'. Anything else comes back as its digits. */
 export function normalizePhone(s: string): string {
@@ -66,7 +67,7 @@ export interface OutgoingEmail {
 }
 
 /**
- * Queue one email in the same log as texts (channel 'email'), so the Messages
+ * Queue one email in the same log as texts (channel 'email'), so the Texts
  * page and retention treat it like a text. The worker sends it when
  * EMAIL_PROVIDER is set (src/lib/email.ts); the caller checks emailEnabled()
  * before promising anyone an email. Returns the row id, or null when the
@@ -122,6 +123,53 @@ export const emails = {
  */
 export const codePageFor = (site: URL | string | undefined) => new URL('/auth/code/?via=email', site ?? 'https://flossify.ph').href;
 
+// --- one text, one message ---------------------------------------------------------------------------
+
+/** GSM 03.38: the basic set counts one each; the extension set (^ { } \ [ ] ~ | €) two. Anything else makes the
+ *  whole text UCS-2, and then one message holds 70 characters, not 160. */
+const GSM_BASIC = '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà';
+const GSM_EXT = '^{}\\[~]|€';
+
+/** How long a text is as the network counts it, and what one message holds: 160 GSM-7 characters, or 70 once any
+ *  character is outside GSM-7 (UCS-2, counted in UTF-16 units). */
+export function smsLength(s: string): { length: number; max: 160 | 70 } {
+  let n = 0;
+  for (const ch of s) {
+    if (GSM_BASIC.includes(ch)) n += 1;
+    else if (GSM_EXT.includes(ch)) n += 2;
+    else return { length: s.length, max: 70 };
+  }
+  return { length: n, max: 160 };
+}
+export const fitsOneText = (s: string) => { const l = smsLength(s); return l.length <= l.max; };
+/** How many messages a text goes as: one up to 160 (or 70); past that each part holds 153 (or 67). */
+export function smsParts(s: string): number {
+  const l = smsLength(s);
+  return l.length <= l.max ? 1 : Math.ceil(l.length / (l.max === 160 ? 153 : 67));
+}
+
+/** The first of these wordings that fits in one message, longest and fullest first. When none does (a name past what
+ *  any wording leaves room for), the one that goes as the fewest messages, and the fullest of those. */
+export function oneText(...bodies: string[]): string {
+  return bodies.find(fitsOneText) ?? bodies.reduce((best, b) => (smsParts(b) < smsParts(best) ? b : best));
+}
+
+/** A name as a text can carry it in GSM-7. Curly quotes, accents typed as apostrophes and dashes from a phone's
+ *  keyboard become their GSM twins, so one apostrophe in "D’Souza" does not turn a whole text into UCS-2. A letter
+ *  whose accent GSM-7 does not have loses the accent (María → Maria, Ramón → Ramon, Gonçalves → Goncalves); the
+ *  accented letters GSM-7 has (é è à ì ò ù ñ Ñ ü Ü …) stay as typed. Anything else stays too, and the text is UCS-2. */
+export function gsmName(s: string): string {
+  const q = s.normalize('NFC').replace(/[‘’‚′´`ʼʻ]/g, "'").replace(/[“”„″]/g, '"').replace(/[‐-―−]/g, '-');
+  let out = '';
+  for (const ch of q) {
+    if (GSM_BASIC.includes(ch) || GSM_EXT.includes(ch)) { out += ch; continue; }
+    // Without its marks: a letter GSM-7 has bare takes that form, a lone mark goes, anything else stays as it is.
+    const bare = ch.normalize('NFD').replace(/\p{M}+/gu, '');
+    out += [...bare].every((c) => GSM_BASIC.includes(c)) ? bare : ch;
+  }
+  return out;
+}
+
 /** The texts a clinic sends read like a person wrote them: the clinic's name first, then the fact, then what to do. */
 export const texts = {
   reset: (code: string) => `Flossify: your password reset code is ${code}. It works for 15 minutes. If you did not ask for it, ignore this text.`,
@@ -131,15 +179,29 @@ export const texts = {
    * To the clinic's owner, after a person at Flossify found the licence did not match
    * PRC's records. `prc` may be '(none on file)': then the text says there is no number.
    * No domain (a filter can read one as a link) and no reply asked for (none arrives).
-   * It promises only what exists: in Settings, Team the owner corrects the number, or
-   * saves it as it is when it is right, and either way it goes back on Flossify's check
-   * list by itself (team.astro). One message for a name of ordinary length: 149
-   * characters with "Dr. Hazel Tabanao" and a seven-digit number, all GSM. "Settings,
-   * Team" rather than an arrow: one non-GSM character turns the whole text into UCS-2
-   * and halves what fits in one message.
+   * It promises only what exists: in Clinic settings, People the owner corrects the
+   * number, or saves it as it is when it is right, and either way it goes back on
+   * Flossify's check list by itself. The place is written with a comma, not the screen's
+   * arrow, and the name is folded to GSM-7 (gsmName): one character outside GSM-7 turns
+   * the whole text into UCS-2, and then one message holds 70 characters, not 160. One
+   * message, the fullest wording that fits (oneText), for any name up to the 80 characters
+   * People allows and a licence of up to 12 digits (messages.test.ts measures them). An
+   * owner's name from /start/ has no cap: past about 84 characters even the shortest
+   * wording takes two messages, and then the fullest of those is sent.
    */
-  prcMismatch: (dentist: string, prc: string) =>
-    /\d/.test(prc)
-      ? `Flossify: ${dentist}'s PRC licence ${prc} did not match PRC's records, so their profile says "PRC check pending". Check it in Settings, Team.`
-      : `Flossify: ${dentist} has no PRC licence number on file, so their profile says "PRC check pending". Add it in Settings, Team.`,
+  prcMismatch: (dentist: string, prc: string) => {
+    const d = gsmName(dentist.replace(/\s+/g, ' ').trim());
+    const where = inText(PLACE.people);
+    const pending = 'so their profile says "PRC check pending"';
+    return /\d/.test(prc)
+      ? oneText(
+        `Flossify: ${d}'s PRC licence ${prc} did not match PRC's records, ${pending}. Check it in ${where}.`,
+        `Flossify: ${d}'s PRC licence ${prc} did not match PRC's records. Check it in ${where}.`,
+        `Flossify: ${d}'s PRC licence ${prc} did not match. Check it in ${where}.`,
+        `Flossify: ${d}'s PRC licence did not match. Check it in ${where}.`)
+      : oneText(
+        `Flossify: ${d} has no PRC licence number on file, ${pending}. Add it in ${where}.`,
+        `Flossify: ${d} has no PRC licence number on file. Add it in ${where}.`,
+        `Flossify: ${d} has no PRC licence number. Add it in ${where}.`);
+  },
 };

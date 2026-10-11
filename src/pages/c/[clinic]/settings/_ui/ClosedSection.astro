@@ -1,5 +1,5 @@
 ---
-// Closed days and time off (040): every dated block ahead, whichever screen added it, soonest first, each with
+// Closed days (040): every dated block ahead, whichever screen added it, soonest first, each with
 // a quiet Remove; and Add closed days, the section's one teal action — the clinic closed, or a dentist away,
 // for whole days. Both are plain forms that work with scripts off (form=closed-add, form=closed-remove, each
 // with <Csrf />). A few hours, or a chair out of use, are blocked from the calendar's Block time. A refused
@@ -11,6 +11,7 @@ import Note from './Note.astro';
 import { blockListed } from '../../../../../lib/block-words';
 import type { BlockRange } from '../../../../../lib/blocks';
 import type { ClosedValues } from '../_lib/closed-days';
+import { sectionName } from '../../../../../lib/places';
 
 interface Props {
   base: string;
@@ -39,7 +40,7 @@ const subLine = (b: BlockRange) => {
 ---
 
 <div class="set-panel" data-set-panel="closed" data-on={on ? '' : undefined}>
-<Pane id="closed" icon="calendar" title="Closed days and time off" meta={meta} pad="none" class="set-sec">
+<Pane id="closed" icon="calendar" title={sectionName('closed')} meta={meta} pad="none" class="set-sec">
   <div class="px-6 pt-4 max-md:px-4">
     <p class="set-intro mt-0">Days the clinic is closed and days a dentist is away. Patients cannot book them, and the calendar shows them. Philippine holidays are not added for you: Holy Week and Eid move every year, so add the days your clinic closes.</p>
     {(notes.length > 0 || (problems.length > 0 && problemsFor === 'closed-remove')) && (

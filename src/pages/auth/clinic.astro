@@ -13,6 +13,7 @@ import Icon from '../../components/ws/Icon.astro';
 import ClinicBadge from '../find/_ui/ClinicBadge.astro';
 import { findClinics, doorPath } from '../../lib/clinic-door';
 import { hit, clientIp, waitText } from '../../lib/throttle';
+import { PLACE, sectionName } from '../../lib/places';
 
 const q = (Astro.url.searchParams.get('q') ?? '').slice(0, 120);
 let found: Awaited<ReturnType<typeof findClinics>> | null = null;
@@ -42,7 +43,7 @@ const list = found ? [...(found.exact ? [{ slug: found.exact.slug, name: found.e
       <label for="q" class="entry-label">Your clinic’s name or address</label>
       <input id="q" type="search" name="q" value={q} autocomplete="off" spellcheck="false" required maxlength="120"
         placeholder="flossify.ph/your-clinic" autofocus={!q} aria-describedby="q-hint" />
-      <p id="q-hint" class="entry-hint">The address is on the owner’s Clinic settings, under Clinic profile.</p>
+      <p id="q-hint" class="entry-hint">The address is on the owner’s {PLACE.settings}, under {sectionName('profile')}.</p>
     </div>
     {wait && <p role="alert" class="entry-note entry-note-bad"><Icon name="alert" /><span>Too many searches from here. {wait}</span></p>}
     <button type="submit" class="entry-go"><span>Find</span><Icon name="search" /></button>
@@ -63,7 +64,7 @@ const list = found ? [...(found.exact ? [{ slug: found.exact.slug, name: found.e
       </ul>
     ) : (
       <>
-        <p role="status" class="entry-note entry-note-warn mt-5"><Icon name="info" /><span>No listed clinic matches that. Try its address, as the owner sees it in Clinic settings.</span></p>
+        <p role="status" class="entry-note entry-note-warn mt-5"><Icon name="info" /><span>No listed clinic matches that. Try its address, as the owner sees it in {PLACE.settings}.</span></p>
         <ul class="entry-ways" aria-label="Other ways in">
           <li>
             <a href="/auth/login/?any=1" class="entry-way">

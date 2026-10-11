@@ -25,6 +25,7 @@ import {
 import { snapshotText, verifySigning, shortSeal } from './consent-seal';
 import { audit } from './patient-add';
 import { readStrokes, type Strokes } from './visit-consent';
+import { PLACE } from './places';
 
 type Q = Pick<Tx, 'query'>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -335,9 +336,9 @@ export async function confirmSigning(tx: Tx, a: { clinicId: string; staffId: str
   if (note && note.length > 200) throw new Refused('Keep the note under 200 characters.');
   let file: string | null = null;
   if (s.needs_confirm === 'authority') {
-    if (!isUuid(a.attachmentId)) throw new Refused('Choose the file that shows it: the court order, the papers for the ground, or the parent’s letter. Upload it in Files first.');
+    if (!isUuid(a.attachmentId)) throw new Refused(`Choose the file that shows it: the court order, the papers for the ground, or the parent’s letter. Upload it in ${PLACE.files} first.`);
     const ok = (await tx.query('select 1 from attachment where id = $1 and patient_id = $2 and removed_at is null', [a.attachmentId, s.patient_id])).rowCount;
-    if (!ok) throw new Refused('That file is not in this patient’s Files.');
+    if (!ok) throw new Refused(`That file is not in this patient’s ${PLACE.files}.`);
     file = a.attachmentId;
   }
   await tx.query('insert into consent_confirmation (clinic_id, signing_id, kind, staff_id, attachment_id, note) values ($1, $2, $3, $4, $5, $6)',
@@ -442,7 +443,7 @@ export async function recordPaperSigning(tx: Tx, a: {
   if (!part.decision || part.decision === 'later') problems.push('Say what they decided on the paper.');
   const day = /^\d{4}-\d{2}-\d{2}$/.test(a.signedOn) ? a.signedOn : '';
   if (!day) problems.push('Write the day on the paper.');
-  if (!isUuid(a.attachmentId)) problems.push('Choose the scan of the signed paper. Upload it in Files first.');
+  if (!isUuid(a.attachmentId)) problems.push(`Choose the scan of the signed paper. Upload it in ${PLACE.files} first.`);
   if (problems.length) throw new Refused([...new Set(problems)]);
   const ctx = contextFor(t, {
     clinic: a.clinic, patientName: name, birth: p.birth, minor, dentist: doc.dentistName ? { name: doc.dentistName, prc: doc.dentistPrc } : null,

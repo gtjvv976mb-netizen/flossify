@@ -19,6 +19,7 @@ import '../../find/_ui/clinic-glass.css';
 import '../_forms.css';
 import { hit, clientIp, LIMITS } from '../../../lib/throttle';
 import { pollTablet, tabletProof, endStaffOnTablet } from '../../../lib/intake-public';
+import { PLACE } from '../../../lib/places';
 
 Astro.response.headers.set('Cache-Control', 'no-store');
 Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow');
@@ -52,7 +53,7 @@ const made = Astro.url.searchParams.get('new') === '1';
       <section class="ws-pane ws-glass pt-card cl-pane pf-done" aria-labelledby="ft-title">
         <span class="pt-done-mark pf-done-mark" data-tone="info"><Icon name="info" size={24} /></span>
         <h1 class="pt-done-title pf-done-title" id="ft-title">This device is not a clinic tablet</h1>
-        <p class="pf-done-lead">A clinic’s owner or admin makes one in Clinic settings → Clinic tablets, on the tablet itself.</p>
+        <p class="pf-done-lead">A clinic’s owner or admin makes one in {PLACE.tablets}, on the tablet itself.</p>
         <div class="pf-done-actions"><a href="/auth/login/" class="btn btn-quiet"><Icon name="user" />Staff sign-in</a></div>
       </section>
     )}

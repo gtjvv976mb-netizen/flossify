@@ -186,8 +186,8 @@ export type CheckoutResult =
 /**
  * Open a PayMongo Checkout Session for one due invoice of this group and
  * record it on the invoice. `origin` is this site's own (https://flossify.ph
- * behind the proxy); PayMongo sends the browser back to the group's billing
- * page with ?paid=<number> or ?unpaid=<number>. Nothing is charged here.
+ * behind the proxy); PayMongo sends the browser back to Clinic settings, at its
+ * plan section, with ?paid=<number> or ?unpaid=<number>. Nothing is charged here.
  */
 export async function startCheckout(o: { invoiceId: string; groupId: string; slug: string; origin: string; staffId: string }): Promise<CheckoutResult> {
   if (!BILLING_FINAL) return { ok: false, reason: 'off' };
@@ -202,7 +202,10 @@ export async function startCheckout(o: { invoiceId: string; groupId: string; slu
   const centavos = toCentavos(inv.amount);
   if (!Number.isSafeInteger(centavos) || centavos <= 0) return { ok: false, reason: 'not_due', number: inv.number };
 
-  const back = `${o.origin}/c/${encodeURIComponent(o.slug)}/settings/billing/`;
+  // Straight to Clinic settings, not through the old /settings/billing/ (which still redirects, for sessions opened
+  // before). ?paid= and ?unpaid= switch the plan section on, but only the address's #plan scrolls to it (on a phone
+  // the section list comes first), so the fragment goes after the query, as checkout.ts's ?pay=…#plan.
+  const back = `${o.origin}/c/${encodeURIComponent(o.slug)}/settings/`;
   const ref = encodeURIComponent(inv.number);
   const body = {
     data: {
@@ -218,8 +221,8 @@ export async function startCheckout(o: { invoiceId: string; groupId: string; slu
         description: `Flossify invoice ${inv.number}`,
         reference_number: inv.number,
         metadata: { invoice_id: inv.id, invoice_number: inv.number },
-        success_url: `${back}?paid=${ref}`,
-        cancel_url: `${back}?unpaid=${ref}`,
+        success_url: `${back}?paid=${ref}#plan`,
+        cancel_url: `${back}?unpaid=${ref}#plan`,
         show_description: true,
         show_line_items: true,
       },

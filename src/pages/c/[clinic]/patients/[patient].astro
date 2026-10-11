@@ -168,6 +168,7 @@ import { buildLedger, loadLedgerMoney, loadRecallsSet } from '../../../../lib/tr
 import { offerFor } from '../../../../lib/chart-write';
 import { calloutWorthy, isOnChart } from '../../../../lib/chart-offer';
 import { chartSession } from '../../../api/chart';
+import { PLACE, settingsAt } from '../../../../lib/places';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -374,7 +375,7 @@ if (Astro.request.method === 'POST') {
       if (r === 'saved') return Astro.redirect(to('saved=checked', ''), 303);
       if (r === 'today') return Astro.redirect(to('saved=checked-today', ''), 303);
       stripProblem = r === 'denied' ? 'Your account cannot change records at this branch. Ask the owner.'
-        : 'There is no health history on file to check yet. Ask the patient and save the answers in Health.';
+        : `There is no health history on file to check yet. Ask the patient and save the answers in ${PLACE.medicalHistory}.`;
     }
   } else if (intent === 'form-use') {
     // One detail from an added patient form onto the record ("Use 0917 555 0199").
@@ -685,13 +686,13 @@ const CHART_SAVED: Record<string, string> = {
 const SECTIONS: { id: string; label: string; short: string; page: 0 | 1 | 2 | 3 }[] = [
   { id: 'chart', label: 'Patient’s chart', short: 'Chart', page: 1 },
   { id: 'overview', label: 'Patient information record', short: 'Patient information', page: 1 },
-  { id: 'health', label: 'Medical history', short: 'Medical history', page: 1 },
+  { id: 'health', label: PLACE.medicalHistory, short: PLACE.medicalHistory, page: 1 },
   { id: 'consent', label: 'Informed consent', short: 'Consent', page: 2 },
   { id: 'treatment-record', label: 'Treatment record', short: 'Treatment record', page: 3 },
   { id: 'treatment', label: 'Treatment', short: 'Treatment', page: 0 },
   { id: 'notes', label: 'Clinical notes', short: 'Notes', page: 0 },
   { id: 'rx', label: 'Prescriptions and letters', short: 'Rx and letters', page: 0 },
-  { id: 'files', label: 'X-rays and files', short: 'X-rays', page: 0 },
+  { id: 'files', label: PLACE.files, short: 'X-rays', page: 0 },
   { id: 'visits', label: 'Appointments', short: 'Appointments', page: 0 },
   ...(money ? [{ id: 'money', label: 'Account', short: 'Account', page: 0 as const }] : []),
   { id: 'texts', label: 'Texts', short: 'Texts', page: 0 },
@@ -1041,7 +1042,7 @@ const recHere = here;
               </li>
             ))}
           </ul>
-          {canEdit && <p class="mt-2">{differs.list.some((d) => d.field === 'phone' || d.field === 'email') ? 'Check a mobile or email with the patient before you use it: visits and reminders go by mobile. ' : ''}A birth date changes in the Health section.</p>}
+          {canEdit && <p class="mt-2">{differs.list.some((d) => d.field === 'phone' || d.field === 'email') ? 'Check a mobile or email with the patient before you use it: visits and reminders go by mobile. ' : ''}A birth date changes in {PLACE.medicalHistory}.</p>}
         </Callout>
       )}
       {/* Basic information, boxed in the paper's rows (six to a row; two on a phone), each box a button to change it. */}
@@ -1086,7 +1087,7 @@ const recHere = here;
         <p class="pp-small">
           {!latest ? 'Nothing recorded yet. Ask the patient before treatment.'
             : answered(latest) ? `Updated ${byLine(latest)}.`
-            : `No health answers yet. Ask the patient before treatment. Last saved ${byLine(latest)}.`}
+            : `Nothing answered yet. Ask the patient before treatment. Last saved ${byLine(latest)}.`}
         </p>
         {canEdit && (
           <details class="pp-edit" open={posted || !!conflict || healthProblems.length > 0 || undefined} data-pp-edit>
@@ -1192,7 +1193,7 @@ const recHere = here;
         {showOffer && current === 'treatment' && <ChartOffer slot="offer" state={offerState} skip={chartSkip} problem={offerProblem} action={recHere} sid={chartSid} visitId={thisVisit?.id ?? null} back="treatment" leaveHref={leaveOffer('treatment')} inChart={false} />}
       </Treatment>
       <div class="grid">
-        <Loas loas={ext.loas} plan={clin.plan} payors={ext.hmoPayors} hmoName={patient.hmo_name} memberNo={patient.hmo_member_no} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} settingsHref={`/c/${clinic.slug}/settings/`} />
+        <Loas loas={ext.loas} plan={clin.plan} payors={ext.hmoPayors} hmoName={patient.hmo_name} memberNo={patient.hmo_member_no} canEdit={canEdit} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} settingsHref={can(clinic, 'settings.edit') ? settingsAt(clinic.slug, 'hmos') : null} />
         <PayPlans plans={ext.plans} canEdit={canEdit} canBill={money} action={recHere} problem={recordProblem} saved={saved} today={today} firstName={patient.first_name} financesBase={links.finances} />
       </div>
     </Attached>
@@ -1299,7 +1300,7 @@ const recHere = here;
     )}
 
     <Attached id="texts" label={SECTION_LABEL['texts']} status={STATUS.texts} open={openSheets.has('texts')}>
-      <a slot="actions" href={links.messages} class="ws-btn ws-btn-quiet ws-btn-sm">All messages <Icon name="arrow-right" size={16} /></a>
+      <a slot="actions" href={links.messages} class="ws-btn ws-btn-quiet ws-btn-sm">{PLACE.allTexts} <Icon name="arrow-right" size={16} /></a>
       <Pane level={4} title="Texts" icon="message" id="texts" meta={data.texts.length === 50 ? 'The newest 50' : undefined} pad="none">
         {data.texts.length === 0 ? (
           <Empty icon="message" text="No texts yet. Confirmations and reminders show here." />
@@ -1370,7 +1371,7 @@ const recHere = here;
           <label class="field"><span class="meta">Their number</span><input type="tel" name="emergency_phone" value={d.emergencyPhone ? prettyPhone(d.emergencyPhone) : ''} maxlength="20" inputmode="tel" autocomplete="off" /></label>
           <label class="field"><span class="meta">Chart no.</span><input name="chart_no" value={d.chartNo ?? ''} maxlength="20" autocomplete="off" /><span class={help}>Change it only to match the card.</span></label>
         </div>
-        <label class="field"><span class="meta">Notes</span><textarea name="notes" rows="3" maxlength={NOTES_MAX} data-rec-details-notes>{d.notes ?? ''}</textarea><span class={help}>The desk sees this beside the patient’s visits on the Dashboard. Keep health details in Health.</span></label>
+        <label class="field"><span class="meta">Notes</span><textarea name="notes" rows="3" maxlength={NOTES_MAX} data-rec-details-notes>{d.notes ?? ''}</textarea><span class={help}>The desk sees this beside the patient’s visits on the Dashboard. Keep health details in {PLACE.medicalHistory}.</span></label>
         <datalist id="rec-hmo-names">{data.hmoNames.map((h) => <option value={h} />)}</datalist>
         <p class="flex items-start gap-2 text-[13.5px] text-muted"><Icon name="info" size={16} class="mt-0.5 shrink-0" />The date of birth is changed on the medical history, where its history is kept.</p>
         <div><button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save details</button></div>

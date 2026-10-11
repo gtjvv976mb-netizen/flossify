@@ -16,8 +16,11 @@ import type { PlanItem, RecordProblem } from '../../../../../lib/record';
 import type { PayorOption } from '../../../../../lib/invoices';
 import { dateText } from '../../../../../lib/health';
 import Plus from './Plus.astro';
+import { PARTS, PLACE } from '../../../../../lib/places';
 
-interface Props { loas: Loa[]; plan: PlanItem[]; payors: PayorOption[]; hmoName: string | null; memberNo: string | null; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; settingsHref: string }
+// settingsHref: where the branch's HMOs are ticked, for someone who may change Clinic settings (settings.edit); null
+// for anyone else, who is told who ticks them instead of a link to a page that would refuse them.
+interface Props { loas: Loa[]; plan: PlanItem[]; payors: PayorOption[]; hmoName: string | null; memberNo: string | null; canEdit: boolean; action: string; problem: RecordProblem | null; saved: string | null; today: string; firstName: string; settingsHref: string | null }
 const { loas, plan, payors, hmoName, memberNo, canEdit, action, problem, saved, today, firstName, settingsHref } = Astro.props;
 const open = plan.filter((i) => (i.status === 'planned' || i.status === 'accepted') && !i.loaId);
 const v = problem?.intent === 'loa-add' ? problem.values : ({} as Record<string, string>);
@@ -77,7 +80,10 @@ const help = 'text-[13px] leading-snug text-ink-2';
       {problem?.intent === 'loa-add' && <Callout tone="alert" class="mb-4" text={`${problem.text} Nothing was saved.`} />}
       {payors.length === 0 ? (
         <Callout tone="info" text="This branch has no HMOs yet.">
-          <p><a href={settingsHref} class="font-semibold underline underline-offset-2">Tick the HMOs you take</a> in Clinic settings, then come back.</p>
+          {settingsHref ? <>
+            <p>Tick them in {PLACE.hmos}, then come back.</p>
+            <p><a href={settingsHref} class="ws-empty-go">Open {PARTS.hmos.label} <Icon name="arrow-right" size={16} /></a></p>
+          </> : <p>The owner or an admin ticks them in {PLACE.hmos}.</p>}
         </Callout>
       ) : (
         <form method="post" action={`${action}#loas`} class="grid gap-4">

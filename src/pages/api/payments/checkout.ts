@@ -1,4 +1,4 @@
-// POST /api/payments/checkout — the Pay now button on Settings → Billing.
+// POST /api/payments/checkout — the Pay now button on Clinic settings → Your Flossify plan.
 //
 // A form post (not JSON): fields _csrf, clinic (the branch's slug the page was
 // opened on) and invoice (the invoice's id). The session must still open that
@@ -6,8 +6,10 @@
 // invoice must be a due one of that branch's group, and billing must be final
 // with PayMongo set up (src/lib/payments.ts). Then the server opens a PayMongo
 // Checkout Session for that invoice and answers 303 to PayMongo's checkout
-// page. Anything else goes back to the billing page with ?pay=<why>, where one
-// sentence says what happened; nothing is charged on any of those paths.
+// page. Anything else goes back to the plan section with ?pay=<why>, where one
+// sentence says what happened; nothing is charged on any of those paths. Every
+// way back is the one settings page itself (#plan), never the old
+// /settings/billing/ address, which only redirects.
 //
 // Astro's Origin check runs first: this is a form post from our own page, so
 // the browser's Origin matches. Rate limited per staff member: ten a
@@ -21,6 +23,7 @@ import { can } from '../../../lib/can';
 import { csrfOk } from '../../../lib/csrf';
 import { hit, clientIp } from '../../../lib/throttle';
 import { startCheckout } from '../../../lib/payments';
+import { settingsAt } from '../../../lib/places';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
@@ -33,14 +36,15 @@ export const POST: APIRoute = async (ctx) => {
   try { form = await ctx.request.formData(); } catch { return see('/auth/login/'); }
   const slug = String(form.get('clinic') ?? '').trim();
   if (!SLUG.test(slug)) return see('/auth/login/');
-  const billing = `/c/${slug}/settings/billing/`;
-  const back = (why: string) => see(`${billing}?pay=${why}`);
+  const settings = `/c/${slug}/settings/`;
+  const plan = settingsAt(slug, 'plan');
+  const back = (why: string) => see(`${settings}?pay=${why}#plan`);
 
   const session = readSession(ctx.cookies);
-  if (!session) return see(`/auth/login/?next=${encodeURIComponent(billing)}`);
-  if (!csrfOk(ctx.cookies, form)) return see(`${billing}?stale=1`);
+  if (!session) return see(`/auth/login/?next=${encodeURIComponent(plan)}`);
+  if (!csrfOk(ctx.cookies, form)) return see(`${settings}?stale=plan#plan`);
   const clinic = await canOpen(session, slug);
-  if (!clinic) return see(`/auth/login/?next=${encodeURIComponent(billing)}&denied=1`);
+  if (!clinic) return see(`/auth/login/?next=${encodeURIComponent(plan)}&denied=1`);
   if (!can(clinic, 'plan.pay')) return back('role');
 
   const invoiceId = String(form.get('invoice') ?? '').trim();

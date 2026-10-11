@@ -11,12 +11,13 @@
 //
 // The page shows or hides; the server refuses. Every page and API that acts
 // checks the key itself.
+import { PLACE } from './places';
 
 /** Every key, in the order and groups the roles screen lists them, with the words it uses. */
 export const PERMS = {
   'records.edit':  { group: 'Patients', label: 'Add and edit patients, health history, consent and charts' },
   'schedule.edit': { group: 'Patients', label: 'Book, move and check in visits' },
-  'messages.send': { group: 'Patients', label: 'Text patients and handle the Messages page' },
+  'messages.send': { group: 'Patients', label: `Text patients and handle the ${PLACE.texts} page` },
   'finance.bill':  { group: 'Money',    label: 'Open Finances: statements and payments' },
   'finance.money': { group: 'Money',    label: 'See amounts: balances, takings and claim amounts' },
   'finance.void':  { group: 'Money',    label: 'Void a statement' },

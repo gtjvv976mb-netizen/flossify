@@ -276,7 +276,7 @@ Breaking one could harm a patient, leak data, weaken consent or privacy, misstat
 - **Only statements are charges** (a treatment's price is a fee-guide estimate), never matched by description.
   `createStatement` takes the `charge:<patient>` lock and refuses a treatment already on a statement that is not void. A
   payment plan's money is one statement, and a statement an active plan is built on cannot be voided.
-- **Amounts need `finance.money`** (balances, takings, claim amounts: Finances, Close the day, claims, Messages);
+- **Amounts need `finance.money`** (balances, takings, claim amounts: Finances, Close the day, claims, Texts);
   `finance.bill` opens Finances to charge and take payments. On the patient record (Account, the Treatment record on
   screen and paper, making or stopping a payment plan) money needs `finance.bill`: without it, no peso sign. A secretary
   has `finance.bill`, not `finance.money`, by default; the Flossify plan's strip needs `plan.pay`.

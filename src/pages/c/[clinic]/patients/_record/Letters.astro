@@ -21,6 +21,7 @@ import { LETTER_KIND, ANSWER, type Letter } from '../../../../../lib/record-extr
 import type { Clinician, RecordProblem } from '../../../../../lib/record';
 import { dateText } from '../../../../../lib/health';
 import { ptrState, ptrWords, ptrSavedTitle, PTR_AMBER, type PtrFix } from '../../../../../lib/ptr';
+import { PLACE } from '../../../../../lib/places';
 
 interface Props {
   letters: Letter[]; clinicians: Clinician[]; canEdit: boolean; action: string; meId: string; problem: RecordProblem | null; saved: string | null;
@@ -166,7 +167,7 @@ const summary = (l: Letter) =>
         </fieldset>
         <label class="field"><span class="meta">Day of the reply</span><input type="date" name="answered_on" value={av.answered_on ?? today} max={today} /></label>
         <label class="field"><span class="meta">Their words <span class="font-normal">(needed unless cleared)</span></span><textarea name="answer_note" rows="3" maxlength="1000" placeholder="e.g. Cleared; take BP before, avoid epinephrine">{av.answer_note ?? ''}</textarea></label>
-        <p class={help}>Keep the physician’s signed reply: add a photo or scan of it in Files.</p>
+        <p class={help}>Keep the physician’s signed reply: add a photo or scan of it in {PLACE.files}.</p>
         <button type="submit" class="ws-btn ws-btn-primary w-full"><Icon name="check" />Save the reply</button>
       </form>
     </SidePanel>

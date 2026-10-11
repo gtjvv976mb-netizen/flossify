@@ -13,6 +13,7 @@ import type { Tx } from './db';
 import { canEditRecords, manilaToday, oneLine } from './health';
 import { createStatement, payorOptions, type PayorOption } from './invoices';
 import { visitOf, type Outcome } from './record';
+import { PLACE } from './places';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -225,7 +226,7 @@ export async function extraAction(tx: Tx, c: ExtraCtx, intent: string, form: For
     case 'loa-add': {
       const payorValue = String(form.get('payor') ?? '');
       const hmo = (await payorOptions(tx, c.hmoNames)).find((p) => p.kind === 'hmo' && p.value === payorValue);
-      if (!hmo) return fail('Choose the HMO. The ones this branch takes are in Clinic settings → HMOs.');
+      if (!hmo) return fail(`Choose the HMO from the list: the HMOs the owner or an admin ticked in ${PLACE.hmos}.`);
       const memberNo = line(form.get('member_no'), 40);
       if (memberNo.length > 40) return fail('Keep the member number under 40 characters.');
       const requested = dayOf(form.get('requested_on')) ?? today;

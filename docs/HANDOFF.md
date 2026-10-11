@@ -175,7 +175,7 @@ warns about it). The unit tests:
 ```sh
 npm run test:consent
 node --experimental-strip-types --no-warnings --import ./scripts/ts-register.mjs --test \
-  src/lib/paper-history.test.ts src/lib/tooth-name.test.ts
+  src/lib/paper-history.test.ts src/lib/tooth-name.test.ts src/lib/messages.test.ts
 ```
 
 ### In a cloud session (no PostgreSQL running, root user)

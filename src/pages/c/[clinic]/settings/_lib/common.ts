@@ -5,25 +5,13 @@
 // Files under a leading-underscore folder are not pages (Astro leaves them out
 // of routing), so this and the rest of _lib/ and _ui/ are modules only.
 import type { AstroGlobal } from 'astro';
+import { SECTIONS, isSection, type SectionId } from '../../../../../lib/places';
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** The one Clinic settings page, section by section, in the order its list shows them: a short
- *  plain name and the shell's line icon for each (src/components/ws/icons.ts). */
-export const SECTIONS = [
-  { id: 'profile', label: 'Clinic profile', icon: 'clinic' },
-  { id: 'hours', label: 'Opening hours', icon: 'clock' },
-  { id: 'closed', label: 'Closed days', icon: 'calendar' },
-  { id: 'fees', label: 'Services & prices', icon: 'money' },
-  { id: 'people', label: 'People', icon: 'patients' },
-  { id: 'roles', label: 'Roles', icon: 'shield' },
-  { id: 'photos', label: 'Photos', icon: 'upload' },
-  { id: 'privacy', label: 'Privacy', icon: 'check' },
-  { id: 'tablets', label: 'Clinic tablets', icon: 'phone' },
-  { id: 'plan', label: 'Your Flossify plan', icon: 'file' },
-] as const;
-export type SectionId = (typeof SECTIONS)[number]['id'];
-export const isSection = (s: string | null): s is SectionId => SECTIONS.some((x) => x.id === s);
+// The sections of the one Clinic settings page, their names and ids, live with every other place name in
+// src/lib/places.ts; they are re-exported here for the settings pages.
+export { SECTIONS, isSection, type SectionId };
 
 // A person's role is a row the clinic names (clinic_role, src/lib/roles.ts); staff.role is the professional
 // side these two read: an owner, or a dentist or associate who treats patients.
