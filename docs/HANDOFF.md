@@ -69,7 +69,7 @@ Read in this order:
 
 ## Where everything stands (9 Oct 2026)
 
-- **`main`** carries pull request #53 (`723b9cd`, the safety fixes) and #54 (this handoff, merged 9 Oct), with
+- **`main`** carries pull requests #53 (`723b9cd`, the safety fixes) to #59 (11 Oct, the table below), with
   migrations through `046_prc_needs_number.sql`. Both deployed on Render, web and worker successful, and
   `https://flossify.ph/healthz` answered `{"ok":true}` afterwards.
 - **Owed by the owner:** in the Render web service's deploy log for that deploy, the line starting `046:` says whether
@@ -98,6 +98,8 @@ Read in this order:
 | #54 | 9 Oct | This handoff, `scripts/dev/e2e.sh`, the plan page and its evidence in `docs/` |
 | #55 | 10 Oct | Handoff corrections from an independent review |
 | #57 | 10 Oct | The glossary (`docs/glossary.md`) and the words check (`npm run test:words`), plan 1.8 |
+| #58 | 10 Oct | The shorter rulebook: `CLAUDE.md` in about 400 lines, the detail word for word in `docs/features/`, plan 1.9 |
+| #59 | 11 Oct | Every place called by its name on screen and linked straight to (`src/lib/places.ts`), plan 1.18 |
 
 Phase 1a's safety fixes, all live (`CLAUDE.md` has each as a rule or a Retired line; the detail is under its old
 section in `docs/features/`, 6 under "Add patient, step by step" in `docs/features/patient-forms.md`):
@@ -124,7 +126,7 @@ plainly; add the decision on PR #52 (above) as a 26th. Items that wait on an ans
 ### 2. Then the plan's phases, in order
 
 - **Phase 1a** (safety fixes 1.1–1.7): done, #53.
-- **Phase 1b** (groundwork, `docs/simplify-plan.md` §4, items 1.8 and 1.9): 1.8 merged (#57); 1.9 in progress.
+- **Phase 1b** (groundwork, `docs/simplify-plan.md` §4, items 1.8 and 1.9): 1.8 merged (#57), 1.9 merged (#58).
   - **1.8 Write the glossary first** (`docs/glossary.md`), before any screen changes; every later item uses its
     words, and its sweep over every screen is 2.32. Done (#57): `npm run test:words` fails on a retired word anywhere
     new, and `scripts/dev/words/known.json` names the item that sweeps each one still on screen. An item that
@@ -135,8 +137,13 @@ plainly; add the decision on PR #52 (above) as a 26th. Items that wait on an ans
     (10 Oct): the detail moved word for word to `docs/features/`, and the rulebook for the owner to read.
   - `docs/simplify/critique.md` numbers items as the first draft did: its "2.28 glossary" is the final plan's 1.8
     (2.28 is now "One account for someone who works at two branches").
-- **Phase 1c** (quick wins), **phase 2** (consolidation by area) and **phase 3** (bigger changes that need the
-  owner's yes), as the plan orders them. One pull request per coherent group; each measured as above.
+- **Phase 1c** (quick wins, 1.10–1.47): 1.18 merged (#59); the rest go one pull request per group, in this order:
+  1.11–1.13 (forms to add and the inbox), the Dashboard (1.10, 1.25, 1.26, 1.34, 1.35), booking (1.14, 1.15, 1.20,
+  1.30), patient pages (1.16, 1.21, 1.27, 1.31, 1.32; migration 047), money (1.17, 1.29, 1.42, 1.43), sign-in (1.23,
+  1.36–1.38), settings (1.22, 1.24, 1.39–1.41), the record (1.28, 1.33), home, websites and operator pages (1.19,
+  1.44–1.46), then the tidy (1.47). Each pull request's description lists the owner's open decisions for its items.
+- **Phase 2** (consolidation by area) and **phase 3** (bigger changes that need the owner's yes), as the plan
+  orders them. One pull request per coherent group; each measured as above.
 
 ### 3. Still open with the owner (unchanged; also `CLAUDE.md` "Open")
 
