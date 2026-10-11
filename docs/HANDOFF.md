@@ -30,6 +30,10 @@ Read in this order:
   rebuilt by `npm run review:pack`). Publish them again from the new account if the owner wants a link.
 - **Branches.** `claude/lucid-ptolemy-38t0gn` was the last session's branch and holds nothing that is not on `main`.
   A new session works on its own branch, started from `main`.
+- **`gh` reaches GitHub's REST API only in a Claude Code session.** `gh pr list`, `gh pr create`, `gh pr merge` and
+  `gh pr view` use GraphQL and are refused there. Use the GitHub tools, or `gh api`: list with
+  `gh api 'repos/gtjvv976mb-netizen/flossify/pulls?state=open'`, open with `POST .../pulls`, merge with
+  `PUT .../pulls/<n>/merge`.
 
 ## The owner and how to work with them
 
@@ -38,7 +42,11 @@ Read in this order:
 - The owner writes short messages ("merge", "do it", "start with the safety fixes"). Pattern that works: build on a
   branch, verify with numbers, open a pull request with what changed and how it was checked, then **merge only when
   the owner says "merge"**. After a merge, watch the Render deploy to success and check the live site
-  (`https://flossify.ph/healthz` answers 200).
+  (`https://flossify.ph/healthz` answers `{"ok":true}`). Render reports each deploy to GitHub, so a session can watch
+  it: `gh api "repos/gtjvv976mb-netizen/flossify/deployments?sha=<the merge commit's full sha>" --jq '.[] | [.id,
+  .environment] | @tsv'`, then for each id `gh api repos/gtjvv976mb-netizen/flossify/deployments/<id>/statuses --jq '.[0].state'`,
+  until both `main - flossify` and `main - flossify-worker` read `success`. A 502 for a few seconds right after is
+  the switch-over; check again. The deploy logs themselves open only on the owner's Render dashboard.
 - When the owner asks for a plan or anything they will read, make it readable without the code: plain words, short
   sentences, what changes for a clinic.
 - Standing decisions, never re-opened (`CLAUDE.md` "Standing constraints", "Your decisions" and "Retired — do not
@@ -69,12 +77,16 @@ Read in this order:
 
 ## Where everything stands (9 Oct 2026)
 
-- **`main`** carries pull request #53 (`723b9cd`, the safety fixes) and #54 (this handoff, merged 9 Oct), with
-  migrations through `046_prc_needs_number.sql`. Both deployed on Render, web and worker successful, and
-  `https://flossify.ph/healthz` answered `{"ok":true}` afterwards.
-- **Owed by the owner:** in the Render web service's deploy log for that deploy, the line starting `046:` says whether
-  any dentist had been marked "PRC checked" with no PRC number, and names their clinics (they went back to "PRC check
-  pending"). A session cannot read the live database or the Render dashboard.
+- **`main`** carries pull request #53 (`723b9cd`, the safety fixes) and the handoff pull requests of 9 Oct (#54 and
+  the corrections after it), with migrations through `046_prc_needs_number.sql`. Each deployed on Render, web and
+  worker successful, and `https://flossify.ph/healthz` answered `{"ok":true}` afterwards.
+- **Owed by the owner: the `046:` line.** It is only in the web service's deploy log of **6 Oct**, the deploy of #53
+  (`723b9cd`), which applied 046; later deploys apply nothing and have no such line. It says whether any dentist had
+  been marked "PRC checked" with no PRC number, and names their clinics (they went back to "PRC check pending"). A
+  session cannot read the live database or a Render log; it can find that deploy's log link for the owner with
+  `gh api "repos/gtjvv976mb-netizen/flossify/deployments?sha=723b9cd09234109fd0070ee974ecfe72a3f6b838&environment=main%20-%20flossify" --jq '.[0].id'`
+  (the full sha: a short one finds nothing) and then `.../deployments/<id>/statuses --jq '.[0].log_url'`. Ask for it
+  with the questions (below).
 - **Open pull request #52** (draft, branch `claude/funny-ritchie-ujucx6`, from another session's 30 Sep–1 Oct work):
   a four-tab patient record. `main`'s paper record (#44–#51) replaced that design at the owner's request, and #52 is
   on hold: **the owner decides** whether to carry pieces over into the paper record (the pinned allergy line, Today's
@@ -118,7 +130,9 @@ section in `docs/features/`, 6 under "Add patient, step by step" in `docs/featur
 
 `docs/simplify-plan.md`, section 5 ("Questions for the owner"), and the same questions as choices in
 `docs/simplify-plan.html`. The owner had the page on the old account and had not sent answers by 9 Oct. Ask once,
-plainly; add the decision on PR #52 (above) as a 26th. Items that wait on an answer are marked in the plan
+plainly; add the decision on PR #52 (above) as a 26th, and in the same message ask for the `046:` line from the
+6 Oct deploy log ("Where everything stands"). Before sending `docs/simplify-plan.html`, check its first lines: it
+was written before phase 1a shipped, and its status line and the PRC note are updated to say what is live. Items that wait on an answer are marked in the plan
 ("question N"); everything else can go ahead.
 
 ### 2. Then the plan's phases, in order
@@ -167,7 +181,9 @@ DB=flossify_t scripts/dev/e2e.sh paper dash      # only those
 ```
 
 It starts its own dev server (port 4610, or `PORT=`), **drops and reseeds `$DB` before every check**, and refuses
-`flossify_dev` and any remote host. On 9 Oct, in a cloud session from a cold start, paper, seat, choices, profile
+`flossify_dev`, `flossify` (production's name), a name that is not plain, a remote or listed `PGHOST`, a busy port,
+and a server that answers from another machine (a tunnel on a localhost port: it asks the server its own address
+before dropping anything; `scripts/db/setup.sh` asks too since 9 Oct). Ctrl-C stops it and its dev server. On 9 Oct, in a cloud session from a cold start, paper, seat, choices, profile
 and phone passed, and the Dashboard check passed when run again on its own: its first run timed out on a sign-in
 because files were being edited during the run and the dev server reloaded the page (PR #54; the script's header
 warns about it). The unit tests:

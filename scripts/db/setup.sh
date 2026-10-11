@@ -22,15 +22,20 @@ fi
 # psql and the migrate runner both follow the PG* variables, so only this
 # machine's Postgres: before anything is dropped, refuse a PGHOST/PGHOSTADDR
 # elsewhere (the rule seed.ts uses) and a service entry, which can name any host.
-# A tunnel to a server on a localhost port cannot be told apart: do not run
-# this with one open on the port PGPORT names.
+# A tunnel to a server on a localhost port looks local to that check, so the
+# server is also asked its own address before the drop (below).
 for h in "${PGHOST:-}" "${PGHOSTADDR:-}"; do
   case $h in
+    *,*) no "PGHOST/PGHOSTADDR lists several hosts (\"$h\"); libpq would try each. Name one local host." ;;
     ''|localhost|127.0.0.1|::1|/*) ;;
     *) no "PGHOST/PGHOSTADDR is \"$h\", not this machine. This script drops the database." ;;
   esac
 done
 [ -z "${PGSERVICE:-}" ] || no "PGSERVICE is set (\"$PGSERVICE\"); a service entry can point anywhere. Unset it."
+# And the server's own answer, before the drop (seed.ts asks the same, but only after it): a tunnel on a
+# localhost port looks local to every check above.
+srv=$(psql -X -d postgres -Atc "select coalesce(host(inet_server_addr()), 'socket') || ' ' || (inet_server_addr() is null or inet_server_addr() <<= inet '127.0.0.0/8' or inet_server_addr() <<= inet '::1/128' or inet_server_addr() <<= inet '::ffff:127.0.0.0/104')") || no "cannot reach PostgreSQL with these PG* settings."
+case $srv in *' true') ;; *) no "the server answering is at ${srv% *}, not this machine (a tunnel?). This script drops the database." ;; esac
 
 psql -v ON_ERROR_STOP=1 -d postgres -qc "drop database if exists \"$DB\""
 psql -v ON_ERROR_STOP=1 -d postgres -qc "create database \"$DB\""
