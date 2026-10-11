@@ -601,11 +601,11 @@ const chipsFor = (key: (typeof LISTS)[number]['key'], picks: readonly string[]) 
 const healthChips = Object.fromEntries(LISTS.map((l) => [l.key, chipsFor(l.key, l.picks)]));
 const healthNone = Object.fromEntries(LISTS.map((l) => [l.key, shown[l.key]?.length === 0]));
 
-// A version from the patient forms (the QR poster, or an intake's page 1) is dated when it went on the record; the line says when it was sent.
+// A version from the patient's own forms (the desk poster forms, or the step-by-step forms' patient information) is dated when it went on the record; the line says when it was sent.
 const byLine = (v: HealthVersion) =>
   `${when(new Date(v.at))}${v.by ? ` by ${v.by}` : v.answeredBy === 'patient'
     ? v.intakeRef ? ` from the forms ${patient.first_name} filled in (${v.intakeRef}${v.formSentAt ? `, sent ${day(new Date(v.formSentAt))}` : ''})`
-    : ` from the patient forms${v.formRef ? ` (${v.formRef}${v.formSentAt ? `, sent ${day(new Date(v.formSentAt))}` : ''})` : ''}` : ''}`;
+    : ` from the desk poster forms${v.formRef ? ` (${v.formRef}${v.formSentAt ? `, sent ${day(new Date(v.formSentAt))}` : ''})` : ''}` : ''}`;
 const stateLine = (v: HealthAnswers) =>
   [...LISTS.map((l) => `${l.label} ${listText(v[l.key], l.key === 'allergies' ? 'none known' : 'none')}`), v.note && `Note: ${v.note}`].filter(Boolean).join(' · ');
 const birthLine = (b: string | null) => `Birth date ${dateText(b) ?? 'not on file'}`;
@@ -1008,7 +1008,7 @@ const recHere = here;
         );
       })()}
       {saved === 'form' && data.added && addedConsents && (
-        <Callout tone="success" class="mb-1" title={data.added.addedAs === 'new' ? `Added from the patient forms (${data.added.ref}).` : `Added the patient forms (${data.added.ref}) to ${patient.first_name}’s record.`}>
+        <Callout tone="success" class="mb-1" title={data.added.addedAs === 'new' ? `Added from the desk poster forms (${data.added.ref}).` : `Added the desk poster forms (${data.added.ref}) to ${patient.first_name}’s record.`}>
           <p>
             {data.added.addedAs === 'new' ? `${shortName} is on file as ${patient.chart_no}, with the health history from the form` : 'Empty details were filled in, and the record has the health history from the form'}{addedConsents.from.length ? ` and ${andList(addedConsents.from)}` : ''}.
             {addedConsents.onFile.length > 0 && ` ${capitalise(andList(addedConsents.onFile))} ${addedConsents.onFile.length === 1 ? 'was' : 'were'} already on file.`}

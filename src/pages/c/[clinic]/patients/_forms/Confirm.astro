@@ -17,6 +17,7 @@ import Callout from '../_ui/Callout.astro';
 import type { FormRecord, LikelyMatch, KeptDetail } from '../../../../../lib/patient-forms';
 import { signedText, shortDay } from './words';
 import { day } from '../../../../../lib/health';
+import { PLACE } from '../../../../../lib/places';
 
 interface Props {
   kind: 'new' | 'to' | 'dismiss';
@@ -110,7 +111,7 @@ const asked = compare?.proposed.length ? list(compare.proposed.map((d) => inSent
     <>
       <input type="hidden" name="intent" value="dismiss" />
       <p class="text-[15px] leading-relaxed text-ink-2">
-        {first}’s form leaves New patient forms and nothing goes on your patients’ records.
+        {first}’s form leaves {PLACE.formsToAdd}, and nothing goes on your patients’ records.
         {form.deleteOn ? ` It is deleted on ${shortDay(form.deleteOn)}; until then it is under Dismissed, where you can still add it.` : ''}
       </p>
       <div class="fm-actions">

@@ -82,7 +82,8 @@ details covered, instead).
   a re-spelling is not a change. `showsPregnancy()` is the one rule for where the pregnancy questions appear (asked, or
   an answer on file), and the form never pre-ticks Yes over a patient's newer No. After a save conflict the paper fields
   are rebased (`rebasePaper`): only this person's own changes are kept. A box with no desk answer shows the patient's
-  own words and where they came from ("From the patient forms (QR-…)" or "From the forms the patient filled in (IN-…)").
+  own words and where they came from ("From the patient forms (QR-…)" or "From the forms the patient filled in (IN-…)";
+  printed on page 1, so "the patient forms" stays until the owner says yes, though screens call them desk poster forms).
   The QR forms' and the intake's questions are unchanged. Unit tests: `node --experimental-strip-types --no-warnings
   --import ./scripts/ts-register.mjs --test src/lib/paper-history.test.ts`.
 - **The chart's codes (045)** — tooth_state gains extraction (Ex), root_fragment (RF), abutment (Ab), pontic (P),
@@ -445,8 +446,9 @@ patient"). One migration, 036; the pieces in the order of a visit:
   today by method, the drawer count against the cash expected (`day_close`, 037, insert-only, many closes a day
   and the newest counts), what is still open (in the clinic, done and not charged, charged and unpaid, left
   owing, did not come), tomorrow in three numbers. `finance.bill` opens it; `finance.money` shows amounts.
-  Texts → Text a patient lists anyone with a reason (on the book, seen lately, a check-up due, lab work back,
-  owes) and fills a template (`src/lib/text-templates.ts`, eight, GSM-safe, no link, no reply asked). The
+  Texts → Text a patient lists anyone with a reason (on the book, seen lately, a check-up due, lab work back —
+  *Lab case back* on screen since 1.13 —, owes) and fills a template (`src/lib/text-templates.ts`, eight, GSM-safe,
+  no link, no reply asked). The
   Patients tab has Due for check-up and Not seen in a year, and Needs attention includes a health history older
   than a year.
 - Measured: every new line ≥ 4.5:1 light and dark at 1440 and 390 against its composited background, no target

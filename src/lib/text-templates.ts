@@ -33,7 +33,7 @@ export const TEXT_TEMPLATES: TextTemplate[] = [
     body: 'Hi {first}, we are about 15 minutes behind and expect to seat you at about {time}. Sorry for the wait.',
   },
   {
-    id: 'lab', label: 'Lab work back', needs: 'lab',
+    id: 'lab', label: 'Lab case back', needs: 'lab',
     body: 'Hi {first}, your lab work is back. Call {phone} to book the fitting.',
   },
   {

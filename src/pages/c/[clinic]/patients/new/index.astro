@@ -1,23 +1,29 @@
 ---
 // Add patient: "How will they fill in their details and consent forms?"
-// (the intake, 039; the intake spec §1.2). Three radio cards and one teal
+// (the step-by-step forms, 039; plan 1.11: the one chooser). The ways open on
+// this server as radio cards (src/lib/add-ways.ts: a way closed here is left
+// out, never greyed; "Easiest" only beside an open way) and one teal
 // Continue:
-//   On their phone · Easiest — a QR code only this patient can use (phase 3 of
-//     the intake; closed until built, and on a production server until the
-//     privacy notice in force names what page 1 collects: formsNoticeReady).
+//   On their phone · Easiest — the code for their phone, a QR code only this
+//     patient can use (open while the privacy notice in force covers a new
+//     patient's patient information: formsNoticeReady).
 //   At the clinic — a clinic tablet, or this device handed to them. For a new
-//     patient while page 1 is closed: type their details first, then their
-//     consent forms (./type/?next=consents).
-//   Type it in yourself — today's form, for a phone call or a paper form (./type/).
+//     patient while their patient information is closed: type their details
+//     first, then their consent forms (./type/?next=consents).
+//   Type it in yourself — the typing form, for a phone call or a paper form (./type/).
 // Continue posts to ../intake/ (intent=start: the one place an intake is
 // made) for the first two; the third goes to ./type/. When typing is the only
 // way open (no consent form offered: a production server until they are
-// reviewed), this page answers 303 straight to ./type/ with its query. Quiet ways on: import a
-// spreadsheet, the QR poster, and a patient on file (their record → Consent).
+// reviewed), this page answers 303 straight to ./type/ with its query. Other
+// ways, quiet: Import a spreadsheet, and Forms to add while some are waiting
+// (so nobody adds a patient who already sent their forms). The QR poster for
+// the desk is under Patients → More.
 //
 // ?patient=<id>: a patient on file — "How will <name> sign their consent
 // forms?", the phone and the clinic only (the record's Prepare consent forms,
-// and ./type/?next=consents lands here with &saved=new).
+// and ./type/?next=consents lands here with &saved=new). A way that needs
+// their birth date stays, off, saying so; with no consent form offered here,
+// the page says to sign them on paper.
 //
 // Who: can(ws, 'records.edit') to draw it; the intake endpoint checks
 // canEditRecords in its transaction. Others read "Not allowed".
@@ -37,9 +43,11 @@ import { requireWorkspace } from '../../../../../lib/workspace';
 import { withClinic } from '../../../../../lib/db';
 import { CSRF_MESSAGE } from '../../../../../lib/csrf';
 import { canEditRecords, dateText } from '../../../../../lib/health';
-import { countNewForms } from '../../../../../lib/patient-forms';
+import { countFormsToAdd } from '../../../../../lib/forms-to-add';
+import { addWays, type WayValue } from '../../../../../lib/add-ways';
+import { PLACE } from '../../../../../lib/places';
 import { can } from '../../../../../lib/can';
-import { intakeGates, countSentIntakes, patientOnFile, isUuid } from '../../../../../lib/intake';
+import { intakeGates, patientOnFile, isUuid } from '../../../../../lib/intake';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -68,36 +76,21 @@ const data = await withClinic(clinic.id, async (tx) => ({
   canEdit: can(clinic, 'records.edit') && (await canEditRecords(tx, session.staffId, clinic.id)),
   gates: await intakeGates(tx),
   patient: patientParam && isUuid(patientParam) ? await patientOnFile(tx, patientParam) : null,
-  formsWaiting: await countNewForms(tx),
-  intakesSent: await countSentIntakes(tx),
+  // Forms to add, both ways: said once, under Other ways, before anyone adds the same person again.
+  formsToAdd: await countFormsToAdd(tx),
 }));
 const { gates } = data;
 const patient = data.patient && !data.patient.archived ? data.patient : null;
 const missingPatient = !!patientParam && !patient;
 
-// The cards, and whether each is open here.
-const noForms = gates.templates.length === 0;
-// The phone: a new patient's page 1 needs the privacy notice to cover it; a patient on file has no page 1.
-const phoneOff = noForms ? 'Opens when the clinic’s consent forms are reviewed.'
-  : !gates.phoneOpen ? 'Not open on this server.'
-  : !patient && !gates.page1Open ? 'Opens when the clinic’s privacy notice covers it.'
-  : patient && !patient.birth ? `Add ${patient.firstName}’s birth date to their record first: they type it to open the forms.`
-  : null;
-const clinicOff = noForms ? 'Opens when the clinic’s consent forms are reviewed.' : patient && !patient.birth ? `Add ${patient.firstName}’s birth date to their record first.` : null;
-// A new patient while page 1 is closed: the clinic card types the details first.
-const clinicLine = !patient && !gates.page1Open
-  ? 'Type their details first, then prepare their consent forms on the clinic’s tablet or this device.'
-  : 'On the clinic’s tablet, or hand this device to them.';
-const ways = [
-  { value: 'phone', icon: 'phone', title: 'On their phone', pill: 'Easiest', line: 'A QR code only this patient can use. They fill in and sign on their own phone.', off: phoneOff },
-  { value: 'clinic', icon: 'tablet', title: 'At the clinic', pill: null, line: clinicLine, off: clinicOff },
-  ...(patient ? [] : [{ value: 'type', icon: 'keyboard', title: 'Type it in yourself', pill: null, line: 'For a phone call or a paper form.', off: null }]),
-] as const;
+// The ways open here (src/lib/add-ways.ts), with their icons.
+const ICON: Record<WayValue, 'phone' | 'tablet' | 'keyboard'> = { phone: 'phone', clinic: 'tablet', type: 'keyboard' };
+const { ways, onlyTyping } = addWays({ templates: gates.templates.length, phoneOpen: gates.phoneOpen, page1Open: gates.page1Open }, patient);
 const chosen = ways.find((w) => !w.off)?.value ?? null;
 // Typing is the only way open (no consent form offered here: a production server until they are reviewed): no
 // screen to choose on — straight to the typed form, with this address's query (it says there why, in one line).
 // Never for a patient on file (their consent forms have no typed way) and never for someone who may not add patients.
-if (data.canEdit && !patient && !missingPatient && ways.every((w) => w.off || w.value === 'type')) {
+if (data.canEdit && !patient && !missingPatient && onlyTyping) {
   return Astro.redirect(`/c/${slug}/patients/new/type/${url.search}`, 303);
 }
 const recordHref = patient ? `/c/${slug}/patients/${patient.id}/` : null;
@@ -135,64 +128,48 @@ const heading = patient ? `How will ${patient.firstName} sign their consent form
     <>
     <Pane as="section" label={heading}>
       <Head icon="form" title={heading} meta={patient ? `${patient.chartNo}${patient.birth ? ` · born ${dateText(patient.birth)}` : ''}` : undefined} />
-      <form method="post" action={`/c/${slug}/patients/intake/`} class="grid gap-4" data-ik-choose>
-        <Csrf />
-        <input type="hidden" name="intent" value="start" />
-        {patient && <input type="hidden" name="patient" value={patient.id} />}
-        {visitParam && isUuid(visitParam) && <input type="hidden" name="visit" value={visitParam} />}
-        <fieldset class="ik-ways">
-          <legend class="sr-only">{heading}</legend>
-          {ways.map((w) => (
-            <label class="ik-way">
-              <input type="radio" name="way" value={w.value} checked={w.value === chosen} disabled={!!w.off} aria-describedby={`ik-way-${w.value}`} />
-              <span class="ik-way-box">
-                <span class="ik-way-icon"><Glyph name={w.icon} /></span>
-                <span class="ik-way-words">
-                  <span class="ik-way-title">{w.title}{w.pill && <span class="ik-way-pill">{w.pill}</span>}</span>
-                  <span class="ik-way-line" id={`ik-way-${w.value}`}>{w.off ?? w.line}</span>
+      {/* No way open: a patient on file, and no consent form offered here (a production server until they are reviewed). */}
+      {ways.length === 0 ? (
+        <Callout tone="info" role="note" text="Patients can sign their consent forms here once a dentist and a lawyer have read them. Until then, sign them on paper." />
+      ) : (
+        <form method="post" action={`/c/${slug}/patients/intake/`} class="grid gap-4" data-ik-choose>
+          <Csrf />
+          <input type="hidden" name="intent" value="start" />
+          {patient && <input type="hidden" name="patient" value={patient.id} />}
+          {visitParam && isUuid(visitParam) && <input type="hidden" name="visit" value={visitParam} />}
+          <fieldset class="ik-ways">
+            <legend class="sr-only">{heading}</legend>
+            {ways.map((w) => (
+              <label class="ik-way">
+                <input type="radio" name="way" value={w.value} checked={w.value === chosen} disabled={!!w.off} aria-describedby={`ik-way-${w.value}`} />
+                <span class="ik-way-box">
+                  <span class="ik-way-icon"><Glyph name={ICON[w.value]} /></span>
+                  <span class="ik-way-words">
+                    <span class="ik-way-title">{w.title}{w.pill && <span class="ik-way-pill">{w.pill}</span>}</span>
+                    <span class="ik-way-line" id={`ik-way-${w.value}`}>{w.off ?? w.line}</span>
+                  </span>
                 </span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
-        {noForms && (
-          <Callout tone="info" role="note" text={patient
-            ? 'The consent forms open here once a dentist and the clinic’s lawyer have read them. Until then, sign them on paper.'
-            : 'The consent forms open here once a dentist and the clinic’s lawyer have read them. Until then, type patients in yourself.'} />
-        )}
-        {data.formsWaiting > 0 && !patient && (
-          <p class="fm-ways-waiting m-0!">
-            <Glyph name="form" size={18} />
-            <span>{data.formsWaiting === 1 ? 'One patient has' : `${data.formsWaiting} patients have`} sent their forms from the QR code. Check they are not the one you are about to add.</span>
-            <a href={`/c/${slug}/patients/forms/`} class="ws-empty-go">New patient forms <Icon name="arrow-right" size={16} /></a>
-          </p>
-        )}
-        {data.intakesSent > 0 && !patient && (
-          <p class="fm-ways-waiting m-0!">
-            <Glyph name="form" size={18} />
-            <span>{data.intakesSent === 1 ? 'One patient has' : `${data.intakesSent} patients have`} sent their details and consent forms and are not added yet.</span>
-            <a href={`/c/${slug}/patients/intake/`} class="ws-empty-go">Forms sent <Icon name="arrow-right" size={16} /></a>
-          </p>
-        )}
-        <div class="ik-actions">
-          <button type="submit" class="ws-btn ws-btn-primary" disabled={!chosen}>Continue <Icon name="arrow-right" /></button>
-        </div>
-      </form>
+              </label>
+            ))}
+          </fieldset>
+          <div class="ik-actions">
+            <button type="submit" class="ws-btn ws-btn-primary" disabled={!chosen}>Continue <Icon name="arrow-right" /></button>
+          </div>
+        </form>
+      )}
     </Pane>
 
-    <Pane as="section" label="Other ways">
-      <Head icon="link" title="Other ways" />
-      <ul class="ik-links">
-        {!patient && (
+    {!patient && (
+      <Pane as="section" label="Other ways">
+        <Head icon="link" title="Other ways" />
+        <ul class="ik-links">
           <li><a href={`/c/${slug}/patients/import/`}><Icon name="upload" /><span>Import a spreadsheet <span class="ik-links-hint">· many patients or past visits</span></span></a></li>
-        )}
-        <li><a href={`/c/${slug}/patients/qr/`}><Glyph name="qr" /><span>The QR poster for your desk <span class="ik-links-hint">· anyone fills in the patient forms</span></span></a></li>
-        <li><a href={`/c/${slug}/patients/forms/`}><Glyph name="form" /><span>New patient forms <span class="ik-links-hint">· sent from the poster</span></span></a></li>
-        {!patient && (
-          <li><a href={`/c/${slug}/patients/`}><Icon name="patients" /><span>A patient on file <span class="ik-links-hint">· open their record, then Consent</span></span></a></li>
-        )}
-      </ul>
-    </Pane>
+          {data.formsToAdd > 0 && (
+            <li><a href={`/c/${slug}/patients/forms/`} data-ik-forms-to-add><Glyph name="form" /><span>{PLACE.formsToAdd} ({data.formsToAdd}) <span class="ik-links-hint">· check the patient is not already there</span></span></a></li>
+          )}
+        </ul>
+      </Pane>
+    )}
     </>
   )}
 </ClinicLayout>

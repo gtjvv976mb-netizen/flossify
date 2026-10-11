@@ -1,25 +1,37 @@
 ---
-// "New patient forms": what patients sent from the QR code on the desk
-// (src/lib/patient-forms.ts), waiting for the desk. A form is not a patient:
-// open one (./[form]/) to add it as a new patient, add it to a patient on
-// file, or dismiss it. Three soft pills switch the list — New (with its count)
-// · Added · Dismissed — and the address keeps the choice (?show=).
+// Forms to add (plan 1.12): every form a patient sent that nobody has added
+// yet, whichever way it came, in one list (src/lib/forms-to-add.ts) — the
+// desk poster forms (QR-…, src/lib/patient-forms.ts) and the step-by-step
+// forms sent and not added (IN-…, src/lib/intake.ts). A form is not a patient:
+// a row opens its own way's page, where it is added to a new patient or one on
+// file, or dismissed — a desk poster form ./[form]/, a step-by-step form its
+// Screen F (../intake/<id>/, which asks why before it dismisses). We merge the
+// list, not the adding. Three soft pills switch the list — To add (with its
+// count) · Added · Dismissed — and the address keeps the choice (?show=).
+// Added and Dismissed are the desk poster forms only (an added step-by-step
+// form is on its record; a dismissed one goes at the next clean-up), and
+// their opening lines say so.
 //
-// A row: the name as the form has it (the link to the form; it stretches over
-// the row), age, mobile and the form's reference, and pills for what the desk
-// should know before opening it — someone on file who may be the same person,
-// who signed for a child, a form that came through a QR code since replaced.
-// On the right, when it was sent and, in the last week before a form nobody
-// added is deleted (30 days after it was sent: retention_purge()), when that
-// is. Nothing about the patient's health is on this list.
+// A row: the name as the forms have it (the link; it stretches over the row),
+// age, mobile, the reference and which way it came, and pills for what the
+// desk should know before opening it — someone on file who may be the same
+// person, who signed for a child, a form that came through a QR code since
+// replaced. On the right, when it was sent and when it is deleted (desk poster
+// forms 30 days after they were sent; step-by-step forms 30 days after Send,
+// unless held: "Kept until added or dismissed"; retention_purge(), 039). The
+// list only says the rules; it never changes them. Nothing about the
+// patient's health is on this list.
 //
 // Above the list: a search (name, mobile or reference, in the page: "the
-// patient at the desk says QR-7K2F"), and on New a box on every row with
-// "Dismiss selected" — after a flood of junk through a poster, the desk makes
-// a new QR code and clears the old code's forms in one go. It asks first (a
-// side panel, or in the page without the shell's script: intent ask), then
-// dismisses (intent dismiss-many, dismissForms: new forms only, audited one by
-// one); a dismissed form can still be added until it is deleted.
+// patient at the desk says QR-7K2F"), and on To add a box on every desk poster
+// form's row with "Dismiss selected" — after a flood of junk through a poster,
+// the desk makes a new QR code and clears the old code's forms in one go. It
+// asks first (a side panel, or in the page without the shell's script: intent
+// ask), then dismisses (intent dismiss-many, dismissForms: new desk poster
+// forms only, audited one by one); a dismissed form can still be added until
+// it is deleted. A step-by-step form has no box: it is dismissed on its own
+// page, with a reason. Forms being filled in (../intake/) is linked from the
+// head while there are some.
 //
 // Who: people who can add patients here (canEditRecords, Add patient's rule).
 // Everything is read inside withClinic(), so row-level security keeps it to
@@ -44,8 +56,10 @@ import { withClinic } from '../../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
 import { hit, waitText, LIMITS } from '../../../../../lib/throttle';
 import { canEditRecords, ageText } from '../../../../../lib/health';
-import { listForms, countNewForms, dismissForms, FORM_KEEP_DAYS, type FormStatus, type FormRow } from '../../../../../lib/patient-forms';
-import { sentText } from '../_forms/words';
+import { listForms, dismissForms, FORM_KEEP_DAYS, type FormStatus, type FormRow } from '../../../../../lib/patient-forms';
+import { listFormsToAdd, countFormsToAdd, countFormsBeingFilled, type ToAddRow } from '../../../../../lib/forms-to-add';
+import { PLACE } from '../../../../../lib/places';
+import { sentText, shortDay } from '../_forms/words';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -72,7 +86,7 @@ if (Astro.request.method === 'POST') {
   else if (intent === 'ask') askIds = ids;
   else if (intent === 'dismiss-many') {
     const r = await withClinic(clinic.id, (tx) => dismissForms(tx, { clinicId: clinic.id, staffId: session.staffId, formIds: ids }));
-    if (r === 'not-allowed') problem = 'Your account cannot add or dismiss patient forms at this branch. Ask the owner.';
+    if (r === 'not-allowed') problem = 'Your account cannot add or dismiss forms at this branch. Ask the owner.';
     else return Astro.redirect(`${here}?done=dismissed&n=${r}`, 303);
   }
 }
@@ -80,43 +94,57 @@ if (Astro.request.method === 'POST') {
 const data = await withClinic(clinic.id, async (tx) => {
   const canEdit = await canEditRecords(tx, session.staffId, clinic.id);
   const area = (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null;
-  if (!canEdit) return { canEdit, area, rows: [] as FormRow[], waiting: 0 };
-  return { canEdit, area, rows: await listForms(tx, { status: show }), waiting: await countNewForms(tx) };
+  const none = { canEdit, area, toAdd: [] as ToAddRow[], decided: [] as FormRow[], more: false, waiting: 0, filling: 0 };
+  if (!canEdit) return none;
+  const [list, waiting, filling] = [show === 'new' ? await listFormsToAdd(tx, { base }) : null, await countFormsToAdd(tx), await countFormsBeingFilled(tx)];
+  const decided = show === 'new' ? [] : await listForms(tx, { status: show });
+  return { ...none, toAdd: list?.rows ?? [], decided, more: list ? list.more : decided.length >= 100, waiting, filling };
 });
 
 const now = new Date();
 const items = [
-  { id: 'new', label: 'New', href: here, count: data.waiting || null },
+  { id: 'new', label: 'To add', href: here, count: data.waiting || null },
   { id: 'added', label: 'Added', href: `${here}?show=added` },
   { id: 'dismissed', label: 'Dismissed', href: `${here}?show=dismissed` },
 ];
 const LEDE: Record<FormStatus, string> = {
-  new: `A form is not a patient yet. Open one to add it as a new patient or to a patient on file, or to dismiss it. Forms nobody adds are deleted ${FORM_KEEP_DAYS} days after they were sent.`,
-  added: 'Forms already added to your patients. Each stays with the record it was added to.',
-  dismissed: `Forms you dismissed. Each is deleted ${FORM_KEEP_DAYS} days after it was sent; until then you can open it and still add it.`,
+  new: 'A form is not a patient yet. Open one to add it as a new patient or to a patient on file, or to dismiss it.',
+  added: 'Desk poster forms already added to your patients. Each stays with the record it was added to.',
+  dismissed: `Desk poster forms you dismissed. Each is deleted ${FORM_KEEP_DAYS} days after it was sent; until then you can open it and still add it.`,
 };
 const EMPTY: Record<FormStatus, string> = {
-  new: 'No forms waiting. When a patient scans your QR code and sends their forms, they wait here.',
+  new: 'No forms to add. Forms a patient sends, from your desk poster or step by step, wait here.',
   added: 'No forms added yet.',
   dismissed: 'No dismissed forms.',
 };
-/** "Deleted today" · "Deleted tomorrow" · "Deleted in 3 days", only in the last week; null before that. */
+/** "Deleted today" · "Deleted tomorrow" · "Deleted in 3 days" in the last week; "Deleted on 9 Nov" before that. */
 const DAY = 86_400_000;
-const soonGone = (d: Date | null): string | null => {
+const goneWords = (d: Date | null): string | null => {
   if (!d) return null;
   const days = Math.ceil((d.getTime() - now.getTime()) / DAY);
-  if (days > 7) return null;
+  if (days > 7) return `Deleted on ${shortDay(d, now)}`;
   return days <= 0 ? 'Deleted today' : days === 1 ? 'Deleted tomorrow' : `Deleted in ${days} days`;
 };
-const picking = show === 'new' && data.rows.length > 0;
-const asking = data.rows.filter((r) => askIds.includes(r.id) && r.status === 'new');
-const oldCode = show === 'new' ? data.rows.filter((r) => r.viaOldCode).length : 0;
+/** Only in the last week (a dismissed desk poster form's line). */
+const soonGone = (d: Date | null): string | null => {
+  if (!d) return null;
+  return Math.ceil((d.getTime() - now.getTime()) / DAY) > 7 ? null : goneWords(d);
+};
+const posterRows = data.toAdd.filter((r) => r.way === 'poster');
+const picking = show === 'new' && posterRows.length > 0;
+const asking = posterRows.filter((r) => askIds.includes(r.id));
+const oldCode = show === 'new' ? posterRows.filter((r) => r.viaOldCode).length : 0;
+const shown = show === 'new' ? data.toAdd.length : data.decided.length;
 // What the search reads: the name, the mobile's digits, the reference.
-const findText = (r: FormRow) => `${r.name} ${r.mobile.replace(/\D/g, '')} ${r.ref}`.toLocaleLowerCase('en');
+const findText = (r: { name: string; mobile: string | null; ref: string }) => `${r.name} ${(r.mobile ?? '').replace(/\D/g, '')} ${r.ref}`.toLocaleLowerCase('en');
+// Which way it came. The consent forms in step-by-step forms, each with its state, are on its own page (Screen F).
+const wayWords = (r: ToAddRow) => (r.way === 'poster' ? 'desk poster forms' : 'step-by-step forms');
 const dismissedN = Number(q.get('n'));
+// A step-by-step form dismissed on its own page (Screen F) lands here with its reference, never typed text.
+const stepsRef = q.get('done') === 'steps-dismissed' && /^IN-[A-HJKMNP-Z2-9]{4}$/.test(q.get('ref') ?? '') ? q.get('ref') : null;
 ---
 
-<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title="New patient forms" section="patients" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: data.area }} title={PLACE.formsToAdd} section="patients" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
   <a href={base} class="rec-back ws-glass m-0! w-fit px-3!" data-pts-back><Icon name="chevron-left" />Back to patients</a>
   <script>
     import { restoreBackLinks } from '../_list/back';
@@ -130,6 +158,7 @@ const dismissedN = Number(q.get('n'));
       ? `${dismissedN} forms dismissed. They are under Dismissed until they are deleted, ${FORM_KEEP_DAYS} days after each was sent.`
       : `Form dismissed. It is under Dismissed until it is deleted, ${FORM_KEEP_DAYS} days after it was sent.`} />
   )}
+  {stepsRef && <Callout tone="success" text={`${stepsRef} dismissed. Nothing went on your patients’ records.`} />}
 
   {!data.canEdit ? (
     <Pane as="div" label="Not allowed">
@@ -154,15 +183,16 @@ const dismissedN = Number(q.get('n'));
         </Pane>
       )}
 
-      <Pane pad="none" label="Patient forms" class="fm-queue">
+      <Pane pad="none" label={PLACE.formsToAdd} class="fm-queue">
         <header class="ws-pane-head fm-queue-head">
           <Tabs label="Show" current={show} items={items} />
           <div class="ws-pane-actions">
+            {data.filling > 0 && <a href={`${base}intake/`} class="ws-btn ws-btn-quiet ws-btn-sm" data-fm-filling><Glyph name="form" />{PLACE.formsBeingFilled} ({data.filling})</a>}
             <a href={`${base}qr/`} class="ws-btn ws-btn-quiet ws-btn-sm"><Glyph name="qr" />QR code for your desk</a>
           </div>
         </header>
         <p class="fm-queue-lede">{LEDE[show]}{oldCode > 0 ? ` ${oldCode === 1 ? 'One of them came' : `Of these, ${oldCode} came`} through a QR code you have since replaced.` : ''}</p>
-        {data.rows.length === 0 ? (
+        {shown === 0 ? (
           <div class="px-6 pb-4 max-md:px-4">
             <Empty icon="inbox" text={EMPTY[show]} action={show === 'new' ? { label: 'Print the QR code for your desk', href: `${base}qr/` } : undefined} />
           </div>
@@ -173,7 +203,7 @@ const dismissedN = Number(q.get('n'));
               <label class="fm-find" hidden data-fm-find-wrap>
                 <span class="sr-only">Find a form by name, mobile or reference</span>
                 <Icon name="search" size={18} />
-                <input type="search" placeholder="Name, mobile or reference (QR-…)" autocomplete="off" spellcheck="false" data-fm-find />
+                <input type="search" placeholder="Name, mobile or reference" autocomplete="off" spellcheck="false" data-fm-find />
               </label>
               {picking && (
                 <>
@@ -185,13 +215,37 @@ const dismissedN = Number(q.get('n'));
               )}
             </form>
             <ul class="fm-list" aria-label={`${items.find((i) => i.id === show)?.label} forms`} data-fm-list>
-              {data.rows.map((r) => {
-                const gone = r.status !== 'added' ? soonGone(r.deleteOn) : null;
+              {show === 'new' ? data.toAdd.map((r) => (
+                <li class="fm-row" data-find={findText(r)} data-fm-way={r.way}>
+                  {/* Only a desk poster form is picked to dismiss with others; a step-by-step form is dismissed on its own page, with a reason. */}
+                  {picking && (r.way === 'poster'
+                    ? <label class="fm-row-pick"><input type="checkbox" name="form" value={r.id} form="fm-bulk" data-fm-pick /><span class="sr-only">Pick {r.name}’s form, {r.ref}</span></label>
+                    : <span class="fm-row-pick fm-row-nopick" aria-hidden="true"></span>)}
+                  <Avatar name={r.name} />
+                  <div class="min-w-0">
+                    <a href={r.href} class="fm-row-name">{r.name}</a>
+                    <p class="fm-row-facts">
+                      {[r.age !== null ? ageText(r.age) : null, r.mobile].filter(Boolean).join(' · ')}
+                      {(r.age !== null || r.mobile) && ' · '}<span class="pt-ref" title="Form reference"><span class="sr-only">Reference </span>{r.ref}</span>
+                      {' · '}{wayWords(r)}
+                    </p>
+                    <p class="fm-row-chips">
+                      {r.likely > 0 && <Chip tone="warn" icon="alert">{r.likely === 1 ? 'May already be on file' : `${r.likely} on file may be them`}</Chip>}
+                      {r.minor && <Chip tone="neutral" icon="user">{r.signedByName ? `Under 18 · signed by ${r.signedByName}` : 'Under 18'}</Chip>}
+                      {r.viaOldCode && <Chip tone="muted" label="Through an old QR code" />}
+                    </p>
+                  </div>
+                  <p class="fm-row-when">
+                    <span>Sent {sentText(r.sentAt, now)}</span>
+                    {r.held
+                      ? <span class="text-[13px] text-ink-2" title="It has signed consent forms, and a visit or someone on file who may be them">Kept until added or dismissed</span>
+                      : <span class="text-[13px] text-ink-2">{goneWords(r.deleteOn)}</span>}
+                  </p>
+                </li>
+              )) : data.decided.map((r) => {
+                const gone = r.status === 'dismissed' ? soonGone(r.deleteOn) : null;
                 return (
                   <li class="fm-row" data-find={findText(r)}>
-                    {picking && (
-                      <label class="fm-row-pick"><input type="checkbox" name="form" value={r.id} form="fm-bulk" data-fm-pick /><span class="sr-only">Pick {r.name}’s form, {r.ref}</span></label>
-                    )}
                     <Avatar name={r.name} />
                     <div class="min-w-0">
                       <a href={`${here}${r.id}/`} class="fm-row-name">{r.name}</a>
@@ -202,13 +256,11 @@ const dismissedN = Number(q.get('n'));
                       <p class="fm-row-chips">
                         {r.status !== 'added' && r.likely > 0 && <Chip tone="warn" icon="alert">{r.likely === 1 ? 'May already be on file' : `${r.likely} on file may be them`}</Chip>}
                         {r.minor && <Chip tone="neutral" icon="user">Under 18 · signed by {r.signedByName}</Chip>}
-                        {r.status === 'new' && r.viaOldCode && <Chip tone="muted" label="Through an old QR code" />}
                         {r.status === 'added' && r.chartNo && <Chip tone="accent" icon="check">On file as {r.patientName} · {r.chartNo}</Chip>}
                       </p>
                     </div>
                     <p class="fm-row-when">
                       <span>Sent {sentText(r.submittedAt, now)}</span>
-                      {r.status === 'new' && gone && <span class="text-[13px] text-ink-2">{gone}</span>}
                       {r.status === 'added' && r.decidedAt && <span class="text-[13px] text-muted">Added {sentText(r.decidedAt, now)}{r.decidedByName ? ` by ${r.decidedByName}` : ''}</span>}
                       {r.status === 'dismissed' && <span class="text-[13px] text-muted">Dismissed{r.decidedByName ? ` by ${r.decidedByName}` : ''}{gone ? ` · ${gone.toLowerCase()}` : ''}</span>}
                     </p>
@@ -219,14 +271,14 @@ const dismissedN = Number(q.get('n'));
             <p class="fm-none-found" hidden role="status" data-fm-none>No form here matches that. Check the spelling, or look under Added and Dismissed.</p>
           </>
         )}
-        {data.rows.length >= 100 && <p class="fm-queue-lede border-t border-[var(--ws-hair)]">The newest 100 are shown. Add or dismiss some to see the rest.</p>}
+        {data.more && <p class="fm-queue-lede border-t border-[var(--ws-hair)]">The newest 100 are shown. Add or dismiss some to see the rest.</p>}
       </Pane>
 
       {picking && (
         <SidePanel id="fm-bulk-panel" title="Dismiss the picked forms?">
           <div class="grid gap-5">
             <p class="text-[15px] leading-relaxed text-ink-2">
-              <span class="font-semibold text-ink" data-fm-panel-n>These forms</span> leave New patient forms, and nothing goes on your patients’ records.
+              <span class="font-semibold text-ink" data-fm-panel-n>These forms</span> leave {PLACE.formsToAdd}, and nothing goes on your patients’ records.
               Each is deleted {FORM_KEEP_DAYS} days after it was sent; until then it is under Dismissed, where you can still add it.
             </p>
             <div class="fm-actions">

@@ -933,8 +933,14 @@ function valuesOf(i: IntakeRow): PatientFormValues {
 
 const sourceOf = (i: IntakeRow): AnswerSource => ({ kind: 'intake', id: i.id, ref: i.ref, version: i.form_version, sentAt: i.sent_at ?? new Date() });
 
-/** People on file who may be the person on a sent intake (likelyMatches), with the visit's own patient first when it was started from one. */
-export async function intakeLookAlikes(q: Q, it: DeskIntake): Promise<(LikelyMatch & { visit?: true })[]> {
+/**
+ * People on file who may be the person on a sent intake (likelyMatches), with the visit's own patient first when it was
+ * started from one. It reads only the answers and the visit's patient, so Forms to add (forms-to-add.ts) counts its
+ * step-by-step rows by this same rule.
+ */
+export async function intakeLookAlikes(
+  q: Q, it: Pick<DeskIntake, 'answers'> & { appointment: Pick<VisitRef, 'patientId'> | null },
+): Promise<(LikelyMatch & { visit?: true })[]> {
   const v = (it.answers ?? {}) as Record<string, any>;
   const found = await likelyMatches(q as Tx, { first_name: v.first_name ?? '', last_name: v.last_name ?? '', birth_date: v.birth_date ?? null, mobile: v.mobile ?? null });
   const out: (LikelyMatch & { visit?: true })[] = [...found];

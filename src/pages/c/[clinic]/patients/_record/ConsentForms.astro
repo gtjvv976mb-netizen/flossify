@@ -124,7 +124,8 @@ const feet: Foot[] = [
       day: s.channel === 'paper' && s.signedOn ? dateText(s.signedOn)! : day(new Date(s.signedAt)), version: d.versionId,
     };
   }),
-  // Typed on the patient forms: a name, no strokes.
+  // Typed on the desk poster forms: a name, no strokes. Printed on page 2, so the words stay "the patient forms"
+  // until the owner says yes (printed words change only then; the words check allows them for that reason).
   ...forms.filter((f) => f.consentState.treatment === 'form').map((f) => ({
     at: new Date(f.submittedAt), strokes: null, name: signedText(f.signedByName, f.signedAs), how: `typed on the patient forms (${f.ref})`,
     dentist: null, day: day(new Date(f.submittedAt)), version: f.treatmentVersion,
@@ -264,6 +265,7 @@ const rowProps = (d: RecordDoc) => ({ doc: d, slug, patientId, canEdit, mayExpla
 
 {forms.length > 0 && (
   <section id="patient-forms" class="cf-block" aria-labelledby="patient-forms-title">
+    {/* Printed on page 2: "Patient forms" until the owner says yes (on screen these are the desk poster forms). */}
     <h3 class="pp-band-title" id="patient-forms-title">Patient forms <span class="cf-band-meta">From the QR code</span></h3>
     <ul class="pt-list fm-rec-list">
       {forms.map((f) => (

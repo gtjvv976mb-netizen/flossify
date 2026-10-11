@@ -63,7 +63,8 @@ API" describes the shell as it is now.)*
   clinic/branch (a switcher when the person has more than one branch);
   centre — the three tabs; right — search (`/`), **+ New** (booking,
   patient, charge), the inbox (texts that failed, patient replies, web
-  requests to place — with a count), and the person menu (My page, sign
+  requests to place, forms to add, your tasks — each only with a count;
+  plan 1.13), and the person menu (My page, sign
   out). Finances is shown only to people who may see money
   (owner, admin, finance access); for others the tab is absent, not
   disabled.
@@ -370,6 +371,7 @@ tab's link went to the Dashboard's list (`#patients`).
 | `/c/<slug>/claims/` | | the sidebar's foot, for people without Finances | Finances: it must stay open to them (the list and notes, amounts kept to finance, as today), or redirect them somewhere that is |
 | `/c/<slug>/settings/` | | the Clinic settings tab | Settings (exists) |
 | `/c/<slug>/messages/?show=failed` · `?show=replies` | | inbox | Messages (done) |
+| `/c/<slug>/patients/forms/` · `/tasks/` · `/calls/` · `/messages/` | | inbox → Forms to add, Your tasks; its foot → Calls · Texts · Tasks (plan 1.13) | exist |
 
 `/c/<slug>/schedule/` keeps working after the Dashboard lands (the brief);
 if it becomes a redirect, carry its query string along.
@@ -406,18 +408,29 @@ forgets the rows on screen, and Enter before the answer arrives waits for it.
 
 ### The inbox
 
-Three counts for this branch, one `withClinic()` query per page
+Six counts for this branch, one `withClinic()` query per page
 (`src/components/ws/inbox.ts`): **texts that failed** in the last 7 days and
 not sent again (sign-in codes left out: a code expires, so it is never sent
-again — Messages says where a new one comes from); **replies** since this browser last opened Messages
-(`fl_replies_seen`, set by Messages, path `/c/<slug>/`); **web requests to
+again — Texts says where a new one comes from); **replies** since this browser last opened Texts
+(`fl_replies_seen`, set by Texts, path `/c/<slug>/`); **web requests to
 place** (`source = 'request' and moved_at is null`, not cancelled, no-show
-or completed, from yesterday on); and, for people who can add patients here
-(`can_edit_records`), **new patient forms** sent from the QR code on the desk
-and not yet added (`patient_form.status = 'new'`; the same number sits on the
-Patients tab — a dot on a phone's tab row — and above the patients list). If
-the counts cannot be read the inbox shows no number and the page still
-renders.
+or completed, from yesterday on); for people who may change the schedule,
+**in closed time** over the next two weeks; for people who can add patients
+here (`can_edit_records`), **Forms to add** — desk poster forms not added or
+dismissed and step-by-step forms sent and not added (the same number sits on
+the Patients tab — a dot on a phone's tab row — and above the patients list);
+and **your tasks** due today or overdue (Manila). If the counts cannot be read
+the inbox shows no number and says so, and the page still renders.
+
+*Only what is waiting (plan 1.13, 10 Oct):* a row is drawn only for a count
+above 0, and with every count at 0 the inbox says "Nothing waiting" (no rows
+of zeros, no hints). Its foot is three quiet links for everyone at the
+branch, **Calls · Texts · Tasks** (`.ws-menu-foot`, one row, each a 44 px
+target the arrow keys reach), in place of "All texts". Whether they also go
+in the sidebar is the owner's question 2; the sidebar is unchanged. Texts'
+Replies pill shows once the branch has received a reply (it follows the
+data; `?show=replies` is always served), and its note is one sentence:
+"Between 9 pm and 8 am, reminders, aftercare texts and your own texts wait until morning."
 
 ### Contrast, measured
 
@@ -544,12 +557,16 @@ a row per patient that says in words what the record still lacks.
 - **The card's head:** the search (name either way round, mobile — 0917… and
   +63 917… alike — or chart no.; as you type, 180 ms after the last key),
   **Sort** (Last name A–Z · Last visit, most recent first · Next visit,
-  soonest first), **Import** (quiet) and **+ Add patient** (teal: the one
-  main action), the last two only with `can_edit_records`. On a narrow card
-  (a phone, the tablet's rail) at most two rows come before the pills: the
-  search, then **More** (the sort choices and Import, in one list) beside
-  **+ Add patient** — on the search's row when the card has room; someone who
-  may not add patients has the sort there instead. The line that says what is
+  soonest first), **Import** (quiet), **More** (quiet: *QR code for your
+  desk* and *Forms to add*, with its count when some wait — there at every
+  width, so the poster and the Added and Dismissed lists are reached with
+  nothing waiting; plan 1.11/1.12) and **+ Add patient** (teal: the one main
+  action), the last three only with `can_edit_records`. On a narrow card (a
+  phone, the tablet's rail) at most two rows come before the pills: the
+  search, then **More** (the sort choices, Import, the QR code and Forms to
+  add, in one list) beside **+ Add patient** — on the search's row when the
+  card has room; someone who may not add patients has the sort there
+  instead. The line that says what is
   shown is for screen readers only on a phone when it would just repeat the
   All pill's count, so the first patient starts right under the pills.
 - **Filter pills, with counts:** All (every record not archived) · Today (a

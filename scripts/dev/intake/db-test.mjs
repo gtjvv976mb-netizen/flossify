@@ -16,6 +16,8 @@ import { randomBytes, randomInt, createHash } from 'node:crypto';
 import pg from 'pg';
 import { TEMPLATES, renderDocument } from '../../../src/lib/consent-library.ts';
 import { snapshotText, sha256Hex, sealHex, inkOf, chainHex, CHAIN_START, templatesInForce, verifySigning, libraryHash } from '../../../src/lib/consent-seal.ts';
+import { readFileSync, readdirSync } from 'node:fs';
+import { INTAKE_HELD_SQL, INTAKE_KEEP_DAYS } from '../../../src/lib/forms-to-add.ts';
 
 const DB = process.env.DB ?? 'flossify_intake';
 const HOST = process.env.PGHOST ?? '/var/run/postgresql';
@@ -632,8 +634,22 @@ await asOwner(async () => {
   await c.query(`insert into message_log (clinic_id, channel, direction, to_address, body, kind, status, created_at) values ($1, 'sms', 'out', '09170000000', 'old', 'custom', 'sent', now() - interval '2 years 1 day')`, [A]);
   const texts = Number((await q1(`select count(*) as n from message_log where created_at < now() - interval '2 years'`)).n);
   const forms = Number((await q1(`select count(*) as n from patient_form where status <> 'added' and submitted_at < now() - interval '30 days'`)).n);
+  // Forms to add says "Kept until added or dismissed" by INTAKE_HELD_SQL (src/lib/forms-to-add.ts): read as the app,
+  // under row-level security, before the purge runs.
+  const sentKeys = Object.keys(f).filter((k) => k.startsWith('sent'));
+  const held = {};
+  for (const k of sentKeys) held[k] = (await app1(`select (${INTAKE_HELD_SQL}) as held from intake i where i.id = $1`, [f[k].id])).held;
   const n = (await app1(`select retention_purge() as n`, [], null)).n;
   const gone = Object.fromEntries(await Promise.all(Object.entries(f).map(async ([k, i]) => [k, !(await q1(`select 1 as x from intake where id = $1`, [i.id]))])));
+  // …and agrees with what the purge did: past INTAKE_KEEP_DAYS a sent intake goes exactly when it is not held.
+  assert.equal(INTAKE_KEEP_DAYS, 30);
+  for (const k of sentKeys.filter((x) => x.startsWith('sent31'))) assert.equal(gone[k], !held[k], `${k}: held ${held[k]}, gone ${gone[k]}`);
+  assert.deepEqual(held, { sent31bare: false, sent31unmatched: false, sent31lookalike: true, sent31mobile: true, sent31visit: true, sent29: false });
+  // And it is the clause of the newest retention_purge() word for word, so the two change together.
+  const dir = new URL('../../../src/data/migrations/', import.meta.url);
+  const newest = readdirSync(dir).filter((x) => x.endsWith('.sql')).sort().filter((x) => /create or replace function retention_purge\(\)/.test(readFileSync(new URL(x, dir), 'utf8'))).at(-1);
+  const flat = (x) => x.replace(/\s+/g, ' ').trim();
+  assert.ok(flat(readFileSync(new URL(newest, dir), 'utf8')).includes(`and not (${flat(INTAKE_HELD_SQL)}));`), `INTAKE_HELD_SQL is the hold in ${newest}'s retention_purge(), word for word`);
   assert.deepEqual(gone, {
     prep25: true, out23: false, cancelled25: true, sent31bare: true, sent31unmatched: true, sent31lookalike: false, sent31mobile: false, sent31visit: false,
     sent29: false, added40: false, cancelledOnRecord: true,
@@ -659,7 +675,7 @@ await asOwner(async () => {
     assert.equal(Number((await q1(`select count(*) as n from message_log where created_at < now() - interval '2 years'`)).n), 0);
     assert.ok(warnings.some((w) => /intakes were not purged this pass \(P0001\)/.test(w)), JSON.stringify(warnings));
   });
-  ok(`retention: ${n} rows (texts ${texts} + forms ${forms} + 5 intakes): preparing/cancelled past 24 h and sent past 30 days go; held (a look-alike by name and birth date, or by mobile, or a visit), 23 h, 29 days and added stay; a purged form without a patient goes with its signing; a form on a record stays with its intake cleared; with the intake block failing, texts still go and the warning names only the error code`);
+  ok(`retention: ${n} rows (texts ${texts} + forms ${forms} + 5 intakes): preparing/cancelled past 24 h and sent past 30 days go; held (a look-alike by name and birth date, or by mobile, or a visit), 23 h, 29 days and added stay; a purged form without a patient goes with its signing; a form on a record stays with its intake cleared; with the intake block failing, texts still go and the warning names only the error code; Forms to add's hold (INTAKE_HELD_SQL) is the purge's, word for word and in effect`);
 }
 
 await c.query('rollback');

@@ -1,8 +1,11 @@
 ---
-// Patient forms in progress (the intake, 039; the spec §1.9): every intake of
-// this branch not added yet, in three groups — Sent: add to the records ·
-// Filling in now · Not finished (with the time left of its 24 hours) — for
-// people who can add patients (can(ws, 'records.edit')).
+// Forms being filled in (plan 1.12): the step-by-step forms (039) of this
+// branch not sent yet, in two groups — With the patient now · Not finished
+// (with the time left of its 24 hours) — each drawn only when it has some, for
+// people who can add patients (can(ws, 'records.edit')). Forms sent and not
+// added are in Forms to add (../forms/, src/lib/forms-to-add.ts), with the
+// desk poster forms; this list's door is Forms to add's head, and its back
+// link goes there.
 //
 // POST intent=start is the one place an intake is made (Add patient's
 // chooser, the record's Prepare consent forms, Sign on this tablet): csrfOk,
@@ -27,7 +30,8 @@ import { hit, LIMITS } from '../../../../../lib/throttle';
 import { canEditRecords } from '../../../../../lib/health';
 import { can } from '../../../../../lib/can';
 import { Refused } from '../../../../../lib/refused';
-import { intakeGates, startIntake, isUuid, intakeName, timeWords, INTAKE_KEEP_HOURS, type StartRefusal } from '../../../../../lib/intake';
+import { intakeGates, startIntake, isUuid, intakeName, INTAKE_KEEP_HOURS, type StartRefusal } from '../../../../../lib/intake';
+import { PLACE } from '../../../../../lib/places';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -80,13 +84,13 @@ const data = await withClinic(clinic.id, async (tx) => {
   const rows = (await tx.query<{ id: string; ref: string; status: string; target: string; label: string | null; answers: Record<string, unknown> | null;
     patient_first: string | null; patient_last: string | null; patient_suffix: string | null; created_at: Date; sent_at: Date | null; by_name: string;
     parts: string; device: string | null; tablet: string | null }>(
-    `select i.id, i.ref, i.status, i.target, i.label, case when i.status = 'sent' then i.answers else null end as answers,
+    `select i.id, i.ref, i.status, i.target, i.label, null::jsonb as answers,
             p.first_name as patient_first, p.last_name as patient_last, p.suffix as patient_suffix, i.created_at, i.sent_at, s.full_name as by_name,
             (select count(*) from consent_document d where d.intake_id = i.id and d.cancelled_at is null)::text as parts,
             l.device, t.name as tablet
        from intake i join staff s on s.id = i.created_by left join patient p on p.id = i.patient_id
        left join intake_link l on l.intake_id = i.id and l.retired_at is null left join clinic_tablet t on t.id = l.tablet_id
-      where i.status in ('preparing', 'out', 'sent') order by coalesce(i.sent_at, i.created_at) desc limit 200`)).rows;
+      where i.status in ('preparing', 'out') order by i.created_at desc limit 200`)).rows;
   return { canEdit, area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null, rows };
 });
 
@@ -101,41 +105,43 @@ const left = (created: Date) => {
 const nameOf = (r: (typeof data.rows)[number]) => r.patient_first
   ? [r.patient_first, r.patient_last, r.patient_suffix].filter(Boolean).join(' ')
   : intakeName({ patient: null, label: r.label, answers: r.answers });
+// Only the groups with something in them.
 const groups = [
-  { key: 'sent', title: 'Sent: add to the records', empty: 'Nothing waiting to be added.', rows: data.rows.filter((r) => r.status === 'sent') },
-  { key: 'out', title: 'Filling in now', empty: 'Nobody is filling in forms now.', rows: data.rows.filter((r) => r.status === 'out') },
-  { key: 'preparing', title: 'Not finished', empty: 'Nothing half-prepared.', rows: data.rows.filter((r) => r.status === 'preparing') },
-];
+  { key: 'out', title: 'With the patient now', rows: data.rows.filter((r) => r.status === 'out') },
+  { key: 'preparing', title: 'Not finished', rows: data.rows.filter((r) => r.status === 'preparing') },
+].filter((g) => g.rows.length > 0);
 const where = (r: (typeof data.rows)[number]) => r.device === 'tablet' ? `on ${r.tablet}` : r.device === 'desk' ? 'on a device handed over' : r.device === 'phone' ? 'on their phone' : null;
 ---
 
-<ClinicLayout groupId={clinic.group_id} clinic={{ slug, name: clinic.name, area: data.area }} title="Patient forms in progress" section="add-patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
-  <a href={`${base}/new/`} class="rec-back ws-glass m-0! w-fit px-3!"><Icon name="chevron-left" />Add patient</a>
+<ClinicLayout groupId={clinic.group_id} clinic={{ slug, name: clinic.name, area: data.area }} title={PLACE.formsBeingFilled} section="add-patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
+  <a href={`${base}/forms/`} class="rec-back ws-glass m-0! w-fit px-3!"><Icon name="chevron-left" />{PLACE.formsToAdd}</a>
   {stale && <Callout tone="alert" text={CSRF_MESSAGE} />}
   {!data.canEdit ? (
     <Pane as="div" label="Not allowed">
       <Callout tone="alert" role="note" text="Your account cannot add patients at this branch. Ask the owner." />
     </Pane>
+  ) : groups.length === 0 ? (
+    <Pane as="div" label={PLACE.formsBeingFilled}>
+      <p class="ik-help">Nothing is being filled in now.</p>
+    </Pane>
   ) : groups.map((g) => (
     <Pane as="section" label={g.title} id={`ik-${g.key}`}>
-      <Head icon={g.key === 'sent' ? 'form' : g.key === 'out' ? 'tablet' : 'pen'} title={g.title} meta={g.rows.length ? String(g.rows.length) : undefined} />
-      {g.rows.length === 0 ? <p class="ik-help">{g.empty}</p> : (
-        <ul class="ik-list">
-          {g.rows.map((r) => (
-            <li class="ik-row">
-              <a class="ik-row-main" href={`${base}/intake/${r.id}/`}>
-                <Avatar name={nameOf(r)} />
-                <span class="grid min-w-0">
-                  <span class="ik-row-name">{nameOf(r)}</span>
-                  <span class="ik-row-meta"><span class="ik-ref">{r.ref}</span> · {r.target === 'new' ? 'new patient' : 'patient on file'} · {Number(r.parts) === 1 ? '1 form' : `${r.parts} forms`}{where(r) ? ` · ${where(r)}` : ''} · by {r.by_name}</span>
-                </span>
-              </a>
-              <span class="ik-row-meta">{r.status === 'sent' && r.sent_at ? `Sent ${timeWords(r.sent_at)}` : left(r.created_at)}</span>
-              <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${base}/intake/${r.id}/`}>{r.status === 'sent' ? 'Add' : 'Open'} <Icon name="arrow-right" size={16} /></a>
-            </li>
-          ))}
-        </ul>
-      )}
+      <Head icon={g.key === 'out' ? 'tablet' : 'pen'} title={g.title} meta={String(g.rows.length)} />
+      <ul class="ik-list">
+        {g.rows.map((r) => (
+          <li class="ik-row">
+            <a class="ik-row-main" href={`${base}/intake/${r.id}/`}>
+              <Avatar name={nameOf(r)} />
+              <span class="grid min-w-0">
+                <span class="ik-row-name">{nameOf(r)}</span>
+                <span class="ik-row-meta"><span class="ik-ref">{r.ref}</span> · {r.target === 'new' ? 'new patient' : 'patient on file'} · {Number(r.parts) === 1 ? '1 form' : `${r.parts} forms`}{where(r) ? ` · ${where(r)}` : ''} · by {r.by_name}</span>
+              </span>
+            </a>
+            <span class="ik-row-meta">{left(r.created_at)}</span>
+            <a class="ws-btn ws-btn-quiet ws-btn-sm" href={`${base}/intake/${r.id}/`}>Open <Icon name="arrow-right" size={16} /></a>
+          </li>
+        ))}
+      </ul>
     </Pane>
   ))}
 </ClinicLayout>

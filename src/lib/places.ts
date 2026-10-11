@@ -75,8 +75,15 @@ export const PLACE = {
   hmos: settingsPlace('hmos'),
   /** The Dashboard's list of visits to call about. */
   calls: 'Calls',
-  /** The branch's texts, both ways (its address stays /messages/), and the inbox's link to it. */
+  /** The Dashboard's tasks: yours, and the ones you gave. */
+  tasks: 'Tasks',
+  /** Forms a patient sent, by the desk poster or step by step, waiting to be added to a patient (plan 1.12). */
+  formsToAdd: 'Forms to add',
+  /** Step-by-step forms still being prepared or with the patient (plan 1.12). */
+  formsBeingFilled: 'Forms being filled in',
+  /** The branch's texts, both ways (its address stays /messages/); the inbox's foot links to it by this name. */
   texts: 'Texts',
+  /** The record's Texts sheet: its link to the whole list. */
   allTexts: 'All texts',
   /** In the sidebar for people without Finances, and a tab in Finances; Claims on a narrow screen. */
   claims: 'HMO & PhilHealth claims',

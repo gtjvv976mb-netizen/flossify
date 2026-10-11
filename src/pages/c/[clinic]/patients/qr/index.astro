@@ -1,10 +1,11 @@
 ---
-// "QR code for your desk" — the third way to add patients, beside typing them
-// in and importing a spreadsheet (Add patient links here). The owner's brief:
-// a QR code the clinic downloads or prints and posts at reception, "with your
-// design, with flossify.ph logo so that anyone who's using it will see it's
-// Flossify", so patients fill in their information and the patient forms on
-// their own phones (src/lib/patient-forms.ts; the public side is /f/<key>/).
+// "QR code for your desk" — the desk poster forms (028). Reached from Patients
+// → More, and from Forms to add's head (plan 1.11: Add patient no longer
+// links here). The owner's brief: a QR code the clinic downloads or prints and
+// posts at reception, "with your design, with flossify.ph logo so that anyone
+// who's using it will see it's Flossify", so patients fill in their
+// information and their forms on their own phones (src/lib/patient-forms.ts;
+// the public side is /f/<key>/).
 //
 // One screen, one teal button: the poster as it will print, and beside it
 // (on a phone, above it: the buttons come first)
@@ -13,7 +14,8 @@
 // opens the browser's print box; "Save as PDF" there gives a PDF), Download
 // QR (PNG) — the same poster drawn on a canvas at 300 dpi (./_draw.ts, from
 // the steps in ./_poster.ts) — and Copy link. Under them, how many forms are
-// waiting (to the queue, ../forms/), and "Make a new QR code", which retires
+// waiting in Forms to add (../forms/: both ways, as the inbox and the Patients
+// tab count them), and "Make a new QR code", which retires
 // the key after a confirmation (old posters then say "ask the desk").
 //
 // Who: people who can add patients here (canEditRecords — Add patient's own
@@ -39,8 +41,10 @@ import { requireWorkspace } from '../../../../../lib/workspace';
 import { withClinic } from '../../../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../../../lib/csrf';
 import { canEditRecords, day } from '../../../../../lib/health';
-import { formsKey, newFormsKey, countNewForms, formsNoticeReady } from '../../../../../lib/patient-forms';
+import { formsKey, newFormsKey, formsNoticeReady } from '../../../../../lib/patient-forms';
+import { countFormsToAdd } from '../../../../../lib/forms-to-add';
 import { qrSvg, qrMatrix, MARK } from '../../../../../lib/qr';
+import { PLACE } from '../../../../../lib/places';
 import { posterLayout, posterSvg } from './_poster';
 
 const ws = await requireWorkspace(Astro);
@@ -66,7 +70,7 @@ const data = await withClinic(clinic.id, async (tx) => {
   const area = (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area as string | null;
   if (!canEdit) return { canEdit, area, key: null, waiting: 0, open: false };
   const notice = (await tx.query<{ id: string | null }>('select id from current_consent_version()')).rows[0]?.id ?? null;
-  return { canEdit, area, key: await formsKey(tx, { clinicId: clinic.id, staffId: session.staffId }), waiting: await countNewForms(tx), open: formsNoticeReady(notice) };
+  return { canEdit, area, key: await formsKey(tx, { clinicId: clinic.id, staffId: session.staffId }), waiting: await countFormsToAdd(tx), open: formsNoticeReady(notice) };
 });
 
 const key = data.key;
@@ -117,7 +121,7 @@ const confirming = q.get('confirm') === 'new';
       <div class="fm-qr-side">
         <Pane as="section" label="Print it for your desk" class="fm-qr-print">
           <Head icon="qr" title="Print it for your desk" />
-          <p class="fm-lede">Patients scan it with their phone and fill in their forms. They wait for you in New patient forms.</p>
+          <p class="fm-lede">Patients scan it with their phone and fill in their forms. They wait for you in {PLACE.formsToAdd}.</p>
           <div class="fm-actions fm-qr-actions mt-5">
             <a href={`${here}print/`} class="ws-btn ws-btn-primary" data-qr-print><Glyph name="print" />Print poster</a>
             <button type="button" class="ws-btn ws-btn-quiet" data-qr-png><Icon name="download" /><span data-qr-png-word>Download QR (PNG)</span></button>
@@ -137,15 +141,14 @@ const confirming = q.get('confirm') === 'new';
           </div>
         </Pane>
 
-        <Pane as="section" label="New patient forms" class="fm-qr-rest">
-          <Head icon="form" title="New patient forms" meta={data.waiting ? undefined : 'Nothing waiting'} />
+        <Pane as="section" label={PLACE.formsToAdd} class="fm-qr-rest">
+          <Head icon="form" title={PLACE.formsToAdd} meta={data.waiting ? undefined : 'Nothing waiting'} />
           {data.waiting > 0 ? (
             <div class="flex flex-wrap items-center justify-between gap-3">
-              <p class="text-[15px] text-ink-2"><span class="font-semibold text-ink">{data.waiting === 1 ? 'One form is' : `${data.waiting} forms are`} waiting</span> for you to add or dismiss.</p>
+              <p class="text-[15px] font-semibold text-ink">{data.waiting === 1 ? 'One form to add' : `${data.waiting} forms to add`}</p>
               <a href={`${base}forms/`} class="ws-btn ws-btn-quiet ws-btn-sm">Review {data.waiting === 1 ? 'it' : 'them'} <Icon name="arrow-right" size={16} /></a>
             </div>
           ) : (
-            <p class="text-[15px] text-ink-2">When a patient sends their forms, they wait here until you add them.</p>
             <a href={`${base}forms/`} class="ws-empty-go">Open the list <Icon name="arrow-right" size={16} /></a>
           )}
         </Pane>

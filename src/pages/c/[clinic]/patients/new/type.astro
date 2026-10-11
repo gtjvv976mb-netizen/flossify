@@ -3,7 +3,8 @@
 // sections — Person, Health, Consent, Past visits, Opening balance — and one
 // Save. (docs/workspace-redesign.md, "Patients".) Reached from Add patient's
 // chooser (./index.astro: on their phone, at the clinic, or type it in) —
-// "Type it in yourself", for a phone call or a paper form.
+// "Type it in yourself", for a phone call or a paper form. The one chooser is
+// Add patient's (plan 1.11); this page has none of its own.
 //
 // The chooser (./index.astro) sends the desk straight here, with its query,
 // when typing is the only way open — on a production server until the consent
@@ -15,8 +16,13 @@
 // forms are prepared — or on the record, as without it, while no consent form
 // is open here. The flag rides in a hidden field, so a refused save keeps it.
 //
-// When forms patients sent are waiting (the QR poster's, and intakes sent and
-// not added yet), a line says so before anyone types the same person in again.
+// Above the form, one small pane, "Before you type": when forms patients sent
+// are waiting (desk poster forms, and step-by-step forms sent and not added
+// yet — both in Forms to add), one line says how many of each before anyone
+// types the same person in again; while no consent form is offered, the line
+// on why patients cannot sign their own consent forms here yet (the same
+// sentence as the chooser's: true whichever gate opens first); and a quiet
+// Import a spreadsheet.
 //
 // Soft and simple (docs/workspace-redesign.md, "Very simple"): the few fields
 // the desk always fills are in view (name, birth date, sex, mobile, email,
@@ -87,6 +93,7 @@ import { countNewForms } from '../../../../../lib/patient-forms';
 import { can } from '../../../../../lib/can';
 import { Refused } from '../../../../../lib/refused';
 import { countSentIntakes, intakeGates } from '../../../../../lib/intake';
+import { PLACE } from '../../../../../lib/places';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -115,9 +122,9 @@ const setup = await withClinic(clinic.id, async (tx) => ({
   notice: await noticeInForce(tx),
   dpo: ((await tx.query('select dpo_name from clinic_group where id = $1', [clinic.group_id])).rows[0]?.dpo_name ?? null) as string | null,
   nextChart: nextChartNos((await tx.query<{ chart_no: string }>('select chart_no from patient')).rows.map((r) => r.chart_no), 1)[0],
-  // Forms patients sent from the QR code and nobody has added yet: said before the desk types one of them in again.
+  // Forms to add, by way (desk poster forms; step-by-step forms sent), said in one line before the desk types one of
+  // them in again.
   formsWaiting: await countNewForms(tx),
-  // Intakes sent and not added yet (039), said on a line of their own.
   intakesSent: await countSentIntakes(tx),
   // Consent forms open on this server (none on a production server until they are reviewed): the chooser sends the desk
   // straight here when typing is the only way, and this page says why in one quiet line.
@@ -321,8 +328,16 @@ const dupFirst = dupes[0];
 const MORE_FIELDS = ['address', 'city', 'province', 'emergency_name', 'emergency_relation', 'emergency_phone', 'chart_no', 'notes'];
 const moreOpen = MORE_FIELDS.some((k) => val(k).trim() !== '');
 const importHref = `/c/${clinic.slug}/patients/import/`;
-const qrHref = `/c/${clinic.slug}/patients/qr/`;
 const formsHref = `/c/${clinic.slug}/patients/forms/`;
+// "2 patients sent desk poster forms and one sent step-by-step forms. None is added yet." — both kinds, one line.
+const sentWords = ((poster: number, steps: number): string | null => {
+  const who = (n: number) => (n === 1 ? 'One patient' : `${n} patients`);
+  if (poster && steps) {
+    return `${who(poster)} sent desk poster forms and ${steps === 1 ? 'one' : steps} sent step-by-step forms. ${poster + steps === 2 ? 'Neither' : 'None'} is added yet.`;
+  }
+  if (poster || steps) return `${who(poster || steps)} sent ${poster ? 'desk poster forms' : 'step-by-step forms'} and ${(poster || steps) === 1 ? 'is' : 'are'} not added yet.`;
+  return null;
+})(setup.formsWaiting, setup.intakesSent);
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name, area: setup.area }} title="Add patient" section="add-patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
@@ -344,47 +359,20 @@ const formsHref = `/c/${clinic.slug}/patients/forms/`;
     </Pane>
   ) : (
     <>
-    {/* Three ways to add patients. This page is the first; the QR code (the easiest: patients type their
-        own) is second, beside it; importing a spreadsheet third. */}
-    <Pane as="div" label="Ways to add patients" pad="tight" class="fm-ways-pane">
-      <ul class="fm-ways">
-        <li>
-          <span class="fm-way" aria-current="page">
-            <span class="fm-way-icon"><Glyph name="user" /></span>
-            <span class="fm-way-words"><span class="fm-way-title">Type it in</span><span class="fm-way-hint">One patient, everything on this page</span></span>
-            <Icon name="check" size={18} class="fm-way-mark" />
-          </span>
-        </li>
-        <li>
-          <a class="fm-way" href={qrHref}>
-            <span class="fm-way-icon"><Glyph name="qr" /></span>
-            <span class="fm-way-words"><span class="fm-way-title">Patients fill it in<span class="fm-way-pill">Easiest</span></span><span class="fm-way-hint">A QR code for your desk. Patients fill in their own forms.</span></span>
-            <Icon name="arrow-right" size={18} class="fm-way-mark" />
-          </a>
-        </li>
-        <li>
-          <a class="fm-way" href={importHref}>
-            <span class="fm-way-icon"><Glyph name="upload" /></span>
-            <span class="fm-way-words"><span class="fm-way-title">Import a spreadsheet</span><span class="fm-way-hint">Many patients or past visits, from Excel or CSV</span></span>
-            <Icon name="arrow-right" size={18} class="fm-way-mark" />
-          </a>
-        </li>
-      </ul>
-      {setup.formsWaiting > 0 && (
-        <p class="fm-ways-waiting">
-          <Glyph name="form" size={18} />
-          <span>{setup.formsWaiting === 1 ? 'One patient has' : `${setup.formsWaiting} patients have`} sent their forms from the QR code. Check they are not the one you are about to type in.</span>
-          <a href={formsHref} class="ws-empty-go">New patient forms <Icon name="arrow-right" size={16} /></a>
-        </p>
-      )}
-      {setup.intakesSent > 0 && (
-        <p class="fm-ways-waiting">
-          <Glyph name="form" size={18} />
-          <span>{setup.intakesSent === 1 ? 'One patient has' : `${setup.intakesSent} patients have`} sent their details and consent forms and are not added yet.</span>
-          <a href={`/c/${clinic.slug}/patients/intake/`} class="ws-empty-go">Forms sent <Icon name="arrow-right" size={16} /></a>
-        </p>
-      )}
-      {!setup.formsOpen && <p class="mt-2.5 text-[14px] leading-snug text-ink-2" data-add-forms-closed>Patients can fill in and sign their own forms here once the clinic’s consent forms are reviewed.</p>}
+    {/* Before you type: forms already sent (both kinds, one line), why patients cannot sign their own consent forms
+        here yet (only while no consent form is offered), and a quiet way to import many. The chooser is Add patient's. */}
+    <Pane as="div" label="Before you type" pad="tight" class="fm-ways-pane">
+      <div class="grid gap-1.5" data-add-before>
+        {sentWords && (
+          <p class="fm-ways-waiting m-0!" data-add-sent>
+            <Glyph name="form" size={18} />
+            <span>{sentWords} Check they are not the one you are about to type in.</span>
+            <a href={formsHref} class="ws-empty-go">{PLACE.formsToAdd} <Icon name="arrow-right" size={16} /></a>
+          </p>
+        )}
+        {!setup.formsOpen && <p class="m-0 text-[14px] leading-snug text-ink-2" data-add-forms-closed>Patients can sign their consent forms here once a dentist and a lawyer have read them.</p>}
+        <p class="m-0"><a href={importHref} class="ws-empty-go" data-add-import><Glyph name="upload" size={18} />Import a spreadsheet</a></p>
+      </div>
     </Pane>
     <form method="post" action={here} class="grid gap-4 max-md:gap-3" data-add-form>
       <Csrf />

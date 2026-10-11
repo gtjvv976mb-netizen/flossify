@@ -1,7 +1,8 @@
-/* The patient forms in the workspace: the QR code for the desk (../qr/), the
-   queue "New patient forms" (../forms/), one form (../forms/<id>/) and the
-   record's "Patient forms". Only what the shell (global.css, "The workspace —
-   the soft template") and ../_ui/patients.css do not already draw; all fm-*.
+/* The desk poster forms in the workspace: the QR code for the desk (../qr/),
+   Forms to add (../forms/, with the step-by-step forms sent), one form
+   (../forms/<id>/) and the record's "Desk poster forms". Only what the shell
+   (global.css, "The workspace — the soft template") and ../_ui/patients.css
+   do not already draw; all fm-*.
 
    The layer order global.css declares, stated again so this file can never be
    the first to name a layer; inside the components layer a utility in the
@@ -15,31 +16,8 @@
 .fm-help { font-size: 13.5px; line-height: 1.45; color: var(--c-muted); }
 .fm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 
-/* --- Add patient: three ways in, this page the chosen one ------------------------------------ */
+/* --- Add patient, typed in: "Before you type" (forms already sent, why not their own forms yet, Import) --- */
 .fm-ways-pane { container-type: inline-size; }
-.fm-ways { display: grid; gap: 0.5rem; }
-@container (min-width: 46rem) { .fm-ways { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.fm-way {
-  display: flex; align-items: center; gap: 0.75rem; height: 100%; min-height: 64px; padding: 0.75rem 0.875rem; border: 1px solid var(--ws-hair);
-  border-radius: var(--ws-r); background: var(--c-surface); color: var(--c-ink); transition: background-color 160ms ease, border-color 160ms ease;
-}
-a.fm-way:hover { background: var(--ws-subtle); border-color: var(--ws-field-line-hover); }
-.fm-way[aria-current="page"] { background: var(--ws-teal-tint); border-color: color-mix(in srgb, var(--ws-teal) 40%, transparent); }
-.fm-way-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 10px; background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
-.fm-way[aria-current="page"] .fm-way-icon { background: var(--c-surface); }
-.fm-way-words { display: grid; flex: 1; min-width: 0; }
-.fm-way-title { font-size: 15px; font-weight: 600; line-height: 1.3; }
-.fm-way[aria-current="page"] .fm-way-title { color: var(--ws-teal-ink); }
-.fm-way-hint { margin-top: 0.125rem; font-size: 13.5px; line-height: 1.35; color: var(--c-ink-2); }
-/* "Easiest": a small teal pill after the title of the way most clinics will want. */
-.fm-way-pill {
-  display: inline-flex; align-items: center; margin-left: 0.375rem; padding: 0.0625rem 0.5rem; border-radius: var(--ws-r-pill); vertical-align: 1px;
-  background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-size: 12.5px; font-weight: 600; line-height: 1.5;
-}
-.fm-way[aria-current="page"] .fm-way-pill { background: var(--c-surface); }
-.fm-way-mark { flex: none; color: var(--c-muted); transition: transform 180ms ease; }
-.fm-way[aria-current="page"] .fm-way-mark { color: var(--ws-teal-ink); }
-a.fm-way:hover .fm-way-mark { transform: translateX(3px); color: var(--c-ink-2); }
 .fm-ways-waiting {
   display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 0.125rem 0.625rem; margin-top: 0.625rem; padding: 0.625rem 0.875rem;
   border-radius: var(--ws-r); background: var(--ws-blue-tint); font-size: 14.5px; line-height: 1.45; color: var(--c-ink);
@@ -96,13 +74,13 @@ a.fm-way:hover .fm-way-mark { transform: translateX(3px); color: var(--c-ink-2);
   border: 1px solid var(--ws-hair); font-family: var(--font-mono); font-size: 15px; font-weight: 500; color: var(--c-ink); overflow-wrap: anywhere;
 }
 
-/* --- a count beside a word: "New patient forms 2" ------------------------------------------ */
+/* --- a count beside a word: "Review 2" ---------------------------------------------------------- */
 .fm-count {
   display: inline-flex; align-items: center; justify-content: center; min-width: 1.4rem; height: 1.4rem; padding: 0 0.4rem; border-radius: var(--ws-r-pill);
   background: var(--ws-teal-fill); color: #fff; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1;
 }
 
-/* --- the Patients tab: forms waiting, one line above the list --------------------------------- */
+/* --- the Patients tab: forms to add, one line above the list ---------------------------------- */
 .fm-waiting { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem 0.875rem; padding: 0.75rem 1rem 0.75rem 0.875rem; }
 .fm-waiting-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; background: var(--ws-teal-tint); color: var(--ws-teal-ink); }
 .fm-waiting-words { flex: 1 1 16rem; min-width: 0; font-size: 14.5px; line-height: 1.45; color: var(--c-ink-2); }
@@ -135,6 +113,8 @@ a.fm-way:hover .fm-way-mark { transform: translateX(3px); color: var(--c-ink-2);
 .fm-row-pick { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: -0.5rem -0.5rem -0.5rem -0.75rem; cursor: pointer; }
 .fm-row-pick input { width: 20px; height: 20px; margin: 0; accent-color: var(--ws-teal-fill); cursor: pointer; }
 .fm-row:has(.fm-row-pick input:checked) { background: var(--ws-teal-tint); }
+/* A step-by-step form's row keeps the column (no box: it is dismissed on its own page, with a reason); the row's link stays clickable through it. */
+.fm-row-nopick { pointer-events: none; cursor: default; }
 /* Above the list: find a form by name, mobile or reference; pick all; dismiss the picked ones. */
 .fm-queue-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem 0.875rem; padding: 0.75rem 1.5rem; border-bottom: 1px solid var(--ws-hair); }
 @media (max-width: 767px) { .fm-queue-tools { padding: 0.75rem 1rem; } }

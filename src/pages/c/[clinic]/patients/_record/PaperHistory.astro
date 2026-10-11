@@ -41,7 +41,9 @@ const bands: [string, string, Box[]][] = [
   ...(part !== 'medical' ? [['dental', 'Dental history', boxes.dental] as [string, string, Box[]]] : []),
   ...(part !== 'dental' ? [['medical', 'Medical history', boxes.medical] as [string, string, Box[]]] : []),
 ];
-// Which forms, as the record's health line names them: the patient forms from the QR code (QR-…), or an intake's page 1 (IN-…).
+// Which forms, as the record's health line names them: the desk poster forms (QR-…), or the step-by-step forms' patient
+// information (IN-…). Printed on page 1, so the words stay "the patient forms" until the owner says yes (printed words
+// change only then; the words check allows them for that reason).
 const fromWords = (b: Box) => {
   if (!b.from) return null;
   const ref = [b.from.ref, b.from.at && `sent ${day(new Date(b.from.at))}`].filter(Boolean).join(', ');

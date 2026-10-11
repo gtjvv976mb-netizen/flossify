@@ -5,8 +5,10 @@
 // withClinic(): row-level security keeps it to this branch.
 //
 // In the soft, very simple template (docs/workspace-redesign.md): the title
-// is the shell's (heading), one small row of pills (All · Failed · Replies)
-// and the one main action, Text a patient; each text is one friendly row —
+// is the shell's (heading), one small row of pills (All · Failed, and Replies
+// once this branch has received a reply: plan 1.13, it follows the data, and
+// ?show=replies is always served) and the one main action, Text a patient;
+// each text is one friendly row —
 // who (a round avatar), the words, when, a status pill — with its one action
 // beside it. No codes on screen: the chart no. is left out (the name links to
 // the record).
@@ -24,8 +26,8 @@
 // comes back here with ?stale=1, which shows the sentence to try again.
 //
 // Text a patient is for anyone with a reason to hear from the clinic, each
-// row saying why (RECIPIENTS): on the book within a week either way, seen in
-// the last 30 days, a check-up due within 60 days, lab work back in the last
+// row saying why (RECIPIENTS): a visit within a week either way, seen in
+// the last 30 days, a check-up due within 60 days, a lab case back in the last
 // 30 days, or a balance (only to someone who may see amounts). ?to=<patient>
 // — the record's Text link — adds any active patient with a mobile. The
 // server checks the same set before queueing, and refuses anyone without
@@ -213,7 +215,7 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const { area, clinicPhone, texts, recipients, failedCount } = await withClinic(clinic.id, async (tx) => ({
+const { area, clinicPhone, texts, recipients, failedCount, received } = await withClinic(clinic.id, async (tx) => ({
   area: (await tx.query('select area from clinic where id = $1', [clinic.id])).rows[0]?.area,
   // The number the templates tell the patient to call.
   clinicPhone: ((await tx.query('select phone from clinic where id = $1', [clinic.id])).rows[0]?.phone ?? null) as string | null,
@@ -233,6 +235,8 @@ const { area, clinicPhone, texts, recipients, failedCount } = await withClinic(c
   recipients: canSend ? (await tx.query(RECIPIENTS, [to || null, canMoney])).rows : [],
   failedCount: (await tx.query(
     `select count(*)::int as n from message_log m where m.channel = 'sms' and ${SHOWS.failed.where}`)).rows[0].n as number,
+  // Has this branch ever received a reply (kept two years)? The Replies pill shows from the first one on.
+  received: (await tx.query(`select exists (select 1 from message_log where channel = 'sms' and direction = 'in') as yes`)).rows[0].yes as boolean,
 }));
 
 // The replies are on screen: the inbox stops counting them for this browser.
@@ -298,7 +302,7 @@ const dayWords = (d: Date) => (isToday(d) ? 'today' : isTomorrow(d) ? 'tomorrow'
 // Each row's reason, in the order the list groups them: a patient with several is listed once,
 // under the first. `soon` puts today's and tomorrow's at the top of their group.
 const GROUPS = {
-  chosen: 'From the record', book: 'On the book', seen: 'Seen recently', due: 'Due for a check-up', lab: 'Lab work back', owes: 'Owes',
+  chosen: 'From the record', book: 'On the book', seen: 'Seen recently', due: 'Due for a check-up', lab: 'Lab case back', owes: 'Owes',
 } as const;
 type Group = keyof typeof GROUPS;
 type Recipient = (typeof recipients)[number];
@@ -310,7 +314,7 @@ function reasonOf(r: Recipient): { group: Group; why: string; soon: boolean } {
   }
   if (r.seen_at) return { group: 'seen', why: `seen ${dayWords(r.seen_at)}`, soon: isToday(r.seen_at) };
   if (r.due_on) return { group: 'due', why: `check-up ${r.due_on < todayIso ? 'was due' : 'due'} ${dayOf(dateAt(r.due_on))}`, soon: false };
-  if (r.back_on) return { group: 'lab', why: `lab work back ${dayOf(dateAt(r.back_on))}`, soon: false };
+  if (r.back_on) return { group: 'lab', why: `lab case back ${dayOf(dateAt(r.back_on))}`, soon: false };
   if (r.balance != null && Number(r.balance) > 0) return { group: 'owes', why: `owes ${phpAmount(r.balance)}`, soon: false };
   return { group: 'chosen', why: 'from the record', soon: false };
 }
@@ -355,11 +359,11 @@ const emptyText = show === 'failed' ? `No text has failed in the last ${WINDOW_D
       <Tabs label="Show" current={show} items={[
         { id: 'all', label: 'All', href: here },
         { id: 'failed', label: 'Failed', href: `${here}?show=failed`, count: failedCount },
-        { id: 'replies', label: 'Replies', href: `${here}?show=replies` },
+        ...(received || show === 'replies' ? [{ id: 'replies', label: 'Replies', href: `${here}?show=replies` }] : []),
       ]} />
       {canSend && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="send"><Icon name="message" />Text a patient</button>}
     </div>
-    <p class="msg-lede">Texts go out every ten seconds. Between 9 pm and 8 am, reminders and your own texts wait until morning.{!canSend && ` ${NO_SEND}`}</p>
+    <p class="msg-lede">Between 9 pm and 8 am, reminders, aftercare texts and your own texts wait until morning.{!canSend && ` ${NO_SEND}`}</p>
   </Pane>
 
   {notice && !error && <p role="status" class="ws-callout" data-tone={noticeTone}><Icon name={done ? 'check' : 'info'} /><span>{notice}</span></p>}
@@ -423,7 +427,7 @@ const emptyText = show === 'failed' ? `No text has failed in the last ${WINDOW_D
     {!canSend ? (
       <Empty icon="message" text={NO_SEND} />
     ) : recipients.length === 0 ? (
-      <Empty icon="message" text="No one to text yet: nobody with a mobile on file is on the book this week, was seen in the last 30 days, is due for a check-up or has lab work back. Anyone else is texted from their record." />
+      <Empty icon="message" text="No one to text yet: nobody with a mobile on file has a visit this week, was seen in the last 30 days, is due for a check-up or has a lab case back. Anyone else is texted from their record." />
     ) : (
       <form method="post" action={back} class="grid gap-5" data-send-form data-phone={clinicPhoneWords}>
         <Csrf />
@@ -542,7 +546,7 @@ const emptyText = show === 'failed' ? `No text has failed in the last ${WINDOW_D
 
     const NEEDS = {
       visit: 'No visit on the book for them: check the time and day before sending.',
-      lab: 'No lab work is marked back for them: check before sending.',
+      lab: 'No lab case is marked back for them: check before sending.',
       balance: 'No balance shows for them here: check the amount before sending.',
     } as const;
     const say = () => { if (count) count.textContent = String(body.value.length); };

@@ -59,6 +59,7 @@ import {
   FIELDS, FORM_STATUS_WORDS, type LikelyMatch,
 } from '../../../../../../lib/patient-forms';
 import { sentText, shortDay, signedText, WHY } from '../../_forms/words';
+import { PLACE } from '../../../../../../lib/places';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -177,7 +178,7 @@ const STATUS_TONE = { new: 'accent', added: 'neutral', dismissed: 'muted' } as c
   ) : (
     <>
       <Pane as="div" label={`Patient form ${rec.ref}`}>
-        <a href={backHref} class="rec-back"><Icon name="chevron-left" />Back to new patient forms</a>
+        <a href={backHref} class="rec-back"><Icon name="chevron-left" />Back to {PLACE.formsToAdd}</a>
         <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
           <div class="rec-who">
             <Avatar name={rec.name} size="lg" />
@@ -207,7 +208,7 @@ const STATUS_TONE = { new: 'accent', added: 'neutral', dismissed: 'muted' } as c
           </div>
         )}
         {q.get('stale') === '1' && <Callout tone="alert" class="mt-4" text={CSRF_MESSAGE} />}
-        {q.get('done') === 'restored' && <Callout tone="success" class="mt-4" text="The form is back in New patient forms." />}
+        {q.get('done') === 'restored' && <Callout tone="success" class="mt-4" text={`The form is back in ${PLACE.formsToAdd}.`} />}
         {notice && <Callout tone={notice.tone} class="mt-4" title={notice.title} text={notice.text} focus data-fm-notice />}
       </Pane>
 
@@ -220,7 +221,7 @@ const STATUS_TONE = { new: 'accent', added: 'neutral', dismissed: 'muted' } as c
               <>
                 <p class="text-[15px] leading-relaxed text-ink-2">
                   {rec.addedAs === 'existing' ? 'Added to ' : 'Added as '}<span class="font-semibold text-ink">{rec.patientName}</span>{rec.chartNo ? ` (${rec.chartNo})` : ''}
-                  {rec.decidedAt ? `, ${sentText(rec.decidedAt, now).replace(/^[A-Z]/, (c) => c.toLowerCase())}` : ''}{rec.decidedByName ? ` by ${rec.decidedByName}` : ''}.
+                  {rec.decidedAt ? `, ${sentText(rec.decidedAt, now)}` : ''}{rec.decidedByName ? ` by ${rec.decidedByName}` : ''}.
                   Their details, health history and consents from the form are on the record.
                 </p>
                 {rec.patientId && <a href={`${base}${rec.patientId}/`} class="ws-btn ws-btn-quiet mt-4 w-full"><Icon name="user" />Open the record</a>}
@@ -239,7 +240,7 @@ const STATUS_TONE = { new: 'accent', added: 'neutral', dismissed: 'muted' } as c
             {open && !inline && (
               <>
                 {rec.status === 'dismissed' && (
-                  <Callout tone="info" class="mb-4" title={`Dismissed${rec.decidedByName ? ` by ${rec.decidedByName}` : ''}${rec.decidedAt ? `, ${sentText(rec.decidedAt, now).replace(/^[A-Z]/, (c) => c.toLowerCase())}` : ''}.`}>
+                  <Callout tone="info" class="mb-4" title={`Dismissed${rec.decidedByName ? ` by ${rec.decidedByName}` : ''}${rec.decidedAt ? `, ${sentText(rec.decidedAt, now)}` : ''}.`}>
                     <p>{rec.deleteOn ? `It is deleted on ${shortDay(rec.deleteOn, now)} unless you add it.` : ''}</p>
                     <form method="post" action={here} class="mt-2">
                       <Csrf />

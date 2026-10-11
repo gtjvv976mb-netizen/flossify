@@ -115,7 +115,12 @@ if (Astro.request.method === 'POST' && isUuid(intakeId)) {
         case 'cancel': await cancelIntake(tx, a); return 'list';
         case 'renew': await renewDocuments(tx, { ...a, gates }); return '?step=check&renewed=1';
         case 'desk': await setDeskAnswers(tx, { ...a, deskMinor: s('desk_minor'), cameWith: s('came_with'), label: s('label') }); return '?step=out';
-        case 'dismiss': await dismissIntake(tx, { ...a, why: s('why'), note: s('note') }); return 'list';
+        case 'dismiss': {
+          // Only a sent intake is dismissed, and Forms to add is where it was listed: back there, with its reference.
+          await dismissIntake(tx, { ...a, why: s('why'), note: s('note') });
+          const ref = (await tx.query<{ ref: string }>('select ref from intake where id = $1', [intakeId])).rows[0]?.ref ?? '';
+          return `dismissed:${ref}`;
+        }
         case 'add_new': { const r = await addIntake(tx, { ...a, as: 'new', seen: form.getAll('seen').map(String) }); return `record:${r.patientId}`; }
         case 'add_to': { const r = await addIntake(tx, { ...a, as: 'existing', patientId: s('patient'), use: form.getAll('use').map(String) }); return `record:${r.patientId}`; }
         case 'explain': {
@@ -128,6 +133,7 @@ if (Astro.request.method === 'POST' && isUuid(intakeId)) {
       }
     });
     if (next === 'list') return Astro.redirect(`${base}/intake/`, 303);
+    if (next.startsWith('dismissed:')) return Astro.redirect(`${base}/forms/?done=steps-dismissed${/^IN-[A-HJKMNP-Z2-9]{4}$/.test(next.slice(10)) ? `&ref=${next.slice(10)}` : ''}`, 303);
     if (next.startsWith('record:')) return Astro.redirect(`${base}/${next.slice(7)}/?saved=intake&intake=${intakeId}`, 303);
     return Astro.redirect(`${here}${next}`, 303);
   } catch (e) {
@@ -339,11 +345,13 @@ const unreviewed = (t: Template) => !gates?.production && !reviewOf(t.version);
 const STEP_PILLS = [['consents', 'Who and which forms'], ['clinic', 'The clinic’s part'], ['check', 'Check'], ['out', 'Hand over']] as const;
 const stepIndex = STEP_PILLS.findIndex(([k]) => k === step);
 const rev = it?.rev ?? 0;
-const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' : step === 'explain' ? 'Explain and confirm' : step === 'done' ? 'Patient forms' : 'Add patient, step by step';
+const pageTitle = !it ? 'Step-by-step forms' : step === 'add' ? 'Add to the records' : step === 'explain' ? 'Explain and confirm' : step === 'done' ? 'Step-by-step forms' : 'Add patient, step by step';
+// Back to the list it is on: Forms to add once sent (until it is added or dismissed), Forms being filled in before.
+const backTo = it?.status === 'sent' ? { href: `${base}/forms/`, words: PLACE.formsToAdd } : { href: `${base}/intake/`, words: PLACE.formsBeingFilled };
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug, name: clinic.name, area: data.area }} title={pageTitle} section="add-patient" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
-  <a href={`${base}/intake/`} class="rec-back ws-glass m-0! w-fit px-3!"><Icon name="chevron-left" />Patient forms in progress</a>
+  <a href={backTo.href} class="rec-back ws-glass m-0! w-fit px-3!"><Icon name="chevron-left" />{backTo.words}</a>
   {stale && <Callout tone="alert" text={CSRF_MESSAGE} />}
   {handoverRefused && step === 'check' && problems.length === 0 && <Callout tone="alert" focus class="focus:outline-none" data-ik-problems title="Nothing was handed over." text={handoverRefused} />}
   {problems.length > 0 && (
@@ -355,7 +363,7 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
   ) : !it ? (
     <Pane as="div" label="Not here">
       <Callout tone="warn" role="note" text="These forms are not here. They may have been added, dismissed or cleared after 24 hours." />
-      <p class="mt-3"><a href={`${base}/intake/`} class="ws-empty-go">Patient forms in progress <Icon name="arrow-right" size={16} /></a></p>
+      <p class="mt-3"><a href={`${base}/intake/`} class="ws-empty-go">{PLACE.formsBeingFilled} <Icon name="arrow-right" size={16} /></a></p>
     </Pane>
   ) : (
     <>
@@ -473,7 +481,7 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
               </div>
             );
           })}
-          {gates?.production && <p class="ik-help mt-3">More forms open here as a dentist and the clinic’s lawyer review them.</p>}
+          {gates?.production && <p class="ik-help mt-3">More forms open here as a dentist and a lawyer read them.</p>}
           <div class="ik-sep ik-running" aria-live="polite" data-ik-running>
             <Icon name="clock" /><span data-ik-running-words>{running.parts === 1 ? '1 part' : `${running.parts} parts`} · about {running.minutes} minutes</span>
           </div>
@@ -851,7 +859,7 @@ const pageTitle = !it ? 'Patient forms' : step === 'add' ? 'Add to the records' 
             <form method="post" action={here} class="grid gap-4">
               <Csrf /><input type="hidden" name="rev" value={rev} /><input type="hidden" name="intent" value="add_to" /><input type="hidden" name="step" value="add" />
               <input type="hidden" name="patient" value={m.id} />
-              <p class="ik-lede">Only details their record does not have are filled in. A name is never changed. Their health answers become a new version, and the signed forms go on the record.</p>
+              <p class="ik-lede">Only details their record does not have are filled in. A name is never changed. Their health history becomes a new version, and the signed forms go on the record.</p>
               {c && c.fills.length > 0 && <p class="ik-help"><strong>Filled in:</strong> {c.fills.join(', ')}.</p>}
               {c && c.proposed.length > 0 && (
                 <fieldset class="ik-q">
