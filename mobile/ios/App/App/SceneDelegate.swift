@@ -10,6 +10,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window = UIWindow(windowScene: windowScene)
         // Flossify's own controller: haptics, printing, downloads, swipe back, pull to refresh (FlossifyShell.swift).
         window?.rootViewController = FlossifyViewController()
+        // Done, alert buttons and the in-app browser's controls in Flossify's teal, not the system's blue.
+        window?.tintColor = FlossifyViewController.teal
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)

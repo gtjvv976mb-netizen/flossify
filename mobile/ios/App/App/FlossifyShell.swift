@@ -88,13 +88,7 @@ final class FlossifyHaptics {
     /// The named patterns. Without Core Haptics (older phones) each falls back to the nearest plain feedback.
     func play(_ name: String) {
         guard supportsCoreHaptics, let pattern = Self.pattern(name) else {
-            switch name {
-            case "lift": impact("soft")
-            case "drop": impact("rigid")
-            case "confirm": notify("success")
-            case "refuse": notify("error")
-            default: impact("light")
-            }
+            fallback(name)
             return
         }
         do {
@@ -102,12 +96,28 @@ final class FlossifyHaptics {
             let player = try engine.makePlayer(with: pattern)
             try player.start(atTime: CHHapticTimeImmediate)
         } catch {
-            notify(name == "refuse" ? "error" : "success")
+            // The engine is stopped while the app is in the background, and can fail to start again: a new one next time.
+            engine = nil
+            fallback(name)
+        }
+    }
+
+    /// The nearest plain feedback for each pattern (no Core Haptics, or it failed).
+    private func fallback(_ name: String) {
+        switch name {
+        case "lift": impact("soft")
+        case "drop": impact("rigid")
+        case "confirm": notify("success")
+        case "refuse": notify("error")
+        default: impact("light")
         }
     }
 
     private func startedEngine() throws -> CHHapticEngine {
-        if let engine = engine { return engine }
+        if let engine = engine {
+            try engine.start() // a no-op when it is running; wakes it after the app was in the background
+            return engine
+        }
         let made = try CHHapticEngine()
         made.isAutoShutdownEnabled = true
         made.playsHapticsOnly = true
@@ -189,10 +199,8 @@ final class FlossifyPrinter: NSObject, UIPrintInteractionControllerDelegate {
 
     func printInteractionController(_ printInteractionController: UIPrintInteractionController,
                                     choosePaper paperList: [UIPrintPaper]) -> UIPrintPaper {
-        guard let size = paperSize, !paperList.isEmpty else {
-            return paperList.first ?? UIPrintPaper.bestPaper(forPageSize: CGSize(width: 595.28, height: 841.89), withPapersFrom: paperList)
-        }
-        return UIPrintPaper.bestPaper(forPageSize: size, withPapersFrom: paperList)
+        // With no paper named by the page, A4: not the printer's first paper, which can be a 4x6 photo card.
+        UIPrintPaper.bestPaper(forPageSize: paperSize ?? CGSize(width: 595.28, height: 841.89), withPapersFrom: paperList)
     }
 }
 
@@ -226,27 +234,50 @@ enum FlossifyFiles {
     /// `madeByPage`: a file the page drew itself (the QR poster), which may go to Photos. A file from the server (a
     /// patient's X-ray, an export) may not, and is offered to Files, AirDrop, Print and Mail instead.
     static func share(_ url: URL, from controller: UIViewController, madeByPage: Bool, completion: ((Bool) -> Void)? = nil) {
+        let folder = url.deletingLastPathComponent()
+        // Nothing on screen to show it over (the sheet that asked has closed): the file goes at once.
+        guard let presenter = topmost(from: controller) else {
+            try? FileManager.default.removeItem(at: folder)
+            completion?(false)
+            return
+        }
         if url.pathExtension.lowercased() == "ics" {
-            preview(url, from: controller, completion: completion)
+            preview(url, from: presenter, completion: completion)
             return
         }
         let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         var excluded: [UIActivity.ActivityType] = [.assignToContact, .postToFacebook, .postToTwitter, .postToWeibo,
                                                    .postToTencentWeibo, .postToFlickr, .postToVimeo, .addToReadingList]
-        if !madeByPage { excluded.append(.saveToCameraRoll) }
+        // A file from the server (a patient's X-ray, an export) does not go to Photos or the clipboard (which reaches the
+        // person's other devices); it can go to Files, AirDrop, Print or Mail.
+        if !madeByPage { excluded.append(contentsOf: [.saveToCameraRoll, .copyToPasteboard]) }
         sheet.excludedActivityTypes = excluded
-        sheet.completionWithItemsHandler = { _, completed, _, _ in
+        var finished = false
+        sheet.completionWithItemsHandler = { activity, completed, _, _ in
+            // Cancelling inside Mail or Messages calls this with the share sheet still open; it is called again when
+            // the sheet closes. Only that last call (or a finished share) ends it, once.
+            guard !finished, completed || activity == nil else { return }
+            finished = true
             if completed { FlossifyHaptics.shared.notify("success") }
-            try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+            try? FileManager.default.removeItem(at: folder)
             completion?(completed)
         }
         if let popover = sheet.popoverPresentationController {
-            let view = controller.view!
+            let view = presenter.view!
             popover.sourceView = view
             popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY - view.safeAreaInsets.bottom - 44, width: 1, height: 1)
             popover.permittedArrowDirections = [.down, .up]
         }
-        controller.present(sheet, animated: true)
+        presenter.present(sheet, animated: true)
+    }
+
+    /// The controller on top of `controller` (a sheet, a Safari view), so what is shown next is never refused because
+    /// something is already showing. Nil when `controller` is no longer on screen.
+    static func topmost(from controller: UIViewController) -> UIViewController? {
+        guard controller.viewIfLoaded?.window != nil else { return nil }
+        var top = controller
+        while let next = top.presentedViewController, !next.isBeingDismissed { top = next }
+        return top
     }
 
     /// An .ics (Add to calendar on a booking or My visits) opens in iOS's preview, which offers Add to Calendar.
@@ -319,7 +350,9 @@ enum FlossifyCalls {
             do {
                 let url = try FlossifyFiles.newFileURL(named: options["filename"] as? String ?? "Flossify file")
                 try data.write(to: url, options: .completeFileProtection)
-                FlossifyFiles.share(url, from: controller, madeByPage: true) { saved in reply(["saved": saved], nil) }
+                // The page says whether it drew the file itself (a blob: or data: link): only then may it go to Photos.
+                let madeByPage = (options["madeByPage"] as? Bool) ?? false
+                FlossifyFiles.share(url, from: controller, madeByPage: madeByPage) { saved in reply(["saved": saved], nil) }
             } catch {
                 reply(nil, "The file could not be saved")
             }
@@ -352,7 +385,7 @@ final class FlossifyViewController: CAPBridgeViewController {
 
     override func capacitorDidLoad() {
         FlossifyFiles.clearAll()
-        Self.dropCookieCopies()
+        Self.keepOutOfBackups()
         let plugin = FlossifyShellPlugin()
         plugin.owner = self
         bridge?.registerPluginInstance(plugin)
@@ -372,7 +405,7 @@ final class FlossifyViewController: CAPBridgeViewController {
         webView.scrollView.refreshControl = refresh
 
         let navigation = NavigationProxy(target: webView.navigationDelegate, presenter: self)
-        navigation.onLoadEnded = { [weak self] in self?.endRefreshing(); Self.dropCookieCopies() }
+        navigation.onLoadEnded = { [weak self] in self?.endRefreshing() }
         navigation.onCommit = { [weak self] url in self?.arrived(at: url) }
         navigationProxy = navigation
         webView.navigationDelegate = navigation
@@ -389,9 +422,6 @@ final class FlossifyViewController: CAPBridgeViewController {
         })
         observers.append(centre.addObserver(forName: UIScene.didActivateNotification, object: nil, queue: .main) { [weak self] _ in
             self?.uncover()
-        })
-        observers.append(centre.addObserver(forName: UIScene.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
-            Self.dropCookieCopies()
         })
     }
 
@@ -455,13 +485,18 @@ final class FlossifyViewController: CAPBridgeViewController {
         UIView.animate(withDuration: 0.18, animations: { shield.alpha = 0 }, completion: { _ in shield.removeFromSuperview() })
     }
 
-    /// Capacitor copies every cookie the page gets into the app's shared cookie jar (on disk) and never takes a copy away,
-    /// so a sign-in ended in the page would outlive itself there. Nothing native here reads that jar, and the page's own
-    /// cookies live in the web view's store (untouched), so the copies go: at launch, after each page, going to the
-    /// background. (Turning the jar's accept policy off instead would also turn off the web view's cookies.)
-    static func dropCookieCopies() {
-        let jar = HTTPCookieStorage.shared
-        jar.cookies?.forEach { jar.deleteCookie($0) }
+    /// What the web view keeps on the phone (its cookies, a kept record, chart changes waiting to be sent) stays on this
+    /// phone: out of iCloud and computer backups, so a restored or new phone never carries a sign-in or a patient's data.
+    /// (Nothing here deletes any of it: a chart change not yet sent lives there.)
+    static func keepOutOfBackups() {
+        let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+        for name in ["WebKit", "Cookies"] {
+            var folder = library.appendingPathComponent(name, isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? folder.setResourceValues(values)
+        }
     }
 
     func setPageColor(_ color: UIColor) {
@@ -483,6 +518,7 @@ final class FlossifyViewController: CAPBridgeViewController {
                 return
             }
             self.webView?.reload()
+            self.refreshTimeout?.cancel()
             let timeout = DispatchWorkItem { [weak self] in self?.endRefreshing() }
             self.refreshTimeout = timeout
             DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: timeout)
@@ -538,9 +574,13 @@ public class FlossifyShellPlugin: CAPPlugin, CAPBridgedPlugin {
         let dark = call.getBool("dark") ?? false
         let ground = call.getString("color").flatMap(UIColor.init(flossifyHex:))
         let swipe = call.getBool("swipeBack")
+        let chosen = call.getString("theme") ?? ""
         DispatchQueue.main.async { [weak self] in
             guard let owner = self?.owner else { return }
             owner.pageIsDark = dark
+            // Alerts, pickers and sheets in the person's own choice of light or dark; following the device when they
+            // chose nothing (an override then would also stop the page hearing the device change).
+            owner.view.window?.overrideUserInterfaceStyle = chosen == "dark" ? .dark : chosen == "light" ? .light : .unspecified
             owner.setStatusBarStyle(dark ? .lightContent : .darkContent)
             owner.setPageColor(ground ?? (dark ? FlossifyViewController.darkPage : FlossifyViewController.lightPage))
             if let swipe = swipe {
@@ -561,6 +601,8 @@ final class NavigationProxy: NSObject, WKNavigationDelegate, WKDownloadDelegate 
     private var destinations: [ObjectIdentifier: URL] = [:]
     var onLoadEnded: (() -> Void)?
     var onCommit: ((URL?) -> Void)?
+    /// A sheet's: a link tapped inside it to another of our pages. True when the sheet took it elsewhere.
+    var onLeave: ((URL) -> Bool)?
 
     init(target: WKNavigationDelegate?, presenter: UIViewController) {
         self.target = target
@@ -584,6 +626,21 @@ final class NavigationProxy: NSObject, WKNavigationDelegate, WKDownloadDelegate 
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         if navigationAction.shouldPerformDownload {
             decisionHandler(.download)
+            return
+        }
+        // A form sent again by going back, forward or reloading (pull to refresh) would write again without anyone
+        // pressing Save (a refused record post, sent again after the patient signed). Safari asks first; here nothing is
+        // sent again, and the page is fetched afresh.
+        if navigationAction.navigationType == .formResubmitted {
+            decisionHandler(.cancel)
+            if let url = navigationAction.request.url, navigationAction.targetFrame?.isMainFrame ?? true {
+                DispatchQueue.main.async { webView.load(URLRequest(url: url)) }
+            }
+            return
+        }
+        if navigationAction.navigationType == .linkActivated, navigationAction.targetFrame?.isMainFrame ?? false,
+           let url = navigationAction.request.url, let onLeave = onLeave, onLeave(url) {
+            decisionHandler(.cancel)
             return
         }
         // The main page: Capacitor's own rules (its allowed hosts, other websites to iOS). `webView?(…)` is nil only when
@@ -678,7 +735,10 @@ final class NavigationProxy: NSObject, WKNavigationDelegate, WKDownloadDelegate 
         // A file the page itself made (blob: or data:) may go to Photos; a file from the server may not.
         let madeByPage = ["blob", "data"].contains(download.originalRequest?.url?.scheme?.lowercased() ?? "")
         DispatchQueue.main.async { [weak self] in
-            guard let presenter = self?.presenter else { return }
+            guard let presenter = self?.presenter else {
+                try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+                return
+            }
             FlossifyFiles.share(url, from: presenter, madeByPage: madeByPage)
         }
     }
@@ -741,7 +801,8 @@ final class UIProxy: NSObject, WKUIDelegate {
 
 /// A Flossify page shown over the page that opened it: a prescription or letter to print, the X-ray viewer, the privacy
 /// notice. It shares the app's sign-in (the same website data store), has its own small bridge for haptics, printing and
-/// saving, and closes with Done, a swipe down, or the page's own window.close() (a device handed over to a patient).
+/// saving, and closes with Done or a swipe down. A link inside it to another page ("Back to Ana's record") closes it and
+/// opens there in the page underneath, so the same record is never open twice.
 final class PageSheetController: UIViewController, WKScriptMessageHandlerWithReply, WKUIDelegate {
     private var webView: WKWebView!
     private var content: WKUserContentController?
@@ -751,6 +812,7 @@ final class PageSheetController: UIViewController, WKScriptMessageHandlerWithRep
     private let url: URL
     private let userAgentName: String?
     private let dataStore: WKWebsiteDataStore
+    private weak var parentWebView: WKWebView?
 
     static func open(_ url: URL, over presenter: UIViewController, like parent: WKWebView) {
         let sheet = PageSheetController(url: url, parent: parent)
@@ -768,6 +830,7 @@ final class PageSheetController: UIViewController, WKScriptMessageHandlerWithRep
         self.url = url
         self.userAgentName = parent.configuration.applicationNameForUserAgent
         self.dataStore = parent.configuration.websiteDataStore
+        self.parentWebView = parent
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -805,6 +868,7 @@ final class PageSheetController: UIViewController, WKScriptMessageHandlerWithRep
         webView.isOpaque = false
         webView.backgroundColor = view.backgroundColor
         let navigation = NavigationProxy(target: nil, presenter: self)
+        navigation.onLeave = { [weak self] url in self?.leave(to: url) ?? false }
         self.navigation = navigation
         webView.navigationDelegate = navigation
         let ui = UIProxy(target: self, presenter: self)
@@ -821,6 +885,27 @@ final class PageSheetController: UIViewController, WKScriptMessageHandlerWithRep
         dismiss(animated: true)
     }
 
+    /// A link to one of our other pages: the sheet closes, and the page underneath goes there (unless it is there).
+    /// A link within the same page (#a part) stays in the sheet.
+    private func leave(to target: URL) -> Bool {
+        guard let parent = parentWebView, let here = webView.url else { return false }
+        var a = URLComponents(url: target, resolvingAgainstBaseURL: false), b = URLComponents(url: here, resolvingAgainstBaseURL: false)
+        a?.fragment = nil
+        b?.fragment = nil
+        if a?.url == b?.url { return false }
+        dismiss(animated: true) {
+            if parent.url?.absoluteString != target.absoluteString { parent.load(URLRequest(url: target)) }
+        }
+        return true
+    }
+
+    /// An alert over whatever is on top of the sheet; with nothing on screen to show it, the page is answered at once
+    /// (WebKit requires every alert to be answered).
+    private func show(_ alert: UIAlertController, orElse answer: () -> Void) {
+        guard let top = FlossifyFiles.topmost(from: self) else { answer(); return }
+        top.present(alert, animated: true)
+    }
+
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         // The content controller holds this sheet strongly: let go once the sheet is gone.
@@ -830,7 +915,7 @@ final class PageSheetController: UIViewController, WKScriptMessageHandlerWithRep
         }
     }
 
-    // WKUIDelegate, through UIProxy: the page's window.close() (a device handed over to a patient), and its alerts.
+    // WKUIDelegate, through UIProxy: a window.close() (no page calls it today), and the page's alerts.
 
     func webViewDidClose(_ webView: WKWebView) {
         close()
@@ -840,7 +925,7 @@ final class PageSheetController: UIViewController, WKScriptMessageHandlerWithRep
                  completionHandler: @escaping () -> Void) {
         let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
-        present(alert, animated: true)
+        show(alert) { completionHandler() }
     }
 
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo,
@@ -848,7 +933,7 @@ final class PageSheetController: UIViewController, WKScriptMessageHandlerWithRep
         let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
-        present(alert, animated: true)
+        show(alert) { completionHandler(false) }
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
@@ -861,16 +946,17 @@ final class PageSheetController: UIViewController, WKScriptMessageHandlerWithRep
         let options = body["options"] as? [String: Any] ?? [:]
         switch plugin {
         case "FlossifyShell":
-            if method == "setChrome" { replyHandler([:], nil); return }
+            if method == "setChrome" { replyHandler([String: Any](), nil); return }
             FlossifyCalls.perform(method, options, webView: webView, from: self) { answer, problem in replyHandler(answer, problem) }
         case "Browser":
-            if let link = options["url"] as? String, let url = URL(string: link), url.scheme == "https" || url.scheme == "http" {
-                present(SFSafariViewController(url: url), animated: true)
+            if let link = options["url"] as? String, let url = URL(string: link), url.scheme == "https" || url.scheme == "http",
+               let top = FlossifyFiles.topmost(from: self) {
+                top.present(SFSafariViewController(url: url), animated: true)
             }
-            replyHandler([:], nil)
+            replyHandler([String: Any](), nil)
         default:
             // SplashScreen and the rest have nothing to do in a sheet.
-            replyHandler([:], nil)
+            replyHandler([String: Any](), nil)
         }
     }
 }

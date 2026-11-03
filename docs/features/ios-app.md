@@ -38,9 +38,17 @@ What the page asks for, and what the native side does with it:
   for a visit dragged on the calendar. One gesture, one feeling: the panel a teal button opens does not tap again, a
   refusal and the alert it draws buzz once, and the move a drop asked for is not felt twice. The record's allergy and
   conditions line (`.rec-alerts`) is a `role="alert"` for the screen reader but never buzzes: it is not a refusal.
+  Only what the person did is felt: an API's answer within 1.5 s of a touch, a key or a send (the chart's queue
+  retrying every 30 s, or catching up when the line is back, is silent); a fold or popover only when the person opened
+  it; the teal button as it is pressed, not as a finger lands on it to scroll. A failed line, 408, 429, 5xx and the
+  chart's own renumbering are not refusals. On arrival the address is read before the page tidies it away; `?saved=
+  nothing` and `?done=same` are not saves, `?chartskip=` and `?missed=` (and a warning callout) warn, `?paid=` is not
+  felt (PayMongo sends the person back before the payment is confirmed), `?booked=`, `?signed=` and `?welcome=`
+  confirm, and a post that lands on a page with no word of its own is felt as saved.
 - **Motion:** cross-document view transitions on iOS's navigation curve (`cubic-bezier(0.32, 0.72, 0, 1)`, 420 ms):
-  a push forward, a pop back (the Navigation API's `activation`, or the navigation's type), a crossfade when a save
-  comes back to the same page, none on a reload. Buttons, chips, segments and cards give under the finger (`scale`).
+  a push forward, a pop back (the Navigation API's `activation`, the navigation's type, or a "Back to …" link tapped),
+  a crossfade between the main tabs (Dashboard, Patients, Finances, Clinic settings; the public bar's links) and when a
+  save comes back to the same page, none on a reload. These win over the workspace's own 220 ms crossfade. Buttons, chips, segments and cards give under the finger (`scale`).
   `/app/` rises into place in turn. Always on, like the website.
 - **Print:** `window.print()` fires `beforeprint` (the record's print audit rides on it), reads the page's `@page` size
   (A4, A5, the 80 mm roll) and opens iOS's print sheet on that paper, then `afterprint`.
@@ -51,22 +59,32 @@ What the page asks for, and what the native side does with it:
 - **Links:** another website opens in an in-app Safari view (Capacitor's Browser); `tel:` and `mailto:` go to iOS; a
   same-site link meant for a new tab opens in a sheet over the page, sharing the sign-in, so what is typed underneath
   stays. Long-press previews and the long-press menu on links and images are off.
-- **Pull to refresh** asks `flossifyApp.canRefresh()` first: not while a POST form holds typed words ("Not refreshed:
-  what you typed here is not saved yet.").
+- **Pull to refresh** asks `flossifyApp.canRefresh()` first: not while a POST form, or a panel still open, holds typed
+  words ("Not refreshed: what you typed here is not saved yet.").
 - **Safe areas:** the sticky bars take the status bar's height as padding (their colour runs up under the clock); the
   drawers, the side panels, the staff entrance, the desk consent turned to the patient and the scroll offsets follow;
-  a page with no sticky bar starts below the clock and gets a frosted band under it; every page ends above the home
-  indicator. Measured with an iPhone's (59 / 34 px) and an iPad's (24 / 20 px) insets.
-- **The status bar** follows the page's theme; the colour behind the page (a bounce, a load) is the page's own ground.
+  a page with no sticky bar starts below the clock and gets a frosted band under it (`body::before`); every page ends
+  above the home indicator, the full-height ones (the workspace, the staff entrance, /app/) without scrolling by it.
+  All in CSS and on the screen only, so nothing moves after the first paint and nothing of it prints. Measured with an
+  iPhone's (59 / 34 px) and an iPad's (24 / 20 px) insets.
+- **The status bar** follows the page's theme; the colour behind the page (a bounce, a load) is the page's own ground;
+  alerts, pickers and sheets follow the person's own choice of light or dark (the device's when they chose none); the
+  native buttons are teal.
+- **The keyboard** is the web view's own, as in Safari: it covers the lower part of the page and the field scrolls into
+  view. (Capacitor's Keyboard plugin resized the whole page on every focus, so the clinic's photo jumped; it is not used.)
+- **iOS 17 or newer**: the chart's palette is a popover.
 - **Swipe back** works between pages, except out of a page where the page behind may not be this person's (anything
   under `/auth/`, a clinic's door, the patients' door, `/f/`, a signing page), and except while a panel, the drawer or
   a consent turned to the patient is drawn over the page.
 - **The app switcher** shows the Flossify mark, not the page, for anything under `/c/`, `/f/`, `/me/` or `/admin/`.
 - **Clinic tablets:** the screen stays awake on `/f/t/` and `/f/i/`.
-- **Cookies:** Capacitor copies every cookie of the page into the app's shared cookie jar and never takes a copy away;
-  the shell empties that jar at launch, after each page and going to the background (the page's own cookies live in
-  the web view's store and are not touched). It never clears the web view's data: IndexedDB `flossify-offline` holds
-  chart changes not yet sent.
+- **Backups:** what the web view keeps on the phone (its cookies, a kept record, chart changes not yet sent) is kept out
+  of iCloud and computer backups (`Library/WebKit`, `Library/Cookies`), so a restored or new phone never carries a
+  sign-in or a patient's data. Nothing native deletes any of it: IndexedDB `flossify-offline` holds chart changes not
+  yet sent, and WebKit may keep its cookies in the same file as the app's own cookie jar (so the shell never empties
+  that jar either).
+- **A form is never sent again** by going back, forward or pulling to refresh (WebKit would re-send a refused record
+  post without asking): the page is fetched afresh instead.
 
 ## Rules for the app
 
@@ -100,8 +118,14 @@ What the page asks for, and what the native side does with it:
 
 - **Not yet built or run on a Mac.** The Swift was written in the cloud, without a compiler.
 - **The App Store** (`mobile/README.md`): account deletion from inside the app (guideline 5.1.1(v)), since a clinic can
-  be opened from it; paying for Flossify inside the app (3.1.1 / 3.1.3(c)); minimum functionality (4.2); the owner's
-  Apple Developer account, App Privacy answers and a demo clinic for App Review. The owner decides each.
+  be opened from it; paying for Flossify inside the app (3.1.1 / 3.1.3(c)); minimum functionality (4.2); an Apple
+  Developer account as an organisation (5.1.1(ix): health records); a privacy notice with no placeholders that says how
+  to reach Flossify and ask for deletion, and a support URL (5.1.1(i)); a demo clinic made for review, unlisted, with
+  made-up patients; the SwiftCare sample's permission or /websites/ left out (5.2.1); App Privacy answers; Mac and
+  Vision Pro availability off. The owner decides each.
+- **iPad multitasking**: in Slide Over or Split View the app can be 320 pt wide; the site is measured at 390. Not
+  measured at 320 yet.
+- **Larger Text** (iOS's text size) does not change a web view's text; pinch zoom works.
 - **Password AutoFill** needs the owner's Team ID in `/.well-known/apple-app-site-association` and the Associated Domains
   capability.
 - **The chart's palette** is placed by script no higher than 8 px from the top of the screen (`Odontogram.astro`), so a

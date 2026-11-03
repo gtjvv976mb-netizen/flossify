@@ -10,15 +10,15 @@ browser tab cannot do:
 
 | | What | Where |
 |---|---|---|
-| Haptics (iPhone) | a tick for a choice, a light tap under the teal button, a soft tap as a panel, fold or the chart's palette opens, success, warning or error when something is saved or refused, a confirm for a booking, a rigid tap as a tooth is charted (a lift, ticks and a drop for a visit dragged on the calendar too, though only an iPad's calendar drags and iPads have no haptic engine) | `public/app-shell.js` asks; `FlossifyHaptics` in `ios/App/App/FlossifyShell.swift` plays (Core Haptics patterns where the phone has them) |
-| Motion | iOS page transitions (push forward, pop back, a crossfade when a save comes back to the same page), buttons and cards that give under the finger, the start page rising into place; always on, as on the website | `public/app-shell.js` (cross-document view transitions, iOS 18.2+), `src/pages/app/index.astro` |
+| Haptics (iPhone) | a tick for a choice, a light tap as the teal button is pressed, a soft tap as a panel, fold or the chart's palette opens, success, warning or error when something the person did is saved or refused (never for the page's own background work), a confirm for a booking or a signing, a rigid tap as a finding is picked on the chart (offline too) (a lift, ticks and a drop for a visit dragged on the calendar too, though only an iPad's calendar drags and iPads have no haptic engine) | `public/app-shell.js` asks; `FlossifyHaptics` in `ios/App/App/FlossifyShell.swift` plays (Core Haptics patterns where the phone has them) |
+| Motion | iOS page transitions (push forward, pop back for Back and "Back to …", a crossfade between the main tabs and when a save comes back to the same page), buttons and cards that give under the finger, the start page rising into place; always on, as on the website | `public/app-shell.js` (cross-document view transitions, iOS 18.2+), `src/pages/app/index.astro` |
 | Printing | `print()` opens iOS's print sheet on the paper the page is drawn for (A4, A5, the 80 mm receipt roll), after the page's own `beforeprint` (the record's print audit) | `FlossifyPrinter` |
 | Files | a download (CSV, a patient file, the QR poster, *Add to calendar*) is kept in the app's protected temporary folder, offered in the share sheet (an `.ics` in iOS's calendar preview), and deleted when the sheet closes; patient files are never offered to Photos | `FlossifyFiles`, `NavigationProxy` |
-| Links | another website opens in an in-app Safari view; a paper meant for a new tab opens in a sheet over the page, so what is typed underneath stays | `UIProxy`, `PageSheetController` |
+| Links | another website opens in an in-app Safari view; a paper meant for a new tab opens in a sheet over the page, so what is typed underneath stays, and its "Back to …" link closes the sheet and goes there underneath | `UIProxy`, `PageSheetController` |
 | Pull to refresh | not while a form holds typed words (the page says so) | `FlossifyViewController.pulled()` |
-| Privacy | the app switcher shows the Flossify mark, not a record; the edge swipe never goes back out of a sign-in page or a page a patient holds; the sign-in cookie is not copied to the app's own cookie jar | `FlossifyViewController` |
+| Privacy | the app switcher shows the Flossify mark, not a record; the edge swipe never goes back out of a sign-in page or a page a patient holds; a form is never sent again by going back or pulling to refresh; what the web view keeps (cookies, a kept record, chart changes waiting) stays out of iCloud and computer backups | `FlossifyViewController`, `NavigationProxy` |
 | Clinic tablets | the screen stays awake on a clinic tablet (`/f/t/`) and a device handed to a patient (`/f/i/`) | `arrived(at:)` |
-| Offline | the service worker keeps the app's script, so the offline page and a kept record still print and buzz | `public/sw.js` |
+| Offline | the service worker keeps the app's script and never makes a page wait on a bad line for it, so the offline page and a kept record still print and buzz | `public/sw.js` |
 | Safe areas | bars, drawers and panels clear the clock, the Dynamic Island and the home indicator; iPhone stays upright (iPad turns) | `public/app-shell.js` (`html[data-app]` only), `Info.plist` |
 
 In a browser none of this runs: `src/components/AppShell.astro` loads `/app-shell.js` only when the user agent carries
@@ -27,10 +27,11 @@ In a browser none of this runs: `src/components/AppShell.astro` loads `/app-shel
 ## Build and run it on the Mac
 
 You need a Mac with Xcode 16 or newer and Node 22. Nothing else: Capacitor 8 uses Swift Package Manager, no CocoaPods.
+The app needs iOS 17 or newer (the chart's palette is a popover, which iOS 16 does not have).
 
 ```bash
 cd mobile
-npm ci              # Capacitor and its four plugins
+npm ci              # Capacitor and its three plugins (App, Browser, SplashScreen)
 npm run sync        # copies the config and the offline page into the Xcode project
 npm run open        # opens ios/App/App.xcodeproj in Xcode
 ```
@@ -68,21 +69,34 @@ only, then Safari → Develop → Simulator → flossify.ph. Never ship it on.
 9. With a record open, swipe up to the app switcher: the Flossify mark, not the record.
 10. Turn on Airplane Mode with a record open in the last four hours: the kept copy shows, and a chart change waits and
     sends when the line is back.
-11. Light and dark: the status bar's clock stays readable on every page, including the papers.
+11. Light and dark: the status bar's clock stays readable on every page, including the papers; with Light chosen on a
+    dark-mode phone, alerts and the share sheet are light too.
+12. A refused save on the record (Mark done with no consent), then pull to refresh or swipe back: nothing is sent again,
+    the page is fetched afresh.
+13. Open a prescription (it opens in a sheet), tap *Back to … record*: the sheet closes and the record underneath is
+    there, once.
+14. Tap a field on the sign-in page and on a patient's forms (`/f/i/`): the keyboard covers the lower part as in Safari
+    and the field scrolls into view; the clinic's photo behind does not jump.
+15. Share a patient file, open Mail, cancel: the share sheet stays and the file is still there; close it: gone.
 
 `scripts/dev/app/app-shell-check.mjs` and `scripts/dev/app/app-safe-areas.mjs` check the website's half (what the page asks
 the app for, and where it draws) in Chromium; this list is for the native half.
 
 ## Signing, TestFlight and the App Store
 
-These need the owner's Apple Developer account (99 USD a year), in the owner's name, and only the owner enters its
-password or keys.
+These need an Apple Developer account (99 USD a year) and only the owner enters its password or keys. An app that holds
+health records must come from an organisation, not a person (guideline 5.1.1(ix)): the account is an Organization in
+Flossify's company name, with a D-U-N-S number.
 
 1. In Xcode, *App* target → Signing & Capabilities → Team: the owner's team. The bundle id is `ph.flossify.app`.
 2. Product → Archive → Distribute App → App Store Connect → Upload. Then TestFlight for the clinic's own phones.
-3. In App Store Connect: the App Privacy answers (health information and contact details are collected, linked to the
-   person, not used for tracking), a privacy policy URL (`https://flossify.ph/privacy/`), and a demo clinic sign-in for
-   App Review in the review notes.
+3. In App Store Connect: the App Privacy answers (health information, contact details, photos, user content and a user
+   id are collected, linked to the person, not used for tracking), a privacy policy URL (`https://flossify.ph/privacy/`),
+   a support URL, an age rating, and Mac and Vision Pro availability turned off (the app is for iPhone and iPad).
+4. For App Review: a demo clinic sign-in in the review notes. Never a real clinic's (it would show real patients): a
+   clinic made for review, not listed (it never appears on /find/ or among the home page's partners), with made-up
+   patients. Walk the reviewer through what is native: chart a tooth (haptics), print a prescription (the print sheet),
+   download a file (the share sheet), the app switcher's cover.
 
 Questions for the owner before submitting (also in `docs/features/ios-app.md`):
 
@@ -93,6 +107,11 @@ Questions for the owner before submitting (also in `docs/features/ios-app.md`):
   is true nothing is paid anyway.
 - **Minimum functionality (4.2).** Apple refuses apps that are only a website. Printing, the share sheet, haptics, the
   offline chart and the privacy cover are the native part; say so in the review notes.
+- **The privacy notice and a way to reach Flossify (5.1.1(i)).** Review opens `/privacy/`: it must name who to contact
+  and how to ask for data to be deleted, with no unfilled placeholders, and the support URL must reach a person. The
+  notice's words are a legal change (the owner's lawyer).
+- **The SwiftCare sample (5.2.1).** A real clinic's name and photographs are reachable from /websites/ in the app: have
+  the clinic's written permission ready for the review notes, or leave /websites/ out of the app.
 - **Password AutoFill** needs the owner's Team ID in `/.well-known/apple-app-site-association` and the Associated
   Domains capability (`webcredentials:flossify.ph`). Not set up yet.
 

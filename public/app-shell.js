@@ -630,7 +630,8 @@
     var ground = pageColour(dark);
     // The frosted band under the clock (body::before, on a page with no sticky bar) takes the page's own ground.
     root.style.setProperty('--app-band', 'rgba(' + ground.r + ', ' + ground.g + ', ' + ground.b + ', 0.86)');
-    var state = { dark: dark, color: hex(ground), swipeBack: swipeOk() };
+    // theme: the person's own choice ('light', 'dark'), or '' when the page follows the device.
+    var state = { dark: dark, theme: root.getAttribute('data-theme') || '', color: hex(ground), swipeBack: swipeOk() };
     var key = JSON.stringify(state);
     if (key === chromeWas) return;
     chromeWas = key;
