@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>You're offline — Flossify</title>
+<!-- The app's own page for a failed load (capacitor.config.json, server.errorPath). It lives inside the app, so it opens
+     with no connection at all: no script, font or image is fetched. The words follow the website's /offline/ page. Drawn
+     in the soft template, both themes. Try again goes back to the app's start page; coming back online does the same. -->
+<style>
+  :root { --bg: #f3f5f8; --card: #fff; --hair: #e6e9ee; --ink: #1f2937; --ink-2: #475467; --teal: #0e7471; --teal-hover: #0b5f5d;
+          --amber-tint: #fdf3e2; --amber-ink: #8a4b06; --blue-ink: #1d4e89; color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #15191e; --card: #1d232a; --hair: #2c343e; --ink: #e7ebf0; --ink-2: #c3cad4;
+          --teal: #0e7471; --teal-hover: #11807d; --amber-tint: #3a2a12; --amber-ink: #f5c27a; --blue-ink: #a9c8f2; color-scheme: dark; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink);
+    font: 16px/1.55 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+  main { min-height: 100dvh; display: grid; place-items: center;
+    padding: max(48px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(48px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
+  .wrap { width: 100%; max-width: 560px; }
+  .mark { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; letter-spacing: -0.01em; color: var(--ink); }
+  .mark svg { width: 32px; height: 32px; }
+  .mark rect { fill: var(--teal); } .mark path { fill: #fff; }
+  .card { margin-top: 20px; background: var(--card); border: 1px solid var(--hair); border-radius: 16px; padding: 28px 24px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04); animation: rise .6s cubic-bezier(.2, .8, .2, 1) both; }
+  .icon { display: inline-flex; width: 48px; height: 48px; align-items: center; justify-content: center; border-radius: 12px;
+    background: var(--amber-tint); color: var(--amber-ink); }
+  h1 { margin: 20px 0 0; font-size: 30px; line-height: 1.2; letter-spacing: -0.01em; text-wrap: balance; }
+  p { margin: 12px 0 0; color: var(--ink-2); }
+  button { margin-top: 28px; width: 100%; min-height: 52px; border: 0; border-radius: 10px; background: var(--teal); color: #fff;
+    font: 600 17px/1 inherit; font-family: inherit; cursor: pointer; transition: transform .18s cubic-bezier(.3, .7, .4, 1.4), background-color .15s; }
+  button:active { transform: scale(.97); background: var(--teal-hover); }
+  button:focus-visible { outline: 3px solid var(--blue-ink); outline-offset: 3px; }
+  .note { display: flex; gap: 10px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--hair); font-size: 14px; }
+  .note svg { flex: none; margin-top: 3px; color: var(--blue-ink); }
+  .note p { margin: 0; }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="wrap">
+    <span class="mark"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9"/><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z"/></svg>Flossify</span>
+    <section class="card" aria-labelledby="t">
+      <span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>
+      <h1 id="t">You're offline.</h1>
+      <p>Flossify needs a connection for patient records and bookings, so nothing you type here would be saved, and we would rather tell you than lose it. It opens again by itself when the line is back.</p>
+      <button type="button" id="retry">Try again</button>
+      <div class="note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        <p>A patient chart that was already open keeps working through a brownout: its changes wait on this phone and are sent when the line returns.</p>
+      </div>
+    </section>
+  </div>
+</main>
+<script>
+  (function () {
+    var START = 'https://flossify.ph/app/';
+    var cap = window.Capacitor;
+    function native(plugin, method, options) {
+      try { if (cap && cap.nativePromise) return cap.nativePromise(plugin, method, options || {}).catch(function () {}); } catch (e) {}
+      return Promise.resolve();
+    }
+    native('SplashScreen', 'hide', { fadeOutDuration: 250 });
+    native('FlossifyShell', 'notify', { type: 'warning' });
+    var going = false;
+    function go() { if (going) return; going = true; location.href = START; }
+    document.getElementById('retry').addEventListener('click', function () { native('FlossifyShell', 'impact', { style: 'medium' }); go(); });
+    window.addEventListener('online', go);
+  })();
+</script>
+</body>
+</html>

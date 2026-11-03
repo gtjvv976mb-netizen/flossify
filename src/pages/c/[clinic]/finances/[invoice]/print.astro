@@ -36,6 +36,7 @@ import {
   DISCOUNTS, NOT_BIR, UUID, PAYOR_METHODS,
 } from '../../../../../lib/invoices';
 import { can } from '../../../../../lib/can';
+import AppShell from '../../../../../components/AppShell.astro';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -100,6 +101,7 @@ const pageCss = `
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <AppShell />
     <title>{title} {no}{ack ? ` · payment ${ack.seq}` : ''} — {clinic.name}</title>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

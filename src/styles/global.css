@@ -2,6 +2,9 @@
 /* Documents for people, not the site: their words must not add classes to the build (measured 9 Oct: the plan page added 47 bytes). */
 @source not "../../docs/simplify-plan.html";
 @source not "../../docs/simplify";
+/* The iPhone app's own files: the native project and the script only the app loads (public/app-shell.js). */
+@source not "../../mobile";
+@source not "../../public/app-shell.js";
 @source not "../../docs/glossary.md";
 @source not "../../scripts/dev/words";
 

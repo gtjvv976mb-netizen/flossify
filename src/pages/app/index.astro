@@ -1,0 +1,94 @@
+---
+// Where the Flossify iPhone app opens (mobile/capacitor.config.json, server.url). Someone already signed in goes straight
+// on: staff to their branch's Dashboard (or Flossify's operator to /admin/), a patient to My visits. Anyone else sees the
+// two doors of the home page, as two cards: I'm a Patient (Find a clinic, then booking) and Clinic sign-in (which opens
+// the clinic's own door when this device has signed in there before). Nothing here is only for the app; in a browser it
+// is a plain page, kept out of search results.
+export const prerender = false;
+
+import Base from '../../layouts/Base.astro';
+import Icon from '../../components/ws/Icon.astro';
+import type { IconName } from '../../components/ws/icons';
+import { readSession, canOpen } from '../../lib/auth';
+import { readPatientSession } from '../../lib/patient-auth';
+import { pool } from '../../lib/db';
+
+const session = readSession(Astro.cookies);
+if (session) {
+  if (!session.clinicId) return Astro.redirect('/admin/');
+  const { rows } = await pool.query<{ slug: string }>('select slug from staff_branches($1) where id = $2', [session.staffId, session.clinicId]);
+  const slug = rows[0]?.slug;
+  // A session made stale behind the person's back (a new password, a branch taken away) is not let through here:
+  // the doors show, and Clinic sign-in asks again.
+  if (slug && (await canOpen(session, slug))) return Astro.redirect(`/c/${slug}/`);
+}
+if (readPatientSession(Astro.cookies)) return Astro.redirect('/me/visits/');
+
+const doors: { href: string; label: string; hint: string; icon: IconName; key: string }[] = [
+  { href: '/find/', label: "I'm a Patient", hint: 'Find a clinic near you and book a visit. No account needed.', icon: 'search', key: 'patient' },
+  { href: '/auth/login/', label: 'Clinic sign-in', hint: 'For clinic owners, dentists and the front desk.', icon: 'user', key: 'clinic' },
+];
+---
+
+<Base title="Flossify" description="Find a dental clinic and book a visit, or sign in to your clinic.">
+  <meta slot="head" name="robots" content="noindex" />
+  <main id="main" class="app-start">
+    <div class="app-start-in">
+      <p class="ws-mark app-rise" style="--d: 0ms">
+        <svg class="ws-mark-sq" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" /><path d="M9 8h14v11c0 3-1.6 5-3.2 5S17 22.4 17 20.4v-2.2h-2v2.2c0 2-1.2 3.6-2.8 3.6S9 22 9 19z" /></svg>
+        <span class="ws-mark-word">Flossify</span>
+      </p>
+      <h1 class="app-rise mt-6 text-[clamp(1.9rem,7vw,2.5rem)] leading-tight" style="--d: 60ms">Your clinic, in the Web</h1>
+      <p class="app-rise mt-2 text-[16px] leading-relaxed text-ink-2" style="--d: 110ms">Switch to paperless, seamless, effortless daily operations.</p>
+
+      <ul class="mt-8 grid gap-3" role="list">
+        {doors.map((d, i) => (
+          <li class="app-rise" style={`--d: ${170 + i * 70}ms`}>
+            <a href={d.href} class="card app-door rounded-pane" data-app-door={d.key}>
+              <span class="app-door-icon" aria-hidden="true"><Icon name={d.icon} size={22} /></span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-[18px] font-semibold text-ink">{d.label}</span>
+                <span class="mt-0.5 block text-[14.5px] leading-snug text-ink-2">{d.hint}</span>
+              </span>
+              <Icon name="chevron-right" size={18} class="flex-none text-ink-2" />
+            </a>
+          </li>
+        ))}
+      </ul>
+
+      <p class="app-rise mt-6 text-[15px] text-ink-2" style="--d: 340ms">
+        Booked already? <a href="/me/" class="app-link">My visits</a>
+      </p>
+    </div>
+  </main>
+</Base>
+
+<style>
+  /* One column in the middle of the screen, clear of the notch and the home indicator. */
+  .app-start {
+    min-height: 100dvh; display: grid; align-items: center; justify-items: center;
+    padding: max(2.5rem, env(safe-area-inset-top)) max(1.25rem, env(safe-area-inset-right))
+      max(2.5rem, env(safe-area-inset-bottom)) max(1.25rem, env(safe-area-inset-left));
+  }
+  .app-start-in { width: 100%; max-width: 30rem; }
+  .app-door {
+    display: flex; align-items: center; gap: 0.9rem; min-height: 4.75rem; padding: 1rem 1.1rem;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .app-door:hover { border-color: var(--ws-teal); }
+  .app-door:focus-visible { outline: 3px solid var(--ws-teal); outline-offset: 2px; }
+  .app-door-icon {
+    display: inline-flex; width: 2.75rem; height: 2.75rem; flex: none; align-items: center; justify-content: center;
+    border-radius: 12px; background: var(--ws-teal-tint); color: var(--ws-teal-ink);
+  }
+  .app-link {
+    display: inline-flex; min-height: 44px; align-items: center; font-weight: 600; color: var(--ws-teal-ink);
+    text-decoration: underline; text-underline-offset: 4px;
+  }
+  /* Each part rises into place in turn: motion is always on (the owner's rule). */
+  .app-rise { animation: app-rise 620ms cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: var(--d, 0ms); }
+  @keyframes app-rise {
+    from { opacity: 0; transform: translateY(16px) scale(0.985); }
+    to { opacity: 1; transform: none; }
+  }
+</style>

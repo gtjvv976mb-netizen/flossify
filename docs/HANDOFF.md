@@ -176,7 +176,7 @@ machine. Without `DB=` it skips the database; `--no-build` skips the build.
 ### `scripts/dev/e2e.sh`: every browser check, each on a freshly seeded database
 
 ```sh
-DB=flossify_t scripts/dev/e2e.sh                 # paper dash seat choices profile phone
+DB=flossify_t scripts/dev/e2e.sh                 # paper dash seat choices profile phone app safe
 DB=flossify_t scripts/dev/e2e.sh paper dash      # only those
 ```
 
@@ -259,6 +259,11 @@ UPLOAD_DIR=/tmp/fl-uploads SHOW_DEMO_LOGINS=1 TRUST_PROXY=0 \
 - `scripts/dev/review/review-pack.ts` — `npm run review:pack` writes `docs/review/review-pack.html`; re-run it after
   any change of words a patient signs.
 - `scripts/film.mjs` (the home page film), `scripts/record-walkthroughs.mjs` (the two "How to register" videos).
+- `scripts/dev/app/app-shell-check.mjs` (e2e `app`) — the iPhone app's website half: what each page asks the native
+  side for (haptics, print, downloads, the in-app browser, swipe back, the status bar), with a stand-in bridge;
+  offline, the worker's copy of the app's script. `app-safe-areas.mjs` (e2e `safe`) — every page, drawer and panel
+  clear of the status bar and the home indicator, with an iPhone's and an iPad's insets. The native half is checked
+  on a Mac (`mobile/README.md`, "What to check on the Mac"); see `docs/features/ios-app.md`.
 - Every browser script reads `PW_CHROMIUM` (a Chromium binary) when Playwright's own build is not installed, except
   `scripts/shoot.mjs` and `scripts/audit.mjs`, which name `/opt/pw-browsers/chromium` outright.
 - `docs/simplify/` — the evidence behind the plan: `audit.json` (the 6 Oct audit of eight areas of the site: what

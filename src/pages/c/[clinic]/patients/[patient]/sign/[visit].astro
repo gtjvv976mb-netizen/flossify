@@ -28,6 +28,7 @@ import { hit, waitText, LIMITS } from '../../../../../../lib/throttle';
 import { canEditRecords, dateText, isMinor } from '../../../../../../lib/health';
 import { readSignForm, signVisit, treatmentInForce, planLine, readStrokes, SIG_W, SIG_H, type SignIn } from '../../../../../../lib/visit-consent';
 import { canSign } from '../../../../../../lib/visit-record';
+import AppShell from '../../../../../../components/AppShell.astro';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ws = await requireWorkspace(Astro);
@@ -102,6 +103,7 @@ const onPatientStep = !!typed;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <AppShell />
     <title>Consent · {p.first_name} {p.last_name} — {clinic.name}</title>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

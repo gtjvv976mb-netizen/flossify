@@ -28,3 +28,6 @@ raw-walk/
 
 # A throwaway check written during a session (it must sit in the repository to find playwright and pg).
 /scripts/dev/.*.tmp.mjs
+
+# The iPhone app: its packages, and what `cap sync` copies into the Xcode project on every sync.
+/mobile/node_modules/

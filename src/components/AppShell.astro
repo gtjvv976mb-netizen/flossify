@@ -1,0 +1,13 @@
+---
+// The Flossify iPhone app (mobile/, a native shell around this website) marks itself in the user agent
+// ("FlossifyApp/1", capacitor.config.json). Only then does a page load /app-shell.js: haptics, the iOS-style page
+// transitions, printing and saving through iOS, and the page's colours behind the status bar. Every other visitor runs
+// this one test and nothing else, so the website is unchanged in a browser. It sits in the head of every layout and of
+// every page with its own document (the print pages, the signing page), before any script that might call print().
+---
+<script is:inline>
+  if (/\bFlossifyApp\//.test(navigator.userAgent)) {
+    document.documentElement.setAttribute('data-app', '');
+    document.write('<script src="/app-shell.js"><\/script>');
+  }
+</script>

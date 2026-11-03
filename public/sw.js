@@ -60,6 +60,9 @@ const PRECACHE = [
   '/icons/apple-touch-icon.png',
 ];
 const IMMUTABLE = /^\/(assets|_astro|fonts|icons)\//;
+// The iPhone app's own script (src/components/AppShell.astro): only the app asks for it, never a browser. The network's
+// answer first, its last copy when the line is down, so the offline page and a kept record still print and buzz in the app.
+const APP_SHELL = '/app-shell.js';
 const RECORD_PAGE = /^\/c\/[^/]+\/patients\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?$/i;
 const RECORD_HOURS = 4;
 // How long a record page may take before the kept copy is shown instead (the network's answer still updates it).
@@ -115,6 +118,21 @@ self.addEventListener('activate', (event) => {
 async function offlinePage() {
   const cached = await caches.match(OFFLINE);
   return cached || new Response('You are offline.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+}
+
+async function networkFirst(request) {
+  try {
+    const res = await fetch(request);
+    if (keep(res)) {
+      const cache = await caches.open(CACHE);
+      await cache.put(request, res.clone());
+    }
+    return res;
+  } catch (e) {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    throw e;
+  }
 }
 
 async function cacheFirst(request) {
@@ -298,6 +316,10 @@ self.addEventListener('fetch', (event) => {
   }
   if (IMMUTABLE.test(url.pathname)) {
     event.respondWith(cacheFirst(request));
+    return;
+  }
+  if (url.pathname === APP_SHELL) {
+    event.respondWith(networkFirst(request));
     return;
   }
   // Everything else (the API, /c/, /uploads/, JSON fetches) goes straight to

@@ -21,6 +21,7 @@ import { canEditRecords, when, dateText, ageText } from '../../../../../../lib/h
 import { stamp } from '../../../../../../lib/invoices';
 import { getForm, answerSections, answerText, FIELDS, TREATMENT_CONSENT, PRIVACY_TICK } from '../../../../../../lib/patient-forms';
 import { DESK_STEP_TITLE, DESK_SECTION_TITLE } from '../../_forms/words';
+import AppShell from '../../../../../../components/AppShell.astro';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -59,6 +60,7 @@ const signedAs = rec.signedAs === 'guardian' ? 'a parent or guardian, for the pa
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <AppShell />
     <title>Patient form {rec.ref} — {clinic.name}</title>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

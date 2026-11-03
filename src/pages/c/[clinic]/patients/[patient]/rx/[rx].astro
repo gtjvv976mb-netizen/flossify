@@ -17,6 +17,7 @@ import { withClinic } from '../../../../../../lib/db';
 import { ageOn, ageText, dateText, manilaToday } from '../../../../../../lib/health';
 import { prettyPhone } from '../../../../../../lib/messages';
 import { ptrLine, ptrPrintNote, ptrState } from '../../../../../../lib/ptr';
+import AppShell from '../../../../../../components/AppShell.astro';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ws = await requireWorkspace(Astro);
@@ -65,6 +66,7 @@ const pageCss = `
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <AppShell />
     <title>Prescription · {r.first_name} {r.last_name} — {clinic.name}</title>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

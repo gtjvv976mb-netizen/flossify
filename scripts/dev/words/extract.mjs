@@ -97,7 +97,7 @@ export const SCREEN_BAR = /(?:^|\s)(?:print:hidden|fp-bar|pq-bar)(?:\s|$)/;
 
 /** Words outside src that a person sees: the installed app's name and shortcuts, the offline fallback, the
  *  install button. */
-export const PUBLIC_FILES = ['public/manifest.webmanifest', 'public/sw.js', 'public/pwa.js'];
+export const PUBLIC_FILES = ['public/manifest.webmanifest', 'public/sw.js', 'public/pwa.js', 'public/app-shell.js'];
 
 /** The kinds of file the reader reads. */
 export const SCANNED = /\.(astro|ts|js|mjs|css)$/;

@@ -17,6 +17,7 @@ import { withClinic } from '../../../../../../lib/db';
 import { dateText, manilaToday } from '../../../../../../lib/health';
 import { prettyPhone } from '../../../../../../lib/messages';
 import { AFTERCARE, type AftercareKind } from '../../../../../../lib/aftercare';
+import AppShell from '../../../../../../components/AppShell.astro';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ws = await requireWorkspace(Astro);
@@ -98,6 +99,7 @@ const pageCss = `
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <AppShell />
     <title>Aftercare · {sheet.title} · {p.first_name} {p.last_name} — {clinic.name}</title>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

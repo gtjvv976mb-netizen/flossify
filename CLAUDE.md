@@ -130,6 +130,16 @@ The owner's decisions, in force, with the owner's words and dates where the reco
   thing; one teal button; say it once; one word for each thing; show only what has something in it, but never hide
   safety alerts, consent gaps or legal lines; the first screen is for the task; measure before and after.
 
+### The iPhone and iPad app (ios-app.md)
+- **The owner (3 Nov 2026):** "now make it into a fully functional iOS app with great haptics and motion design". The
+  owner chose a native shell (Capacitor 8, `mobile/`) around the live site, one app for patients and clinics opening
+  `/app/`, built and checked on the owner's Mac (`mobile/README.md`).
+- **In a browser the website is unchanged**: the app's half (`public/app-shell.js`) loads only for the `FlossifyApp/`
+  user agent and every rule it adds is under `html[data-app]`. Motion and haptics are always on in the app too; a
+  haptic follows what the server did, never a guess. Native code never clears the web view's data (unsent chart
+  changes), the app switcher never shows a record, and the edge swipe never goes back out of a sign-in page or a page a
+  patient holds.
+
 ## Retired — do not bring back
 
 Each was built and taken out, or proposed and refused; bringing one back undoes a decision. The source is in brackets.
@@ -373,7 +383,8 @@ patients "confirm or cancel by text", before the desk poster forms open live) an
 the review pack), and the known limits. **The owner decides** the 25 questions (`docs/simplify-plan.md` section 5) and
 PR #52 as a 26th: whether its pinned allergy line, Today's one-button visit lines and deep-link check come into the
 paper record, or it closes (never merge it or resolve its conflicts mechanically); the empty baby arch on an adult's
-print; an emergency hold and Philippine holidays.
+print; an emergency hold and Philippine holidays; and for the iPhone app, its first build on the Mac and the App Store's
+questions (deleting an account from inside the app, paying for Flossify inside it: `docs/features/ios-app.md`).
 
 ## Where the detail lives
 
@@ -396,5 +407,6 @@ Where a rule here differs from one, this file wins; detail this file leaves out 
 | `docs/glossary.md`, `docs/review/review-pack.html` | — | writing any word a patient or the staff will see (`npm run test:words`); changing words a patient signs or a dentist must read (`npm run review:pack`) |
 | `docs/HANDOFF.md`, `docs/simplify-plan.md` (`.html`) | — | starting a session (where `main` stands, the checks to run first, the cloud recipe); any change (the plan, its build order, the owner's 25 questions; `docs/simplify/` has its evidence) |
 | `docs/workspace-redesign.md` | — | the workspace shell, the soft template's tokens and the Site API |
+| `docs/features/ios-app.md`, `mobile/README.md` | — | the iPhone and iPad app: `mobile/`, `public/app-shell.js`, `/app/`, `AppShell.astro` |
 | `docs/deploy.md`, `docs/launch.md` | — | deploying; the owner's launch checklist |
 | `docs/generation.md`, `docs/service-map.md`, `docs/clinic-sites-design.md`, `docs/clinic-operations.md` | — | the film, the patient side, clinic doors and sites, the paperless day: the briefs they were built from |

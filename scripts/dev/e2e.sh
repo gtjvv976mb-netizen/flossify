@@ -2,8 +2,8 @@
 # Every browser check, each on a freshly seeded throwaway LOCAL database, against one dev server this
 # script starts and stops. Run it after scripts/dev/resume.sh, from the repository root:
 #
-#   DB=flossify_t scripts/dev/e2e.sh                  all six checks
-#   DB=flossify_t scripts/dev/e2e.sh paper dash       only those (paper dash seat choices profile phone)
+#   DB=flossify_t scripts/dev/e2e.sh                  all eight checks
+#   DB=flossify_t scripts/dev/e2e.sh paper dash       only those (paper dash seat choices profile phone app safe)
 #
 # It DROPS and reseeds $DB before every check (scripts/db/setup.sh), so DB must be a throwaway database:
 # refused are flossify_dev, flossify (production's name), a name that is not plain letters, digits and _,
@@ -54,7 +54,7 @@ case $srv in *' true') ;; *) no "the server answering is at ${srv% *}, not this 
 OUT="${OUT:-$(mktemp -d)}"
 mkdir -p "$OUT/uploads"
 
-ALL="paper dash seat choices profile phone"
+ALL="paper dash seat choices profile phone app safe"
 WANT="${*:-$ALL}"
 script_of() {
   case $1 in
@@ -64,6 +64,8 @@ script_of() {
     choices) echo scripts/dev/schedule/choices-check.mjs ;;
     profile) echo scripts/dev/settings/profile-check.mjs ;;
     phone) echo scripts/dev/intake/phone-e2e.mjs ;;
+    app) echo scripts/dev/app/app-shell-check.mjs ;;
+    safe) echo scripts/dev/app/app-safe-areas.mjs ;;
     *) echo "" ;;
   esac
 }
