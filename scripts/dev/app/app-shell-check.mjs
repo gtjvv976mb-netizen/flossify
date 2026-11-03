@@ -148,9 +148,11 @@ for (const scheme of ['light', 'dark']) {
     // 4a. A choice ticks; 7. another website opens in the in-app browser.
     await p.goto(`${base}/find/`);
     await clearCalls(p);
-    const choice = await p.$('input[type="radio"], input[type="checkbox"], .ws-seg a, [role="tab"], button[aria-pressed]');
+    // A real tap (a click a script makes is not felt): a chip that says it is pressed, or a radio or checkbox.
+    const choice = (await p.$$('button[aria-pressed], [role="tab"], .ws-seg a, input[type="radio"], input[type="checkbox"]'))[0];
     assert.ok(choice, 'a choice on /find/');
-    await choice.evaluate((el) => (el.matches('input') ? (el.click(), el.dispatchEvent(new Event('change', { bubbles: true }))) : el.click()));
+    await choice.scrollIntoViewIfNeeded();
+    await choice.tap({ force: true });
     await waitCall(p, 'FlossifyShell', 'selection');
     ok('a choice on Find a clinic ticks (selection)');
     await p.goto(`${base}/find/`);
@@ -208,11 +210,22 @@ for (const scheme of ['light', 'dark']) {
     await waitCall(p, 'FlossifyShell', 'setChrome', (o) => o.swipeBack === true);
     ok('while the panel is open the edge swipe does not go back; once it closes it does again');
 
-    // 4d. An API refusal is an error (no CSRF header: 403).
+    // 4d. An API refusal (no CSRF header: 403) to something the person pressed is an error; the same refusal to the
+    // page's own background work (the chart's queue retrying) is not felt.
+    await p.waitForTimeout(1600);
     await clearCalls(p);
     await p.evaluate(() => fetch('/api/recall', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {}));
+    await p.waitForTimeout(700);
+    assert.deepEqual((await callsOf(p)).filter((c) => c.method === 'notify'), [], 'background work is not felt');
+    await p.evaluate(() => {
+      const b = document.createElement('button');
+      b.id = 'press-api'; b.textContent = 'Press'; b.style.cssText = 'position:fixed;left:8px;top:200px;z-index:99999;min-height:44px';
+      b.addEventListener('click', () => fetch('/api/recall', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {}));
+      document.body.append(b);
+    });
+    await p.tap('#press-api');
     await waitCall(p, 'FlossifyShell', 'notify', (o) => o.type === 'error');
-    ok('an API refusal: an error haptic');
+    ok('an API refusal to a press: an error haptic; the same refusal to background work: nothing');
 
     // 4e. A save that lands is a success.
     await clearCalls(p);
@@ -220,6 +233,16 @@ for (const scheme of ['light', 'dark']) {
     await waitCall(p, 'FlossifyShell', 'notify', (o) => o.type === 'success');
     assert.ok(!(await callsOf(p)).some((c) => c.method === 'notify' && c.options.type === 'error'), 'the allergy line is not a refusal');
     ok('a save that lands (?saved=): a success haptic, and the record\'s allergy line stays quiet');
+
+    // 4e'. "Nothing was saved" is not a save; a fold the page opens by itself is not a touch.
+    await clearCalls(p);
+    await p.goto(`${base}/c/${slug}/patients/${patientId}/?saved=nothing`);
+    await p.waitForTimeout(900);
+    await p.evaluate(() => { const d = document.querySelector('details:not([open])'); if (d) d.open = true; });
+    await p.waitForTimeout(900);
+    const quiet = (await callsOf(p)).filter((c) => c.method === 'notify' || c.method === 'impact');
+    assert.deepEqual(quiet, [], `?saved=nothing and a fold a script opens are not felt: ${JSON.stringify(quiet)}`);
+    ok('?saved=nothing is not felt as a save, and a fold the page opens by itself does not tap');
 
     // 4f. A panel opened by a plain button (not the teal one) opens with a soft tap.
     await p.waitForTimeout(500);

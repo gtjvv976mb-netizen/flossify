@@ -102,13 +102,13 @@ async function check(p, d, label, scope) {
 }
 
 async function band(p, d, label, want) {
+  // The band is the body's ::before (public/app-shell.js): fixed at the top, as tall as the status bar.
   const got = await p.evaluate(() => {
-    const s = document.querySelector('[data-app-statusbar]');
-    if (!s) return null;
-    const r = s.getBoundingClientRect();
-    return { top: r.top, height: Math.round(r.height), bg: getComputedStyle(s).backgroundColor };
+    const b = getComputedStyle(document.body, '::before');
+    if (b.content === 'none' || b.content === 'normal' || b.position !== 'fixed') return null;
+    return { top: b.top, height: Math.round(parseFloat(b.height)), bg: b.backgroundColor };
   });
-  if (want && !(got && got.top === 0 && got.height === d.insets.top)) bad(`${d.name} ${label}: no band under the clock (${JSON.stringify(got)})`);
+  if (want && !(got && got.top === '0px' && got.height === d.insets.top)) bad(`${d.name} ${label}: no band under the clock (${JSON.stringify(got)})`);
   else if (!want && got) bad(`${d.name} ${label}: a band where the bar already covers the clock`);
 }
 
@@ -177,7 +177,35 @@ for (const d of DEVICES) {
       await p.waitForTimeout(400);
     }
   }
+
+  // On paper there is no clock: printing in the app adds none of this (a paper on its own page, the workspace's bar).
+  for (const path of [`/c/${slug}/patients/${patientId}/treatment-record/`, `/c/${slug}/`]) {
+    await p.goto(base + path, { waitUntil: 'load' });
+    await p.emulateMedia({ media: 'print' });
+    const paper = await p.evaluate(() => ({
+      top: getComputedStyle(document.body).paddingTop,
+      bottom: getComputedStyle(document.body).paddingBottom,
+      band: getComputedStyle(document.body, '::before').position === 'fixed',
+      bar: document.querySelector('.ws-top') ? getComputedStyle(document.querySelector('.ws-top')).paddingTop : '0px',
+    }));
+    await p.emulateMedia({ media: 'screen' });
+    if (paper.top !== '0px' || paper.bottom !== '0px' || paper.band || paper.bar !== '0px') bad(`${d.name} printing ${path}: ${JSON.stringify(paper)}`);
+    else ok(`${d.name} printing ${path}: no inset padding and no band on paper`);
+  }
   await ctx.close();
+
+  // A full-height page whose content fits does not scroll by the inset (the staff entrance; the workspace places its
+  // own foot).
+  if (!d.phone) {
+    const fresh = await context(d);
+    const q2 = await page(fresh, d);
+    await q2.goto(`${base}/auth/login/`, { waitUntil: 'load' });
+    await q2.waitForTimeout(500);
+    const extra = await q2.evaluate(() => document.documentElement.scrollHeight - innerHeight);
+    if (extra > 1) bad(`${d.name} the staff entrance scrolls by ${extra} px though it fits`);
+    else ok(`${d.name} the staff entrance fits the screen: no scroll added by the inset`);
+    await fresh.close();
+  }
 
   // An ordinary browser with the same insets: none of this applies.
   const plain = await context(d, false);
@@ -187,7 +215,7 @@ for (const d of DEVICES) {
     app: document.documentElement.hasAttribute('data-app'),
     bar: getComputedStyle(document.querySelector('.site-top')).paddingTop,
     body: getComputedStyle(document.body).paddingBottom,
-    band: !!document.querySelector('[data-app-statusbar]'),
+    band: getComputedStyle(document.body, '::before').position === 'fixed',
   }));
   if (looks.app || looks.bar !== '0px' || looks.body !== '0px' || looks.band) bad(`${d.name}: an ordinary browser changed: ${JSON.stringify(looks)}`);
   else ok(`${d.name}: an ordinary browser given the same insets is unchanged (bar padding 0, body padding 0, no band)`);

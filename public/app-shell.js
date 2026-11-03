@@ -24,6 +24,9 @@
   if (window.flossifyApp) return;
   var root = document.documentElement;
   var cap = window.Capacitor;
+  // The address as the page arrived: Clinic settings, a person's page and My page tidy ?saved= and ?done= away with
+  // replaceState before DOMContentLoaded, and this script runs first, in the head.
+  var arrivedSearch = location.search;
   var noop = function () {};
   var OWN_HOSTS = { 'flossify.ph': 1, 'www.flossify.ph': 1 };
   OWN_HOSTS[location.host] = 1;
@@ -83,13 +86,16 @@
     'html[data-app] :is(a, button, summary, label, [role="button"], img) { -webkit-touch-callout: none; }',
     /* iOS page transitions. Push: the new page slides in from the right over the old one, which drifts left and dims.
        Pop: the reverse. A save that reloads the same page crossfades. The curve is iOS's own navigation curve. */
-    '::view-transition-old(root), ::view-transition-new(root) { animation-duration: 420ms; animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1); animation-fill-mode: both; mix-blend-mode: normal; }',
+    /* (html[data-app] so these win over the workspace layouts' own 220 ms crossfade, Clinic.astro and Admin.astro.) */
+    'html[data-app]::view-transition-old(root), html[data-app]::view-transition-new(root) { animation-duration: 420ms; animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1); animation-fill-mode: both; mix-blend-mode: normal; }',
     'html[data-nav="forward"]::view-transition-old(root) { animation-name: app-out-left; }',
     'html[data-nav="forward"]::view-transition-new(root) { animation-name: app-in-right; box-shadow: -12px 0 32px var(--app-vt-shadow); }',
     'html[data-nav="back"]::view-transition-old(root) { animation-name: app-out-right; z-index: 2; box-shadow: -12px 0 32px var(--app-vt-shadow); }',
     'html[data-nav="back"]::view-transition-new(root) { animation-name: app-in-left; z-index: 1; }',
-    'html[data-nav="same"]::view-transition-old(root) { animation: 160ms ease both app-fade-out; }',
-    'html[data-nav="same"]::view-transition-new(root) { animation: 220ms ease both app-fade-in; }',
+    /* A save that comes back to the same page, and a move between the main tabs (Dashboard, Patients …), crossfade: iOS
+       does not slide between tabs. */
+    'html[data-app]:is([data-nav="same"], [data-nav="tab"])::view-transition-old(root) { animation: 160ms ease both app-fade-out; }',
+    'html[data-app]:is([data-nav="same"], [data-nav="tab"])::view-transition-new(root) { animation: 220ms ease both app-fade-in; }',
     '@keyframes app-in-right { from { transform: translateX(100%); } }',
     '@keyframes app-out-left { to { transform: translateX(-30%); filter: brightness(0.94); } }',
     '@keyframes app-out-right { to { transform: translateX(100%); } }',
@@ -106,36 +112,52 @@
     /* Clear of the clock and the Dynamic Island, and of the home indicator. The app draws the page edge to edge
        (contentInset "never"); only here, inside the app, does anything read the insets, so the website is unchanged.
        Bars that stick to the top take the inset as padding: their colour runs up under the clock, and the pages that
-       measure the bar (the calendar, the record, Clinic settings) follow on their own. */
+       measure the bar (the calendar, the record, Clinic settings) follow on their own. On the screen only: the insets
+       keep their values while iOS lays a page out for print, and paper has no clock. */
     'html[data-app] { --app-top: env(safe-area-inset-top, 0px); --app-bottom: env(safe-area-inset-bottom, 0px);' +
-      ' --ws-topbar-h: calc(72px + var(--app-top)); --fin-top: calc(4.5rem + var(--app-top)); }',
-    'html[data-app] :is(.site-top, .ws-top) { padding-top: var(--app-top); }',
-    'html[data-app] .site-drawer-inner { padding-top: calc(0.75rem + var(--app-top)); padding-bottom: calc(1.5rem + var(--app-bottom)); }',
-    'html[data-app] .ws-side-top { padding-top: calc(1.125rem + var(--app-top)); }',
-    'html[data-app] .ws-side-foot { padding-bottom: calc(1.125rem + var(--app-bottom)); }',
-    'html[data-app] .ws-panel { top: calc(0.75rem + var(--app-top)); bottom: calc(0.75rem + var(--app-bottom)); height: calc(100dvh - 1.5rem - var(--app-top) - var(--app-bottom)); }',
-    'html[data-app] .ws-menu-pop { max-height: calc(100dvh - 6rem - var(--app-top) - var(--app-bottom)); }',
-    'html[data-app] .ws-skip:focus { top: calc(0.75rem + var(--app-top)); }',
-    'html[data-app] .entrance-top { padding-top: calc(1rem + var(--app-top)); }',
-    'html[data-app] .page-hero { min-height: calc(100svh - 4.25rem - var(--app-top)); }',
-    'html[data-app] [data-desk-consent][data-facing] { padding-top: var(--app-top); padding-bottom: var(--app-bottom); }',
-    'html[data-app] :is([data-rec-panel], [data-rec-panel] .ws-pane, [data-chart-offer]) { scroll-margin-top: calc(5.5rem + var(--app-top)); }',
-    'html[data-app] .pt-main { scroll-margin-top: calc(4.5rem + var(--app-top)); }',
-    'html[data-app] .pt-anchor { scroll-margin-top: calc(5.25rem + var(--app-top)); }',
-    'html[data-app]:has(body.ops) { scroll-padding-top: calc(5.5rem + var(--app-top)); }',
-    '@media (max-width: 767px) {' +
-      ' html[data-app] .ws-side-top { padding-top: calc(0.75rem + var(--app-top)); }' +
-      ' html[data-app] .ws-side-foot { padding-bottom: calc(1.5rem + var(--app-bottom)); }' +
-      ' html[data-app] .ws-panel { inset: 0; height: 100dvh; }' +
-      ' html[data-app] .ws-panel-head { padding-top: calc(0.625rem + var(--app-top)); }' +
-      ' html[data-app] .ws-panel-body { padding-bottom: calc(2rem + var(--app-bottom)); }' +
-      ' html[data-app] .entrance-top { padding-top: calc(0.75rem + var(--app-top)); } }',
-    /* A page with no bar that sticks to the top (a paper, a page a patient holds, the staff entrance) starts below the
-       status bar, ends above the home indicator, and gets a frosted band under the clock for words that scroll up. */
-    'html[data-app][data-app-bare] body { padding-top: var(--app-top); }',
-    'html[data-app]:not(:has(.app-start)) body { padding-bottom: var(--app-bottom); }',
-    '[data-app-statusbar] { position: fixed; inset: 0 0 auto 0; z-index: 2147482000; height: var(--app-top); pointer-events: none;' +
-      ' background: var(--app-band, rgba(243, 245, 248, 0.86)); -webkit-backdrop-filter: blur(16px) saturate(1.05); backdrop-filter: blur(16px) saturate(1.05); }',
+      ' --app-band-ground: rgba(243, 245, 248, 0.86); }',
+    '@media (prefers-color-scheme: dark) { html[data-app]:not([data-theme="light"]) { --app-band-ground: rgba(21, 25, 30, 0.86); } }',
+    'html[data-app][data-theme="dark"] { --app-band-ground: rgba(21, 25, 30, 0.86); }',
+    '@media screen {' +
+      ' html[data-app] { --ws-topbar-h: calc(72px + var(--app-top)); --fin-top: calc(4.5rem + var(--app-top)); }' +
+      ' html[data-app] :is(.site-top, .ws-top) { padding-top: var(--app-top); }' +
+      ' html[data-app] .site-drawer-inner { padding-top: calc(0.75rem + var(--app-top)); padding-bottom: calc(1.5rem + var(--app-bottom)); }' +
+      ' html[data-app] .ws-side-top { padding-top: calc(1.125rem + var(--app-top)); }' +
+      ' html[data-app] .ws-side-foot { padding-bottom: calc(1.125rem + var(--app-bottom)); }' +
+      ' html[data-app] .ws-panel { top: calc(0.75rem + var(--app-top)); bottom: calc(0.75rem + var(--app-bottom)); height: calc(100dvh - 1.5rem - var(--app-top) - var(--app-bottom)); }' +
+      ' html[data-app] .ws-menu-pop { max-height: calc(100dvh - 6rem - var(--app-top) - var(--app-bottom)); }' +
+      ' html[data-app] .ws-skip:focus { top: calc(0.75rem + var(--app-top)); }' +
+      ' html[data-app] .entrance-top { padding-top: calc(1rem + var(--app-top)); }' +
+      ' html[data-app] .entrance-main { padding-bottom: calc(clamp(0.75rem, 3vh, 2.5rem) + var(--app-bottom)); }' +
+      ' html[data-app] .page-hero { min-height: calc(100svh - 4.25rem - var(--app-top)); }' +
+      ' html[data-app] [data-desk-consent][data-facing] { padding-top: var(--app-top); padding-bottom: var(--app-bottom); }' +
+      ' html[data-app] :is([data-rec-panel], [data-rec-panel] .ws-pane, [data-chart-offer]) { scroll-margin-top: calc(5.5rem + var(--app-top)); }' +
+      ' html[data-app] .pt-main { scroll-margin-top: calc(4.5rem + var(--app-top)); }' +
+      ' html[data-app] .pt-anchor { scroll-margin-top: calc(5.25rem + var(--app-top)); }' +
+      ' html[data-app]:has(body.ops) { scroll-padding-top: calc(5.5rem + var(--app-top)); }' +
+      /* The iPad's icon rail (768 to 1023 px) has its own, tighter padding. */
+      ' @media (min-width: 768px) and (max-width: 1023px) {' +
+        ' html[data-app] .ws-side-top { padding-top: calc(0.875rem + var(--app-top)); }' +
+        ' html[data-app] .ws-side-foot { padding-bottom: calc(0.875rem + var(--app-bottom)); } }' +
+      ' @media (max-width: 767px) {' +
+        ' html[data-app] .ws-side-top { padding-top: calc(0.75rem + var(--app-top)); }' +
+        ' html[data-app] .ws-side-foot { padding-bottom: calc(1.5rem + var(--app-bottom)); }' +
+        ' html[data-app] .ws-panel { inset: 0; height: 100dvh; }' +
+        ' html[data-app] .ws-panel-head { padding-top: calc(0.625rem + var(--app-top)); }' +
+        ' html[data-app] .ws-panel-body { padding-bottom: calc(2rem + var(--app-bottom)); }' +
+        ' html[data-app] .entrance-top { padding-top: calc(0.75rem + var(--app-top)); }' +
+        ' html[data-app] .entrance-main { padding-bottom: calc(1.5rem + var(--app-bottom)); } }' +
+      /* A page with no bar of its own (a paper, a page a patient holds) starts below the status bar. Every page but the
+         full-height ones (the workspace, the staff entrance, /app/, which place their own foot) ends above the home
+         indicator. A page with no bar that sticks to the top gets a frosted band under the clock for words that scroll
+         up under it. All in CSS, so nothing moves after the first paint. */
+      ' html[data-app]:not(:has(.site-top, .ws-top, .entrance, .app-start)) body { padding-top: var(--app-top); }' +
+      ' html[data-app]:not(:has(.app-start, .ws-app, .entrance)) body { padding-bottom: var(--app-bottom); }' +
+      ' html[data-app]:not(:has(.site-sticky, .ws-top)) body::before { content: ""; position: fixed; inset: 0 0 auto 0; z-index: 2147482000;' +
+        ' height: var(--app-top); pointer-events: none; background: var(--app-band, var(--app-band-ground));' +
+        ' -webkit-backdrop-filter: blur(16px) saturate(1.05); backdrop-filter: blur(16px) saturate(1.05); }' +
+    ' }',
+    '@media print { .app-note { display: none !important; } }',
     /* The note pull to refresh leaves when it will not reload a page with typed words (below the status bar). */
     '.app-note { position: fixed; z-index: 2147483000; left: 50%; top: calc(env(safe-area-inset-top) + 10px); translate: -50% -8px; opacity: 0;' +
       ' max-width: min(92vw, 26rem); padding: 10px 16px; border-radius: 999px; font: 500 15px/1.35 Inter, -apple-system, system-ui, sans-serif;' +
@@ -159,7 +181,18 @@
     var entry = performance.getEntriesByType('navigation')[0];
     navType = entry ? entry.type : '';
   } catch (e) { /* older WebKit */ }
-  root.dataset.nav = navType === 'back_forward' ? 'back' : (document.referrer && samePath(document.referrer, location.href) ? 'same' : 'forward');
+  // The link tapped on the last page says what kind of move this is: a "Back to …" link pops, a main tab crossfades.
+  var HINT = 'flossify:nav';
+  function hinted() {
+    try {
+      var h = JSON.parse(sessionStorage.getItem(HINT) || 'null');
+      sessionStorage.removeItem(HINT);
+      if (h && h.to === location.pathname && Date.now() - h.at < 15000) return h.kind;
+    } catch (e) { /* no storage */ }
+    return '';
+  }
+  var hint = hinted();
+  root.dataset.nav = navType === 'back_forward' ? 'back' : hint || (document.referrer && samePath(document.referrer, location.href) ? 'same' : 'forward');
   window.addEventListener('pagereveal', function (e) {
     var vt = e.viewTransition;
     if (!vt) return;
@@ -171,18 +204,46 @@
       } else if (act.from && act.from.url && samePath(act.from.url, location.href)) {
         root.dataset.nav = 'same';
       } else {
-        root.dataset.nav = 'forward';
+        root.dataset.nav = hint || 'forward';
       }
     }
   });
+  var TAB_LINKS = '.ws-nav a, .ws-tabrow a, .ws-side a.ws-nav-item, .site-nav a, .site-drawer-nav a, [role="tablist"] a, .ws-seg a';
+  function kindOf(a) {
+    if (a.closest(TAB_LINKS)) return 'tab';
+    var words = (a.getAttribute('aria-label') || a.textContent || '').trim();
+    if (/^(back\b|←)/i.test(words) || a.getAttribute('rel') === 'prev' || /(^|[\s-])back($|[\s-])/.test(a.className || '')) return 'back';
+    return '';
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a || e.defaultPrevented || a.target === '_blank' || a.hasAttribute('download')) return;
+    var kind = kindOf(a);
+    if (!kind) return;
+    try { sessionStorage.setItem(HINT, JSON.stringify({ to: new URL(a.href, location.href).pathname, kind: kind, at: Date.now() })); } catch (err) { /* no storage */ }
+  }, true);
 
   /* ---------------------------------------------------------------- typed words: pull to refresh, leaving */
 
-  var dirty = false;
+  // Typed words that a reload would lose: in a form that posts, or in a panel still open (the calendar's panels send
+  // with fetch, so their forms do not post).
+  var dirty = false, dirtyPanels = [];
   function isPostForm(f) { return !!f && String(f.getAttribute('method') || 'get').toLowerCase() === 'post'; }
-  document.addEventListener('input', function (e) { if (e.target && isPostForm(e.target.form)) dirty = true; }, true);
-  document.addEventListener('submit', function () { dirty = false; }, true);
-  window.addEventListener('pageshow', function () { dirty = false; });
+  document.addEventListener('input', function (e) {
+    var t = e.target;
+    if (!t) return;
+    if (isPostForm(t.form)) dirty = true;
+    var panel = t.closest && t.closest('dialog[open]');
+    if (panel && dirtyPanels.indexOf(panel) < 0) dirtyPanels.push(panel);
+  }, true);
+  // Sent: only once the page has let the form go (a check of its own can still stop it).
+  window.addEventListener('submit', function (e) {
+    if (!e.defaultPrevented && isPostForm(e.target)) { dirty = false; noteSubmit(e.target); }
+  });
+  function typedWords() {
+    dirtyPanels = dirtyPanels.filter(function (d) { return d.isConnected && d.open; });
+    return dirty || dirtyPanels.length > 0;
+  }
 
   var noteTimer = 0;
   function showNote(words) {
@@ -269,7 +330,9 @@
       type = blob.type;
       return base64Of(blob);
     }).then(function (data) {
-      return native('FlossifyShell', 'saveFile', { data: data, filename: name || 'Flossify file', mimeType: type });
+      // Only a file the page drew itself (the QR poster, a blob: or data: link) may be offered to Photos; a file from the
+      // server (a patient's X-ray) never is.
+      return native('FlossifyShell', 'saveFile', { data: data, filename: name || 'Flossify file', mimeType: type, madeByPage: /^(blob|data):/i.test(href) });
     }).catch(function () { haptic.error(); });
   }
 
@@ -317,6 +380,34 @@
     return openWindow.apply(window, arguments);
   };
 
+  /* ---------------------------------------------------------------- what the person did */
+
+  // Haptics answer the person: an API's answer or a fold opening is felt only within a moment of a touch, a key or a
+  // send, never for the page's own background work (the chart's queue retrying every 30 s, a fold a script opens).
+  var lastGesture = 0;
+  function gestured(ms) { return Date.now() - lastGesture < (ms || 1500); }
+  document.addEventListener('pointerup', function () { lastGesture = Date.now(); }, true);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') lastGesture = Date.now(); }, true);
+  document.addEventListener('submit', function () { lastGesture = Date.now(); }, true);
+
+  // A form that posts and lands on a page with no word of its own (a task ticked, Close the day, a thank-you): the
+  // next page, if it comes within moments and draws no refusal, is felt as saved.
+  var POSTED = 'flossify:posted';
+  function noteSubmit(form) {
+    var action;
+    try { action = new URL(form.getAttribute('action') || location.href, location.href); } catch (e) { return; }
+    // Not a save: signing in or out, and the steps of the forms on a patient's device (each lands on the same page).
+    if (/^\/auth\//.test(action.pathname) || /\/sign-in\/?$/.test(action.pathname) || /^\/f\/[it]\//.test(location.pathname)) return;
+    try { sessionStorage.setItem(POSTED, String(Date.now())); } catch (e) { /* no storage */ }
+  }
+  function postedJustNow() {
+    try {
+      var at = Number(sessionStorage.getItem(POSTED) || 0);
+      sessionStorage.removeItem(POSTED);
+      return Date.now() - at < 15000;
+    } catch (e) { return false; }
+  }
+
   /* ---------------------------------------------------------------- feedback from the API's answers */
 
   var pageFetch = window.fetch;
@@ -325,8 +416,10 @@
     try {
       var method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
       var url = new URL(typeof input === 'string' || input instanceof URL ? String(input) : input.url, location.href);
-      if (method !== 'GET' && method !== 'HEAD' && OWN_HOSTS[url.host] && url.pathname.indexOf('/api/') === 0) {
-        promise.then(function (res) { answered(url.pathname, method, res); }, function () { haptic.error(); });
+      // A failed line (offline, a timeout) is not a refusal: the page says what waits. Only answers count, and only to
+      // something the person just did.
+      if (method !== 'GET' && method !== 'HEAD' && OWN_HOSTS[url.host] && url.pathname.indexOf('/api/') === 0 && gestured()) {
+        promise.then(function (res) { answered(url.pathname, method, res); }, noop);
       }
     } catch (e) { /* the page's own request goes on untouched */ }
     return promise;
@@ -334,16 +427,21 @@
   function answered(path, method, res) {
     var s = res.status;
     if (s >= 200 && s < 300) {
+      // The chart was felt as the finding was picked (it works offline too); a colleague's newer finding kept over it
+      // is said by the chart's notice, a warning (watchAlerts).
+      if (path === '/api/chart') return;
       if (haptic.recentPattern()) return; // the page already gave this moment its own feel (a drop, a booking)
       if (path === '/api/schedule' && Date.now() - dropAt < 4000) return; // the drop that asked for it was felt
       if (path === '/api/bookings' && method === 'POST') { haptic.pattern('confirm'); return; }
-      if (path === '/api/chart') { haptic.tap('rigid', 0.55); return; }
       haptic.success();
       return;
     }
+    // Not a refusal: too many at once, a timeout, the chart renumbering its own changes.
+    if (s === 408 || s === 429 || s >= 500) return;
     if (s === 409) {
       // A soft stop asks first (blocked time, a consent form not agreed): a warning. A clash is a refusal.
       res.clone().json().then(function (body) {
+        if (body && body.code === 'resequence') return;
         if (body && (body.blocked || body.consent)) haptic.warning();
         else haptic.pattern('refuse');
       }, function () { haptic.pattern('refuse'); });
@@ -371,8 +469,12 @@
     var t = el.getAttribute('data-tone') || (el.closest('[data-tone]') && el.closest('[data-tone]').getAttribute('data-tone')) || '';
     return t;
   }
-  var SAVED_PARAMS = ['saved', 'done', 'sent', 'added', 'booked', 'paid', 'signed', 'used'];
+  // What a page's address says when it comes back from a save. (Not ?paid=: PayMongo sends the person back before the
+  // payment is confirmed.)
+  var SAVED_PARAMS = ['saved', 'done', 'sent', 'added', 'booked', 'signed', 'used', 'closed', 'welcome', 'made', 'explained', 'renewed'];
+  var CONFIRMED_PARAMS = ['booked', 'signed', 'welcome'];
   function onArrive() {
+    var posted = postedJustNow();
     if (navType === 'back_forward' || navType === 'reload') return;
     var alerts = refusals();
     if (alerts.length) {
@@ -380,10 +482,19 @@
       if (warnOnly) haptic.warning(); else haptic.error();
       return;
     }
-    var q = new URLSearchParams(location.search);
+    var q = new URLSearchParams(arrivedSearch);
+    // Came back, but nothing changed: "Nothing was saved", the same words as before.
+    if (q.get('saved') === 'nothing' || /^(same|bio-same)$/.test(q.get('done') || '')) return;
+    // Saved, but not all of it: the chart was not updated after a treatment, a text that could not be sent.
+    var warned = Array.prototype.some.call(document.querySelectorAll('[role="status"][data-tone="warn"], [role="note"][data-tone="warn"]'), shown);
+    if (q.has('chartskip') || q.has('missed') || warned) { haptic.warning(); return; }
     for (var i = 0; i < SAVED_PARAMS.length; i++) {
-      if (q.has(SAVED_PARAMS[i])) { haptic.success(); return; }
+      if (q.has(SAVED_PARAMS[i])) {
+        if (CONFIRMED_PARAMS.indexOf(SAVED_PARAMS[i]) >= 0) haptic.pattern('confirm'); else haptic.success();
+        return;
+      }
     }
+    if (posted) haptic.success();
   }
   // A refusal a script draws after the page arrived (a form checked in the page, a 409 said in a panel).
   var seen = new WeakMap();
@@ -396,18 +507,20 @@
       pending = true;
       requestAnimationFrame(function () {
         pending = false;
+        if (dragging) return; // the calendar redraws every frame of a drag; nothing is refused until it is let go
         var els = document.querySelectorAll('[role="alert"]');
         for (var i = 0; i < els.length; i++) {
           var el = els[i], text = el.textContent.trim();
           if (el.matches(STANDING)) continue;
-          if (!text || !shown(el)) { seen.delete(el); continue; }
-          if (seen.get(el) === text) continue;
+          // Emptied or hidden itself: the next words are new. Only out of sight (its panel closed): still the same words.
+          if (!text || el.closest('[hidden]')) { seen.delete(el); continue; }
+          if (!shown(el) || seen.get(el) === text) continue;
           seen.set(el, text);
           if (toneOf(el) === 'warn') haptic.warning(); else haptic.error();
         }
       });
     });
-    observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'class', 'aria-hidden'] });
+    observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'class', 'aria-hidden', 'open'] });
   }
 
   // Choices tick; the main button taps; panels and folds open with a soft tap.
@@ -415,25 +528,37 @@
     var t = e.target;
     if (t && t.matches && t.matches('input[type="radio"], input[type="checkbox"], select')) haptic.select();
   }, true);
+  var CHOICES = '[role="tab"], .ws-seg a, .ws-seg button, button[aria-pressed], [role="switch"], [data-cal-step], [data-theme-toggle]';
+  var lastPointer = '';
   document.addEventListener('click', function (e) {
-    var t = e.target && e.target.closest ? e.target.closest('[role="tab"], .ws-seg a, .ws-seg button, button[aria-pressed], [role="switch"]') : null;
-    if (t) haptic.select();
+    var t = e.target && e.target.closest ? e.target : null;
+    if (!t || !e.isTrusted) return;
+    // A finding picked on the chart: felt as it is picked, so it is felt offline too (the change waits on this phone).
+    if (t.closest('[data-palette] [data-condition]')) { haptic.tap('rigid', 0.55); return; }
+    if (t.closest(CHOICES)) { haptic.select(); return; }
+    // The main button taps as it is pressed (not as a finger lands on it to scroll); a red one a little firmer.
+    if (lastPointer !== 'touch') return;
+    var b = t.closest('.btn-primary, .ws-btn-primary, .ws-btn-danger');
+    if (!b || b.matches(':disabled, [aria-disabled="true"]')) return;
+    haptic.tap(b.classList.contains('ws-btn-danger') ? 'medium' : 'light');
   }, true);
   var prepared = false;
   document.addEventListener('pointerdown', function (e) {
+    lastPointer = e.pointerType;
     if (!prepared) { prepared = true; native('FlossifyShell', 'prepare'); }
-    if (e.pointerType !== 'touch' || !e.target || !e.target.closest) return;
-    var b = e.target.closest('.btn-primary, .ws-btn-primary, .ws-btn-danger');
-    if (!b || b.matches(':disabled, [aria-disabled="true"]')) return;
-    haptic.tap(b.classList.contains('ws-btn-danger') ? 'medium' : 'light');
   }, { capture: true, passive: true });
+  // WebKit draws :active (the press above) under a finger only when a touch listener is on the page.
+  document.addEventListener('touchstart', noop, { passive: true });
   document.addEventListener('toggle', function (e) {
     var t = e.target;
-    if (!t || !t.tagName) return;
+    // Only a fold or popover the person opened: not one drawn open, or opened by the page's own script.
+    if (!t || !t.tagName || !gestured(800)) return;
     if (t.tagName === 'DETAILS' && t.open) haptic.tap('soft', 0.7);
     // A popover (the chart's palette over a tooth) opening under the finger.
     else if (e.newState === 'open' && t.hasAttribute('popover')) haptic.tap('soft', 0.6);
   }, true);
+  // The line goes: felt once, while the page is in front (what waits is said on the page).
+  window.addEventListener('offline', function () { if (document.visibilityState === 'visible') haptic.warning(); });
 
   // The calendar's drag (src/components/ws/cal/board.ts), felt without the calendar knowing: the card lifts as the drag
   // starts (body.is-dragging), ticks each time it crosses to another quarter hour (the ghost's time changes), and settles
@@ -468,17 +593,6 @@
 
   /* ---------------------------------------------------------------- the status bar, the colour behind the page, swipe back */
 
-  // A page whose top scrolls away (no sticky bar) gets a frosted band under the clock; a page with no bar at all also
-  // starts below it (data-app-bare). The entrance and /app/ place themselves.
-  var band = null;
-  function frame() {
-    if (!document.querySelector('.site-top, .ws-top, .entrance, .app-start')) root.setAttribute('data-app-bare', '');
-    if (document.querySelector('.site-sticky, .ws-top') || band) return;
-    band = document.createElement('div');
-    band.setAttribute('data-app-statusbar', '');
-    band.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(band);
-  }
   function rgbOf(value) {
     var m = /rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?/.exec(value || '');
     if (!m) return null;
@@ -506,13 +620,16 @@
   // the patient): there a sideways drag belongs to it. The shell also never swipes back out of a sign-in page or a page
   // a patient holds (FlossifyShell.swift, guarded()).
   function swipeOk() {
-    return !document.querySelector('dialog[open], .ws-side[data-open], [data-facing]');
+    if (document.querySelector('dialog[open], .ws-side[data-open], [data-facing]')) return false;
+    try { if (document.querySelector('[popover]:popover-open')) return false; } catch (e) { /* no popovers here */ }
+    return true;
   }
   var chromeWas = '';
   function syncChrome() {
     var dark = isDark();
     var ground = pageColour(dark);
-    if (band) band.style.setProperty('--app-band', 'rgba(' + ground.r + ', ' + ground.g + ', ' + ground.b + ', 0.86)');
+    // The frosted band under the clock (body::before, on a page with no sticky bar) takes the page's own ground.
+    root.style.setProperty('--app-band', 'rgba(' + ground.r + ', ' + ground.g + ', ' + ground.b + ', 0.86)');
     var state = { dark: dark, color: hex(ground), swipeBack: swipeOk() };
     var key = JSON.stringify(state);
     if (key === chromeWas) return;
@@ -528,19 +645,22 @@
       pending = true;
       requestAnimationFrame(function () { pending = false; syncChrome(); });
     }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open', 'data-open', 'data-facing'] });
+    // The chart's palette is a popover: it says so with its toggle event, not an attribute.
+    document.addEventListener('toggle', function (e) { if (e.target && e.target.hasAttribute && e.target.hasAttribute('popover')) syncChrome(); }, true);
   }
+  // A page restored from the back-forward cache: the app reset what it knew at the commit, so say it all again.
+  window.addEventListener('pageshow', function (e) { if (e.persisted) { chromeWas = ''; syncChrome(); } });
 
   /* ---------------------------------------------------------------- start */
 
   window.flossifyApp = {
     haptic: haptic,
-    canRefresh: function () { return !dirty; },
+    canRefresh: function () { return !typedWords(); },
     refreshRefused: function () { showNote('Not refreshed: what you typed here is not saved yet.'); },
     markDirty: function (on) { dirty = on !== false; },
   };
 
   function ready() {
-    frame();
     syncChrome();
     watchLayers();
     watchDrag();
