@@ -1,13 +1,19 @@
 ---
 // The Flossify iPhone app (mobile/, a native shell around this website) marks itself in the user agent
-// ("FlossifyApp/1", capacitor.config.json). Only then does a page load /app-shell.js: haptics, the iOS-style page
-// transitions, printing and saving through iOS, and the page's colours behind the status bar. Every other visitor runs
-// this one test and nothing else, so the website is unchanged in a browser. It sits in the head of every layout and of
-// every page with its own document (the print pages, the signing page), before any script that might call print().
+// ("FlossifyApp/1", capacitor.config.json). Only then does a page load the app's script (./app-shell.js): haptics, the
+// iOS-style page transitions, printing and saving through iOS, and the page's colours behind the status bar. Every
+// other visitor runs this one test and nothing else, so the website is unchanged in a browser. It sits in the head of
+// every layout and of every page with its own document (the print pages, the signing page), before any script that
+// might call print().
+//
+// The script is served from a hashed, immutable address (/_astro/…), so a phone loads it once per release and never
+// waits on the network for it again (it blocks the page's parsing, by design: it must run before the page's own
+// scripts). Patients' phones have no service worker; this is what keeps a bad line from holding their pages.
+import shell from './app-shell.js?url';
 ---
-<script is:inline>
+<script is:inline define:vars={{ shell }}>
   if (/\bFlossifyApp\//.test(navigator.userAgent)) {
     document.documentElement.setAttribute('data-app', '');
-    document.write('<script src="/app-shell.js"><\/script>');
+    document.write('<script src="' + shell + '"><\/script>');
   }
 </script>

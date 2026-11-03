@@ -60,10 +60,12 @@ const PRECACHE = [
   '/icons/apple-touch-icon.png',
 ];
 const IMMUTABLE = /^\/(assets|_astro|fonts|icons)\//;
-// The iPhone app's own script (src/components/AppShell.astro): only the app asks for it, never a browser. Every page's
-// head waits for it, so it must never wait on a bad line: the kept copy at once (refreshed behind it for the next
-// page), and with no copy yet, the network for at most a moment; then the page goes on without it.
-const APP_SHELL = '/app-shell.js';
+// The iPhone app's own script (src/components/app-shell.js, loaded by AppShell.astro): only the app asks for it, never a
+// browser. Built, it is a hashed /_astro/ file (IMMUTABLE above: cache-first). Anywhere else (the dev server serves it
+// from /src/) every page's head still waits for it, so it must never wait on a bad line: the kept copy at once
+// (refreshed behind it for the next page), and with no copy yet, the network for at most a moment; then the page goes
+// on without it.
+const APP_SHELL = /\/app-shell(\.[\w-]+)?\.js$/;
 const APP_SHELL_WAIT_MS = 2500;
 const RECORD_PAGE = /^\/c\/[^/]+\/patients\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?$/i;
 const RECORD_HOURS = 4;
@@ -322,7 +324,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(cacheFirst(request));
     return;
   }
-  if (url.pathname === APP_SHELL) {
+  if (APP_SHELL.test(url.pathname)) {
     event.respondWith(appShell(event));
     return;
   }

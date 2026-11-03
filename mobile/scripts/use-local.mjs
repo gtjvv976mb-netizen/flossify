@@ -1,5 +1,5 @@
 // npm run local — points the app in the simulator at a website running on this Mac (npm run dev in the repo's root, port
-// 4321) instead of https://flossify.ph, so the website's half of the app (/app/, public/app-shell.js) can be tried before
+// 4321) instead of https://flossify.ph, so the website's half of the app (/app/, src/components/app-shell.js) can be tried before
 // it is deployed. It edits only the copy `npx cap sync` puts into the Xcode project (ios/App/App/capacitor.config.json,
 // ignored by git); the next `npm run sync` puts flossify.ph back.
 //

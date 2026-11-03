@@ -1,4 +1,4 @@
-// The website's half of the iPhone app (public/app-shell.js, src/components/AppShell.astro, /app/), measured in a phone-
+// The website's half of the iPhone app (src/components/app-shell.js, src/components/AppShell.astro, /app/), measured in a phone-
 // sized Chromium that carries the app's user agent and a stand-in for the native bridge (window.Capacitor.nativePromise,
 // recording every call). What the native half does with each call (mobile/ios/App/App/FlossifyShell.swift) is checked on
 // a Mac, in Xcode's simulator: this checks that the page asks for the right thing at the right moment.
@@ -100,8 +100,8 @@ const measure = () => {
   await p.goto(`${base}/find/`);
   assert.equal(await p.evaluate(() => document.documentElement.hasAttribute('data-app')), false);
   assert.equal(await p.evaluate(() => typeof window.flossifyApp), 'undefined');
-  assert.ok(!asked.includes('/app-shell.js'), 'a browser never loads /app-shell.js');
-  ok('an ordinary browser: no data-app, no /app-shell.js, no flossifyApp');
+  assert.ok(!asked.some((path) => /app-shell/.test(path)), 'a browser never loads the app\'s script');
+  ok('an ordinary browser: no data-app, never the app\'s script, no flossifyApp');
   await ctx.close();
 }
 
@@ -298,8 +298,14 @@ for (const scheme of ['light', 'dark']) {
   if (!(await p.evaluate(() => !!navigator.serviceWorker.controller))) await p.reload();
   await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000 });
   await p.goto(`${base}/c/${slug}/patients/`);
-  const kept = await p.evaluate(async () => !!(await caches.match('/app-shell.js')));
-  assert.ok(kept, 'the worker kept /app-shell.js');
+  // The app's script, wherever this server puts it (a hashed /_astro/ file once built, /src/ on the dev server).
+  const kept = await p.evaluate(async () => {
+    for (const name of await caches.keys()) {
+      for (const req of await (await caches.open(name)).keys()) if (/app-shell[.\w-]*\.js/.test(new URL(req.url).pathname)) return true;
+    }
+    return false;
+  });
+  assert.ok(kept, 'the worker kept the app\'s script');
   await ctx.setOffline(true);
   await p.goto(`${base}/c/${slug}/finances/`).catch(() => {});
   await p.waitForLoadState('load');

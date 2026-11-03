@@ -10,18 +10,18 @@ browser tab cannot do:
 
 | | What | Where |
 |---|---|---|
-| Haptics (iPhone) | a tick for a choice, a light tap as the teal button is pressed, a soft tap as a panel, fold or the chart's palette opens, success, warning or error when something the person did is saved or refused (never for the page's own background work), a confirm for a booking or a signing, a rigid tap as a finding is picked on the chart (offline too) (a lift, ticks and a drop for a visit dragged on the calendar too, though only an iPad's calendar drags and iPads have no haptic engine) | `public/app-shell.js` asks; `FlossifyHaptics` in `ios/App/App/FlossifyShell.swift` plays (Core Haptics patterns where the phone has them) |
-| Motion | iOS page transitions (push forward, pop back for Back and "Back to …", a crossfade between the main tabs and when a save comes back to the same page), buttons and cards that give under the finger, the start page rising into place; always on, as on the website | `public/app-shell.js` (cross-document view transitions, iOS 18.2+), `src/pages/app/index.astro` |
+| Haptics (iPhone) | a tick for a choice, a light tap as the teal button is pressed, a soft tap as a panel, fold or the chart's palette opens, success, warning or error when something the person did is saved or refused (never for the page's own background work), a confirm for a booking or a signing, a rigid tap as a finding is picked on the chart (offline too) (a lift, ticks and a drop for a visit dragged on the calendar too, though only an iPad's calendar drags and iPads have no haptic engine) | `src/components/app-shell.js` asks; `FlossifyHaptics` in `ios/App/App/FlossifyShell.swift` plays (Core Haptics patterns where the phone has them) |
+| Motion | iOS page transitions (push forward, pop back for Back and "Back to …", a crossfade between the main tabs and when a save comes back to the same page), buttons and cards that give under the finger, the start page rising into place; always on, as on the website | `src/components/app-shell.js` (cross-document view transitions, iOS 18.2+), `src/pages/app/index.astro` |
 | Printing | `print()` opens iOS's print sheet on the paper the page is drawn for (A4, A5, the 80 mm receipt roll), after the page's own `beforeprint` (the record's print audit) | `FlossifyPrinter` |
 | Files | a download (CSV, a patient file, the QR poster, *Add to calendar*) is kept in the app's protected temporary folder, offered in the share sheet (an `.ics` in iOS's calendar preview), and deleted when the sheet closes; patient files are never offered to Photos | `FlossifyFiles`, `NavigationProxy` |
 | Links | another website opens in an in-app Safari view; a paper meant for a new tab opens in a sheet over the page, so what is typed underneath stays, and its "Back to …" link closes the sheet and goes there underneath | `UIProxy`, `PageSheetController` |
 | Pull to refresh | not while a form holds typed words (the page says so) | `FlossifyViewController.pulled()` |
 | Privacy | the app switcher shows the Flossify mark, not a record; the edge swipe never goes back out of a sign-in page or a page a patient holds; a form is never sent again by going back or pulling to refresh; what the web view keeps (cookies, a kept record, chart changes waiting) stays out of iCloud and computer backups | `FlossifyViewController`, `NavigationProxy` |
 | Clinic tablets | the screen stays awake on a clinic tablet (`/f/t/`) and a device handed to a patient (`/f/i/`) | `arrived(at:)` |
-| Offline | the service worker keeps the app's script and never makes a page wait on a bad line for it, so the offline page and a kept record still print and buzz | `public/sw.js` |
-| Safe areas | bars, drawers and panels clear the clock, the Dynamic Island and the home indicator; iPhone stays upright (iPad turns) | `public/app-shell.js` (`html[data-app]` only), `Info.plist` |
+| Offline | the app's script is a hashed file the phone keeps (no page waits on the network for it); the service worker keeps it too, so the offline page and a kept record still print and buzz | `AppShell.astro`, `public/sw.js` |
+| Safe areas | bars, drawers and panels clear the clock, the Dynamic Island and the home indicator; iPhone stays upright (iPad turns) | `src/components/app-shell.js` (`html[data-app]` only), `Info.plist` |
 
-In a browser none of this runs: `src/components/AppShell.astro` loads `/app-shell.js` only when the user agent carries
+In a browser none of this runs: `src/components/AppShell.astro` loads the app's script only when the user agent carries
 `FlossifyApp/`, and every rule it adds is under `html[data-app]`.
 
 ## Build and run it on the Mac
@@ -38,7 +38,7 @@ npm run open        # opens ios/App/App.xcodeproj in Xcode
 
 In Xcode pick a simulator (iPhone 16 Pro, and an iPad to see the calendar's drag) and press Run.
 
-**Until this branch is deployed, flossify.ph has no `/app/` page and no `/app-shell.js`.** Try the website's half from
+**Until this branch is deployed, flossify.ph has no `/app/` page and no app script.** Try the website's half from
 this Mac instead:
 
 ```bash
@@ -78,6 +78,11 @@ only, then Safari → Develop → Simulator → flossify.ph. Never ship it on.
 14. Tap a field on the sign-in page and on a patient's forms (`/f/i/`): the keyboard covers the lower part as in Safari
     and the field scrolls into view; the clinic's photo behind does not jump.
 15. Share a patient file, open Mail, cancel: the share sheet stays and the file is still there; close it: gone.
+16. A refused save, then a link to another page, then swipe back twice: the second swipe goes past the refused save's
+    page to the one before it (it never loops there).
+17. In a sheet with words typed (a person's page opened from a prescription's PTR link), swipe down or tap Done: it
+    asks first. A *Back to …* link in a sheet: the page underneath keeps its visit and anything typed.
+18. With the line off, the app shows its offline page; pull to refresh there: it tries the site again.
 
 `scripts/dev/app/app-shell-check.mjs` and `scripts/dev/app/app-safe-areas.mjs` check the website's half (what the page asks
 the app for, and where it draws) in Chromium; this list is for the native half.

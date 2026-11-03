@@ -22,9 +22,9 @@ tools that helps iOS app building". Asked how, the owner chose:
 |---|---|---|
 | The way in | `src/components/AppShell.astro` | Before first paint, only when the user agent carries `FlossifyApp/` (the app appends it, `capacitor.config.json` `appendUserAgent`): sets `html[data-app]` and loads `/app-shell.js`. In every layout (Base, Clinic, Admin) and the ten standalone /c/ pages. A browser never loads the script. |
 | The start page | `src/pages/app/index.astro` | `/app/` (`app` was already on `RESERVED`). `noindex`; in a browser it is a plain page. |
-| The page's half | `public/app-shell.js` | Haptics, motion, safe areas, print, downloads, links, pull-to-refresh's question, the status bar, swipe back's question. Every rule it adds is under `html[data-app]`. Excluded from Tailwind's scan (`@source not` in `global.css`). |
+| The page's half | `src/components/app-shell.js` | Haptics, motion, safe areas, print, downloads, links, pull-to-refresh's question, the status bar, swipe back's question. Every rule it adds is under `html[data-app]`. Excluded from Tailwind's scan (`@source not` in `global.css`). |
 | The native half | `mobile/ios/App/App/FlossifyShell.swift` | `FlossifyViewController` (Capacitor's view controller, extended), the `FlossifyShell` plugin, `FlossifyHaptics`, `FlossifyPrinter`, `FlossifyFiles`, `NavigationProxy`, `UIProxy`, `PageSheetController`. |
-| Offline | `public/sw.js` | `/app-shell.js` network first, its last copy when the line is down (only the app ever asks for it). |
+| Offline, and a bad line | `AppShell.astro`, `public/sw.js` | The script is a hashed `/_astro/` file (`import … ?url`), sent as immutable: a phone loads it once per release and never waits on the network for it again, worker or not (patients' phones have none). The worker keeps it too (cache first), so the offline page and a kept record have it. (On the dev server it comes from `/src/`; the worker then serves its kept copy at once and waits at most 2.5 s for one it has not got.) |
 | The app | `mobile/capacitor.config.json`, `mobile/ios/App/App/Info.plist` | `ph.flossify.app`; opens `https://flossify.ph/app/`; bound domains flossify.ph, www, localhost (so the service worker runs: without App-Bound Domains WKWebView has no service worker, no /offline/ page and no kept record); iPhone portrait, iPad any way up; camera and photo words for file inputs. |
 
 What the page asks for, and what the native side does with it:
@@ -44,7 +44,8 @@ What the page asks for, and what the native side does with it:
   chart's own renumbering are not refusals. On arrival the address is read before the page tidies it away; `?saved=
   nothing` and `?done=same` are not saves, `?chartskip=` and `?missed=` (and a warning callout) warn, `?paid=` is not
   felt (PayMongo sends the person back before the payment is confirmed), `?booked=`, `?signed=` and `?welcome=`
-  confirm, and a post that lands on a page with no word of its own is felt as saved.
+  confirm, and a post answered with a redirect (how this site answers a save that landed) to a page with no word of
+  its own is felt as saved.
 - **Motion:** cross-document view transitions on iOS's navigation curve (`cubic-bezier(0.32, 0.72, 0, 1)`, 420 ms):
   a push forward, a pop back (the Navigation API's `activation`, the navigation's type, or a "Back to …" link tapped),
   a crossfade between the main tabs (Dashboard, Patients, Finances, Clinic settings; the public bar's links) and when a
@@ -59,7 +60,7 @@ What the page asks for, and what the native side does with it:
 - **Links:** another website opens in an in-app Safari view (Capacitor's Browser); `tel:` and `mailto:` go to iOS; a
   same-site link meant for a new tab opens in a sheet over the page, sharing the sign-in, so what is typed underneath
   stays. Long-press previews and the long-press menu on links and images are off.
-- **Pull to refresh** asks `flossifyApp.canRefresh()` first: not while a POST form, or a panel still open, holds typed
+- **Pull to refresh** asks `flossifyApp.canRefresh()` first: not while a POST form, a panel still open or a signature pad holds typed
   words ("Not refreshed: what you typed here is not saved yet.").
 - **Safe areas:** the sticky bars take the status bar's height as padding (their colour runs up under the clock); the
   drawers, the side panels, the staff entrance, the desk consent turned to the patient and the scroll offsets follow;
@@ -84,12 +85,18 @@ What the page asks for, and what the native side does with it:
   yet sent, and WebKit may keep its cookies in the same file as the app's own cookie jar (so the shell never empties
   that jar either).
 - **A form is never sent again** by going back, forward or pulling to refresh (WebKit would re-send a refused record
-  post without asking): the page is fetched afresh instead.
+  post without asking): a reload fetches the page afresh in place; going back or forward onto a form's answer steps
+  one entry further, so the gesture never loops there.
+- **A sheet** (a page the site opens in a new tab): its *Back to …* link closes it and the page underneath goes there,
+  or, when the page underneath already is that page, stays as it is (its visit, anything typed), only scrolled to the
+  part; when the page underneath holds typed words, the link opens in the sheet instead. Never from under a page a
+  patient holds. A download, `tel:` or a change of language stays in the sheet. A sheet holding typed words asks
+  before a swipe down or *Done* closes it.
 
 ## Rules for the app
 
 - **In a browser the website is unchanged.** Everything for the app is behind the `FlossifyApp/` user agent and
-  `html[data-app]`; `mobile/` and `public/app-shell.js` are kept out of Tailwind's scan. After any change, build and
+  `html[data-app]`; `mobile/` and `src/components/app-shell.js` are kept out of Tailwind's scan. After any change, build and
   compare the CSS with `main` (it differs by exactly one rule, the start page's heading size), and run the two checks
   below.
 - **Motion and haptics are never gated** on `prefers-reduced-motion` or any setting, as on the website.
@@ -128,7 +135,8 @@ What the page asks for, and what the native side does with it:
 - **Larger Text** (iOS's text size) does not change a web view's text; pinch zoom works.
 - **Password AutoFill** needs the owner's Team ID in `/.well-known/apple-app-site-association` and the Associated Domains
   capability.
-- **The chart's palette** is placed by script no higher than 8 px from the top of the screen (`Odontogram.astro`), so a
-  tooth near the top of the screen can put it under the status bar in the app.
+- **The chart's palette** is placed by its own script no higher than 8 px from the top of the screen; in the app it is
+  moved down to 8 px below the status bar (a clamp in the app's script) and kept above the home indicator. Check on an
+  iPhone that it never flashes under the clock as it opens.
 - **The calendar's drag haptics** are felt by nobody yet: an iPhone's calendar does not drag (under 768 px) and iPads
   have no haptic engine.

@@ -1,5 +1,5 @@
 // The iPhone app draws pages edge to edge (mobile/capacitor.config.json, contentInset "never"), so the page itself must
-// keep clear of the clock and Dynamic Island at the top and the home indicator at the bottom. public/app-shell.js does
+// keep clear of the clock and Dynamic Island at the top and the home indicator at the bottom. src/components/app-shell.js does
 // that with rules only the app loads (html[data-app]). This measures it: Chromium is given an iPhone's insets (59 px top,
 // 34 px bottom, the iPhone 15 Pro's) and an iPad's (24 px, 20 px) through the DevTools protocol, and on each page:
 //
@@ -102,7 +102,7 @@ async function check(p, d, label, scope) {
 }
 
 async function band(p, d, label, want) {
-  // The band is the body's ::before (public/app-shell.js): fixed at the top, as tall as the status bar.
+  // The band is the body's ::before (src/components/app-shell.js): fixed at the top, as tall as the status bar.
   const got = await p.evaluate(() => {
     const b = getComputedStyle(document.body, '::before');
     if (b.content === 'none' || b.content === 'normal' || b.position !== 'fixed') return null;
@@ -176,6 +176,26 @@ for (const d of DEVICES) {
       await p.keyboard.press('Escape');
       await p.waitForTimeout(400);
     }
+  }
+
+  // The chart's palette: its own script may place it 8 px from the top of the screen; in the app it is moved below the
+  // status bar. Opened on a tooth, then put where the chart's script would put it near the top.
+  {
+    await p.goto(`${base}/c/${slug}/patients/${patientId}/`, { waitUntil: 'load' });
+    const tooth = p.locator('[data-tooth][data-fdi]:visible').first();
+    await tooth.scrollIntoViewIfNeeded();
+    await tooth.click();
+    await p.waitForSelector('[data-palette]:popover-open');
+    const top = await p.evaluate(async () => {
+      const pal = document.querySelector('[data-palette]:popover-open');
+      pal.style.top = '8px';
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const r = pal.getBoundingClientRect();
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), h: innerHeight };
+    });
+    if (top.top < d.insets.top + 8 - 0.5) bad(`${d.name} the chart's palette under the status bar: ${JSON.stringify(top)}`);
+    else ok(`${d.name} the chart's palette, placed at the top by the chart, sits at ${top.top} px: below the status bar`);
+    await p.keyboard.press('Escape');
   }
 
   // On paper there is no clock: printing in the app adds none of this (a paper on its own page, the workspace's bar).

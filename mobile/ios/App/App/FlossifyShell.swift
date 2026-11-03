@@ -6,7 +6,7 @@ import QuickLook
 import Capacitor
 
 // The Flossify app's native layer, around the live website (https://flossify.ph, capacitor.config.json server.url).
-// The website's half is public/app-shell.js, which loads only in this app (src/components/AppShell.astro).
+// The website's half is src/components/app-shell.js, which loads only in this app (src/components/AppShell.astro).
 //
 // - FlossifyViewController: the iOS feel a web view lacks. The edge swipe goes back, the page bounces, pull to refresh
 //   reloads (unless a form on the page holds typed words), the keyboard follows the finger down, and the colour behind
@@ -207,7 +207,9 @@ final class FlossifyPrinter: NSObject, UIPrintInteractionControllerDelegate {
 // MARK: - Saving and sharing files
 
 /// Files go to the app's temporary folder, protected while the phone is locked, and are deleted once the share sheet
-/// closes (and any left over, at the next start). A patient's file is never offered to Photos or a social app from here.
+/// closes (and any left over, at the next start). A file from the server (a patient's X-ray, an export) is never offered
+/// to Photos or the clipboard; every other place the share sheet lists (Files, AirDrop, Print, Mail, Messages, a chat
+/// app) can receive it, as a download in a browser could.
 enum FlossifyFiles {
     static let folder = FileManager.default.temporaryDirectory.appendingPathComponent("flossify-files", isDirectory: true)
     private static var previews: [QuickLookSource] = []
@@ -232,7 +234,7 @@ enum FlossifyFiles {
     }
 
     /// `madeByPage`: a file the page drew itself (the QR poster), which may go to Photos. A file from the server (a
-    /// patient's X-ray, an export) may not, and is offered to Files, AirDrop, Print and Mail instead.
+    /// patient's X-ray, an export) may not, nor to the clipboard.
     static func share(_ url: URL, from controller: UIViewController, madeByPage: Bool, completion: ((Bool) -> Void)? = nil) {
         let folder = url.deletingLastPathComponent()
         // Nothing on screen to show it over (the sheet that asked has closed): the file goes at once.
@@ -249,7 +251,7 @@ enum FlossifyFiles {
         var excluded: [UIActivity.ActivityType] = [.assignToContact, .postToFacebook, .postToTwitter, .postToWeibo,
                                                    .postToTencentWeibo, .postToFlickr, .postToVimeo, .addToReadingList]
         // A file from the server (a patient's X-ray, an export) does not go to Photos or the clipboard (which reaches the
-        // person's other devices); it can go to Files, AirDrop, Print or Mail.
+        // person's other devices). Which other apps may receive it is the owner's call (docs/features/ios-app.md).
         if !madeByPage { excluded.append(contentsOf: [.saveToCameraRoll, .copyToPasteboard]) }
         sheet.excludedActivityTypes = excluded
         var finished = false
@@ -373,7 +375,7 @@ final class FlossifyViewController: CAPBridgeViewController {
     private var cover: UIView?
     /// The address of the page on screen, from the last navigation the web view committed.
     private(set) var currentPath = "/"
-    /// What the page says (public/app-shell.js, setChrome): false while something is drawn over it (a panel, the drawer,
+    /// What the page says (src/components/app-shell.js, setChrome): false while something is drawn over it (a panel, the drawer,
     /// a consent turned to the patient), where a sideways drag belongs to that.
     var pageAllowsSwipe = true
     var pageIsDark = false
@@ -508,6 +510,12 @@ final class FlossifyViewController: CAPBridgeViewController {
     /// Pull to refresh: the page says first whether it may reload (it may not while a form holds typed words).
     @objc private func pulled() {
         FlossifyHaptics.shared.impact("medium")
+        // On the app's own offline page (capacitor://…/offline.html) a reload would load it again: try the site.
+        if let here = webView?.url, here.scheme != "https" && here.scheme != "http", let start = bridge?.config.appStartServerURL {
+            webView?.load(URLRequest(url: start))
+            armRefreshTimeout()
+            return
+        }
         let ask = "(window.flossifyApp && window.flossifyApp.canRefresh) ? window.flossifyApp.canRefresh() : true"
         webView?.evaluateJavaScript(ask) { [weak self] result, _ in
             guard let self = self else { return }
@@ -518,11 +526,16 @@ final class FlossifyViewController: CAPBridgeViewController {
                 return
             }
             self.webView?.reload()
-            self.refreshTimeout?.cancel()
-            let timeout = DispatchWorkItem { [weak self] in self?.endRefreshing() }
-            self.refreshTimeout = timeout
-            DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: timeout)
+            self.armRefreshTimeout()
         }
+    }
+
+    /// The spinner always ends: at the load's end, or after 15 s.
+    private func armRefreshTimeout() {
+        refreshTimeout?.cancel()
+        let timeout = DispatchWorkItem { [weak self] in self?.endRefreshing() }
+        refreshTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: timeout)
     }
 
     func endRefreshing() {
@@ -633,8 +646,19 @@ final class NavigationProxy: NSObject, WKNavigationDelegate, WKDownloadDelegate 
         // sent again, and the page is fetched afresh.
         if navigationAction.navigationType == .formResubmitted {
             decisionHandler(.cancel)
-            if let url = navigationAction.request.url, navigationAction.targetFrame?.isMainFrame ?? true {
-                DispatchQueue.main.async { webView.load(URLRequest(url: url)) }
+            guard let url = navigationAction.request.url, navigationAction.targetFrame?.isMainFrame ?? true else { return }
+            // Decided on the next turn, once WebKit has put the back/forward list back on the page on screen.
+            DispatchQueue.main.async {
+                let list = webView.backForwardList
+                if list.currentItem?.url == url {
+                    // A reload of a form's answer (pull to refresh): the page fetched afresh, in place.
+                    webView.load(URLRequest(url: url))
+                } else if let i = list.backList.lastIndex(where: { $0.url == url }) {
+                    // Back onto a form's answer: one step further back, so the gesture never loops there.
+                    if i > 0 { webView.go(to: list.backList[i - 1]) }
+                } else if let j = list.forwardList.firstIndex(where: { $0.url == url }), j + 1 < list.forwardList.count {
+                    webView.go(to: list.forwardList[j + 1])
+                }
             }
             return
         }
@@ -803,7 +827,8 @@ final class UIProxy: NSObject, WKUIDelegate {
 /// notice. It shares the app's sign-in (the same website data store), has its own small bridge for haptics, printing and
 /// saving, and closes with Done or a swipe down. A link inside it to another page ("Back to Ana's record") closes it and
 /// opens there in the page underneath, so the same record is never open twice.
-final class PageSheetController: UIViewController, WKScriptMessageHandlerWithReply, WKUIDelegate {
+final class PageSheetController: UIViewController, WKScriptMessageHandlerWithReply, WKUIDelegate,
+                                 UIAdaptivePresentationControllerDelegate {
     private var webView: WKWebView!
     private var content: WKUserContentController?
     private var navigation: NavigationProxy?
@@ -818,6 +843,7 @@ final class PageSheetController: UIViewController, WKScriptMessageHandlerWithRep
         let sheet = PageSheetController(url: url, parent: parent)
         let nav = UINavigationController(rootViewController: sheet)
         nav.modalPresentationStyle = .pageSheet
+        nav.presentationController?.delegate = sheet
         if let sheetPresentation = nav.sheetPresentationController {
             sheetPresentation.prefersGrabberVisible = true
             sheetPresentation.preferredCornerRadius = 16
@@ -882,21 +908,60 @@ final class PageSheetController: UIViewController, WKScriptMessageHandlerWithRep
     }
 
     @objc private func close() {
+        // Done on a page holding typed words asks first, as a swipe down does.
+        if navigationController?.isModalInPresentation == true, let presentation = navigationController?.presentationController {
+            presentationControllerDidAttemptToDismiss(presentation)
+            return
+        }
         dismiss(animated: true)
     }
 
-    /// A link to one of our other pages: the sheet closes, and the page underneath goes there (unless it is there).
-    /// A link within the same page (#a part) stays in the sheet.
+    /// A link to another of our pages ("Back to Ana's record"): the sheet closes, and the page underneath goes there. Not
+    /// a download, not tel: or mailto:, not the same page with another query (a language), and never when the page
+    /// underneath is one a patient holds or a signing page. When the page underneath already is that page, it stays as
+    /// it is (its visit, its typed words), only scrolled to the part named; when it holds typed words, the link opens
+    /// here in the sheet instead.
     private func leave(to target: URL) -> Bool {
-        guard let parent = parentWebView, let here = webView.url else { return false }
-        var a = URLComponents(url: target, resolvingAgainstBaseURL: false), b = URLComponents(url: here, resolvingAgainstBaseURL: false)
-        a?.fragment = nil
-        b?.fragment = nil
-        if a?.url == b?.url { return false }
-        dismiss(animated: true) {
-            if parent.url?.absoluteString != target.absoluteString { parent.load(URLRequest(url: target)) }
+        guard let parent = parentWebView, let here = webView.url,
+              let scheme = target.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              let host = target.host?.lowercased(), flossifyHosts.contains(host),
+              URLComponents(url: target, resolvingAgainstBaseURL: false)?.queryItems?.contains(where: { $0.name == "download" }) != true,
+              target.path != here.path else { return false }
+        var underneath = parent.url?.path ?? "/"
+        if !underneath.hasSuffix("/") && !underneath.contains(".") { underneath += "/" }
+        if FlossifyViewController.guarded(underneath) { return false }
+        if parent.url?.host?.lowercased() == host, parent.url?.path == target.path {
+            dismiss(animated: true) {
+                if let part = target.fragment, let data = try? JSONSerialization.data(withJSONObject: [part]),
+                   let json = String(data: data, encoding: .utf8) {
+                    parent.evaluateJavaScript("location.hash = \(json)[0]")
+                }
+            }
+            return true
+        }
+        let ask = "(window.flossifyApp && window.flossifyApp.canRefresh) ? window.flossifyApp.canRefresh() : true"
+        parent.evaluateJavaScript(ask) { [weak self] result, _ in
+            guard let self = self else { return }
+            if let free = result as? Bool, free == false {
+                // (A load the app makes is not a tapped link, so it does not come back here.)
+                self.webView.load(URLRequest(url: target))
+            } else {
+                self.dismiss(animated: true) { parent.load(URLRequest(url: target)) }
+            }
         }
         return true
+    }
+
+    // A swipe down on a sheet whose page holds typed words (setChrome's `typed`): asked first.
+
+    func presentationControllerDidAttemptToDismiss(_ presentationController: UIPresentationController) {
+        let ask = UIAlertController(title: nil, message: "What you typed here is not saved yet.", preferredStyle: .actionSheet)
+        ask.addAction(UIAlertAction(title: "Keep editing", style: .cancel))
+        ask.addAction(UIAlertAction(title: "Close without saving", style: .destructive) { [weak self] _ in self?.dismiss(animated: true) })
+        if let popover = ask.popoverPresentationController {
+            popover.barButtonItem = navigationItem.rightBarButtonItem
+        }
+        show(ask) {}
     }
 
     /// An alert over whatever is on top of the sheet; with nothing on screen to show it, the page is answered at once
@@ -946,7 +1011,12 @@ final class PageSheetController: UIViewController, WKScriptMessageHandlerWithRep
         let options = body["options"] as? [String: Any] ?? [:]
         switch plugin {
         case "FlossifyShell":
-            if method == "setChrome" { replyHandler([String: Any](), nil); return }
+            if method == "setChrome" {
+                // Only one thing matters in a sheet: typed words make a swipe down ask first.
+                navigationController?.isModalInPresentation = (options["typed"] as? Bool) ?? false
+                replyHandler([String: Any](), nil)
+                return
+            }
             FlossifyCalls.perform(method, options, webView: webView, from: self) { answer, problem in replyHandler(answer, problem) }
         case "Browser":
             if let link = options["url"] as? String, let url = URL(string: link), url.scheme == "https" || url.scheme == "http",
@@ -962,7 +1032,7 @@ final class PageSheetController: UIViewController, WKScriptMessageHandlerWithRep
 }
 
 extension UIColor {
-    /// "#rrggbb", as public/app-shell.js sends the page's ground colour.
+    /// "#rrggbb", as src/components/app-shell.js sends the page's ground colour.
     convenience init?(flossifyHex hex: String) {
         let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
         guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }

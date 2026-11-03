@@ -131,7 +131,10 @@
       ' html[data-app] .entrance-main { padding-bottom: calc(clamp(0.75rem, 3vh, 2.5rem) + var(--app-bottom)); }' +
       ' html[data-app] .page-hero { min-height: calc(100svh - 4.25rem - var(--app-top)); }' +
       ' html[data-app] [data-desk-consent][data-facing] { padding-top: var(--app-top); padding-bottom: var(--app-bottom); }' +
-      ' html[data-app] :is([data-rec-panel], [data-rec-panel] .ws-pane, [data-chart-offer]) { scroll-margin-top: calc(5.5rem + var(--app-top)); }' +
+      ' html[data-app] :is([data-rec-panel], [data-rec-panel] .ws-pane, [data-chart-offer]) { scroll-margin-top: calc(var(--rec-top, calc(4.75rem + var(--app-top))) + 0.75rem); }' +
+      /* The chart's palette (a popover placed by script, Odontogram.astro) fits between the status bar and the home
+         indicator; its scroll-margin-top carries the inset in px for the clamp in ready(). */
+      ' html[data-app] [data-palette] { max-height: calc(100dvh - 16px - var(--app-top) - var(--app-bottom)); scroll-margin-top: var(--app-top); }' +
       ' html[data-app] .pt-main { scroll-margin-top: calc(4.5rem + var(--app-top)); }' +
       ' html[data-app] .pt-anchor { scroll-margin-top: calc(5.25rem + var(--app-top)); }' +
       ' html[data-app]:has(body.ops) { scroll-padding-top: calc(5.5rem + var(--app-top)); }' +
@@ -242,8 +245,16 @@
   });
   function typedWords() {
     dirtyPanels = dirtyPanels.filter(function (d) { return d.isConnected && d.open; });
-    return dirty || dirtyPanels.length > 0;
+    // A signature drawn on a pad in a form not yet sent (the signing page, the consent forms): its strokes are not in
+    // any field a reload would keep.
+    var inked = !!document.querySelector('form[method="post" i] :is([data-sg-pad], [data-sp-pad])[data-ink]');
+    return dirty || dirtyPanels.length > 0 || inked;
   }
+  // A page in a sheet tells the app when it holds typed words, so a swipe down asks before it closes.
+  var typedTimer = 0;
+  function typedChanged() { clearTimeout(typedTimer); typedTimer = setTimeout(function () { syncChrome(); }, 250); }
+  document.addEventListener('input', typedChanged, true);
+  document.addEventListener('pointerup', typedChanged, true);
 
   var noteTimer = 0;
   function showNote(words) {
@@ -494,7 +505,10 @@
         return;
       }
     }
-    if (posted) haptic.success();
+    // Only a post answered with a redirect landed (a refusal is drawn in place, a server fault is a blank page).
+    var redirected = false;
+    try { var e = performance.getEntriesByType('navigation')[0]; redirected = !!e && e.redirectCount > 0; } catch (err) { /* older WebKit */ }
+    if (posted && redirected) haptic.success();
   }
   // A refusal a script draws after the page arrived (a form checked in the page, a 409 said in a panel).
   var seen = new WeakMap();
@@ -631,7 +645,7 @@
     // The frosted band under the clock (body::before, on a page with no sticky bar) takes the page's own ground.
     root.style.setProperty('--app-band', 'rgba(' + ground.r + ', ' + ground.g + ', ' + ground.b + ', 0.86)');
     // theme: the person's own choice ('light', 'dark'), or '' when the page follows the device.
-    var state = { dark: dark, theme: root.getAttribute('data-theme') || '', color: hex(ground), swipeBack: swipeOk() };
+    var state = { dark: dark, theme: root.getAttribute('data-theme') || '', color: hex(ground), swipeBack: swipeOk(), typed: typedWords() };
     var key = JSON.stringify(state);
     if (key === chromeWas) return;
     chromeWas = key;
@@ -661,7 +675,20 @@
     markDirty: function (on) { dirty = on !== false; },
   };
 
+  // The chart's palette is placed by its own script no higher than 8 px from the top of the screen: in the app that is
+  // under the clock, so it is moved down to 8 px below the status bar.
+  function clampPalettes() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-palette]'), function (pal) {
+      new MutationObserver(function () {
+        var min = (parseFloat(getComputedStyle(pal).scrollMarginTop) || 0) + 8;
+        var top = parseFloat(pal.style.top);
+        if (!isNaN(top) && top < min) pal.style.top = min + 'px';
+      }).observe(pal, { attributes: true, attributeFilter: ['style'] });
+    });
+  }
+
   function ready() {
+    clampPalettes();
     syncChrome();
     watchLayers();
     watchDrag();
