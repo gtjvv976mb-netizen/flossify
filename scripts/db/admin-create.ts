@@ -25,8 +25,9 @@
 // admin. A reset follows sign-in instead: it goes through when this account is
 // the one the email opens (the oldest that is not switched off), and names any
 // clinic account that shares the email; it refuses when sign-in would open a
-// clinic's account. (Settings → Team checks emails within one group only, so a
-// clinic can add this email to its staff later.)
+// clinic's account. (Clinic settings → People and /start/ refuse an email that is on
+// any staff account, this one included; a clinic account has it only from before that
+// check covered the whole service, or by hand.)
 //
 // A new account goes into Flossify's own group, which has no clinic: the group
 // of an existing operations account, else a new "Flossify" group.
@@ -133,8 +134,9 @@ const who = (r: Row) => `${r.full_name} at ${r.group_name}`;
 
 /** Create or reset, or refuse. Run once before the password is asked for, and again inside the write.
  *  Decided the way sign-in decides (authenticate() in src/lib/auth.ts): of the accounts with this email
- *  that are not switched off, the oldest is the one the password opens. Settings → Team checks an email
- *  only inside its own group, so a clinic can add this email to its staff after this account exists. */
+ *  that are not switched off, the oldest is the one the password opens. Clinic settings → People and /start/
+ *  refuse an email that is on any staff account, but a clinic account may have this one from before that check
+ *  covered the whole service (or by hand), older or newer than this account. */
 async function plan(c: pg.Client): Promise<Plan> {
   const ready = (await c.query("select to_regclass('public.platform_admin') is not null as ok")).rows[0].ok as boolean;
   if (!ready) refuse(`${c.database} has no platform_admin table. Nothing changed.`, 'Run npm run db:migrate first.');
@@ -170,13 +172,13 @@ async function plan(c: pg.Client): Promise<Plan> {
   if (opens) {
     refuse(`sign-in with ${email} ${first.length > 1 ? 'may open' : 'opens'} a clinic's staff account (${who(opens)}), not /admin/, so a new password here would not help. Nothing changed.`,
       s.disabled_at ? 'The operations account with this email is switched off. A developer must sort out the two accounts.'
-        : 'That clinic can switch the account off on Settings → Team; otherwise a developer must change one of the two emails.');
+        : 'That clinic can change that member\'s email, or disable the account, in Clinic settings → People; otherwise a developer must change one of the two emails.');
   }
   const notes: string[] = [];
   const shadowed = staff.filter((r) => !r.disabled_at);
   if (shadowed.length) {
     const many = shadowed.length > 1;
-    notes.push(`Note: ${shadowed.map(who).join('; ')} also ${many ? 'have' : 'has'} this email, on a clinic staff account. Sign-in opens this operations account, so ${many ? 'they' : 'that person'} cannot sign in with it until a developer changes the email on ${many ? 'their accounts' : 'theirs'}.`);
+    notes.push(`Note: ${shadowed.map(who).join('; ')} also ${many ? 'have' : 'has'} this email, on a clinic staff account. Sign-in opens this operations account, so ${many ? 'they' : 'that person'} cannot sign in with it until ${many ? 'their emails change' : 'their email changes'}: the clinic can change ${many ? 'them' : 'it'} in Clinic settings → People, or a developer can.`);
   }
   const waiting = staff.filter((r) => r.disabled_at && r.before_admin);
   if (waiting.length) {

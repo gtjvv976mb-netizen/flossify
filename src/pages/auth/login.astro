@@ -14,6 +14,7 @@ import { authenticate, setSession, readSession, authEvent, SESSION_HOURS, type D
 import { csrfOk, CSRF_MESSAGE } from '../../lib/csrf';
 import { hit, refund, clientIp, waitText, LIMITS } from '../../lib/throttle';
 import { rememberClinic, rememberedClinic, doorPath } from '../../lib/clinic-door';
+import { PLACE } from '../../lib/places';
 
 // Only a workspace path may be a destination; anything else is dropped, so a
 // crafted link cannot bounce a signed-in person to another site.
@@ -65,7 +66,7 @@ if (Astro.request.method === 'POST') {
         await refund(`login:e:${email}`); await authEvent('login.ok', { email, staffId: who.staffId, ip, ua });
         return Astro.redirect(next.startsWith('/admin/') ? next : '/admin/');
       }
-      else if (!who.clinics.length) { error = 'Your account has no branch to open yet. Ask your clinic owner to add you on Settings → Team.'; errorOn = 'login'; await authEvent('login.fail', { email, staffId: who.staffId, ip, ua }); }
+      else if (!who.clinics.length) { error = `Your account has no branch to open yet. Ask your clinic owner to add you in ${PLACE.people}.`; errorOn = 'login'; await authEvent('login.fail', { email, staffId: who.staffId, ip, ua }); }
       else {
         const wanted = next.match(/^\/c\/([^/]+)\//)?.[1];
         const clinic = who.clinics.find((c) => c.slug === wanted) ?? who.clinics[0];

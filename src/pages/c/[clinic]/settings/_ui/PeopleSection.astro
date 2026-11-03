@@ -34,8 +34,10 @@ interface Props {
   notes: { tone: 'ok' | 'alert' | 'warn'; text: string }[];
   highlight: string;
   on: boolean;
+  /** The person acting may change roles (roles.manage): Add member's role line names where they are. */
+  rolesHere: boolean;
 }
-const { base, clinicName, slug, roles, people, me, isOwner, emailOn, add, addError, notes, highlight, on } = Astro.props;
+const { base, clinicName, slug, roles, people, me, isOwner, emailOn, add, addError, notes, highlight, on, rolesHere } = Astro.props;
 const active = people.filter((p) => !p.disabled_at).length;
 
 // One status per person: what needs doing first (disabled, invited, a PRC licence to sort out), else Active.
@@ -108,7 +110,7 @@ const statusOf = (p: Person) => {
       </div>
       <span id="add-pw-help" class="set-help">At least {PASSWORD_MIN} characters; tell them yourself. {emailOn ? 'Or leave it empty and we send them a code by text and email to choose their own.' : 'Or leave it empty and we text them a code to choose their own.'}</span>
     </div>
-    <RoleField roles={roles} value={add.roleId} treats={add.treats} />
+    <RoleField roles={roles} value={add.roleId} treats={add.treats} rolesHere={rolesHere} />
     <label class="field" data-team-dentist hidden={!add.treats}>
       <span class="meta">PRC licence</span>
       <input name="prc" inputmode="numeric" value={add.prc} maxlength="10" autocomplete="off" placeholder="0043321" required={add.treats} data-prc-required class="tabular-nums" />

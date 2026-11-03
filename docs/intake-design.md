@@ -10,8 +10,8 @@ the six scheduling features first.
 
 The original spec (`intake-spec.md`) lived in a session scratchpad and is gone.
 This file is its replacement: what each phase settled, where it lives, and what
-phase 4 still has to settle with the owner. `CLAUDE.md` "Add patient, step by
-step (039)" is the detailed record; this is the map.
+phase 4 still has to settle with the owner. `docs/features/patient-forms.md`
+"Add patient, step by step (039)" is the detailed record; this is the map.
 
 ## Phase 1 — the library and the data (039)
 
@@ -182,5 +182,6 @@ Four candidates were put to the owner on 1 Oct; they chose the first, and
 ### Phase 4 is complete
 
 The four candidates put to the owner on 1 Oct are built. What is left for the
-owner is in `CLAUDE.md` "Open": the forms' words (`CONSENT_REVIEWED`), the
-Filipino lines, and whether the calendar's In the chair step should ask too.
+owner is in `CLAUDE.md` "Open — read before shipping" (in full:
+`docs/features/open.md`): the forms' words (`CONSENT_REVIEWED`) and the
+Filipino lines. The calendar's In the chair step asks too, since 1 Oct.

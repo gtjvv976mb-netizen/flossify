@@ -1,0 +1,20 @@
+---
+// The words check's fixture for words made of pieces (words.test.mjs): a choice between strings in a template and
+// beside a tag, a spacer, a '+' chain, a count helper, an always-words attribute's {…}, set:html and set:text, a
+// script's define:vars, and a callback passed to a call whose own arguments are code.
+const n = 2;
+const forms = (k: number) => `, ${k} new patient ${k === 1 ? 'form' : 'forms'} waiting`;
+const plural = (k: number, one: string, many = `${one}s`) => `${k} ${k === 1 ? one : many}`;
+const due = plural(n, 'invoice');
+const call = 'Open the call ' + 'list';
+const body = JSON.stringify({ error: 'That slot has just gone. Pick another.' });
+const headers = ['a'];
+---
+<p>Owes <strong>{n === 0 ? 'nothing' : due}</strong></p>
+<p>Open the call{' '}<a href="/calls/">list</a> first.</p>
+<p>You have {n} {n === 1 ? 'slot' : 'slots'} left.</p>
+<p title={n ? 'Balance:' : 'Done:'} aria-label={`Recall ${n}`}>Plain</p>
+<Fragment set:html="<p>Saved on the Schedule.</p>" />
+<p set:text={'Booking reference'} />
+<table>{headers.map((h) => <tr><td>In the lobby</td></tr>)}</table>
+<script define:vars={{ msg: 'Open the Team page' }}>console.log(msg);</script>

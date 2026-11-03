@@ -6,8 +6,9 @@
 // PayMongo set up: src/lib/payments.ts) each due invoice also gets a Pay now
 // button: a form post to /api/payments/checkout, which sends the owner to
 // PayMongo's page for GCash, Maya or card, and PayMongo sends them back with
-// ?paid=<number> or ?unpaid=<number> (to /settings/billing/, which redirects
-// here with its query). There is no card form on this site. Plan changes are
+// ?paid=<number> or ?unpaid=<number> and #plan (to Clinic settings itself; a
+// checkout opened before 1.18 comes back to /settings/billing/, which still
+// redirects here with its query). There is no card form on this site. Plan changes are
 // a note to us, not a button, until self-service is worth building.
 //
 // Coming back (?paid=<number>), or pressing Check again, the webhook may not

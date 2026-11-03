@@ -23,6 +23,7 @@ import type { Pt } from './patients';
 import { AFTERCARE, kindForCatalog } from '../../../lib/aftercare';
 import { blockDone, blockLabel, blockSentence, whenWords, whyWords } from '../../../lib/block-words';
 import { initFreeTimes, timeMin } from './free';
+import { PLACE } from '../../../lib/places';
 
 export interface Panels {
   openVisit: (id: string, opener: Element | null, o?: { place?: boolean }) => void;
@@ -96,7 +97,7 @@ export function initPanels(ctx: Ctx): Panels {
     if (visitId) q.set('visit', visitId);
     return `${boot.links.charge}?${q}`;
   };
-  // Messages texts anyone with a reason (its own rule, checked again when the text is sent); ?to= names the patient.
+  // The Texts page texts anyone with a reason (its own rule, checked again when the text is sent); ?to= names the patient.
   // Only for someone who may text (messages.send): for anyone else the action is left out, not offered and refused.
   const textHref = (patientId: string) => `${boot.links.messages}?to=${encodeURIComponent(patientId)}`;
   const textableVisit = (c: Card) => boot.canText && !!c.phone && c.status !== 'cancelled';
@@ -1120,7 +1121,7 @@ export function initPanels(ctx: Ctx): Panels {
       li.append(words, go);
       ul.append(li);
     }
-    const calls = link('Open Calls', boot.links.calls);
+    const calls = link(`Open ${PLACE.calls}`, boot.links.calls);
     calls.className = 'bl-inside-calls';
     // At a clinic that holds reminders in closed time nobody kept (044), they wait until the visit is kept or moved.
     callout(L.inside, boot.holdsReminders

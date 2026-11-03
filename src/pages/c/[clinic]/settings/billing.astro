@@ -1,8 +1,9 @@
 ---
 // The old Settings › billing page. Clinic settings is one page now; this address
-// redirects to its section — Your Flossify plan (PayMongo still returns here with ?paid= / ?unpaid=) — carrying its query along, and a form
+// redirects to its section — Your Flossify plan — carrying its query along, and a form
 // drawn before the change is re-sent there as it was. See oldSettingsPage() in
-// _lib/common.ts.
+// _lib/common.ts. Kept for bookmarks, and for a PayMongo checkout opened before
+// payments.ts sent its return straight to /settings/ (?paid= / ?unpaid=).
 export const prerender = false;
 import { oldSettingsPage } from './_lib/common';
 

@@ -43,6 +43,7 @@ import { readSession, canOpen } from '../lib/auth';
 import { inboxFor, seenAt, SEEN_COOKIE } from '../components/ws/inbox';
 import { planLine } from '../components/ws/plan';
 import { LANDED, shellLinks } from '../components/ws/routes';
+import { TABS, PLACE } from '../lib/places';
 import { withClinic } from '../lib/db';
 import ThemeSwitch from '../components/ThemeSwitch.astro';
 
@@ -106,10 +107,10 @@ const links = shellLinks(clinic.slug);
 // Add patient (the New menu, and search's "Add a patient"): only for people who can add patients here.
 const addPatient = can(access, 'records.edit') ? links.addPatient : null;
 const tabs: { id: Tab; label: string; short: string; href: string; icon: IconName }[] = [
-  { id: 'dashboard', label: 'Dashboard', short: 'Dashboard', href: links.dashboard, icon: 'dashboard' },
-  { id: 'patients', label: 'Patients', short: 'Patients', href: links.patients, icon: 'patients' },
-  ...(canBill ? [{ id: 'finances' as const, label: 'Finances', short: 'Finances', href: links.finances, icon: 'wallet' as const }] : []),
-  ...(canSetUp ? [{ id: 'settings' as const, label: 'Clinic settings', short: 'Settings', href: links.settings, icon: 'settings' as const }] : []),
+  { id: 'dashboard', ...TABS.dashboard, href: links.dashboard, icon: 'dashboard' },
+  { id: 'patients', ...TABS.patients, href: links.patients, icon: 'patients' },
+  ...(canBill ? [{ id: 'finances' as const, ...TABS.finances, href: links.finances, icon: 'wallet' as const }] : []),
+  ...(canSetUp ? [{ id: 'settings' as const, ...TABS.settings, href: links.settings, icon: 'settings' as const }] : []),
 ];
 
 // The clinic's area for the sidebar's clinic card ("Baguio City"). A page that has it passes
@@ -265,7 +266,7 @@ const BarTitle = heading ? 'h1' : 'p';
           </div>
           {links.myPage && (
             <a class="ws-side-link" href={links.myPage} aria-current={section === 'account' ? 'page' : undefined}>
-              <Icon name="user" /><span class="ws-side-word">My page</span>
+              <Icon name="user" /><span class="ws-side-word">{PLACE.myPage}</span>
             </a>
           )}
           {!canBill && (
@@ -273,7 +274,7 @@ const BarTitle = heading ? 'h1' : 'p';
             // Finances tab they stay one click away here (the list and its notes; the claims
             // page keeps the amounts to finance, as it always has).
             <a class="ws-side-link" href={links.claims} aria-current={section === 'claims' ? 'page' : undefined}>
-              <Icon name="file" /><span class="ws-side-word"><span class="ws-side-long">HMO &amp; PhilHealth claims</span><span class="ws-side-short" aria-hidden="true">Claims</span></span>
+              <Icon name="file" /><span class="ws-side-word"><span class="ws-side-long">{PLACE.claims}</span><span class="ws-side-short" aria-hidden="true">{PLACE.claimsShort}</span></span>
             </a>
           )}
           <BillingNotice line={plan} slug={clinic.slug} />
@@ -330,7 +331,7 @@ const BarTitle = heading ? 'h1' : 'p';
                   </a>
                   <a class="ws-menu-item" href={`${links.messages}?show=replies`}>
                     <span class="ws-menu-icon" data-tint="blue"><Icon name="message" /></span>
-                    <span class="ws-menu-words">New replies<span class="ws-menu-hint">Texts from patients since this device last opened Messages</span></span>
+                    <span class="ws-menu-words">New replies<span class="ws-menu-hint">From patients, since this device last opened {PLACE.texts}</span></span>
                     {inbox && <span class="ws-count" data-zero={inbox.replies ? undefined : ''}>{inbox.replies}</span>}
                   </a>
                   <a class="ws-menu-item" href={links.requests}>
@@ -354,7 +355,7 @@ const BarTitle = heading ? 'h1' : 'p';
                     </a>
                   )}
                   <div class="ws-menu-sep"></div>
-                  <a class="ws-menu-item" href={links.messages}><span class="ws-menu-words">All messages</span> <Icon name="arrow-right" size={16} /></a>
+                  <a class="ws-menu-item" href={links.messages}><span class="ws-menu-words">{PLACE.allTexts}</span> <Icon name="arrow-right" size={16} /></a>
                 </Menu>
 
                 {/* Quiet (white, a hairline, a teal plus): one main action per screen is teal, and

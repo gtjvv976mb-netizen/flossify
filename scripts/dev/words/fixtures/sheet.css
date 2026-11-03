@@ -1,0 +1,7 @@
+/* The words check's fixture stylesheet (words.test.mjs): only content: strings are read.
+   content: 'A Team in a comment'; is never read. */
+.cal-more::after { content: 'Show them'; }
+.cal-more[open]::after { content: "Recall list"; justify-content: center; }
+.next::before { content: '\2192  Next'; }
+.strip-done::after { content: ''; }
+.team { color: red; }

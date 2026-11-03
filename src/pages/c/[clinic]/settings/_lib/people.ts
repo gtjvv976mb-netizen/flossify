@@ -70,6 +70,7 @@ import { closedIds, reopenNewlyClosed } from '../../../../../lib/blocks';
 import { readPtr, ptrDrawn, ptrConflictText } from '../../../../../lib/ptr';
 import { manilaToday } from '../../../../../lib/health';
 import { normalizeUsername, usernameProblem } from '../../../../../lib/username';
+import { PLACE } from '../../../../../lib/places';
 
 // The seven Board-recognised fields, exactly as staff.specialty's check constraint spells them (migration 002).
 export const SPECIALTIES = ['Endodontics', 'Oral & maxillofacial surgery', 'Orthodontics', 'Pediatric dentistry', 'Periodontics', 'Prosthodontics', 'Dental public health'];
@@ -649,7 +650,7 @@ export function personNotice(q: URLSearchParams, p: Person, myId: string): strin
 /** After a days save put this person's visits ahead outside their hours: " 1 visit ahead is now outside their hours: …". */
 function closedWords(n: number): string {
   if (!Number.isInteger(n) || n < 1) return '';
-  return n === 1 ? ' 1 visit ahead is now outside their hours: it is on the call list.' : ` ${n} visits ahead are now outside their hours: they are on the call list.`;
+  return n === 1 ? ` 1 visit ahead is now outside their hours: it shows on ${PLACE.calls}.` : ` ${n} visits ahead are now outside their hours: they show on ${PLACE.calls}.`;
 }
 
 /** "13:00" → 780; null for anything that is not a time of day. */

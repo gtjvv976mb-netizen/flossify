@@ -6,9 +6,11 @@
 // schedule and a public profile. Choosing one of the dentist roles ticks it; the owner can tick it for
 // any role. The server checks all of this again; the script only keeps the form short.
 import type { Role } from '../../../../../lib/roles';
+import { PLACE } from '../../../../../lib/places';
 
-interface Props { roles: Role[]; value: string; treats: boolean }
-const { roles, value, treats } = Astro.props;
+// rolesHere: the person acting may change roles (roles.manage), so the sentence names where; anyone else is told who.
+interface Props { roles: Role[]; value: string; treats: boolean; rolesHere: boolean }
+const { roles, value, treats, rolesHere } = Astro.props;
 const dentistBase = (r: Role) => r.base === 'dentist' || r.base === 'associate';
 const nonDentistBase = (r: Role) => !!r.base && !dentistBase(r);
 ---
@@ -23,7 +25,7 @@ const nonDentistBase = (r: Role) => !!r.base && !dentistBase(r);
         data-bills={r.perms.includes('finance.bill') && !r.perms.includes('finance.money') ? '1' : undefined}>{r.name}</option>
     ))}
   </select>
-  <span class="set-help">What they may see and do comes with the role. Roles are under Clinic settings → Roles.</span>
+  <span class="set-help">What they may see and do comes with the role. {rolesHere ? <>Roles are under {PLACE.roles}.</> : 'The owner sets what each role may do.'}</span>
 </label>
 <label class="check set-check items-start">
   <input type="checkbox" name="treats" checked={treats} data-team-treats />

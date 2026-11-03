@@ -44,6 +44,7 @@ import { PASSWORD_MIN } from '../../../../../lib/auth';
 import RoleField from '../_ui/RoleField.astro';
 import { ptrChip, ptrDrawn, ptrLine, ptrState, ptrYearOptions, PTR_MAX } from '../../../../../lib/ptr';
 import { manilaToday } from '../../../../../lib/health';
+import { PLACE, sectionName } from '../../../../../lib/places';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -134,10 +135,10 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
     <Pane as="div" label="People" class="max-w-[46rem]">
       <Empty icon="user" text={!t
         ? `No one with that link can open ${clinic.name}. They may have moved to another branch, or the link is cut short.`
-        : 'Only the owner or an admin opens other people’s pages. Your own details and password are on My page.'} />
+        : `Only the owner or an admin opens other people’s pages. Your own details and password are on ${PLACE.myPage}.`} />
       <div class="set-btn-row mt-3">
         {canSetUp && <a href={`${base}#people`} class="ws-btn ws-btn-quiet"><Icon name="patients" />Everyone at {clinic.name}</a>}
-        <a href={`/c/${clinic.slug}/account/`} class="ws-btn ws-btn-quiet"><Icon name="user" />My page</a>
+        <a href={`/c/${clinic.slug}/account/`} class="ws-btn ws-btn-quiet"><Icon name="user" />{PLACE.myPage}</a>
       </div>
     </Pane>
   ) : (
@@ -145,7 +146,7 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
       {/* Their name is the page's title, in the top bar (the layout's heading), as on Clinic settings:
           this card is who they are beside it — the avatar, their role and state, how to reach them. */}
       <Pane as="div" class="set-sec" id="head">
-        {canSetUp && <a href={`${base}#people`} class="set-back"><Icon name="chevron-left" size={16} />People</a>}
+        {canSetUp && <a href={`${base}#people`} class="set-back"><Icon name="chevron-left" size={16} />{sectionName('people')}</a>}
         <div class="set-person">
           <div class="set-person-who set-person-bare">
             <Avatar name={t.full_name} size="lg" />
@@ -165,7 +166,7 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
             </div>
           </div>
           {mayEdit && <button type="button" class="ws-btn ws-btn-primary" data-ws-open="edit"><Icon name="user" />Edit details</button>}
-          {!canSetUp && self && <a href={`/c/${clinic.slug}/account/`} class="ws-btn ws-btn-quiet"><Icon name="user" />My page</a>}
+          {!canSetUp && self && <a href={`/c/${clinic.slug}/account/`} class="ws-btn ws-btn-quiet"><Icon name="user" />{PLACE.myPage}</a>}
         </div>
         {notice && doneTo === 'head' && <Note tone="ok" text={notice} class="mt-5" />}
         {refused && errorIn === 'head' && <Note tone="alert" text={refused.error} class="mt-5" refused />}
@@ -246,7 +247,7 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
                 </div>
               )}
               {ptrShown && mayEdit && <p class="set-help mt-2">Change the PTR in Edit details. Flossify does not check it: it prints as it is written.</p>}
-              {self && !canSetUp && signsPapers(t) && <p class="set-help mt-2"><a href={`/c/${clinic.slug}/account/#ptr`} class="inline-flex min-h-[44px] items-center font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">Add yours on My page</a></p>}
+              {self && !canSetUp && signsPapers(t) && <p class="set-help mt-2"><a href={`/c/${clinic.slug}/account/#ptr`} class="inline-flex min-h-[44px] items-center font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">Add yours on {PLACE.myPage}</a></p>}
             </Pane>
           )}
 
@@ -354,7 +355,7 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
             {manages && !t.disabled_at && !canSend && !t.has_password && <p class="ws-callout mt-3" data-tone="warn"><Icon name="alert" /><span>No mobile on file, so a code has nowhere to go. Set a password for them, or add a mobile in Edit details.</span></p>}
             {canSetUp && !manages && !self && <p class="set-help mt-3">Only someone whose role is above {t.role_name} changes {first}’s sign-in.</p>}
             {mayDisable && !t.disabled_at && <p class="set-help mt-3">Disable signs them out of every branch at once. Nothing they did is deleted.</p>}
-            {self && <p class="set-help mt-3">Your own password is on <a href={`/c/${clinic.slug}/account/`} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">My page</a>.</p>}
+            {self && <p class="set-help mt-3">Your own password is on <a href={`/c/${clinic.slug}/account/`} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">{PLACE.myPage}</a>.</p>}
           </Pane>
         </div>
       </div>
@@ -382,7 +383,7 @@ const practice = t ? (t.specialty ?? (t.practices?.length ? t.practices.join(', 
                 <span class="set-help">{t.role_owner ? 'An owner stays an owner.' : 'Ask the owner to change your own role.'}</span>
               </div>
             ) : (
-              <RoleField roles={offered} value={v.roleId} treats={v.treats} />
+              <RoleField roles={offered} value={v.roleId} treats={v.treats} rolesHere={can(ws, 'roles.manage')} />
             )}
             <label class="field"><span class="meta">Mobile</span><input name="phone" type="tel" inputmode="numeric" value={v.phone} required={!!t.phone} autocomplete="off" placeholder="0917 000 0000" class="tabular-nums" /><span class="set-help">Invitation and reset codes go here by text.</span></label>
             <label class="field">
