@@ -119,7 +119,9 @@ for (const scheme of ['light', 'dark']) {
   const doors = await p.$$eval('[data-app-door]', (els) => els.map((e) => ({ key: e.dataset.appDoor, h: e.getBoundingClientRect().height })));
   assert.deepEqual(doors.map((d) => d.key), ['patient', 'clinic']);
   assert.ok(doors.every((d) => d.h >= 44));
-  await p.waitForTimeout(900); // the rise
+  // The rise (each line in turn, the last ends at 960 ms): measure once every animation has finished, or a line still
+  // at 98.5% of its size reads under 44 px.
+  await p.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null))));
   const m = await p.evaluate(measure);
   const low = m.lines.filter((l) => l.ratio < 4.5);
   assert.deepEqual(low, [], `contrast on /app/ (${scheme}): ${JSON.stringify(low)}`);
