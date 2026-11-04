@@ -230,12 +230,25 @@ const landed = (id) => p.evaluate((id) => {
   const fold = sec.querySelector(':scope > details[data-rec-fold]');
   return { head, bar, atEnd, hash: location.hash, open: fold ? fold.open : true };
 }, id);
+// The contents scroll smoothly (about 900 ms, longer on a busy machine): measure once the page has stopped, not at a
+// fixed time, or a part is caught on its way up.
+const settled = () => p.evaluate(() => new Promise((resolve) => {
+  let last = scrollY, still = 0;
+  const started = performance.now();
+  const tick = () => {
+    still = scrollY === last ? still + 1 : 0;
+    last = scrollY;
+    if (still >= 6 || performance.now() - started > 5000) resolve();
+    else setTimeout(tick, 50);
+  };
+  setTimeout(tick, 50);
+}));
 for (const [w, h] of [[1440, 900], [390, 844]]) {
   await p.setViewportSize({ width: w, height: h });
   await p.goto(record, { waitUntil: 'load' });
   for (const id of ['chart', 'treatment-record', 'consent', 'health', 'notes', 'visits', 'money', 'overview']) {
     await p.locator(`[data-rec-link="${id}"]`).click();
-    await p.waitForTimeout(900);
+    await settled();
     const r = await landed(id);
     assert.equal(r.hash, `#${id}`);
     assert.ok(r.open, `${w} ${id}: its sheet opened`);
