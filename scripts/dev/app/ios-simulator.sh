@@ -137,7 +137,15 @@ run_page() { # udid, tag, url, name, [config patch]
     xcrun simctl io "$udid" screenshot "$OUT/$tag-$name.png" >/dev/null 2>&1 || continue
     if share=$(blank "$OUT/$tag-$name.png"); then seen=1; break; fi
   done
-  if ! kill -0 "$pid" 2>/dev/null; then bad "$tag $name: the app stopped (log: $log)"; tail -20 "$log"
+  # The console stays attached after the app itself has gone, and the home screen is not blank: so ask launchd whether
+  # the app still has a process (UIKitApplication:<bundle> with a number, not "-").
+  local alive; alive=$(xcrun simctl spawn "$udid" launchctl list 2>/dev/null | awk -v b="UIKitApplication:$BUNDLE" 'index($3, b) == 1 && $1 != "-" { print $1 }' | head -1)
+  if ! kill -0 "$pid" 2>/dev/null || [ -z "$alive" ]; then
+    bad "$tag $name: the app stopped (log: $log)"; tail -30 "$log"
+    xcrun simctl spawn "$udid" log show --style compact --start "$since" \
+      --predicate 'process == "App" OR process BEGINSWITH "com.apple.WebKit" OR (process == "SpringBoard" AND eventMessage CONTAINS[c] "flossify") OR eventMessage CONTAINS[c] "jetsam" OR eventMessage CONTAINS[c] "crash"' \
+      2>/dev/null | grep -v -i "debug" | tail -60 || true
+    ls -t ~/Library/Logs/DiagnosticReports/App-*.ips 2>/dev/null | head -1 | xargs -I{} sh -c 'echo "   crash report: {}"; head -c 6000 "{}"' || true
   elif [ "$seen" = 1 ]; then note "$tag $name: running; the page on screen after ${waited} s (commonest colour $share%)"
   else bad "$tag $name: running, but nothing on screen after ${LIMIT} s (one colour on $share% of it)"; fi
   # WebKit's and the app's own complaints from the simulator's system log: what the app's console does not show.
