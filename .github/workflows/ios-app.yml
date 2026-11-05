@@ -1,7 +1,8 @@
 # The iPhone and iPad app (mobile/), built on a Mac and run in the iOS simulator against this repository's own website
 # (a throwaway seeded database and the dev server, on the runner), by scripts/dev/app/ios-simulator.sh: Flossify's Swift
 # builds, the app starts on each page, the page reaches the native side, the offline page shows, and every screen is
-# photographed. The screenshots and logs are kept with the run (Artifacts: ios-simulator).
+# photographed. The screenshots and logs are kept with the run (Artifacts: ios-simulator), and so is the app itself,
+# opening flossify.ph, for the Simulator on any Mac (Artifacts: Flossify-simulator; mobile/README.md).
 #
 # A Mac runner costs ten times a Linux one in a private repository's minutes, so this runs only for a pull request
 # that touches the app, or by hand (Actions → iOS app → Run workflow).
@@ -90,3 +91,13 @@ jobs:
             ${{ runner.temp }}/ios-shots/*.syslog
             ${{ runner.temp }}/site.log
           if-no-files-found: warn
+
+      # The app itself, opening https://flossify.ph, to drop onto the Simulator on any Mac with Xcode (mobile/README.md,
+      # "Try it without building"). Only from a run whose checks passed.
+      - name: Keep the app for the Simulator
+        uses: actions/upload-artifact@v4
+        with:
+          name: Flossify-simulator
+          path: ${{ runner.temp }}/ios-shots/Flossify-simulator.zip
+          if-no-files-found: error
+          retention-days: 30
