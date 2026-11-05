@@ -1,0 +1,21 @@
+{
+  "name": "flossify-ios",
+  "private": true,
+  "description": "The Flossify iPhone app: a native shell around https://flossify.ph (Capacitor). See mobile/README.md.",
+  "scripts": {
+    "sync": "cap sync ios",
+    "open": "cap open ios",
+    "local": "cap sync ios && node scripts/use-local.mjs",
+    "icons": "node scripts/draw-icons.mjs"
+  },
+  "dependencies": {
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
+    "sharp": "0.35.5"
+  }
+}

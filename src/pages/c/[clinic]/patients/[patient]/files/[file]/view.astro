@@ -16,6 +16,7 @@ import { requireWorkspace } from '../../../../../../../lib/workspace';
 import { withClinic } from '../../../../../../../lib/db';
 import { FILE_KINDS } from '../../../../../../../lib/record';
 import { dateText, manilaToday } from '../../../../../../../lib/health';
+import AppShell from '../../../../../../../components/AppShell.astro';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ws = await requireWorkspace(Astro);
@@ -41,6 +42,7 @@ const pdf = f.mime === 'application/pdf';
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <AppShell />
     <title>{title} · {f.first_name} — {clinic.name}</title>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

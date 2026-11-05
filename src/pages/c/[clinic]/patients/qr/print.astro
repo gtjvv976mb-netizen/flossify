@@ -22,6 +22,7 @@ import { canEditRecords } from '../../../../../lib/health';
 import { formsKey } from '../../../../../lib/patient-forms';
 import { qrSvg, qrMatrix, MARK } from '../../../../../lib/qr';
 import { posterLayout, posterSvg } from './_poster';
+import AppShell from '../../../../../components/AppShell.astro';
 
 const ws = await requireWorkspace(Astro);
 if (ws instanceof Response) return ws;
@@ -44,6 +45,7 @@ const svg = posterSvg(poster, qrSvg(key.url), { size: { w: '210mm', h: '297mm' }
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <AppShell />
     <title>QR poster — {clinic.name} — Flossify</title>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

@@ -26,6 +26,7 @@ import { buildLedger, loadLedgerMoney, loadRecallsSet, balanceWords, amountWords
 import { SIG_W, SIG_H, strokesPath } from '../../../../../lib/visit-consent';
 import { pesos, NOT_BIR } from '../../../../../lib/invoices';
 import { hmos } from '../../../../../data/directory';
+import AppShell from '../../../../../components/AppShell.astro';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ws = await requireWorkspace(Astro);
@@ -78,6 +79,7 @@ const pageCss = `
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <AppShell />
     <title>Treatment record · {p.first_name} {p.last_name === '—' ? '' : p.last_name} — {clinic.name}</title>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

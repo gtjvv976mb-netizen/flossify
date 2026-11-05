@@ -28,6 +28,7 @@ import { renderDocument, holds, type Rendered, type PatientField } from '../../.
 import { loadConsentDocument, snapshotDoc, signingCheck, clinicFace, contextFor, plannedLanguage, signerWords, type RecordSigning } from '../../../../../../../lib/consent-docs';
 import { timeWords } from '../../../../../../../lib/intake';
 import { SIG_W, SIG_H, strokesPath } from '../../../../../../../lib/visit-consent';
+import AppShell from '../../../../../../../components/AppShell.astro';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ws = await requireWorkspace(Astro);
@@ -103,6 +104,7 @@ const pageCss = `
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <AppShell />
     <title>{r.title.en} · {name} — {clinic.name}</title>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

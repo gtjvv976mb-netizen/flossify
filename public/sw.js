@@ -60,6 +60,13 @@ const PRECACHE = [
   '/icons/apple-touch-icon.png',
 ];
 const IMMUTABLE = /^\/(assets|_astro|fonts|icons)\//;
+// The iPhone app's own script (src/components/app-shell.js, loaded by AppShell.astro): only the app asks for it, never a
+// browser. Built, it is a hashed /_astro/ file (IMMUTABLE above: cache-first). Anywhere else (the dev server serves it
+// from /src/) every page's head still waits for it, so it must never wait on a bad line: the kept copy at once
+// (refreshed behind it for the next page), and with no copy yet, the network for at most a moment; then the page goes
+// on without it.
+const APP_SHELL = /\/app-shell(\.[\w-]+)?\.js$/;
+const APP_SHELL_WAIT_MS = 2500;
 const RECORD_PAGE = /^\/c\/[^/]+\/patients\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?$/i;
 const RECORD_HOURS = 4;
 // How long a record page may take before the kept copy is shown instead (the network's answer still updates it).
@@ -115,6 +122,23 @@ self.addEventListener('activate', (event) => {
 async function offlinePage() {
   const cached = await caches.match(OFFLINE);
   return cached || new Response('You are offline.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+}
+
+async function appShell(event) {
+  const { request } = event;
+  const fresh = fetch(request).then(async (res) => {
+    if (keep(res)) await (await caches.open(CACHE)).put(request, res.clone());
+    return res;
+  });
+  const cached = await caches.match(request);
+  if (cached) {
+    event.waitUntil(fresh.catch(() => {}));
+    return cached;
+  }
+  event.waitUntil(fresh.catch(() => {})); // a late answer is still kept for the next page
+  const nothing = () => new Response('', { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' } });
+  const late = new Promise((resolve) => setTimeout(() => resolve(nothing()), APP_SHELL_WAIT_MS));
+  return Promise.race([fresh.catch(nothing), late]);
 }
 
 async function cacheFirst(request) {
@@ -298,6 +322,10 @@ self.addEventListener('fetch', (event) => {
   }
   if (IMMUTABLE.test(url.pathname)) {
     event.respondWith(cacheFirst(request));
+    return;
+  }
+  if (APP_SHELL.test(url.pathname)) {
+    event.respondWith(appShell(event));
     return;
   }
   // Everything else (the API, /c/, /uploads/, JSON fetches) goes straight to

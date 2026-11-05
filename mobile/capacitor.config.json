@@ -1,0 +1,22 @@
+{
+  "appId": "ph.flossify.app",
+  "appName": "Flossify",
+  "webDir": "www",
+  "server": {
+    "url": "https://flossify.ph/app/",
+    "allowNavigation": [
+      "flossify.ph",
+      "www.flossify.ph"
+    ],
+    "errorPath": "offline.html"
+  },
+  "ios": {
+    "contentInset": "never",
+    "appendUserAgent": "FlossifyApp/1",
+    "limitsNavigationsToAppBoundDomains": true,
+    "backgroundColor": "#f3f5f8",
+    "webContentsDebuggingEnabled": false,
+    "zoomEnabled": true,
+    "allowsLinkPreview": false
+  }
+}

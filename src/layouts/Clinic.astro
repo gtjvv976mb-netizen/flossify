@@ -46,6 +46,7 @@ import { LANDED, shellLinks } from '../components/ws/routes';
 import { TABS, PLACE } from '../lib/places';
 import { withClinic } from '../lib/db';
 import ThemeSwitch from '../components/ThemeSwitch.astro';
+import AppShell from '../components/AppShell.astro';
 
 type Section =
   | 'dashboard' | 'today' | 'schedule' | 'messages' | 'tasks'
@@ -163,6 +164,7 @@ const BarTitle = heading ? 'h1' : 'p';
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <AppShell />
     <title>{title} — {clinic.name} — Flossify</title>
     <!-- A clinic workspace is private by definition; keep it out of indexes. -->
     <meta name="robots" content="noindex, nofollow" />

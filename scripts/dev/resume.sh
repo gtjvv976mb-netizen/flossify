@@ -49,7 +49,9 @@ else
 fi
 if [ -z "$(git status --porcelain)" ]; then echo "   working tree: clean"; else echo "   working tree: has changes (git status)"; fi
 if command -v gh >/dev/null 2>&1; then
-  gh pr list --state open --limit 5 2>/dev/null | sed 's/^/   open PR: /'
+  # The REST API: a Claude Code session refuses gh's GraphQL commands (gh pr list, create, merge).
+  gh api 'repos/{owner}/{repo}/pulls?state=open' --jq '.[] | "#\(.number) \(if .draft then "draft " else "" end)\(.head.ref) \(.title)"' 2>/dev/null \
+    | sed 's/^/   open PR: /'
 fi
 echo "   newest migration on disk: $(ls src/data/migrations/*.sql | sort | tail -1 | xargs basename)"
 note ok "branch state"
@@ -80,10 +82,14 @@ if [ -z "${DB:-}" ]; then
 else
   for h in "${PGHOST:-}" "${PGHOSTADDR:-}"; do
     case $h in
+      *,*) echo "   refusing: PGHOST/PGHOSTADDR lists several hosts (\"$h\"); name one local host"; exit 1 ;;
       ''|localhost|127.0.0.1|::1|/*) ;;
       *) echo "   refusing: PGHOST/PGHOSTADDR is \"$h\", not this machine"; exit 1 ;;
     esac
   done
+  if [ -n "${PGSERVICE:-}" ]; then
+    echo "   refusing: PGSERVICE is set; a service entry can point anywhere. Unset it."; exit 1
+  fi
   if [ -n "${DATABASE_ADMIN_URL:-}" ]; then
     echo "   refusing: DATABASE_ADMIN_URL is set, and this step is for a local database only"; exit 1
   fi

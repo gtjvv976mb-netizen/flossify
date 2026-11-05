@@ -129,6 +129,10 @@ src/lib/chart-offer.ts, chart-write.ts  the chart's offer after a treatment (pur
 src/pages/c/[clinic]/patients/_ui/ToothPick.astro, toothpick.ts  the tooth picker (p01)
 src/pages/c/[clinic]/patients/_record/TreatmentPanels.astro, NotePanel.astro, pickpanel.ts, ChartOffer.astro  the panels the chart's palette opens; the chart offer
 public/video/                  the tour film + poster
+mobile/                        the iPhone and iPad app (Capacitor 8): mobile/README.md; native code in ios/App/App/FlossifyShell.swift
+src/components/app-shell.js            the app's half of every page, loaded only inside the app (src/components/AppShell.astro)
+src/pages/app/index.astro      /app/, where the app opens: signed in, straight on; else the two doors
+scripts/dev/app/               the app's checks: app-shell-check.mjs (what pages ask the app for), app-safe-areas.mjs
 ```
 
 `lqip.json` and `shot-size.json` are generated. Regenerate them whenever the

@@ -27,6 +27,7 @@ import Icon from '../components/ws/Icon.astro';
 import Avatar from '../components/ws/Avatar.astro';
 import type { IconName } from '../components/ws/icons';
 import ThemeSwitch from '../components/ThemeSwitch.astro';
+import AppShell from '../components/AppShell.astro';
 
 export type OpsSection = 'overview' | 'clinics' | 'prc' | 'billing' | 'system';
 
@@ -58,6 +59,7 @@ const devData = process.env.SHOW_DEMO_LOGINS === '1' || (import.meta.env.DEV && 
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <AppShell />
     <title>{title} — Flossify control</title>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

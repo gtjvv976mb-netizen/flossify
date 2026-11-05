@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import AppShell from '../components/AppShell.astro';
 
 interface Props {
   title: string;
@@ -54,6 +55,8 @@ const org = {
     </script>
 
     <script type="application/ld+json" set:html={JSON.stringify(org)} />
+    <AppShell />
+    <slot name="head" />
   </head>
   <body>
     <!-- The soft template's skip link (a teal pill at the top left when it has focus). -->
