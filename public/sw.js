@@ -2,8 +2,8 @@
 // workspace installable, keeps an open chart working through a brownout, and
 // says so honestly when the connection is gone.
 //
-// What it caches: the offline page (with the stylesheet it links), the two
-// fonts, the favicon and the icons at install; hashed bundles under /assets/
+// What it caches: the offline page (with the stylesheet it links), the mono
+// font, the favicon and the icons at install; hashed bundles under /assets/
 // and /_astro/ and the immutable files under /fonts/ and /icons/ as they are
 // used. What it never caches: the API, /uploads/, and every workspace page
 // but one.
@@ -45,14 +45,15 @@
 //    one address, marked as a copy.
 // Every other navigation goes to the network every time and only the offline
 // page answers when it fails.
-const VERSION = 'v2';
+// A new name drops both caches on every device at its next visit (activate, below): change it with every change to
+// what this file keeps or how, as the record's rules above promise ('v3': the app's script, 5 Nov 2026).
+const VERSION = 'v3';
 const CACHE = `flossify-${VERSION}`;
 const RECORD = `flossify-record-${VERSION}`;
 const OFFLINE = '/offline/';
 const PRECACHE = [
   OFFLINE,
   '/favicon.svg',
-  '/fonts/Archivo.woff2',
   '/fonts/IBMPlexMono-400.woff2',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -61,7 +62,7 @@ const PRECACHE = [
 ];
 const IMMUTABLE = /^\/(assets|_astro|fonts|icons)\//;
 // The iPhone app's own script (src/components/app-shell.js, loaded by AppShell.astro): only the app asks for it, never a
-// browser. Built, it is a hashed /_astro/ file (IMMUTABLE above: cache-first). Anywhere else (the dev server serves it
+// browser. Built, it is a hashed /assets/ file (IMMUTABLE above: cache-first). Anywhere else (the dev server serves it
 // from /src/) every page's head still waits for it, so it must never wait on a bad line: the kept copy at once
 // (refreshed behind it for the next page), and with no copy yet, the network for at most a moment; then the page goes
 // on without it.

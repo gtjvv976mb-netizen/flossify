@@ -25,7 +25,7 @@ if (session) {
 if (readPatientSession(Astro.cookies)) return Astro.redirect('/me/visits/');
 
 const doors: { href: string; label: string; hint: string; icon: IconName; key: string }[] = [
-  { href: '/find/', label: "I'm a Patient", hint: 'Find a clinic near you and book a visit. No account needed.', icon: 'search', key: 'patient' },
+  { href: '/find/', label: 'I’m a Patient', hint: 'Find a clinic near you and book a visit. No account needed.', icon: 'search', key: 'patient' },
   { href: '/auth/login/', label: 'Clinic sign-in', hint: 'For clinic owners, dentists and the front desk.', icon: 'user', key: 'clinic' },
 ];
 ---
