@@ -9,6 +9,11 @@ name: iOS app
 
 on:
   workflow_dispatch:
+    inputs:
+      store_sizes:
+        description: 'App Store sizes: photograph on the biggest iPhone (6.9-inch Pro Max) and the 13-inch iPad'
+        type: boolean
+        default: false
   pull_request:
     paths:
       - 'mobile/**'
@@ -76,6 +81,8 @@ jobs:
           exit 1
 
       - name: Build the app and run it in the simulator
+        env:
+          DEVICES: ${{ inputs.store_sizes && 'iPhone [0-9]+ Pro Max$;iPad Pro 13-inch' || '' }}
         run: OUT="$RUNNER_TEMP/ios-shots" scripts/dev/app/ios-simulator.sh
 
       - name: Keep the screenshots and logs

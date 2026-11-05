@@ -149,7 +149,10 @@ look() { # udid, light|dark: the device's appearance, given time to settle befor
 
 UNBOUND='{"ios":{"limitsNavigationsToAppBoundDomains":false}}'
 
-for kind in "iPhone [0-9]+ Pro$" "iPad Pro 13-inch"; do
+# DEVICES (name patterns separated by ";") picks other simulators: the App Store's screenshots are taken on the biggest
+# iPhone and iPad ("iPhone [0-9]+ Pro Max$;iPad Pro 13-inch", Actions → iOS app → Run workflow → App Store sizes).
+IFS=';' read -r -a KINDS <<<"${DEVICES:-iPhone [0-9]+ Pro\$;iPad Pro 13-inch}"
+for kind in "${KINDS[@]}"; do
   read -r udid label < <(pick "$kind") || true
   if [ -z "${udid:-}" ]; then note "no simulator matching $kind: skipped"; continue; fi
   tag=$(echo "$label" | tr ' ()' '---' | tr -s '-' | sed 's/-$//')

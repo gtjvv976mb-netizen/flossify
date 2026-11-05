@@ -116,7 +116,13 @@ health records must come from an organisation, not a person (guideline 5.1.1(ix)
 Flossify's company name, with a D-U-N-S number.
 
 1. In Xcode, *App* target → Signing & Capabilities → Team: the owner's team. The bundle id is `ph.flossify.app`.
-2. Product → Archive → Distribute App → App Store Connect → Upload. Then TestFlight for the clinic's own phones.
+2. Upload without a Mac: **Actions → iOS release → Run workflow** (`.github/workflows/ios-release.yml`) archives,
+   signs with an App Store Connect API key (cloud-managed signing, no certificate files) and uploads; the build number
+   is the run number. It needs four repository secrets, listed at the top of the workflow. On a Mac instead: Product →
+   Archive → Distribute App → App Store Connect → Upload. Then TestFlight for the clinic's own phones.
+   The privacy manifest (`ios/App/App/PrivacyInfo.xcprivacy`) must agree with the App Privacy answers in step 3.
+   Screenshots at the App Store's sizes (6.9-inch iPhone, 13-inch iPad): Actions → iOS app → Run workflow, tick
+   *App Store sizes*.
 3. In App Store Connect: the App Privacy answers (health information, contact details, photos, user content and a user
    id are collected, linked to the person, not used for tracking), a privacy policy URL (`https://flossify.ph/privacy/`),
    a support URL, an age rating, and Mac and Vision Pro availability turned off (the app is for iPhone and iPad).
@@ -151,6 +157,7 @@ www/index.html               a fallback that goes to flossify.ph/app/
 ios/App/App/FlossifyShell.swift   everything native that is Flossify's own
 ios/App/App/SceneDelegate.swift   opens FlossifyViewController instead of Capacitor's plain one
 ios/App/App/Info.plist       camera and photo words, bound domains, portrait on iPhone
+ios/App/App/PrivacyInfo.xcprivacy  the privacy manifest: what the app collects (matches App Store Connect's App Privacy)
 scripts/draw-icons.mjs       npm run icons: the app icon and the launch screen, drawn from the Flossify mark
 scripts/use-local.mjs        npm run local: the simulator on the Mac's own website
 ```
