@@ -79,6 +79,10 @@ jobs:
       - name: Build the app and run it in the simulator
         run: OUT="$RUNNER_TEMP/ios-shots" scripts/dev/app/ios-simulator.sh
 
+      - name: The screenshots, small, in this log (scripts/dev/app/shots-from-log.mjs takes them out)
+        if: always()
+        run: node scripts/dev/app/shots-to-log.mjs "$RUNNER_TEMP/ios-shots" || true
+
       - name: Keep the screenshots and logs
         if: always()
         uses: actions/upload-artifact@v4

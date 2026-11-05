@@ -6,7 +6,7 @@
 #   - the page reaches the native side (a debug build logs every bridge call: FlossifyShell.setChrome, .ready);
 #   - the launch screen gives way to the page, also on a slow line (an address that answers after 7 s);
 #   - with the site unreachable, the app's own offline page shows;
-#   - each screen is photographed, on an iPhone and an iPad, light and dark.
+#   - each screen is photographed, on an iPhone and an iPad, light and dark (/app/, /find/, the staff entrance, offline).
 # GitHub Actions runs it on a Mac (.github/workflows/ios-app.yml); the owner can run it too.
 #
 #   npm run dev                                   # first, in the repo's root: the website on http://localhost:4321
@@ -180,6 +180,10 @@ for kind in "iPhone [0-9]+ Pro$" "iPad Pro 13-inch"; do
   look "$udid" dark
   run_page "$udid" "$tag" "$SITE/app/" "app-dark"
   bridge "$OUT/$tag-app-dark.log" "$tag /app/ (dark)"
+  # The patients' and the staff's ways in, and the offline page, dark too.
+  run_page "$udid" "$tag" "$SITE/find/" "find-dark"
+  run_page "$udid" "$tag" "$SITE/auth/login/" "staff-entrance-dark"
+  run_page "$udid" "$tag" "http://localhost:4398/app/" "offline-dark"
   look "$udid" light
   # A slow line: the page arrives after 7 s; the launch screen waits for it.
   run_page "$udid" "$tag" "$SLOW/app/" "slow-line"
