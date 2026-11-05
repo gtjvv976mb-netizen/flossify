@@ -6,7 +6,7 @@
 // every layout and of every page with its own document (the print pages, the signing page), before any script that
 // might call print().
 //
-// The script is served from a hashed, immutable address (/_astro/…), so a phone loads it once per release and never
+// The script is served from a hashed, immutable address (/assets/…), so a phone loads it once per release and never
 // waits on the network for it again (it blocks the page's parsing, by design: it must run before the page's own
 // scripts). Patients' phones have no service worker; this is what keeps a bad line from holding their pages.
 import shell from './app-shell.js?url';

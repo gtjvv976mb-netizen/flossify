@@ -49,6 +49,12 @@ const org = {
       try {
         const saved = localStorage.getItem('theme');
         if (saved) document.documentElement.dataset.theme = saved;
+        // The browser's bar too, on a page without the switch (/app/, /offline/); ThemeSwitch restores data-own.
+        if (saved === 'dark' || saved === 'light')
+          document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+            m.dataset.own = m.content;
+            m.content = saved === 'dark' ? '#15191e' : '#f3f5f8';
+          });
       } catch (e) {
         /* private mode or blocked storage: fall back to the OS preference */
       }

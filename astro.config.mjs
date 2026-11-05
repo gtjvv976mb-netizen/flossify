@@ -18,11 +18,16 @@ const allowedDomains = [
   { hostname: '127.0.0.1' },
 ];
 
+// Left out of the sitemap: pages marked noindex (/app/, a clinic tablet's /f/t/), the worker's /offline/ page, the
+// operator's /admin/, a step of a sign-in (the code pages, the unlock link), and pages that only send someone signed in
+// on (/today/, /me/visits/). Every page listed answers 200 to a visitor with no cookie.
+const UNLISTED = /^\/(app|offline|f\/t|admin(\/.*)?|auth\/(code|unlock)|me\/(code|visits)|today)\/$/;
+
 // The live domain. It feeds the sitemap and canonical URLs.
 export default defineConfig({
   site: 'https://flossify.ph',
   security: { allowedDomains },
-  integrations: [sitemap({ filter: (p) => !p.endsWith('/offline/') })],
+  integrations: [sitemap({ filter: (p) => !UNLISTED.test(new URL(p).pathname) })],
   // Static by default: the marketing pages, the sample sites and the patient
   // directory's shells prerender. Pages that read the database opt out with
   // `export const prerender = false` and render on the Node server.

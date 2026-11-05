@@ -44,10 +44,10 @@
 //    which each handler reads.
 //  - Prerendered pages and public files. The node adapter (standalone,
 //    @astrojs/node 11) answers any path that matches a file in dist/client —
-//    /, /privacy/, /websites/, /offline/, /samples/…, /fonts/…, /assets/… —
+//    /privacy/, /websites/, /offline/, /samples/…, /fonts/…, /assets/… —
 //    from its static handler before the app sees the request (checked:
-//    `curl -I /` has no X-Frame-Options, `curl -I /auth/login/` has all of
-//    them). Middleware does run for them once, at build time, where the
+//    `curl -I /privacy/` has no X-Frame-Options, `curl -I /auth/login/` has
+//    all of them; the home page renders on the server, so it has them too). Middleware does run for them once, at build time, where the
 //    headers are thrown away.
 // What that means: the proxy in front should add the same headers to every
 // response (Caddy `header`, nginx `add_header … always`), which covers both.

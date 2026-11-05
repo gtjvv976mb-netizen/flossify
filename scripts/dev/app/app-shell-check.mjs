@@ -105,6 +105,25 @@ const measure = () => {
   await ctx.close();
 }
 
+// 1b. A theme chosen on this device: the browser's bar follows it on a page without the switch (/app/) as on one with
+// it (/find/), and each tag keeps its own colour for when the choice goes back to the device's.
+{
+  const ctx = await browser.newContext({ ...PHONE, colorScheme: 'light' });
+  const p = await ctx.newPage();
+  const bar = () => p.evaluate(() => [...document.querySelectorAll('meta[name="theme-color"]')].map((m) => [m.content, m.dataset.own ?? null]));
+  await p.goto(`${base}/find/`);
+  await p.evaluate(() => localStorage.setItem('theme', 'dark'));
+  for (const path of ['/app/', '/find/']) {
+    await p.goto(`${base}${path}`);
+    assert.deepEqual(await bar(), [['#15191e', '#f3f5f8'], ['#15191e', '#15191e']], path);
+  }
+  await p.evaluate(() => localStorage.removeItem('theme'));
+  await p.goto(`${base}/app/`);
+  assert.deepEqual((await bar()).map(([content]) => content), ['#f3f5f8', '#15191e']);
+  ok('a theme chosen on this device: the browser\'s bar follows it on /app/ as on /find/; with none, each tag is its own');
+  await ctx.close();
+}
+
 for (const scheme of ['light', 'dark']) {
   // 2. The start page.
   const ctx = await appContext(scheme);
@@ -298,7 +317,7 @@ for (const scheme of ['light', 'dark']) {
   if (!(await p.evaluate(() => !!navigator.serviceWorker.controller))) await p.reload();
   await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000 });
   await p.goto(`${base}/c/${slug}/patients/`);
-  // The app's script, wherever this server puts it (a hashed /_astro/ file once built, /src/ on the dev server).
+  // The app's script, wherever this server puts it (a hashed /assets/ file once built, /src/ on the dev server).
   const kept = await p.evaluate(async () => {
     for (const name of await caches.keys()) {
       for (const req of await (await caches.open(name)).keys()) if (/app-shell[.\w-]*\.js/.test(new URL(req.url).pathname)) return true;
