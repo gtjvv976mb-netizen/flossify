@@ -63,24 +63,65 @@ fails=0
 note() { echo "   $*"; }
 bad() { echo "   FAIL $*"; fails=$((fails + 1)); }
 
-setURL() { # the installed app's own copy of the config: where it opens
+# The installed app's own copy of the config (read at each launch): where it opens, and any setting a check varies, as
+# a JSON object merged in (e.g. '{"plugins":{"SplashScreen":{"launchAutoHide":false}}}').
+setConfig() { # file, url, patch
   node -e '
-    const fs = require("fs"); const [file, url] = process.argv.slice(1);
-    const c = JSON.parse(fs.readFileSync(file, "utf8"));
+    const fs = require("fs"); const [file, url, patch] = process.argv.slice(1);
+    const base = JSON.parse(fs.readFileSync(file + ".orig", "utf8"));
+    const merge = (a, b) => { for (const [k, v] of Object.entries(b)) a[k] = v && typeof v === "object" && !Array.isArray(v) ? merge(a[k] || {}, v) : v; return a; };
+    const c = merge(base, JSON.parse(patch || "{}"));
     c.server.url = url;
-    fs.writeFileSync(file, JSON.stringify(c, null, "\t"));' "$1" "$2"
+    fs.writeFileSync(file, JSON.stringify(c, null, "\t"));' "$1" "$2" "${3:-}"
 }
 
-run_page() { # udid, tag, url, name
-  local udid=$1 tag=$2 url=$3 name=$4 log="$OUT/$2-$4.log"
+# A screen with something on it: not one colour over the page (the status bar's band excepted). Prints the share of the
+# commonest colour; fails above 99.5 %.
+blank() { # png
+  (cd "$ROOT/mobile" && node -e '
+    const sharp = require("sharp");
+    sharp(process.argv[1]).raw().toBuffer({ resolveWithObject: true }).then(({ data, info }) => {
+      const seen = new Map(); let n = 0;
+      for (let y = Math.round(info.height * 0.1); y < info.height * 0.92; y += 23) for (let x = 0; x < info.width; x += 17) {
+        const i = (y * info.width + x) * info.channels; const k = (data[i] >> 2) + "," + (data[i + 1] >> 2) + "," + (data[i + 2] >> 2);
+        seen.set(k, (seen.get(k) || 0) + 1); n++;
+      }
+      const top = Math.max(...seen.values()) / n;
+      console.log((top * 100).toFixed(1)); process.exit(top > 0.995 ? 1 : 0);
+    });' "$1")
+}
+
+# A slow line, on purpose: an address on this Mac that answers after 7 s, sending the app on to the real page. The
+# splash screen's own timer (4 s) runs out first, as it would on a slow clinic connection.
+node -e '
+  const [site] = process.argv.slice(1);
+  require("http").createServer((q, r) => setTimeout(() => { r.writeHead(302, { Location: site + q.url }); r.end(); }, 7000)).listen(4399, "localhost");' "$SITE" &
+SLOW_PID=$!
+trap 'kill $SLOW_PID 2>/dev/null' EXIT
+SLOW=http://localhost:4399
+
+run_page() { # udid, tag, url, name, [config patch]
+  local udid=$1 tag=$2 url=$3 name=$4 patch=${5:-} log="$OUT/$2-$4.log"
   local container; container=$(xcrun simctl get_app_container "$udid" "$BUNDLE" app)
-  setURL "$container/capacitor.config.json" "$url"
+  [ -f "$container/capacitor.config.json.orig" ] || cp "$container/capacitor.config.json" "$container/capacitor.config.json.orig"
+  setConfig "$container/capacitor.config.json" "$url" "$patch"
   xcrun simctl terminate "$udid" "$BUNDLE" >/dev/null 2>&1 || true
+  sleep 1
+  local since; since=$(date '+%Y-%m-%d %H:%M:%S')
   xcrun simctl launch --console-pty "$udid" "$BUNDLE" >"$log" 2>&1 &
   local pid=$!
-  sleep "$WAIT"
+  sleep 6
+  xcrun simctl io "$udid" screenshot "$OUT/$tag-$name-early.png" >/dev/null 2>&1 || true
+  sleep $((WAIT - 6))
   xcrun simctl io "$udid" screenshot "$OUT/$tag-$name.png" >/dev/null 2>&1 || bad "$tag $name: no screenshot"
-  if kill -0 "$pid" 2>/dev/null; then note "$tag $name: running"; else bad "$tag $name: the app stopped (log: $log)"; tail -20 "$log"; fi
+  if kill -0 "$pid" 2>/dev/null; then
+    local share; if share=$(blank "$OUT/$tag-$name.png"); then note "$tag $name: running, something on screen (commonest colour $share%)"
+    else bad "$tag $name: running, but the screen is blank (one colour on $share% of it)"; fi
+  else bad "$tag $name: the app stopped (log: $log)"; tail -20 "$log"; fi
+  # WebKit's and the app's own complaints from the simulator's system log: what the app's console does not show.
+  xcrun simctl spawn "$udid" log show --style compact --start "$since" \
+    --predicate '(process == "App" OR process BEGINSWITH "com.apple.WebKit") AND (messageType == error OR messageType == fault OR eventMessage CONTAINS[c] "bound" OR eventMessage CONTAINS[c] "navigation")' \
+    >"$OUT/$tag-$name.syslog" 2>/dev/null || true
   xcrun simctl terminate "$udid" "$BUNDLE" >/dev/null 2>&1 || true
   wait "$pid" 2>/dev/null || true
 }
@@ -94,6 +135,14 @@ bridge() { # a log, the page's name: the page reached the native side
   fi
 }
 
+look() { # udid, light|dark: the device's appearance, given time to settle before the next launch
+  xcrun simctl ui "$1" appearance "$2"
+  sleep 3
+}
+
+NOSPLASHTIMER='{"plugins":{"SplashScreen":{"launchAutoHide":false}}}'
+UNBOUND='{"ios":{"limitsNavigationsToAppBoundDomains":false}}'
+
 for kind in "iPhone [0-9]+ Pro$" "iPad Pro 13-inch"; do
   read -r udid label < <(pick "$kind") || true
   if [ -z "${udid:-}" ]; then note "no simulator matching $kind: skipped"; continue; fi
@@ -103,16 +152,23 @@ for kind in "iPhone [0-9]+ Pro$" "iPad Pro 13-inch"; do
   xcrun simctl bootstatus "$udid" -b >/dev/null
   xcrun simctl status_bar "$udid" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3 >/dev/null 2>&1 || true
   xcrun simctl install "$udid" "$APP"
-  for look in light dark; do
-    xcrun simctl ui "$udid" appearance "$look"
-    run_page "$udid" "$tag" "$SITE/app/" "app-$look"
-    bridge "$OUT/$tag-app-$look.log" "$tag /app/ ($look)"
-  done
-  xcrun simctl ui "$udid" appearance light
+  look "$udid" light
+  run_page "$udid" "$tag" "$SITE/app/" "app-light-first"
+  run_page "$udid" "$tag" "$SITE/app/" "app-light"
+  bridge "$OUT/$tag-app-light.log" "$tag /app/ (light)"
+  look "$udid" dark
+  run_page "$udid" "$tag" "$SITE/app/" "app-dark"
+  bridge "$OUT/$tag-app-dark.log" "$tag /app/ (dark)"
+  look "$udid" light
+  # A slow line: the splash's own timer runs out before the page arrives; then with that timer off (the page hides it).
+  run_page "$udid" "$tag" "$SLOW/app/" "slow-line"
+  run_page "$udid" "$tag" "$SLOW/app/" "slow-line-no-splash-timer" "$NOSPLASHTIMER"
   run_page "$udid" "$tag" "$SITE/find/" "find"
   run_page "$udid" "$tag" "$SITE/auth/login/" "staff-entrance"
-  # Nothing listens on port 9: the app's own offline page (capacitor.config.json errorPath).
+  # Nothing listens on port 9: the app's own offline page (capacitor.config.json errorPath), then the same with the
+  # navigations not limited to the app-bound domains (the offline page lives at capacitor://localhost).
   run_page "$udid" "$tag" "http://localhost:9/app/" "offline"
+  run_page "$udid" "$tag" "http://localhost:9/app/" "offline-unbound" "$UNBOUND"
   xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
 done
 
