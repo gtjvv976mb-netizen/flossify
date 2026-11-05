@@ -4,7 +4,7 @@
 // a Mac, in Xcode's simulator: this checks that the page asks for the right thing at the right moment.
 //
 //   1. An ordinary browser: no data-app, /app-shell.js never requested, window.flossifyApp undefined.
-//   2. /app/ in the app: the doors, the splash hidden, the status bar told the theme (light and dark); signed in, it goes
+//   2. /app/ in the app: the doors, the launch screen told to go (ready), the status bar told the theme (light and dark); signed in, it goes
 //      straight to the clinic's Dashboard.
 //   3. Motion: a tap on a door is a forward page transition, Back a backward one (the view transition and data-nav).
 //   4. Haptics: a choice ticks (selection), the main button taps (impact light) under a touch, a panel opening taps
@@ -114,7 +114,7 @@ for (const scheme of ['light', 'dark']) {
   await p.goto(`${base}/app/`);
   assert.equal(await p.evaluate(() => document.documentElement.hasAttribute('data-app')), true);
   assert.equal(await p.evaluate(() => typeof window.flossifyApp.haptic.select), 'function');
-  await waitCall(p, 'SplashScreen', 'hide');
+  await waitCall(p, 'FlossifyShell', 'ready');
   await waitCall(p, 'FlossifyShell', 'setChrome', (o) => o.dark === (scheme === 'dark'));
   const doors = await p.$$eval('[data-app-door]', (els) => els.map((e) => ({ key: e.dataset.appDoor, h: e.getBoundingClientRect().height })));
   assert.deepEqual(doors.map((d) => d.key), ['patient', 'clinic']);
@@ -127,7 +127,7 @@ for (const scheme of ['light', 'dark']) {
   assert.deepEqual(low, [], `contrast on /app/ (${scheme}): ${JSON.stringify(low)}`);
   assert.deepEqual(m.small, [], `targets under 44 px on /app/: ${m.small}`);
   assert.equal(m.sideways, false);
-  ok(`/app/ (${scheme}): two doors, the splash hidden, the status bar told ${scheme}; lowest ${Math.min(...m.lines.map((l) => l.ratio))}:1, 44 px, no sideways scroll`);
+  ok(`/app/ (${scheme}): two doors, the launch screen told to go, the status bar told ${scheme}; lowest ${Math.min(...m.lines.map((l) => l.ratio))}:1, 44 px, no sideways scroll`);
 
   if (scheme === 'light') {
     // 3. Motion: forward to Find a clinic, back to the start.

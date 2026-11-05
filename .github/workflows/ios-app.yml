@@ -87,5 +87,6 @@ jobs:
             ${{ runner.temp }}/ios-shots/*.png
             ${{ runner.temp }}/ios-shots/*.log
             ${{ runner.temp }}/ios-shots/*.txt
+            ${{ runner.temp }}/ios-shots/*.syslog
             ${{ runner.temp }}/site.log
           if-no-files-found: warn

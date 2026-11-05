@@ -61,7 +61,7 @@
       try { if (cap && cap.nativePromise) return cap.nativePromise(plugin, method, options || {}).catch(function () {}); } catch (e) {}
       return Promise.resolve();
     }
-    native('SplashScreen', 'hide', { fadeOutDuration: 250 });
+    native('FlossifyShell', 'ready');
     native('FlossifyShell', 'notify', { type: 'warning' });
     var going = false;
     function go() { if (going) return; going = true; location.href = START; }

@@ -31,7 +31,7 @@ The app needs iOS 17 or newer (the chart's palette is a popover, which iOS 16 do
 
 ```bash
 cd mobile
-npm ci              # Capacitor and its three plugins (App, Browser, SplashScreen)
+npm ci              # Capacitor and its two plugins (App, Browser)
 npm run sync        # copies the config and the offline page into the Xcode project
 npm run open        # opens ios/App/App.xcodeproj in Xcode
 ```

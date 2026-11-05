@@ -332,6 +332,8 @@ enum FlossifyCalls {
         case "prepare":
             haptics.prepare()
             reply([:], nil)
+        case "ready":
+            reply([:], nil)
         case "print":
             var paper: CGSize?
             if let w = options["paperWidth"] as? NSNumber, let h = options["paperHeight"] as? NSNumber, w.doubleValue > 0, h.doubleValue > 0 {
@@ -379,6 +381,9 @@ final class FlossifyViewController: CAPBridgeViewController {
     /// a consent turned to the patient), where a sideways drag belongs to that.
     var pageAllowsSwipe = true
     var pageIsDark = false
+    /// The launch screen, kept over the web view until the page has drawn itself (showLaunchCover).
+    private var launchCover: UIView?
+    private var revealed = false
 
     /// The soft template's page colours (#f3f5f8 light, #15191e dark): behind the page while it loads and when it bounces.
     static let lightPage = UIColor(red: 0xf3 / 255, green: 0xf5 / 255, blue: 0xf8 / 255, alpha: 1)
@@ -394,6 +399,7 @@ final class FlossifyViewController: CAPBridgeViewController {
 
         guard let webView = webView else { return }
         setPageColor(UIColor { $0.userInterfaceStyle == .dark ? Self.darkPage : Self.lightPage })
+        showLaunchCover()
 
         // iOS's own feel: the edge swipe goes back and forward, the page bounces, the keyboard follows the finger.
         webView.allowsBackForwardNavigationGestures = true
@@ -409,6 +415,8 @@ final class FlossifyViewController: CAPBridgeViewController {
         let navigation = NavigationProxy(target: webView.navigationDelegate, presenter: self)
         navigation.onLoadEnded = { [weak self] in self?.endRefreshing() }
         navigation.onCommit = { [weak self] url in self?.arrived(at: url) }
+        // A page without the app's script (the app's own offline page) never says it is ready: its load ending does.
+        navigation.onFinish = { [weak self] in self?.reveal(after: 0.6) }
         navigationProxy = navigation
         webView.navigationDelegate = navigation
 
@@ -429,6 +437,40 @@ final class FlossifyViewController: CAPBridgeViewController {
 
     deinit {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
+    }
+
+    // MARK: The launch screen
+
+    /// The launch screen (Assets: Splash, as LaunchScreen.storyboard shows it) stays over the web view until the page
+    /// has drawn itself: the page says so (FlossifyShell.ready, from the app's script), or, for a page without that script
+    /// (the offline page), its load has finished. Never on a timer before that: measured in the simulator, a web view
+    /// uncovered while its first page was still on its way (Capacitor's splash screen, whose own timer ran out after 4 s
+    /// on a slow line) stayed blank. After 30 s it is shown whatever happened, so the app is never stuck behind it.
+    private func showLaunchCover() {
+        let cover = UIImageView(image: UIImage(named: "Splash"))
+        cover.contentMode = .scaleAspectFill
+        cover.backgroundColor = UIColor { $0.userInterfaceStyle == .dark ? Self.darkPage : Self.lightPage }
+        cover.frame = view.bounds
+        cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        cover.isUserInteractionEnabled = true // nothing under it is tapped before it is seen
+        view.addSubview(cover)
+        launchCover = cover
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in self?.reveal() }
+    }
+
+    /// Fades the launch screen out, once.
+    func reveal(after delay: TimeInterval = 0) {
+        guard !revealed else { return }
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.reveal() }
+            return
+        }
+        revealed = true
+        guard let cover = launchCover else { return }
+        launchCover = nil
+        UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseOut], animations: { cover.alpha = 0 }) { _ in
+            cover.removeFromSuperview()
+        }
     }
 
     // MARK: Where the page is
@@ -560,6 +602,7 @@ public class FlossifyShellPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "print", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "saveFile", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setChrome", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "ready", returnType: CAPPluginReturnPromise),
     ]
 
     weak var owner: FlossifyViewController?
@@ -580,6 +623,12 @@ public class FlossifyShellPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func prepare(_ call: CAPPluginCall) { run("prepare", call) }
     @objc func print(_ call: CAPPluginCall) { run("print", call) }
     @objc func saveFile(_ call: CAPPluginCall) { run("saveFile", call) }
+
+    /// The page has drawn itself (public: src/components/app-shell.js, at DOMContentLoaded): the launch screen goes.
+    @objc func ready(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in self?.owner?.reveal(after: 0.05) }
+        call.resolve()
+    }
 
     /// The page's theme (the person's own choice, or the device's): the status bar's words and the colour behind the page.
     /// Whether a sideways drag may go back (not while something is drawn over the page), and the page's own ground colour.
@@ -616,6 +665,8 @@ final class NavigationProxy: NSObject, WKNavigationDelegate, WKDownloadDelegate 
     var onCommit: ((URL?) -> Void)?
     /// A sheet's: a link tapped inside it to another of our pages. True when the sheet took it elsewhere.
     var onLeave: ((URL) -> Bool)?
+    /// A load that finished (not one that failed).
+    var onFinish: (() -> Void)?
 
     init(target: WKNavigationDelegate?, presenter: UIViewController) {
         self.target = target
@@ -709,23 +760,33 @@ final class NavigationProxy: NSObject, WKNavigationDelegate, WKDownloadDelegate 
         download.delegate = self
     }
 
+    // Each step of a load is logged in a debug build (Capacitor's log, as its own "WebView loaded" is), so a run in the
+    // simulator shows what happened (scripts/dev/app/ios-simulator.sh).
+
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        CAPLog.print("⚡️  Flossify: committed", webView.url?.absoluteString ?? "-")
         target?.webView?(webView, didCommit: navigation)
         onCommit?(webView.url)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        CAPLog.print("⚡️  Flossify: finished", webView.url?.absoluteString ?? "-")
         target?.webView?(webView, didFinish: navigation)
         onLoadEnded?()
+        onFinish?()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        let nsError = error as NSError
+        CAPLog.print("⚡️  Flossify: failed", nsError.domain, nsError.code, webView.url?.absoluteString ?? "-")
         onLoadEnded?()
         if Self.onlyInterrupted(error) { return }
         target?.webView?(webView, didFail: navigation, withError: error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        let nsError = error as NSError
+        CAPLog.print("⚡️  Flossify: failed to start", nsError.domain, nsError.code, (nsError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String) ?? "-")
         onLoadEnded?()
         if Self.onlyInterrupted(error) { return }
         target?.webView?(webView, didFailProvisionalNavigation: navigation, withError: error)

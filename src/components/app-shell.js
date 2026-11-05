@@ -2,7 +2,7 @@
  *
  * Loaded only inside the app (src/components/AppShell.astro tests the user agent for "FlossifyApp/"), in the head, before
  * the page's own scripts. The native side is mobile/ios/App/App/FlossifyShell.swift (the `FlossifyShell` plugin) and
- * Capacitor's Browser and SplashScreen plugins, reached through the bridge Capacitor injects (window.Capacitor).
+ * Capacitor's Browser plugin, reached through the bridge Capacitor injects (window.Capacitor).
  * In a browser this file never runs, so the website is unchanged there.
  *
  * What it adds:
@@ -692,7 +692,7 @@
     syncChrome();
     watchLayers();
     watchDrag();
-    native('SplashScreen', 'hide', { fadeOutDuration: 300 });
+    native('FlossifyShell', 'ready'); // the page has drawn itself: the app's launch screen goes (FlossifyShell.swift)
     onArrive();
     watchAlerts();
   }

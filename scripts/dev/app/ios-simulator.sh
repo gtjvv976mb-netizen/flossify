@@ -3,7 +3,8 @@
 # this Mac, and checks what can be checked without a finger:
 #   - Flossify's own Swift builds, and its warnings are listed;
 #   - the app starts and keeps running on each page;
-#   - the page reaches the native side (a debug build logs every bridge call: SplashScreen.hide, FlossifyShell.setChrome);
+#   - the page reaches the native side (a debug build logs every bridge call: FlossifyShell.setChrome, .ready);
+#   - the launch screen gives way to the page, also on a slow line (an address that answers after 7 s);
 #   - with the site unreachable, the app's own offline page shows;
 #   - each screen is photographed, on an iPhone and an iPad, light and dark.
 # GitHub Actions runs it on a Mac (.github/workflows/ios-app.yml); the owner can run it too.
@@ -17,7 +18,7 @@ SITE=${SITE:-http://localhost:4321}
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 OUT=${OUT:-$PWD/ios-shots}
 BUNDLE=ph.flossify.app
-WAIT=${WAIT:-14}
+LIMIT=${LIMIT:-40}
 mkdir -p "$OUT"
 no() { echo "ios-simulator.sh: $*" >&2; exit 1; }
 
@@ -64,7 +65,7 @@ note() { echo "   $*"; }
 bad() { echo "   FAIL $*"; fails=$((fails + 1)); }
 
 # The installed app's own copy of the config (read at each launch): where it opens, and any setting a check varies, as
-# a JSON object merged in (e.g. '{"plugins":{"SplashScreen":{"launchAutoHide":false}}}').
+# a JSON object merged in (e.g. '{"ios":{"limitsNavigationsToAppBoundDomains":false}}').
 setConfig() { # file, url, patch
   node -e '
     const fs = require("fs"); const [file, url, patch] = process.argv.slice(1);
@@ -112,12 +113,17 @@ run_page() { # udid, tag, url, name, [config patch]
   local pid=$!
   sleep 6
   xcrun simctl io "$udid" screenshot "$OUT/$tag-$name-early.png" >/dev/null 2>&1 || true
-  sleep $((WAIT - 6))
-  xcrun simctl io "$udid" screenshot "$OUT/$tag-$name.png" >/dev/null 2>&1 || bad "$tag $name: no screenshot"
-  if kill -0 "$pid" 2>/dev/null; then
-    local share; if share=$(blank "$OUT/$tag-$name.png"); then note "$tag $name: running, something on screen (commonest colour $share%)"
-    else bad "$tag $name: running, but the screen is blank (one colour on $share% of it)"; fi
-  else bad "$tag $name: the app stopped (log: $log)"; tail -20 "$log"; fi
+  # Then a look every 2 s until something is on screen, for at most LIMIT seconds: a slow simulator is told apart from a
+  # screen that stays blank. The launch screen itself (one colour and the mark) counts as blank.
+  local waited=6 share=100 seen=0
+  while [ "$waited" -lt "$LIMIT" ]; do
+    sleep 2; waited=$((waited + 2))
+    xcrun simctl io "$udid" screenshot "$OUT/$tag-$name.png" >/dev/null 2>&1 || continue
+    if share=$(blank "$OUT/$tag-$name.png"); then seen=1; break; fi
+  done
+  if ! kill -0 "$pid" 2>/dev/null; then bad "$tag $name: the app stopped (log: $log)"; tail -20 "$log"
+  elif [ "$seen" = 1 ]; then note "$tag $name: running; the page on screen after ${waited} s (commonest colour $share%)"
+  else bad "$tag $name: running, but nothing on screen after ${LIMIT} s (one colour on $share% of it)"; fi
   # WebKit's and the app's own complaints from the simulator's system log: what the app's console does not show.
   xcrun simctl spawn "$udid" log show --style compact --start "$since" \
     --predicate '(process == "App" OR process BEGINSWITH "com.apple.WebKit") AND (messageType == error OR messageType == fault OR eventMessage CONTAINS[c] "bound" OR eventMessage CONTAINS[c] "navigation")' \
@@ -128,8 +134,8 @@ run_page() { # udid, tag, url, name, [config patch]
 
 bridge() { # a log, the page's name: the page reached the native side
   local log=$1 name=$2
-  if grep -Eq "To Native ->[[:space:]]+SplashScreen[[:space:]]+hide" "$log" && grep -Eq "To Native ->[[:space:]]+FlossifyShell[[:space:]]+setChrome" "$log"; then
-    note "$name: the page reached the native side (SplashScreen.hide, FlossifyShell.setChrome)"
+  if grep -Eq "To Native ->[[:space:]]+FlossifyShell[[:space:]]+ready" "$log" && grep -Eq "To Native ->[[:space:]]+FlossifyShell[[:space:]]+setChrome" "$log"; then
+    note "$name: the page reached the native side (FlossifyShell.setChrome, FlossifyShell.ready)"
   else
     bad "$name: no bridge calls in the log ($log)"; grep -E "To Native|ERROR|Error" "$log" | head -10 || true
   fi
@@ -140,7 +146,6 @@ look() { # udid, light|dark: the device's appearance, given time to settle befor
   sleep 3
 }
 
-NOSPLASHTIMER='{"plugins":{"SplashScreen":{"launchAutoHide":false}}}'
 UNBOUND='{"ios":{"limitsNavigationsToAppBoundDomains":false}}'
 
 for kind in "iPhone [0-9]+ Pro$" "iPad Pro 13-inch"; do
@@ -160,15 +165,14 @@ for kind in "iPhone [0-9]+ Pro$" "iPad Pro 13-inch"; do
   run_page "$udid" "$tag" "$SITE/app/" "app-dark"
   bridge "$OUT/$tag-app-dark.log" "$tag /app/ (dark)"
   look "$udid" light
-  # A slow line: the splash's own timer runs out before the page arrives; then with that timer off (the page hides it).
+  # A slow line: the page arrives after 7 s; the launch screen waits for it.
   run_page "$udid" "$tag" "$SLOW/app/" "slow-line"
-  run_page "$udid" "$tag" "$SLOW/app/" "slow-line-no-splash-timer" "$NOSPLASHTIMER"
   run_page "$udid" "$tag" "$SITE/find/" "find"
   run_page "$udid" "$tag" "$SITE/auth/login/" "staff-entrance"
-  # Nothing listens on port 9: the app's own offline page (capacitor.config.json errorPath), then the same with the
+  # Nothing listens on port 4398: the app's own offline page (capacitor.config.json errorPath), then the same with the
   # navigations not limited to the app-bound domains (the offline page lives at capacitor://localhost).
-  run_page "$udid" "$tag" "http://localhost:9/app/" "offline"
-  run_page "$udid" "$tag" "http://localhost:9/app/" "offline-unbound" "$UNBOUND"
+  run_page "$udid" "$tag" "http://localhost:4398/app/" "offline"
+  run_page "$udid" "$tag" "http://localhost:4398/app/" "offline-unbound" "$UNBOUND"
   xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
 done
 
