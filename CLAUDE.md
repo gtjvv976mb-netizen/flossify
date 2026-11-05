@@ -133,7 +133,8 @@ The owner's decisions, in force, with the owner's words and dates where the reco
 ### The iPhone and iPad app (ios-app.md)
 - **The owner (3 Nov 2026):** "now make it into a fully functional iOS app with great haptics and motion design". The
   owner chose a native shell (Capacitor 8, `mobile/`) around the live site, one app for patients and clinics opening
-  `/app/`, built and checked on the owner's Mac (`mobile/README.md`).
+  `/app/`. It is built and run in the iOS simulator on GitHub's Mac for every pull request that touches it
+  (`.github/workflows/ios-app.yml`), and checked on a real iPhone through TestFlight (`mobile/README.md`).
 - **In a browser the website is unchanged**: the app's half (`src/components/app-shell.js`) loads only for the `FlossifyApp/`
   user agent and every rule it adds is under `html[data-app]`. Motion and haptics are always on in the app too; a
   haptic follows what the server did, never a guess. Native code never clears the web view's data (unsent chart
@@ -383,7 +384,7 @@ patients "confirm or cancel by text", before the desk poster forms open live) an
 the review pack), and the known limits. **The owner decides** the 25 questions (`docs/simplify-plan.md` section 5) and
 PR #52 as a 26th: whether its pinned allergy line, Today's one-button visit lines and deep-link check come into the
 paper record, or it closes (never merge it or resolve its conflicts mechanically); the empty baby arch on an adult's
-print; an emergency hold and Philippine holidays; and for the iPhone app, its first build on the Mac and the App Store's
+print; an emergency hold and Philippine holidays; and for the iPhone app, the developer account, TestFlight and the App Store's
 questions (deleting an account from inside the app, paying for Flossify inside it: `docs/features/ios-app.md`).
 
 ## Where the detail lives

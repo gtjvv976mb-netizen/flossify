@@ -263,7 +263,9 @@ UPLOAD_DIR=/tmp/fl-uploads SHOW_DEMO_LOGINS=1 TRUST_PROXY=0 \
   side for (haptics, print, downloads, the in-app browser, swipe back, the status bar), with a stand-in bridge;
   offline, the worker's copy of the app's script. `app-safe-areas.mjs` (e2e `safe`) — every page, drawer and panel
   clear of the status bar and the home indicator, with an iPhone's and an iPad's insets. The native half is checked
-  on a Mac (`mobile/README.md`, "What to check on the Mac"); see `docs/features/ios-app.md`.
+  in the iOS simulator by `scripts/dev/app/ios-simulator.sh` (on a Mac with Xcode; `.github/workflows/ios-app.yml` runs
+  it on GitHub's macOS runner for every pull request touching the app), and on a real iPhone by hand (`mobile/README.md`,
+  "What to check on a real device"); see `docs/features/ios-app.md`.
 - Every browser script reads `PW_CHROMIUM` (a Chromium binary) when Playwright's own build is not installed, except
   `scripts/shoot.mjs` and `scripts/audit.mjs`, which name `/opt/pw-browsers/chromium` outright.
 - `docs/simplify/` — the evidence behind the plan: `audit.json` (the 6 Oct audit of eight areas of the site: what

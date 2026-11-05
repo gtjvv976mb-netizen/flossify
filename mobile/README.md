@@ -20,9 +20,29 @@ browser tab cannot do:
 | Clinic tablets | the screen stays awake on a clinic tablet (`/f/t/`) and a device handed to a patient (`/f/i/`) | `arrived(at:)` |
 | Offline | the app's script is a hashed file the phone keeps (no page waits on the network for it); the service worker keeps it too, so the offline page and a kept record still print and buzz | `AppShell.astro`, `public/sw.js` |
 | Safe areas | bars, drawers and panels clear the clock, the Dynamic Island and the home indicator; iPhone stays upright (iPad turns) | `src/components/app-shell.js` (`html[data-app]` only), `Info.plist` |
+| Launch screen | the launch screen stays until the page has drawn itself (the page says so, or its load has finished), never on a timer before that, so a slow line shows the launch screen, never a blank page; 30 s at most | `FlossifyViewController.showLaunchCover()` |
 
 In a browser none of this runs: `src/components/AppShell.astro` loads the app's script only when the user agent carries
 `FlossifyApp/`, and every rule it adds is under `html[data-app]`.
+
+## Built and run on a Mac by CI
+
+Every push to a pull request that touches the app runs `.github/workflows/ios-app.yml` on GitHub's macOS runner (or run
+it by hand: Actions → iOS app → Run workflow). It starts a copy of the website on the runner (a throwaway seeded
+database and the dev server), then `scripts/dev/app/ios-simulator.sh`:
+
+- builds the app for the simulator with Xcode, without signing, and lists warnings in Flossify's own Swift;
+- installs it on the newest iPhone Pro and iPad Pro simulators;
+- opens `/app/` (light and dark, first launch and again), a slow line (an address that answers after 7 s), Find a
+  clinic, the staff entrance and a dead address (the app's offline page, with and without the app-bound limit);
+- checks on each that the app keeps running and the page is on screen within 40 s, and on `/app/` that the page
+  reached the native side (a debug build logs every bridge call).
+
+The screenshots, the app's console and WebKit's system log are kept with the run (Artifacts: ios-simulator). First
+green on 5 Nov 2026, on Xcode 26 with an iPhone 17 Pro and an iPad Pro 13-inch (M5). On the Mac, the same script runs
+against `npm run dev`.
+
+A macOS runner's minute counts ten times a Linux one in a private repository's allowance; a run takes about 18 minutes.
 
 ## Build and run it on the Mac
 
@@ -52,7 +72,9 @@ project, which git ignores.)
 To see what the page asks of the app, turn on `webContentsDebuggingEnabled` in `capacitor.config.json` for a debug run
 only, then Safari → Develop → Simulator → flossify.ph. Never ship it on.
 
-### What to check on the Mac (none of it can be checked in the cloud)
+### What to check on a real device (CI covers the rest)
+
+CI already checks 1, 2 (signed out) and 18 in the simulator; the rest needs a finger, a printer or a real iPhone.
 
 1. It builds with no warnings from `FlossifyShell.swift`.
 2. `/app/` shows the two doors; signed in, the app opens on the Dashboard; the launch screen fades into the page.

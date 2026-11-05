@@ -74,6 +74,11 @@ What the page asks for, and what the native side does with it:
 - **The keyboard** is the web view's own, as in Safari: it covers the lower part of the page and the field scrolls into
   view. (Capacitor's Keyboard plugin resized the whole page on every focus, so the clinic's photo jumped; it is not used.)
 - **iOS 17 or newer**: the chart's palette is a popover.
+- **The launch screen** stays over the web view until the page has drawn itself: the page says so (`FlossifyShell.ready`,
+  from the app's script at DOMContentLoaded, and from the offline page), or, for a page without the script, its load has
+  finished; 30 s at most. Never on a timer before that. Measured in the simulator: Capacitor's splash screen, which hid
+  itself on a 4 s timer, left the web view blank whenever it ran out before the page had drawn (a first launch, a slow
+  line, the offline page), so it is no longer used.
 - **Swipe back** works between pages, except out of a page where the page behind may not be this person's (anything
   under `/auth/`, a clinic's door, the patients' door, `/f/`, a signing page), and except while a panel, the drawer or
   a consent turned to the patient is drawn over the page.
@@ -119,11 +124,17 @@ What the page asks for, and what the native side does with it:
   the two drawers and a side panel: nothing under the status bar at the top, nothing in the home indicator's band at
   the end, the band where there is no sticky bar, no sideways scroll; and an ordinary browser given the same insets
   unchanged. Run without the app's user agent it fails on every page, which is how it was checked.
-- The native half: `mobile/README.md`, "What to check on the Mac".
+- `.github/workflows/ios-app.yml` and `scripts/dev/app/ios-simulator.sh`: the app built with Xcode and run in the iOS
+  simulator on GitHub's Mac, against a copy of the website on the runner, on the newest iPhone Pro and iPad Pro: it
+  builds with no warnings in Flossify's Swift, keeps running on every page, shows the page within 40 s (also on a slow
+  line and on the app's offline page), and the page reaches the native side. Screenshots and logs are kept with each
+  run. First green on 5 Nov 2026 (Xcode 26, iPhone 17 Pro, iPad Pro 13-inch).
+- What needs a finger, a printer or a real iPhone: `mobile/README.md`, "What to check on a real device".
 
 ## Open
 
-- **Not yet built or run on a Mac.** The Swift was written in the cloud, without a compiler.
+- **Not yet on a real iPhone.** Built and run in the simulator by CI; haptics, printing, sharing and the app switcher's
+  cover need a real device (TestFlight, which needs the owner's developer account).
 - **The App Store** (`mobile/README.md`): account deletion from inside the app (guideline 5.1.1(v)), since a clinic can
   be opened from it; paying for Flossify inside the app (3.1.1 / 3.1.3(c)); minimum functionality (4.2); an Apple
   Developer account as an organisation (5.1.1(ix): health records); a privacy notice with no placeholders that says how

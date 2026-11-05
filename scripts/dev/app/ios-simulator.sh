@@ -76,8 +76,9 @@ setConfig() { # file, url, patch
     fs.writeFileSync(file, JSON.stringify(c, null, "\t"));' "$1" "$2" "${3:-}"
 }
 
-# A screen with something on it: not one colour over the page (the status bar's band excepted). Prints the share of the
-# commonest colour; fails above 99.5 %.
+# A screen with the page on it: not one colour over the page (the status bar's band excepted). Prints the share of the
+# commonest colour; fails above 97 %, so the launch screen (one colour and the small mark: 98 to 99 %) counts as not yet
+# there. The sparest page measured, /app/ on an iPad, is 92 %.
 blank() { # png
   (cd "$ROOT/mobile" && node -e '
     const sharp = require("sharp");
@@ -88,7 +89,7 @@ blank() { # png
         seen.set(k, (seen.get(k) || 0) + 1); n++;
       }
       const top = Math.max(...seen.values()) / n;
-      console.log((top * 100).toFixed(1)); process.exit(top > 0.995 ? 1 : 0);
+      console.log((top * 100).toFixed(1)); process.exit(top > 0.97 ? 1 : 0);
     });' "$1")
 }
 
