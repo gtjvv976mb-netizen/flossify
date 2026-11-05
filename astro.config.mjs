@@ -18,9 +18,9 @@ const allowedDomains = [
   { hostname: '127.0.0.1' },
 ];
 
-// Left out of the sitemap: pages marked noindex (/app/, /offline/, a clinic tablet's /f/t/), the operator's /admin/,
-// a step of a sign-in (the code pages, the unlock link), and pages that only send someone signed in on (/today/,
-// /me/visits/). Every page listed answers 200 to a visitor with no cookie.
+// Left out of the sitemap: pages marked noindex (/app/, a clinic tablet's /f/t/), the worker's /offline/ page, the
+// operator's /admin/, a step of a sign-in (the code pages, the unlock link), and pages that only send someone signed in
+// on (/today/, /me/visits/). Every page listed answers 200 to a visitor with no cookie.
 const UNLISTED = /^\/(app|offline|f\/t|admin(\/.*)?|auth\/(code|unlock)|me\/(code|visits)|today)\/$/;
 
 // The live domain. It feeds the sitemap and canonical URLs.

@@ -105,7 +105,6 @@ const pageCss = `
     <title>{title} {no}{ack ? ` · payment ${ack.seq}` : ''} — {clinic.name}</title>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="preload" href="/fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/IBMPlexMono-400.woff2" as="font" type="font/woff2" crossorigin />
     <script is:inline>
       try {
@@ -139,7 +138,7 @@ const pageCss = `
           --pr-teal-ink: #7fdcd4; --pr-teal-tint: #163a3b; --pr-hover: rgb(255 255 255 / 0.055);
         }
       }
-      /* The site's headings are Archivo (an unlayered base rule); the paper is in the friendly sans too. */
+      /* The paper's headings are in the friendly sans, like its words. */
       .pr-body h1 { font-family: inherit; }
       @media print { .pr-body { background: #ffffff; } }
       .pr-bar { background: var(--pr-bar); border-bottom: 1px solid var(--pr-hair); color: var(--pr-ink); }

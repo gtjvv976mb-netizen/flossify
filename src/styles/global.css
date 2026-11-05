@@ -17,8 +17,7 @@
    patients' medical records (CLAUDE.md). IBM Plex Mono stays for the few
    things that are read digit by digit: chart and statement numbers, booking
    refs, a six-digit code (`font-mono`). It is only downloaded by a page that
-   uses it. (Archivo, the Swiss display face, is retired; its file stays in
-   public/fonts/ because the service worker precaches it.)
+   uses it. (Archivo, the Swiss display face, is retired, and its file is gone.)
    =========================================================================== */
 @font-face {
   font-family: "IBM Plex Mono";

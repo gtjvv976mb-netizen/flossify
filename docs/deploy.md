@@ -379,9 +379,10 @@ who share nothing would share one limit.
 ## 9. Security headers on every page
 
 The server adds these to every page it renders: the home page, sign-in, the
-workspace, `/admin/`, booking, `/start/`, `/healthz`. Three pages are built ahead of
+workspace, `/admin/`, booking, `/start/`, `/healthz`. Four pages are built ahead of
 time and served as plain files, like the fonts and the film: `/privacy/`,
-`/websites/` and `/offline/`, plus everything under
+`/websites/`, `/offline/` and the not-found page (any address no page
+answers, such as `/a/b/`), plus everything under
 `/samples/`, `/fonts/`, `/img/`, `/video/` and `/assets/`. Those go out
 **without** them, because the server's file handler answers before the app
 sees the request (measured; see the top of `src/middleware.ts`). So the host
@@ -421,7 +422,7 @@ server's own headers on rendered pages is fine; the stricter one still wins.
   sets response headers only for static sites:
   [docs](https://render.com/docs/static-site-headers), checked 23 Sep 2026).
   Do not put Cloudflare in front to add them (section 8). On these hosts
-  the three pages and the files go out without the five headers until the
+  the four pages and the files go out without the five headers until the
   developer makes the server add them itself. That is a small change, not
   made yet. What it leaves open until then: another site can show
   `/privacy/` or `/websites/` inside a frame of its own, and a first visit
