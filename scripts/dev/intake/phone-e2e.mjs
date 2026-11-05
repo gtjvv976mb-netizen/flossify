@@ -42,6 +42,12 @@ const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath
 const errs = [];
 // Astro's dev toolbar audits the page and sometimes cannot fetch its own data: not the app's error.
 const noise = (t) => /Astro background:|dev toolbar|audit's match function/.test(t);
+// A page change runs the workspace's own view transition (src/layouts/Clinic.astro): resizing the window before it ends
+// aborts it, and Chromium reports that as a page error. Every resize waits for the page's animations to end first.
+const resize = async (p, size) => {
+  await p.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))).catch(() => null);
+  await p.setViewportSize(size);
+};
 const watch = (p, who) => { p.on('pageerror', (e) => errs.push(`${who}: ${e.message}`)); p.on('console', (m) => { if (m.type() === 'error' && !noise(m.text())) errs.push(`${who}: ${m.text()}`); }); };
 
 // ---------------------------------------------------------------------------
@@ -391,11 +397,11 @@ await phoneB.context().close();
       await desk.goto(`${record}?visit=${onFile.visit_today}`, { waitUntil: 'load' });
       await desk.waitForTimeout(600);
       await fitsPage(desk, 'record with the visit panel open at 1440');
-      await desk.setViewportSize({ width: 390, height: 844 });
+      await resize(desk, { width: 390, height: 844 });
       await desk.reload({ waitUntil: 'load' });
       await desk.waitForTimeout(600);
       await fitsPage(desk, 'record with the visit panel open at 390');
-      await desk.setViewportSize({ width: 1440, height: 900 });
+      await resize(desk, { width: 1440, height: 900 });
     } else {
       assert.equal(await row.count(), 0, 'no ledger row before the visit begins');
       ok(`record: the form is on the visit panel; the visit (${visit.status}, not begun) has no ledger row yet`);
@@ -684,10 +690,10 @@ const links = await q(`select retired_why from intake_link where intake_id = $1 
 assert.deepEqual(links.map((l) => l.retired_why), ['idle', null]);
 ok('desk: an idle code says so, "Show a new code" makes a new one (the old retired as idle)');
 await fits(desk, 'desk: step 4 with the QR code at 1440');
-await desk.setViewportSize({ width: 390, height: 844 });
+await resize(desk, { width: 390, height: 844 });
 await desk.reload({ waitUntil: 'load' });
 await fits(desk, 'desk: step 4 with the QR code at 390');
-await desk.setViewportSize({ width: 1440, height: 900 });
+await resize(desk, { width: 1440, height: 900 });
 
 // --keep: leave the screens the contrast tool measures open, with the browsers' sign-in states saved beside them.
 if (process.argv.includes('--keep')) {
