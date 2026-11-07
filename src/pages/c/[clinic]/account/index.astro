@@ -56,6 +56,7 @@ import {
   readPtr, ptrDrawn, ptrConflictText, ptrState, ptrChip, ptrMine, ptrLine, ptrYearOptions, PTR_MAX, type PtrDrawn,
 } from '../../../../lib/ptr';
 import { manilaToday } from '../../../../lib/health';
+import { openDeletion, askDeletion, withdrawDeletion, scopeFor, DELETE_REASON_MAX } from '../../../../lib/deletion';
 
 // Wrong current passwords, per person: [tries, window in seconds]. (src/lib/throttle.ts keeps the
 // service's limits in LIMITS; this one waits to move there.)
@@ -82,9 +83,22 @@ const readMe = async () => (await pool.query(
 let error = '', ptrError = '', bioError = '';
 let ptrForm: PtrDrawn | null = null;          // what the PTR form draws again after a refusal
 let bioForm: BioValues | null = null;         // the public profile's lines as typed, after a refusal
+let deleteError = '';
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  if (String(form.get('action') ?? '') === 'bio') {
+  const act = String(form.get('action') ?? '');
+  if (act === 'delete' || act === 'delete-withdraw') {
+    // Delete my account (047, src/lib/deletion.ts): a request Flossify confirms; the button erases nothing itself.
+    if (!csrfOk(Astro.cookies, form)) deleteError = CSRF_MESSAGE;
+    else if (act === 'delete-withdraw') {
+      const had = await withdrawDeletion(session.staffId, clinic.id);
+      return Astro.redirect(`${here}?done=${had ? 'delete-withdrawn' : 'delete-none'}#delete`, 303);
+    } else if (form.get('sure') !== 'yes') deleteError = 'Tick the box to say you understand what deleting does.';
+    else {
+      const r = await askDeletion({ staffId: session.staffId, groupId: session.groupId, clinicId: clinic.id, role: session.role, reason: String(form.get('reason') ?? '') });
+      return Astro.redirect(`${here}?done=${r === 'asked' ? 'delete-asked' : 'delete-already'}#delete`, 303);
+    }
+  } else if (act === 'bio') {
     // The public profile's own lines (PDA, practising since, about): the one other detail a person sets for themself.
     const row = (await pool.query('select slug, must_change_password from staff where id = $1 and disabled_at is null', [session.staffId])).rows[0];
     const r = readBio(form, manilaToday());
@@ -99,7 +113,7 @@ if (Astro.request.method === 'POST') {
         `insert into audit_log (clinic_id, staff_id, action, entity, entity_id) values ($1, $2, 'staff.bio', 'staff', $2)`, [clinic.id, session.staffId]));
       return Astro.redirect(`${here}?done=bio#bio`, 303);
     }
-  } else if (String(form.get('action') ?? '') === 'ptr') {
+  } else if (act === 'ptr') {
     const today = manilaToday();
     const row = (await pool.query('select role, prc_licence, ptr_number, ptr_year, must_change_password from staff where id = $1 and disabled_at is null', [session.staffId])).rows[0];
     const onFile = { number: row?.ptr_number ?? null, year: row?.ptr_year ?? null };
@@ -201,6 +215,15 @@ const PTR_DONE: Record<string, string> = {
   'ptr-same': 'Nothing changed in your PTR.',
 };
 const roleLabel = clinic.role_name;
+// Delete my account: the open request, if any, and what one would close.
+const deletion = await openDeletion(session.staffId);
+const deleteScope = scopeFor(session.role);
+const DELETE_DONE: Record<string, string> = {
+  'delete-asked': 'Your request is sent. Flossify confirms it and tells you before anything is deleted.',
+  'delete-already': 'Your request was already sent. Flossify confirms it and tells you before anything is deleted.',
+  'delete-withdrawn': 'Your request is taken back. Nothing was deleted.',
+  'delete-none': 'There was no request to take back.',
+};
 ---
 
 <ClinicLayout groupId={clinic.group_id} clinic={{ slug: clinic.slug, name: clinic.name }} title="My page" section="account" staff={{ name: session.name, role: session.role }} branches={branches} finance={clinic.can_view_finance} layout="panes" heading>
@@ -371,6 +394,37 @@ const roleLabel = clinic.role_name;
             {DAYS.map(([n, label]) => <span class="set-day-ro" data-on={days.includes(n) ? '' : undefined} aria-hidden="true">{label}</span>)}
           </p>
           <p class="set-help mt-3">{canSetUp ? <>Set on <a href={`/c/${clinic.slug}/settings/people/${session.staffId}/#days`} class="font-semibold text-[var(--ws-teal-ink)] underline underline-offset-4">your page in Clinic settings</a>.</> : 'The owner or an admin sets these.'} Last signed in {ago(me.last_seen_at)}.</p>
+        </Pane>
+
+        <Pane id="delete" icon="alert" title={deleteScope === 'clinic' ? 'Delete my account and close my clinic' : 'Delete my account'} class="set-sec">
+          {done && DELETE_DONE[done] && !deleteError && <Note tone="ok" text={DELETE_DONE[done]} class="mb-4" />}
+          {deleteError && <Note tone="alert" text={deleteError} class="mb-4" refused />}
+          {deletion ? (
+            <>
+              <p class="ws-callout" data-tone="info"><Icon name="info" /><span>You asked on {dateText(deletion.requested_at)}. Flossify confirms it and tells you before anything is deleted. Until then everything works as before.</span></p>
+              <form method="post" action={here} class="mt-4">
+                <Csrf />
+                <input type="hidden" name="action" value="delete-withdraw" />
+                <button type="submit" class="ws-btn ws-btn-quiet">Take back my request</button>
+              </form>
+            </>
+          ) : (
+            <form method="post" action={here} class="grid gap-4" data-delete-form>
+              <Csrf />
+              <input type="hidden" name="action" value="delete" />
+              <p class="set-intro">
+                {deleteScope === 'clinic'
+                  ? `As the owner, your account is your clinic’s account, every branch included. Once Flossify confirms, nobody at your clinic can sign in again, your branches come off Find a clinic, and your sign-in details are deleted. Flossify contacts you first about your patients’ records.`
+                  : 'Once Flossify confirms, you can’t sign in again and your email, mobile, password and public profile are deleted. Your name stays on the records you wrote and signed, because the clinic’s records must say who wrote them.'}
+              </p>
+              <label class="field">
+                <span class="meta">Why are you leaving? <span class="font-normal">(optional)</span></span>
+                <textarea name="reason" rows="2" maxlength={DELETE_REASON_MAX}></textarea>
+              </label>
+              <label class="check"><input type="checkbox" name="sure" value="yes" required /><span>I understand that once it’s confirmed, this can’t be undone.</span></label>
+              <div><button type="submit" class="ws-btn ws-btn-danger"><Icon name="close" />Ask to delete my account</button></div>
+            </form>
+          )}
         </Pane>
       </div>
     </div>

@@ -1,0 +1,91 @@
+---
+// Flossify control › Delete account requests (/admin/accounts/): every open request from My page's "Delete my
+// account" (047, src/lib/deletion.ts), oldest first. Under Clinics in the sidebar; the Overview's "Needs you" links
+// here while one is open.
+//
+// The owner's choice (7 Nov 2026): the button only asks; a person here confirms. An owner's request closes the whole
+// clinic group, anyone else's only their own sign-in; admin_close_account() does it and says what it erases and keeps.
+// Before confirming an owner's, settle with them what happens to their patients' records: confirming touches none.
+// Every confirm is a form post with the CSRF token, an auth_event (admin.account_closed), and back here with one
+// sentence.
+export const prerender = false;
+
+import AdminLayout from '../../../layouts/Admin.astro';
+import Csrf from '../../../components/Csrf.astro';
+import Pane from '../../../components/ws/Pane.astro';
+import Empty from '../../../components/ws/Empty.astro';
+import Icon from '../../../components/ws/Icon.astro';
+import Avatar from '../../../components/ws/Avatar.astro';
+import { requireAdmin, adminEvent, dateText } from '../../../lib/admin';
+import { openDeletions, confirmDeletion } from '../../../lib/deletion';
+import { csrfOk, CSRF_MESSAGE } from '../../../lib/csrf';
+import { clientIp } from '../../../lib/throttle';
+import { prettyPhone } from '../../../lib/messages';
+
+const admin = await requireAdmin(Astro);
+if (admin instanceof Response) return admin;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (!csrfOk(Astro.cookies, form)) return Astro.redirect('/admin/accounts/?stale=1', 303);
+  const id = String(form.get('request') ?? '');
+  if (form.get('sure') !== 'yes') return Astro.redirect('/admin/accounts/?done=unsure', 303);
+  const scope = await confirmDeletion(id, admin.session.staffId);
+  if (!scope) return Astro.redirect('/admin/accounts/?done=gone', 303);
+  await adminEvent('admin.account_closed', { staffId: admin.session.staffId, ip: clientIp(Astro), ua: Astro.request.headers.get('user-agent') }, `${scope} ${id}`);
+  return Astro.redirect(`/admin/accounts/?done=${scope}`, 303);
+}
+
+const done = Astro.url.searchParams.get('done') ?? '';
+const SAID: Record<string, string> = {
+  me: 'Done. That person can no longer sign in, and their sign-in details and public profile are deleted.',
+  clinic: 'Done. Nobody in that clinic can sign in, their sign-in details are deleted, and its branches are off Find a clinic.',
+  gone: 'That request was no longer open: it was taken back or already confirmed.',
+  unsure: 'Nothing was deleted. Tick the box first.',
+};
+const stale = Astro.url.searchParams.get('stale') === '1';
+const rows = await openDeletions();
+const ROLE: Record<string, string> = { owner: 'Owner', admin: 'Admin', dentist: 'Dentist', associate: 'Associate dentist', secretary: 'Secretary', assistant: 'Assistant' };
+const digits = (s: string | null) => (s ?? '').replace(/\D/g, '');
+---
+
+<AdminLayout title="Delete account requests" section="clinics" admin={{ name: admin.name, email: admin.email }}>
+  {stale && <p role="alert" class="ws-callout" data-tone="alert"><Icon name="alert" /><span>{CSRF_MESSAGE}</span></p>}
+  {!stale && SAID[done] && <p role="status" class="ws-callout" data-tone={done === 'me' || done === 'clinic' ? 'success' : 'info'}><Icon name={done === 'me' || done === 'clinic' ? 'check' : 'info'} /><span>{SAID[done]}</span></p>}
+
+  <Pane id="requests" title="Delete account requests" icon="alert" meta={rows.length === 0 ? 'None open' : `${rows.length} open`} pad="none">
+    <div class="px-6 pt-4 max-md:px-4">
+      <p class="ws-callout text-[14.5px]"><Icon name="info" /><span>Asked on My page. Call the person first. An owner’s request closes their whole clinic: settle what happens to their patients’ records before you confirm, because confirming doesn’t touch them.</span></p>
+    </div>
+    {rows.length === 0 ? (
+      <div class="px-6 pt-2 pb-3 max-md:px-4"><Empty icon="check" text="No request is open. One shows here when someone asks on My page." /></div>
+    ) : (
+      <ul class="ops-rows mt-2">
+        {rows.map((r) => (
+          <li class="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]" data-deletion-row>
+            <div class="ops-who">
+              <Avatar name={r.full_name} size="lg" />
+              <div class="ops-who-text gap-0.5">
+                <p class="flex flex-wrap items-center gap-x-2 gap-y-1"><span class="text-[16px] font-semibold [overflow-wrap:anywhere]">{r.full_name}</span><span class="ws-pill ws-tint-slate">{ROLE[r.role] ?? r.role}</span></p>
+                <p class="text-[15px] font-medium">{r.scope === 'clinic' ? `Close ${r.group_name}: ${r.people === 1 ? '1 person' : `${r.people} people`}, ${r.branches === 1 ? '1 branch' : `${r.branches} branches`}` : `Delete their own account at ${r.group_name}`}</p>
+                <p class="text-[14px] [overflow-wrap:anywhere] text-ink-2">
+                  {[r.email, r.phone ? prettyPhone(r.phone) : null].filter(Boolean).join(' · ') || 'No email or mobile on file'}
+                  {r.phone && <> · <a href={`tel:${digits(r.phone)}`} class="ops-call -my-3">Call<span class="sr-only"> {r.full_name}</span></a></>}
+                </p>
+                {r.reason && <p class="text-[14px] text-ink-2">“{r.reason}”</p>}
+                <p class="text-[13.5px] text-muted">Asked {dateText(r.requested_at)}{r.clinic_name && ` from ${r.clinic_name}`}</p>
+              </div>
+            </div>
+            <form method="post" action="/admin/accounts/" class="grid content-start gap-3">
+              <Csrf />
+              <input type="hidden" name="request" value={r.id} />
+              <label class="check"><input type="checkbox" name="sure" value="yes" required /><span>{r.scope === 'clinic' ? 'I spoke with the owner, and the patients’ records are settled' : 'I checked this is their request'}</span></label>
+              <button class="ws-btn ws-btn-danger"><Icon name="close" /> Confirm and delete</button>
+              <p class="text-[13.5px] leading-snug text-muted">This can’t be undone. Names stay on the records they wrote and signed.</p>
+            </form>
+          </li>
+        ))}
+      </ul>
+    )}
+  </Pane>
+</AdminLayout>

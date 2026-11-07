@@ -164,6 +164,7 @@ export const ACTION_WORDS: Record<string, string> = {
   'billing.check': 'Asked PayMongo about an invoice',
   'billing.reviewed': 'Handled an online payment',
   'billing.set': 'Set a group’s terms',
+  'admin.account_closed': 'Confirmed a request to delete an account',
 };
 
 export interface PrcRow {

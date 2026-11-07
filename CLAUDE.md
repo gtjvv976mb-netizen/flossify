@@ -385,7 +385,7 @@ the review pack), and the known limits. **The owner decides** the 25 questions (
 PR #52 as a 26th: whether its pinned allergy line, Today's one-button visit lines and deep-link check come into the
 paper record, or it closes (never merge it or resolve its conflicts mechanically); the empty baby arch on an adult's
 print; an emergency hold and Philippine holidays; and for the iPhone app, the developer account, TestFlight and the App Store's
-questions (deleting an account from inside the app, paying for Flossify inside it: `docs/features/ios-app.md`).
+questions (paying for Flossify inside it: `docs/features/ios-app.md`; deleting an account from inside the app is built, 047, `src/lib/deletion.ts`).
 
 ## Where the detail lives
 

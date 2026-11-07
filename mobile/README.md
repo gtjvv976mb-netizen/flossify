@@ -133,8 +133,9 @@ Flossify's company name, with a D-U-N-S number.
 
 Questions for the owner before submitting (also in `docs/features/ios-app.md`):
 
-- **Account deletion (guideline 5.1.1(v)).** A clinic can be opened from inside the app (*Open your clinic*, `/start/`),
-  so Apple requires a way to ask for the account to be deleted from inside the app too.
+- **Account deletion (guideline 5.1.1(v)).** Done (047): My page → *Delete my account* sends a request (an owner's
+  closes the whole clinic, anyone else's only their own sign-in), and Flossify confirms it on `/admin/accounts/`. The
+  owner chose a request Flossify confirms (7 Nov 2026). Tell App Review where it is: My page, at the foot.
 - **Paying for Flossify inside the app (3.1.1, 3.1.3).** The plan is paid through PayMongo from Clinic settings. Selling
   to a clinic for its staff usually falls under 3.1.3(c), enterprise services, but Apple decides; until `BILLING_FINAL`
   is true nothing is paid anyway.
