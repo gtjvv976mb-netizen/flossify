@@ -44,6 +44,19 @@ against `npm run dev`.
 
 A macOS runner's minute counts ten times a Linux one in a private repository's allowance; a run takes about 18 minutes.
 
+## Try it without building
+
+Each green run also keeps the app itself, opening https://flossify.ph (Artifacts: **Flossify-simulator**, kept 30
+days). On any Mac with Xcode:
+
+1. Open the run on GitHub (Actions → iOS app → the latest green run) and download **Flossify-simulator**.
+2. Double-click it, then the `Flossify-simulator.zip` inside, to get `Flossify.app`.
+3. Open the Simulator (Xcode → Open Developer Tool → Simulator, or `open -a Simulator`), pick an iPhone or an iPad,
+   and drag `Flossify.app` onto it. It installs and appears on the home screen; tap it.
+
+No Apple developer account, no `npm`, no build. If the Simulator refuses a downloaded file, clear the download mark:
+`xattr -dr com.apple.quarantine Flossify.app`. Or install it from Terminal: `xcrun simctl install booted Flossify.app`.
+
 ## Build and run it on the Mac
 
 You need a Mac with Xcode 16 or newer and Node 22. Nothing else: Capacitor 8 uses Swift Package Manager, no CocoaPods.
@@ -58,8 +71,8 @@ npm run open        # opens ios/App/App.xcodeproj in Xcode
 
 In Xcode pick a simulator (iPhone 16 Pro, and an iPad to see the calendar's drag) and press Run.
 
-**Until this branch is deployed, flossify.ph has no `/app/` page and no app script.** Try the website's half from
-this Mac instead:
+It opens the live https://flossify.ph/app/ (deployed 5 Nov 2026). To try a change to the website's half before it is
+deployed, run the website on this Mac instead:
 
 ```bash
 npm run dev                      # in the repo's root: the website on http://localhost:4321

@@ -6,7 +6,7 @@
 #   - the page reaches the native side (a debug build logs every bridge call: FlossifyShell.setChrome, .ready);
 #   - the launch screen gives way to the page, also on a slow line (an address that answers after 7 s);
 #   - with the site unreachable, the app's own offline page shows;
-#   - each screen is photographed, on an iPhone and an iPad, light and dark.
+#   - each screen is photographed, on an iPhone and an iPad, light and dark (/app/, /find/, the staff entrance, offline).
 # GitHub Actions runs it on a Mac (.github/workflows/ios-app.yml); the owner can run it too.
 #
 #   npm run dev                                   # first, in the repo's root: the website on http://localhost:4321
@@ -46,6 +46,21 @@ echo "== built; warnings in Flossify's own Swift: $(wc -l <"$OUT/warnings.txt" |
 cat "$OUT/warnings.txt"
 APP="$OUT/derived/Build/Products/Debug-iphonesimulator/App.app"
 [ -d "$APP" ] || no "no App.app after the build"
+echo "== built for: $(lipo -archs "$APP/App" 2>/dev/null || echo '?')"
+
+# A copy that opens https://flossify.ph, for anyone's Mac with Xcode, no build needed: unzip, then drag Flossify.app onto
+# a running Simulator (mobile/README.md, "Try it without building"). The same build, with the address and allowed hosts
+# that `npx cap sync` wrote before use-local.mjs pointed this one at this Mac. Zipped with ditto, which keeps the
+# executable bit that a plain upload drops.
+rm -rf "$OUT/live" && mkdir -p "$OUT/live"
+cp -R "$APP" "$OUT/live/Flossify.app"
+node -e '
+  const fs = require("fs"); const [file, shipped] = process.argv.slice(1);
+  const c = JSON.parse(fs.readFileSync(file, "utf8")); const s = JSON.parse(fs.readFileSync(shipped, "utf8"));
+  c.server = { ...c.server, url: s.server.url, allowNavigation: s.server.allowNavigation };
+  fs.writeFileSync(file, JSON.stringify(c, null, "\t") + "\n");
+  console.log("== Flossify-simulator.zip opens " + c.server.url);' "$OUT/live/Flossify.app/capacitor.config.json" "$ROOT/mobile/capacitor.config.json"
+(cd "$OUT/live" && ditto -c -k --keepParent Flossify.app "$OUT/Flossify-simulator.zip")
 
 # --- the simulators: the newest iPhone Pro and iPad Pro this Xcode has ------------------------------------------------
 pick() { # a name pattern -> the udid of the matching device in the newest iOS runtime
@@ -122,7 +137,15 @@ run_page() { # udid, tag, url, name, [config patch]
     xcrun simctl io "$udid" screenshot "$OUT/$tag-$name.png" >/dev/null 2>&1 || continue
     if share=$(blank "$OUT/$tag-$name.png"); then seen=1; break; fi
   done
-  if ! kill -0 "$pid" 2>/dev/null; then bad "$tag $name: the app stopped (log: $log)"; tail -20 "$log"
+  # The console stays attached after the app itself has gone, and the home screen is not blank: so ask launchd whether
+  # the app still has a process (UIKitApplication:<bundle> with a number, not "-").
+  local alive; alive=$(xcrun simctl spawn "$udid" launchctl list 2>/dev/null | awk -v b="UIKitApplication:$BUNDLE" 'index($3, b) == 1 && $1 != "-" { print $1 }' | head -1)
+  if ! kill -0 "$pid" 2>/dev/null || [ -z "$alive" ]; then
+    bad "$tag $name: the app stopped (log: $log)"; tail -30 "$log"
+    xcrun simctl spawn "$udid" log show --style compact --start "$since" \
+      --predicate 'process == "App" OR process BEGINSWITH "com.apple.WebKit" OR (process == "SpringBoard" AND eventMessage CONTAINS[c] "flossify") OR eventMessage CONTAINS[c] "jetsam" OR eventMessage CONTAINS[c] "crash"' \
+      2>/dev/null | grep -v -i "debug" | tail -60 || true
+    ls -t ~/Library/Logs/DiagnosticReports/App-*.ips 2>/dev/null | head -1 | xargs -I{} sh -c 'echo "   crash report: {}"; head -c 6000 "{}"' || true
   elif [ "$seen" = 1 ]; then note "$tag $name: running; the page on screen after ${waited} s (commonest colour $share%)"
   else bad "$tag $name: running, but nothing on screen after ${LIMIT} s (one colour on $share% of it)"; fi
   # WebKit's and the app's own complaints from the simulator's system log: what the app's console does not show.
@@ -168,6 +191,10 @@ for kind in "${KINDS[@]}"; do
   look "$udid" dark
   run_page "$udid" "$tag" "$SITE/app/" "app-dark"
   bridge "$OUT/$tag-app-dark.log" "$tag /app/ (dark)"
+  # The patients' and the staff's ways in, and the offline page, dark too.
+  run_page "$udid" "$tag" "$SITE/find/" "find-dark"
+  run_page "$udid" "$tag" "$SITE/auth/login/" "staff-entrance-dark"
+  run_page "$udid" "$tag" "http://localhost:4398/app/" "offline-dark"
   look "$udid" light
   # A slow line: the page arrives after 7 s; the launch screen waits for it.
   run_page "$udid" "$tag" "$SLOW/app/" "slow-line"
