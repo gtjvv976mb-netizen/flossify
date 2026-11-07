@@ -33,6 +33,7 @@ import { requireAdmin, control, clinicRows, ago, type ClinicRow } from '../../li
 import { peso } from '../../data/demo';
 import { BILLING_FINAL } from '../../lib/billing';
 import { paymentsToLookAt } from '../../lib/payments';
+import { openDeletions } from '../../lib/deletion';
 
 const admin = await requireAdmin(Astro);
 if (admin instanceof Response) return admin;
@@ -57,7 +58,7 @@ if (q.has('prc') || q.get('stale') === 'prc') return Astro.redirect(`/admin/prc/
 if (q.has('done') || q.get('stale') === 'billing') return Astro.redirect(`/admin/billing/${carry(['done', 'n', 'number', 'group', 'r', 'stale'])}`, 302);
 
 // --- reads -----------------------------------------------------------------------------------
-const [c, rows, toLook] = await Promise.all([control(), clinicRows(), paymentsToLookAt()]);
+const [c, rows, toLook, deletions] = await Promise.all([control(), clinicRows(), paymentsToLookAt(), openDeletions()]);
 const now = new Date();
 const n = (x: number) => x.toLocaleString('en-PH');
 const plural = (k: number, one: string, many = `${one}s`) => `${n(k)} ${k === 1 ? one : many}`;
@@ -86,6 +87,7 @@ if (beatLate || c.texts_overdue > 0) {
   });
 }
 if (toLook.length > 0) needs.push({ text: `${plural(toLook.length, 'online payment')} to look at.`, go: 'Look at them', href: '/admin/billing/#look', icon: 'money', tint: 'red' });
+if (deletions.length > 0) needs.push({ text: `${plural(deletions.length, 'request')} to delete an account.`, go: 'Look at them', href: '/admin/accounts/', icon: 'alert', tint: 'amber' });
 if (c.prc_pending > 0) needs.push({ text: `${plural(c.prc_pending, 'dentist')} waiting for a PRC check.`, go: 'Check licences', href: '/admin/prc/', icon: 'check', tint: 'amber' });
 if (c.branches_past_due > 0) needs.push({ text: `${plural(c.branches_past_due, 'branch', 'branches')} past due.`, go: 'See who', href: '/admin/clinics/?show=past_due', icon: 'wallet', tint: 'red' });
 const ending = rows.filter(trialEnding).length;

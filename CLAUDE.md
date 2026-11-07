@@ -323,7 +323,7 @@ Breaking one could harm a patient, leak data, weaken consent or privacy, misstat
 - **Settings are read from `process.env` at run time, never `import.meta.env`** (a build once carried `DATABASE_URL` and
   `SESSION_SECRET`); `src/lib/env.ts` refuses an unsafe production start (backend.md).
 - **`security.allowedDomains` in `astro.config.mjs`** lists the hosts (`EXTRA_HOSTS`), or every form post is 403.
-- **Never edit an applied migration or `schema.sql`**: a change is a new numbered file (the newest is 046), with no
+- **Never edit an applied migration or `schema.sql`**: a change is a new numbered file (the newest is 047), with no
   BEGIN/COMMIT inside. Never put `--allow-late` in `render.yaml` or the `Procfile`.
 - **`npm run db:setup` drops the database**: never run it, or a test, against `flossify_dev` or without `DB=` naming a
   throwaway database. `seed.ts` and `SHOW_DEMO_LOGINS` are local only. After a merge, check `/healthz` answers 200.
@@ -385,7 +385,7 @@ the review pack), and the known limits. **The owner decides** the 25 questions (
 PR #52 as a 26th: whether its pinned allergy line, Today's one-button visit lines and deep-link check come into the
 paper record, or it closes (never merge it or resolve its conflicts mechanically); the empty baby arch on an adult's
 print; an emergency hold and Philippine holidays; and for the iPhone app, the developer account, TestFlight and the App Store's
-questions (deleting an account from inside the app, paying for Flossify inside it: `docs/features/ios-app.md`).
+questions (paying for Flossify inside it: `docs/features/ios-app.md`; deleting an account from inside the app is built, 047, `src/lib/deletion.ts`).
 
 ## Where the detail lives
 

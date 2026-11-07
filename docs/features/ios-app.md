@@ -135,8 +135,8 @@ What the page asks for, and what the native side does with it:
 
 - **Not yet on a real iPhone.** Built and run in the simulator by CI; haptics, printing, sharing and the app switcher's
   cover need a real device (TestFlight, which needs the owner's developer account).
-- **The App Store** (`mobile/README.md`): account deletion from inside the app (guideline 5.1.1(v)), since a clinic can
-  be opened from it; paying for Flossify inside the app (3.1.1 / 3.1.3(c)); minimum functionality (4.2); an Apple
+- **The App Store** (`mobile/README.md`): account deletion from inside the app (guideline 5.1.1(v)) is built (047: My
+  page → *Delete my account*, a request Flossify confirms on `/admin/accounts/`); paying for Flossify inside the app (3.1.1 / 3.1.3(c)); minimum functionality (4.2); an Apple
   Developer account as an organisation (5.1.1(ix): health records); a privacy notice with no placeholders that says how
   to reach Flossify and ask for deletion, and a support URL (5.1.1(i)); a demo clinic made for review, unlisted, with
   made-up patients; the SwiftCare sample's permission or /websites/ left out (5.2.1); App Privacy answers; Mac and
