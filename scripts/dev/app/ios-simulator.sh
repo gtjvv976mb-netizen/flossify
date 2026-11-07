@@ -46,6 +46,21 @@ echo "== built; warnings in Flossify's own Swift: $(wc -l <"$OUT/warnings.txt" |
 cat "$OUT/warnings.txt"
 APP="$OUT/derived/Build/Products/Debug-iphonesimulator/App.app"
 [ -d "$APP" ] || no "no App.app after the build"
+echo "== built for: $(lipo -archs "$APP/App" 2>/dev/null || echo '?')"
+
+# A copy that opens https://flossify.ph, for anyone's Mac with Xcode, no build needed: unzip, then drag Flossify.app onto
+# a running Simulator (mobile/README.md, "Try it without building"). The same build, with the address and allowed hosts
+# that `npx cap sync` wrote before use-local.mjs pointed this one at this Mac. Zipped with ditto, which keeps the
+# executable bit that a plain upload drops.
+rm -rf "$OUT/live" && mkdir -p "$OUT/live"
+cp -R "$APP" "$OUT/live/Flossify.app"
+node -e '
+  const fs = require("fs"); const [file, shipped] = process.argv.slice(1);
+  const c = JSON.parse(fs.readFileSync(file, "utf8")); const s = JSON.parse(fs.readFileSync(shipped, "utf8"));
+  c.server = { ...c.server, url: s.server.url, allowNavigation: s.server.allowNavigation };
+  fs.writeFileSync(file, JSON.stringify(c, null, "\t") + "\n");
+  console.log("== Flossify-simulator.zip opens " + c.server.url);' "$OUT/live/Flossify.app/capacitor.config.json" "$ROOT/mobile/capacitor.config.json"
+(cd "$OUT/live" && ditto -c -k --keepParent Flossify.app "$OUT/Flossify-simulator.zip")
 
 # --- the simulators: the newest iPhone Pro and iPad Pro this Xcode has ------------------------------------------------
 pick() { # a name pattern -> the udid of the matching device in the newest iOS runtime
