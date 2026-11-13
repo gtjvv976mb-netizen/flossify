@@ -173,7 +173,7 @@ const dismissedN = Number(q.get('n'));
               <label class="fm-find" hidden data-fm-find-wrap>
                 <span class="sr-only">Find a form by name, mobile or reference</span>
                 <Icon name="search" size={18} />
-                <input type="search" placeholder="Name, mobile or reference (QR-…)" autocomplete="off" spellcheck="false" data-fm-find />
+                <input type="search" placeholder="Name, mobile or reference (QR-…)" autocomplete="off" spellcheck="false" enterkeyhint="search" autocapitalize="none" autocorrect="off" data-fm-find />
               </label>
               {picking && (
                 <>

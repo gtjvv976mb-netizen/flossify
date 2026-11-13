@@ -432,7 +432,7 @@ const emptyText = show === 'failed' ? `No text has failed in the last ${WINDOW_D
         {toMissing && <p class="ws-callout" data-tone="info"><Icon name="info" /><span>That patient has no mobile number on file, so a text cannot reach them. Add one on their record.</span></p>}
         <label class="field">
           <span class="meta">Patient</span>
-          {recipients.length > 40 && <input type="search" placeholder="Find by name" aria-label="Find a patient by name" autocomplete="off" data-send-filter hidden />}
+          {recipients.length > 40 && <input type="search" placeholder="Find by name" aria-label="Find a patient by name" autocomplete="off" spellcheck="false" enterkeyhint="search" autocapitalize="none" autocorrect="off" data-send-filter hidden />}
           <select name="patient" required data-send-patient>
             <option value="" disabled selected={!chosen}>Choose a patient</option>
             {grouped.map((g) => (

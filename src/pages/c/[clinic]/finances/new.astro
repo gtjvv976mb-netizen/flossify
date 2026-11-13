@@ -242,7 +242,7 @@ const NO_ACCESS = 'Charges and payments are kept by the desk, the owner, the adm
               <div data-bill-lookup hidden={!!chosen}>
                 <label class="field">
                   <span class="meta">Find the patient</span>
-                  <input type="search" autocomplete="off" placeholder="Name, chart no. or mobile" data-bill-search autofocus={!chosen && problems.length === 0 && !stale} />
+                  <input type="search" autocomplete="off" spellcheck="false" enterkeyhint="search" autocapitalize="none" autocorrect="off" placeholder="Name, chart no. or mobile" data-bill-search autofocus={!chosen && problems.length === 0 && !stale} />
                 </label>
                 <ul class="chg-results" hidden data-bill-results></ul>
                 <p class={`mt-1.5 ${help}`} data-bill-hint>Type two letters of a name, a chart no. or a mobile.</p>

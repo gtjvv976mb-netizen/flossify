@@ -40,7 +40,7 @@ const { chairs, catalog, date, addPatient } = Astro.props;
       <label class="bk-find">
         <Icon name="search" class="bk-find-icon" />
         <span class="sr-only">Find the patient</span>
-        <input type="search" data-bk-search autocomplete="off" spellcheck="false" placeholder="Name, chart no. or mobile" aria-describedby="bk-hint" aria-controls="bk-results" />
+        <input type="search" data-bk-search autocomplete="off" spellcheck="false" enterkeyhint="search" autocapitalize="none" autocorrect="off" placeholder="Name, chart no. or mobile" aria-describedby="bk-hint" aria-controls="bk-results" />
       </label>
       <ul id="bk-results" class="bk-results" data-bk-results hidden></ul>
       <p id="bk-hint" class="bk-hint" data-bk-hint>Type two letters of a name, a chart number or a mobile.</p>

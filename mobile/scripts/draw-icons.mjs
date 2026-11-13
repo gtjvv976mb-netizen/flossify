@@ -12,6 +12,12 @@ const icon = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"
   <rect width="1024" height="1024" fill="#0e7471"/>
   <g transform="translate(512 528) scale(36) translate(-16 -16)"><path d="${GLYPH}" fill="#ffffff"/></g></svg>`;
 await sharp(Buffer.from(icon)).flatten({ background: '#0e7471' }).removeAlpha().png().toFile(`${ICON}AppIcon-512@2x.png`);
+// The icon on a dark Home Screen (iOS 18 and later): the glyph alone in the website's pale dark-mode teal (#98e3dc), on
+// nothing. iOS puts its own dark ground behind a dark icon, so no ground is drawn here, and this one keeps its alpha.
+// (No tinted icon is drawn: iOS makes that one itself from the icon above.)
+const iconDark = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g transform="translate(512 528) scale(36) translate(-16 -16)"><path d="${GLYPH}" fill="#98e3dc"/></g></svg>`;
+await sharp(Buffer.from(iconDark)).png().toFile(`${ICON}AppIcon-dark.png`);
 // The launch screen: the page colour with the rounded mark in the middle (light and dark), 2732 square, aspect-fill.
 const splash = (bg) => `<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
   <rect width="2732" height="2732" fill="${bg}"/>

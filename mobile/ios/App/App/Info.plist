@@ -84,6 +84,33 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIStatusBarStyle</key>
-	<string>UIStatusBarStyleDarkContent</string>
+	<string>UIStatusBarStyleDefault</string>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER).find</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Find a clinic</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>magnifyingglass</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER).visits</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>My visits</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>calendar</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER).signin</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Clinic sign-in</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>person.crop.circle</string>
+		</dict>
+	</array>
 </dict>
 </plist>

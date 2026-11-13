@@ -32,6 +32,8 @@ const closures = await closuresFor(l);
 const closedAhead = closedDaysText(closures, l.hours);
 const daysAt = (slug: string, d: (typeof dentists)[number]) => { const c = d.clinics.find((x) => x.slug === slug); return c ? dentistDaysText(c.days, c.hours) : ''; };
 // The clinic's own map link when they pasted one in Settings; a search on the address otherwise.
+// (data-app-map, on the link, is the address for the iPhone app to hand to the Maps app; it is there only for the
+// search link, never for a clinic's own pin, which a search on the address would replace. A browser ignores it.)
 const directions = l.mapsUrl ?? `https://www.google.com/maps/search/${encodeURIComponent(l.address)}`;
 ---
 
@@ -57,7 +59,7 @@ const directions = l.mapsUrl ?? `https://www.google.com/maps/search/${encodeURIC
       <div class="cl-actions">
         <a href={`/find/${l.slug}/book/`} class="btn btn-primary"><Icon name="calendar" />{l.workspace ? 'Book a slot' : 'Request a time'}</a>
         <a href={`tel:${l.phone.replace(/\s/g, '')}`} class="btn btn-quiet">Call {l.phone}</a>
-        <a href={directions} class="btn btn-quiet" rel="noopener"><span>Directions</span><Icon name="arrow-right" /></a>
+        <a href={directions} class="btn btn-quiet" rel="noopener" data-app-map={l.mapsUrl ? undefined : l.address}><span>Directions</span><Icon name="arrow-right" /></a>
       </div>
       <div class="cl-facts">
         <p class="pt-fact"><Icon name="clinic" size={16} /><span>{l.address}{l.walkIns ? ' · Walk-ins welcome' : ' · By appointment'}</span></p>
@@ -111,7 +113,7 @@ const directions = l.mapsUrl ?? `https://www.google.com/maps/search/${encodeURIC
 
       <!-- Fees -->
       <Pane class="pt-card cl-pane pt-grow-actions" id="fee" icon="money" title="Fee guide">
-        <label slot="actions" class="field w-full sm:w-64"><span class="sr-only">Filter services</span><input type="search" placeholder="Filter: pasta, bunot, braces…" data-fee-filter /></label>
+        <label slot="actions" class="field w-full sm:w-64"><span class="sr-only">Filter services</span><input type="search" placeholder="Filter: pasta, bunot, braces…" autocomplete="off" spellcheck="false" enterkeyhint="search" autocapitalize="none" autocorrect="off" data-fee-filter /></label>
         <table class="pt-table" data-fees>
           <tbody>
             {fees.map((f) => (

@@ -131,6 +131,77 @@ What the page asks for, and what the native side does with it:
   run. First green on 5 Nov 2026 (Xcode 26, iPhone 17 Pro, iPad Pro 13-inch).
 - What needs a finger, a printer or a real iPhone: `mobile/README.md`, "What to check on a real device".
 
+## The polish round (13 Nov 2026)
+
+The owner, 13 Nov 2026: "audit the app … add motion designs, HUD/UI improvements and make the app perfect for
+clinics/doctors/dentists/patients alike". Nine auditors read the app, a skeptic re-checked each finding (81 of 89
+stood), three builders worked on separate files, and five reviewers then read the change (17 defects fixed). What it
+added, by what a person meets:
+
+**A dropped line never loses the page or the words.**
+- A link tapped or a form sent on a dead line used to swap the page for the offline page, and the typed words went with
+  it. Now the page stays, alive, and says so under the clock: nothing was sent, or (when the line dropped part-way) that
+  it may not have been saved, so check before sending again. The app keeps the page only because the page defines
+  `flossifyApp.lineFailed(sent)`; a page without the app's script still gets the offline page.
+- The app's own offline page (`mobile/www/offline.html`): *Try again*, the line coming back and a pull all return to
+  the page the person was on (`FlossifyShell.retry`: the last website page in the back list), not to `/app/`. The
+  button shows it is trying. Two headings: "You're offline." and, when the phone has a line, "Flossify is not
+  answering."; only the first promises to reopen by itself. A clinic tablet stays awake under it.
+- The website's `/offline/` page asks `/healthz` when the line returns and reloads only on an ok answer.
+- A server fault has a page (`src/pages/500.astro`), with no reload button: reloading a failed post would send it twice.
+- A sheet that cannot load says so with *Try again*; a killed web process reloads, never a white screen.
+- Back after 30 minutes or more: the page is fetched afresh, quietly, unless it holds typed words, a booking part-way,
+  a panel, a sheet, or is a page a patient holds.
+
+**A tap is always seen.**
+- A thin teal line at the top (never the foot) while a page has been loading for a quarter second or more; it slides
+  for a download. The thing tapped stays pressed until its page comes; a sent form's button reads as busy and a second
+  tap is not a second send. Rows, tabs and cards tint or give under the finger.
+- The launch screen breathes while it waits, says "Still loading…" after 8 s, and after 30 s with nothing loaded
+  shows the offline page, never a blank one. VoiceOver hears "Flossify is loading", not the hidden page.
+
+**Motion.** (Always on; nothing is gated.)
+- The top bar and the phone's tab row hold still while the page under them slides (their own view-transition groups,
+  named only for the length of a transition and only when on screen; iOS 18.2+).
+- Tab moves and same-page saves dissolve without dipping through the ground. Phone panels move on the navigation
+  curve (420 ms in, 240 ms out); the drawer's scrim leaves with it; menus and search results leave in 120 ms; a fold
+  the person opens settles in; the booking's next step rises, and the booked moment has its mark and lines.
+- The chart's palette is deliberately not animated: it is used hundreds of times a day.
+- On the iPad's calendar a finger or pencil presses and holds 350 ms before a visit lifts (`HOLD_MS` in `board.ts`); a
+  swipe over a card scrolls the day. It used to move the visit, which could text the patient. The mouse is unchanged.
+
+**Fit.**
+- Larger Text: the app tells the page iOS's size as a percentage (85 to 135; `FlossifyShell.textSize`,
+  `flossifyApp.textSize`, `--app-text`), applied before first paint. Fields never go under 16 px. Kept as drawn: the
+  record's paper sheets, the calendar, the chart, every paper and signing page, and the bars (as iOS's own bars are);
+  at a larger size each tab is as wide as its word (`html[data-app-big]`). Seen in the simulator at the largest size.
+- A date or time field on an iPhone takes its column's width (it ran past the screen's edge in New booking and on the
+  Dashboard): `global.css`, inside `@supports (-webkit-touch-callout: none)`, so only iOS. Seen in the simulator.
+- A full-screen panel's head and Close stay under the clock as it scrolls, and its last field clears the keyboard.
+- Pull to refresh is off while a panel, drawer or pop-over is open, and its spinner sits clear of the Dynamic Island.
+- No text selection, callout or drag on buttons, tabs and bars; a patient's details stay selectable. Hover styles do
+  not stick after a tap. Quick taps never zoom.
+- Signature pads follow one pointer per stroke; a pen takes over from a resting palm.
+
+**What iOS adds.**
+- Home Screen quick actions: Find a clinic, My visits, Clinic sign-in. Never from a page a patient holds or over
+  typed words.
+- VoiceOver's two-finger scrub goes back (the edge swipe's equivalent); saves and refusals drawn on arrival are
+  spoken; the note under the clock is a live region that exists before its words.
+- Native buttons are teal that reads in dark mode (`#98e3dc`); a dark Home Screen icon.
+- Directions for a clinic with no map link of its own opens the Maps app. The Flossify mark goes to `/app/`.
+- The calendar file from a booking has an end time and the clinic's address (`src/lib/ics.ts`).
+- After signing in, the edge swipe no longer goes back onto the sign-in page.
+
+**Not verified on a real device** (the simulator has no haptics, pencil or VoiceOver gestures): the hold-then-drag on
+an iPad, palm and pencil on the signature pads, the quick actions, the two-finger scrub, the status-bar tap inside a
+panel, and the dark icon. `mobile/README.md` lists them.
+
+**Left for the owner** (found by the audit, not touched): the privacy notice's placeholders and a support page; the
+price and free trial two taps from the first screen, and Pay now leaving for Safari (3.1.1); the start page's "in the
+Web" and words for clinic owners only; Find a clinic naming Baguio while the one listed clinic is elsewhere; the
+privacy manifest's answers; a Share button on a clinic's page; a signature for someone who cannot draw one.
+
 ## Open
 
 - **Not yet on a real iPhone.** Built and run in the simulator by CI; haptics, printing, sharing and the app switcher's
@@ -141,9 +212,10 @@ What the page asks for, and what the native side does with it:
   to reach Flossify and ask for deletion, and a support URL (5.1.1(i)); a demo clinic made for review, unlisted, with
   made-up patients; the SwiftCare sample's permission or /websites/ left out (5.2.1); App Privacy answers; Mac and
   Vision Pro availability off. The owner decides each.
-- **iPad multitasking**: in Slide Over or Split View the app can be 320 pt wide; the site is measured at 390. Not
-  measured at 320 yet.
-- **Larger Text** (iOS's text size) does not change a web view's text; pinch zoom works.
+- **iPad multitasking**: in Slide Over or Split View the app can be 320 pt wide. Measured at 320 on 13 Nov 2026: the
+  four-tab row, the chart's palette, the Dashboard's date row and Finances' head. The full 14-page pass at 320 is open.
+- **Larger Text** follows iOS's setting on an iPhone since 13 Nov 2026 ("The polish round", below); WebKit ignores it on
+  an iPad, where pinch zoom is the way. The patient forms under `/f/` are not yet measured at the largest size.
 - **Password AutoFill** needs the owner's Team ID in `/.well-known/apple-app-site-association` and the Associated Domains
   capability.
 - **The chart's palette** is placed by its own script no higher than 8 px from the top of the screen; in the app it is

@@ -291,7 +291,9 @@ button.cal-colhead { container-type: inline-size; }
   border: 1px solid var(--ws-hair); border-radius: 8px; background: var(--card); color: var(--c-ink);
   box-shadow: inset 3px 0 0 var(--edge), var(--ws-shadow);
   font-size: 13px; line-height: 1.25; text-align: left; cursor: grab;
-  touch-action: none; user-select: none; -webkit-user-select: none;
+  /* A finger that lands on a card and slides scrolls the day: a touch drag begins only after a press and hold
+     (board.ts, "drag to move"), and the script refuses the scroll from then on. */
+  touch-action: pan-x pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
   transition: border-color 140ms ease, box-shadow 160ms ease, opacity 160ms ease;
   animation: cal-rise 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -393,6 +395,10 @@ button.cal-colhead { container-type: inline-size; }
 .cal-card.is-static .cal-card-nm { height: 20px; }
 .cal-card.is-static .cal-card-line { font-size: 13.5px; line-height: 19px; }
 .cal-ghost { position: fixed !important; z-index: 90; margin: 0; pointer-events: none; opacity: 0.94; cursor: grabbing; animation: none; box-shadow: inset 3px 0 0 var(--edge), var(--ws-shadow-pop) !important; }
+/* Lifted by a press and hold: the card comes away a little, so the hand knows the hold took. `scale` is its own
+   property, so it never fights the transform the script writes to follow the hand. */
+.cal-ghost.is-held { scale: 1.03; animation: cal-lift 180ms cubic-bezier(0.3, 0.7, 0.4, 1.5); }
+@keyframes cal-lift { from { scale: 1; } }
 body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
 
 /* The status chip in the visit panel: the same colours as the card's pill. */
@@ -417,7 +423,12 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
   .cal-menu-cols { display: none; } /* a phone's list is in time order whatever the columns */
   .cal-nav { width: 100%; }
   .cal-date { flex: 1 1 8rem; min-width: 0; }
-  .cal-date input { width: 100%; min-width: 0; }
+  /* iOS draws a date field as its own button and gives it a least width for the longest date it could show,
+     whatever the page asks: beside ‹ Today › the field then ran off the card's right edge on a phone. Without the
+     system's look it is an ordinary field (the border and ground above are already ours) and takes the room it
+     is given; its words sit at the left like every other field's. */
+  .cal-date input { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; -webkit-appearance: none; appearance: none; }
+  .cal-date input::-webkit-date-and-time-value { min-width: 0; margin: 0; text-align: left; }
   .cal-new { flex: 1 1 100%; margin-left: 0; }
   .cal-lane-list { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: minmax(0, 1fr); overflow: visible; }
 }

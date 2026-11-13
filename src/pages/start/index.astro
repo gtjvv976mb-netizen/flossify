@@ -154,7 +154,7 @@ if (Astro.request.method === 'POST') {
               <label class="field"><span class="meta">Address</span><input name="address" value={v.address} required autocomplete="street-address" placeholder="2/F, 88 Session Road" /></label>
               <div class="pair">
                 <label class="field"><span class="meta">Clinic phone</span><input type="tel" name="phone" value={v.phone} required autocomplete="tel" /></label>
-                <label class="field"><span class="meta">Clinic email (optional)</span><input type="email" name="email" value={v.email} /></label>
+                <label class="field"><span class="meta">Clinic email (optional)</span><input type="email" name="email" value={v.email} autocomplete="section-clinic work email" autocapitalize="none" /></label>
               </div>
             </div>
           </section>

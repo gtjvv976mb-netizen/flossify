@@ -16,9 +16,25 @@
 //   8. Typed words in a form stop pull to refresh, and say so.
 //   9. The start page and the refresh note: every line ≥ 4.5:1 against its background, light and dark; targets ≥ 44 px;
 //      no sideways scroll at 390.
+//  12. What a touch screen needs: touch-action manipulation, no selecting a button's words, fields still selectable, no
+//      :hover rule left outside a hover query (and all of that untouched in an ordinary browser).
+//  13. The chrome holds still: on a push, a pop and a tab move the top bar and the tab row are their own view-transition
+//      groups with both an old and a new picture, the page crossfades by fading the old one off the new, and no
+//      element keeps a view-transition-name once the transition ends. A row tapped stays pressed until its page comes.
+//      A "Back to …" link to the page just left goes back to it (the history does not grow, the scroll comes back).
+//  14. A full-screen panel on a phone: its head stays at the top as it scrolls; the note is drawn over the panel, in it;
+//      the app is told something is over the page (overlay). The words the note shows are in the live region.
+//  15. Larger Text: 135% (and no more) leaves no sideways scroll at 390 on /app/, Find a clinic, the staff entrance and
+//      the Dashboard, keeps fields at 100% or more, and leaves the record's paper sheets as drawn.
+//  16. The booking's steps: a name typed stops pull to refresh; from the second step the edge swipe is held; Return on
+//      the name goes to the mobile number with no error; the booked moment (the server's answer stood in for, so
+//      nothing is booked) draws its mark and lines with their rise. A refused form drawn again counts as typed words.
+//  17. The line drops and returns: one note each, in plain words. A download the app could not fetch says so.
 //
 //   node scripts/dev/app/app-shell-check.mjs [base=http://127.0.0.1:4610]
 //   PW_CHROMIUM · DB=flossify_t · PGHOST · PGPORT · PGUSER (local only). Signs in as the seeded owner; changes nothing.
+//   (Any Chromium will do for PW_CHROMIUM. Cross-document view transitions, popovers and @starting-style are in it; what
+//   WebKit on an iPhone does with them is checked on a Mac, in the simulator.)
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import pg from 'pg';
@@ -90,6 +106,42 @@ const measure = () => {
   return { lines: out, small, sideways: document.documentElement.scrollWidth > innerWidth };
 };
 
+// Every :hover rule not behind a hover query, and those behind one (the app moves the first kind behind one).
+const hoverRules = () => {
+  let bare = 0, behind = 0;
+  const walk = (rules, inHover) => {
+    for (const r of rules) {
+      if (typeof r.selectorText === 'string' && r.style) { if (/(^|[^\\]):hover(?![\w-])/.test(r.selectorText)) { if (inHover) behind++; else bare++; } }
+      else if (r.cssRules) walk(r.cssRules, inHover || !!(r.media && /hover/.test(r.media.mediaText)));
+    }
+  };
+  for (const sheet of document.styleSheets) { try { walk(sheet.cssRules, false); } catch (e) { /* another origin's */ } }
+  return { bare, behind };
+};
+// The view transition a page arrived with: its groups and pictures as it starts, and what still carries a name after.
+function watchTransition() {
+  window.__vt = null;
+  addEventListener('pagereveal', (e) => {
+    if (!e.viewTransition) return;
+    const rec = { parts: [], named: [], after: null };
+    window.__vt = rec;
+    const named = () => [...document.querySelectorAll('*')].filter((el) => el.style && el.style.viewTransitionName).map((el) => el.style.viewTransitionName);
+    e.viewTransition.ready.then(() => {
+      rec.nav = document.documentElement.dataset.nav;
+      rec.named = named();
+      rec.parts = document.getAnimations().map((a) => `${a.effect.pseudoElement || ''} ${a.animationName || ''}`).filter((t) => t.startsWith('::view-transition'));
+    }, () => {});
+    // (A moment later: this listener was added before the app's own, so its turn comes first.)
+    e.viewTransition.finished.then(() => setTimeout(() => { rec.after = named(); }, 50), () => {});
+  });
+}
+const transitionOf = async (p) => {
+  await p.waitForLoadState('load');
+  await p.waitForFunction(() => window.__vt && window.__vt.after !== null, null, { timeout: 5000 });
+  return p.evaluate(() => window.__vt);
+};
+const sideways = (p) => p.evaluate(() => document.documentElement.scrollWidth > innerWidth || innerWidth > 390);
+
 // 1. An ordinary browser.
 {
   const ctx = await browser.newContext({ ...PHONE });
@@ -101,7 +153,10 @@ const measure = () => {
   assert.equal(await p.evaluate(() => document.documentElement.hasAttribute('data-app')), false);
   assert.equal(await p.evaluate(() => typeof window.flossifyApp), 'undefined');
   assert.ok(!asked.some((path) => /app-shell/.test(path)), 'a browser never loads the app\'s script');
-  ok('an ordinary browser: no data-app, never the app\'s script, no flossifyApp');
+  const plain = await p.evaluate(() => ({ touch: getComputedStyle(document.documentElement).touchAction, select: getComputedStyle(document.querySelector('.btn, button')).userSelect, text: document.documentElement.style.getPropertyValue('--app-text'), say: document.querySelectorAll('.app-say, .app-note').length }));
+  assert.deepEqual(plain, { touch: 'auto', select: 'auto', text: '', say: 0 }, `a browser: ${JSON.stringify(plain)}`);
+  assert.ok((await p.evaluate(hoverRules)).bare > 0, 'a browser keeps its hover rules as written');
+  ok('an ordinary browser: no data-app, never the app\'s script, no flossifyApp; touch-action, selection and hover rules as the website has them');
   await ctx.close();
 }
 
@@ -287,6 +342,7 @@ for (const scheme of ['light', 'dark']) {
     assert.equal(await p.evaluate(() => window.flossifyApp.canRefresh()), false);
     await p.evaluate(() => window.flossifyApp.refreshRefused());
     await p.waitForSelector('.app-note[data-show]');
+    await p.waitForFunction(() => getComputedStyle(document.querySelector('.app-note')).opacity === '1'); // its fade in
     const note = await p.evaluate(measure);
     const noteLine = note.lines.find((l) => l.text.startsWith('Not refreshed'));
     assert.ok(noteLine && noteLine.ratio >= 4.5, `the note's contrast: ${JSON.stringify(noteLine)}`);
@@ -301,6 +357,261 @@ for (const scheme of ['light', 'dark']) {
     assert.ok(Math.abs(printed.options.paperWidth - 595.28) < 1 && Math.abs(printed.options.paperHeight - 841.89) < 1, `A4: ${JSON.stringify(printed.options)}`);
     ok(`print() on the Treatment record: beforeprint, then the print sheet on A4 (${printed.options.paperWidth} × ${printed.options.paperHeight} pt)`);
   }
+  assert.deepEqual(errors, [], `page errors: ${errors}`);
+  await ctx.close();
+}
+
+// 12 to 15, 17: signed in, on a phone.
+{
+  const ctx = await appContext('light');
+  await ctx.addInitScript(watchTransition);
+  const p = await ctx.newPage();
+  const errors = [];
+  p.on('pageerror', (e) => errors.push(e.message));
+  p.on('console', (m) => { if (/view-transition|duplicate/i.test(m.text())) errors.push(m.text()); });
+  await p.goto(`${base}/auth/login/?any=1`);
+  await p.fill('#email', email);
+  await p.fill('#password', 'flossify');
+  await Promise.all([p.waitForURL(/\/c\//), p.click('[data-go]')]);
+  await p.waitForLoadState('load');
+
+  // 12. What a touch screen needs.
+  const touch = await p.evaluate(() => ({ touch: getComputedStyle(document.documentElement).touchAction, button: getComputedStyle(document.querySelector('.ws-btn, .btn')).userSelect, field: getComputedStyle(document.querySelector('input:not([type="hidden"])')).userSelect, drag: getComputedStyle(document.querySelector('a')).webkitUserDrag }));
+  assert.deepEqual(touch, { touch: 'manipulation', button: 'none', field: 'text', drag: 'none' }, JSON.stringify(touch));
+  const hover = await p.evaluate(hoverRules);
+  assert.equal(hover.bare, 0, `:hover rules left outside a hover query: ${hover.bare}`);
+  assert.ok(hover.behind > 0);
+  ok(`touch: touch-action manipulation, a button's words not selectable, a field's are, links not draggable; ${hover.behind} :hover rules, all behind a hover query`);
+
+  // 13. The chrome holds still. A tab move, a push, a pop.
+  const has = (t, part) => t.parts.some((x) => x.startsWith(part));
+  await p.tap('.ws-tabrow a[href$="/patients/"]');
+  await p.waitForURL(/\/patients\/$/);
+  const tab = await transitionOf(p);
+  assert.equal(tab.nav, 'tab');
+  for (const name of ['app-bar', 'app-tabs']) assert.ok(has(tab, `::view-transition-old(${name})`) && has(tab, `::view-transition-new(${name})`), `tab move, ${name} on both sides: ${tab.parts}`);
+  assert.ok(has(tab, '::view-transition-old(root) app-fade-out') && !has(tab, '::view-transition-new(root)'), `the old page fades off the new one: ${tab.parts}`);
+  assert.deepEqual(tab.after, [], 'no name kept after the transition');
+  const pressed = await p.evaluate(async () => {
+    const a = document.querySelector('.pts-link');
+    a.click();
+    await new Promise((r) => setTimeout(r, 10));
+    return [...document.querySelectorAll('[data-app-leaving]')].map((e) => e.className);
+  }).catch(() => null);
+  if (pressed) assert.deepEqual(pressed, ['pts-link'], 'the row tapped stays pressed');
+  await p.waitForURL(/\/patients\/[0-9a-f-]+\/$/);
+  const push = await transitionOf(p);
+  assert.equal(push.nav, 'forward');
+  assert.deepEqual([...push.named].sort(), ['app-bar', 'app-tabs']);
+  for (const name of ['app-bar', 'app-tabs']) assert.ok(has(push, `::view-transition-old(${name})`) && has(push, `::view-transition-new(${name})`) && !has(push, `::view-transition-new(${name}) app-chrome-in`), `push, ${name} holds still: ${push.parts}`);
+  assert.ok(has(push, '::view-transition-new(root) app-in-right') && has(push, '::view-transition-old(root) app-out-left'));
+  assert.deepEqual(push.after, []);
+  // "Back to Patients": the page just left. It goes back to it.
+  const before = await p.evaluate(() => ({ index: navigation.currentEntry.index, entries: navigation.entries().length }));
+  await p.evaluate(() => [...document.querySelectorAll('a[href]')].find((a) => /^back\b/i.test((a.getAttribute('aria-label') || a.textContent).trim()) && a.getClientRects().length).click());
+  await p.waitForURL(/\/patients\/$/);
+  const pop = await transitionOf(p);
+  const after = await p.evaluate(() => ({ index: navigation.currentEntry.index, entries: navigation.entries().length }));
+  assert.equal(pop.nav, 'back');
+  assert.deepEqual(after, { index: before.index - 1, entries: before.entries }, `Back to Patients goes back: ${JSON.stringify([before, after])}`);
+  assert.ok(has(pop, '::view-transition-old(app-bar)') && has(pop, '::view-transition-new(app-bar)') && has(pop, '::view-transition-old(root) app-out-right'));
+  ok(`the top bar and the tab row hold still on a tab move, a push and a pop (their own groups, both pictures); the tab move fades the old page off the new; no name is kept after${pressed ? '; the row tapped stays pressed' : ''}; "Back to Patients" goes back in the history`);
+
+  // 13'. From a page scrolled down the tab row is above the screen: it is not named there, so nothing flies down across
+  // the bar; the next page's row comes in with its page. The bar, which sticks, still holds.
+  const scrolledTo = await p.evaluate(async () => {
+    const row = document.querySelector('.ws-tabrow');
+    if (document.documentElement.scrollHeight < innerHeight + 400) document.querySelector('.ws-main, main').style.paddingBottom = '1200px';
+    scrollTo(0, 400);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return { y: scrollY, rowBottom: row.getBoundingClientRect().bottom };
+  });
+  assert.ok(scrolledTo.rowBottom <= 0, `the tab row is scrolled off: ${JSON.stringify(scrolledTo)}`);
+  await p.evaluate(() => document.querySelector('.pts-link').click());
+  await p.waitForURL(/\/patients\/[0-9a-f-]+\/$/);
+  const far = await transitionOf(p);
+  assert.equal(far.nav, 'forward');
+  for (const name of ['app-tabs', 'ws-tab-on']) assert.ok(!has(far, `::view-transition-old(${name})`), `scrolled, no old ${name} to fly from: ${far.parts}`);
+  assert.ok(has(far, '::view-transition-new(app-tabs) app-chrome-in'), `the new row comes with its page: ${far.parts}`);
+  assert.ok(has(far, '::view-transition-old(app-bar)') && has(far, '::view-transition-new(app-bar)'), `the bar still holds: ${far.parts}`);
+  assert.deepEqual(far.after, []);
+  ok(`a push from Patients scrolled to ${scrolledTo.y}: the tab row off screen is not named (no group to fly), the new row comes in with its page, the bar holds`);
+
+  // 13''. A form sent on a line that fails late. The pressed look is let go after ten seconds (shortened here); the
+  // app says the page never started well after that. The typed words are protected again and the form can be sent.
+  await p.route('**/__app-check-hang', () => {});
+  const late = await p.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => realTimeout(r, ms));
+    const realTimeout = window.setTimeout;
+    window.setTimeout = (fn, ms, ...rest) => realTimeout(fn, ms === 10000 ? 60 : ms, ...rest);
+    const f = document.createElement('form');
+    f.method = 'post'; f.action = '/__app-check-hang';
+    f.innerHTML = '<input type="text" name="words"><button class="ws-btn">Save</button>';
+    document.querySelector('.ws-main, main').append(f);
+    const field = f.querySelector('input'), button = f.querySelector('button');
+    field.value = 'typed'; field.dispatchEvent(new Event('input', { bubbles: true }));
+    const typedStops = !window.flossifyApp.canRefresh();
+    button.click();
+    await wait(20);
+    const sent = { marked: f.hasAttribute('data-app-sent'), busy: button.getAttribute('aria-busy'), free: window.flossifyApp.canRefresh() };
+    await wait(300); // the "ten seconds"
+    const let_go = { marked: f.hasAttribute('data-app-sent'), busy: button.getAttribute('aria-busy') };
+    window.setTimeout = realTimeout;
+    window.flossifyApp.lineFailed(false);
+    const note = () => document.querySelector('.app-note').textContent;
+    const after = { note: note(), protectedAgain: !window.flossifyApp.canRefresh(), marked: f.hasAttribute('data-app-sent'), busy: button.getAttribute('aria-busy') };
+    // Sent again: not dropped as a second tap.
+    let stopped = null;
+    addEventListener('submit', (e) => { stopped = e.defaultPrevented; }, { once: true });
+    button.click();
+    await wait(20);
+    const again = { stopped, marked: f.hasAttribute('data-app-sent') };
+    window.flossifyApp.lineFailed('maybe');
+    const maybe = note();
+    // A link tapped afterwards that fails: no form was sent then, so nothing is said about one.
+    window.flossifyApp.lineFailed('maybe');
+    const noForm = note();
+    f.remove();
+    window.flossifyApp.markDirty(false);
+    return { typedStops, sent, let_go, after, again, maybe, noForm };
+  });
+  await p.unroute('**/__app-check-hang');
+  assert.deepEqual(late, {
+    typedStops: true,
+    sent: { marked: true, busy: 'true', free: true },
+    let_go: { marked: false, busy: null },
+    after: { note: 'Flossify could not be reached. Nothing was sent: what you typed is still here.', protectedAgain: true, marked: false, busy: null },
+    again: { stopped: false, marked: true },
+    maybe: 'Flossify did not answer. This may not have been saved: check before you send it again.',
+    noForm: 'Flossify did not answer. That page could not open: try again in a moment.',
+  }, JSON.stringify(late));
+  ok('a form sent, the line failing after the ten seconds: the note says nothing was sent (and "may not have been saved" for a line lost part-way), the typed words stop a refresh again, and the form can be sent again; with a line, no "No connection"');
+
+  // 14. A full-screen panel: its head stays, the note is drawn over it, the app is told.
+  await p.goto(`${base}/c/${slug}/`);
+  await clearCalls(p);
+  await p.tap('[data-cal-new]');
+  await waitCall(p, 'FlossifyShell', 'setChrome', (o) => o.overlay === true && o.swipeBack === false);
+  await p.waitForTimeout(500);
+  const panel = await p.evaluate(() => {
+    const d = document.querySelector('dialog[open]'), head = d.querySelector('.ws-panel-head'), inner = d.querySelector('.ws-panel-inner');
+    inner.scrollTop = 300;
+    const f = d.querySelector('input[type="text"], input[type="search"], textarea');
+    f.value = 'x'; f.dispatchEvent(new Event('input', { bubbles: true }));
+    window.flossifyApp.refreshRefused();
+    return { scrolled: inner.scrollTop, headTop: head.getBoundingClientRect().top, closeTop: d.querySelector('[data-ws-close]').getBoundingClientRect().top, same: getComputedStyle(head).backgroundColor === getComputedStyle(d).backgroundColor, enter: getComputedStyle(d).animationDuration };
+  });
+  assert.ok(panel.scrolled > 0 && panel.headTop === 0 && panel.closeTop >= 0 && panel.same, `the panel's head stays at the top on its own ground: ${JSON.stringify(panel)}`);
+  assert.equal(panel.enter, '0.42s');
+  await p.waitForSelector('.app-note[data-show]');
+  await p.waitForFunction(() => getComputedStyle(document.querySelector('.app-note')).opacity === '1');
+  const over = await p.evaluate(() => { const n = document.querySelector('.app-note'), r = n.getBoundingClientRect(); return { open: n.matches(':popover-open'), inPanel: !!n.closest('dialog[open]'), onScreen: r.width > 0 && r.top >= 0 && r.right <= innerWidth, can: window.flossifyApp.canRefresh() }; });
+  assert.deepEqual(over, { open: true, inPanel: true, onScreen: true, can: false }, JSON.stringify(over));
+  await p.waitForFunction(() => [...document.querySelectorAll('dialog[open] > .app-say')].some((e) => e.textContent.startsWith('Not refreshed')));
+  ok('a panel on a phone: 420 ms in, its head and Close stay at the top as it scrolls; the note is a popover inside the panel, so over it; its words are in the panel\'s live region; the app is told overlay');
+  await p.evaluate(() => document.querySelector('dialog[open] [data-ws-close]').click());
+  await waitCall(p, 'FlossifyShell', 'setChrome', (o) => o.overlay === false);
+
+  // 17. A download the app could not fetch; the line dropping and coming back.
+  await p.goto(`${base}/c/${slug}/finances/`);
+  await p.evaluate(() => window.flossifyApp.downloadFailed());
+  await p.waitForFunction(() => document.querySelector('.app-note[data-show]')?.textContent === 'That file could not be downloaded. Check your connection and try again.');
+  await clearCalls(p);
+  await ctx.setOffline(true);
+  await p.waitForFunction(() => document.querySelector('.app-note[data-show]')?.textContent === 'No connection. What is on screen may be out of date.');
+  await waitCall(p, 'FlossifyShell', 'notify', (o) => o.type === 'warning');
+  await clearCalls(p);
+  await ctx.setOffline(false);
+  await p.waitForFunction(() => document.querySelector('.app-note[data-show]')?.textContent === 'Connection is back.');
+  assert.deepEqual((await callsOf(p)).filter((c) => c.method === 'notify'), [], 'the line coming back is said, not felt');
+  ok('a failed download says so; the line dropping is a warning and one note, its return a note and no haptic');
+
+  // 15. Larger Text.
+  await p.evaluate(() => window.flossifyApp.textSize(200));
+  assert.equal(await p.evaluate(() => document.documentElement.style.getPropertyValue('--app-text')), '135%', 'capped at 135%');
+  const wide = [];
+  for (const path of ['/app/', '/find/', '/auth/login/?any=1', `/c/${slug}/`, `/c/${slug}/patients/`, `/c/${slug}/patients/${patientId}/`, `/c/${slug}/finances/`]) {
+    await p.goto(`${base}${path}`);
+    await p.waitForLoadState('load');
+    await p.waitForTimeout(700); // the page's own transition ends
+    assert.equal(await p.evaluate(() => getComputedStyle(document.documentElement).textSizeAdjust), '135%', `${path} keeps the size`);
+    if (await sideways(p)) wide.push(path);
+  }
+  assert.deepEqual(wide, [], `sideways scroll at 135%: ${wide}`);
+  await p.goto(`${base}/c/${slug}/patients/${patientId}/`);
+  const sized = await p.evaluate(() => ({ sheet: getComputedStyle(document.querySelector('.pp-sheet')).textSizeAdjust, field: getComputedStyle(document.querySelector('input:not([type="hidden"])')).textSizeAdjust }));
+  assert.deepEqual(sized, { sheet: '100%', field: '135%' }, JSON.stringify(sized));
+  await p.evaluate(() => window.flossifyApp.textSize(85));
+  const small = await p.evaluate(() => ({ page: getComputedStyle(document.documentElement).textSizeAdjust, field: getComputedStyle(document.querySelector('input:not([type="hidden"])')).textSizeAdjust }));
+  assert.deepEqual(small, { page: '85%', field: '100%' }, JSON.stringify(small));
+  await p.evaluate(() => window.flossifyApp.textSize(100));
+  ok('Larger Text: capped at 135%, kept from page to page, no sideways scroll at 390 on /app/, Find a clinic, the staff entrance, the Dashboard, Patients, the record and Finances; the paper sheets stay at 100%; at 85% fields stay at 100%');
+  assert.deepEqual(errors, [], `page errors: ${errors}`);
+  await ctx.close();
+}
+
+// 16. The booking's steps, and a refused form (no sign-in, so no service worker: the booking's answer is stood in for).
+{
+  const ctx = await appContext('light');
+  const p = await ctx.newPage();
+  const errors = [];
+  p.on('pageerror', (e) => errors.push(e.message));
+  await p.route('**/api/bookings', (r) => r.request().method() === 'POST'
+    ? r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ref: 'FL-TEST', cancelToken: 'x', reminder: false }) })
+    : r.continue());
+  await p.goto(`${base}/find/${slug}/book/`);
+  await p.waitForLoadState('load');
+  assert.deepEqual(await p.$$eval('a.ws-mark', (els) => els.map((a) => a.getAttribute('href'))).then((h) => [...new Set(h)]), ['/app/'], 'the Flossify mark goes to /app/');
+  const shownStep = () => p.evaluate(() => { const f = [...document.querySelectorAll('.cl-book .wiz[data-step]')].find((x) => !x.hidden); return { step: f.dataset.step, rises: getComputedStyle(f).animationName === 'app-step-in' }; });
+  assert.deepEqual(await shownStep(), { step: 'reason', rises: false }, 'the first step came with the page');
+  await waitCall(p, 'FlossifyShell', 'setChrome', (o) => o.swipeBack === true);
+  for (let i = 0; i < 6 && (await shownStep()).step !== 'who'; i++) {
+    await p.evaluate(() => { const f = [...document.querySelectorAll('.cl-book .wiz[data-step]')].find((x) => !x.hidden); const r = f.querySelector('input[type="radio"]:not(:checked)') || f.querySelector('input[type="radio"]'); if (r) { r.checked = true; r.dispatchEvent(new Event('input', { bubbles: true })); r.dispatchEvent(new Event('change', { bubbles: true })); } });
+    await p.waitForTimeout(700); // the slots for the choice arrive
+    await p.tap('[data-next]');
+    await p.waitForTimeout(60);
+    assert.equal((await shownStep()).rises, true, 'the next step rises into place');
+    await p.waitForTimeout(500);
+  }
+  assert.equal((await shownStep()).step, 'who');
+  await waitCall(p, 'FlossifyShell', 'setChrome', (o) => o.swipeBack === false && o.overlay === false);
+  assert.equal(await p.evaluate(() => window.flossifyApp.canRefresh()), true, 'choices alone are not typed words');
+  await p.fill('input[name="name"]', 'Test Person');
+  assert.equal(await p.evaluate(() => window.flossifyApp.canRefresh()), false, 'a name typed stops pull to refresh');
+  await clearCalls(p);
+  await p.focus('input[name="name"]');
+  await p.keyboard.press('Enter');
+  await p.waitForTimeout(250);
+  assert.deepEqual(await p.evaluate(() => [document.activeElement.name, document.querySelector('[data-error]').textContent]), ['phone', ''], 'Return on the name goes to the mobile number, with no error');
+  assert.deepEqual((await callsOf(p)).filter((c) => c.method === 'notify'), []);
+  await p.fill('input[name="phone"]', '0917 000 0000');
+  await p.check('input[name="consent"]');
+  await p.tap('[data-next]');
+  await p.waitForTimeout(400);
+  assert.equal((await shownStep()).step, 'confirm');
+  await clearCalls(p);
+  await p.tap('[data-next]');
+  await p.waitForSelector('[data-done-panel]:not([hidden])');
+  const done = await p.evaluate(() => { const d = document.querySelector('[data-done-panel]'); return { mark: getComputedStyle(d.querySelector('.pt-done-mark')).animationName, title: getComputedStyle(d.querySelector('[data-done-title]')).animationName, lastDelay: Math.max(...[...d.children].map((c) => parseFloat(getComputedStyle(c).animationDelay) * 1000)) }; });
+  assert.deepEqual(done, { mark: 'app-mark-pop', title: 'app-rise-in', lastDelay: 240 }, JSON.stringify(done));
+  await waitCall(p, 'FlossifyShell', 'pattern', (o) => o.name === 'confirm');
+  await waitCall(p, 'FlossifyShell', 'setChrome', (o) => o.swipeBack === true && o.typed === false);
+  assert.equal(await p.evaluate(() => window.flossifyApp.canRefresh()), true, 'booked: the form is put away');
+  await p.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null))));
+  assert.equal(await sideways(p), false);
+  ok('the booking: steps rise in (not the first), the swipe is held from the second step, a typed name stops pull to refresh, Return on the name goes to the number with no error; booked (stood in): the mark pops, the lines follow within 240 ms, the swipe and refresh are free again');
+
+  // A refused form drawn again with its answer: typed words, though no key was pressed on this page.
+  await p.goto(`${base}/me/`);
+  await p.fill('main form[method="post" i] input[type="tel"], main form[method="post" i] input[type="text"]', '12345');
+  await clearCalls(p);
+  await Promise.all([p.waitForNavigation(), p.evaluate(() => { const f = document.querySelector('main form[method="post" i]'); f.noValidate = true; f.requestSubmit(); })]);
+  await waitCall(p, 'FlossifyShell', 'notify', (o) => o.type === 'error');
+  await waitCall(p, 'FlossifyShell', 'setChrome', (o) => o.typed === true);
+  assert.equal(await p.evaluate(() => window.flossifyApp.canRefresh()), false);
+  const refusal = await p.evaluate(() => document.querySelector('[role="alert"]').textContent.trim());
+  await p.waitForFunction((words) => document.querySelector('.app-say[aria-live="assertive"]')?.textContent === words, refusal);
+  ok(`a refused form drawn again ("${refusal}"): an error, typed words with no key pressed, and the refusal put in the live region`);
   assert.deepEqual(errors, [], `page errors: ${errors}`);
   await ctx.close();
 }

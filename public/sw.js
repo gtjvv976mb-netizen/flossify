@@ -50,6 +50,9 @@
 const VERSION = 'v3';
 const CACHE = `flossify-${VERSION}`;
 const RECORD = `flossify-record-${VERSION}`;
+// The offline page is kept afresh whenever this file changes at all (install, below, puts it again under the same
+// name), so new words on it need no new VERSION. It tries again by itself: its own script asks /healthz, which is
+// never answered here (the last lines of the fetch handler), and loads the failed address on a yes (13 Nov 2026).
 const OFFLINE = '/offline/';
 const PRECACHE = [
   OFFLINE,

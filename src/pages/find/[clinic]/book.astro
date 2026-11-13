@@ -58,7 +58,7 @@ const closedFirst = [closedOn, soloAway].filter(Boolean).join(' ');
   <ClinicRoom keys={l.photoKeys} clinicId={l.id} narrow />
 
   <main id="main" class="pt-main cl-glass cl-book"
-    data-slug={l.slug} data-name={l.name} data-phone={l.phone} data-workspace={l.workspace ? '1' : '0'}
+    data-slug={l.slug} data-name={l.name} data-address={l.address} data-phone={l.phone} data-workspace={l.workspace ? '1' : '0'}
     data-hours={JSON.stringify(l.hours)}
     data-dentists={JSON.stringify(dentists.map((d) => ({ slug: d.slug, name: d.name, short: shortName(d.name), days: at(d)?.days ?? [], hours: at(d)?.hours ?? {}, away: away[d.slug] ?? [] })))}
     data-services={JSON.stringify(fees.map((f) => ({ id: f.id, name: f.name, minutes: f.minutes, price: priceText(f) })))}
@@ -223,7 +223,10 @@ const closedFirst = [closedOn, soloAway].filter(Boolean).join(' ');
         <p class="pt-error" data-undo-error role="alert" hidden></p>
         <p class="ws-callout cl-callout cl-done-note">
           <Icon name="info" />
-          <span>Changed your mind within three minutes? Undo frees the slot at once, and no reminder follows. After that, cancel under <a href="/me/" class="pt-link pt-link-reach">My visits</a> or by calling {l.phone}. The clinic sees this booking on its schedule the moment you confirm.</span>
+          {/* A request holds no time and is on no calendar yet, so its note promises neither. */}
+          {l.workspace
+            ? <span>Changed your mind within three minutes? Undo frees the slot at once, and no reminder follows. After that, cancel under <a href="/me/" class="pt-link pt-link-reach">My visits</a> or by calling {l.phone}. The clinic sees this booking on its schedule the moment you confirm.</span>
+            : <span>Changed your mind within three minutes? Undo takes the request back at once. After that, see it under <a href="/me/" class="pt-link pt-link-reach">My visits</a>, or call {l.phone}. The clinic confirms the time with you.</span>}
         </p>
       </section>
     </div>
@@ -243,6 +246,7 @@ const closedFirst = [closedOn, soloAway].filter(Boolean).join(' ');
   <script>
     import { manilaNow, dayLabel, dentistDaysText, slotWords } from '../../../lib/availability';
     import { svgFor } from '../../../components/ws/icons';
+    import { icsVisit } from '../../../lib/ics';
 
     // Steps by name, and only the ones in her flow: Dentist only where there is a choice, When skipped while a
     // time tapped on Find a clinic still fits. The page holds one time (`chosen`): the When radios, the strip's
@@ -485,9 +489,11 @@ const closedFirst = [closedOn, soloAway].filter(Boolean).join(' ');
       return '';
     }
 
+    // The day a request asks for, as every other date on the patient side reads: "Fri 20 Nov", never the field's 2026-11-20.
+    const reqDay = () => (val('reqDate') ? dayLabel(val('reqDate')) : '');
     function summary() {
       const d = dentistNow();
-      const when = ws ? (chosen ? `${chosen.dayLabel}, ${chosen.label}` : '') : `${val('reqDate')}, ${val('reqTime').toLowerCase()} (to be confirmed)`;
+      const when = ws ? (chosen ? `${chosen.dayLabel}, ${chosen.label}` : '') : `${reqDay()}, ${val('reqTime').toLowerCase()} (to be confirmed)`;
       const who = val('who') === 'other' ? `${val('patientName')} (booked by ${val('name')})` : val('name');
       const rows: [string, string][] = [['Clinic', clinicName], ['Visit', `${chosenLabel('reason') || service().name} · ${service().price}`]];
       if (dentists.length > 0) rows.push(['Dentist', d?.name ?? 'Any available dentist']);
@@ -555,7 +561,7 @@ const closedFirst = [closedOn, soloAway].filter(Boolean).join(' ');
         next.disabled = false; setNext(ws ? 'Confirm booking' : 'Send request', 'ok'); return;
       }
       const ref = res.ref as string;
-      const booking = { ref, cancelToken: res.cancelToken, slug, clinic: clinicName, service: chosenLabel('reason') || service().name, dentist: d?.name ?? 'Any dentist', slot: ws ? chosen!.at : `${val('reqDate')} ${val('reqTime')}`, label: ws ? `${chosen!.dayLabel}, ${chosen!.label}` : `${val('reqDate')}, ${val('reqTime')} (requested)`, name: val('who') === 'other' ? val('patientName') : val('name'), phone: val('phone'), status: ws ? 'booked' : 'requested', madeAt: Date.now(), returning: !!res.returning, chartNo: res.chartNo };
+      const booking = { ref, cancelToken: res.cancelToken, slug, clinic: clinicName, service: chosenLabel('reason') || service().name, dentist: d?.name ?? 'Any dentist', slot: ws ? chosen!.at : `${val('reqDate')} ${val('reqTime')}`, label: ws ? `${chosen!.dayLabel}, ${chosen!.label}` : `${reqDay()}, ${val('reqTime').toLowerCase()} (requested)`, name: val('who') === 'other' ? val('patientName') : val('name'), phone: val('phone'), status: ws ? 'booked' : 'requested', madeAt: Date.now(), returning: !!res.returning, chartNo: res.chartNo };
       save([booking, ...load()]);
       form.hidden = true; $('[data-progress]').hidden = true; if (strip) strip.hidden = true;
       const donePanel = $('[data-done-panel]'); donePanel.hidden = false;
@@ -567,10 +573,11 @@ const closedFirst = [closedOn, soloAway].filter(Boolean).join(' ');
       $('[data-ref]').textContent = ref;
       // The button that was pressed is gone with the form: the focus goes to what happened.
       $('[data-done-title]').focus({ preventScroll: true });
-      // Calendar file: an all-day marker for requests, the exact half hour for bookings.
-      const start = ws ? booking.slot.slice(0, 16).replace(/[-:]/g, '') + '00' : booking.slot.slice(0, 10).replace(/-/g, ''); // '2026-09-24T09:00:00+08:00' → 20260924T090000
-      const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Flossify//Visit//EN', 'BEGIN:VEVENT', `UID:${ref}@flossify`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,
-        ws ? `DTSTART;TZID=Asia/Manila:${start}` : `DTSTART;VALUE=DATE:${start}`, `SUMMARY:Dentist — ${clinicName}`, `DESCRIPTION:${booking.service} with ${booking.dentist}. Ref ${ref}.`, `LOCATION:${clinicName}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+      // Calendar file: the whole day for a request, which has no time yet; for a booking the time and the length
+      // the clinic holds (the service's minutes, as /api/bookings wrote it). The place is the clinic's own address.
+      const ics = icsVisit({ ref, start: booking.slot, minutes: ws ? service().minutes : undefined,
+        summary: `Dentist — ${clinicName}`, description: `${booking.service} with ${booking.dentist}. Ref ${ref}.`,
+        location: [clinicName, main.dataset.address].filter(Boolean).join(', ') });
       ($('[data-ics]') as HTMLAnchorElement).href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
       // Three-minute undo, counted down where the patient can see it.
       let left = 180; const secs = $('[data-undo-secs]'), undo = $('[data-undo]') as HTMLButtonElement, undoWords = $('[data-undo-words]'), undoErr = $('[data-undo-error]');

@@ -106,6 +106,24 @@ CI already checks 1, 2 (signed out) and 18 in the simulator; the rest needs a fi
     asks first. A *Back to …* link in a sheet: the page underneath keeps its visit and anything typed.
 18. With the line off, the app shows its offline page; pull to refresh there: it tries the site again.
 
+19. On an iPad, press and hold a visit on the calendar, then drag: it lifts and moves. A swipe over a card only scrolls
+    the day.
+20. Sign with a finger while the palm rests on the pad, and with a Pencil: one clean stroke each time.
+21. Long-press the app's icon: Find a clinic, My visits and Clinic sign-in each open their page; none takes a tablet
+    out of a patient's forms.
+22. With VoiceOver on, a two-finger scrub goes back; a save and a refusal are spoken; the launch screen says
+    "Flossify is loading".
+23. Settings → Display & Text Size → Larger Text at the largest: `/app/`, Find a clinic, the Dashboard, Patients and a
+    patient's forms under `/f/` read larger with no sideways scroll; the four tabs still show their whole words.
+24. With a full-screen panel scrolled down, tap the status bar: the panel goes to its top. Its Close stays in reach.
+25. Airplane Mode, then tap a link and send a form: the page stays, a note says nothing was sent, and the words are
+    still there. Turn the line back on and send again: once.
+26. In dark mode, *Done* on a sheet and the buttons of an alert are readable; the Home Screen icon has its dark look.
+27. New booking on an iPhone: the Date and Time fields sit side by side inside the panel.
+
+(`scripts/dev/app/app-shell-check.mjs` runs with any Chromium: `PW_CHROMIUM=<binary>`. `npm run icons` also draws
+`AppIcon-dark.png`. `cap sync` copies `www/offline.html` into the Xcode project again.)
+
 `scripts/dev/app/app-shell-check.mjs` and `scripts/dev/app/app-safe-areas.mjs` check the website's half (what the page asks
 the app for, and where it draws) in Chromium; this list is for the native half.
 

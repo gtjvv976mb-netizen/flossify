@@ -127,7 +127,9 @@ tr:hover .fin-row-link .fin-person-name { color: var(--ws-teal-ink); }
 @media (max-width: 767px) {
   /* The main action on its own row at the top of the card, the tabs under it on the hairline. */
   .fin-head { flex-direction: column-reverse; align-items: stretch; padding: 1rem 1rem 0; }
-  .fin-head-go { margin-bottom: 0.25rem; }
+  /* Two buttons side by side need 310px: under 350 or so (a small phone, a slim Split View) the second goes below
+     rather than pushing the page sideways. */
+  .fin-head-go { margin-bottom: 0.25rem; flex-wrap: wrap; }
   .fin-head-go > .ws-btn { flex: 1 1 auto; }
   .fin-bar { padding: 0.875rem 1rem; }
   .fin-bar > .ws-seg { width: 100%; }
