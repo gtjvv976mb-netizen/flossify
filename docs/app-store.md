@@ -72,12 +72,17 @@ party for advertising.
 | Data type | Collected | Linked to the person | Tracking | Purpose |
 |---|---|---|---|---|
 | Health and fitness → Health | Yes (clinic staff record it; patients answer the medical history) | Yes | No | App functionality |
-| Contact info → Name, Phone number, Email address | Yes | Yes | No | App functionality |
+| Contact info → Name, Phone number, Email address, Physical address (a patient's home address) | Yes | Yes | No | App functionality |
 | User content → Photos or videos (X-rays and files), Other user content (notes, signatures) | Yes | Yes | No | App functionality |
 | Identifiers → User ID | Yes (staff accounts) | Yes | No | App functionality |
-| Usage data, Diagnostics, Location, Financial info (card numbers) | No | | | |
+| Financial info → Other financial info (what a patient owes and has paid, as the clinic records it) | Yes | Yes | No | App functionality |
+| Sensitive info (senior and PWD card numbers on statements) | Yes | Yes | No | App functionality |
+| Usage data, Diagnostics, Location, Payment info (card numbers) | No | | | |
 
-(Amounts on statements are not "financial info" in Apple's sense, which is card and bank details; Flossify stores none.)
+(Entered in App Store Connect on 13 Nov 2026 as ten data types, each used for app functionality, linked to the person and
+not used for tracking. Amounts on statements are declared as *Other financial info*, and senior or PWD card numbers as
+*Sensitive info*: declaring more is the safe side for an app that holds health records. Card and bank details are not
+collected; Flossify stores none. The answers are saved there but not yet published: the owner presses Publish.)
 
 ## Screenshots
 
