@@ -1,14 +1,15 @@
 # Flossify on the App Store: what to submit
 
 Everything here is ready to paste into App Store Connect except what only the owner can supply, marked **Owner**.
+Brought up to date after the polish round of 13 Nov 2026 (`docs/features/ios-app.md`, "The polish round").
 Words follow `docs/glossary.md` (a *visit*, never an appointment; *statement*, never an invoice). Prices and claims
 name only what is live (`CLAUDE.md`, "Lists name only what is live").
 
 ## The account (Owner)
 
-- **An Apple Developer Program membership as an organisation**, in Flossify's company name, with a D-U-N-S number
-  (99 USD a year). Apple asks that apps holding health records come from an organisation, not a person (guideline
-  5.1.1(ix)). Only the owner can enrol: it is the company's legal identity and payment.
+- **The Apple Developer account is now an organisation** (the owner, 13 Nov 2026). Apple asks that apps holding
+  health records come from an organisation, not a person (guideline 5.1.1(ix)), so this was the first thing to settle.
+  Only the owner signs in to it and enters its password or keys.
 - In App Store Connect, a new app: platform iOS, name **Flossify**, primary language English (U.S.), bundle id
   `ph.flossify.app`, SKU `flossify-ios`.
 - In Xcode: *App* target → Signing & Capabilities → Team. Then Product → Archive → Distribute App → App Store Connect.
@@ -79,9 +80,10 @@ party for advertising.
 
 ## Screenshots
 
-Required: 6.9-inch iPhone (1320 × 2868) and 13-inch iPad (2064 × 2752). The CI run (`.github/workflows/ios-app.yml`)
-photographs the public screens on the newest iPhone Pro and iPad Pro simulators at their native sizes; its artifact
-`ios-simulator` holds them. Screens of a clinic's workspace must show a demo clinic with made-up patients, never a real
+Required: 6.9-inch iPhone (1320 × 2868) and 13-inch iPad (2064 × 2752). To get them: Actions → iOS app → Run workflow,
+tick *App Store sizes* (`.github/workflows/ios-app.yml`). The run photographs the public screens on the biggest iPhone
+(the 6.9-inch Pro Max) and the 13-inch iPad Pro simulators at their native sizes; its artifact `ios-simulator` holds
+them. Without the tick it uses the newest iPhone Pro, which is not the App Store's size. Screens of a clinic's workspace must show a demo clinic with made-up patients, never a real
 clinic's, and no invented clinic branding in imagery (`CLAUDE.md`, standing constraints).
 
 ## App Review
@@ -97,21 +99,31 @@ account for the reviewer, and texts not needed (the review account signs in with
 > • Printing through iOS's print sheet, on the paper each page is made for (A4, A5, a receipt roll).
 > • Files through the share sheet; patient files are never offered to Photos.
 > • Offline: a patient chart open in the last four hours keeps working and sends its changes when the line is back.
+>   When the line drops as a link is tapped or a form is sent, the page stays with the words typed on it and says that
+>   nothing was sent. When the site cannot be reached at all, the app shows its own offline page; Try again returns to
+>   the page the person was on.
 > • Privacy: the app switcher shows the Flossify mark instead of a patient record.
+> • Home Screen quick actions (long-press the app's icon): Find a clinic, My visits, Clinic sign-in.
+> • Larger Text: on an iPhone the app follows the size chosen in iOS's Settings.
+> • VoiceOver: a two-finger scrub goes back, and a save or a refusal is spoken.
 >
 > To see it: sign in with Clinic sign-in → Email ____ / Password ____. On the Dashboard, open a patient, tap a tooth on
 > the chart and pick a finding (haptic); tap Print the record (iOS print sheet); open X-rays and files and download one
-> (share sheet). For the patient side, tap I'm a Patient on the first screen.
+> (share sheet). For the patient side, tap I'm a Patient on the first screen. With Airplane Mode on, tap a link: the
+> page stays and says nothing was sent.
+>
+> Deleting an account: My page, at the foot, Delete my account. It sends a request that Flossify confirms. An owner's
+> request closes the whole clinic; anyone else's closes only their own sign-in.
 >
 > Clinics open their account and pay for Flossify at flossify.ph, outside the app.
 
 ## Questions only the owner can answer before submitting
 
-- **Deleting an account from inside the app (5.1.1(v)).** A clinic can be opened from inside the app (/start/), so Apple
-  requires a way to start deleting the account in the app. For a health service Apple accepts a request that Flossify
-  completes, and explaining what the law keeps (a clinic's patient records, the audit log). Which records go, which stay
-  and for how long is a decision for the owner and the lawyer; then a *Close this clinic's account* request in Clinic
-  settings can be built.
+- **Deleting an account from inside the app (5.1.1(v)): built, no longer a question** (047, `src/lib/deletion.ts`).
+  A clinic can be opened from inside the app (/start/), so Apple requires a way to start deleting the account in the
+  app. It is on My page, at the foot: *Delete my account* sends a request (an owner's closes the whole clinic, anyone
+  else's only their own sign-in), and Flossify confirms it on `/admin/accounts/`. The reviewer's notes above say where
+  it is. What the privacy notice says about what the law keeps is still the lawyer's (see the checklist below).
 - **Paying (3.1.1, 3.1.3(c)).** The plan is paid with PayMongo from Clinic settings. Selling to a clinic for its staff
   is usually "enterprise services" (3.1.3(c)), which may pay outside Apple, but Apple decides. Nothing is paid while
   `BILLING_FINAL` is false. If Apple objects, the app can leave the payment button out and say to pay at flossify.ph.
@@ -119,3 +131,31 @@ account for the reviewer, and texts not needed (the review account signs in with
   clinic's written permission for the review notes, or /websites/ left out of the app.
 - **Password AutoFill:** the Team ID, then `/.well-known/apple-app-site-association` and the Associated Domains
   capability (`webcredentials:flossify.ph`).
+
+## What is left before Submit for Review
+
+The owner's, first. Each is a blank only the owner can fill; nothing here is made up for them.
+
+- [ ] **The privacy notice's placeholders, with the lawyer** (`/privacy/`): the data protection officer's name and
+      email, and the NPC registration number, or that line removed until registration is true. The notice's words are
+      a legal change, so the notice and its version are published together.
+- [ ] **A support URL that reaches a person** at Flossify. The site has none yet.
+- [ ] **The review clinic and its sign-in**: made for review, not listed, made-up patients, a staff account with a
+      password. Its email and password go in the two blanks of the reviewer's notes.
+- [ ] **Screenshots**: Actions → iOS app → Run workflow, tick *App Store sizes*; take them from the `ios-simulator`
+      artifact. Workspace screens come from the review clinic, never a real one.
+- [ ] **App Privacy answers** as in the table above, matching `mobile/ios/App/App/PrivacyInfo.xcprivacy`. If one
+      changes, the other changes with it.
+- [ ] **The age rating** questionnaire (*Medical/Treatment Information* applies).
+- [ ] **Availability**: the Philippines; *Apple silicon Mac* and *Apple Vision Pro* turned off.
+- [ ] **The SwiftCare permission**: the clinic's written permission ready for the review notes, or /websites/ left out
+      of the app.
+
+Then the rest:
+
+- [ ] The copyright line's legal name, and the Team in Xcode (Signing & Capabilities).
+- [ ] A build uploaded (Actions → iOS release → Run workflow, or Product → Archive on a Mac) and tried on a real
+      iPhone through TestFlight: the list in `mobile/README.md`, "What to check on a real device".
+- [ ] Paying: nothing is paid while `BILLING_FINAL` is false; the answer to Apple's question is above.
+- [ ] Password AutoFill, if wanted for the first release: the Team ID and the Associated Domains capability.
+- [ ] The reviewer's notes pasted, with both blanks filled.

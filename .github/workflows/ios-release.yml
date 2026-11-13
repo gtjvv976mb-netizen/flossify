@@ -90,24 +90,26 @@ jobs:
           </dict></plist>
           PLIST
 
-      - name: Archive (signed)
+      # Archived unsigned, signed at the export below. A signed archive asks Apple for a development profile, and a
+      # team with no registered device cannot have one ("Your team has no devices from which to generate a provisioning
+      # profile": seen on the owner's Mac, 13 Nov 2026). The export signs with the team's App Store profile, which
+      # needs no device. The app has no entitlements of its own, so nothing is lost by signing late.
+      - name: Archive (unsigned)
         working-directory: mobile/ios/App
         env:
           TEAM: ${{ secrets.APPLE_TEAM_ID }}
-          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
           set -o pipefail
           xcodebuild -project App.xcodeproj -scheme App -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Flossify.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER" \
-            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Development" \
+            DEVELOPMENT_TEAM="$TEAM" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             archive | tee "$RUNNER_TEMP/archive.log" | grep -E "error:|warning: .*Flossify|\*\* ARCHIVE" || true
           grep -q "\*\* ARCHIVE SUCCEEDED \*\*" "$RUNNER_TEMP/archive.log" || { grep -E "error:" "$RUNNER_TEMP/archive.log" | sort -u | head -40; exit 1; }
 
-      - name: Upload to App Store Connect
+      # Fails with "Error Downloading App Information" until the app exists in App Store Connect (Apps → New App,
+      # bundle id ph.flossify.app): a build can only be uploaded into an app that is already there.
+      - name: Sign and upload to App Store Connect
         env:
           KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}

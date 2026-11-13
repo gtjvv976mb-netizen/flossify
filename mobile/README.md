@@ -134,7 +134,9 @@ health records must come from an organisation, not a person (guideline 5.1.1(ix)
 Flossify's company name, with a D-U-N-S number.
 
 1. In Xcode, *App* target → Signing & Capabilities → Team: the owner's team. The bundle id is `ph.flossify.app`.
-2. Upload without a Mac: **Actions → iOS release → Run workflow** (`.github/workflows/ios-release.yml`) archives,
+2. First, once: in App Store Connect, Apps → New App (iOS, *Flossify*, bundle id `ph.flossify.app`, which Xcode
+   registered on 13 Nov 2026, SKU `flossify-ios`). Until the app is there an upload stops at "Error Downloading App
+   Information". Then upload without a Mac: **Actions → iOS release → Run workflow** (`.github/workflows/ios-release.yml`) archives,
    signs with an App Store Connect API key (cloud-managed signing, no certificate files) and uploads; the build number
    is the run number. It needs four repository secrets, listed at the top of the workflow. On a Mac instead: Product →
    Archive → Distribute App → App Store Connect → Upload. Then TestFlight for the clinic's own phones.
