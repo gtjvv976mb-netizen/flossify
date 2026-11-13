@@ -27,6 +27,7 @@ import { readPatientSession } from '../../../lib/patient-auth';
 import { publicRead } from '../../../lib/db';
 import { csrfOk, CSRF_MESSAGE } from '../../../lib/csrf';
 import { prettyPhone } from '../../../lib/messages';
+import { icsText, icsFold } from '../../../lib/ics';
 
 const session = readPatientSession(Astro.cookies);
 if (!session) return Astro.redirect('/me/', 303);
@@ -95,17 +96,17 @@ const isAhead = (v: Visit) => v.starts_at.getTime() > now && (v.status === 'book
 // A request has no agreed time yet, so there is nothing to confirm; the clinic texts one first.
 const canConfirm = (v: Visit) => isAhead(v) && v.status === 'booked' && v.placed;
 
-// The calendar file, same shape as the booking page writes: local Manila time, one event, the reference in the notes.
+// The calendar file, same shape as the booking page writes: local Manila time, one event, the reference in the notes;
+// its text escaped and its long lines folded as the booking page's are (src/lib/ics.ts).
 const stamp = (d: Date) => { const p = parts(d, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }); return `${p.year}${p.month}${p.day}T${p.hour}${p.minute}${p.second}`; };
-const esc = (s: string) => s.replace(/([\\,;])/g, '\\$1').replace(/\r?\n/g, ' ');
 function ics(v: Visit): string {
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Flossify//Visit//EN', 'BEGIN:VEVENT',
     `UID:${v.appointment_id}@flossify`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')}`,
     `DTSTART;TZID=Asia/Manila:${stamp(v.starts_at)}`, `DTEND;TZID=Asia/Manila:${stamp(v.ends_at)}`,
-    `SUMMARY:${esc(`Dentist — ${v.clinic_name}`)}`,
-    `DESCRIPTION:${esc([v.reason, v.dentist ? `with ${v.dentist}` : '', v.public_ref ? `Ref ${v.public_ref}.` : ''].filter(Boolean).join(' '))}`,
-    `LOCATION:${esc([v.clinic_name, v.clinic_area].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
-  return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(lines.join('\r\n'));
+    `SUMMARY:${icsText(`Dentist — ${v.clinic_name}`)}`,
+    `DESCRIPTION:${icsText([v.reason, v.dentist ? `with ${v.dentist}` : '', v.public_ref ? `Ref ${v.public_ref}.` : ''].filter(Boolean).join(' '))}`,
+    `LOCATION:${icsText([v.clinic_name, v.clinic_area].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
+  return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(lines.map(icsFold).join('\r\n') + '\r\n');
 }
 const tel = (s: string) => `tel:${s.replace(/[^\d+]/g, '')}`;
 // The calendar leaf on each row: "Thu" · "24" · "Sep" (and the year when it is not this one).
