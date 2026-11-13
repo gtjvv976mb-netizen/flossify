@@ -65,7 +65,8 @@ The owner's decisions, in force, with the owner's words and dates where the reco
 ### The home page, its film and the staff entrance (home-film.md, sign-in-and-people.md)
 - **The owner's layout (25 Sep 2026):** *Your clinic, in the Web* — "Switch to paperless, seamless, effortless daily
   operations:" with *Open your clinic in the web* (/start/) and *I'm a Patient* (/find/); Services; How it works;
-  Pricing, ₱800 a month per branch, everything included (`PRICE_PER_BRANCH`, the one number); Partners (clinics really
+  Pricing, ₱400 a month per branch, everything included (`PRICE_PER_BRANCH`, the one number; the owner, 13 Nov 2026:
+  "make it 400 pesos only per month per branch", ₱800 before); Partners (clinics really
   listed); How to register; Know the team (real people only, left out while empty). Lists name only what is live.
 - **The film is the ground of the whole home page**: the owner asked for "a video that shoots all the page". One 39.8s
   film, street to chair, scrubbed by the page's scroll; its times live only in `src/data/film.ts`. H.264, 5-frame GOP.
@@ -323,7 +324,7 @@ Breaking one could harm a patient, leak data, weaken consent or privacy, misstat
 - **Settings are read from `process.env` at run time, never `import.meta.env`** (a build once carried `DATABASE_URL` and
   `SESSION_SECRET`); `src/lib/env.ts` refuses an unsafe production start (backend.md).
 - **`security.allowedDomains` in `astro.config.mjs`** lists the hosts (`EXTRA_HOSTS`), or every form post is 403.
-- **Never edit an applied migration or `schema.sql`**: a change is a new numbered file (the newest is 047), with no
+- **Never edit an applied migration or `schema.sql`**: a change is a new numbered file (the newest is 048), with no
   BEGIN/COMMIT inside. Never put `--allow-late` in `render.yaml` or the `Procfile`.
 - **`npm run db:setup` drops the database**: never run it, or a test, against `flossify_dev` or without `DB=` naming a
   throwaway database. `seed.ts` and `SHOW_DEMO_LOGINS` are local only. After a merge, check `/healthz` answers 200.

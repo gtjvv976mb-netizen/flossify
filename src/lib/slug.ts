@@ -33,7 +33,7 @@ export const RESERVED: ReadonlySet<string> = new Set([
   'find', 'start', 'me', 'c', 'f', 'auth', 'admin', 'api', 'coverage', 'websites', 'privacy', 'offline', 'uploads',
   'samples', 'video', 'img', 'icons', 'fonts', 'shots', 'healthz', 'clinics', 'today', 'dentists', 'sign-in', 'login',
   'logout', 'account', 'settings', 'help', 'about', 'contact', 'terms', 'pricing', 'blog', 'www', 'mail', 'app',
-  'sitemap', '404', '500',
+  'sitemap', '404', '500', 'support',
 ]);
 
 async function unique(base: string, fallback: string, fn: 'clinic_slug_taken' | 'staff_slug_taken'): Promise<string> {

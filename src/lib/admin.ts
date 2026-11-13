@@ -407,7 +407,7 @@ export async function billingAction(form: FormData, who: Actor): Promise<Billing
     else if (!(PLAN_IDS as string[]).includes(plan)) error = 'Pick a plan from the list.';
     else if (!(SUB_STATUSES as string[]).includes(status)) error = 'Pick a status from the list.';
     else if (!ISO_DAY.test(ends) || Number.isNaN(Date.parse(`${ends}T00:00:00Z`))) error = 'The trial end needs a date.';
-    else if (!Number.isFinite(price) || price > PRICE_MAX) error = 'Enter the price per branch in pesos, like 800 or 800.50 (from 0 up to 99,999.99).';
+    else if (!Number.isFinite(price) || price > PRICE_MAX) error = 'Enter the price per branch in pesos, like 400 or 400.50 (from 0 up to 99,999.99).';
     else if (notes.length > NOTES_MAX) error = `Keep the note under ${NOTES_MAX} characters.`;
     if (error) return { ok: false, action, error, group };
     // The trial ends at the end of that Manila day.

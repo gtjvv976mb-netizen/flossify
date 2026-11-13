@@ -74,7 +74,7 @@ const tracks: { id: string; who: string; icon: IconName; steps: typeof clinicSte
   { id: 'patients', who: 'For patients', icon: 'user', steps: patientSteps, href: '/find/', cta: 'Find a clinic' },
 ];
 
-// Pricing — everything the ₱800 includes.
+// Pricing — everything the price (PRICE_PER_BRANCH) includes.
 const included = [
   'Online booking and your clinic page',
   'The Dashboard: today’s calendar and patients',
@@ -103,7 +103,7 @@ const lastIsTeam = TEAM.length > 0;
 
 <Base
   title="Flossify — your clinic, in the web"
-  description="Practice software for Philippine dental clinics. Switch to paperless, seamless, effortless daily operations: online booking, today’s calendar, charting, texts, billing and claims, for ₱800 a month."
+  description={`Practice software for Philippine dental clinics. Switch to paperless, seamless, effortless daily operations: online booking, today’s calendar, charting, texts, billing and claims, for ${peso(PRICE_PER_BRANCH)} a month.`}
 >
   <!-- The film is the ground of the whole page: one fixed layer, one uncut
        take, scrubbed by the document's own scroll. Every section is a page
