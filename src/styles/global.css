@@ -764,6 +764,16 @@ p { text-wrap: pretty; }
 .field :is(input:not([type="checkbox"], [type="radio"]), select, textarea):hover { border-color: var(--ws-field-line-hover); }
 .field :is(input:not([type="checkbox"], [type="radio"]), select, textarea):focus { outline: none; border-color: var(--ws-teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws-teal) 24%, transparent); }
 .field :is(input:not([type="checkbox"], [type="radio"]), select, textarea):user-invalid { border-color: var(--ws-red); }
+/* iOS only (-webkit-touch-callout exists nowhere else): a date or time field with the system look keeps a least width
+   of its own, so beside another field in a narrow panel it ran past the screen's edge (New booking's Date and Time on
+   an iPhone). Without the system look it takes the width its column gives it; the picker it opens is unchanged. */
+@supports (-webkit-touch-callout: none) {
+  .field { min-width: 0; }
+  .field input:is([type="date"], [type="time"], [type="datetime-local"], [type="month"]) {
+    min-width: 0; max-width: 100%; box-sizing: border-box; -webkit-appearance: none; appearance: none;
+  }
+  .field input:is([type="date"], [type="time"], [type="datetime-local"], [type="month"])::-webkit-date-and-time-value { min-width: 0; margin: 0; text-align: left; }
+}
 
 /* A checkbox with its words: the whole line is the target (44px). */
 .check { display: inline-flex; align-items: center; gap: 0.6rem; min-height: 44px; font-size: 0.92rem; color: var(--c-ink-2); cursor: pointer; }
@@ -2489,7 +2499,7 @@ html:has(.ws-panel[open]) { overflow: hidden; }
     -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   }
   .ws-tabrow-item {
-    display: flex; flex: 1 1 0; align-items: center; justify-content: center; gap: 0.375rem; min-width: 0; min-height: 44px; padding: 0 0.375rem;
+    display: flex; flex: 1 1 0; align-items: center; justify-content: center; gap: 0.375rem; min-width: 0; min-height: 44px; padding: 0 0.25rem;
     border-radius: var(--ws-r-ctl); font-size: 14px; font-weight: 500; color: var(--c-ink-2); white-space: nowrap;
     transition: background-color 180ms ease, color 180ms ease;
   }
@@ -2498,6 +2508,17 @@ html:has(.ws-panel[open]) { overflow: hidden; }
   .ws-tabrow-item:hover { background: var(--ws-hover); color: var(--c-ink); }
   .ws-tabrow-item[aria-current="page"] { background: var(--ws-teal-tint); color: var(--ws-teal-ink); font-weight: 600; }
   .ws-tabrow-item[aria-current="page"] .ws-icon { color: var(--ws-teal-ink); }
+  /* Four words in four equal tabs: "Dashboard" in the chosen tab's weight is 74px and had 72 at 390, so it was
+     cut ("Dashboa…"); the padding above gives it 76. Narrower than that (a small phone, Display Zoom, an iPad's
+     slim Split View at 320) equal tabs cannot hold it, so each tab is as wide as its word and they share what is
+     left; under 360 the gaps tighten too. Every tab stays 44px tall and the words stay 14px. */
+  @media (max-width: 389px) {
+    .ws-tabrow-item { flex: 1 1 auto; }
+  }
+  @media (max-width: 359px) {
+    .ws-tabrow { gap: 0.25rem; padding: 0.25rem; }
+    .ws-tabrow-item { padding: 0 0.125rem; }
+  }
 
   .ws-phone-title { display: block; margin: 0.25rem 0.25rem 0; font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -0.015em; }
   .ws-main { padding: 0.75rem 0.75rem 3rem; }

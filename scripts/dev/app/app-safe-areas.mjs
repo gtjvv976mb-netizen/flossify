@@ -173,6 +173,21 @@ for (const d of DEVICES) {
       await p.waitForTimeout(500);
       const id = await p.evaluate(() => document.querySelector('dialog.ws-panel[open]').id);
       await check(p, d, `${it.label}: a side panel (#${id})`, `dialog.ws-panel[open] .ws-panel-inner`);
+      // Scrolled part-way: on a phone the panel's head stays at the top, so its Close button is still below the status
+      // bar and no word of the panel's body is under the clock without a ground. And the note the app shows over an
+      // open panel (pull to refresh refused) sits below the status bar, inside the screen.
+      const held = await p.evaluate(() => {
+        const dlg = document.querySelector('dialog.ws-panel[open]'), inner = dlg.querySelector('.ws-panel-inner'), head = dlg.querySelector('.ws-panel-head');
+        inner.scrollTop = 240;
+        window.flossifyApp.refreshRefused();
+        const close = dlg.querySelector('[data-ws-close]').getBoundingClientRect(), h = head.getBoundingClientRect(), note = document.querySelector('.app-note').getBoundingClientRect();
+        const out = { scrolled: inner.scrollTop, closeTop: Math.round(close.top), headTop: Math.round(h.top), headBottom: Math.round(h.bottom), noteTop: Math.round(note.top), noteIn: note.left >= 0 && note.right <= innerWidth && note.width > 0 };
+        inner.scrollTop = 0;
+        return out;
+      });
+      if (d.phone && held.scrolled > 0 && !(held.headTop === 0 && held.closeTop >= d.insets.top && held.headBottom > d.insets.top)) bad(`${d.name} ${it.label}: the panel's head scrolled away (${JSON.stringify(held)})`);
+      else if (held.noteTop < d.insets.top || !held.noteIn) bad(`${d.name} ${it.label}: the note over the panel is under the status bar or off the screen (${JSON.stringify(held)})`);
+      else ok(`${d.name} ${it.label}: ${d.phone && held.scrolled > 0 ? `scrolled, the panel's head stays (Close at ${held.closeTop} px); ` : ''}the note over the panel starts at ${held.noteTop} px, below the status bar`);
       await p.keyboard.press('Escape');
       await p.waitForTimeout(400);
     }

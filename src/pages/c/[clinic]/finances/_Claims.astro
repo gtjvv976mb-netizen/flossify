@@ -313,7 +313,7 @@ const help = 'fin-help';
         <input type="hidden" name="act" value="new" />
         <div class="field">
           <label class="meta" for="claim-search">Patient</label>
-          <input id="claim-search" type="search" placeholder="Type a name or chart no. to narrow the list" autocomplete="off" data-claim-search />
+          <input id="claim-search" type="search" placeholder="Type a name or chart no. to narrow the list" autocomplete="off" spellcheck="false" enterkeyhint="search" autocapitalize="none" autocorrect="off" data-claim-search />
           <select name="patient" required aria-label="Patient" data-claim-patients>
             <option value="" disabled selected={!draft.patient}>Choose a patient</option>
             {data.recent.map((r) => (

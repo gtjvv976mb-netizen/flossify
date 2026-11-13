@@ -103,30 +103,76 @@ const { label, strokes = null, error = '', id = 'sp' } = Astro.props;
       const y = Math.round(((e.clientY - r.top) / r.height) * H);
       return [Math.max(0, Math.min(W, x)), Math.max(0, Math.min(H, y))];
     };
+    // One hand signs at a time: the stroke belongs to the pointer that began it. A palm or a second finger landing
+    // on the pad meanwhile is not ink, and its lifting does not end the stroke.
     let drawing: [number, number][] | null = null;
-    canvas.addEventListener('pointerdown', (e) => {
-      if (strokes.length >= 80 || points() >= 5800) return;
-      e.preventDefault();
-      canvas.setPointerCapture(e.pointerId);
-      drawing = [at(e)];
-      strokes.push(drawing);
-      redraw();
-    });
-    canvas.addEventListener('pointermove', (e) => {
-      if (!drawing) return;
-      e.preventDefault();
+    let pen: number | null = null;
+    let penType = '';
+    // A hand resting on the pad can land before the stroke the person means. A touch that lands while another touch
+    // holds the pad waits here with its own path: if the holder has stayed where it landed (within REST) and the
+    // waiting one moves away, the waiting one was the signing finger, so it takes the pad and the still mark goes.
+    // With one finger nothing ever waits, so signing with a finger is as it always was.
+    const REST = 24;
+    const waiting = new Map<number, [number, number][]>();
+    const rested = (s: [number, number][]) => s.every((q) => Math.hypot(q[0] - s[0][0], q[1] - s[0][1]) <= REST);
+    const trace = (s: [number, number][], e: PointerEvent, room: number) => {
       const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [e];
       for (const ev of events.length ? events : [e]) {
         const p = at(ev);
-        const last = drawing[drawing.length - 1];
-        if (Math.hypot(p[0] - last[0], p[1] - last[1]) >= 2 && points() < 5900) drawing.push(p);
+        const last = s[s.length - 1];
+        if (Math.hypot(p[0] - last[0], p[1] - last[1]) >= 2 && room - s.length > 0) s.push(p);
       }
+    };
+    // The pad changes hands: what the old pointer drew is not ink, and its lifting later ends nothing.
+    const take = (id: number, type: string, path: [number, number][]) => {
+      const old = pen;
+      if (drawing) strokes.pop();
+      if (old !== null) { try { canvas.releasePointerCapture(old); } catch { /* already gone */ } }
+      waiting.clear();
+      pen = id;
+      penType = type;
+      try { canvas.setPointerCapture(id); } catch { /* the pointer is gone */ }
+      drawing = path;
+      strokes.push(drawing);
+    };
+    canvas.addEventListener('pointerdown', (e) => {
+      // A right-click or a ctrl-click opens the browser's menu and its release never arrives: it is not a stroke.
+      if (e.pointerType === 'mouse' && (e.button !== 0 || e.ctrlKey)) return;
+      if (pen !== null) {
+        // A pen takes the pad from a resting hand at once. A second touch waits, in case the first was the hand.
+        if (penType !== 'touch') return;
+        if (e.pointerType === 'touch') { waiting.set(e.pointerId, [at(e)]); return; }
+        if (e.pointerType !== 'pen') return;
+        e.preventDefault();
+        take(e.pointerId, e.pointerType, [at(e)]);
+        redraw();
+        return;
+      }
+      if (strokes.length >= 80 || points() >= 5800) return;
+      e.preventDefault();
+      take(e.pointerId, e.pointerType, [at(e)]);
       redraw();
     });
-    const end = () => { if (drawing) { drawing = null; save(); } };
+    canvas.addEventListener('pointermove', (e) => {
+      const path = waiting.get(e.pointerId);
+      if (path) {
+        if (!drawing || !rested(drawing)) { waiting.delete(e.pointerId); return; }
+        e.preventDefault();
+        trace(path, e, 5900 - points() + drawing.length);
+        if (!rested(path)) { take(e.pointerId, e.pointerType, path); redraw(); }
+        return;
+      }
+      if (!drawing || e.pointerId !== pen) return;
+      e.preventDefault();
+      trace(drawing, e, 5900 - points() + drawing.length);
+      redraw();
+    });
+    // A stroke the system takes away (pointercancel, a lost capture) ends where it was: what was drawn is kept.
+    const end = (e: PointerEvent) => { waiting.delete(e.pointerId); if (e.pointerId !== pen) return; pen = null; waiting.clear(); if (drawing) { drawing = null; save(); } };
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
-    root.querySelector('[data-sp-clear]')!.addEventListener('click', () => { strokes = []; redraw(); save(); });
+    canvas.addEventListener('lostpointercapture', end);
+    root.querySelector('[data-sp-clear]')!.addEventListener('click', () => { strokes = []; drawing = null; pen = null; waiting.clear(); redraw(); save(); });
     new ResizeObserver(() => size()).observe(canvas);
   }
 </script>

@@ -1169,9 +1169,12 @@ function start(boot: Boot) {
   frame.addEventListener('pointerleave', () => { if (!drag) slot.hidden = true; });
 
   // --- drag to move ----------------------------------------------------------------------------------------
-  // Pointer events, a mouse or a finger. Six pixels of travel start a drag, so a click still opens the visit.
+  // Pointer events, a mouse or a finger. With a mouse, six pixels of travel start a drag, so a click still opens the
+  // visit. A finger or a pencil has to press and hold first (HOLD_MS without straying HOLD_SLOP): a hand that lands on
+  // a card and slides is scrolling the day, and a drop is a move the patient may be texted about, so it must be meant.
   // The ghost follows the hand, the slot under it shows where it would land, and the calendar scrolls at its edges.
-  type Drag = { el: HTMLButtonElement; c: Card; x0: number; y0: number; started: boolean; ghost: HTMLElement | null; grab: number; dur: number; dx: number; dy: number; w: number; h: number; lane: HTMLElement | null; min: number; fromLane: boolean; pid: number; time: string };
+  const HOLD_MS = 350, HOLD_SLOP = 8;
+  type Drag = { el: HTMLButtonElement; c: Card; x0: number; y0: number; started: boolean; ghost: HTMLElement | null; grab: number; dur: number; dx: number; dy: number; w: number; h: number; lane: HTMLElement | null; min: number; fromLane: boolean; pid: number; time: string; hold: number };
   let drag: Drag | null = null;
   let autoscroll = 0;
   function onDown(e: PointerEvent) {
@@ -1189,26 +1192,43 @@ function start(boot: Boot) {
     const colStart = S.view === 'week' && col ? M.startMs(col.dataset.lane!) : geo.dayStart;
     // (Half a pixel less, so a card let go where it was lands on its own quarter hour, never the one before.)
     const grab = fromLane || !col ? 0 : (e.clientY - col.getBoundingClientRect().top - 0.5) / mpx() - (M.spanOn(c, colStart).s - geo.start);
-    drag = { el: b, c, x0: e.clientX, y0: e.clientY, started: false, ghost: null, grab, dur, dx: e.clientX - r.left, dy: e.clientY - r.top, w: r.width, h: r.height, lane: null, min: 0, fromLane, pid: e.pointerId, time: b.querySelector('.cal-card-time')?.textContent ?? '' };
+    const d: Drag = { el: b, c, x0: e.clientX, y0: e.clientY, started: false, ghost: null, grab, dur, dx: e.clientX - r.left, dy: e.clientY - r.top, w: r.width, h: r.height, lane: null, min: 0, fromLane, pid: e.pointerId, time: b.querySelector('.cal-card-time')?.textContent ?? '', hold: 0 };
+    drag = d;
+    // A finger or a pencil: the card lifts when the hold is up, where the hand still is. Until then the browser is
+    // free to scroll (touch-action in cal.css), and a scroll that begins ends this with a pointercancel.
+    if (e.pointerType !== 'mouse') d.hold = window.setTimeout(() => { d.hold = 0; if (drag === d && !d.started) lift(d, true); }, HOLD_MS);
+  }
+  /** The drag begins: the ghost is made and put under the hand, and the card it came from dims. */
+  function lift(d: Drag, held: boolean) {
+    d.started = true; S.dragging = true;
+    try { d.el.setPointerCapture(d.pid); } catch { /* the pointer is gone */ }
+    // From the website's lane the card is drawn as it will sit on the grid — a column wide, as tall as the visit —
+    // rather than as the lane's wide card squeezed into that box; on the grid it is the card itself.
+    const colW = (frame.querySelector('.cal-lanecol')?.getBoundingClientRect().width ?? 186) - 6;
+    const ghost = d.fromLane
+      ? cardEl(d.c, { s: 0, e: d.dur, base: 0, week: S.view === 'week' })
+      : d.el.cloneNode(true) as HTMLElement;
+    ghost.classList.add('cal-ghost'); ghost.removeAttribute('data-id'); ghost.setAttribute('aria-hidden', 'true');
+    // After a hold the ghost rises a little, so the hand sees the card come away before it moves.
+    if (held) ghost.classList.add('is-held');
+    const h = d.fromLane ? Math.max(28, d.dur * mpx() - 2) : d.h;
+    ghost.style.cssText = `width:${d.fromLane ? Math.max(120, colW) : d.w}px;height:${h}px;left:0;top:0`;
+    if (d.fromLane) { d.dy = 10; d.dx = Math.min(d.dx, 40); }
+    ghost.style.transform = `translate(${d.x0 - d.dx}px, ${d.y0 - d.dy}px)`;
+    document.body.append(ghost); document.body.classList.add('is-dragging');
+    d.ghost = ghost; d.el.classList.add('is-dragging');
   }
   function onMove(e: PointerEvent) {
     if (!drag || e.pointerId !== drag.pid) return;
     if (!drag.started) {
-      if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 6) return;
-      drag.started = true; S.dragging = true;
-      try { drag.el.setPointerCapture(e.pointerId); } catch { /* the pointer is gone */ }
-      // From the website's lane the card is drawn as it will sit on the grid — a column wide, as tall as the visit —
-      // rather than as the lane's wide card squeezed into that box; on the grid it is the card itself.
-      const colW = (frame.querySelector('.cal-lanecol')?.getBoundingClientRect().width ?? 186) - 6;
-      const ghost = drag.fromLane
-        ? cardEl(drag.c, { s: 0, e: drag.dur, base: 0, week: S.view === 'week' })
-        : drag.el.cloneNode(true) as HTMLElement;
-      ghost.classList.add('cal-ghost'); ghost.removeAttribute('data-id'); ghost.setAttribute('aria-hidden', 'true');
-      const h = drag.fromLane ? Math.max(28, drag.dur * mpx() - 2) : drag.h;
-      ghost.style.cssText = `width:${drag.fromLane ? Math.max(120, colW) : drag.w}px;height:${h}px;left:0;top:0`;
-      if (drag.fromLane) { drag.dy = 10; drag.dx = Math.min(drag.dx, 40); }
-      document.body.append(ghost); document.body.classList.add('is-dragging');
-      drag.ghost = ghost; drag.el.classList.add('is-dragging');
+      const far = Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0);
+      if (drag.hold) {
+        // Still inside the hold: a hand that strays is scrolling, so this is no drag (and no click either).
+        if (far > HOLD_SLOP) { window.clearTimeout(drag.hold); drag = null; }
+        return;
+      }
+      if (far < 6) return;
+      lift(drag, false);
     }
     e.preventDefault();
     drag.ghost!.style.transform = `translate(${e.clientX - drag.dx}px, ${e.clientY - drag.dy}px)`;
@@ -1236,6 +1256,7 @@ function start(boot: Boot) {
   async function onUp(e: PointerEvent, drop: boolean) {
     if (!drag || e.pointerId !== drag.pid) return;
     const d = drag; drag = null;
+    window.clearTimeout(d.hold);
     window.cancelAnimationFrame(autoscroll);
     if (!d.started) return;
     S.dragging = false;
@@ -1284,7 +1305,12 @@ function start(boot: Boot) {
     S.focusId = r.card.id;
     flash(r.card.id);
   }
-  for (const zone of [frame, $('[data-reqs]')!]) zone.addEventListener('pointerdown', onDown);
+  for (const zone of [frame, $('[data-reqs]')!]) {
+    zone.addEventListener('pointerdown', onDown);
+    // Once a held card has lifted, the hand moves the card and not the page: the cards let the browser scroll
+    // (cal.css), so the scroll is refused here, and only while a drag is on.
+    zone.addEventListener('touchmove', (e) => { if (drag?.started && e.cancelable) e.preventDefault(); }, { passive: false });
+  }
   window.addEventListener('pointermove', onMove, { passive: false });
   window.addEventListener('pointerup', (e) => { void onUp(e, true); });
   window.addEventListener('pointercancel', (e) => { void onUp(e, false); });

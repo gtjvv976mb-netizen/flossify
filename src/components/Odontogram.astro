@@ -433,7 +433,9 @@ const wholeConditions: ToothCondition[] = [
 
   <!-- One shared palette, moved to the clicked tooth. Native popover gives
        Escape, light-dismiss and focus handling without writing any of it. -->
-  <div popover data-palette role="dialog" aria-label="Tooth finding" class="w-[320px] border border-line bg-surface p-4">
+  {/* 320px wide, but never wider than the screen less 8px each side: at 320 (a small phone, an iPad's slim Split
+      View) the script's clamp put its left edge 8px off the screen. */}
+  <div popover data-palette role="dialog" aria-label="Tooth finding" class="w-[320px] max-w-[calc(100vw-16px)] border border-line bg-surface p-4">
     {/* The open tooth's number and name, and where it is in the mouth: the same map, small, the tooth lit (a picture for
         the eye; the title says it in words). */}
     <div class="odo-pal-head">

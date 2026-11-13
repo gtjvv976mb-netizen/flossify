@@ -22,8 +22,8 @@
 //    on the Mac it has nothing to protect. A header the page already set wins.
 //    A page that throws gets them too: outside astro dev the error is logged
 //    here and answered as a 500 carrying the headers (astro dev keeps its
-//    error overlay). Astro still renders src/pages/500.astro for it if one is
-//    ever added; there is none now, so the 500 has no body.
+//    error overlay). The 500 is sent with no body, and Astro puts
+//    src/pages/500.astro in it (a static page: the words and a way back).
 //
 //    A patient's own pages (/f/…: the poster's forms, an intake, a clinic
 //    tablet) are no-store, noindex and Referrer-Policy: same-origin, and an
@@ -144,7 +144,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     if (import.meta.env.DEV) throw e;
     // What Astro would log (the stack); no query string, which can carry a code.
     console.error(`[error] ${context.request.method} ${logPath(context.url.pathname)}\n${(e as Error)?.stack ?? String(e)}`);
-    // No body: Astro renders src/pages/500.astro into it if one exists, keeping these headers.
+    // No body: Astro renders src/pages/500.astro into it, keeping these headers.
     response = new Response(null, { status: 500 });
   }
   const path = context.url.pathname;
