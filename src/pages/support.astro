@@ -47,7 +47,7 @@ const SUPPORT = 'support@flossify.ph';
           <li class="flex gap-3">
             <span class="mt-0.5 flex-none text-teal-ink" aria-hidden="true"><Icon name="shield" size={20} /></span>
             <p class="text-[15px] leading-relaxed text-ink-2">
-              <span class="font-semibold text-ink">About your details.</span> The <a href="/privacy/" class="support-link">privacy notice</a> says what is kept and how to ask for it.
+              <span class="font-semibold text-ink">About your details.</span> The <a href="/privacy/" class="support-link">privacy notice</a> says what is kept and how to ask for it. A request about your own details comes to this same address; we will ask how to confirm it is you before anything about a record is sent.
             </p>
           </li>
           <li class="flex gap-3">
@@ -63,11 +63,8 @@ const SUPPORT = 'support@flossify.ph';
 </Base>
 
 <style>
-  .support-link {
-  /* A link inside a sentence: its words stay on the line, and its padding (taken back by the margin, so the
-     lines do not move) makes the place to tap 44px tall. */
-    display: inline-block; margin-block: -13px; padding-block: 13px;
-    font-weight: 600; color: var(--ws-teal-ink); text-decoration: underline; text-underline-offset: 3px;
-  }
-  .support-link:focus-visible { outline: 3px solid var(--ws-teal); outline-offset: 2px; border-radius: 4px; }
+  /* A link inside a sentence. The words stay an ordinary inline link (so the focus ring hugs them); the place to
+     tap is 44px tall through a layer over the link that takes no room in the line. */
+  .support-link { position: relative; white-space: nowrap; font-weight: 600; color: var(--ws-teal-ink); text-decoration: underline; text-underline-offset: 3px; }
+  .support-link::after { content: ""; position: absolute; inset: -13px 0; }
 </style>

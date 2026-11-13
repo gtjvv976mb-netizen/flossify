@@ -177,7 +177,8 @@ try/catch because private mode throws.
       as placeholders on the Billing pages until then), then set
       `BILLING_FINAL = true` in `src/lib/billing-config.ts`. Until then no
       invoice is issued.
-- [ ] Name Flossify's Data Protection Officer and enter the NPC registration
-      number in `src/pages/privacy.astro` — only once they are real.
+- [x] Flossify's Data Protection Officer is named on `/privacy/` (13 Nov 2026).
+- [ ] NPC registration: none yet. When there is one, the number goes on `/privacy/`
+      with a new version of the notice; never claim it before it is true.
 - [ ] Add real product screenshots. The chart is currently the only real
       product surface on the page.

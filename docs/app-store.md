@@ -146,9 +146,12 @@ How to make it (about ten minutes; the owner does the first step, because only t
 
 The owner's, first. Each is a blank only the owner can fill; nothing here is made up for them.
 
-- [ ] **The privacy notice's placeholders, with the lawyer** (`/privacy/`): the data protection officer's name and
-      email, and the NPC registration number, or that line removed until registration is true. The notice's words are
-      a legal change, so the notice and its version are published together.
+- [x] **The privacy notice's placeholders** (`/privacy/`): filled on 13 Nov 2026 with the owner's answers. The Data
+      Protection Officer is Michael Kenneth C Brillantes, at support@flossify.ph. There is no NPC registration yet
+      ("none yet"), so that line and its box are gone; the page never claims one before it is true.
+- [ ] **The lawyer reads `/privacy/` as it now stands**, and says whether Flossify must register with the National
+      Privacy Commission before or soon after launch. When it registers, the number goes on the page with a new
+      version of the notice.
 - [x] **A support URL that reaches a person**: `https://flossify.ph/support/` (13 Nov 2026). Check that mail to
       support@flossify.ph arrives before submitting.
 - [ ] **The review clinic and its sign-in**: made for review, not listed, made-up patients, a staff account with a
