@@ -197,7 +197,9 @@ added, by what a person meets:
 an iPad, palm and pencil on the signature pads, the quick actions, the two-finger scrub, the status-bar tap inside a
 panel, and the dark icon. `mobile/README.md` lists them.
 
-**Left for the owner** (found by the audit, not touched): the privacy notice's placeholders and a support page; the
+**Left for the owner** (found by the audit, not touched; since done on 13 Nov 2026: `/support/`, and the privacy
+notice's Data Protection Officer and address, with the NPC line taken out until there is a registration): the
+privacy notice's placeholders and a support page; the
 price and free trial two taps from the first screen, and Pay now leaving for Safari (3.1.1); the start page's "in the
 Web" and words for clinic owners only; Find a clinic naming Baguio while the one listed clinic is elsewhere; the
 privacy manifest's answers; a Share button on a clinic's page; a signature for someone who cannot draw one.

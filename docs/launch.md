@@ -70,23 +70,22 @@ you do not need to read it. Written 23 September 2026.
     *"To move it, call* (the clinic's number)*."* Patients confirm by
     calling or at "My visits". If you want replies one day, ask Semaphore
     or another gateway for a number that receives them.
-- [x] **NPC and a Data Protection Officer** (owner, 23 Sep 2026: done). Still
-      to do: give the developer the DPO's name and email and the NPC number
-      for `/privacy/`. Name Flossify's DPO. Ask the
-      lawyer whether Flossify must register with the National Privacy
-      Commission (it holds patients' health records for clinics). Give the
-      developer the DPO's name and email, and the NPC number once the
-      registration is real: they go into the privacy page (`/privacy/`)
-      before launch. Today that page shows bracketed placeholders in their
-      place, which must not go live. Never claim registration early.
+- [ ] **NPC and a Data Protection Officer.** The DPO's name and email are on
+      `/privacy/` (13 Nov 2026: Michael Kenneth C Brillantes, support@flossify.ph).
+      There is no NPC registration yet (the owner, 13 Nov 2026: "none yet"), so
+      the page carries no registration line. Still to do: ask the lawyer whether
+      Flossify must register with the National Privacy Commission (it holds
+      patients' health records for clinics). When it registers, the number goes
+      on `/privacy/` with a new version of the notice. Never claim registration
+      early.
       (Clinic settings → Privacy, inside each clinic's workspace, is for the
       clinic's own DPO, not Flossify's.)
 - [x] **Lawyer review** (owner, 23 Sep 2026: done). Give the developer the
       approved privacy notice wording: it is published as a new consent
       version, and confirm the lawyer is content with Singapore hosting.
       What was asked for review:
-  - the privacy notice (`/privacy/`), including the DPO's name and email,
-    which are still placeholders;
+  - the privacy notice (`/privacy/`), including the DPO's name and email
+    (filled on 13 Nov 2026);
   - terms of service — there are none yet;
   - a **data-processing agreement with each clinic** (the clinic owns its
     patients' records; Flossify keeps them on its behalf);
