@@ -46,7 +46,8 @@ name only what is live (`CLAUDE.md`, "Lists name only what is live").
 
 **Category:** Medical (primary), Business (secondary). Medical draws closer review, but it is what the app is.
 
-**Support URL** (Owner): a page that reaches a person at Flossify. The site has none yet.
+**Support URL:** `https://flossify.ph/support/` (13 Nov 2026; the owner's address, support@flossify.ph). Someone must
+read that mailbox: App Review writes to it.
 
 **Marketing URL:** `https://flossify.ph/`
 
@@ -91,6 +92,15 @@ clinic's, and no invented clinic branding in imagery (`CLAUDE.md`, standing cons
 **Sign-in for review** (Owner): a clinic made for review on flossify.ph. Never a real clinic's (it would show real
 patients): not listed (it never appears on /find/ or among the home page's partners), with made-up patients, a staff
 account for the reviewer, and texts not needed (the review account signs in with a password).
+
+How to make it (about ten minutes; the owner does the first step, because only the owner types a password):
+1. Open `https://flossify.ph/start/` and open a clinic with an email kept for review (not one a real clinic uses) and a
+   password chosen for the reviewer. A new clinic is not listed until its owner switches that on: leave it off.
+2. Signed in, go to Patients → Add patient → import, and upload `docs/review/review-clinic-patients.csv`: eight
+   made-up patients, each marked as invented, with no mobile numbers and no emails, so no text or email can ever go
+   to a stranger. (Tried against the import's preview on 13 Nov 2026: all 13 columns are read.)
+3. Book one visit for today for one of them (the Dashboard's *New booking*), so the day is not empty.
+4. Put that email and password in the two blanks of the notes below, and nowhere else.
 
 **Notes for the reviewer** (paste, then fill the two blanks):
 > Flossify is practice software for dental clinics in the Philippines and the place their patients book visits. The
@@ -139,9 +149,13 @@ The owner's, first. Each is a blank only the owner can fill; nothing here is mad
 - [ ] **The privacy notice's placeholders, with the lawyer** (`/privacy/`): the data protection officer's name and
       email, and the NPC registration number, or that line removed until registration is true. The notice's words are
       a legal change, so the notice and its version are published together.
-- [ ] **A support URL that reaches a person** at Flossify. The site has none yet.
+- [x] **A support URL that reaches a person**: `https://flossify.ph/support/` (13 Nov 2026). Check that mail to
+      support@flossify.ph arrives before submitting.
 - [ ] **The review clinic and its sign-in**: made for review, not listed, made-up patients, a staff account with a
-      password. Its email and password go in the two blanks of the reviewer's notes.
+      password. Its email and password go in the two blanks of the reviewer's notes. The steps and the made-up patients
+      file are under *Sign-in for review*, above.
+- [x] **The app in App Store Connect and a first build**: made on 13 Nov 2026 under Bryllant Labs Inc.; Flossify 1.0
+      (1) uploaded the same day.
 - [ ] **Screenshots**: Actions → iOS app → Run workflow, tick *App Store sizes*; take them from the `ios-simulator`
       artifact. Workspace screens come from the review clinic, never a real one.
 - [ ] **App Privacy answers** as in the table above, matching `mobile/ios/App/App/PrivacyInfo.xcprivacy`. If one

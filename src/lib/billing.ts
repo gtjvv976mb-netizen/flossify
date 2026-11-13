@@ -4,7 +4,7 @@
 // anywhere: a clinic pays by GCash, Maya or bank transfer with the invoice
 // number as the reference, and a person on the operations page marks it paid.
 //
-// The price is set (₱800 per branch a month). The pay-to details and the address
+// The price is set (₱400 per branch a month; the owner, 13 Nov 2026, was ₱800). The pay-to details and the address
 // to write to are still stand-ins for the owner to set before invoicing starts. The README's
 // "Before this goes live" list names them. Do not present them as final.
 // Nothing is invoiced until BILLING_FINAL (below) is true.
@@ -12,10 +12,11 @@
 import { pool } from './db';
 import { BILLING_FINAL } from './billing-config';
 
-/** The one price, per branch per month, in pesos: ₱800 with everything included
- *  (the owner, 25 Sep 2026). The home page's Pricing page reads it from here. The
+/** The one price, per branch per month, in pesos: ₱400 with everything included
+ *  (the owner, 13 Nov 2026: "make it 400 pesos only per month per branch"; ₱800 from 25 Sep 2026 until then.
+ *  Migration 048 moved the subscriptions still on the old list price). The home page's Pricing page reads it from here. The
  *  three plan ids stay because subscription.plan is checked against them (011). */
-export const PRICE_PER_BRANCH = 800;
+export const PRICE_PER_BRANCH = 400;
 export const PLANS = {
   starter: { name: 'Flossify', perBranch: PRICE_PER_BRANCH, blurb: 'Everything included' },
   clinic: { name: 'Flossify', perBranch: PRICE_PER_BRANCH, blurb: 'Everything included' },
